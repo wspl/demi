@@ -427,7 +427,6 @@ impl<H: HostResolver> Tree<H> {
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             config: deps.config.session,
-            interval_floor_ms: deps.config.interval_floor_ms,
             call_window_ms: deps.config.call_window_ms,
             reply_files: deps.reply_files.clone(),
         })

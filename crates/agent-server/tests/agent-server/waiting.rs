@@ -3,7 +3,7 @@
 //!
 //! The tests cover:
 //!
-//! - It sends no interval report while it waits.
+//! - It sends no silence report while it waits.
 //! - A turn that ends leaves it waiting, and the user's Stop of any later turn
 //!   ends it.
 //!
@@ -12,6 +12,7 @@
 
 use std::{cell::Cell, rc::Rc, time::Duration};
 
+use demi_agent_session::SILENCE_LIMIT;
 use demi_agent_server::testing::{ScriptedProviders, TestClient};
 use demi_agent_store::testing::MemoryTreeStore;
 use demi_conversation_socket_protocol::ClientFrame;
@@ -26,13 +27,12 @@ use crate::support::{
         ScriptedShell, ScriptedShells, conversation, is_request_output, request_text, scripted_host_server_telling, send, until,
     };
 
-/// How often the commands report: the least interval a call can ask for.
-const INTERVAL: Duration = Duration::from_secs(15);
+/// How long a call watches its command before it returns.
+const WINDOW: Duration = Duration::from_secs(30);
 
-/// The model's shell call `id` running `script`, which reports every
-/// [`INTERVAL`] while it runs.
+/// The model's shell call `id` running `script`.
 fn shell(id: &str, script: &str) -> ProviderEvent {
-    event::tool_call(id, "shell", json!({"script": script, "description": script, "intervalMs": 15_000}))
+    event::tool_call(id, "shell", json!({"script": script, "description": script}))
 }
 
 /// The model's closing words.
@@ -83,9 +83,9 @@ fn state_of(shells: &ScriptedShells, command: &str) -> PageState {
         .expect("the command started")
 }
 
-// Three minutes of paused time: a few milliseconds.
+// Half an hour of paused time: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_command_waiting_for_its_device_sends_no_interval_report_until_it_runs() {
+async fn a_command_waiting_for_its_device_sends_no_silence_report_until_it_runs() {
     let script = ScriptedRuntime::new([
         Turn::Events(vec![shell("call-1", "test"), event::response(1, 1)]),
         said("waiting"),
@@ -96,24 +96,25 @@ async fn a_command_waiting_for_its_device_sends_no_interval_report_until_it_runs
     until(|| holding(&shells, 1).is_some()).await;
     let shell = holding(&shells, 1).unwrap();
     shell.wait_for("1", Some("MacBook Pro"));
-    // The call returns at its interval, its command still waiting.
-    tokio::time::sleep(INTERVAL).await;
+    // The call returns at its window, its command still waiting.
+    tokio::time::sleep(WINDOW).await;
     page.until_idle().await;
     assert_eq!(script.requests().len(), 2);
 
-    // Ten intervals pass while it waits: no report.
-    tokio::time::sleep(INTERVAL * 10).await;
+    // A silence limit and a half pass while it waits: no report.
+    tokio::time::sleep(SILENCE_LIMIT * 3 / 2).await;
     assert_eq!(script.requests().len(), 2);
 
-    // Once its device is back it runs, and reports at its next interval.
+    // Once its device is back it runs, and its silence is reported at the
+    // next limit.
     shell.wait_for("1", None);
-    tokio::time::sleep(INTERVAL).await;
+    tokio::time::sleep(SILENCE_LIMIT).await;
     until(|| script.requests().len() == 3).await;
     let report = request_text(&script.requests()[2]);
     assert!(report.contains("Command 1 (test) is still running"), "{report}");
 }
 
-// Fifteen seconds of paused time: a few milliseconds.
+// Thirty seconds of paused time: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_turn_that_ends_leaves_its_command_waiting_and_a_later_turns_stop_ends_it() {
     let script = ScriptedRuntime::new([
@@ -126,7 +127,7 @@ async fn a_turn_that_ends_leaves_its_command_waiting_and_a_later_turns_stop_ends
     page.send(send("m1", "Test.")).await;
     until(|| holding(&shells, 1).is_some()).await;
     holding(&shells, 1).unwrap().wait_for("1", Some("MacBook Pro"));
-    tokio::time::sleep(INTERVAL).await;
+    tokio::time::sleep(WINDOW).await;
     page.until_idle().await;
     // The turn ended; its command, a background command not yet started,
     // waits on.

@@ -304,7 +304,7 @@ impl Keeper {
             turn: start.caller.turn.clone(),
             title: start.title.clone(),
             script: start.script.clone(),
-            interval_ms: start.interval_ms,
+            background: start.background,
             started: self.clock.now(),
             places: Default::default(),
             unsent: unsent.cloned(),

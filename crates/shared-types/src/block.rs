@@ -584,7 +584,7 @@ pub struct WakeupBlock {
 }
 
 /// What a command a `shell` call left running tells its node
-/// (`crates/agent-session/src/reports.rs`): its progress, or its end.
+/// (`crates/agent-session/src/reports.rs`): its silence, or its end.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandReport {
@@ -611,23 +611,20 @@ pub struct CommandReport {
 }
 
 /// What a report tells of its command.
+///
+/// It reads a stored report that names the interval the command reported at,
+/// which earlier releases wrote, without it; so its fields are not denied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(
-    tag = "kind",
-    rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
+#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ReportEvent {
-    /// It still runs, and reports every `interval_ms`.
+    /// It still runs and has printed nothing for a long time; its end is the
+    /// next thing it reports.
     Running {
         #[garde(range(max = MAX_SAFE_INTEGER))]
         running_ms: u64,
         /// How long it has printed nothing.
         #[garde(range(max = MAX_SAFE_INTEGER))]
         idle_ms: u64,
-        #[garde(skip)]
-        interval_ms: u32,
     },
     /// It exited, with its status when its end was recorded.
     Ended {

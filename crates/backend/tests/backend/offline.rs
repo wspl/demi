@@ -40,7 +40,7 @@ use crate::support::{Harness, Paired, Session, TestBackend};
 use demi_backend_user_shard::holds::HelloStep;
 use demi_web_api_protocol::devices::DeviceState;
 use demi_web_api_protocol::state::SyncEvent;
-use crate::work::{Driven, resident, say, shell, switch};
+use crate::work::{Driven, background, say, shell, switch};
 
 const FIRST: &str = "7e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a07";
 
@@ -113,7 +113,7 @@ async fn a_command_on_an_offline_primary_device_waits_for_it_and_runs_once_it_is
     backend.until_online(&master, alpha.id(), false).await;
 
     let before = work
-        .start(vec![shell("t1", "echo hello", 60_000), say("done")])
+        .start(vec![shell("t1", "echo hello"), say("done")])
         .await;
     assert_eq!(until_waiting(&mut work).await.0, "alpha");
     network.open();
@@ -141,7 +141,7 @@ async fn a_stop_of_a_later_turn_ends_the_command_an_earlier_turn_left_waiting_an
     backend.until_online(&master, alpha.id(), false).await;
 
     // The first turn ends with its command waiting in the background.
-    work.start(vec![shell("t1", "touch ran", 1_000), say("waiting")]).await;
+    work.start(vec![shell("t1", "touch ran"), say("waiting")]).await;
     let (_, command) = until_waiting(&mut work).await;
     until_root_idle(&mut work).await;
 
@@ -167,7 +167,7 @@ async fn a_stop_of_a_later_turn_ends_the_command_an_earlier_turn_left_waiting_an
     // never sent: the runner would have received it first.
     // The socket still holds the frames of the report's turn, so the
     // model's requests say when it ran.
-    work.start(vec![shell("t2", "echo ran-$((1 + 1))", 10_000), say("done")]).await;
+    work.start(vec![shell("t2", "echo ran-$((1 + 1))"), say("done")]).await;
     until_requested(&vendor, "ran-2").await;
     assert!(!home.join("ran").exists(), "the stopped command never ran");
     backend.close().await;
@@ -188,7 +188,7 @@ async fn a_move_while_the_agent_waits_for_its_offline_device_fails_the_command_a
     backend.until_online(&master, alpha.id(), false).await;
 
     let before = work
-        .start(vec![shell("t1", "echo hello", 60_000), say("moved on")])
+        .start(vec![shell("t1", "echo hello"), say("moved on")])
         .await;
     until_waiting(&mut work).await;
     let beta_home = beta.runner.home_dir().to_owned();
@@ -219,7 +219,7 @@ async fn a_command_on_an_offline_attached_device_fails_at_once_with_its_offline_
 
     let tried = work
         .turn(vec![
-            shell("t1", "demi host shell --host build-box 'echo hi'", 10_000),
+            shell("t1", "demi host shell --host build-box 'echo hi'"),
             say("noted"),
         ])
         .await;
@@ -249,7 +249,7 @@ async fn a_move_away_from_an_offline_device_leaves_its_running_command_there_whi
     let home = alpha.runner.home_dir().to_owned();
     let started = work
         .turn(vec![
-            resident("t1", "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done; exit 3"),
+            background("t1", "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done; exit 3"),
             say("started"),
         ])
         .await;
@@ -288,7 +288,7 @@ async fn a_command_waiting_for_its_device_outlives_a_backend_restart_and_runs_on
 
     // The call returns at its interval and the turn ends, the command
     // waiting on.
-    work.start(vec![shell("t1", "touch ran", 1_000), say("waiting")]).await;
+    work.start(vec![shell("t1", "touch ran"), say("waiting")]).await;
     let (_, command) = until_waiting(&mut work).await;
     until_root_idle(&mut work).await;
     work.script(vec![say("noted")]);
@@ -323,7 +323,7 @@ async fn a_stop_of_a_command_waiting_for_its_device_ends_it_and_it_never_runs() 
     network.cut();
     backend.until_online(&master, alpha.id(), false).await;
 
-    work.start(vec![shell("t1", "touch ran", 1_000), say("waiting")]).await;
+    work.start(vec![shell("t1", "touch ran"), say("waiting")]).await;
     let (_, command) = until_waiting(&mut work).await;
     until_root_idle(&mut work).await;
 
@@ -349,7 +349,7 @@ async fn a_stop_of_a_command_waiting_for_its_device_ends_it_and_it_never_runs() 
     // never sent: the runner would have received it first.
     // The socket still holds the frames of the report's turn, so the
     // model's requests say when it ran.
-    work.start(vec![shell("t2", "echo ran-$((1 + 1))", 10_000), say("done")]).await;
+    work.start(vec![shell("t2", "echo ran-$((1 + 1))"), say("done")]).await;
     until_requested(&vendor, "ran-2").await;
     assert!(!home.join("ran").exists(), "the stopped command never ran");
     backend.close().await;
@@ -413,7 +413,7 @@ async fn a_drop_the_runner_returns_from_shows_no_offline_change_and_what_was_ask
     };
     let returning = async {
         let before = work
-            .start(vec![shell("t1", "echo hello", 60_000), say("done")])
+            .start(vec![shell("t1", "echo hello"), say("done")])
             .await;
         network.open();
         hello.until_arrived(1).await;
@@ -459,7 +459,7 @@ async fn a_command_that_waited_through_a_drop_fails_as_offline_when_the_wait_end
     dropped(&harness, &backend, &master, &network, alpha.id()).await;
 
     let before = work
-        .start(vec![shell("t1", "echo hello", 60_000), say("done")])
+        .start(vec![shell("t1", "echo hello"), say("done")])
         .await;
     backend.until_waiting_for_return(&master, 1).await;
     elapse(Duration::from_secs(11)).await;

@@ -33,14 +33,13 @@ use std::{rc::Weak, sync::Arc};
 use bytes::Bytes;
 use demi_agent_store::{StoredCommand, StoredOutput};
 use demi_agent_tools::{
-    HostResolver, INTERVAL_CAP_MS, Look, PAGE_CHARS, Stopper, duration, look_text, taken_interval,
-    whole_look_text,
+    HostResolver, Look, PAGE_CHARS, Stopper, look_text, whole_look_text,
 };
 use demi_host_interface::{
     CommandState, Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen,
     ShellError, Streams, TypedRpc, WholeOutput,
 };
-use demi_shared_types::{CommandEnd, CommandId, NodeId, StreamKind, output::warning};
+use demi_shared_types::{CommandEnd, CommandId, NodeId, StreamKind};
 use futures_util::FutureExt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -62,9 +61,9 @@ const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its promp
 /// The group's entry in the model's capability index.
 const GROUP_ENTRY: &str = "status, input, output and stop of commands by commandId.";
 
-const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them, at once. --interval <duration> makes them report to you every so long from now on.";
+const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them, at once.";
 
-const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails. The command reports what it does with the input as it reports anything else.";
+const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails.";
 
 const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next status shows it stopped, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
@@ -97,8 +96,6 @@ struct StatusArgs {
     /// The commands' commandIds, as their results name them
     #[schemars(length(min = 1))]
     id: Vec<String>,
-    /// Report every so long from now on, such as 5m
-    interval: Option<String>,
 }
 
 /// The input of `demi shell input`.
@@ -127,7 +124,7 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
             LeafBuilder::rpc("status", STATUS_SUMMARY)
                 .input::<StatusArgs>()
                 .positionals(["id"])
-                .success_output("each command's status as a shell result shows it, a blank line between two; with --interval, a line first that says how it reports from now on")
+                .success_output("each command's status as a shell result shows it, a blank line between two")
                 .failure_output("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
                 .json_output::<StatusJson>()
                 .bind(TypedRpc::new(verb(server.clone(), status))),
@@ -157,12 +154,7 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
         )
 }
 
-/// How a look changes how a command reports: every so many milliseconds,
-/// or only its end when none.
-type IntervalChange = Option<u32>;
-
-/// Looks at each of the conversation's commands the call names, in order;
-/// changes first how each reports when the call says so.
+/// Looks at each of the conversation's commands the call names, in order.
 ///
 /// A command that cannot be looked at is told on stderr, and the next is looked
 /// at all the same.
@@ -172,29 +164,12 @@ async fn status<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let args = &call.args;
     one_for_json(&call, args.id.len())?;
-    let mut notes = Vec::new();
-    let change = match &args.interval {
-        Some(text) => {
-            let asked = match milliseconds(text) {
-                Ok(asked) => asked,
-                Err(reason) => return refuse(&format!("--interval {text}: {reason}")),
-            };
-            let floor = call.tree.interval_floor_ms();
-            let (taken, outside) = taken_interval(asked, floor, "--interval");
-            if outside.is_some() {
-                let bound = if taken == INTERVAL_CAP_MS { "above the cap" } else { "below the floor" };
-                notes.push(format!("--interval {text} is {bound}; taken as {}", duration(taken.into())));
-            }
-            Some(Some(taken))
-        }
-        None => None,
-    };
     let mut failed = false;
     let mut shown = Vec::new();
     let mut moves = Vec::new();
     let mut json = None;
     for id in &args.id {
-        match status_one(&call.tree, &call.caller, id, change).await {
+        match status_one(&call.tree, &call.caller, id).await {
             Ok(Shown { text, facts, moved }) => {
                 json = Some(StatusJson {
                     command_id: id.clone(),
@@ -216,15 +191,11 @@ async fn status<H: HostResolver>(
     }
     match json.filter(|_| call.json) {
         Some(json) => {
-            for note in &notes {
-                port.stderr(warning(&call.command, note)).await?;
-            }
             let text = serde_json::to_string(&json).expect("a status serializes");
             port.stdout(format!("{text}\n").into_bytes()).await?;
         }
         None => {
-            let printed: Vec<String> = notes.into_iter().chain([shown.join("\n\n")]).collect();
-            port.stdout(format!("{}\n", printed.join("\n")).into_bytes()).await?;
+            port.stdout(format!("{}\n", shown.join("\n\n")).into_bytes()).await?;
         }
     }
     // Only what reached the caller was seen: a look its call could not
@@ -323,22 +294,9 @@ enum Moved {
     Place(Seen),
 }
 
-/// A duration as `--interval` takes it, such as `30s`, `5m`
-/// or `1h30m`, in whole milliseconds from 1.
-fn milliseconds(text: &str) -> Result<u64, String> {
-    let parsed: jiff::SignedDuration = text
-        .parse()
-        .map_err(|_| "a duration such as 30s, 5m or 1h30m".to_owned())?;
-    match u64::try_from(parsed.as_millis()) {
-        Ok(milliseconds) if milliseconds > 0 => Ok(milliseconds),
-        _ => Err("a duration longer than none".to_owned()),
-    }
-}
-
 /// What a look at the conversation's command `id` shows the node `caller`.
 ///
-/// First, `change` changes how the command reports. The node that runs the
-/// command looks from its place in the command's record. Any other node, and a
+/// The node that runs the command looks from its place in the command's record. Any other node, and a
 /// node whose command no shells hold any more, looks from its own place in the
 /// command's whole output. Each look shows the output since the node's own last
 /// look and moves only its place, once the caller printed it.
@@ -346,7 +304,6 @@ async fn status_one<H: HostResolver>(
     tree: &Tree<H>,
     caller: &NodeId,
     id: &str,
-    change: Option<IntervalChange>,
 ) -> Result<Shown, String> {
     let unknown = || "no such command in this conversation".to_owned();
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
@@ -365,25 +322,9 @@ async fn status_one<H: HostResolver>(
         }
         CommandPlace::Stopping(environment) => (None, Some(environment)),
     };
-    if let Some(interval) = change {
-        let changed = held
-            .as_ref()
-            .is_some_and(|node| node.session().set_interval(&command, interval));
-        let said = match (changed, interval) {
-            (true, Some(interval)) => {
-                format!("[command {id} reports every {} from now on]", duration(interval.into()))
-            }
-            (true, None) => format!("[command {id} reports only its end from now on]"),
-            // Its end was reported or shown already.
-            (false, _) => format!("[command {id} reports nothing more]"),
-        };
-        lines.push(said);
-    }
-    let interval_ms = held
-        .as_ref()
-        .and_then(|node| node.session().interval_of(&command));
+    let watch = held.as_ref().and_then(|node| node.session().watch_of(&command));
     let look = Look {
-        interval_ms,
+        watch,
         ..Look::default()
     };
     if held.as_ref().is_some_and(|node| node.id() == caller) {

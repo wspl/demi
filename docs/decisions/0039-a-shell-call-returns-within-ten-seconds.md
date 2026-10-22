@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by 0052
 ---
 
 # A shell call returns within ten seconds

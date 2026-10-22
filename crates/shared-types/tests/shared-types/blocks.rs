@@ -133,3 +133,21 @@ fn a_completion_an_earlier_release_wrote_keeps_the_report_it_carried() {
     let block = decode_value(&stored).unwrap_or_else(|error| panic!("{stored}: {error}"));
     assert_eq!(serde_json::to_value(&block).unwrap(), stored);
 }
+
+/// A report an earlier release stored for a command that still ran names the
+/// interval it reported at; it reads without it.
+#[test]
+fn a_stored_report_that_names_an_interval_reads_without_it() {
+    let stored = json!({
+        "commandId": "18",
+        "title": "Build the site",
+        "event": {"kind": "running", "runningMs": 300000, "idleMs": 290000, "intervalMs": 300000},
+        "output": "",
+    });
+    let report: demi_shared_types::CommandReport = serde_json::from_value(stored).unwrap();
+    assert_eq!(
+        report.event,
+        demi_shared_types::ReportEvent::Running { running_ms: 300_000, idle_ms: 290_000 }
+    );
+    assert!(!serde_json::to_string(&report).unwrap().contains("intervalMs"));
+}

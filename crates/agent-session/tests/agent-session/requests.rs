@@ -361,7 +361,7 @@ async fn conversation(family: Family) -> Vec<String> {
             .concat(),
         ),
         answer("Both seen."),
-        Turn::Events(background_call("17", None, "Build")),
+        Turn::Events(background_call("17", true, "Build")),
         Turn::Events(
             [
                 thinking("second"),

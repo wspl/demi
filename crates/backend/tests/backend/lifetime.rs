@@ -30,7 +30,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::conversations::{anthropic_at, create, transcript};
 use crate::support::{Harness, Session, TestBackend, eventually};
-use crate::work::{Driven, resident, say, shell, switch};
+use crate::work::{Driven, background, say, shell, switch};
 
 const FIRST: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a05";
 
@@ -179,7 +179,7 @@ const WAITING: &str = "printf 'before\\n'; while [ ! -f go ]; do sleep 0.05; don
 /// output is quiet, and answers its number.
 async fn started(work: &mut Driven<'_>, call: &str, script: &str) -> String {
     let started = work
-        .turn(vec![resident(call, script), say("waiting")])
+        .turn(vec![background(call, script), say("waiting")])
         .await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
@@ -225,7 +225,7 @@ fn reports_waiting(harness: &Harness, conversation: &str) -> Vec<serde_json::Val
         .collect()
 }
 
-/// Waits until the loss of a resident command, `report`, waits in the
+/// Waits until the loss of a background command, `report`, waits in the
 /// saved checkpoint of `conversation`'s root for the next turn, having
 /// opened none, then sends a message: its turn's first request carries the
 /// loss (`crates/agent-session/src/reports.rs`).
@@ -299,7 +299,7 @@ async fn a_connection_that_comes_back_within_the_grace_stops_nothing_and_the_end
     until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 3.")).await;
     work.socket.until_idle().await;
     let read = format!("demi shell output {command} --raw");
-    let shown = work.turn(vec![shell("t2", &read, 10_000), say("read")]).await;
+    let shown = work.turn(vec![shell("t2", &read), say("read")]).await;
     assert_eq!(shown_output(&shown.received[0]), "before\nduring\nafter\n");
     assert_eq!(running_jobs(&harness), 0, "the job's record goes with its end");
     backend.close().await;
@@ -312,8 +312,8 @@ async fn a_connection_that_comes_back_within_the_grace_stops_nothing_and_the_end
 async fn started_unreceived(work: &mut Driven<'_>, network: &Network, home: &Path) -> String {
     let before = work
         .start(vec![
-            shell("t0", "touch stall; while [ ! -f stalled ]; do sleep 0.05; done", 10_000),
-            resident("t1", "printf x >> runs; exit 7"),
+            shell("t0", "touch stall; while [ ! -f stalled ]; do sleep 0.05; done"),
+            background("t1", "printf x >> runs; exit 7"),
             say("waiting"),
         ])
         .await;
@@ -438,13 +438,13 @@ async fn a_backend_restart_takes_running_commands_up_again_and_they_report_their
 // Several seconds: a real device pairs, the backend restarts, and the device's
 // runner starts anew as another release's would.
 #[tokio::test]
-async fn a_release_change_loses_a_resident_command_and_the_next_turn_hears_of_it() {
+async fn a_release_change_loses_a_background_command_and_the_next_turn_hears_of_it() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let mut alpha = backend.pair(&master, "alpha").await;
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
-    let command = started(&mut work, "t1", "sleep 60").await;
+    let command = started(&mut work, "t1", "while :; do sleep 1; done").await;
 
     // The upgrade stops the backend, and the device's runner replaces itself
     // with the new release's: the device last ran another release.
@@ -482,7 +482,7 @@ async fn a_command_lost_after_a_shutdown_interrupted_its_call_is_reported_by_the
     let home = alpha.runner.home_dir().to_owned();
     // The call still watches its command when the upgrade stops the
     // backend, which completes the call as interrupted.
-    work.start(vec![shell("Deploy the batch", "touch started; sleep 60", 600_000)])
+    work.start(vec![shell("Deploy the batch", "touch started; sleep 60")])
         .await;
     until_exists(&home.join("started")).await;
     // The interrupted turn waits for the user, as it does with the user's
@@ -616,7 +616,7 @@ async fn a_medium_a_job_returns_while_its_connection_is_away_reaches_its_end_res
     let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
     std::fs::write(home.join("shot.png"), &png).unwrap();
     // The package is installed while the runner is connected.
-    work.turn(vec![shell("t0", "demi file view shot.png > /dev/null", 30_000), say("viewed")])
+    work.turn(vec![shell("t0", "demi file view shot.png > /dev/null"), say("viewed")])
         .await;
     let script = "printf 'waiting\\n'; while [ ! -f go ]; do sleep 0.05; done; demi file view shot.png > /dev/null 2> view.err; touch viewed";
     let command = started(&mut work, "t1", script).await;
@@ -681,12 +681,15 @@ async fn an_rpc_call_made_while_the_connection_is_away_waits_for_it_and_is_serve
     backend.close().await;
 }
 
-// About five seconds: a real device pairs through a network that goes away
-// for over two seconds, and the command reports every second.
+// About six seconds: a real device pairs through a network that goes away
+// past the three seconds of silence after which a command is reported, which
+// is then reported once the connection is back.
 #[tokio::test]
-async fn interval_reports_pause_while_the_hosts_connection_is_away_and_resume_when_it_is_back() {
+async fn a_silence_report_pauses_while_the_hosts_connection_is_away_and_comes_when_it_is_back() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new();
+    let mut harness = Harness::new();
+    harness.conversations.call_window_ms = 1_000;
+    harness.conversations.silence = std::time::Duration::from_secs(3);
     let (backend, master) = harness.start_set_up().await;
     let network = Network::start(backend.address()).await;
     let alpha = backend.pair_through(&master, "alpha", &network.url).await;
@@ -695,7 +698,7 @@ async fn interval_reports_pause_while_the_hosts_connection_is_away_and_resume_wh
     // The command counts half seconds into a file, which shows the test how
     // long it has run without a connection.
     let script = "printf 'started\\n'; i=0; while [ ! -f finish ]; do i=$((i+1)); echo $i > ticks; sleep 0.5; done";
-    let first = work.turn(vec![shell("t1", script, 1_000), say("waiting")]).await;
+    let first = work.turn(vec![shell("t1", script), say("waiting")]).await;
     let command = field(&first.received[0], "commandId").to_owned();
     work.script((0..20).map(|_| say("noted")).collect());
     let ticks = || {
@@ -708,10 +711,10 @@ async fn interval_reports_pause_while_the_hosts_connection_is_away_and_resume_wh
     network.cut();
     backend.until_online(&master, alpha.id(), false).await;
     let away = wakeups(&backend, &master).await.len();
-    // Over two intervals pass while the connection is away.
+    // The silence limit passes while the connection is away.
     let from = ticks();
-    eventually("the command ran over two seconds away", || {
-        let ran = ticks() >= from + 5;
+    eventually("the command ran over three seconds away", || {
+        let ran = ticks() >= from + 7;
         async move { ran }
     })
     .await;
@@ -770,7 +773,7 @@ async fn a_loss_the_next_steps_look_shows_is_not_reported_and_another_reports_it
     let (open, held) = watch::channel(false);
     let look = format!("demi shell status {looked_at}");
     let before = work
-        .start(vec![shell("t3", &look, 10_000).held(held), say("looked")])
+        .start(vec![shell("t3", &look).held(held), say("looked")])
         .await;
     vendor.received(before + 1).await;
     alpha.runner.kill().await;
@@ -805,35 +808,22 @@ async fn a_loss_the_next_steps_look_shows_is_not_reported_and_another_reports_it
     backend.close().await;
 }
 
-// About six seconds: a real device pairs, the command reports every second,
-// twice before the backend restarts and once after.
+// About four seconds: a real device pairs, the command's call returns at the
+// window, and the backend restarts with a silence limit of a second.
 #[tokio::test]
-async fn a_report_after_a_backend_restart_counts_from_the_commands_start_and_shows_only_unseen_output() {
+async fn a_silence_report_after_a_backend_restart_counts_the_run_from_the_commands_start_and_shows_only_unseen_output() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new();
+    let mut harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
     let home = alpha.runner.home_dir().to_owned();
     let script = "printf 'seen\\n'; while [ ! -f finish ]; do sleep 0.05; done";
-    let first = work.turn(vec![shell("t1", script, 1_000), say("waiting")]).await;
+    let first = work.turn(vec![shell("t1", script), say("waiting")]).await;
     let ran = std::time::Instant::now();
     assert_eq!(shown_output(&first.received[0]), "seen\n", "{}", first.received[0]);
     let command = field(&first.received[0], "commandId").to_owned();
     work.script((0..20).map(|_| say("noted")).collect());
-    let mut reports = Vec::new();
-    while reports.len() < 2 {
-        reports = wakeups(&backend, &master).await;
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-
-    // The backend closes right after a report, well before the next one.
-    let mut reports = reports.len();
-    let last = reports;
-    while reports == last {
-        reports = wakeups(&backend, &master).await.len();
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
     let address = backend.address();
     backend.close().await;
     let before = u64::try_from(ran.elapsed().as_millis()).unwrap();
@@ -841,13 +831,14 @@ async fn a_report_after_a_backend_restart_counts_from_the_commands_start_and_sho
     harness
         .clock
         .advance(jiff::SignedDuration::from_millis(i64::try_from(before).unwrap()));
+    harness.conversations.silence = std::time::Duration::from_secs(1);
     let backend = harness.start_at(address).await;
     let mut after = Vec::new();
-    while after.len() <= reports {
+    while after.is_empty() {
         after = wakeups(&backend, &master).await;
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-    let report = &after[reports];
+    let report = &after[0];
     let ReportEvent::Running { running_ms, .. } = report.event else {
         panic!("{report:?}");
     };
@@ -879,7 +870,7 @@ async fn a_look_after_a_backend_restart_counts_from_the_commands_start() {
     let provider = anthropic_at(&backend, &master, &vendor, "/lifetime").await;
     work.reconnect(&backend, &master, FIRST, &provider).await;
     let look = format!("demi shell status {command}");
-    let looked = work.turn(vec![shell("t2", &look, 10_000), say("looked")]).await;
+    let looked = work.turn(vec![shell("t2", &look), say("looked")]).await;
     let looked = &looked.received[0];
     let running_ms: u64 = field(shown_output(looked).as_str(), "runningMs").parse().unwrap();
     assert!(running_ms >= 60_000, "{looked}");

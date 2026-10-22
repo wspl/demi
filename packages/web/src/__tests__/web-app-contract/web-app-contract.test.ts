@@ -439,7 +439,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
   vendor.reply({
     type: 'tool_use',
     name: 'shell',
-    input: { script: 'printf contract > probe.txt && cat probe.txt', description: 'Write the probe file', intervalMs: 30_000 },
+    input: { script: 'printf contract > probe.txt && cat probe.txt', description: 'Write the probe file' },
   })
   vendor.reply({ type: 'text', text: 'The probe says contract.' })
   const client = await connect(id)
@@ -467,7 +467,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
 test('after a reload, the transcript the client assembled from live patches equals the cold transcript', async () => {
   const model = await scriptedModel()
   const { id } = await conversationOnDevice(model)
-  vendor.reply({ type: 'tool_use', name: 'shell', input: { script: 'echo first', description: 'Print first', intervalMs: 30_000 } })
+  vendor.reply({ type: 'tool_use', name: 'shell', input: { script: 'echo first', description: 'Print first' } })
   vendor.reply({ type: 'text', text: 'The first turn ran a command.' })
   vendor.reply({ type: 'text', text: 'And the second turn answered at once.' })
   const live = await connect(id)
@@ -656,7 +656,7 @@ test('Send now returns the running call at once and its command runs on: a steer
   vendor.reply({
     type: 'tool_use',
     name: 'shell',
-    input: { script: 'read line; echo "got $line"', description: 'Wait for a line', intervalMs: 600_000 },
+    input: { script: 'read line; echo "got $line"', description: 'Wait for a line' },
   })
   const client = await openConversation(id)
   try {
@@ -665,7 +665,7 @@ test('Send now returns the running call at once and its command runs on: a steer
     await client.submit([text('Read a line')])
     const commandId = await started
     // The model then watches another command.
-    vendor.reply({ type: 'tool_use', name: 'shell', input: { script: 'sleep 600', description: 'Wait ten minutes', intervalMs: 600_000 } })
+    vendor.reply({ type: 'tool_use', name: 'shell', input: { script: 'read line; echo "got $line"', description: 'Wait for another line' } })
     vendor.reply({ type: 'text', text: 'Answering the queued message.' })
     const steerId = crypto.randomUUID()
     await client.steer([text('Answer with go')], steerId)
@@ -746,7 +746,7 @@ test('the page answers a running command\'s prompt, and the command\'s output re
   vendor.reply({
     type: 'tool_use',
     name: 'shell',
-    input: { script: 'echo "name?"; read line; echo "got $line"', description: 'Ask for a name', intervalMs: 30_000 },
+    input: { script: 'echo "name?"; read line; echo "got $line"', description: 'Ask for a name' },
   })
   vendor.reply({ type: 'text', text: 'The command read the line.' })
   const client = await openConversation(id)

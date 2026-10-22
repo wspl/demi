@@ -28,8 +28,8 @@ pub enum EndOf {
     Unrecorded,
 }
 
-/// The report of `command`, which still runs and reports every `interval_ms`:
-/// how long it has run and printed nothing.
+/// The report of `command`, which still runs and has printed nothing for a long
+/// time: how long it has run and been silent.
 ///
 /// Its output is read when the report is written ([`fill_output`]), which moves
 /// the node's place then.
@@ -38,16 +38,11 @@ pub fn progress_report(
     title: &str,
     running_ms: u64,
     idle_ms: u64,
-    interval_ms: u32,
 ) -> CommandReport {
     report(
         command,
         title,
-        ReportEvent::Running {
-            running_ms,
-            idle_ms,
-            interval_ms,
-        },
+        ReportEvent::Running { running_ms, idle_ms },
     )
 }
 

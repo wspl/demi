@@ -828,7 +828,7 @@ export const statusImageTool = toolCall({
   id: 'tool-status-image',
   toolName: 'shell',
   status: 'completed',
-  input: JSON.stringify({ script: 'demi shell status 24', description: 'Check the latency chart', intervalMs: 15_000 }),
+  input: JSON.stringify({ script: 'demi shell status 24', description: 'Check the latency chart' }),
   output: [
     { type: 'text', text: `status: exited\nexitCode: 0\ncommandId: 25\noutput:\nstatus: exited\nexitCode: 0\ncommandId: 24\noutput:\n${imageLine(1, 480, 300, 16_078)}\n` },
     blobImage(galleryBlobs.chart),
@@ -1130,7 +1130,7 @@ function lookCall(
     createdAt: iso(at),
     toolName: 'shell',
     status: 'completed',
-    input: JSON.stringify({ script: `demi shell status ${looked}`, description, intervalMs: 15_000 }),
+    input: JSON.stringify({ script: `demi shell status ${looked}`, description }),
     view: shellView({ commandId: ownCommandId, chunks: [{ stream: 'stdout', text: seen }] }),
   })
 }
@@ -1152,7 +1152,6 @@ export const inputTool = toolCall({
   input: JSON.stringify({
     script: "demi shell input 17 <<'EOF'\nr\nEOF\ndemi shell status 17",
     description: 'Rerun the failed tests',
-    intervalMs: 15_000,
   }),
   view: shellView({
     commandId: '21',
@@ -1168,7 +1167,6 @@ export const stopTool = toolCall({
   input: JSON.stringify({
     script: 'demi shell stop 17',
     description: 'Stop the login test',
-    intervalMs: 15_000,
   }),
   view: shellView({
     commandId: '22',
@@ -1184,7 +1182,7 @@ export const errorTool = toolCall({
   id: 'tool-error',
   toolName: 'shell',
   status: 'error',
-  input: JSON.stringify({ script: 'rm /tmp/demi.lock', description: 'Remove the stale lock file', intervalMs: 15_000 }),
+  input: JSON.stringify({ script: 'rm /tmp/demi.lock', description: 'Remove the stale lock file' }),
   output: [{ type: 'text', text: "status: exited\nexitCode: 1\ncommandId: 23\noutput:\nrm: cannot remove '/tmp/demi.lock': Permission denied\n" }],
   view: shellView({
     commandId: '23',
@@ -1211,7 +1209,7 @@ export function commandEndBlocks(): ToolCallBlock[] {
     id,
     toolName: 'shell',
     status: failed(end) ? 'error' : 'completed',
-    input: JSON.stringify({ script: 'bun test', description, intervalMs: 15_000 }),
+    input: JSON.stringify({ script: 'bun test', description }),
     output: [{ type: 'text', text: `status: ${end.status === 'lost' ? `lost: ${end.lostReason}` : end.status}\ncommandId: ${commandId}\noutput:\n` }],
     view: shellView({ commandId, ...end, chunks: [] }),
   })
@@ -1227,7 +1225,7 @@ export function commandEndBlocks(): ToolCallBlock[] {
       id: 'end-repeated',
       toolName: 'shell',
       status: 'error',
-      input: JSON.stringify({ script: 'demi shell status 32', description: 'Check the test suite again', intervalMs: 15_000 }),
+      input: JSON.stringify({ script: 'demi shell status 32', description: 'Check the test suite again' }),
       output: [{ type: 'text', text: 'Repeated identical shell call suppressed.\nThe same script has been run 7 consecutive times in this agent session.\nInspect the previous output, use a different command, or provide the final answer instead of repeating it.' }],
       view: { kind: 'repeated_shell', script: 'demi shell status 32', count: 7 },
     }),
@@ -1235,7 +1233,7 @@ export function commandEndBlocks(): ToolCallBlock[] {
       id: 'end-refused',
       toolName: 'shell',
       status: 'error',
-      input: JSON.stringify({ script: 'bun run lint', intervalMs: 15_000 }),
+      input: JSON.stringify({ script: 'bun run lint' }),
       output: [{ type: 'text', text: 'shell input is invalid:\nmissing field `description`' }],
     }),
   ]
@@ -1277,7 +1275,7 @@ export function commandReportCases(): { variant: string, reports: CommandReport[
 export function severalReports(): CommandReport[] {
   return [
     report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts'),
-    report('23', 'Watch the type check', { kind: 'running', runningMs: 300_000, idleMs: 0, intervalMs: 300_000 }),
+    report('23', 'Watch the type check', { kind: 'running', runningMs: 300_000, idleMs: 0 }),
     report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } }),
     report('22', 'Build the documentation site with every locale and the API reference', { kind: 'ended', exitCode: 0 }, 'built 14 locales'),
   ]
@@ -1706,7 +1704,7 @@ export function commandLookBlocks(): Block[] {
     createdAt: iso(at),
     toolName: 'shell',
     status: 'completed',
-    input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite', intervalMs: 300_000 }),
+    input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite' }),
     view: shellView({ commandId, status: 'running', chunks: [{ stream: 'stdout', text: 'Running 140 specs\n' }] }),
   })
   const look = (id: string, at: number, description: string, ownCommandId: string, seen: string): Block =>
@@ -1868,7 +1866,7 @@ export function leftRunningBlocks(): Block[] {
         createdAt: iso(136_000),
         toolName: 'shell',
         status: 'completed',
-        input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite', intervalMs: 15_000 }),
+        input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite' }),
         view: shellView({ commandId: '71', status: 'running', runningMs: 15_000, chunks: [{ stream: 'stdout', text: 'Running 140 specs\n' }] }),
       }),
     ),
@@ -1987,7 +1985,7 @@ export function busyRequestBlocks(working = false): Block[] {
     createdAt: iso(next()),
     toolName: 'shell',
     status: 'completed',
-    input: JSON.stringify({ script, description, intervalMs: 60_000 }),
+    input: JSON.stringify({ script, description }),
     output: [{ type: 'text', text: output }],
     view: shellView({ commandId: `busy-${id}`, chunks: [{ stream: 'stdout', text: output }], ...extra }),
   })
@@ -2020,7 +2018,7 @@ So on a slow network every attempt times out before the server can answer, and t
       createdAt: iso(next()),
       toolName: 'shell',
       status: 'completed',
-      input: JSON.stringify({ script: 'apply_patch <<\'EOF\'\n…\nEOF', description: 'Raise the timeout and retry a 504', intervalMs: 60_000 }),
+      input: JSON.stringify({ script: 'apply_patch <<\'EOF\'\n…\nEOF', description: 'Raise the timeout and retry a 504' }),
       view: shellView({
         commandId: 'busy-edit',
         chunks: [{ stream: 'stdout', text: 'Updated 2 files\n' }],

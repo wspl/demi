@@ -176,9 +176,10 @@ pub struct ExecRequest {
     /// The title of that call, its `description`, which the command's
     /// record keeps and its reports name (`crates/agent-session/src/reports.rs`).
     pub title: String,
-    /// How often the command reports while it runs, or only its end when
-    /// none, which its record keeps from its start (`crates/agent-session/src/reports.rs`).
-    pub interval_ms: Option<u32>,
+    /// Whether the command runs until stopped, so that it wakes the node only
+    /// when it ends, which its record keeps from its start
+    /// (`crates/agent-session/src/reports.rs`).
+    pub background: bool,
     /// The media types the call's model reads in a tool result, which the
     /// job may show it (`crates/plugin-file/command/src/files.rs`).
     pub viewable: Viewable,
@@ -220,8 +221,8 @@ pub struct TakenUp {
     pub caller: JobCaller,
     pub title: String,
     pub script: String,
-    /// How often it reports while it runs, or only its end when none.
-    pub interval_ms: Option<u32>,
+    /// Whether it runs until stopped, and wakes the node only when it ends.
+    pub background: bool,
     pub running: Duration,
     pub seen: Seen,
     /// What it was asked to start, while its start still waits for its

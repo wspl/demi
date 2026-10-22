@@ -430,7 +430,6 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
                 ReportEvent::Running {
                     running_ms: 300_000,
                     idle_ms: 290_000,
-                    interval_ms: 300_000,
                 },
                 "",
             ),
@@ -465,7 +464,7 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
         text,
         "Command 17 (Run the test suite) is still running after 5m; no output for 4m50s.\n\
          output: (empty)\n\
-         It reports every 5m.\n\
+         It keeps running; its end wakes you.\n\
          \n\
          Command 17 (Run the test suite) ended with exit code 1.\n\
          output:\n\

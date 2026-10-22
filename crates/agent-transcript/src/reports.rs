@@ -40,15 +40,11 @@ pub fn reports_text(reports: &[CommandReport]) -> String {
 }
 
 /// The text of one report: what happened, its output, and for a command
-/// that still runs, how often it reports.
+/// that still runs, that its end is its next report.
 pub fn report_text(report: &CommandReport) -> String {
     let named = named(&report.command_id, &report.title);
     let headline = match &report.event {
-        ReportEvent::Running {
-            running_ms,
-            idle_ms,
-            ..
-        } => format!(
+        ReportEvent::Running { running_ms, idle_ms } => format!(
             "{named} is still running after {}; no output for {}.",
             duration(*running_ms),
             duration(*idle_ms),
@@ -69,11 +65,8 @@ pub fn report_text(report: &CommandReport) -> String {
         }
     };
     let mut lines = vec![headline, labelled_output(&report.output)];
-    if let ReportEvent::Running { interval_ms, .. } = &report.event {
-        lines.push(format!(
-            "It reports every {}.",
-            duration((*interval_ms).into())
-        ));
+    if matches!(report.event, ReportEvent::Running { .. }) {
+        lines.push("It keeps running; its end wakes you.".to_owned());
     }
     lines.join("\n")
 }

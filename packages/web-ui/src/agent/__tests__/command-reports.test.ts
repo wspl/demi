@@ -11,7 +11,7 @@ test('an end notice says what happened before the call it names; progress has no
   // A title is an imperative: as the subject it read wrongly, "Restart the
   // end-to-end suite is still running", so it stands as the object.
   const row = (r: CommandReport) => [reportNotice(r), reportTitle(r)]
-  expect(reportNotice(report({ kind: 'running', runningMs: 300_000, idleMs: 0, intervalMs: 300_000 }))).toBeNull()
+  expect(reportNotice(report({ kind: 'running', runningMs: 300_000, idleMs: 0 }))).toBeNull()
   expect(row(report({ kind: 'ended', exitCode: 0 }))).toEqual(['Command finished', 'Run the test suite'])
   expect(row(report({ kind: 'ended', exitCode: 1 }))).toEqual(['Command failed with exit code 1', 'Run the test suite'])
   expect(row(report({ kind: 'stopped', by: { kind: 'user' } }, 'Start the dev server')))
@@ -23,7 +23,7 @@ test('an end notice says what happened before the call it names; progress has no
 })
 
 test('a failure, a stop and a loss carry the tag a shell row carries; progress and success carry none', () => {
-  expect(reportMark(report({ kind: 'running', runningMs: 1, idleMs: 0, intervalMs: 15_000 }))).toBeNull()
+  expect(reportMark(report({ kind: 'running', runningMs: 1, idleMs: 0 }))).toBeNull()
   expect(reportMark(report({ kind: 'ended', exitCode: 0 }))).toBeNull()
   expect(reportMark(report({ kind: 'ended', exitCode: 2 }))).toEqual({ kind: 'failed', exitCode: 2 })
   expect(reportMark(report({ kind: 'stopped' }))).toEqual({ kind: 'stopped' })

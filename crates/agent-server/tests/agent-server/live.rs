@@ -63,7 +63,7 @@ async fn serving() -> (
         Turn::Events(vec![event::tool_call(
             "call-1",
             "shell",
-            json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+            json!({"script": "serve", "description": "Start the server", "background": true}),
         )]),
         Turn::Events(vec![event::text("serving"), event::response(1, 1)]),
         // The command's end, reported.

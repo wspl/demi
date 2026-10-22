@@ -6,9 +6,10 @@
 //! - An agent message or a command report ends a window, and a human steer does
 //!   not.
 //! - Steer ends a window without stopping its command.
-//! - A command left running reports every interval and its end.
-//! - A resident command returns once its start-up output is quiet and reports
-//!   only its end.
+//! - A command left running wakes its agent once when it has printed nothing for
+//!   a time, and when it ends.
+//! - A background command returns once its start-up output is quiet and wakes
+//!   its agent only when it ends.
 //! - A subagent stays live while a command it started runs.
 //!
 //! The `demi shell` commands run in the backend, which these scenarios lack:
@@ -39,7 +40,7 @@ use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 use serde_json::{Value, json};
 
-use crate::support::{DeviceHost, Fixture, conversation, exec, reply, resident, tolerant, turn, within};
+use crate::support::{DeviceHost, Fixture, conversation, exec, reply, background, tolerant, turn, within};
 
 /// What the model was shown of each tool call it made, by the call's id, in
 /// the order the request carries them.
@@ -118,8 +119,8 @@ async fn a_responses_commands_run_together_and_their_results_keep_the_calls_orde
         // the other, the reader would outlast its window.
         let (turns, results) = model(vec![Box::new(|_| {
             vec![
-                exec("reader", AWAIT_FLAG, 20_000),
-                exec("writer", RAISE_FLAG, 20_000),
+                exec("reader", AWAIT_FLAG),
+                exec("writer", RAISE_FLAG),
             ]
         })]);
         let script = ScriptedRuntime::new(turns);
@@ -144,14 +145,14 @@ async fn a_responses_commands_run_together_and_their_results_keep_the_calls_orde
 async fn every_exec_starts_in_the_working_directory_whatever_the_one_before_did() {
     within(async {
         let (turns, results) = model(vec![
-            Box::new(|_| vec![exec("enter", "mkdir -p sub/one sub/two && cd sub", 20_000)]),
+            Box::new(|_| vec![exec("enter", "mkdir -p sub/one sub/two && cd sub")]),
             Box::new(|_| {
                 vec![
-                    exec("first", "pwd && cd sub/one", 20_000),
-                    exec("second", "pwd && cd sub/two", 20_000),
+                    exec("first", "pwd && cd sub/one"),
+                    exec("second", "pwd && cd sub/two"),
                 ]
             }),
-            Box::new(|_| vec![exec("after", "pwd", 20_000)]),
+            Box::new(|_| vec![exec("after", "pwd")]),
         ]);
         let script = ScriptedRuntime::new(turns);
         let fixture = Fixture::start(&script).await;
@@ -212,11 +213,11 @@ async fn a_human_steer_waits_for_the_window_and_an_agent_message_ends_it() {
         let recorded = results.clone();
         let turns = vec![
             // Windows far longer than the test.
-            Turn::Events(vec![exec("flagged", AWAIT_FLAG, 600_000)]),
+            Turn::Events(vec![exec("flagged", AWAIT_FLAG)]),
             Turn::Respond(Box::new(move |request| {
                 record(&recorded, request);
                 *seen.borrow_mut() = steer_text(request);
-                vec![exec("second", "until [ -e second ]; do sleep 0.05; done", 600_000)]
+                vec![exec("second", "until [ -e second ]; do sleep 0.05; done")]
             })),
             Turn::Respond(Box::new({
                 let recorded = results.clone();
@@ -343,9 +344,8 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
             Turn::Events(vec![exec(
                 "wait",
                 "until [ -e go ]; do sleep 0.05; done; echo went",
-                600_000,
             )]),
-            Turn::Events(vec![exec("go", "touch go", 20_000)]),
+            Turn::Events(vec![exec("go", "touch go")]),
         ]
         .into_iter()
         .chain(replies(3));
@@ -411,19 +411,26 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
     .await;
 }
 
-/// A server whose commands report at intervals from a tenth of a second,
-/// so that a scenario sees them within its time.
+/// A server whose commands wake their agent once after a second without
+/// output, so that a scenario sees it within its time.
 fn reporting() -> ServerConfig {
+    let mut config = ServerConfig::default();
+    config.session.silence = std::time::Duration::from_secs(1);
+    config
+}
+
+/// A server whose calls watch a command for at most a second, the
+/// product's thirty seconds shortened.
+fn windowed() -> ServerConfig {
     ServerConfig {
-        interval_floor_ms: 100,
+        call_window_ms: 1_000,
         ..ServerConfig::default()
     }
 }
 
-/// A server whose calls watch a command for at most a second, the
-/// product's ten seconds shortened, and whose commands report at intervals
-/// from a tenth of a second.
-fn windowed() -> ServerConfig {
+/// [`windowed`], whose commands also wake their agent once after a second
+/// without output.
+fn windowed_reporting() -> ServerConfig {
     ServerConfig {
         call_window_ms: 1_000,
         ..reporting()
@@ -431,22 +438,21 @@ fn windowed() -> ServerConfig {
 }
 
 // About three seconds: two scripts, each a shell job, the call of the one that
-// runs on returning at the window, and its reports every half second.
+// runs on returning at the window, and its silence reported once.
 #[tokio::test(flavor = "local")]
-async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_one_is_an_error() {
+async fn a_command_left_running_reports_its_silence_once_and_its_end_and_a_failed_one_is_an_error() {
     within(async {
         let turns = [Turn::Events(vec![
-            exec("fail", "echo broken >&2; exit 2", 20_000),
+            exec("fail", "echo broken >&2; exit 2"),
             exec(
                 "suite",
                 "echo started; until [ -e done ]; do sleep 0.05; done; echo finished; exit 3",
-                500,
             ),
         ])]
         .into_iter()
         .chain(replies(40));
         let script = ScriptedRuntime::new(turns);
-        let fixture = Fixture::start_with(&script, windowed()).await;
+        let fixture = Fixture::start_with(&script, windowed_reporting()).await;
         let mut client = fixture.opened().await;
         turn(&mut client, "message-1", "Run the suite.").await;
 
@@ -459,12 +465,7 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
         .await;
         // The result showed `started`, so the report shows nothing new.
         assert!(progress.contains(".\noutput: (empty)\n"), "{progress}");
-        assert!(
-            progress.ends_with(&format!(
-                "It reports every 1s."
-            )),
-            "{progress}"
-        );
+        assert!(progress.ends_with("It keeps running; its end wakes you."), "{progress}");
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
         // Its end carries the output since the last look, as a result
         // shows a command's end, so the model needs no look.
@@ -483,6 +484,15 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
         let errors = errors(&script);
         assert!(errors.contains(&("fail".to_owned(), true)), "{errors:?}");
         assert!(errors.contains(&("suite".to_owned(), false)), "{errors:?}");
+        // Its silence was told once.
+        let told = script
+            .requests()
+            .last()
+            .into_iter()
+            .flat_map(inputs)
+            .filter(|input| input.contains(&format!("Command {suite} (Run the test script) is still running")))
+            .count();
+        assert_eq!(told, 1, "{told}");
         // A look moves the model's place: the output the first report showed
         // is not shown again.
         let started = script
@@ -498,16 +508,16 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
 }
 
 
-// About three seconds: two scripts, each a shell job, and the first report of
-// one of them two seconds after its start.
+// About three seconds: two scripts, each a shell job, and the call of each
+// returning at the window whatever else runs.
 #[tokio::test(flavor = "local")]
-async fn a_call_returns_at_the_window_whatever_its_interval_and_reports_count_from_the_start() {
+async fn a_call_returns_at_the_window_and_its_command_moves_to_the_background() {
     within(async {
         // Together: the calls of one response run at the same time, and the
         // linter's end comes after both calls returned at the window.
         let turns = [Turn::Events(vec![
-            exec("suite", "until [ -e done ]; do sleep 0.05; done", 2_000),
-            exec("lint", "sleep 1.5", 500),
+            exec("suite", "until [ -e done ]; do sleep 0.05; done"),
+            exec("lint", "sleep 1.5"),
         ])]
         .into_iter()
         .chain(replies(40));
@@ -516,42 +526,28 @@ async fn a_call_returns_at_the_window_whatever_its_interval_and_reports_count_fr
         let mut client = fixture.opened().await;
         turn(&mut client, "message-1", "Run the suite and the linter.").await;
         let suite = fixture_command(&script, "suite").await;
+        reported(&script, "Command 2 (Run the test script) ended").await;
 
-        // Its first report comes two seconds after its start, not two
-        // seconds after its call returned.
-        let progress = reported(
-            &script,
-            &format!("Command {suite} (Run the test script) is still running after"),
-        )
-        .await;
-        assert!(
-            progress.starts_with(&format!("Command {suite} (Run the test script) is still running after 2s;")),
-            "{progress}"
-        );
         let results: Results = Rc::default();
         for request in &script.requests() {
             record(&results, request);
         }
         let results = results.borrow();
         // The suite's call returned once the window passed, and says that
-        // the suite moved to the background and how often it reports.
+        // the suite moved to the background and what wakes the agent.
         let watched = result(&results, "suite");
         assert_eq!(field(watched, "status"), "running", "{watched}");
         let ran: u64 = field(watched, "runningMs").parse().unwrap();
         assert!((1_000..2_000).contains(&ran), "{watched}");
         assert!(
-            watched.contains(
-                "\n[The command is still running, so it moved to the background. It reports every 2s until it ends, and when it ends.]\n"
-            ),
+            watched.contains("\n[The command is still running, so it moved to the background.]\n"),
             "{watched}"
         );
-        // The linter's interval is shorter than the window: its call
-        // returned at the window all the same.
+        assert!(watched.contains("wakes you when it ends, or after 10m without output"), "{watched}");
         let lint = result(&results, "lint");
         assert_eq!(field(lint, "status"), "running", "{lint}");
         let ran: u64 = field(lint, "runningMs").parse().unwrap();
         assert!((1_000..1_500).contains(&ran), "{lint}");
-        assert!(lint.contains("It reports every 1s until it ends"), "{lint}");
         drop(results);
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
         reported(&script, &format!("Command {suite} (Run the test script) ended")).await;
@@ -561,12 +557,12 @@ async fn a_call_returns_at_the_window_whatever_its_interval_and_reports_count_fr
 }
 
 // About three seconds: two scripts, each a shell job, and the two seconds of
-// quiet that end a resident command's call.
+// quiet that end a background command's call.
 #[tokio::test(flavor = "local")]
-async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_ends_a_window() {
+async fn a_background_command_returns_once_quiet_wakes_its_agent_only_at_its_end_and_its_end_ends_a_window() {
     within(async {
         let turns = [
-            Turn::Events(vec![resident(
+            Turn::Events(vec![background(
                 "serve",
                 "echo ready; until [ -e stop ]; do sleep 0.05; done",
             )]),
@@ -575,7 +571,6 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
             Turn::Events(vec![exec(
                 "long",
                 "touch stop; until [ -e never ]; do sleep 0.05; done",
-                600_000,
             )]),
         ]
         .into_iter()
@@ -615,7 +610,7 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
         let first = result(&results, "serve");
         assert_eq!(field(first, "status"), "running", "{first}");
         assert_eq!(shown_output(first), "ready\n");
-        assert!(first.contains("reports to you when it ends"), "{first}");
+        assert!(first.contains("wakes you when it ends"), "{first}");
         // The report ended the long call's window: its command runs on.
         let long = result(&results, "long");
         assert_eq!(field(long, "status"), "running", "{long}");
@@ -655,7 +650,6 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
             Turn::Events(vec![exec(
                 "serve",
                 "until [ -e done ]; do sleep 0.05; done; echo finished",
-                500,
             )]),
             // While this request streams, the command ends and its end
             // report waits for the turn's next boundary; then the model
@@ -716,7 +710,6 @@ async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
             Turn::Events(vec![exec(
                 "view",
                 "until [ -e done ]; do sleep 0.05; done; demi file view shot.png",
-                500,
             )]),
             Turn::Stream(Box::new(move |_| {
                 look_once_its_report_waits(server_in_turn, workspace_in_turn, looked_in_turn).boxed_local()
@@ -828,7 +821,7 @@ async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_t
     within(async {
         let script = ScriptedRuntime::new([
             // The child's runs.
-            Turn::Events(vec![resident(
+            Turn::Events(vec![background(
                 "serve",
                 "echo ready; until [ -e stop ]; do sleep 0.05; done",
             )]),
@@ -934,8 +927,8 @@ async fn node_call(
     (code, text(port.stdout()), text(port.stderr()))
 }
 
-// About five seconds: a subagent's command runs as a shell job and reports
-// to it three seconds after its call returned, after the parent looked.
+// About three seconds: a subagent's command runs as a shell job and reports
+// its silence to it after its call returned, after the parent looked.
 #[tokio::test(flavor = "local")]
 async fn a_look_at_another_agents_command_shows_the_output_since_the_lookers_own_last_look() {
     within(async {
@@ -944,11 +937,10 @@ async fn a_look_at_another_agents_command_shows_the_output_since_the_lookers_own
             vec![exec(
                 "serve",
                 "echo one; until [ -e next ]; do sleep 0.05; done; echo two; until [ -e stop ]; do sleep 0.05; done",
-                3_000,
             )],
             reply("The server runs."),
         ]);
-        let fixture = Fixture::start_with(&script, reporting()).await;
+        let fixture = Fixture::start_with(&script, windowed_reporting()).await;
         let _client = fixture.opened().await;
         spawn(&fixture, "Serve.").await;
         let serve = fixture_command(&script, "serve").await;
@@ -987,9 +979,9 @@ async fn a_look_at_another_agents_command_shows_the_output_since_the_lookers_own
 async fn a_stop_ends_the_command_a_call_watches_with_its_output_and_leaves_one_an_earlier_call_left_running() {
     within(async {
         let script = tolerant(vec![
-            vec![resident("serve", "echo ready; until [ -e stop ]; do sleep 0.05; done")],
+            vec![background("serve", "echo ready; until [ -e stop ]; do sleep 0.05; done")],
             // A window far longer than the test, which the Stop ends.
-            vec![exec("slow", "echo started; until [ -e never ]; do sleep 0.05; done", 600_000)],
+            vec![exec("slow", "echo started; until [ -e never ]; do sleep 0.05; done")],
         ]);
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;

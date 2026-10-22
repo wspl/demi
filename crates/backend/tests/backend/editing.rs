@@ -118,7 +118,7 @@ async fn an_edit_keeps_the_files_and_answers_its_receipt_on_another_socket_and_a
         tool_use(
             id,
             "shell",
-            &json!({ "description": id, "script": script, "intervalMs": 60_000 }),
+            &json!({ "description": id, "script": script }),
         )
     };
     vendor.respond(answer(&["answer-A-kept"], 1, 1));

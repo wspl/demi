@@ -204,14 +204,21 @@ pub trait SessionRuntime {
         None
     }
 
+    /// How long `command` has printed nothing, while its node's shells hold
+    /// it; none when they do not, and by default.
+    fn quiet(&self, command: &CommandId) -> Option<Duration> {
+        let _ = command;
+        None
+    }
+
     /// What `command` tells the node now, named by the title its record keeps.
     ///
-    /// The command is one a `shell` call left running and which reports every
-    /// `interval_ms` while it runs (`crates/agent-session/src/reports.rs`). The
+    /// The command is one a `shell` call left running, which reports its
+    /// silence once and its end (`crates/agent-session/src/reports.rs`). The
     /// report is one of:
     ///
-    /// - its progress while it runs, which moves the node's place in its output
-    ///   as a look does;
+    /// - that it still runs and has printed nothing for the silence limit,
+    ///   which moves the node's place in its output as a look does;
     /// - its end, with the media its job viewed as a result for `model`, whose
     ///   vendor takes requests within `limits`, attaches them.
     ///
@@ -220,11 +227,10 @@ pub trait SessionRuntime {
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
-        interval_ms: Option<u32>,
         model: &'a ModelSelection,
         limits: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
-        let _ = (command, interval_ms, model, limits);
+        let _ = (command, model, limits);
         Box::pin(async { None })
     }
 
@@ -339,12 +345,12 @@ struct CallCommandState {
     keep: Cell<bool>,
 }
 
-/// A command a call started: its number and its interval. Its reports
-/// name it by the title its record keeps.
+/// A command a call started: its number and how it wakes the node. Its
+/// reports name it by the title its record keeps.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartedCommand {
     pub command: CommandId,
-    pub interval_ms: Option<u32>,
+    pub background: bool,
 }
 
 /// What a call that something other than its tool ended shows of the
@@ -475,16 +481,12 @@ impl ToolOutcome {
 /// (`crates/agent-tools/src/lib.rs`): a tool never reaches into its session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolEffect {
-    /// The call returned while its command still runs, which had run for `ran`.
+    /// The call returned while its command still runs.
     ///
-    /// The session watches it, and the command reports every `interval_ms` from
-    /// its start until it ends, or only its end when none
+    /// The session watches it: its end wakes the node, and so does its silence
+    /// once unless it runs in the `background`
     /// (`crates/agent-session/src/reports.rs`).
-    Background {
-        command: CommandId,
-        interval_ms: Option<u32>,
-        ran: Duration,
-    },
+    Background { command: CommandId, background: bool },
 }
 
 /// A tool that failed; its call completes as `Tool failed: <message>`.

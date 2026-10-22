@@ -290,7 +290,7 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
         page.url
     );
     let read = work
-        .turn(vec![shell("browse", &script, 120_000), say("read")])
+        .turn(vec![shell("browse", &script), say("read")])
         .await;
     let output = &read.received[0];
     assert!(output.contains("exitCode: 0"), "{output}");

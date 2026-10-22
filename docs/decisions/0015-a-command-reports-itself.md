@@ -1,5 +1,5 @@
 ---
-status: accepted, superseded in part by 0048
+status: superseded by 0052
 ---
 
 # A command reports itself; nothing waits for it

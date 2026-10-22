@@ -27,7 +27,7 @@ const timers = new Set<ReturnType<typeof setTimeout>>()
 
 const created = () => new Date().toISOString()
 const title = 'Run the end-to-end suite'
-const input = JSON.stringify({ script: 'sh scripts/e2e.sh', description: title, intervalMs: 30_000 })
+const input = JSON.stringify({ script: 'sh scripts/e2e.sh', description: title })
 function call(status: 'executing' | 'completed'): Block {
   return withEnd({
     type: 'tool_call', id: 'wake-call', run: 'wake-call', createdAt: created(), model: demoModel,
@@ -61,7 +61,7 @@ const script: { stage: string; act: () => void }[] = [
     phase.value = 'idle'
   } },
   { stage: '30 seconds later, a report of progress wakes the model. It has no row: the answer says what it learned.', act: () => {
-    blocks.value = [...blocks.value, report('wake-progress', { kind: 'running', runningMs: 60_000, idleMs: 2_000, intervalMs: 30_000 }, 'scenario 6 ok\n…\nscenario 10 ok')]
+    blocks.value = [...blocks.value, report('wake-progress', { kind: 'running', runningMs: 60_000, idleMs: 2_000 }, 'scenario 6 ok\n…\nscenario 10 ok')]
     phase.value = 'running'
   } },
   { stage: 'The model answers the progress and ends its turn again.', act: () => {

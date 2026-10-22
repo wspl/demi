@@ -42,7 +42,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     // 30,000 lines, 168,894 bytes: beyond the 32 KiB of each stream the
     // backend receives while the command runs.
     let counted = work
-        .turn(vec![shell("t1", "seq 1 30000", 30_000), say("counted")])
+        .turn(vec![shell("t1", "seq 1 30000"), say("counted")])
         .await;
     let result = &counted.received[0];
     assert!(
@@ -85,7 +85,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     // The command the line names prints those lines, a page at a time,
     // numbered as `cat -n` numbers them.
     let paged = work
-        .turn(vec![shell("t2", &read, 30_000), say("read")])
+        .turn(vec![shell("t2", &read), say("read")])
         .await;
     let page = shown_output(&paged.received[0]);
     let page: Vec<&str> = page.lines().collect();
@@ -124,7 +124,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
         "demi shell output {command} --raw | grep -n '^12345$'; demi shell output {command} --raw | head -n 2"
     );
     let searched = work
-        .turn(vec![shell("t3", &script, 30_000), say("searched")])
+        .turn(vec![shell("t3", &script), say("searched")])
         .await;
     assert_eq!(shown_output(&searched.received[0]), "12345:12345\n1\n2\n");
 
@@ -134,7 +134,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
         "demi shell output {command} --tail 2; demi shell output {command} --lines 30001-30002; demi shell output nothing-here"
     );
     let tailed = work
-        .turn(vec![shell("t4", &script, 30_000), say("tailed")])
+        .turn(vec![shell("t4", &script), say("tailed")])
         .await;
     assert_eq!(
         shown_output(&tailed.received[0]),
@@ -148,7 +148,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     // A running command's output reads as its Host keeps it so far.
     let started = work
         .turn(vec![
-            shell("t5", "seq 1 20000; sleep 30", 1_000),
+            shell("t5", "seq 1 20000; sleep 30"),
             say("running"),
         ])
         .await;
@@ -157,7 +157,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     let running = field(result, "commandId").to_owned();
     let script = format!("demi shell output {running} --tail 1");
     let newest = work
-        .turn(vec![shell("t6", &script, 30_000), say("newest")])
+        .turn(vec![shell("t6", &script), say("newest")])
         .await;
     assert_eq!(
         shown_output(&newest.received[0]),
@@ -187,17 +187,17 @@ async fn a_command_whose_script_ended_names_the_background_task_that_keeps_it_ru
     let line = "the script has ended; its background task \"sleep 30\" keeps the command running, and stopping the command stops it";
 
     let started = work
-        .turn(vec![shell("t1", "sleep 30 & echo started", 1_000), say("running")])
+        .turn(vec![shell("t1", "sleep 30 & echo started"), say("running")])
         .await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
-    let moved = "[The command is still running, so it moved to the background. It reports every 1s until it ends, and when it ends.]";
+    let moved = "[The command is still running, so it moved to the background.]";
     assert!(result.contains(&format!("output:\nstarted\n{moved}\n{line}\nnext: ")), "{result}");
     let command = field(result, "commandId").to_owned();
 
     let look = format!("demi shell status {command}");
     let looked = work
-        .turn(vec![shell("t2", &look, 30_000), say("looked")])
+        .turn(vec![shell("t2", &look), say("looked")])
         .await;
     let shown = shown_output(&looked.received[0]);
     assert!(shown.starts_with("status: running"), "{shown}");
@@ -205,7 +205,7 @@ async fn a_command_whose_script_ended_names_the_background_task_that_keeps_it_ru
 
     let stop = format!("demi shell stop {command}");
     let stopped = work
-        .turn(vec![shell("t3", &stop, 30_000), say("stopped")])
+        .turn(vec![shell("t3", &stop), say("stopped")])
         .await;
     assert_eq!(
         shown_output(&stopped.received[0]),
@@ -237,7 +237,7 @@ async fn viewed_media_are_attached_to_the_result_and_a_pdf_rides_as_a_document_b
 
     let viewed = work
         .turn(vec![
-            shell("t1", "demi file view shot.png > /dev/null && cat report.pdf | demi file view", 30_000),
+            shell("t1", "demi file view shot.png > /dev/null && cat report.pdf | demi file view"),
             say("viewed"),
         ])
         .await;
@@ -285,7 +285,7 @@ async fn a_commands_record_keeps_how_it_ended_for_its_page_header() {
     // The command ends within its call, which gives its end and lets its
     // handle go: from then on only its record knows how it ended.
     let failed = work
-        .turn(vec![shell("t1", "echo failing; exit 3", 30_000), say("failed")])
+        .turn(vec![shell("t1", "echo failing; exit 3"), say("failed")])
         .await;
     let command = field(&failed.received[0], "commandId").to_owned();
     assert_eq!(field(&failed.received[0], "exitCode"), "3");
@@ -312,7 +312,7 @@ async fn a_commands_record_keeps_how_it_ended_for_its_page_header() {
     // `demi shell output`'s header names the end its record keeps.
     let read = work
         .turn(vec![
-            shell("t2", &format!("demi shell output {command}"), 30_000),
+            shell("t2", &format!("demi shell output {command}")),
             say("read"),
         ])
         .await;

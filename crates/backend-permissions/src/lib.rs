@@ -57,9 +57,9 @@
 //! The waiting command is an ordinary running command: its window, the turn,
 //! Stop and the Host's idle rules are those of any command.
 //!
-//! - It sends no progress report, whatever its interval, since nothing about it
-//!   changes until the user answers and each report would wake the agent for
-//!   nothing. Its interval counts again from the end of the wait.
+//! - It sends no silence report, since nothing about it changes until the user
+//!   answers and the report would wake the agent for nothing. Its silence
+//!   counts again from the end of the wait.
 //! - A call that ends before the decision, stopped or lost with a restart,
 //!   leaves its request as it is. An Allow still grants the category for the
 //!   commands that come later.

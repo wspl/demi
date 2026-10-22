@@ -679,7 +679,7 @@ async fn an_installed_runner_follows_its_backend_to_another_release() {
 // the runner downloads the backend's new release.
 #[tokio::test]
 async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_the_update() {
-    use crate::work::{Driven, resident, say};
+    use crate::work::{Driven, background, say};
     let releases = Releases::new(runner_binary());
     releases.publish("initial");
     let harness = Harness::new().with_runner_releases(releases.path());
@@ -710,7 +710,7 @@ async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_
     // The job's program traps TERM, as a dev server that closes its
     // connections does.
     let script = "printf 'started\\n'; sh -c \"trap 'touch terminated; exit 0' TERM; while :; do sleep 0.05; done\"";
-    let started = work.turn(vec![resident("t1", script), say("waiting")]).await;
+    let started = work.turn(vec![background("t1", script), say("waiting")]).await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
     let command = demi_agent_tools::testing::field(result, "commandId").to_owned();
@@ -729,7 +729,7 @@ async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_
         "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
         demi_backend_remote_host::UPGRADED
     );
-    // The resident command's loss waits for the next turn.
+    // The background command's loss waits for the next turn.
     let provider = crate::conversations::anthropic_at(&backend, &master, &vendor, "/update").await;
     work.reconnect(&backend, &master, FIRST, &provider).await;
     crate::lifetime::told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &lost).await;
@@ -882,7 +882,7 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_as_the_u
     vendor.respond(tool_use(
         "mask",
         "shell",
-        &json!({ "script": script, "description": "Show the mask", "intervalMs": 60_000 }),
+        &json!({ "script": script, "description": "Show the mask" }),
     ));
     vendor.respond(crate::conversations::answer(&["done"], 1, 1));
     socket.chat("m1", "show the mask").await;

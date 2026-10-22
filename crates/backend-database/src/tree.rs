@@ -594,7 +594,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     turn: row.turn,
                     title: row.title,
                     script: row.script,
-                    interval_ms: row.interval_ms,
+                    background: row.background,
                     started: row.started,
                     unsent: row.unsent,
                 })
@@ -2671,7 +2671,7 @@ pub(crate) mod tests {
             agent_inputs: Vec::new(),
             reports: Vec::new(),
             next_turn_reports: Vec::new(),
-            intervals: Vec::new(),
+            watches: Vec::new(),
             model: test_model(),
             edits: Vec::new(),
             account: None,

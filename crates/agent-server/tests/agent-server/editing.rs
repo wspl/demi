@@ -1158,7 +1158,7 @@ async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_n
         Turn::Events(vec![event::tool_call(
             "call-1",
             "shell",
-            json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+            json!({"script": "serve", "description": "Start the server", "background": true}),
         )]),
         said("Serving."),
     ]);

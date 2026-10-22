@@ -247,7 +247,7 @@ fn wait_for_go() -> demi_provider_common::testing::MockResponse {
     tool_use(
         "toolu_wait",
         "shell",
-        &json!({ "description": "Wait", "script": script, "intervalMs": 60_000 }),
+        &json!({ "description": "Wait", "script": script }),
     )
 }
 
@@ -615,7 +615,7 @@ async fn a_tool_medium_that_cannot_be_stored_is_gone_from_its_result_and_the_tur
     vendor.respond(tool_use(
         "toolu_1",
         "shell",
-        &json!({ "description": "Show it", "script": "demi file view shot.png", "intervalMs": 60_000 }),
+        &json!({ "description": "Show it", "script": "demi file view shot.png" }),
     ));
     vendor.respond(answer(&["No picture."], 1, 1));
     let turn = socket.chat("m1", "Show me the picture").await;
@@ -723,7 +723,7 @@ async fn an_image_over_500_kb_enters_as_a_smaller_jpeg_from_an_upload_and_a_tool
     vendor.respond(tool_use(
         "toolu_1",
         "shell",
-        &json!({ "description": "Show it", "script": "demi file view drawn.png", "intervalMs": 60_000 }),
+        &json!({ "description": "Show it", "script": "demi file view drawn.png" }),
     ));
     vendor.respond(answer(&["Seen."], 1, 1));
     socket
@@ -783,7 +783,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_its_a
     vendor.respond(tool_use(
         "toolu_1",
         "shell",
-        &json!({ "description": "Show it", "script": "demi file view wide.png", "intervalMs": 60_000 }),
+        &json!({ "description": "Show it", "script": "demi file view wide.png" }),
     ));
     vendor.respond(answer(&["Both are wide."], 1, 1));
     socket

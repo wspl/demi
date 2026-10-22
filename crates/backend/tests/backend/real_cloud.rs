@@ -66,7 +66,8 @@ use crate::cloud::{idle_after, reset, status};
 use crate::conversations::{anthropic_at, create};
 use crate::support::{Harness, Session, TestBackend, answer};
 use crate::uploads::{upload, with_upload};
-use crate::work::{Driven, say, shell};
+use crate::work::{Driven, background, say, shell};
+use demi_provider_common::testing::MockResponse;
 
 /// The conversation ids the tests create.
 const FIRST: &str = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -76,10 +77,6 @@ const SECOND: &str = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02";
 /// fails as hung: a hang guard on a loaded machine, not a window any of them
 /// must fit.
 const PATIENCE: Duration = Duration::from_secs(240);
-
-/// How long the model watches a shell job before its turn goes on; a job
-/// that outlasts it keeps running.
-const WATCH_MS: u64 = 240_000;
 
 /// What the Cloud suite's environment supplies (`crates/machine-manager/scripts/cloud-suite.sh`).
 struct Environment {
@@ -396,18 +393,15 @@ async fn on_cloud<'a>(
     driven
 }
 
-/// Runs `script` as the model's shell job `id`, watched for at most `watch`,
-/// and answers what the model read.
-async fn run_watched(driven: &mut Driven<'_>, id: &str, script: &str, watch: u64) -> String {
-    let turn = driven
-        .turn(vec![shell(id, script, watch), say("done")])
-        .await;
+/// Makes the model's shell call `call`, and answers what the model read.
+async fn run_call(driven: &mut Driven<'_>, call: MockResponse) -> String {
+    let turn = driven.turn(vec![call, say("done")]).await;
     turn.received.into_iter().next().expect("the job's result")
 }
 
 /// Runs `script` as the model's shell job `id` to its end.
 async fn run(driven: &mut Driven<'_>, id: &str, script: &str) -> String {
-    run_watched(driven, id, script, WATCH_MS).await
+    run_call(driven, shell(id, script)).await
 }
 
 /// Runs `script`, a download that may take minutes, as the model's shell job
@@ -416,7 +410,7 @@ async fn run(driven: &mut Driven<'_>, id: &str, script: &str) -> String {
 /// as long as the watch and then as long as any other step.
 async fn run_download(driven: &mut Driven<'_>, id: &str, script: &str, watch: u64) -> String {
     driven.socket.patience = Duration::from_millis(watch) + PATIENCE;
-    let output = run_watched(driven, id, script, watch).await;
+    let output = run_call(driven, shell(id, script)).await;
     driven.socket.patience = PATIENCE;
     output
 }
@@ -1021,11 +1015,9 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     assert!(written.contains("written"), "{written}");
     // The model stops watching the mapper once it said it mapped; the
     // mapper keeps its mapping while the checkpoint runs.
-    let mapped = run_watched(
+    let mapped = run_call(
         &mut first,
-        "mapper",
-        "python3 mapper.py mapped 'written through a mapping'",
-        5_000,
+        background("mapper", "python3 mapper.py mapped 'written through a mapping'"),
     )
     .await;
     assert!(mapped.contains("mapped"), "{mapped}");
@@ -1200,11 +1192,12 @@ async fn two_users_clouds_run_at_once_and_reach_nothing_private_over_the_network
 
     // A service in the second user's Cloud, which the model stops watching
     // once it printed its address.
-    let serving = run_watched(
+    let serving = run_call(
         &mut second,
-        "serve",
-        "ip -4 -o addr show scope global | awk '{print $4}'; exec python3 -m http.server 8123",
-        5_000,
+        background(
+            "serve",
+            "ip -4 -o addr show scope global | awk '{print $4}'; exec python3 -m http.server 8123",
+        ),
     )
     .await;
     let other: Ipv4Addr = serving

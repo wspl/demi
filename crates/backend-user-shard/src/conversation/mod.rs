@@ -130,8 +130,11 @@ pub(crate) fn conversation_parts(
     };
     let config = ServerConfig {
         outbox_steps: services.conversation_tuning.outbox_steps,
-        interval_floor_ms: services.conversation_tuning.interval_floor_ms,
         call_window_ms: services.conversation_tuning.call_window_ms,
+        session: demi_agent_session::SessionConfig {
+            silence: services.conversation_tuning.silence,
+            ..demi_agent_session::SessionConfig::default()
+        },
         ..ServerConfig::default()
     };
     let providers = Rc::new(ConversationProviders::new(

@@ -198,35 +198,21 @@ pub(crate) fn shell(id: &str, script: &str) -> Answer {
         event::tool_call(
             id,
             "shell",
-            json!({ "description": id, "script": script, "intervalMs": 60_000 }),
+            json!({ "description": id, "script": script }),
         ),
         event::response(1, 1),
     ]
 }
 
-/// The model's shell call `id` running `script` that reports only its end:
-/// the call returns once the command has been quiet for 2 seconds, so a
+/// The model's shell call `id` running `script` in the background: the
+/// call returns once the command has been quiet for 2 seconds, so a
 /// command that waits moves to the background (`crates/agent-session/src/reports.rs`).
 pub(crate) fn background(id: &str, script: &str) -> Answer {
     vec![
         event::tool_call(
             id,
             "shell",
-            json!({ "description": id, "script": script, "intervalMs": null }),
-        ),
-        event::response(1, 1),
-    ]
-}
-
-/// The model's shell call `id` running `script` that reports every
-/// `interval_ms`, its call's window: a command that runs longer returns
-/// running then, and reports its progress at that interval.
-pub(crate) fn watched(id: &str, script: &str, interval_ms: u32) -> Answer {
-    vec![
-        event::tool_call(
-            id,
-            "shell",
-            json!({ "description": id, "script": script, "intervalMs": interval_ms }),
+            json!({ "description": id, "script": script, "background": true }),
         ),
         event::response(1, 1),
     ]

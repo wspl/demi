@@ -27,7 +27,7 @@ use demi_agent_session::{
 use demi_agent_store::{AgentTreeStore, NodeRecord, Placement, SideOf, StoreError};
 use demi_conversation_socket_protocol::{AgentEntry, CacheChart, Version};
 use demi_agent_tools::{
-    CALL_WINDOW_MS, ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
+    CALL_WINDOW_MS, ContextSource, HostResolver, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
 };
 use demi_agent_transcript::{ForkEnd, IdSource};
@@ -154,11 +154,7 @@ pub struct ServerConfig {
     pub outbox_steps: usize,
     /// How long a tree stays live once it is detached and quiescent.
     pub idle_tree: Duration,
-    /// The least interval a command reports at, in milliseconds
-    /// (`crates/agent-tools/src/lib.rs`): [`INTERVAL_FLOOR_MS`] in the product,
-    /// which a test shortens to see reports within its time.
-    pub interval_floor_ms: u32,
-    /// The longest a `shell` call of a command with an interval watches it,
+    /// The longest a `shell` call watches a command that is not in the background,
     /// in milliseconds (`crates/agent-tools/src/lib.rs`): [`CALL_WINDOW_MS`] in the
     /// product, which a test shortens to see a call return within its time.
     pub call_window_ms: u32,
@@ -170,7 +166,6 @@ impl Default for ServerConfig {
             session: SessionConfig::default(),
             outbox_steps: 4_096,
             idle_tree: Duration::from_secs(600),
-            interval_floor_ms: INTERVAL_FLOOR_MS,
             call_window_ms: CALL_WINDOW_MS,
         }
     }
@@ -595,7 +590,7 @@ impl<H: HostResolver> AgentServer<H> {
             && state.agent_inputs.is_empty()
             && state.reports.is_empty()
             && state.next_turn_reports.is_empty()
-            && state.intervals.is_empty()
+            && state.watches.is_empty()
             && state.edits.is_empty();
         if !fresh {
             return Err(ForkError::InvalidSeed);

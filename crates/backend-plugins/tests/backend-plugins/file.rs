@@ -15,7 +15,7 @@ use demi_provider_common::{
 use demi_shared_types::FileExtension;
 
 use crate::support::{
-    Fixture, reply, resident, scripts, turn, within,
+    Fixture, reply, background, scripts, turn, within,
 };
 
 /// The results of running `scripts` in one message, with `prepare` run on
@@ -357,7 +357,7 @@ async fn report_with_image(
 async fn the_end_report_of_a_background_job_carries_the_media_it_viewed() {
     within(async {
         let (fixture, requests, size) = viewing(vec![
-            vec![resident("viewer", "read go; demi file view shot.png")],
+            vec![background("viewer", "read go; demi file view shot.png")],
             reply("It waits."),
             reply("Seen."),
         ])

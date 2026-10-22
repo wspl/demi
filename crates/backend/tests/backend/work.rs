@@ -43,24 +43,24 @@ const CONTEXT: &str = "[Execution context ";
 /// The line that opens a context block's announcement of a target switch.
 const SWITCHED: &str = "[Execution target switched]";
 
-/// The model's shell call `id` running `script`, watched for at most
-/// `interval_ms`, which then reports every `interval_ms` while it runs.
-pub(crate) fn shell(id: &str, script: &str, interval_ms: u64) -> MockResponse {
+/// The model's shell call `id` running `script`, which the call watches for
+/// its window.
+pub(crate) fn shell(id: &str, script: &str) -> MockResponse {
     tool_use(
         id,
         "shell",
-        &json!({ "description": id, "script": script, "intervalMs": interval_ms }),
+        &json!({ "description": id, "script": script }),
     )
 }
 
-/// The model's shell call `id` running `script`, a command that runs until
-/// it ends or is stopped: the call returns once its output is quiet, and it
-/// reports only its end.
-pub(crate) fn resident(id: &str, script: &str) -> MockResponse {
+/// The model's shell call `id` running `script` in the background, a command
+/// that runs until it ends or is stopped: the call returns once its output is
+/// quiet, and only its end wakes the agent.
+pub(crate) fn background(id: &str, script: &str) -> MockResponse {
     tool_use(
         id,
         "shell",
-        &json!({ "description": id, "script": script, "intervalMs": null }),
+        &json!({ "description": id, "script": script, "background": true }),
     )
 }
 
@@ -291,7 +291,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     let heredoc =
         "mkdir src && cd src && demi file edit <<'EOF'\nnotes.md\n<<<<<<< SEARCH\n=======\nalpha\nbeta\ngamma\n>>>>>>> REPLACE\nEOF";
     let created = work
-        .turn(vec![shell("t1", heredoc, 10_000), say("created")])
+        .turn(vec![shell("t1", heredoc), say("created")])
         .await;
     assert!(
         created.received[0].contains("exitCode: 0"),
@@ -319,7 +319,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     // `src`.
     let script = "pwd && cat src/notes.md | grep -n a | sort -r";
     let read = work
-        .turn(vec![shell("t2", script, 10_000), say("read")])
+        .turn(vec![shell("t2", script), say("read")])
         .await;
     assert!(
         read.received[0].contains(&format!("{}\n3:gamma\n2:beta\n1:alpha", home.display())),
@@ -329,7 +329,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
 
     let script = "demi file edit src/notes.md --old beta --new delta && cat src/notes.md";
     let edited = work
-        .turn(vec![shell("t3", script, 10_000), say("edited")])
+        .turn(vec![shell("t3", script), say("edited")])
         .await;
     assert!(
         edited.received[0].contains("Edited src/notes.md (+1 \u{2212}1)\n   1  alpha\n   2  delta\n   3  gamma\nalpha\ndelta\ngamma"),
@@ -343,7 +343,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
 
     let listed = work
         .turn(vec![
-            shell("t4", "ls src && demi host current", 10_000),
+            shell("t4", "ls src && demi host current"),
             say("listed"),
         ])
         .await;
@@ -378,7 +378,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/work").await;
     let notes = "demi file edit <<'EOF'\nnotes.md\n<<<<<<< SEARCH\n=======\nalpha\nbeta\ngamma\n>>>>>>> REPLACE\nEOF";
     let created = work
-        .turn(vec![shell("t1", notes, 10_000), say("created")])
+        .turn(vec![shell("t1", notes), say("created")])
         .await;
     assert!(
         created.received[0].contains("Created notes.md (3 lines)"),
@@ -391,8 +391,8 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     switch(&backend, &master, FIRST, &beta, &on_beta).await;
     let moved = work
         .turn(vec![
-            shell("t2", "cat notes.md; echo exit=$?", 10_000),
-            shell("t3", notes, 10_000),
+            shell("t2", "cat notes.md; echo exit=$?"),
+            shell("t3", notes),
             say("recreated"),
         ])
         .await;
@@ -436,7 +436,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     );
     let script = "demi file edit notes.md --old beta --new delta && cat notes.md";
     let edited = work
-        .turn(vec![shell("t4", script, 10_000), say("edited")])
+        .turn(vec![shell("t4", script), say("edited")])
         .await;
     assert!(
         edited.received[0].contains("alpha\ndelta\ngamma"),
@@ -479,7 +479,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     switch(&backend, &master, FIRST, &alpha, &on_alpha).await;
     let script = "cat notes.md && demi host shell --host beta \"cat notes.md\"";
     let back = work
-        .turn(vec![shell("t5", script, 20_000), say("back")])
+        .turn(vec![shell("t5", script), say("back")])
         .await;
     assert!(back.first_request().contains("[Execution target switched]"));
     assert!(
@@ -513,8 +513,8 @@ async fn two_conversations_on_one_device_keep_apart_and_each_command_starts_in_i
     let moving = "mkdir -p sub && cd sub && MARK=from-a && echo \"a: $(pwd) $MARK\"";
     let staying = "echo \"b: $(pwd) mark=${MARK:-unset}\"";
     let (first, second) = tokio::join!(
-        a.turn(vec![shell("a1", moving, 10_000), say("a moved")]),
-        b.turn(vec![shell("b1", staying, 10_000), say("b stayed")]),
+        a.turn(vec![shell("a1", moving), say("a moved")]),
+        b.turn(vec![shell("b1", staying), say("b stayed")]),
     );
     let sub = home.join("sub");
     assert!(
@@ -532,8 +532,8 @@ async fn two_conversations_on_one_device_keep_apart_and_each_command_starts_in_i
     // nothing of the last one; B's never moved.
     let again = "echo \"a: $(pwd) mark=${MARK:-unset}\"";
     let (third, fourth) = tokio::join!(
-        a.turn(vec![shell("a2", again, 10_000), say("a again")]),
-        b.turn(vec![shell("b2", staying, 10_000), say("b again")]),
+        a.turn(vec![shell("a2", again), say("a again")]),
+        b.turn(vec![shell("b2", staying), say("b again")]),
     );
     assert!(
         third.received[0].contains(&format!("a: {} mark=unset", home.display())),
@@ -564,7 +564,7 @@ async fn a_runner_that_ends_in_the_middle_of_a_command_loses_it_and_its_next_sta
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let written = work
         .turn(vec![
-            shell("t1", "echo -n before > before.txt", 10_000),
+            shell("t1", "echo -n before > before.txt"),
             say("written"),
         ])
         .await;
@@ -578,7 +578,7 @@ async fn a_runner_that_ends_in_the_middle_of_a_command_loses_it_and_its_next_sta
     let started = home.join("started");
     let before = work
         .start(vec![
-            shell("t2", "touch started; sleep 20; echo late", 30_000),
+            shell("t2", "touch started; sleep 20; echo late"),
             say("the runner is gone"),
         ])
         .await;
@@ -621,7 +621,7 @@ async fn a_runner_that_ends_in_the_middle_of_a_command_loses_it_and_its_next_sta
     );
 
     let back = work
-        .turn(vec![shell("t3", "cat before.txt", 10_000), say("back")])
+        .turn(vec![shell("t3", "cat before.txt"), say("back")])
         .await;
     assert!(back.received[0].contains("before"), "{}", back.received[0]);
     backend.close().await;
@@ -693,7 +693,7 @@ async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() 
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/paired").await;
     let create_files = "set -e\nprintf 'before\\n' > note.txt\ndemi file edit <<'EOF'\nnative.txt\n<<<<<<< SEARCH\n=======\ncreated\n>>>>>>> REPLACE\nEOF\nprintf '\\0binary' > asset.bin\nprintf 'temporary' > removed.txt\nrm removed.txt";
     work.turn(vec![
-        shell("create", create_files, 10_000),
+        shell("create", create_files),
         say("Created the files."),
     ])
     .await;
@@ -711,7 +711,7 @@ async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() 
 
     let patch = "demi file patch <<'PATCH'\n--- a/note.txt\n+++ b/note.txt\n@@ -1 +1 @@\n-before\n+after\n--- a/native.txt\n+++ b/native.txt\n@@ -1 +1 @@\n-created\n+patched\nPATCH";
     work.turn(vec![
-        shell("patch", patch, 10_000),
+        shell("patch", patch),
         say("Patched both files."),
     ])
     .await;
@@ -767,7 +767,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let kept = work
         .turn(vec![
-            shell("t1", "echo -n kept > kept.txt && cat kept.txt", 10_000),
+            shell("t1", "echo -n kept > kept.txt && cat kept.txt"),
             say("remember me"),
         ])
         .await;
@@ -778,7 +778,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     // The backend stops under a running command: the call ends as an error
     // that says the command keeps running, and the turn as interrupted.
     let started = home.join("started");
-    work.start(vec![shell("t2", "touch started; sleep 20", 30_000)])
+    work.start(vec![shell("t2", "touch started; sleep 20")])
         .await;
     until_exists(&started).await;
     // The interrupted turn waits for the user, as it does with the user's
@@ -810,11 +810,11 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     work.reconnect(&backend, &master, FIRST, &provider).await;
     let script = "cat kept.txt && demi host current";
     let after = work
-        .turn(vec![shell("t3", script, 10_000), say("and again")])
+        .turn(vec![shell("t3", script), say("and again")])
         .await;
     assert_eq!(
         after.received[0],
-        "Tool call interrupted: the backend shut down while this call watched command 2, which keeps running and reports to you as before.\noutput: (empty)"
+        "Tool call interrupted: the backend shut down while this call watched command 2, which keeps running and wakes you when it ends.\noutput: (empty)"
     );
     assert!(after.received[1].contains("kept"), "{}", after.received[1]);
     assert!(
@@ -888,7 +888,7 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         "demi host list && demi host shell --host alpha \"tar c -C {a_path} notes.bin\" | tar x && cmp notes.bin {a_path}/notes.bin && echo copied"
     );
     let pulled = work
-        .turn(vec![shell("t1", &pull, 30_000), say("one")])
+        .turn(vec![shell("t1", &pull), say("one")])
         .await;
     let result = &pulled.received[0];
     assert!(
@@ -912,7 +912,7 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         "head -c 250000 notes.bin > push.bin && tar c push.bin | demi host shell --host alpha \"tar x -C {a_path}\" && cmp push.bin {a_path}/push.bin && echo pushed"
     );
     let pushed = work
-        .turn(vec![shell("t2", &push, 30_000), say("two")])
+        .turn(vec![shell("t2", &push), say("two")])
         .await;
     assert!(
         pushed.received[0].contains("pushed"),
@@ -934,7 +934,7 @@ demi host shell --host alpha 'read -r l; echo "$l"' < early 2> early.err | { exe
 echo "exit=${PIPESTATUS[0]} stderr=[$(cat early.err)]"
 EOF"#;
     let stopped = work
-        .turn(vec![shell("t2a", early, 30_000), say("read one line")])
+        .turn(vec![shell("t2a", early), say("read one line")])
         .await;
     assert_eq!(
         shown_output(&stopped.received[0]),
@@ -953,7 +953,7 @@ cat said.txt
 read -r line || echo "no stdin"
 EOF"#;
     let scripted = work
-        .turn(vec![shell("t2b", heredoc, 30_000), say("two and a half")])
+        .turn(vec![shell("t2b", heredoc), say("two and a half")])
         .await;
     let a_name = a.file_name().unwrap().to_string_lossy();
     assert!(
@@ -970,7 +970,6 @@ EOF"#;
             shell(
                 "t2c",
                 "demi host shell --host alpha </dev/null; echo exit=$?; yes | demi host shell --host alpha; echo exit=$?",
-                10_000,
             ),
             say("no script"),
         ])
@@ -997,7 +996,7 @@ EOF"#;
         "demi host shell --host alpha \"mkdir -p sub && cd sub && pwd\" && demi host shell --host {a_id} \"pwd\" && demi host list"
     );
     let wandered = work
-        .turn(vec![shell("t3", &wander, 30_000), say("three")])
+        .turn(vec![shell("t3", &wander), say("three")])
         .await;
     let sub = format!("{a_path}/sub");
     assert!(
@@ -1016,7 +1015,6 @@ EOF"#;
             shell(
                 "t4",
                 "demi host shell --host nope \"echo hi\"; echo exit=$?",
-                10_000,
             ),
             say("four"),
         ])
@@ -1038,7 +1036,7 @@ EOF"#;
     std::fs::write(a.join("shot.png"), &png).unwrap();
     let read = format!("demi host shell --host alpha 'cat {a_path}/shot.png' | demi file view");
     let shown = work
-        .turn(vec![shell("t5", &read, 30_000), say("five")])
+        .turn(vec![shell("t5", &read), say("five")])
         .await;
     let result = &shown.received[0];
     let size = png.len();
@@ -1052,7 +1050,7 @@ EOF"#;
     // of what the model reads.
     let far = format!("demi host shell --host alpha 'demi file view {a_path}/shot.png'");
     let refused = work
-        .turn(vec![shell("t6", &far, 30_000), say("six")])
+        .turn(vec![shell("t6", &far), say("six")])
         .await;
     assert_eq!(
         shown_output(&refused.received[0]),
@@ -1097,7 +1095,7 @@ rm -f in && mkfifo in
 demi host shell --host alpha 'echo first; IFS= read -r line; echo "got $line"; cat > /dev/null' < in | { exec 3>in; IFS= read -r first; echo "saw $first"; echo hello >&3; IFS= read -r got; echo "$got"; exec 3>&-; }
 EOF"#;
     let talked = work
-        .turn(vec![shell("t1", script, 9_000), say("talked")])
+        .turn(vec![shell("t1", script), say("talked")])
         .await;
     let result = &talked.received[0];
     assert_eq!(field(result, "exitCode"), "0", "{result}");
@@ -1128,7 +1126,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         crate::support::waits_for_a_signal("far.pid")
     );
     let script = format!("demi host shell --host alpha '{far}'");
-    let started = work.turn(vec![resident("t1", &script), say("waiting")]).await;
+    let started = work.turn(vec![background("t1", &script), say("waiting")]).await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
     let command = field(result, "commandId").to_owned();
@@ -1156,7 +1154,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         let json = reads == 1;
         let look = format!("demi shell status {command}{}", if json { " --json" } else { "" });
         let read = work
-            .turn(vec![shell(&format!("s{reads}"), &look, 30_000), say("still waiting")])
+            .turn(vec![shell(&format!("s{reads}"), &look), say("still waiting")])
             .await;
         let mut shown = shown_output(read.received.first().expect("the look reaches the model"));
         if json {
@@ -1169,41 +1167,9 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         output.push_str(&shown_output(&shown));
     }
 
-    // The model asks to hear from the command every two seconds: it reports
-    // what a look shows of it, and how often it reports.
-    let watch = format!("demi shell status {command} --interval 2s");
-    let before = work
-        .start(vec![shell("t2", &watch, 30_000), say("watching"), say("still watching")])
-        .await;
-    let report = format!("Command {command} (t1) is still running after");
-    eventually("the command's report and the turn it opened", || {
-        let requests = vendor.requests();
-        let answered = requests[before..]
-            .iter()
-            .any(|request| request.json().to_string().contains(&report));
-        async move { answered }
-    })
-    .await;
-    // The turn of the message, then the turn the report opened, two seconds
-    // after the first ended.
-    work.socket.until_idle().await;
-    work.socket.until_idle().await;
-    let watched = work.observe(before);
-    let [interval] = &watched.received[..] else {
-        panic!("{:#?}", watched.received);
-    };
-    assert!(
-        shown_output(interval)
-            .starts_with(&format!("[command {command} reports every 2s from now on]\nstatus: running\n")),
-        "{interval}"
-    );
-    let messages = watched.requests.last().unwrap()["messages"].to_string();
-    assert!(messages.contains(&report), "{messages}");
-    assert!(messages.contains("It reports every 2s."), "{messages}");
-
     // The model answers the far job's prompt through the command's input.
     let answer = format!("printf 'hello\\n' | demi shell input {command}");
-    let fed = work.turn(vec![shell("t4", &answer, 30_000), say("fed")]).await;
+    let fed = work.turn(vec![shell("t4", &answer), say("fed")]).await;
     assert_eq!(field(&fed.received[0], "exitCode"), "0", "{}", fed.received[0]);
     assert_eq!(shown_output(&fed.received[0]), "");
     let got = a.join("got.txt");
@@ -1224,7 +1190,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     //
     // The model stopped it itself, so its end reports nothing more.
     let stop = format!("demi shell stop {command}; demi shell stop 999 {command}");
-    let stopped = work.turn(vec![shell("t5", &stop, 30_000), say("stopped")]).await;
+    let stopped = work.turn(vec![shell("t5", &stop), say("stopped")]).await;
     let stop = &stopped.received[0];
     assert_eq!(field(stop, "exitCode"), "1", "{stop}");
     let shown = shown_output(stop);
@@ -1245,7 +1211,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         "{shown}"
     );
     let look = format!("demi shell status {command}; printf 'late\\n' | demi shell input {command}");
-    let looked = work.turn(vec![shell("t6", &look, 30_000), say("looked")]).await;
+    let looked = work.turn(vec![shell("t6", &look), say("looked")]).await;
     let looked = &looked.received[0];
     // A stopped command's look says so, then shows its output, with no next
     // step to take.

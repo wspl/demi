@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by 0052
 ---
 
 # A command that ends reports until it ends

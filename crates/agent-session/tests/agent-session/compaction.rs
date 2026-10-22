@@ -614,7 +614,7 @@ async fn a_compact_stopped_after_a_finished_answer_leaves_no_stop_to_continue() 
 #[tokio::test(flavor = "local")]
 async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_nor_a_report() {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("17", None, "Build")),
+        Turn::Events(background_call("17", true, "Build")),
         answer("building"),
         Turn::pending(),
         answer("read the news"),

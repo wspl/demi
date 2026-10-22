@@ -12,7 +12,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::CommandId;
 
-use crate::support::{Fixture, last_result, reply, resident, scripts, turn, within};
+use crate::support::{Fixture, last_result, reply, background, scripts, turn, within};
 
 // Several seconds: five scripts over two messages run a shell job each, and
 // the first `demi file` starts the `demi.file` service.
@@ -167,12 +167,12 @@ async fn a_page_feeds_and_stops_commands_left_running_and_their_ends_wake_the_mo
             }))
         };
         let script = ScriptedRuntime::new([
-            Turn::Events(vec![resident(
+            Turn::Events(vec![background(
                 "reader",
                 "read name; read line; echo \"hello $name\"",
             )]),
             turn_of(reply("The reader waits.")),
-            turn_of(vec![resident("long", "echo long-ready; read line")]),
+            turn_of(vec![background("long", "echo long-ready; read line")]),
             turn_of(reply("The long command runs.")),
             turn_of(reply("stopped")),
         ]);

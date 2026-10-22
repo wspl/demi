@@ -48,7 +48,6 @@ fn report(log: &mut TranscriptLog, id: &str, ended: bool) {
         ReportEvent::Running {
             running_ms: 1,
             idle_ms: 0,
-            interval_ms: 1,
         }
     };
     log.push_wakeup(

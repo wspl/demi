@@ -261,8 +261,7 @@
         "event": {
           "kind": "running",
           "runningMs": 300000,
-          "idleMs": 290000,
-          "intervalMs": 300000
+          "idleMs": 290000
         },
         "output": ""
       }

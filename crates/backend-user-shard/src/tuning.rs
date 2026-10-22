@@ -45,14 +45,14 @@ pub struct ConversationTuning {
     /// (`crates/backend-database/src/search.rs`); a change within it is
     /// indexed once it has passed.
     pub search_interval: Duration,
-    /// The least interval a command reports at, in milliseconds
-    /// (`crates/agent-tools/src/lib.rs`): the product's, which a test shortens to
-    /// see reports within its time.
-    pub interval_floor_ms: u32,
     /// The longest a `shell` call watches a command that still runs, in
     /// milliseconds (`crates/agent-tools/src/lib.rs`): the product's, which a
     /// test shortens to see a call return within its time.
     pub call_window_ms: u32,
+    /// How long a command that is not in the background prints nothing before
+    /// it wakes its agent, once (`crates/agent-session/src/reports.rs`): the
+    /// product's, which a test shortens to see the wake-up within its time.
+    pub silence: Duration,
 }
 
 impl Default for ConversationTuning {
@@ -62,8 +62,8 @@ impl Default for ConversationTuning {
             requests_per_minute: demi_backend_providers::usage::rate_limit::REQUESTS_PER_WINDOW,
             titles: true,
             search_interval: Duration::from_secs(2),
-            interval_floor_ms: demi_agent_server::ServerConfig::default().interval_floor_ms,
             call_window_ms: demi_agent_server::ServerConfig::default().call_window_ms,
+            silence: demi_agent_server::ServerConfig::default().session.silence,
         }
     }
 }

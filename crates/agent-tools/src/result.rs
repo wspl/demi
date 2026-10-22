@@ -40,8 +40,8 @@
 
 use std::sync::Arc;
 
-use demi_agent_session::ToolOutcome;
-use demi_agent_store::images;
+use demi_agent_session::{SILENCE_LIMIT, ToolOutcome};
+use demi_agent_store::{Watch, images};
 use demi_agent_transcript::REPLAY_CHARS;
 use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText,
@@ -66,16 +66,12 @@ const NEWEST_LINES: u64 = 50;
 
 /// What a look at a command says beside its status and output.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Look<'a> {
-    /// The line it starts with, such as the one that says the interval
-    /// asked for was outside the bounds (`crates/agent-tools/src/lib.rs`).
-    pub note: Option<&'a str>,
+pub struct Look {
     /// Why the call returned while its command runs, which its result says.
     pub moved: Option<Moved>,
-    /// How the command reports to its node while it runs: every so many
-    /// milliseconds, or only its end when none; not known when the outer
-    /// option is none, as for a look at another agent's command.
-    pub interval_ms: Option<Option<u32>>,
+    /// How the command wakes its node while it runs; not known when none, as
+    /// for a look at another agent's command.
+    pub watch: Option<Watch>,
     /// The command's Host is unreachable, so its silence is not the command's:
     /// a look from another Host says so
     /// (`crates/agent-server/src/server/shell_output.rs`).
@@ -88,9 +84,8 @@ pub struct Look<'a> {
 pub enum Moved {
     /// The user's send now ended the window.
     SentNow,
-    /// The window's time passed, and the command reports every
-    /// `interval_ms` (`crates/agent-session/src/reports.rs`).
-    TimePassed { interval_ms: u32 },
+    /// The window's time passed (`crates/agent-session/src/reports.rs`).
+    TimePassed,
 }
 
 /// The `shell` call's outcome for `status`: its text, the media it attaches and
@@ -103,7 +98,7 @@ pub(super) async fn shell_outcome(
     status: &CommandStatus,
     model: &Model,
     limits: RequestLimits,
-    look: Look<'_>,
+    look: Look,
 ) -> ToolOutcome {
     let text = unseen_output(status);
     let mut output = vec![ResultPart::Text(result_text(status, &text, look))];
@@ -138,7 +133,7 @@ pub(super) async fn shell_outcome(
 
 /// What a look at a command shows the model, as a result shows it: the text
 /// of `demi shell status`.
-pub fn look_text(status: &CommandStatus, look: Look<'_>) -> String {
+pub fn look_text(status: &CommandStatus, look: Look) -> String {
     result_text(status, &unseen_output(status), look)
 }
 
@@ -156,7 +151,7 @@ pub fn whole_look_text(
     idle_ms: u64,
     whole: Arc<WholeOutput>,
     seen: Seen,
-    look: Look<'_>,
+    look: Look,
 ) -> String {
     look_text(&whole_status(command, state, running_ms, idle_ms, whole, seen), look)
 }
@@ -220,18 +215,16 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
 ///
 /// In order, they are:
 ///
-/// 1. the look's note;
-/// 2. the status, the handles and timings that matter;
-/// 3. the output since the model's last look within the replay bound, while the
+/// 1. the status, the handles and timings that matter;
+/// 2. the output since the model's last look within the replay bound, while the
 ///    command runs each stream's newest lines beyond its start;
-/// 4. the next step, after the line that says why the command moved to the
+/// 3. the next step, after the line that says why the command moved to the
 ///    background when the call returned while it ran.
-fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> String {
+fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
     let unreachable = look.unreachable.filter(|_| running);
-    let mut before: Vec<String> = look.note.into_iter().map(str::to_owned).collect();
-    before.push(status_line(&status.state, unreachable));
+    let mut before = vec![status_line(&status.state, unreachable)];
     if let CommandState::Exited { exit_code, .. } = status.state {
         before.push(format!("exitCode: {exit_code}"));
     }
@@ -252,16 +245,15 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
                 Some(Moved::SentNow) => after.push(format!(
                     "[The user sent a message, so command {command} moved to the background. It keeps running.]"
                 )),
-                Some(Moved::TimePassed { interval_ms }) => after.push(format!(
-                    "[The command is still running, so it moved to the background. It reports every {} until it ends, and when it ends.]",
-                    super::duration(interval_ms.into())
-                )),
+                Some(Moved::TimePassed) => {
+                    after.push("[The command is still running, so it moved to the background.]".to_owned());
+                }
                 None => {}
             }
             after.extend(outliving_line(outliving));
             match hint {
                 Some(hint) => after.push(hint.clone()),
-                None => after.push(running_next(command, look.interval_ms)),
+                None => after.push(running_next(command, look.watch)),
             }
         }
         CommandState::Exited { .. } | CommandState::Aborted | CommandState::Lost { .. } => {}
@@ -378,21 +370,21 @@ fn output_lines(text: &OutputText, command: &CommandId, newest: &[&Newest], budg
     lines
 }
 
-/// The next step for a command that runs: it reports to the node as its
-/// interval says, and the `demi shell` commands answer it and stop it. It
-/// offers no look: the command's report brings its output, so a look would
-/// only wait for it a second way (docs/decisions/0015-a-command-reports-itself.md).
-fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String {
-    let reports = match interval_ms {
-        Some(Some(interval)) => format!(
-            " and reports to you every {} until it ends",
-            super::duration(interval.into())
+/// The next step for a command that runs: it wakes the node when it ends, and
+/// the `demi shell` commands answer it and stop it. It offers no look: the end
+/// brings the output, so a look would only wait for it a second way
+/// (docs/decisions/0052-a-call-waits-for-its-command.md).
+fn running_next(command: &CommandId, watch: Option<Watch>) -> String {
+    let wakes = match watch {
+        Some(Watch::Foreground) => format!(
+            " and wakes you when it ends, or after {} without output",
+            super::duration(SILENCE_LIMIT.as_millis().try_into().unwrap_or(u64::MAX))
         ),
-        Some(None) => " and reports to you when it ends".to_owned(),
+        Some(Watch::Background | Watch::Silenced) => " and wakes you when it ends".to_owned(),
         None => String::new(),
     };
     format!(
-        "next: command {command} keeps running{reports}; answer a prompt with demi shell input {command}, stop it with demi shell stop {command}."
+        "next: command {command} keeps running{wakes}; answer a prompt with demi shell input {command}, stop it with demi shell stop {command}."
     )
 }
 
@@ -946,13 +938,12 @@ mod tests {
             .collect()
     }
 
-    /// The next step of a running command 17 that reports every five
-    /// minutes.
-    const NEXT: &str = "next: command 17 keeps running and reports to you every 5m until it ends; answer a prompt with demi shell input 17, stop it with demi shell stop 17.";
+    /// The next step of a running command 17 that is not in the background.
+    const NEXT: &str = "next: command 17 keeps running and wakes you when it ends, or after 10m without output; answer a prompt with demi shell input 17, stop it with demi shell stop 17.";
 
     async fn result(status: &CommandStatus) -> String {
         let look = Look {
-            interval_ms: Some(Some(300_000)),
+            watch: Some(Watch::Foreground),
             ..Look::default()
         };
         let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), look).await;

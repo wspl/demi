@@ -7,7 +7,7 @@ use demi_agent_tools::testing::shown_output;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::testing::{ScriptedRuntime, Turn};
 
-use crate::support::{Fixture, reply, resident, scripts, turn, within};
+use crate::support::{Fixture, reply, background, scripts, turn, within};
 
 // About four seconds: four messages run a shell job each, on two Hosts, and
 // the reader's call waits for two seconds of quiet.
@@ -16,7 +16,7 @@ async fn each_command_starts_in_its_hosts_directory_and_a_handle_answers_only_on
     within(async {
         let (mut turns, recorded) =
             scripts(&[&["mkdir nested && cd nested && pwd"], &["pwd"], &["pwd"]]);
-        turns.push(Turn::Events(vec![resident(
+        turns.push(Turn::Events(vec![background(
             "reader",
             "read name; echo \"hello $name\"",
         )]));

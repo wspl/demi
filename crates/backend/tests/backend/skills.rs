@@ -141,7 +141,7 @@ async fn a_skill_on_reaches_the_catalog_and_the_jobs_that_need_it_find_it_instal
     // The mode bits, which root's writes would ignore.
     let script = "cat ~/.demi/plugins/skills/review-*/SKILL.md && ~/.demi/plugins/skills/review-*/check.sh && ls -l ~/.demi/plugins/skills/review-*/";
     let read = work
-        .turn(vec![shell("t1", script, 10_000), say("read")])
+        .turn(vec![shell("t1", script), say("read")])
         .await;
     let output = &read.received[0];
     assert!(output.contains("Review a change."), "{output}");
@@ -158,7 +158,7 @@ async fn a_skill_on_reaches_the_catalog_and_the_jobs_that_need_it_find_it_instal
     );
     let listed = work
         .turn(vec![
-            shell("t2", "ls -A ~/.demi/plugins/skills", 10_000),
+            shell("t2", "ls -A ~/.demi/plugins/skills"),
             say("listed"),
         ])
         .await;
@@ -208,7 +208,7 @@ async fn a_job_run_on_an_attached_device_finds_the_skill_installed_there() {
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let script = "demi host shell --host beta 'cat ~/.demi/plugins/skills/review-*/SKILL.md'";
     let read = work
-        .turn(vec![shell("t1", script, 20_000), say("read")])
+        .turn(vec![shell("t1", script), say("read")])
         .await;
     let output = &read.received[0];
     assert!(output.contains("Review a change."), "{output}");

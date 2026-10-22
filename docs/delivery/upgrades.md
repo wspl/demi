@@ -34,7 +34,7 @@ the following happens:
     work of a command runs in its runner.
   - The report of each node that ran a command says that the upgrade lost the
     command. A command the node might be waiting for gets the report at once.
-    A resident command gets it at the node's next turn
+    A background command gets it at the node's next turn
     (`crates/agent-session/src/reports.rs`).
   - A backend that only restarts, on the same release, ends no command
     (`crates/backend-remote-host/src/device_jobs.rs`).

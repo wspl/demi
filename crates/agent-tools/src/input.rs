@@ -6,16 +6,10 @@ use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
+use std::time::Duration;
 
-/// The least interval a command reports at, in milliseconds
-/// (`crates/agent-tools/src/lib.rs`).
-pub const INTERVAL_FLOOR_MS: u32 = 15_000;
-/// The greatest interval a command reports at: ten minutes.
-pub const INTERVAL_CAP_MS: u32 = 600_000;
-
-/// What `intervalMs` asks of the model; its bounds are the product's, which
-/// every request states alike (`crates/provider-common/src/contract.rs`).
-const INTERVAL: &str = "How often the command reports while it runs: 15000–600000 ms; null for a command that runs until stopped, which reports only its end.";
+/// What `background` tells the model.
+const BACKGROUND: &str = "true for a command that runs until stopped, such as a development server or a watcher: the call returns once its output has been quiet for 2 seconds, and only its exit wakes you.";
 
 /// What a call's `description` asks of the model: the title the user sees,
 /// which the model writes before the step runs.
@@ -29,59 +23,38 @@ pub(super) struct ShellInput {
     #[schemars(length(min = 1), description = DESCRIPTION)]
     pub(super) description: NonEmpty,
     pub(super) script: String,
-    #[serde(deserialize_with = "interval")]
-    #[schemars(description = INTERVAL)]
-    pub(super) interval_ms: Interval,
+    #[serde(default)]
+    #[schemars(description = BACKGROUND)]
+    pub(super) background: bool,
 }
 
-// How a call asks its command to be watched: whole milliseconds, or none for a
-// resident command.
-//
-// Its field is required, and its schema says `null` is a value: a field of an
-// `Option` would be optional to serde and schemars alike, and schemars's
-// `required` takes the `null` out. (A doc comment would become the field's
-// description in the model's schema.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Interval(pub(super) Option<u64>);
-
-impl JsonSchema for Interval {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "Interval".into()
+/// How long a script's first command sleeps, when it is a `sleep`: the sum of
+/// its arguments, each a number with an optional `s`, `m`, `h` or `d` suffix,
+/// up to the first `;`, `&&`, `||`, `|` or line break. A `sleep` that a single
+/// `&` sends to the background holds nothing.
+pub(super) fn leading_sleep(script: &str) -> Option<Duration> {
+    let script = script.trim_start();
+    let end = script.find([';', '&', '|', '\n']).unwrap_or(script.len());
+    if script[end..].starts_with('&') && !script[end..].starts_with("&&") {
+        return None;
     }
-
-    fn inline_schema() -> bool {
-        true
+    let first = &script[..end];
+    let mut words = first.split_whitespace();
+    if words.next()? != "sleep" {
+        return None;
     }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({ "type": ["integer", "null"] })
+    let mut seconds = 0.0_f64;
+    for word in words {
+        let (number, unit) = match word.char_indices().last() {
+            Some((at, 's')) => (&word[..at], 1.0),
+            Some((at, 'm')) => (&word[..at], 60.0),
+            Some((at, 'h')) => (&word[..at], 3_600.0),
+            Some((at, 'd')) => (&word[..at], 86_400.0),
+            _ => (word, 1.0),
+        };
+        seconds += number.parse::<f64>().ok().filter(|number| *number >= 0.0)? * unit;
     }
-}
-
-/// Reads an interval as the field holds it; serde reads it only when the
-/// field is there, since it deserializes the field itself.
-fn interval<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Interval, D::Error> {
-    Option::<u64>::deserialize(deserializer).map(Interval)
-}
-
-/// A command's interval as a node's shells take it: `asked`, within the bounds
-/// from `floor` to [`INTERVAL_CAP_MS`].
-///
-/// The result also holds the line that says so when `asked` was outside the
-/// bounds (`crates/agent-tools/src/lib.rs`), naming it as `field` names it,
-/// such as `intervalMs 900000 is above the cap; taken as 600000`. The floor is
-/// [`INTERVAL_FLOOR_MS`] in the product; a test configures a shorter one.
-pub fn taken_interval(asked: u64, floor: u32, field: &str) -> (u32, Option<String>) {
-    if asked > u64::from(INTERVAL_CAP_MS) {
-        let note = format!("{field} {asked} is above the cap; taken as {INTERVAL_CAP_MS}");
-        return (INTERVAL_CAP_MS, Some(note));
-    }
-    let asked = u32::try_from(asked).expect("within the cap");
-    if asked < floor {
-        let note = format!("{field} {asked} is below the floor; taken as {floor}");
-        return (floor, Some(note));
-    }
-    (asked, None)
+    Some(Duration::try_from_secs_f64(seconds).unwrap_or(Duration::MAX))
 }
 
 // Text a call must not leave empty: the title of a step. (A doc comment
@@ -138,23 +111,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_schema_requires_a_title_first_and_an_interval_that_may_be_null_and_nothing_else() {
+    fn the_schema_requires_a_title_first_and_offers_background_and_nothing_else() {
         let shell = schema::<ShellInput>();
         assert_eq!(shell["additionalProperties"], false);
-        assert_eq!(
-            shell["required"],
-            json!(["description", "script", "intervalMs"])
-        );
+        assert_eq!(shell["required"], json!(["description", "script"]));
         let properties = &shell["properties"];
         // The title leads: serde_json keeps the order (`preserve_order`), so
         // the schema a provider serializes lists it first too.
         let order: Vec<&String> = properties.as_object().unwrap().keys().collect();
-        assert_eq!(order, ["description", "script", "intervalMs"]);
-        assert_eq!(properties["intervalMs"]["type"], json!(["integer", "null"]));
-        // A value outside the bounds is taken as the nearest one, not
-        // refused, so the schema states them in words.
-        assert!(properties["intervalMs"].get("maximum").is_none());
-        assert!(properties["intervalMs"].get("minimum").is_none());
+        assert_eq!(order, ["description", "script", "background"]);
+        assert_eq!(properties["background"]["type"], "boolean");
         assert_eq!(
             properties["description"],
             json!({"type": "string", "minLength": 1, "description": DESCRIPTION})
@@ -167,29 +133,17 @@ mod tests {
         let refusal = |input: Value| parse::<ShellInput>("shell", input).unwrap_err();
         for (input, field) in [
             (
-                json!({"script": "true", "intervalMs": 20_000, "description": "Run", "timeoutMs": 3}),
-                "unknown field `timeoutMs`",
+                json!({"script": "true", "description": "Run", "intervalMs": 20_000}),
+                "unknown field `intervalMs`",
             ),
             (
-                json!({"script": "true", "intervalMs": 20_000.5, "description": "Run"}),
-                "intervalMs: invalid type: floating point",
-            ),
-            (
-                json!({"script": "true", "intervalMs": -1, "description": "Run"}),
-                "intervalMs: invalid value: integer `-1`",
-            ),
-            // How the command is watched is the model's to say.
-            (
-                json!({"script": "true", "description": "Run"}),
-                "missing field `intervalMs`",
+                json!({"script": "true", "description": "Run", "background": "yes"}),
+                "background: invalid type: string",
             ),
             // A step that starts work names it for the user.
+            (json!({"script": "true"}), "missing field `description`"),
             (
-                json!({"script": "true", "intervalMs": null}),
-                "missing field `description`",
-            ),
-            (
-                json!({"script": "true", "intervalMs": null, "description": ""}),
+                json!({"script": "true", "description": ""}),
                 "description: must not be empty",
             ),
             (json!("not json"), "invalid type: string"),
@@ -198,32 +152,30 @@ mod tests {
             assert!(text.starts_with("shell input is invalid:\n"), "{text}");
             assert!(text.contains(field), "{text}");
         }
-        let resident: ShellInput = parse(
+        let plain: ShellInput = parse("shell", json!({"script": "true", "description": "Run"})).unwrap();
+        assert!(!plain.background);
+        let server: ShellInput = parse(
             "shell",
-            json!({"script": "npm run dev", "intervalMs": null, "description": "Start the dev server"}),
+            json!({"script": "npm run dev", "background": true, "description": "Start the dev server"}),
         )
         .unwrap();
-        assert_eq!(resident.interval_ms, Interval(None));
+        assert!(server.background);
     }
 
     #[test]
-    fn an_interval_outside_the_bounds_is_taken_as_the_nearest_with_a_line_that_says_so() {
-        let floor = INTERVAL_FLOOR_MS;
-        assert_eq!(taken_interval(300_000, floor, "intervalMs"), (300_000, None));
-        assert_eq!(
-            taken_interval(900_000, floor, "intervalMs"),
-            (
-                600_000,
-                Some("intervalMs 900000 is above the cap; taken as 600000".to_owned())
-            )
-        );
-        assert_eq!(
-            taken_interval(0, floor, "intervalMs"),
-            (
-                15_000,
-                Some("intervalMs 0 is below the floor; taken as 15000".to_owned())
-            )
-        );
-        assert_eq!(taken_interval(u64::MAX, floor, "intervalMs").0, 600_000);
+    fn a_script_that_starts_with_a_sleep_says_how_long_it_sleeps() {
+        let secs = |script: &str| leading_sleep(script).map(|sleep| sleep.as_secs_f64());
+        assert_eq!(secs("sleep 45"), Some(45.0));
+        assert_eq!(secs("  sleep 1m 30s && make"), Some(90.0));
+        assert_eq!(secs("sleep 0.5; make"), Some(0.5));
+        assert_eq!(secs("sleep 2h\nmake"), Some(7_200.0));
+        // Only a script's first command counts, and only a `sleep`.
+        assert_eq!(secs("make && sleep 60"), None);
+        assert_eq!(secs("sleeper 60"), None);
+        assert_eq!(secs("sleep forever"), None);
+        // One a single `&` sends to the background holds nothing.
+        assert_eq!(secs("sleep 60 & echo started"), None);
+        assert_eq!(secs("sleep 60 && echo done"), Some(60.0));
+        assert_eq!(secs("echo sleep 60"), None);
     }
 }

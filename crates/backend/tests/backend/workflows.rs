@@ -148,7 +148,6 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
             shell(
                 "t1",
                 "demi agent profiles list; demi agent spawn --profile slow <<< 'Think'; demi agent profiles create mine --description Mine. </dev/null",
-                15_000,
             ),
             say("listed"),
         ])
@@ -194,7 +193,7 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
     // No Subagents: the workflow leaves the block, and spawns fail.
     assert_eq!(choose(&backend, &master, json!({ "type": "none" })).await, WorkflowChoice::None);
     let turn = work
-        .turn(vec![shell("t2", "demi agent spawn <<< 'Think'", 15_000), say("refused")])
+        .turn(vec![shell("t2", "demi agent spawn <<< 'Think'"), say("refused")])
         .await;
     let request = turn.first_request();
     assert_eq!(request.matches("<workflow name=").count(), 1, "{request}");
@@ -382,7 +381,7 @@ async fn a_linked_workflow_is_read_check_lets_the_host_resolve_and_a_new_choice_
     // `elsewhere/outside.yaml`, which does not parse, not `repo/outside.yaml`.
     let turn = work
         .turn(vec![
-            shell("t1", "demi agent workflows check deep/../outside.yaml", 15_000),
+            shell("t1", "demi agent workflows check deep/../outside.yaml"),
             say("checked"),
         ])
         .await;
@@ -401,7 +400,7 @@ async fn a_linked_workflow_is_read_check_lets_the_host_resolve_and_a_new_choice_
     let go = repo.join("go");
     let before = work
         .start(vec![
-            shell("t2", "touch started; while [ ! -e go ]; do sleep 0.05; done", 60_000),
+            shell("t2", "touch started; while [ ! -e go ]; do sleep 0.05; done"),
             say("done"),
         ])
         .await;

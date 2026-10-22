@@ -2715,7 +2715,7 @@ async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible
         json!({
             "reasoning_content": "Read the current directory.",
             "tool_calls": [{ "index": 0, "id": "call-1", "function": {
-                "name": "shell", "arguments": json!({ "script": "pwd", "intervalMs": 1000 }).to_string()
+                "name": "shell", "arguments": json!({ "script": "pwd" }).to_string()
             } }]
         }),
         "tool_calls",

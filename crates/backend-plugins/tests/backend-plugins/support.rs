@@ -489,24 +489,23 @@ pub async fn turn(client: &mut TestClient<DeviceHost>, id: &str, text: &str) -> 
     client.until_idle().await
 }
 
-/// A `shell` call of `script` that watches it for up to `interval_ms`, and
-/// then reports every `interval_ms` while it runs.
-pub fn exec(id: &str, script: &str, interval_ms: u32) -> ProviderEvent {
+/// A `shell` call of `script`, which the call watches for its window.
+pub fn exec(id: &str, script: &str) -> ProviderEvent {
     event::tool_call(
         id,
         "shell",
-        json!({"description": "Run the test script", "script": script, "intervalMs": interval_ms}),
+        json!({"description": "Run the test script", "script": script}),
     )
 }
 
-/// A `shell` call of `script` for a command that runs until it ends or is
-/// stopped: the call returns once its output has been quiet for two
-/// seconds, and the command reports only its end.
-pub fn resident(id: &str, script: &str) -> ProviderEvent {
+/// A `shell` call of `script` in the background, for a command that runs until
+/// it ends or is stopped: the call returns once its output has been quiet for
+/// two seconds, and only its end wakes the agent.
+pub fn background(id: &str, script: &str) -> ProviderEvent {
     event::tool_call(
         id,
         "shell",
-        json!({"description": "Run the test script", "script": script, "intervalMs": null}),
+        json!({"description": "Run the test script", "script": script, "background": true}),
     )
 }
 
@@ -553,12 +552,11 @@ pub fn scripts(messages: &[&[&str]]) -> (Vec<Turn>, Rc<RefCell<Vec<String>>>) {
         turns.push(Turn::Events(vec![exec(
             &format!("step-{step}"),
             first,
-            30_000,
         )]));
         for script in rest {
             step += 1;
             let results = results.clone();
-            let call = exec(&format!("step-{step}"), script, 30_000);
+            let call = exec(&format!("step-{step}"), script);
             turns.push(Turn::Respond(Box::new(move |request| {
                 results.borrow_mut().push(last_result(request));
                 vec![call]

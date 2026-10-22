@@ -1574,8 +1574,10 @@ CREATE TABLE plugin_oauth_clients (
 ///   turn, 0.1.33 the one before a running command kept its call's script,
 ///   0.1.36 the one before an attachment kept the file it was uploaded from,
 ///   0.1.37 the one before every block named its request, and 0.1.38 the one
-///   before the messages a compaction kept named theirs, and 0.1.48 the one
-///   before a path could start with another node's rows.
+///   before the messages a compaction kept named theirs, 0.1.48 the one
+///   before a path could start with another node's rows, and 0.1.58 the one
+///   before a running command kept whether it runs in the background in
+///   place of its interval.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1687,8 +1689,25 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.48.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_0_1_48),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.58.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_58),
+        },
     ],
 };
+
+/// From 0.1.58's conversation schema to the current one.
+///
+/// A running command's record keeps whether it runs in the background in place
+/// of the interval it reported at: a command with no interval is in the
+/// background. Nothing else is rewritten: a stored report or checkpoint state
+/// that holds an interval reads without it ([`demi_shared_types::ReportEvent`],
+/// [`demi_agent_store::CommandWatch`]).
+const CONVERSATION_FROM_0_1_58: &str = "
+ALTER TABLE running_commands ADD COLUMN background INTEGER NOT NULL DEFAULT 0 CHECK (background IN (0, 1));
+UPDATE running_commands SET background = interval_ms IS NULL;
+ALTER TABLE running_commands DROP COLUMN interval_ms;
+";
 
 /// From 0.1.48's conversation schema to the current one.
 ///
@@ -3781,6 +3800,7 @@ pub mod testing {
             "(SELECT coalesce(max(own.start + own.length), 0) FROM current.path_runs AS own WHERE own.node_id = id)",
         ),
         ("nodes", "result", "CASE WHEN closed_phase = 'completed' THEN '' END"),
+        ("running_commands", "interval_ms", "CASE WHEN background = 1 THEN NULL ELSE 60000 END"),
     ];
 
     /// Whether the shipped schema's `table` has `column`.
@@ -5172,9 +5192,9 @@ CREATE TABLE command_outputs (
 -- that device, the call that started it, when it started, how far each
 -- node that looked at it has seen its output, a JSON object of each node's
 -- bytes of stdout and stderr by the node's id, the title of the call that
--- started it, the interval in milliseconds that call asked it to report at,
--- null for one that reports only its end, and the call's script, which the
--- pages' view of it carries with its title (rendering.md § Frame protocol).
+-- started it, whether that call started it in the background, and the call's
+-- script, which the pages' view of it carries with its title (rendering.md
+-- § Frame protocol).
 CREATE TABLE running_commands (
   command_id  TEXT PRIMARY KEY,
   node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
@@ -5185,7 +5205,6 @@ CREATE TABLE running_commands (
   -- running_commands.places: command places format 1
   places      TEXT NOT NULL,
   title       TEXT NOT NULL DEFAULT '',
-  interval_ms INTEGER CHECK (interval_ms >= 1),
   -- The turn whose shell call started it; null for a command recorded
   -- before records kept it.
   turn_id     TEXT,
@@ -5193,7 +5212,8 @@ CREATE TABLE running_commands (
   -- was never sent; null once sent. running_commands.unsent: unsent start
   -- format 1.
   unsent      TEXT,
-  script      TEXT NOT NULL DEFAULT ''
+  script      TEXT NOT NULL DEFAULT '',
+  background  INTEGER NOT NULL DEFAULT 0 CHECK (background IN (0, 1))
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
@@ -6007,7 +6027,7 @@ mod tests {
                 .query_row("SELECT state FROM nodes WHERE id = ?1", [id], |row| row.get(0))
                 .unwrap();
             let state = json::<CheckpointState>("nodes", "state", &state).unwrap();
-            assert!(state.reports.is_empty() && state.intervals.is_empty(), "{id}");
+            assert!(state.reports.is_empty() && state.watches.is_empty(), "{id}");
         }
 
         let (_corrupt_directory, corrupt_path, mut corrupt) = database(shipped);
@@ -6922,9 +6942,9 @@ mod tests {
         assert_eq!(crate::tree::root_blocks(&connection).unwrap(), blocks);
     }
 
-    /// A command that ran under 0.1.22-dev.20261016T043704Z keeps the interval its
-    /// call asked for, as that build bounded it, or none for a call that asked for
-    /// none: a restart that interrupted its call watches it at that interval.
+    /// A command that ran under 0.1.22-dev.20261016T043704Z is in the background
+    /// when its call asked for no interval: a restart that interrupted its call
+    /// watches it as the call asked.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_running_command_keeps_the_interval_its_call_asked_for() {
@@ -6978,16 +6998,17 @@ mod tests {
         }
         CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
 
-        let intervals: Vec<(String, Option<i64>)> = connection
-            .prepare("SELECT command_id, interval_ms FROM running_commands ORDER BY command_id")
+        let backgrounds: Vec<(String, bool)> = connection
+            .prepare("SELECT command_id, background FROM running_commands ORDER BY command_id")
             .unwrap()
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .unwrap()
             .map(Result::unwrap)
             .collect();
+        // A call that asked for none is a command in the background.
         assert_eq!(
-            intervals,
-            [("1".to_owned(), Some(30_000)), ("2".to_owned(), None), ("3".to_owned(), Some(15_000))]
+            backgrounds,
+            [("1".to_owned(), false), ("2".to_owned(), true), ("3".to_owned(), false)]
         );
     }
 
@@ -7270,7 +7291,7 @@ mod tests {
     }
 
     /// A command running when 0.1.22 stopped keeps its record, its title and
-    /// interval included, with no turn, and a command recorded afterwards keeps its
+    /// whether it was in the background included, with no turn, and a command recorded afterwards keeps its
     /// turn, which a backend that starts again hands the job it takes up.
     ///
     /// Planted defect this catches: a turn the record drops, so a command taken up
@@ -7311,10 +7332,10 @@ mod tests {
                 later.tool_use_id.as_str(),
                 later.started.as_millisecond(),
                 later.title.as_str(),
-                later.interval_ms,
+                later.background,
                 later.turn.as_ref(),
             ),
-            ("1", "device", "job-1", "call-1", 7, "Build", Some(2000), None)
+            ("1", "device", "job-1", "call-1", 7, "Build", false, None)
         );
         later.command = demi_shared_types::CommandId::try_from("2").unwrap();
         later.turn = Some(demi_shared_types::TurnId::try_from("m4").unwrap());
@@ -7326,6 +7347,50 @@ mod tests {
             .map(|command| command.turn.map(|turn| turn.to_string()))
             .collect();
         assert_eq!(turns, [None, Some("m4".to_owned())]);
+    }
+
+    /// A conversation of 0.1.58, whose running commands kept the interval they
+    /// reported at, keeps whether each was in the background: one that reported
+    /// only its end was.
+    ///
+    /// Planted defect this catches: a command in the background that the
+    /// migration makes wake its node for its silence.
+    ///
+    /// One small database, milliseconds.
+    #[test]
+    fn a_running_command_keeps_whether_it_was_in_the_background_in_place_of_its_interval() {
+        use crate::running;
+
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.58.sql"));
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, parent_id, description, round, started_at, can_spawn, delivered, state,
+                    output_revision, cwd, cwd_under, leaf)
+                 VALUES ('root', 0, NULL, '', 1, 0, 1, 0, ?1, 0, NULL, NULL, NULL)",
+                [state_of_development()],
+            )
+            .unwrap();
+        for (command, interval) in [("1", Some(30000)), ("2", None)] {
+            connection
+                .execute(
+                    "INSERT INTO running_commands
+                       (command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms)
+                     VALUES (?1, 'root', 'device', 'job', 'call', 7, '{}', 'Build', ?2)",
+                    rusqlite::params![command, interval],
+                )
+                .unwrap();
+        }
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let root = demi_shared_types::NodeId::try_from("root").unwrap();
+        let backgrounds: Vec<(String, bool)> = running::of_node(&connection, &root)
+            .unwrap()
+            .into_iter()
+            .map(|command| (command.command.to_string(), command.background))
+            .collect();
+        assert_eq!(backgrounds, [("1".to_owned(), false), ("2".to_owned(), true)]);
     }
 
     #[test]

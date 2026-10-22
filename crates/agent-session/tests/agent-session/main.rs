@@ -45,7 +45,7 @@ use serde_json::json;
 use tokio::{sync::oneshot, task::JoinHandle};
 
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, CommandInterval, EditReceipt, NodeRecord, RunningCommand,
+    AgentTreeStore, Checkpoint, CommandWatch, EditReceipt, NodeRecord, RunningCommand, Watch,
     SessionStore, StoreError,
     media::HeldMedia,
     testing::{MemoryTreeStore, model_of, model_reading, sent_text, test_model, text},
@@ -276,7 +276,6 @@ impl SessionRuntime for TestRuntime {
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
-        interval_ms: Option<u32>,
         _: &'a demi_shared_types::ModelSelection,
         _: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
@@ -289,7 +288,7 @@ impl SessionRuntime for TestRuntime {
             let mut reports = self.commands.reports.borrow_mut();
             let count = reports.entry(command.clone()).or_default();
             *count += 1;
-            test_report(command.as_str(), &title, running(*count, interval_ms.unwrap_or(0)))
+            test_report(command.as_str(), &title, running(*count))
         };
         Box::pin(async move { Some(report) })
     }
@@ -346,7 +345,7 @@ type Releases = Rc<RefCell<Vec<oneshot::Sender<()>>>>;
 
 /// A tool that tells the test it started, then waits until the test lets it
 /// finish; one whose input names a `commandId` tells its session it started
-/// that command, every `intervalMs`.
+/// that command, in the background when `background`.
 fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>) {
     let (started, started_rx) = oneshot::channel();
     let started = Rc::new(RefCell::new(Some(started)));
@@ -356,9 +355,7 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
         if let Some(command) = call.input["commandId"].as_str() {
             call.command.started(StartedCommand {
                 command: CommandId::try_from(command).unwrap(),
-                interval_ms: call.input["intervalMs"]
-                    .as_u64()
-                    .map(|interval| u32::try_from(interval).unwrap()),
+                background: call.input["background"].as_bool().unwrap_or(false),
             });
         }
         if let Some(started) = started.borrow_mut().take() {
@@ -375,8 +372,8 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
 }
 
 /// A tool `work` that starts the command its input's `commandId` names in
-/// `commands` and leaves it running, reporting every `intervalMs`, or only
-/// its end when null, titled by its input's `description`.
+/// `commands` and leaves it running, in the background when its input's
+/// `background` says so, titled by its input's `description`.
 fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
     let commands = commands.clone();
     tool("work", move |call| {
@@ -384,9 +381,7 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
             call.input["commandId"].as_str().unwrap(),
             call.input["description"].as_str().unwrap(),
         );
-        let interval_ms = call.input["intervalMs"]
-            .as_u64()
-            .map(|interval| u32::try_from(interval).unwrap());
+        let background = call.input["background"].as_bool().unwrap_or(false);
         let view = ToolView::Shell(ShellToolView {
             request_files: None,
             run_files: None,
@@ -405,11 +400,7 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
         Box::pin(async move {
             Ok(ToolOutcome {
                 view: Some(view),
-                effect: Some(ToolEffect::Background {
-                    command,
-                    interval_ms,
-                    ran: Duration::ZERO,
-                }),
+                effect: Some(ToolEffect::Background { command, background }),
                 ..output("status: running")
             })
         })
@@ -459,13 +450,13 @@ fn naming(command: &str, status: ShellViewStatus) -> Option<ToolView> {
 }
 
 /// A response that calls `work` for the command `command`, reporting every
-/// `interval_ms`, titled `description`.
-fn background_call(command: &str, interval_ms: Option<u64>, description: &str) -> Vec<ProviderEvent> {
+/// `background`, titled `description`.
+fn background_call(command: &str, background: bool, description: &str) -> Vec<ProviderEvent> {
     vec![
         event::tool_call(
             &format!("work-{command}"),
             "work",
-            json!({ "commandId": command, "intervalMs": interval_ms, "description": description }),
+            json!({ "commandId": command, "background": background, "description": description }),
         ),
         event::response(1, 1),
     ]
@@ -1371,7 +1362,7 @@ async fn a_wait_for_the_model_ends_at_its_first_output_reasoning_at_its_start() 
 #[tokio::test(flavor = "local")]
 async fn dispose_during_a_tool_saves_the_interrupted_turn_and_keeps_the_queue() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![
-        event::tool_call("call-1", "slow", json!({ "commandId": "254", "intervalMs": 300000 })),
+        event::tool_call("call-1", "slow", json!({ "commandId": "254" })),
         event::response(1, 1),
     ])]);
     let store = MemoryTreeStore::new();
@@ -1395,7 +1386,7 @@ async fn dispose_during_a_tool_saves_the_interrupted_turn_and_keeps_the_queue() 
     // command reports to the node as one a call left running does.
     assert_eq!(
         tool_output(&checkpoint.transcript[1]).1,
-        texts(&["Tool call interrupted: the backend shut down while this call watched command 254, which keeps running and reports to you as before."])
+        texts(&["Tool call interrupted: the backend shut down while this call watched command 254, which keeps running and wakes you when it ends."])
     );
     // The call keeps naming its command, so that the command's later
     // report and notice find it.
@@ -1404,10 +1395,10 @@ async fn dispose_during_a_tool_saves_the_interrupted_turn_and_keeps_the_queue() 
         naming("254", ShellViewStatus::Running)
     );
     assert_eq!(
-        checkpoint.state.intervals,
-        [CommandInterval {
+        checkpoint.state.watches,
+        [CommandWatch {
             command_id: CommandId::try_from("254").unwrap(),
-            interval_ms: Some(300_000),
+            watch: Watch::Foreground,
         }]
     );
     let Block::Error(record) = &checkpoint.transcript[3] else {
@@ -1476,7 +1467,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         turn: None,
         title: "Write a.txt".into(),
         script: "echo a > a.txt".into(),
-        interval_ms: None,
+        background: true,
         started: Timestamp::UNIX_EPOCH,
         place: Default::default(),
         unsent: None,
@@ -1499,7 +1490,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
     );
     assert_eq!(call_view(&blocks[1]), naming("254", ShellViewStatus::Running));
     // It reports its end to the node.
-    assert_eq!(restored.interval_of(&running[0].command), Some(None));
+    assert_eq!(restored.watch_of(&running[0].command), Some(Watch::Background));
     restored
         .send(text("go on"), turn("t2"))
         .unwrap()
@@ -2682,11 +2673,10 @@ fn test_report(command: &str, title: &str, event: ReportEvent) -> CommandReport 
 }
 
 /// A test command's nth progress report: it has run n seconds.
-fn running(count: u32, interval_ms: u32) -> ReportEvent {
+fn running(count: u32) -> ReportEvent {
     ReportEvent::Running {
         running_ms: u64::from(count) * 1000,
         idle_ms: 0,
-        interval_ms,
     }
 }
 
@@ -2710,6 +2700,6 @@ pub(crate) fn lost_report(command: &str, title: &str) -> String {
 }
 
 /// What the model reads of the test command's nth progress report.
-pub(crate) fn running_report(command: &str, title: &str, count: u32, interval_ms: u32) -> String {
-    report_text(&test_report(command, title, running(count, interval_ms)))
+pub(crate) fn running_report(command: &str, title: &str, count: u32) -> String {
+    report_text(&test_report(command, title, running(count)))
 }

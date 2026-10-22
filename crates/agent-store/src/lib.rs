@@ -301,8 +301,8 @@ pub trait AgentTreeStore {
 /// A command the conversation records running.
 ///
 /// It holds its job on its Host, the `shell` call that started it, that call's
-/// title and interval, when it started, and how far the node that ran it has
-/// looked in its output.
+/// title and whether it ran in the background, when it started, and how far
+/// the node that ran it has looked in its output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunningCommand {
     pub command: CommandId,
@@ -316,10 +316,10 @@ pub struct RunningCommand {
     /// Its call's script, which the pages' view of it carries with its
     /// title.
     pub script: String,
-    /// How often its call asked it to report, or only its end when none
-    /// (`crates/agent-session/src/reports.rs`): an interrupted call's command
-    /// keeps it.
-    pub interval_ms: Option<u32>,
+    /// Whether its call started it in the background, so that it wakes its
+    /// node only when it ends (`crates/agent-session/src/reports.rs`): an
+    /// interrupted call's command keeps it.
+    pub background: bool,
     pub started: Timestamp,
     pub place: Seen,
     /// What it starts once its Host is back, while its start waits for it
@@ -595,15 +595,16 @@ pub struct CheckpointState {
     /// transcript, in arrival order (`crates/agent-session/src/reports.rs`).
     #[garde(dive)]
     pub reports: Vec<CommandReport>,
-    /// The reports of lost resident commands, which open no turn and wait,
+    /// The reports of lost background commands, which open no turn and wait,
     /// in arrival order, for the node's next one (`crates/agent-session/src/reports.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub next_turn_reports: Vec<CommandReport>,
-    /// The commands the session's `shell` calls left running, each with
-    /// how often it reports (`crates/agent-session/src/reports.rs`).
+    /// The commands the session's `shell` calls left running, each with how
+    /// it wakes the node (`crates/agent-session/src/reports.rs`).
+    #[serde(alias = "intervals")]
     #[garde(dive)]
-    pub intervals: Vec<CommandInterval>,
+    pub watches: Vec<CommandWatch>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// The receipts of the accepted edits.
@@ -621,17 +622,67 @@ pub struct CheckpointState {
     pub turn_speed: Option<TurnSpeed>,
 }
 
-/// A command a `shell` call left running, and how often it reports while
-/// it runs: every `interval_ms`, or, for a resident command, never; its end
-/// is reported either way (`crates/agent-session/src/reports.rs`).
+/// A command a `shell` call left running, and how it wakes the node
+/// (`crates/agent-session/src/reports.rs`).
+///
+/// A state that earlier releases saved names the interval the command reported
+/// at instead: a command with none is in the background.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CommandInterval {
+#[serde(rename_all = "camelCase", from = "StoredWatch")]
+pub struct CommandWatch {
     #[garde(skip)]
     pub command_id: CommandId,
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[garde(inner(range(min = 1)))]
-    pub interval_ms: Option<u32>,
+    #[garde(skip)]
+    pub watch: Watch,
+}
+
+/// A command's watch as a saved state holds it: the status, or the interval
+/// an earlier release saved, `null` for a command that reported only its end.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredWatch {
+    command_id: CommandId,
+    watch: Option<Watch>,
+    #[serde(default, deserialize_with = "present")]
+    interval_ms: Option<Option<u32>>,
+}
+
+/// A field that is there, whatever it holds, `null` included.
+fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Option<T>, D::Error> {
+    T::deserialize(deserializer).map(Some)
+}
+
+impl From<StoredWatch> for CommandWatch {
+    fn from(stored: StoredWatch) -> Self {
+        let watch = stored.watch.unwrap_or(match stored.interval_ms {
+            Some(None) => Watch::Background,
+            _ => Watch::Foreground,
+        });
+        Self { command_id: stored.command_id, watch }
+    }
+}
+
+/// How a command wakes the node: always when it ends, and for a command that
+/// is not in the background, once when it has printed nothing for a long
+/// time. The three are phases of one command, so one status holds them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Watch {
+    /// It runs until stopped, such as a development server: its end alone
+    /// wakes the node, and its loss opens no turn.
+    Background,
+    /// Its silence has not been reported yet.
+    Foreground,
+    /// Its silence was reported: its end alone wakes the node now.
+    Silenced,
+}
+
+impl Watch {
+    /// How a command wakes the node when its call started it `background`
+    /// or not.
+    pub fn started(background: bool) -> Self {
+        if background { Self::Background } else { Self::Foreground }
+    }
 }
 
 /// An agent message the session admitted and has not yet written into its

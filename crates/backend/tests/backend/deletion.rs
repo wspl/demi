@@ -92,7 +92,7 @@ async fn deleting_a_running_conversation_stops_its_command_and_nothing_finds_it_
     let mut page = backend.sync(&master).await;
     page.snapshot().await;
     let command = waits_for_a_signal("cmd.pid");
-    vendor.respond(shell("t1", &command, 30_000));
+    vendor.respond(shell("t1", &command));
     socket.send(&send("m1", "Wait")).await;
     let pid = Path::new(&root).join("cmd.pid");
     eventually("the command runs", || {

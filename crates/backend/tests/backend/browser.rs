@@ -458,7 +458,7 @@ async fn a_job_that_touches_no_browser_leaves_the_tab_list_revision_the_summary_
     // browser command changes nothing the plugin shows, and its end reads
     // nothing (`crates/plugin-interface/src/request.rs`).
     let mut work = Driven::open(&backend, &master, &vendor, &id, &provider, "/work").await;
-    work.turn(vec![shell("t1", "true", 30_000), say("done")])
+    work.turn(vec![shell("t1", "true"), say("done")])
         .await;
     assert_eq!(revisions(&backend, &master, &id).await, browser_at(0));
     backend.close().await;

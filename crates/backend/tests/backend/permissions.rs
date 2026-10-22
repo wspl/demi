@@ -31,7 +31,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::conversations::{FIRST, SECOND, Socket, choose, create, summary};
-use crate::subagents::{Scripts, background, hang, say, shell, tree_on, watched};
+use crate::subagents::{Scripts, background, hang, say, shell, tree_on};
 use crate::support::{Harness, Session, TestBackend, eventually};
 
 /// What the agent reads of a command that waits for the user's answer.
@@ -264,7 +264,7 @@ async fn a_command_without_the_grant_waits_and_runs_once_the_user_allows_it() {
     .await;
 
     let mut answers = vec![
-        watched("t1", "demi skills add acme/tools; echo exit=$?", 500),
+        shell("t1", "demi skills add acme/tools; echo exit=$?"),
         say("I asked the user"),
     ];
     answers.extend(notes(40));

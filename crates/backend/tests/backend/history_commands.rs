@@ -37,7 +37,7 @@ fn titled(id: &str, title: &str, script: &str) -> Answer {
         event::tool_call(
             id,
             "shell",
-            json!({ "description": title, "script": script, "intervalMs": 60_000 }),
+            json!({ "description": title, "script": script }),
         ),
         event::response(1, 1),
     ]

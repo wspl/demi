@@ -14,7 +14,7 @@ use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus, T
 use demi_provider_common::{InferenceItem, UserPart, testing::ScriptedRuntime};
 use demi_shared_types::{Block, CommandId, ToolCallStatus};
 
-use crate::support::{DeviceHost, Fixture, conversation, exec, reply, resident, tolerant, turn, within};
+use crate::support::{DeviceHost, Fixture, conversation, exec, reply, background, tolerant, turn, within};
 
 /// The command views among `frames`, in order.
 fn shell_outputs(frames: &[ServerFrame]) -> Vec<ShellStatus> {
@@ -73,16 +73,16 @@ async fn view_until(
 async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
     within(async {
         let script = tolerant(vec![
-            vec![exec("greeter", "echo hello", 30_000)],
+            vec![exec("greeter", "echo hello")],
             reply("greeted"),
-            vec![resident("reader", "read name; echo \"hello $name\"")],
+            vec![background("reader", "read name; echo \"hello $name\"")],
             reply("waiting for a name"),
-            vec![resident(
+            vec![background(
                 "long",
                 "echo long-ready; while [ ! -e go ]; do sleep 0.02; done; echo went; sleep 30",
             )],
             reply("waiting"),
-            vec![resident(
+            vec![background(
                 "sleeper",
                 "sh -c 'echo $$ > ../sleeper.pid; exec sleep 30'",
             )],
@@ -285,24 +285,25 @@ async fn settle_on(fixture: &Fixture, script: &ScriptedRuntime, count: usize) {
 
 /// The model keeps its own place in a command's output: the page seeing a
 /// running command's new output leaves all of it to the command's next
-/// report (`crates/agent-tools/src/result.rs`, `crates/agent-session/src/reports.rs`).
-// About a second: the command runs as a shell job and reports every 300 ms.
+/// report, which its silence brings (`crates/agent-tools/src/result.rs`, `crates/agent-session/src/reports.rs`).
+// About two seconds: the command runs as a shell job, its call returns at a
+// window of 300 ms, and it is reported silent after a second.
 #[tokio::test(flavor = "local")]
 async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
     within(async {
         let script = tolerant(vec![
             // The output waits for the page's write, so nothing of it is in
             // the call's result.
-            vec![exec("later", "read go; echo later; read line", 300)],
+            vec![exec("later", "read go; echo later; read line")],
             reply("started"),
         ]);
         // The call returns at its window with the command still waiting for
         // the page's write.
-        let config = ServerConfig {
-            interval_floor_ms: 100,
+        let mut config = ServerConfig {
             call_window_ms: 300,
             ..ServerConfig::default()
         };
+        config.session.silence = Duration::from_secs(1);
         let fixture = Fixture::start_with(&script, config).await;
         let mut client = fixture.opened().await;
         turn(&mut client, "message-1", "Start it.").await;
@@ -320,7 +321,7 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
         })
         .await;
 
-        // The command's next report still shows all of it.
+        // The command's next report, of its silence, still shows all of it.
         loop {
             let shown = script.requests().iter().any(|request| {
                 matches!(request.items.last(), Some(InferenceItem::UserMessage { content })
@@ -355,7 +356,7 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
 async fn a_chatty_command_fills_no_outbox_and_shows_output_beyond_its_first_32_kib() {
     within(async {
         let script = tolerant(vec![
-            vec![resident(
+            vec![background(
                 "chatty",
                 "i=0; while [ $i -lt 1000 ]; do echo $i; i=$((i+1)); done; seq 100000 120000; echo beyond; while [ ! -e done ]; do sleep 0.02; done",
             )],

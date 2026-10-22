@@ -32,7 +32,6 @@ demi-shared-gates = { path = "../shared-gates" }
 demi-provider-common = { path = "../provider-common" }
 demi-host-interface = { path = "../host-interface" }
 futures-util.workspace = true
-jiff.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -50,6 +49,7 @@ demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-agent-transcript = { path = "../agent-transcript", features = ["testing"] }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
+jiff.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 # The compaction fixture's harness (`fixtures/compaction/README.md`) talks
 # to a real model. It is an example, so every build of the one selection

@@ -41,7 +41,7 @@ fn idle() -> CheckpointState {
         agent_inputs: Vec::new(),
         reports: Vec::new(),
         next_turn_reports: Vec::new(),
-        intervals: Vec::new(),
+        watches: Vec::new(),
         model: test_model(),
         edits: Vec::new(),
         account: None,

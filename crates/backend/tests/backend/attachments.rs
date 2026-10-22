@@ -60,11 +60,11 @@ async fn download_writes_each_attachment_under_its_name_and_the_same_file_again_
     let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
     std::fs::write(format!("{root}/login.png"), &*PNG).unwrap();
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
-    work.turn(vec![shell("t1", "demi attachment upload login.png", 30_000), say("uploaded")])
+    work.turn(vec![shell("t1", "demi attachment upload login.png"), say("uploaded")])
         .await;
 
     let script = "mkdir in && demi attachment download a1 a9 --dir in; demi attachment download --json a1 --dir in";
-    let fetched = work.turn(vec![shell("t2", script, 30_000), say("fetched")]).await;
+    let fetched = work.turn(vec![shell("t2", script), say("fetched")]).await;
     let output = shown_output(&fetched.received[0]);
     assert!(output.contains("ID  PATH\na1  in/login.png\n"), "{output}");
     assert!(
@@ -110,7 +110,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     // Paths resolve against the directory the command runs in.
     let script = "cd out && demi attachment upload login.png ../notes.md missing.png ../huge.bin";
     let uploaded = work
-        .turn(vec![shell("t1", script, 30_000), say(&delivering("uploaded", &["a1", "a2", "a3"]))])
+        .turn(vec![shell("t1", script), say(&delivering("uploaded", &["a1", "a2", "a3"]))])
         .await;
     let result = &uploaded.received[0];
     assert_eq!(field(result, "exitCode"), "1", "{result}");
@@ -188,7 +188,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     std::fs::remove_file(format!("{root}/out/login.png")).unwrap();
     let again = work
         .turn(vec![
-            shell("t2", "demi attachment upload --json notes.md", 30_000),
+            shell("t2", "demi attachment upload --json notes.md"),
             say("again"),
         ])
         .await;
@@ -210,7 +210,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     std::os::unix::fs::symlink(exports.path().join("subdir"), format!("{root}/out/link")).unwrap();
     let linked = work
         .turn(vec![
-            shell("t3", "cd out && demi attachment upload link/../report.md", 30_000),
+            shell("t3", "cd out && demi attachment upload link/../report.md"),
             say(&delivering("linked", &["a4"])),
         ])
         .await;
@@ -249,7 +249,7 @@ async fn the_pages_are_sent_a_new_attachment_with_its_description_as_it_is_store
     let (mut page, _) = crate::conversations::Socket::shown(&backend, &master, CONVERSATION, 0).await;
 
     let script = "mkfifo gate && demi attachment upload shot.png > /dev/null && read -r go < gate";
-    let turn = work.turn(vec![shell("t1", script, 30_000), say("uploaded")]);
+    let turn = work.turn(vec![shell("t1", script), say("uploaded")]);
     let announced = async {
         let (node, attachments) = page.attachments_until().await;
         assert_eq!(node.as_str(), CONVERSATION);
@@ -299,7 +299,7 @@ async fn a_tag_split_across_deltas_carries_its_attachment_with_the_piece_that_co
         .chunk(events(&head))
         .then_held(held)
         .chunk(events(&tail));
-    work.start(vec![shell("t1", "demi attachment upload shot.png", 30_000), streamed]).await;
+    work.start(vec![shell("t1", "demi attachment upload shot.png"), streamed]).await;
 
     // The first piece arrives with the block's first patch, the next as text
     // appended to it.
@@ -362,7 +362,7 @@ async fn a_job_on_an_attached_host_uploads_that_hosts_file() {
         "demi host shell --host alpha 'kill -STOP {} && cd out && demi attachment upload shot.png'",
         beta.runner.pid()
     );
-    let turn = work.turn(vec![shell("t1", &script, 30_000), say(&delivering("uploaded", &["a1"]))]);
+    let turn = work.turn(vec![shell("t1", &script), say(&delivering("uploaded", &["a1"]))]);
     let stored = async {
         eventually("the far job stored a1", async || {
             metadata(&backend, &master, CONVERSATION).await.last_attachment == 1
@@ -405,7 +405,7 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
 
     for (turn, number) in [("t1", "a1"), ("t2", "a2")] {
         let uploaded = work
-            .turn(vec![shell(turn, "demi attachment upload shot.png", 30_000), say(&delivering(turn, &[number]))])
+            .turn(vec![shell(turn, "demi attachment upload shot.png"), say(&delivering(turn, &[number]))])
             .await;
         assert_eq!(
             shown_output(&uploaded.received[0]),
@@ -542,7 +542,7 @@ async fn whether_an_attachments_file_is_there_is_asked_of_the_host_it_came_from(
     std::fs::write(format!("{root}/login.png"), &*PNG).unwrap();
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
     let uploaded = work
-        .turn(vec![shell("t1", "demi attachment upload notes.md login.png", 30_000), say("uploaded")])
+        .turn(vec![shell("t1", "demi attachment upload notes.md login.png"), say("uploaded")])
         .await;
     assert_eq!(field(&uploaded.received[0], "exitCode"), "0", "{}", uploaded.received[0]);
     let check = async |number: &str| {

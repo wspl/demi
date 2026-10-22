@@ -201,7 +201,7 @@ async fn a_restored_session_holds_only_the_window_after_its_last_boundary() {
                     agent_inputs: Vec::new(),
                     reports: Vec::new(),
                     next_turn_reports: Vec::new(),
-                    intervals: Vec::new(),
+                    watches: Vec::new(),
                     model: test_model(),
                     edits: Vec::new(),
                     account: None,

@@ -35,23 +35,31 @@
 //!   written by hand: a name that does not follow the configuration makes the
 //!   model claim to be another.
 
-use demi_agent_session::{PromptLayer, SystemPrompt};
+use demi_agent_session::{PromptLayer, SILENCE_LIMIT, SystemPrompt};
 use demi_host_interface::CapabilityIndex;
 
-use crate::input::DESCRIPTION;
+use crate::{duration, input::DESCRIPTION};
 
 /// The rules of the `shell` tool, which every node's system prompt carries:
 /// what the tool has and does, in as few words as carry it, never what the
 /// model ought to do; each `demi shell` command's help says the rest.
-const TOOL_RULES: &[&str] = &[
-    "The shell tool:",
-    "- Runs a script in your working directory; a call returns when it ends or after 10 s.",
-    "- intervalMs: how often a running command reports, 15000–600000; null for a server, which reports only its end.",
-    "- Commands in one response run in parallel.",
-    "- Results and reports show new output, runningMs and idleMs (time without output).",
-    "- `demi shell status|input|output|stop <commandId>`",
-    "- A call never holds longer than 10 s, a loop or a sleep in it included: you wait by ending your turn, and a running command's report, a subagent's message or an end wakes you. The user reads only your replies.",
-];
+///
+/// The rule that names how long a command may print nothing before it wakes the
+/// model is written from the session's limit, its one owner.
+fn tool_rules() -> String {
+    let silence = duration(SILENCE_LIMIT.as_millis().try_into().unwrap_or(u64::MAX));
+    [
+        "The shell tool:".to_owned(),
+        "- Runs a script in your working directory; a call returns when it ends, or after 30 s with it still running in the background.".to_owned(),
+        format!("- A command in the background wakes you when it ends, and once after {silence} without output; it keeps running."),
+        "- background: true is for a command that runs until stopped, such as a server: its call returns once its output has been quiet for 2 s, and only its exit wakes you.".to_owned(),
+        "- Commands in one response run in parallel.".to_owned(),
+        "- Results and reports show new output, runningMs and idleMs (time without output).".to_owned(),
+        "- `demi shell status|input|output|stop <commandId>`".to_owned(),
+        "- A call never holds longer than 30 s, a loop or a sleep in it included: you wait by ending your turn, and a command's end or a subagent's message wakes you. The user reads only your replies.".to_owned(),
+    ]
+    .join("\n")
+}
 
 /// What the model identity line names of the model that serves a node,
 /// from its model selection.
@@ -86,7 +94,7 @@ pub fn system_prompt(
     }
     layers.push(PromptLayer::Text(format!(
         "{}\n- Tool description: {DESCRIPTION}",
-        TOOL_RULES.join("\n")
+        tool_rules()
     )));
     if !index.is_empty() {
         layers.push(PromptLayer::Commands(format!(

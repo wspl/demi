@@ -94,3 +94,34 @@ async fn a_side_question_is_no_subagent_and_keeps_what_it_asks() {
 async fn a_load_reads_the_window_and_the_rest_on_demand() {
     store_contract::a_load_reads_the_window_and_the_rest_on_demand(&*MemoryTreeStore::new()).await;
 }
+
+/// A state an earlier release saved lists its commands with the intervals they
+/// reported at: a command with none was in the background, and the others had
+/// not been reported silent.
+#[test]
+fn a_saved_state_that_lists_intervals_reads_as_watches() {
+    use demi_agent_store::{CommandWatch, Watch};
+
+    let stored = serde_json::json!({
+        "phase": "idle", "queue": [], "agentInputs": [], "reports": [], "edits": [],
+        "intervals": [
+            {"commandId": "1", "intervalMs": 30000},
+            {"commandId": "2", "intervalMs": null},
+        ],
+        "model": {
+            "providerId": "stub",
+            "model": {"id": "m", "name": "m", "contextWindow": 1000, "outputLimit": null, "thinking": [], "acceptedExtensions": []},
+            "thinking": null, "serviceTierId": null,
+        },
+    });
+    let state: demi_agent_store::CheckpointState = serde_json::from_value(stored).unwrap();
+    let watches: Vec<(String, Watch)> = state
+        .watches
+        .iter()
+        .map(|CommandWatch { command_id, watch }| (command_id.to_string(), *watch))
+        .collect();
+    assert_eq!(
+        watches,
+        [("1".to_owned(), Watch::Foreground), ("2".to_owned(), Watch::Background)]
+    );
+}

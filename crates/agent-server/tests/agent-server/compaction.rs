@@ -228,7 +228,7 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
         Turn::Events(vec![event::tool_call(
             "call-1",
             "shell",
-            json!({"script": "sleep 600", "description": "Build the release", "intervalMs": null}),
+            json!({"script": "make release", "description": "Build the release", "background": true}),
         )]),
         answer("building", 10),
         answer("the second summary", 10),
@@ -314,7 +314,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
                 event::tool_call(
                     "call-1",
                     "shell",
-                    json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+                    json!({"script": "serve", "description": "Start the server", "background": true}),
                 ),
                 event::response(55_000, 0),
             ]),
@@ -432,7 +432,7 @@ async fn a_childs_working_directory_is_told_again_after_a_pass() {
             Turn::Events(vec![event::tool_call(
                 "call-1",
                 "shell",
-                json!({"script": "serve", "description": "Serve the docs", "intervalMs": null}),
+                json!({"script": "serve", "description": "Serve the docs", "background": true}),
             )]),
             answer("serving", 10),
             answer("Survey the code: the summary", 10),

@@ -517,7 +517,7 @@ pub async fn fork_seed(
         agent_inputs: Vec::new(),
         reports: Vec::new(),
         next_turn_reports: Vec::new(),
-        intervals: Vec::new(),
+        watches: Vec::new(),
         edits: Vec::new(),
         // The Fork has run no turn of its own: a kept speed would be of a
         // turn after its end, or of one its history does not hold.

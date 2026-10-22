@@ -16,7 +16,7 @@ use std::{
 };
 
 use demi_agent_store::{
-    CheckpointState, CheckpointUpdate, CommandInterval, EditReceipt, PendingAgentInput,
+    CheckpointState, CheckpointUpdate, CommandWatch, EditReceipt, PendingAgentInput, Watch,
     media::{self, HeldMedia, ModelView},
 };
 use demi_agent_transcript::{
@@ -269,7 +269,7 @@ pub(crate) fn interrupted_text(end: &CallEnd<'_>, command: Option<&CommandId>) -
     match end {
         CallEnd::Stopped | CallEnd::Held(_) => format!("{reason}; command {command} was stopped."),
         CallEnd::Shutdown => format!(
-            "{reason} while this call watched command {command}, which keeps running and reports to you as before."
+            "{reason} while this call watched command {command}, which keeps running and wakes you when it ends."
         ),
         CallEnd::Crashed => format!("{reason}; command {command} keeps running if its Host kept it."),
         CallEnd::Failed(_) => unreachable!("answered above"),
@@ -345,7 +345,7 @@ struct Published {
     agent_inputs: Vec<BlockId>,
     reports: Vec<CommandReport>,
     next_turn_reports: Vec<CommandReport>,
-    intervals: Vec<CommandInterval>,
+    watches: Vec<CommandWatch>,
     edits: usize,
     waiting_since: Option<Timestamp>,
     output: Option<StreamedOutput>,
@@ -515,7 +515,7 @@ impl SessionCore {
                 agent_inputs: Vec::new(),
                 reports: Vec::new(),
                 next_turn_reports: Vec::new(),
-                intervals: Vec::new(),
+                watches: Vec::new(),
                 edits: 0,
                 waiting_since: None,
                 output: None,
@@ -526,7 +526,7 @@ impl SessionCore {
         core.published.agent_inputs = core.agent_input_ids();
         core.published.reports = core.inputs.reports(Opens::Turn);
         core.published.next_turn_reports = core.inputs.reports(Opens::Nothing);
-        core.published.intervals = core.watched.intervals();
+        core.published.watches = core.watched.watches();
         core.published.edits = core.edits.len();
         core
     }
@@ -1160,7 +1160,7 @@ impl SessionCore {
                 ToolView::Shell(view)
             });
             if let (CallEnd::Shutdown, Some(started)) = (end, started) {
-                self.watched.add(started.command, started.interval_ms);
+                self.watched.add(started.command, Watch::started(started.background));
             }
             self.transcript.complete_tool_call(
                 &call.tool_use_id,
@@ -1525,11 +1525,11 @@ impl SessionCore {
 
     // Command reports.
 
-    /// Watches `command`, which a call left running, so that it reports
-    /// every `interval_ms`, or only its end when none. A Stop of the action
-    /// leaves it running.
-    pub(super) fn watch_command(&mut self, command: CommandId, interval_ms: Option<u32>) {
-        self.watched.add(command, interval_ms);
+    /// Watches `command`, which a call left running, so that its end wakes
+    /// the node, and its silence once unless it runs in the `background`. A
+    /// Stop of the action leaves it running.
+    pub(super) fn watch_command(&mut self, command: CommandId, background: bool) {
+        self.watched.add(command, Watch::started(background));
     }
 
     /// Admits a command's report for the next boundary.
@@ -2428,7 +2428,7 @@ impl SessionCore {
             agent_inputs: self.inputs.agent_inputs(),
             reports: self.inputs.reports(Opens::Turn),
             next_turn_reports: self.inputs.reports(Opens::Nothing),
-            intervals: self.watched.intervals(),
+            watches: self.watched.watches(),
             model: self.model.clone(),
             edits: self.edits.clone(),
             account: self.account.clone(),
@@ -2551,9 +2551,9 @@ impl SessionCore {
             self.published.next_turn_reports = next_turn_reports;
             self.mark_state_changed();
         }
-        let intervals = self.watched.intervals();
-        if intervals != self.published.intervals {
-            self.published.intervals = intervals;
+        let watches = self.watched.watches();
+        if watches != self.published.watches {
+            self.published.watches = watches;
             self.mark_state_changed();
         }
         if self.edits.len() != self.published.edits {

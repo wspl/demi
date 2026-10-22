@@ -375,7 +375,7 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
     let mut driven = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/laptop").await;
     let moved = "demi host shell --host ci 'mkdir -p sub && cd sub' && demi host shell --host ci pwd";
     let ran = driven
-        .turn(vec![shell("t1", moved, 20_000), say("moved")])
+        .turn(vec![shell("t1", moved), say("moved")])
         .await;
     // The shell reports its directory with links resolved.
     let home = std::fs::canonicalize(ci.runner.home_dir()).unwrap();

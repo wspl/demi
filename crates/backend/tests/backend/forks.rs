@@ -357,7 +357,7 @@ async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_
     vendor.respond(tool_use(
         "toolu_1",
         "shell",
-        &json!({ "description": "Write the notes file", "script": script, "intervalMs": 60_000 }),
+        &json!({ "description": "Write the notes file", "script": script }),
     ));
     vendor.respond(answer(&["Written."], 1, 1));
     source.chat("m1", "Write the notes").await;
@@ -427,7 +427,7 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
         tool_use(
             id,
             "shell",
-            &json!({ "description": id, "script": script, "intervalMs": 60_000 }),
+            &json!({ "description": id, "script": script }),
         )
     };
     vendor.respond(shell("toolu_before", "seq 1 3"));
@@ -494,7 +494,7 @@ async fn a_fork_keeps_the_attachments_of_its_source_and_numbers_on_from_them() {
         tool_use(
             id,
             "shell",
-            &json!({ "description": id, "script": script, "intervalMs": 60_000 }),
+            &json!({ "description": id, "script": script }),
         )
     };
     vendor.respond(shell("toolu_upload", "demi attachment upload shot.png"));

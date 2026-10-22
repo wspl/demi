@@ -15,7 +15,7 @@ test('the transcript hides what the reader never sees, usage, resumes, the conte
     { type: 'steer', id: 'steer-1', turnId: 'wakeup-1', createdAt, model, content: [{ type: 'text', text: 'also' }] },
     tool('call-2', 'shell'),
     // Progress alone: the answer it wakes says what the model learned.
-    { type: 'wakeup', id: 'wakeup-2', turnId: 'wakeup-2', createdAt, model, placement: 'new_turn', reports: [{ commandId: '18', title: 'Build', event: { kind: 'running', runningMs: 30_000, idleMs: 0, intervalMs: 30_000 }, output: '' }] },
+    { type: 'wakeup', id: 'wakeup-2', turnId: 'wakeup-2', createdAt, model, placement: 'new_turn', reports: [{ commandId: '18', title: 'Build', event: { kind: 'running', runningMs: 30_000, idleMs: 0 }, output: '' }] },
   ]
 
   expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(

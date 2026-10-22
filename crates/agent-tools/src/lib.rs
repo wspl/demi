@@ -29,19 +29,27 @@
 //!
 //! # Watching a command
 //!
-//! `intervalMs` is required, with no default, so the model decides how a
-//! command is watched when it starts it.
+//! A call waits for its command, as Claude Code's Bash tool does, and the
+//! command wakes the node only when it ends
+//! (`docs/decisions/0052-a-call-waits-for-its-command.md`).
 //!
 //! - A call returns when its command ends, or after [`CALL_WINDOW_MS`] with
-//!   the command still running, whatever its interval, and the tool's text
-//!   says so. The interval says only how often the running command reports,
-//!   so a long interval holds neither the turn nor the response's other
-//!   calls, and a user's steer waits at most the window to be read. A human
-//!   steer ends no window, since steering rather than sending now means the
-//!   user chose to wait.
-//! - A value outside the bounds is taken as the nearest bound with a line that
-//!   says so, because the command goes on either way and a refusal only cost
-//!   the model a call each time.
+//!   the command still running, which then goes on in the background. The
+//!   tool's text says so. A response's other calls and a user's steer wait at
+//!   most the window to be read. A human steer ends no window, since steering
+//!   rather than sending now means the user chose to wait.
+//! - A command in the background wakes the node when it ends, and once when it
+//!   has printed nothing for the session's silence limit
+//!   (`crates/agent-session/src/reports.rs`); nothing else wakes the node about
+//!   it. So no call chooses how it is told, and a hung command still reaches
+//!   the node.
+//! - `background: true` is for a command that runs until stopped, such as a
+//!   development server: its call returns once its output has been quiet for
+//!   [`QUIET`], or after [`BACKGROUND_WINDOW`], and only its exit wakes the node.
+//! - A script that starts with a `sleep` of the window or more is refused unless
+//!   it runs in the background, where it is a timer; the refusal comes with
+//!   the way to wait: ending the turn. The refusal costs a call where the sleep
+//!   would hold one for the whole window each time.
 //!
 //! # Calls and steps
 //!
@@ -81,7 +89,7 @@ use demi_agent_session::{
     CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
     ToolOutcome, WindowEnd,
 };
-use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand};
+use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand, Watch};
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError, TakenUp,
@@ -95,8 +103,7 @@ use tokio_util::sync::CancellationToken;
 pub use environments::{Environments, Stopper};
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
-pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};
-use input::{ShellInput, parse};
+use input::{ShellInput, leading_sleep, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
 pub use result::{
@@ -183,8 +190,11 @@ impl Directory for Option<ChildDirectory> {
 /// The tool's name.
 const SHELL: &str = "shell";
 
+/// What a call that starts with a long `sleep` is refused with.
+const SLEEP_REFUSED: &str = "Refused: a call returns after 30 s, so a script that starts with a long sleep only holds it. You wait by ending your turn, and a command's end wakes you.";
+
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. The call returns when the command ends, or after 10 seconds with the command still running, whatever its intervalMs; a command still running keeps running: the result carries its commandId, and the command reports to you as intervalMs says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
+const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. The call returns when the command ends, or after 30 seconds with the command still running in the background: the result carries its commandId, and its end wakes you. With background: true, for a command that runs until stopped, the call returns once its output has been quiet for 2 seconds, and only its exit wakes you. Completed short output is returned directly. The shell calls of one response run at the same time.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -204,14 +214,15 @@ pub fn runs_together(tool: &str) -> bool {
     tool == SHELL
 }
 
-/// How long a resident command's call waits for its output to be quiet.
+/// How long a background command's call waits for its output to be quiet.
 const QUIET: Duration = Duration::from_secs(2);
-/// The longest a resident command's call watches it.
-const RESIDENT_WINDOW: Duration = Duration::from_secs(30);
-/// The longest a call of a command with an interval watches it, in
-/// milliseconds, whatever the interval: ten seconds, which the tool's text
-/// states.
-pub const CALL_WINDOW_MS: u32 = 10_000;
+/// The longest a background command's call watches it.
+const BACKGROUND_WINDOW: Duration = Duration::from_secs(30);
+/// The longest a call watches a command that is not in the background, in
+/// milliseconds: thirty seconds, which the tool's text states.
+pub const CALL_WINDOW_MS: u32 = 30_000;
+/// A script that starts with a `sleep` this long is refused.
+const LONGEST_SLEEP: Duration = Duration::from_secs(30);
 
 /// A node's access to its shell environments: the resolver that names the
 /// current Host, the product's factory, the environments made so far, and
@@ -235,10 +246,7 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub feed: &'a Rc<dyn PageFeed>,
     /// The conversation's numbers, which its environments are made with.
     pub numbers: &'a Rc<dyn Numbers>,
-    /// The least interval a command reports at, in milliseconds:
-    /// [`INTERVAL_FLOOR_MS`] in the product.
-    pub interval_floor_ms: u32,
-    /// The longest a call of a command with an interval watches it, in
+    /// The longest a call watches a command that is not in the background, in
     /// milliseconds: [`CALL_WINDOW_MS`] in the product.
     pub call_window_ms: u32,
 }
@@ -340,22 +348,17 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         }
     }
 
-    /// Starts a `shell` call's script and watches it as its interval says;
-    /// a command that still runs then reports
-    /// to the node from now on.
+    /// Starts a `shell` call's script and watches it for its window; a command
+    /// that still runs then wakes the node when it ends, from now on.
     async fn shell(&self, call: ToolInvocation, input: ShellInput) -> Result<ToolOutcome, CallError> {
         // A call after one that the user's send now returned never
         // starts.
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
-        let (interval_ms, note) = match input.interval_ms.0 {
-            Some(asked) => {
-                let (taken, note) = taken_interval(asked, self.interval_floor_ms, "intervalMs");
-                (Some(taken), note)
-            }
-            None => (None, None),
-        };
+        if !input.background && leading_sleep(&input.script).is_some_and(|sleep| sleep >= LONGEST_SLEEP) {
+            return Ok(ToolOutcome::error(SLEEP_REFUSED.to_owned()));
+        }
         let cwd = self.cwd().await?;
         let (slot, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         if let Some(suppressed) = slot.repeated(&input.script) {
@@ -370,7 +373,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 turn: Some(call.turn),
             },
             title: input.description.0.clone(),
-            interval_ms,
+            background: input.background,
             viewable: Viewable {
                 model: call.model.model.id.clone(),
                 media_types: call.request_limits.tool_results.viewable(&call.model.model),
@@ -397,9 +400,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         };
         call.command.started(StartedCommand {
             command: command.clone(),
-            interval_ms,
+            background: input.background,
         });
-        let window_ms = interval_ms.map(|_| self.call_window_ms);
+        let window_ms = (!input.background).then_some(self.call_window_ms);
         let (status, ended_by) = watch(
             environment.as_ref(),
             &command,
@@ -409,9 +412,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         .await?;
         stopping.disarm();
         let running = matches!(status.state, CommandState::Running { .. });
-        let moved = match (ended_by, interval_ms) {
+        let moved = match (ended_by, running && !input.background) {
             (Some(WindowEnd::SentNow), _) => Some(Moved::SentNow),
-            (None, Some(interval_ms)) if running => Some(Moved::TimePassed { interval_ms }),
+            (None, true) => Some(Moved::TimePassed),
             _ => None,
         };
         let mut outcome = result::shell_outcome(
@@ -419,20 +422,16 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             &call.model.model,
             call.request_limits,
             Look {
-                note: note.as_deref(),
                 moved,
-                interval_ms: Some(interval_ms),
+                watch: Some(Watch::started(input.background)),
                 unreachable: None,
             },
         )
         .await;
         if running {
-            // Its reports count from its start, which its call watched
-            // for its running time (`crates/agent-session/src/reports.rs`).
             outcome.effect = Some(ToolEffect::Background {
                 command,
-                interval_ms,
-                ran: Duration::from_millis(status.running_ms),
+                background: input.background,
             });
         } else {
             self.release(environment.as_ref(), &command).await;
@@ -465,7 +464,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             },
             title: running.title.clone(),
             script: running.script.clone(),
-            interval_ms: running.interval_ms,
+            background: running.background,
             running: ran,
             seen: running.place,
             unsent: running.unsent.clone(),
@@ -521,7 +520,7 @@ impl Drop for CallStop {
 /// Watches `command` until the first of these happens:
 ///
 /// - it ends;
-/// - `window_ms` passes, or for a resident command, its output has been quiet
+/// - `window_ms` passes, or for a background command, its output has been quiet
 ///   for 2 seconds or 30 seconds have passed;
 /// - `until` resolves.
 ///
@@ -542,7 +541,7 @@ async fn watch<T>(
             None => {
                 tokio::select! {
                     quiet = quiet(environment, command) => quiet,
-                    () = tokio::time::sleep(RESIDENT_WINDOW) => Ok(()),
+                    () = tokio::time::sleep(BACKGROUND_WINDOW) => Ok(()),
                 }
             }
         }

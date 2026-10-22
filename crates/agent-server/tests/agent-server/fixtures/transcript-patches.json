@@ -231,7 +231,7 @@
               },
               "toolUseId": "call-1",
               "toolName": "shell",
-              "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
+              "input": "{\"script\":\"ls\"}",
               "status": "executing",
               "output": [],
               "view": null,
@@ -305,12 +305,12 @@
               },
               "toolUseId": "call-1",
               "toolName": "shell",
-              "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
+              "input": "{\"script\":\"ls\"}",
               "status": "error",
               "output": [
                 {
                   "type": "text",
-                  "text": "shell input is invalid:\nmissing field `intervalMs`"
+                  "text": "shell input is invalid:\nmissing field `description`"
                 }
               ],
               "view": null,
@@ -512,12 +512,12 @@
         },
         "toolUseId": "call-1",
         "toolName": "shell",
-        "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
+        "input": "{\"script\":\"ls\"}",
         "status": "error",
         "output": [
           {
             "type": "text",
-            "text": "shell input is invalid:\nmissing field `intervalMs`"
+            "text": "shell input is invalid:\nmissing field `description`"
           }
         ],
         "view": null,

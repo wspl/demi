@@ -1124,7 +1124,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
             Turn::Events(vec![event::tool_call(
                 "call-1",
                 "shell",
-                json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+                json!({"script": "serve", "description": "Start the server", "background": true}),
             )]),
             said("serving"),
             said("still serving"),
@@ -1185,7 +1185,6 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     // Arguments that do not go together or do not read are a usage error,
     // exit 2: the error, then the leaf's usage, as clap tells one.
     let refusals = [
-        ("status", json!({ "id": ["1"], "interval": "nonsense" }), "--interval nonsense: "),
         ("output", json!({ "id": "1", "stdout": true, "stderr": true }), "--stdout and --stderr do not go together"),
         ("output", json!({ "id": "1", "lines": "2-1" }), "--lines 2-1: "),
         ("output", json!({ "id": "1", "lines": "1-1", "tail": 1 }), "--lines and --tail do not go together"),
@@ -1253,7 +1252,7 @@ async fn a_status_whose_stdout_broke_leaves_the_end_report() {
             Turn::Events(vec![event::tool_call(
                 "call-1",
                 "shell",
-                json!({"script": "test", "description": "Run the tests", "intervalMs": null}),
+                json!({"script": "test", "description": "Run the tests", "background": true}),
             )]),
             said("waiting"),
             said("tests passed"),
@@ -1307,7 +1306,7 @@ async fn a_report_by_message_is_not_replaced_by_the_answer_after_a_wake() {
             Turn::Events(vec![event::tool_call(
                 "call-1",
                 "shell",
-                json!({"script": "test", "description": "Run the tests", "intervalMs": null}),
+                json!({"script": "test", "description": "Run the tests", "background": true}),
             )]),
             said("waiting"),
             said("The test passed."),
@@ -1392,7 +1391,7 @@ async fn a_status_that_shows_the_end_leaves_no_end_report() {
             Turn::Events(vec![event::tool_call(
                 "call-1",
                 "shell",
-                json!({"script": "test", "description": "Run the tests", "intervalMs": null}),
+                json!({"script": "test", "description": "Run the tests", "background": true}),
             )]),
             said("waiting"),
             // What a duplicate wake would answer.
@@ -1463,7 +1462,7 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
                 turn: None,
                 title: "Read the pipe".into(),
                 script: "cat pipe".into(),
-                interval_ms: None,
+                background: true,
                 started: Timestamp::UNIX_EPOCH,
                 place: Seen::default(),
                 unsent: None,
@@ -1525,16 +1524,16 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
 // A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
-    use demi_agent_store::{CommandInterval, StoredCommand, StoredOutput};
+    use demi_agent_store::{CommandWatch, StoredCommand, StoredOutput, Watch};
     use demi_host_interface::WholeOutput;
     use demi_shared_types::{CommandEnd, WakeupPlacement};
 
     let store = MemoryTreeStore::new();
     let mut interrupted = checkpoint(Vec::new(), vec![user("u1", "build and serve")]);
     interrupted.state.phase = SessionPhase::Running;
-    interrupted.state.intervals = vec![CommandInterval {
+    interrupted.state.watches = vec![CommandWatch {
         command_id: CommandId::try_from("7").unwrap(),
-        interval_ms: None,
+        watch: Watch::Background,
     }];
     store
         .create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), interrupted)
@@ -1559,7 +1558,7 @@ async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
             turn: None,
             title: "Serve".into(),
             script: "true".into(),
-            interval_ms: None,
+            background: true,
             started: Timestamp::UNIX_EPOCH,
             place: Seen::default(),
             unsent: None,
@@ -1622,7 +1621,7 @@ pub(crate) fn checkpoint_on(
             agent_inputs: Vec::new(),
             reports: Vec::new(),
             next_turn_reports: Vec::new(),
-            intervals: Vec::new(),
+            watches: Vec::new(),
             model,
             edits: Vec::new(),
             account: None,
@@ -2690,7 +2689,7 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
         Turn::Events(vec![event::tool_call(
             id,
             "shell",
-            json!({"script": "serve", "description": "Serve", "intervalMs": null}),
+            json!({"script": "serve", "description": "Serve", "background": true}),
         )])
     };
     model.child(
@@ -2776,7 +2775,7 @@ async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
     let edit = Turn::Events(vec![event::tool_call(
         "c1",
         "shell",
-        json!({"script": "edit", "description": "Edit", "intervalMs": 600000}),
+        json!({"script": "edit", "description": "Edit"}),
     )]);
     model.child("task edit", [edit, said("edited")]);
     let providers = Rc::new(ScriptedProviders::default());

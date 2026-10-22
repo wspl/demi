@@ -1,7 +1,7 @@
 //! Input that waits for a boundary (`crates/agent-session/src/input.rs`):
 //! human steers, also sent now, agent messages and command reports.
 
-use demi_agent_store::CommandInterval;
+use demi_agent_store::{CommandWatch, Watch};
 use demi_agent_transcript::testing::agent_message_envelope;
 use demi_provider_common::testing::TokioClock;
 use demi_agent_session::WindowEnd;
@@ -577,7 +577,7 @@ async fn retry_after_a_failed_continuation_reruns_it_from_its_message_and_keeps_
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_stop_writes_the_waiting_message_before_its_marker_and_holds_nothing_afterwards() {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("7", None, "Build")),
+        Turn::Events(background_call("7", true, "Build")),
         Turn::Events(vec![event::text("building"), event::response(1, 1)]),
         Turn::pending(),
         Turn::Events(vec![event::text("read it"), event::response(1, 1)]),
@@ -911,14 +911,16 @@ fn answer(text: &str) -> Turn {
     Turn::Events(vec![event::text(text), event::response(1, 1)])
 }
 
-// One session, five scripted requests and seventeen minutes of paused
-// time: a few milliseconds.
+// A command that is not in the background wakes the node when it ends, and once
+// when it has printed nothing for the silence limit; nothing wakes it between.
+//
+// One session, four scripted requests and over an hour of paused time: a few
+// milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_interval_changes() {
+async fn a_command_left_running_wakes_the_node_once_when_silent_and_when_it_ends() {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("17", Some(300_000), "Run the suite")),
+        Turn::Events(background_call("17", false, "Run the suite")),
         answer("the suite runs"),
-        answer("still waiting"),
         answer("still waiting"),
         answer("the suite is done"),
     ]);
@@ -932,18 +934,17 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
         .unwrap();
 
     // The turn ended with its answer; the command runs on, and the
-    // checkpoint keeps how often it reports.
+    // checkpoint keeps how it wakes the node.
     assert_eq!(provider.requests().len(), 2);
-    let command = CommandId::try_from("17").unwrap();
     assert_eq!(
-        store.checkpoint(&root()).unwrap().state.intervals,
-        [CommandInterval {
-            command_id: command.clone(),
-            interval_ms: Some(300_000),
+        store.checkpoint(&root()).unwrap().state.watches,
+        [CommandWatch {
+            command_id: CommandId::try_from("17").unwrap(),
+            watch: Watch::Foreground,
         }]
     );
     assert!(session.status().commands);
-    tokio::time::sleep(Duration::from_secs(299)).await;
+    tokio::time::sleep(Duration::from_secs(599)).await;
     assert_eq!(provider.requests().len(), 2);
     tokio::time::sleep(Duration::from_secs(2)).await;
     until(|| provider.requests().len() == 3).await;
@@ -951,7 +952,7 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
     assert_eq!(
         provider.requests()[2].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text(&running_report("17", "Run the suite", 1, 300_000)),
+            content: sent_text(&running_report("17", "Run the suite", 1)),
         })
     );
     let blocks = session.transcript().blocks;
@@ -959,40 +960,81 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
         &blocks[blocks.len() - 3],
         Block::Wakeup(wakeup) if wakeup.placement == WakeupPlacement::NewTurn
     ));
-    tokio::time::sleep(Duration::from_secs(300)).await;
+
+    // Its silence is told once: only its end wakes the node now.
+    session.flush().await.unwrap();
+    assert_eq!(
+        store.checkpoint(&root()).unwrap().state.watches,
+        [CommandWatch {
+            command_id: CommandId::try_from("17").unwrap(),
+            watch: Watch::Silenced,
+        }]
+    );
+    tokio::time::sleep(Duration::from_secs(3600)).await;
+    assert_eq!(provider.requests().len(), 3);
+    commands.end("17");
     until(|| provider.requests().len() == 4).await;
     session.settled().await;
-
-    // A resident command reports only its end.
-    assert!(session.set_interval(&command, None));
-    tokio::time::sleep(Duration::from_secs(600)).await;
-    assert_eq!(provider.requests().len(), 4);
-    commands.end("17");
-    until(|| provider.requests().len() == 5).await;
-    session.settled().await;
     assert_eq!(
-        provider.requests()[4].items.last(),
+        provider.requests()[3].items.last(),
         Some(&InferenceItem::UserMessage {
             content: sent_text(&ended_report("17", "Run the suite")),
         })
     );
     assert!(!session.status().commands);
     session.flush().await.unwrap();
-    assert!(store.checkpoint(&root()).unwrap().state.intervals.is_empty());
-    assert!(!session.set_interval(&command, Some(60_000)));
+    assert!(store.checkpoint(&root()).unwrap().state.watches.is_empty());
 }
 
-// A command that waits for the user's answer reports nothing, however long it
-// waits, so nothing wakes the agent. Once it goes on, its interval counts from
-// then, and its end reports as any command's does. Before, it reported every
-// interval while it waited.
+// A command in the background is never reported silent: only its end wakes the
+// node, however long it prints nothing.
+//
+// One session, three scripted requests and two hours of paused time: a few
+// milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_command_in_the_background_wakes_the_node_only_when_it_ends() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(background_call("17", true, "Serve the site")),
+        answer("it serves"),
+        answer("it stopped"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (session, commands) = reporting_session(&provider, &store).await;
+    session
+        .send(text("serve the site"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(
+        store.checkpoint(&root()).unwrap().state.watches,
+        [CommandWatch {
+            command_id: CommandId::try_from("17").unwrap(),
+            watch: Watch::Background,
+        }]
+    );
+    tokio::time::sleep(Duration::from_secs(7200)).await;
+    assert_eq!(provider.requests().len(), 2);
+    commands.end("17");
+    until(|| provider.requests().len() == 3).await;
+    session.settled().await;
+    assert_eq!(
+        provider.requests()[2].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text(&ended_report("17", "Serve the site")),
+        })
+    );
+}
+
+// A command that waits for the user's answer is not silent, however long it
+// waits, so nothing wakes the agent. Once it goes on, its silence counts from
+// then, and its end reports as any command's does.
 //
 // One session, four scripted requests and twenty minutes of paused time: a few
 // milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_command_waiting_for_the_user_reports_nothing_until_an_interval_after_it_goes_on() {
+async fn a_command_waiting_for_the_user_is_silent_only_a_limit_after_it_goes_on() {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("17", Some(300_000), "Install")),
+        Turn::Events(background_call("17", false, "Install")),
         answer("the user is asked"),
         answer("it installs"),
         answer("installed"),
@@ -1007,20 +1049,20 @@ async fn a_command_waiting_for_the_user_reports_nothing_until_an_interval_after_
     assert_eq!(provider.requests().len(), 2);
 
     commands.await_user("17", true);
-    tokio::time::sleep(Duration::from_secs(900)).await;
+    tokio::time::sleep(Duration::from_secs(1800)).await;
     assert_eq!(provider.requests().len(), 2, "a waiting command reported");
 
-    // The user answered: the first report comes a whole interval later.
+    // The user answered: the silence is reported a whole limit later.
     commands.await_user("17", false);
-    tokio::time::sleep(Duration::from_secs(299)).await;
-    assert_eq!(provider.requests().len(), 2, "the interval counted the wait");
+    tokio::time::sleep(Duration::from_secs(599)).await;
+    assert_eq!(provider.requests().len(), 2, "the silence counted the wait");
     tokio::time::sleep(Duration::from_secs(2)).await;
     until(|| provider.requests().len() == 3).await;
     session.settled().await;
     assert_eq!(
         provider.requests()[2].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text(&running_report("17", "Install", 1, 300_000)),
+            content: sent_text(&running_report("17", "Install", 1)),
         })
     );
 
@@ -1041,8 +1083,8 @@ async fn reports_that_arrive_during_a_turn_join_it_as_one_steer() {
     let provider = ScriptedRuntime::new([
         Turn::Events(
             [
-                background_call("17", None, "Build").remove(0),
-                background_call("18", None, "Lint").remove(0),
+                background_call("17", true, "Build").remove(0),
+                background_call("18", true, "Lint").remove(0),
                 event::response(1, 1),
             ]
             .to_vec(),
@@ -1091,8 +1133,8 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
     let provider = ScriptedRuntime::new([
         Turn::Events(
             [
-                background_call("17", None, "Build").remove(0),
-                background_call("18", None, "Serve").remove(0),
+                background_call("17", true, "Build").remove(0),
+                background_call("18", true, "Serve").remove(0),
                 event::response(1, 1),
             ]
             .to_vec(),
@@ -1111,10 +1153,10 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
     let state = store.checkpoint(&root()).unwrap().state;
     assert_eq!(state.reports.iter().map(report_text).collect::<Vec<_>>(), [ended_report("17", "Build")]);
     assert_eq!(
-        state.intervals,
-        [CommandInterval {
+        state.watches,
+        [CommandWatch {
             command_id: CommandId::try_from("18").unwrap(),
-            interval_ms: None,
+            watch: Watch::Background,
         }]
     );
 
@@ -1149,7 +1191,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
 async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_messages_for_the_user()
 {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("17", None, "Build")),
+        Turn::Events(background_call("17", true, "Build")),
         answer("building"),
         Turn::pending(),
     ]);
@@ -1227,7 +1269,7 @@ async fn stopped_while_a_call_watches(
             event::tool_call(
                 "work-17",
                 "work",
-                json!({ "commandId": "17", "intervalMs": null, "description": "Serve" }),
+                json!({ "commandId": "17", "background": true, "description": "Serve" }),
             ),
             event::tool_call("watch-18", "watch", json!({ "commandId": "18" })),
             event::response(1, 1),
@@ -1323,7 +1365,7 @@ async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_repor
 async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_not() {
     let failing = || {
         ScriptedRuntime::new([
-            Turn::Events(background_call("17", None, "Build")),
+            Turn::Events(background_call("17", true, "Build")),
             Turn::Events(vec![event::error(
                 "You've hit your session limit",
                 Some(ErrorCode::UsageLimit),
@@ -1407,7 +1449,7 @@ async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_n
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_resident_commands_loss_opens_no_turn_and_reaches_the_next_turns_first_request() {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("17", None, "Serve")),
+        Turn::Events(background_call("17", true, "Serve")),
         answer("serving"),
     ]);
     let store = MemoryTreeStore::new();
@@ -1455,13 +1497,13 @@ async fn a_resident_commands_loss_opens_no_turn_and_reaches_the_next_turns_first
     assert!(store.checkpoint(&root()).unwrap().state.next_turn_reports.is_empty());
 }
 
-// The loss of a command started with an interval wakes its node, which may
+// The loss of a command that is not in the background wakes its node, which may
 // be waiting for it (`crates/agent-session/src/reports.rs`). One session and three
 // scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_loss_of_a_command_with_an_interval_opens_a_turn() {
+async fn a_loss_of_a_command_that_is_not_in_the_background_opens_a_turn() {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("17", Some(300_000), "Run the suite")),
+        Turn::Events(background_call("17", false, "Run the suite")),
         answer("the suite runs"),
         answer("it was lost"),
     ]);
@@ -1484,14 +1526,14 @@ async fn a_loss_of_a_command_with_an_interval_opens_a_turn() {
     );
 }
 
-// A call that watched a command with an interval when the process died: the
-// restored session watches the command at the interval its record kept, so its
+// A call that watched a command that was not in the background when the process
+// died: the restored session watches the command as its record says, so its
 // loss opens a turn as any loss of such a command does
 // (`crates/agent-session/src/reports.rs`).
 //
 // One session restored once and two scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_loss_opens_a_turn() {
+async fn a_command_whose_call_a_crash_interrupted_keeps_how_it_wakes_the_node_and_its_loss_opens_a_turn() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![
         event::tool_call("call-1", "suite", json!({})),
         event::response(1, 1),
@@ -1509,8 +1551,8 @@ async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_los
     let runtime = test_runtime(Vec::new());
     let commands = runtime.commands.clone();
     commands.start("17", "Run the suite");
-    // The conversation recorded the command the call started, and its
-    // interval.
+    // The conversation recorded the command the call started, and that it
+    // was not in the background.
     let running = [RunningCommand {
         command: CommandId::try_from("17").unwrap(),
         job: "job-17".into(),
@@ -1518,7 +1560,7 @@ async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_los
         turn: None,
         title: "Run the suite".into(),
         script: "cargo test".into(),
-        interval_ms: Some(300_000),
+        background: false,
         started: Timestamp::UNIX_EPOCH,
         place: Default::default(),
         unsent: None,
@@ -1538,7 +1580,7 @@ async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_los
         &running,
     )
     .await.unwrap();
-    assert_eq!(restored.interval_of(&running[0].command), Some(Some(300_000)));
+    assert_eq!(restored.watch_of(&running[0].command), Some(Watch::Foreground));
     // The interrupted turn waits for the user, who resumes it.
     restored.resume(None).unwrap().await.unwrap();
 

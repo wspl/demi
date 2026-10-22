@@ -105,8 +105,6 @@ pub struct Tree<H: HostResolver> {
     admission: ActivityGate,
     /// The revision of the toolset the tree opened with.
     toolset: Rc<str>,
-    /// The least interval its commands report at, in milliseconds.
-    interval_floor_ms: u32,
     store: Rc<dyn AgentTreeStore>,
     clock: Arc<dyn Clock>,
     ids: Rc<dyn IdSource>,
@@ -467,7 +465,6 @@ impl<H: HostResolver> Tree<H> {
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             config: deps.config.session,
-            interval_floor_ms: deps.config.interval_floor_ms,
             call_window_ms: deps.config.call_window_ms,
             reply_files: deps.reply_files.clone(),
         })
@@ -558,7 +555,6 @@ impl<H: HostResolver> Tree<H> {
                 lifecycle: TaskTracker::new(),
                 admission,
                 toolset: toolset.revision,
-                interval_floor_ms: deps.config.interval_floor_ms,
                 store,
                 clock: deps.clock.clone(),
                 ids: deps.ids.clone(),
@@ -772,12 +768,6 @@ impl<H: HostResolver> Tree<H> {
             Ok(None) => Ok(CommandPlace::Unknown),
             Err(error) => Err(format!("command {command} could not be found: {error}")),
         }
-    }
-
-    /// The least interval its commands report at, in milliseconds
-    /// (`crates/agent-tools/src/lib.rs`).
-    pub(crate) fn interval_floor_ms(&self) -> u32 {
-        self.interval_floor_ms
     }
 
     /// The conversation's store.

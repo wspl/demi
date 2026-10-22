@@ -373,7 +373,6 @@ impl<H: HostResolver> Node<H> {
             commands: &runtime.commands,
             feed: &feed,
             numbers: &runtime.numbers,
-            interval_floor_ms: runtime.interval_floor_ms,
             call_window_ms: runtime.call_window_ms,
         };
         // One left recorded running is tried again at the next restore.
@@ -506,10 +505,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     numbers: Rc<dyn Numbers>,
     /// The node's agent number.
     agent: u64,
-    /// The least interval its commands report at, in milliseconds.
-    interval_floor_ms: u32,
-    /// The longest a call of a command with an interval watches it, in
-    /// milliseconds.
+    /// The longest a call watches a command that is not in the background,
+    /// in milliseconds.
     call_window_ms: u32,
     /// Where the time a command taken up again has run comes from.
     clock: Arc<dyn Clock>,
@@ -641,7 +638,6 @@ impl<H: HostResolver> NodeRuntime<H> {
             commands: &self.commands,
             feed: &self.feed,
             numbers: &self.numbers,
-            interval_floor_ms: self.interval_floor_ms,
             call_window_ms: self.call_window_ms,
         }
     }
@@ -941,7 +937,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         })
     }
 
-    /// A running command's progress, or its end, unless a look showed it the
+    fn quiet(&self, command: &CommandId) -> Option<std::time::Duration> {
+        self.environments.owning(command)?.quiet(command).ok()
+    }
+
+    /// A running command's silence, or its end, unless a look showed it the
     /// node already or the node stopped it itself.
     ///
     /// The output of a command an environment holds is read when the report is
@@ -950,7 +950,6 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
-        interval_ms: Option<u32>,
         model: &'a ModelSelection,
         limits: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
@@ -968,12 +967,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             if let Some(environment) = self.environments.owning(command)
                 && environment.ended(command).now_or_never().is_none()
             {
-                // A resident command reports only its end, and one whose Host's
-                // connection is away nothing until it is back: the silence is
-                // the connection's (`crates/agent-session/src/reports.rs`). So
-                // does one whose start waits for its Host, which never ran
+                // A command whose Host's connection is away reports nothing
+                // until it is back: the silence is the connection's
+                // (`crates/agent-session/src/reports.rs`). So does one whose
+                // start waits for its Host, which never ran
                 // (`crates/backend-host-access/src/access.rs`).
-                let interval = interval_ms?;
                 if environment.unreachable(command).is_some() {
                     return None;
                 }
@@ -989,7 +987,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     .quiet(command)
                     .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
                 let title = environment.title(command).unwrap_or_default();
-                return Some(progress_report(command, &title, running_ms, idle_ms, interval));
+                return Some(progress_report(command, &title, running_ms, idle_ms));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;
@@ -1163,10 +1161,8 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) config: SessionConfig,
-    /// The least interval its commands report at, in milliseconds.
-    pub(crate) interval_floor_ms: u32,
-    /// The longest a call of a command with an interval watches it, in
-    /// milliseconds.
+    /// The longest a call watches a command that is not in the background,
+    /// in milliseconds.
     pub(crate) call_window_ms: u32,
     /// What the product says of the paths a complete text names.
     pub(crate) reply_files: Rc<dyn ReplyFiles>,
@@ -1218,7 +1214,6 @@ pub(crate) async fn assemble<H: HostResolver>(
         ids,
         clock,
         config,
-        interval_floor_ms,
         call_window_ms,
         reply_files,
     } = spec;
@@ -1243,7 +1238,6 @@ pub(crate) async fn assemble<H: HostResolver>(
         lifecycle: ActivityGate::new(),
         numbers: Rc::new(StoreNumbers(store.clone())),
         agent: record.number,
-        interval_floor_ms,
         call_window_ms,
         store: store.clone(),
         shells,

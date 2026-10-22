@@ -42,9 +42,9 @@ pub struct RunningCommand {
     /// That call's script, which the pages' view of the command
     /// carries.
     pub script: String,
-    /// How often its call asked it to report, or only its end when none
+    /// Whether its call started it in the background
     /// (`crates/agent-session/src/reports.rs`).
-    pub interval_ms: Option<u32>,
+    pub background: bool,
     pub started: Timestamp,
     /// How far each node that looked at it has seen its output, which a
     /// look or a report moves.
@@ -55,7 +55,7 @@ pub struct RunningCommand {
 }
 
 const COLUMNS: &str =
-    "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms, turn_id, unsent, script";
+    "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, background, turn_id, unsent, script";
 
 /// How far one node has seen a running command's output, as the `places`
 /// column stores it (command places format 1): any count of bytes is one.
@@ -119,7 +119,7 @@ pub fn record(connection: &Connection, running: &RunningCommand) -> Result<(), S
             running.started.as_millisecond(),
             to_json(&StoredPlaces::of(&running.places)),
             running.title,
-            running.interval_ms,
+            running.background,
             running.turn.as_ref().map(TurnId::as_str),
             running.unsent.as_ref().map(to_json),
             running.script,
@@ -215,7 +215,7 @@ fn decode_row(row: &Row<'_>) -> Result<RunningCommand, StorageError> {
         tool_use_id: row.get(4)?,
         title: row.get(7)?,
         script: row.get(11)?,
-        interval_ms: row.get(8)?,
+        background: row.get(8)?,
         turn: row
             .get::<_, Option<String>>(9)?
             .map(|turn| decode(table, "turn_id", TurnId::try_from(turn)))

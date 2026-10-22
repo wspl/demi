@@ -86,7 +86,7 @@ use std::{
 };
 
 use demi_agent_store::{
-    Checkpoint, CheckpointUpdate, Kind, RunningCommand, SessionStore, StoreError, media::HeldMedia,
+    Checkpoint, CheckpointUpdate, Kind, RunningCommand, SessionStore, StoreError, Watch, media::HeldMedia,
 };
 use demi_agent_transcript::{
     Earlier, ForkEnd, IdSource, TranscriptLog, last_answer, last_failure,
@@ -125,11 +125,18 @@ use self::{
     reports::Watched,
 };
 
+/// How long a command that is not in the background prints nothing before it
+/// wakes its node, once (`crates/agent-session/src/reports.rs`).
+pub const SILENCE_LIMIT: Duration = Duration::from_secs(600);
+
 /// How a session saves, retries and compacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionConfig {
     /// How long after the first unsaved change a save starts.
     pub persist_interval: Duration,
+    /// How long a command that is not in the background prints nothing before
+    /// it wakes its node, once (`crates/agent-session/src/reports.rs`).
+    pub silence: Duration,
     pub retry: RetryPolicy,
     pub compaction: CompactionConfig,
 }
@@ -138,6 +145,7 @@ impl Default for SessionConfig {
     fn default() -> Self {
         Self {
             persist_interval: Duration::from_secs(1),
+            silence: SILENCE_LIMIT,
             retry: RetryPolicy::default(),
             compaction: CompactionConfig::default(),
         }
@@ -749,8 +757,8 @@ impl AgentSession {
         // Every row it holds is stored.
         transcript.release_before(transcript.replay_start());
         let mut watched = Watched::default();
-        for interval in &state.intervals {
-            watched.add(interval.command_id.clone(), interval.interval_ms);
+        for watch in &state.watches {
+            watched.add(watch.command_id.clone(), watch.watch);
         }
         for call in transcript.pending_tool_calls() {
             let started = running
@@ -767,8 +775,8 @@ impl AgentSession {
             if let Some(started) = started
                 && watched.get(&started.command).is_none()
             {
-                // It reports as its call asked, which its record kept.
-                watched.add(started.command.clone(), started.interval_ms);
+                // It wakes the node as its call asked, which its record kept.
+                watched.add(started.command.clone(), Watch::started(started.background));
             }
             transcript.complete_tool_call(
                 &call.tool_use_id,
@@ -814,7 +822,7 @@ impl AgentSession {
         });
         let commands = session.shared.read(|core| core.watched.commands());
         for command in &commands {
-            reports::start_watch(&session.shared, command, Duration::ZERO);
+            reports::start_watch(&session.shared, command);
         }
         Ok((session, continuation))
     }
@@ -1419,29 +1427,10 @@ impl AgentSession {
         self.shared.update(SessionCore::release);
     }
 
-    /// Changes how often `command`, which one of the session's calls left
-    /// running, reports from now on.
-    ///
-    /// It reports every `interval_ms`, or only at its end when none
-    /// (`crates/agent-session/src/reports.rs`). False when the session does not
-    /// watch it.
-    pub fn set_interval(&self, command: &CommandId, interval_ms: Option<u32>) -> bool {
-        if !self
-            .shared
-            .update(|core| core.watched.set_interval(command, interval_ms))
-        {
-            return false;
-        }
-        reports::start_watch(&self.shared, command, Duration::ZERO);
-        true
-    }
-
-    /// How often `command`, which one of the session's calls left running,
-    /// reports: every so many milliseconds, or only its end when none; none
-    /// when the session does not watch it.
-    pub fn interval_of(&self, command: &CommandId) -> Option<Option<u32>> {
-        self.shared
-            .read(|core| core.watched.get(command))
+    /// How `command`, which one of the session's calls left running, wakes the
+    /// node; none when the session does not watch it.
+    pub fn watch_of(&self, command: &CommandId) -> Option<Watch> {
+        self.shared.read(|core| core.watched.get(command))
     }
 
     /// Stops one thing: the running action, which has recorded the stop

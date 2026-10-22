@@ -184,8 +184,8 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
         .enter(Purpose::Demand)
         .await;
     let (first, second) = tokio::join!(
-        a.turn(vec![shell("a1", "echo 0 > note", 20_000), say("a wrote")]),
-        b.turn(vec![shell("b1", "echo 1 > note", 20_000), say("b wrote")]),
+        a.turn(vec![shell("a1", "echo 0 > note"), say("a wrote")]),
+        b.turn(vec![shell("b1", "echo 1 > note"), say("b wrote")]),
     );
     assert!(
         first.received[0].contains("exitCode: 0"),
@@ -255,7 +255,7 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
     );
     assert_eq!(read.json::<FileText>().text, "0\n");
     let next = a
-        .turn(vec![shell("a2", "cat note", 20_000), say("awake")])
+        .turn(vec![shell("a2", "cat note"), say("awake")])
         .await;
     assert!(next.received[0].contains("0\n"), "{}", next.received[0]);
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
@@ -298,8 +298,8 @@ async fn a_conversation_that_idles_on_a_cloud_another_keeps_running_hears_its_re
     // Each runs a job, and the fixture service holds each conversation, as
     // the browser service holds a conversation's Chrome until its release.
     let (first, second) = tokio::join!(
-        a.turn(vec![shell("a1", "echo ran", 20_000), say("ran")]),
-        b.turn(vec![shell("b1", "echo ran", 20_000), say("ran")]),
+        a.turn(vec![shell("a1", "echo ran"), say("ran")]),
+        b.turn(vec![shell("b1", "echo ran"), say("ran")]),
     );
     assert!(
         first.received[0].contains("exitCode: 0"),
@@ -349,7 +349,7 @@ async fn a_conversation_archived_while_its_cloud_is_stopped_does_not_wake_it() {
     create(&backend, &master, FIRST).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let ran = work
-        .turn(vec![shell("t1", "echo ran", 20_000), say("ran")])
+        .turn(vec![shell("t1", "echo ran"), say("ran")])
         .await;
     assert!(
         ran.received[0].contains("exitCode: 0"),
@@ -395,7 +395,7 @@ async fn a_cloud_the_manager_stopped_without_a_word_boots_again_for_the_operatio
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let wrote = work
         .turn(vec![
-            shell("t1", "echo retained > note", 20_000),
+            shell("t1", "echo retained > note"),
             say("saved"),
         ])
         .await;
@@ -460,7 +460,7 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
     harness.attach(FIRST, alpha.id());
     let script = "echo report > report.txt && demi host shell --host alpha 'cat notes.txt'";
     let from_cloud = work
-        .turn(vec![shell("t1", script, 30_000), say("reached alpha")])
+        .turn(vec![shell("t1", script), say("reached alpha")])
         .await;
     assert!(
         from_cloud.received[0].contains("on alpha"),
@@ -521,7 +521,6 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
             shell(
                 "t2",
                 "demi host shell --host Cloud 'cat report.txt'",
-                30_000,
             ),
             say("read the Cloud"),
         ])
@@ -553,7 +552,7 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let wrote = work
         .turn(vec![
-            shell("t1", "echo retained > note", 20_000),
+            shell("t1", "echo retained > note"),
             say("written"),
         ])
         .await;
@@ -618,7 +617,7 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
 
     // Home stays; the model hears of the reset before its next request.
     let next = work
-        .turn(vec![shell("t2", "cat note", 20_000), say("read")])
+        .turn(vec![shell("t2", "cat note"), say("read")])
         .await;
     assert!(
         next.received[0].contains("retained"),
@@ -700,7 +699,7 @@ async fn a_failed_reset_reports_its_failure_and_the_same_operation_resumes_witho
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let wrote = work
         .turn(vec![
-            shell("t1", "printf retained > note", 20_000),
+            shell("t1", "printf retained > note"),
             say("written"),
         ])
         .await;
@@ -780,7 +779,7 @@ async fn a_reset_holds_a_cloud_conversation_until_it_ends_and_leaves_one_that_on
     let mut cloud = Driven::open(&backend, &master, &vendor, FIRST, &cloud_model, "/cloud").await;
     let wrote = cloud
         .turn(vec![
-            shell("c1", "echo kept > note", 20_000),
+            shell("c1", "echo kept > note"),
             say("written"),
         ])
         .await;
@@ -816,7 +815,7 @@ async fn a_reset_holds_a_cloud_conversation_until_it_ends_and_leaves_one_that_on
         .reconnect(&backend, &master, SECOND, &local_model)
         .await;
     let during = local
-        .turn(vec![shell("l1", "echo on-alpha", 20_000), say("done")])
+        .turn(vec![shell("l1", "echo on-alpha"), say("done")])
         .await;
     assert!(
         during.received[0].contains("on-alpha"),
@@ -838,7 +837,7 @@ async fn a_reset_holds_a_cloud_conversation_until_it_ends_and_leaves_one_that_on
         opening.await;
     }
     let after = cloud
-        .turn(vec![shell("c2", "cat note", 20_000), say("read")])
+        .turn(vec![shell("c2", "cat note"), say("read")])
         .await;
     assert!(after.received[0].contains("kept"), "{}", after.received[0]);
     backend.close().await;
@@ -1108,7 +1107,7 @@ async fn whether_an_attachments_file_is_there_never_wakes_a_stopped_cloud() {
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let script = "printf '# Notes\\n' > notes.md && demi attachment upload notes.md";
     let uploaded = work
-        .turn(vec![shell("t1", script, 20_000), say("uploaded")])
+        .turn(vec![shell("t1", script), say("uploaded")])
         .await;
     assert!(uploaded.received[0].contains("a1"), "{}", uploaded.received[0]);
     let check = format!("/api/conversations/{FIRST}/attachments/a1/file");
@@ -1145,7 +1144,7 @@ async fn the_clouds_files_and_the_usage_ledger_survive_a_backend_restart() {
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let script = "demi file edit <<'EOF'\nnotes.md\n<<<<<<< SEARCH\n=======\nkeep me\n>>>>>>> REPLACE\nEOF";
     let stored = work
-        .turn(vec![shell("t1", script, 20_000), say("stored")])
+        .turn(vec![shell("t1", script), say("stored")])
         .await;
     assert!(
         stored.received[0].contains("Created notes.md (1 line)"),
@@ -1167,7 +1166,7 @@ async fn the_clouds_files_and_the_usage_ledger_survive_a_backend_restart() {
     work.reconnect(&backend, &master, FIRST, &provider).await;
     let found = work
         .turn(vec![
-            shell("t2", "cat notes.md", 20_000),
+            shell("t2", "cat notes.md"),
             say("found"),
         ])
         .await;
@@ -1274,7 +1273,7 @@ async fn a_backend_restart_keeps_the_cloud_and_a_command_on_it_reports_its_end()
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let script = "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done; exit 4";
     let started = work
-        .turn(vec![crate::work::resident("t1", script), say("waiting")])
+        .turn(vec![crate::work::background("t1", script), say("waiting")])
         .await;
     assert!(started.received[0].starts_with("status: running"), "{}", started.received[0]);
     let command = demi_agent_tools::testing::field(&started.received[0], "commandId").to_owned();
@@ -1326,7 +1325,7 @@ async fn a_cloud_taken_over_at_a_backend_start_keeps_its_lifetime_cap_clock() {
     // A command left running holds the Cloud: no idle stop comes.
     let script = "printf 'started\\n'; while :; do sleep 0.05; done";
     let started = work
-        .turn(vec![crate::work::resident("t1", script), say("waiting")])
+        .turn(vec![crate::work::background("t1", script), say("waiting")])
         .await;
     assert!(started.received[0].starts_with("status: running"), "{}", started.received[0]);
     let device = the_cloud(&harness);
@@ -1354,7 +1353,7 @@ async fn a_cloud_taken_over_at_a_backend_start_keeps_its_lifetime_cap_clock() {
 
 /// An upgrade stops the Cloud with the manager, so the command on it ends. The
 /// next start takes its conversation up, which starts the Cloud with the new
-/// release's programs, and the resident command is reported lost to the upgrade at
+/// release's programs, and the background command is reported lost to the upgrade at
 /// the next turn (`upgrades.md`).
 ///
 /// Several seconds: the Cloud boots twice.
@@ -1367,7 +1366,7 @@ async fn an_upgrade_restarts_the_cloud_and_its_command_is_lost_to_the_upgrade() 
     create(&backend, &master, FIRST).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let started = work
-        .turn(vec![crate::work::resident("t1", "sleep 60"), say("waiting")])
+        .turn(vec![crate::work::background("t1", "while :; do sleep 1; done"), say("waiting")])
         .await;
     let command = demi_agent_tools::testing::field(&started.received[0], "commandId").to_owned();
     let device = the_cloud(&harness);
@@ -1554,7 +1553,7 @@ async fn at_its_lifetime_cap_the_cloud_ends_the_jobs_nothing_attends_and_stops()
     // and no idle stop would ever come.
     let left = work
         .turn(vec![
-            shell("t1", "sleep 30; echo late", 1_000),
+            shell("t1", "while :; do sleep 1; done; echo late"),
             say("left it running"),
         ])
         .await;
@@ -1631,7 +1630,7 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
     let mut b = Driven::open(&backend, &master, &vendor, SECOND, &second_model, "/b").await;
     let wrote = a
         .turn(vec![
-            shell("a1", "printf shared > note", 20_000),
+            shell("a1", "printf shared > note"),
             say("written"),
         ])
         .await;
@@ -1641,7 +1640,7 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
         wrote.received[0]
     );
     let read = format!("cat '{}/note'", first.path);
-    let seen = b.turn(vec![shell("b1", &read, 20_000), say("read")]).await;
+    let seen = b.turn(vec![shell("b1", &read), say("read")]).await;
     assert!(seen.received[0].contains("shared"), "{}", seen.received[0]);
 
     // Deleting a project archives its conversation and keeps its files.
@@ -1660,7 +1659,7 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
         .unwrap();
     assert!(archived);
     let kept = b
-        .turn(vec![shell("b2", &read, 20_000), say("still there")])
+        .turn(vec![shell("b2", &read), say("still there")])
         .await;
     assert!(kept.received[0].contains("shared"), "{}", kept.received[0]);
     backend.close().await;

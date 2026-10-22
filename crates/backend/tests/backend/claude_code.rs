@@ -578,7 +578,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     // over the SDK MCP channel, Demi runs both commands on the Cloud, and
     // the CLI sends both results to the vendor, all in the process that kept
     // the conversation.
-    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "intervalMs": 60_000 });
+    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'") });
     let batch = vec![
         tool_use_block(
             0,
@@ -751,7 +751,7 @@ async fn each_new_process_resumes_the_session_the_blocks_hold_and_its_first_requ
     socket
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a21", "Say hello.")
         .await;
-    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "intervalMs": 60_000 });
+    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'") });
     world.answers(message(
         vec![
             tool_use_block(0, "toolu_suite_1", SHELL, &call("one")),
@@ -1107,7 +1107,7 @@ async fn a_call_of_a_tool_the_request_does_not_offer_is_answered_by_the_cli_and_
 
     // In a batch with a call of Demi's tool, that call runs through Demi and
     // the other is the CLI's to answer.
-    let call = json!({ "description": "Print the text", "script": "printf 'one'", "intervalMs": 60_000 });
+    let call = json!({ "description": "Print the text", "script": "printf 'one'" });
     world.answers(message(
         vec![
             tool_use_block(0, "toolu_suite_shell", SHELL, &call),
