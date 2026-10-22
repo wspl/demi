@@ -146,6 +146,9 @@
   --spacing-field: 28px;
   /* A segmented control's segment. */
   --spacing-segment: 24px;
+  /* A mini control's text: a mini segment. Han and Hangul glyphs fill their em
+     box, so at this size their strokes close up; they take the next size. */
+  --text-control-2xs: 10px;
   /* A small control's text: a small button, a segment, a pill. */
   --text-control-xs: 11px;
   --text-control-sm: 12px;
@@ -194,6 +197,12 @@
     --text-setting: 17px;
     --text-setting-small: 15px;
   }
+}
+
+:root:lang(zh),
+:root:lang(ja),
+:root:lang(ko) {
+  --text-control-2xs: 11px;
 }
 
 :root,

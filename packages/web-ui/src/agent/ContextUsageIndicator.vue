@@ -12,6 +12,7 @@ import { ICON_PX, useIconPx } from '../ui/icon-metrics'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
+import CardSection from '../ui/CardSection.vue'
 import SectionRow from '../ui/SectionRow.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -394,7 +395,7 @@ const ringColor = computed(() => {
                   The last line of the context section: its Compact ends where
                   the figures above it end.
                 -->
-                <div v-if="parts.context && !isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-2.5">
+                <div v-if="parts.context && !isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-3">
                   <span class="min-w-0 flex-1 truncate tabular-nums text-fg-muted">{{ room === null ? '' : t('context.untilCompaction', { tokens: formatTokens(room) }) }}</span>
                   <Button
                     size="sm"
@@ -415,8 +416,8 @@ const ringColor = computed(() => {
                   :profiles="costProfiles"
                   @toggle="toggle('cost')"
                 />
-                <div v-if="limits" class="pb-3" :class="parts.context || costShown ? 'border-t border-line' : 'pt-1'">
-                  <SectionRow class="text-caption font-medium text-fg-subtle">
+                <CardSection v-if="limits" :divided="parts.context || costShown">
+                  <SectionRow>
                     <span class="shrink-0">{{ t('context.usageLimits') }}</span>
                     <template v-if="limits.accountLabel">
                       <span class="shrink-0 px-1">·</span>
@@ -443,9 +444,9 @@ const ringColor = computed(() => {
                   <div class="px-3 pt-0.5">
                     <ProviderQuota :windows="limits.windows" :observed-at="limits.observedAt" :error="limits.error" />
                   </div>
-                </div>
-                <div v-if="instructionList.length" class="border-t border-line pb-1">
-                  <div class="px-3 pt-2 pb-1 text-caption font-medium text-fg-subtle">{{ t('context.instructions') }}</div>
+                </CardSection>
+                <CardSection v-if="instructionList.length">
+                  <SectionRow>{{ t('context.instructions') }}</SectionRow>
                   <ul class="px-1">
                     <li v-for="row in instructionList" :key="row.path ?? 'personal'">
                       <Tooltip tag="div" :content="row.path ?? undefined">
@@ -462,7 +463,7 @@ const ringColor = computed(() => {
                       </Tooltip>
                     </li>
                   </ul>
-                </div>
+                </CardSection>
               </ScrollArea>
             </div>
           </div>

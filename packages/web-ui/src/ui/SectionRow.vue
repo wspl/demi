@@ -1,8 +1,11 @@
 <script setup lang="ts">
 /**
- * A card's section heading line: its text at the start and, in the `end`
- * slot, `xs` icon buttons at the end, laid out as anything else in the card:
- * they end at the row's content edge, where the card's text ends.
+ * A card's section heading line, and the one owner of how a section's title
+ * is drawn: the card's own text size (`--text-detail`), medium, in the
+ * subtle ink; a figure in the title takes its own ink. Its text stands at the
+ * start and, in the `end` slot, `xs` icon buttons or a mini segmented control
+ * at the end, laid out as anything else in the card: they end at the row's
+ * content edge, where the card's text ends.
  */
 defineSlots<{
   default(): unknown
@@ -29,6 +32,9 @@ defineSlots<{
   align-items: center;
   min-height: var(--section-row-h);
   padding-inline: var(--section-row-px);
+  font-size: var(--text-detail);
+  font-weight: 500;
+  color: var(--color-fg-subtle);
 }
 
 .section-row-text {

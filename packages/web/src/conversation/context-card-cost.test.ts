@@ -319,7 +319,7 @@ test('a conversation older than an hour offers the last hour, which the card cou
   unmount = null
   const quiet = await watched({ cost: { ...older(61 * 60_000), lastHour: { ...hour, rate: null } } })
   expect(quiet.querySelector('.cost-chart-line')).not.toBeNull()
-  const captions = [...quiet.querySelectorAll('.cost-caption')].map((caption) => caption.textContent?.trim())
+  const captions = [...quiet.querySelectorAll('.section-row')].map((caption) => caption.textContent?.trim())
   expect(captions).toContain('Cache hit rate')
 })
 
@@ -364,7 +364,7 @@ test('the Profiles part shows the main conversation and each profile the workflo
     })
     app.mount(root)
     await nextTick()
-    const caption = [...root.querySelectorAll('.cost-caption')].find((element) => element.textContent?.trim() === 'Profiles')
+    const caption = [...root.querySelectorAll('.section-row')].find((element) => element.textContent?.trim() === 'Profiles')
     const shown = caption
       ? [...caption.nextElementSibling!.querySelectorAll('li')].map((row) => row.textContent!.replace(/\s+/g, ' ').trim())
       : null
@@ -390,7 +390,7 @@ test('the Profiles part shows the main conversation and the five profiles that c
   const app = createApp({ render: () => h(ContextCost, { open: true, state: { ...costOf(1), cost, chart: null }, profiles: names }) })
   app.mount(root)
   await nextTick()
-  const caption = [...root.querySelectorAll('.cost-caption')].find((element) => element.textContent?.trim() === 'Profiles')!
+  const caption = [...root.querySelectorAll('.section-row')].find((element) => element.textContent?.trim() === 'Profiles')!
   const shown = [...caption.nextElementSibling!.querySelectorAll('li')].map((row) => row.textContent!.replace(/\s+/g, ' ').trim())
   app.unmount()
   root.remove()

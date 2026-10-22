@@ -28,6 +28,17 @@ import type { SentenceText, TitleText } from './ui-text'
  *   the chosen one scrolls into view.
  * - Icon segments never narrow; they only scroll.
  *
+ * Sizes:
+ *
+ * - `md` is the default, a segment 24 px tall and its track 28.
+ * - `sm` has a segment 20 px tall and its track 24.
+ * - `xs` is a mini: a segment 16 px tall, its track 20, the height of an extra
+ *   small button, for a control that stands in a section's heading row. Its
+ *   thumb's corner is 4 px, concentric with the track's 6 px, and its label
+ *   is 10 px (`--text-control-2xs`), 11 px in Chinese, Japanese and Korean.
+ *   Icons alone draw at `sm`.
+ * - A phone draws every size at its segment's height.
+ *
  * With `iconOnly`, each segment shows its icon alone and its label as the tooltip
  * and the accessible name, and is square: as wide as it is tall, the icon in its
  * centre.
@@ -47,7 +58,7 @@ export interface SegmentedOption<T extends string> {
 
 const props = withDefaults(defineProps<{
   options: readonly SegmentedOption<T>[]
-  size?: 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md'
   /** Icons without labels; every option then needs an icon. */
   iconOnly?: boolean
   disabled?: boolean
@@ -141,9 +152,11 @@ function choose(clicked: T | undefined) {
           : [
               'auto-cols-[minmax(0,1fr)] min-w-[calc(var(--segment-least)*var(--segments)+4px)]',
               // 3em of the label's size, with the segment's padding; a phone pads its segments wider.
-              size === 'sm'
-                ? '[--segment-least:calc(3*var(--text-control-xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(4))]'
-                : '[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))] phone:[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))]',
+              size === 'xs'
+                ? '[--segment-least:calc(3*var(--text-control-2xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(4))]'
+                : size === 'sm'
+                  ? '[--segment-least:calc(3*var(--text-control-xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(4))]'
+                  : '[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))] phone:[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))]',
             ],
         disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : '',
       ]"
@@ -154,7 +167,8 @@ function choose(clicked: T | undefined) {
     >
       <span
         aria-hidden="true"
-        class="segmented-thumb pointer-events-none absolute inset-y-[2px] left-[2px] rounded-[5px] transition-transform duration-200 ease-out motion-reduce:transition-none"
+        class="segmented-thumb pointer-events-none absolute inset-y-[2px] left-[2px] transition-transform duration-200 ease-out motion-reduce:transition-none"
+        :class="size === 'xs' && !iconOnly ? 'rounded-[4px]' : 'rounded-[5px]'"
         :style="{
         width: `calc((100% - 4px) / ${options.length})`,
         transform: `translateX(${selectedIndex * 100}%)`,
@@ -171,13 +185,15 @@ function choose(clicked: T | undefined) {
         :aria-checked="model === option.value"
         :aria-label="iconOnly ? option.label : undefined"
         :tabindex="disabled ? undefined : index === selectedIndex ? 0 : -1"
-        class="relative z-10 inline-flex min-w-0 cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
+        class="relative z-10 inline-flex min-w-0 cursor-default select-none items-center justify-center gap-1 whitespace-nowrap transition-colors duration-200 ease-out"
         :class="[
           // A phone draws either size at its segment's height (`base.css`), its label 8 px from each side, so a
           // toolbar's Commits and Conversation stay whole beside Back and Forward on a 320 px phone.
           iconOnly
-            ? (size === 'sm' ? 'size-5 phone:size-segment' : 'size-segment')
-            : (size === 'sm' ? 'px-1.5 py-0.5 text-control-xs leading-4 phone:h-segment phone:px-2 phone:py-0' : 'h-segment px-2 text-control-sm phone:px-2'),
+            ? (size === 'md' ? 'size-segment' : 'size-5 phone:size-segment')
+            : size === 'xs'
+              ? 'h-4 rounded-[4px] px-1.5 text-control-2xs leading-4 phone:h-segment phone:rounded-[5px] phone:px-2 phone:text-control-xs'
+              : (size === 'sm' ? 'rounded-[5px] px-1.5 py-0.5 text-control-xs leading-4 phone:h-segment phone:px-2 phone:py-0' : 'h-segment rounded-[5px] px-2 text-control-sm phone:px-2'),
           model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
         ]"
         @click.stop="choose(option.value)"

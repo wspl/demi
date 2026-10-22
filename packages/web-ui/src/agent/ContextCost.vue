@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { pageLanguage } from '../i18n/text'
+import CardSection from '../ui/CardSection.vue'
 import Fold from '../ui/Fold.vue'
 import FoldChevron from '../ui/FoldChevron.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -30,7 +31,7 @@ import { t } from './locales/text'
  * with its label: the rate of an agent that sent no prompt yet, and the
  * chart before its fourth call.
  *
- * Once the conversation's first call is more than an hour old, a switch in
+ * Once the conversation's first call is more than an hour old, a mini switch in
  * the caption, before its chevron, counts the last hour instead of the whole
  * conversation: the prices, the profiles' shares, the rate and the closed
  * section's two figures; the chart stays, with the rate's label alone when
@@ -115,50 +116,53 @@ function share(price: number): string {
 </script>
 
 <template>
-  <div :class="[first ? 'pt-1' : 'border-t border-line', open ? 'pb-2' : 'pb-1']">
-    <!--
-      The caption is the section's disclosure, as the context window's header
-      is: the whole row opens and closes it, the switch apart, and its title
-      is the button a keyboard reaches.
-    -->
-    <SectionRow class="cursor-default text-caption font-medium text-fg-subtle" @click="emit('toggle')">
-      <button
-        type="button"
-        :aria-expanded="open"
-        class="flex min-w-0 flex-1 cursor-default items-center text-left"
-        @click.stop="emit('toggle')"
-      >
-        <span class="shrink-0">{{ t('context.cost.title') }}</span>
-        <span v-if="open && price !== null" class="ml-1.5 truncate tabular-nums text-fg-emphasis">{{ formatDollars(price) }}</span>
-      </button>
-      <template #end>
-        <span v-if="offered" class="mr-1" @click.stop><Segmented v-model="range" :options="rangeOptions" size="sm" /></span>
-        <FoldChevron :open="open" :size="ICON_PX.in20" />
-      </template>
-    </SectionRow>
-    <!--
-      Closed, two figures side by side: the price at the text's left edge, the
-      rate at the middle.
-    -->
-    <Fold :open="!open">
-      <div class="cost-figures px-3 pb-1">
-        <div v-for="figure in figures" :key="figure.key">
-          <div class="cost-figure whitespace-nowrap tabular-nums">{{ figure.value }}</div>
-          <div class="cost-figure-label text-fg-subtle">{{ figure.label }}</div>
+  <div>
+    <CardSection :divided="!first">
+      <!--
+        The caption is the section's disclosure, as the context window's header
+        is: the whole row opens and closes it, the switch apart, and its title
+        is the button a keyboard reaches.
+      -->
+      <SectionRow class="cursor-default" @click="emit('toggle')">
+        <button
+          type="button"
+          :aria-expanded="open"
+          class="flex min-w-0 flex-1 cursor-default items-center text-left"
+          @click.stop="emit('toggle')"
+        >
+          <span class="shrink-0">{{ t('context.cost.title') }}</span>
+          <span v-if="open && price !== null" class="ml-1.5 truncate tabular-nums text-fg-emphasis">{{ formatDollars(price) }}</span>
+        </button>
+        <template #end>
+          <span v-if="offered" class="mr-1" @click.stop><Segmented v-model="range" :options="rangeOptions" size="xs" /></span>
+          <FoldChevron :open="open" :size="ICON_PX.in20" />
+        </template>
+      </SectionRow>
+      <!--
+        Closed, two figures side by side: the price at the text's left edge, the
+        rate at the middle.
+      -->
+      <Fold :open="!open">
+        <div class="cost-figures px-3 pb-1">
+          <div v-for="figure in figures" :key="figure.key">
+            <div class="cost-figure whitespace-nowrap tabular-nums">{{ figure.value }}</div>
+            <div class="cost-figure-label text-fg-subtle">{{ figure.label }}</div>
+          </div>
         </div>
-      </div>
-    </Fold>
+      </Fold>
+      <Fold :open="open">
+        <ul v-if="kinds.length" class="cost-columns px-3">
+          <li v-for="kind in kinds" :key="kind.key" class="flex min-h-6 items-center gap-2">
+            <span class="min-w-0 flex-1 truncate text-fg-body">{{ kind.label }}</span>
+            <span class="whitespace-nowrap tabular-nums text-fg-subtle">{{ formatDollars(kind.price) }}</span>
+          </li>
+        </ul>
+      </Fold>
+    </CardSection>
+    <!-- Opened, each part below the price by kind is a section of its own, parted by a subtler line than the card's sections. -->
     <Fold :open="open">
-      <ul v-if="kinds.length" class="cost-columns px-3">
-        <li v-for="kind in kinds" :key="kind.key" class="flex min-h-6 items-center gap-2">
-          <span class="min-w-0 flex-1 truncate text-fg-body">{{ kind.label }}</span>
-          <span class="whitespace-nowrap tabular-nums text-fg-subtle">{{ formatDollars(kind.price) }}</span>
-        </li>
-      </ul>
-      <template v-if="rows.length">
-        <div class="cost-caption px-3">
-          <span class="text-caption font-medium text-fg-subtle">{{ t('context.cost.profiles') }}</span>
-        </div>
+      <CardSection v-if="rows.length" subtle>
+        <SectionRow>{{ t('context.cost.profiles') }}</SectionRow>
         <ul class="cost-columns px-3">
           <li v-for="row in rows" :key="row.key" class="flex flex-col gap-[3px] pt-1 pb-[3px]">
             <div class="flex items-baseline gap-3">
@@ -170,18 +174,16 @@ function share(price: number): string {
             </div>
           </li>
         </ul>
-      </template>
-      <template v-if="rate !== null || charted">
-        <div class="cost-caption px-3">
-          <span class="text-caption font-medium">
-            <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
-            <span v-if="rate !== null" class="ml-1.5 tabular-nums text-fg-emphasis">{{ percent.format(rate) }}</span>
-          </span>
-        </div>
+      </CardSection>
+      <CardSection v-if="rate !== null || charted" subtle>
+        <SectionRow>
+          <span>{{ t('context.cost.hitRate') }}</span>
+          <span v-if="rate !== null" class="ml-1.5 tabular-nums text-fg-emphasis">{{ percent.format(rate) }}</span>
+        </SectionRow>
         <div v-if="chart && charted" class="px-3">
           <CacheHitChart :chart="chart" :pinned-tip="pinnedTip" />
         </div>
-      </template>
+      </CardSection>
     </Fold>
   </div>
 </template>
@@ -214,13 +216,5 @@ function share(price: number): string {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   column-gap: 1rem;
-}
-
-.cost-caption {
-  display: flex;
-  align-items: center;
-  min-height: 1.75rem;
-  padding-top: 0.5rem;
-  padding-bottom: 0.125rem;
 }
 </style>

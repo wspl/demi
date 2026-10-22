@@ -1178,17 +1178,19 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GalleryOverlayWell size="tall">
-            <GallerySpecimen variant="card · Cost opened, 180 calls of 5 a point, the profiles Global Workflow offers; a disabled one and none have no row">
+            <GallerySpecimen variant="card · Cost opened, 180 calls of 5 a point, the profiles Global Workflow offers; a disabled one and none have no row, with the usage limits">
               <div class="px-44 pt-[70rem]">
                 <ContextUsageIndicator
                   pinned
                   expanded="cost"
                   :usage="usageAt(0.62)"
                   :instructions="demoInstructions"
+                  :limits="cardLong.limits.value"
                   :cost="costProfiles.cost.value"
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
+                  @refresh-limits="cardLong.refresh"
                 />
               </div>
             </GallerySpecimen>

@@ -68,6 +68,7 @@ const surfaces = [
         class="flex flex-col items-start gap-3 rounded-xl border border-line p-4"
       >
         <p class="text-chrome text-fg-muted">{{ surface.name }}</p>
+        <Segmented v-model="selected" :options="segmentOptions" size="xs" />
         <Segmented v-model="selected" :options="segmentOptions" size="sm" />
         <Segmented v-model="selected" :options="segmentOptions" />
         <Segmented v-model="selected" :options="segmentOptions" disabled />
