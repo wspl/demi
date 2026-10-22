@@ -315,7 +315,7 @@ function closeTab(id: string): void {
         is none.
       -->
       <div class="hidden shrink-0 justify-end px-4 pb-1 has-[>*]:flex">
-        <RequestOutputMeter :output="() => output?.(active!.id) ?? null" :scope="active.id" :turn-speed="null" />
+        <RequestOutputMeter :output="() => (active ? output?.(active.id) ?? null : null)" :scope="active.id" :turn-speed="null" />
       </div>
       <AgentStatusBar
         :run="active"
