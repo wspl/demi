@@ -1027,12 +1027,7 @@ async fn run_on_host(
                         if let Some(stdin) = &stdin {
                             stdin.fail(&reason);
                         }
-                        // A runner that is away cannot report the stop.
-                        if job.abandon_if_away(&reason) {
-                            job.end().await
-                        } else {
-                            job.stop().await
-                        }
+                        job.stop_unless_away(&reason).await
                     }
                 };
                 ended.cancel();
@@ -1110,14 +1105,15 @@ async fn run_on_host(
     }
 }
 
-/// Stops the far job as a stop does (`RemoteJob::stop`); its pipes fail
-/// with the command.
+/// Stops the far job as a stop does (`RemoteJob::stop`), except that a runner
+/// that is away ends it as lost: the call has to end, and its caller reads
+/// why. Its pipes fail with the command.
 async fn stop(job: &RemoteJob, stdout: &Pipe, stdin: Option<&Pipe>) -> JobEnd {
     stdout.fail("command aborted");
     if let Some(stdin) = stdin {
         stdin.fail("command aborted");
     }
-    job.stop().await
+    job.stop_unless_away("the Host's runner went away while the command ran").await
 }
 
 /// Writes what the caller types into the job, and ends its input when the

@@ -1236,6 +1236,47 @@ impl RemoteJob {
         }
     }
 
+    /// Stops the job as [`stop`](Self::stop) does, except that a runner that
+    /// is away, when the stop begins or while it waits, ends the job as lost
+    /// for `reason` at once, as [`abandon_if_away`](Self::abandon_if_away)
+    /// does: for a job whose stopper cannot wait for a runner that may not
+    /// return, such as a call's, which must end within the grace its stop
+    /// leaves it. The runner stops the job when it is back and lists it.
+    pub async fn stop_unless_away(&self, reason: &str) -> JobEnd {
+        tokio::select! {
+            end = self.stop() => end,
+            end = self.lose_when_away(reason) => end,
+        }
+    }
+
+    /// Resolves once the job's runner is away, which ends the job as lost for
+    /// `reason`, with the job's end; at once when it is away already. It
+    /// learns of the runner's leaving as the connection's teardown marks it,
+    /// not when the device's state follows.
+    pub async fn lose_when_away(&self, reason: &str) -> JobEnd {
+        let mut device = self.device.clone();
+        loop {
+            if self.away().is_some() {
+                self.abandon_if_away(reason);
+                return self.end().await;
+            }
+            let link = self.link();
+            tokio::select! {
+                () = async {
+                    match &link {
+                        Some(link) => link.ended().await,
+                        None => std::future::pending().await,
+                    }
+                } => {}
+                changed = device.changed() => {
+                    if changed.is_err() {
+                        std::future::pending::<()>().await;
+                    }
+                }
+            }
+        }
+    }
+
     /// A stop's `signal`: one that could not go reaches nothing, and the
     /// stop sends it again over the next connection.
     async fn stop_signal(&self, signal: wire::Signal) {

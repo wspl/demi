@@ -195,28 +195,38 @@ impl DeviceSession {
 
     /// Runs a call's handler: it belongs to the device, which the connection
     /// that started the call is not. Once the call stops it has [`END_GRACE`]
-    /// to finish, and what still runs then is aborted.
+    /// to finish, and what still runs then is aborted, after which `aborted`
+    /// ends the call as the handler would have, so its caller is answered.
     pub(crate) fn spawn_call(
         &self,
         name: String,
         stopped: tokio_util::sync::CancellationToken,
         task: impl std::future::Future<Output = ()> + 'static,
+        aborted: impl FnOnce() + 'static,
     ) {
         let device = self.0.device.clone();
         self.0.tasks.spawn_local(async move {
+            let mut aborted_handler = false;
             tokio::select! {
                 biased;
                 () = task => {}
                 () = async {
                     stopped.cancelled().await;
                     tokio::time::sleep(END_GRACE).await;
-                } => tracing::warn!(
-                    event = "link_task.aborted",
-                    host_id = %device,
-                    task = name.as_str(),
-                    grace_ms = END_GRACE.as_millis() as u64,
-                    "a call's handler was aborted after its call ended"
-                ),
+                } => {
+                    aborted_handler = true;
+                    tracing::warn!(
+                        event = "link_task.aborted",
+                        host_id = %device,
+                        task = name.as_str(),
+                        grace_ms = END_GRACE.as_millis() as u64,
+                        "a call's handler was aborted after its call ended"
+                    );
+                }
+            }
+            // Only an aborted handler leaves the call unanswered.
+            if aborted_handler {
+                aborted();
             }
         });
     }
