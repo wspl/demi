@@ -131,9 +131,9 @@ paired runner.
 - **The `.env`.** `up` copies the user's `.env` into the slot for the backend,
   and `down` deletes it.
   - The `.env` can name the developer's Codex CLI sign-in
-    (`DEMI_DEV_CODEX_AUTH`), which the backend's first run in the slot seals as
-    a Codex entry, so a check sends its message to a real model the developer
-    already pays for. `down({ wipe: true })` lets the next `up` seal a newer
+    (`DEMI_DEV_CODEX_AUTH`), which each start of the backend in the slot seals
+    in a Codex entry, so a check sends its message to a real model the
+    developer already pays for, and the slot's data needs no wipe for a newer
     sign-in.
   - The `.env` names the development model with the file types it reads
     (`DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS`), so a check that shows the model

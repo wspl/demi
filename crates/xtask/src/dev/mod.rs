@@ -216,8 +216,8 @@ pub enum Error {
 struct Seed {
     account: Account,
     provider: Option<DevProvider>,
-    /// The developer's Codex sign-in, which the backend signs the master
-    /// account's Codex entry in with as it creates the account.
+    /// The developer's Codex sign-in, which the backend makes the master
+    /// account's Codex entry hold at each start.
     codex: Option<CodexSignIn>,
     /// Whether the echo model runs and has an entry.
     echo: bool,
@@ -560,8 +560,8 @@ async fn manager_socket(manager: &mut dyn ChildWrapper) -> Result<String, Error>
 
 /// Starts the backend executable on the data directory `data`, with the
 /// variables the web app contract suite gives it, in isolated mode, its
-/// public URL `public`, which signs the master account's Codex entry in with
-/// `codex` as it creates the account.
+/// public URL `public`, which makes the master account's Codex entry hold
+/// `codex` at each start.
 fn spawn_backend(
     data: &Path,
     port: u16,

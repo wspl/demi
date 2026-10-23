@@ -121,8 +121,8 @@ pub struct Config {
     /// Validate the configuration as a start would, then exit
     #[arg(long)]
     pub check_config: bool,
-    /// Development only: the Codex sign-in the master account's first
-    /// entry is signed in with, which `xtask dev` writes
+    /// Development only: the Codex sign-in the master account's Codex entry
+    /// holds from each start, which `xtask dev` writes
     /// (`crates/xtask/src/dev/mod.rs`)
     #[arg(long, hide = true, value_name = "FILE")]
     pub dev_codex_account: Option<PathBuf>,
@@ -414,8 +414,8 @@ impl Config {
     }
 }
 
-/// The Codex entry the file at `path` signs in, as the master account's
-/// first entry.
+/// The Codex account the file at `path` signs in, which the master account's
+/// Codex entry holds.
 fn dev_codex_account(path: &Path, now: demi_shared_types::Timestamp) -> Result<SeededAccount, ConfigError> {
     let failed = |reason: String| ConfigError::DevCodexAccount {
         path: path.to_owned(),
@@ -469,8 +469,8 @@ pub struct BackendConfig {
     /// The instance secret; without it, the one in the data directory, which
     /// the first start creates.
     pub instance_secret: Option<InstanceSecret>,
-    /// The account the master account's first entry is signed in with when
-    /// setup creates it; a development backend's only.
+    /// The account the master account's entry of its family holds from each
+    /// start and from setup; a development backend's only.
     pub master_account: Option<SeededAccount>,
     /// Delivers email verification codes; without it, an email change answers
     /// `mail_unavailable`.
