@@ -24,7 +24,8 @@ import type { FieldWay } from './selection-field'
  * - With no words, Return, Comment and Ask shake the field once, and Send is
  *   dimmed.
  * - ✕ and Escape in the field close it (`close`); its owner also closes it for
- *   a press elsewhere or a new selection.
+ *   a press elsewhere or a new selection. On a phone the ✕ stands at the end
+ *   of the sheet's quote (`SelectionFieldQuote.vue`), and the field has none.
  *
  * The owner takes the focus into it (`focus`) and keeps the page's selection
  * for it, so a key typed after the selection, an input method's composition
@@ -145,7 +146,7 @@ function keep(event: Event): void {
           @keydown="onKeydown"
         />
       </div>
-      <Tooltip :content="shared('common.close')">
+      <Tooltip v-if="!phone" :content="shared('common.close')">
         <IconButton
           :icon="X"
           size="sm"

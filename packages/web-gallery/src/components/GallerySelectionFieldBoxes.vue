@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
-import CommentQuote from '@demicodes/web-ui/agent/comments/CommentQuote.vue'
+import SelectionFieldQuote from '@demicodes/web-ui/agent/comments/SelectionFieldQuote.vue'
 import SelectionField from '@demicodes/web-ui/agent/comments/SelectionField.vue'
 import { t } from '@demicodes/web-ui/agent/locales/text'
 import { productWould } from '../product-would'
@@ -34,7 +34,7 @@ function close(index: number): void {
       <!-- On a phone the field sits in the bottom sheet, which has no scrim, here drawn as the sheet holds it. -->
       <div :class="state.phone ? 'rounded-2xl bg-surface-dialog px-3 pb-3 shadow-2xl' : ''">
         <div v-if="state.phone" class="flex h-5 items-center justify-center"><span class="h-1 w-9 rounded-full bg-fg-faint opacity-60" /></div>
-        <CommentQuote v-if="state.quote" :text="state.quote" :lines="1" class="mx-1 mb-2" />
+        <SelectionFieldQuote v-if="state.phone" :quote="state.quote" @close="close(index)" />
         <SelectionField
           v-if="shown[index]"
           v-model="state.text"

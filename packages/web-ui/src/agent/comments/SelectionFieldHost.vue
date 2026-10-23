@@ -14,8 +14,8 @@ import {
 } from '../../ui/context-menu'
 import { rangeHas } from './anchors'
 import { publishMarks } from './highlights'
-import CommentQuote from './CommentQuote.vue'
 import SelectionField from './SelectionField.vue'
+import SelectionFieldQuote from './SelectionFieldQuote.vue'
 import { t } from '../locales/text'
 import { chosenWay, closePictureField, pictureField, quoteOfRange, type FieldWay } from './selection-field'
 
@@ -37,9 +37,9 @@ import { chosenWay, closePictureField, pictureField, quoteOfRange, type FieldWay
  *   handles still extend it and the field follows, and an action takes the
  *   selection as it is then. The sheet's first line quotes it, as it is now,
  *   in one line with an ellipsis, a picture or other media in it said as the
- *   media text; a picture's comment quotes that alone. The desktop's field
- *   quotes nothing. It stands over the page's message field entirely, chips
- *   and all, never leaving half of it showing.
+ *   media text, and ends in the field's ✕; a picture's comment quotes that
+ *   alone. The desktop's field quotes nothing. It stands over the page's
+ *   message field entirely, chips and all, never leaving half of it showing.
  *
  * The focus:
  *
@@ -445,7 +445,7 @@ function onFocusin(event: FocusEvent): void {
 <template>
   <Sheet v-if="phone" modeless :min-height="cover" :open="shown && !menuOpen" @close="closeAll">
     <div ref="sheet" class="px-3 pb-3" data-selection-field-layer @focusin="onFocusin">
-      <CommentQuote v-if="quote" :text="quote" :lines="1" class="mx-1 mb-2" />
+      <SelectionFieldQuote :quote="quote" @close="closeAll" />
       <SelectionField :key="opening" ref="box" v-bind="fieldBindings" />
     </div>
   </Sheet>
