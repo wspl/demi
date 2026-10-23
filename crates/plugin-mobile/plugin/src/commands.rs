@@ -9,7 +9,7 @@ use demi_command_package_mobile_protocol::mobile::*;
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's summary.
-const SUMMARY: &str = "Operate the simulators of the Host running this shell, as a person would, while the user watches and operates them in the work panel. Every coordinate is a pixel of the device's screenshot. Use inspect to obtain element references; never guess them.";
+const SUMMARY: &str = "Operate the simulators of the Host running this shell, as a person would, while the user watches and operates them in the work panel. Every coordinate is a pixel of the device's screenshot. Element references come from inspect.";
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "iOS simulators and Android emulators: open, screenshot, UI tree, tap, swipe, type, rotate, record.";
 

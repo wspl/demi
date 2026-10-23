@@ -25,7 +25,7 @@ use crate::{Fetched, State};
 /// The group's category: what the user allows a conversation.
 const MANAGE: &str = "skills.manage";
 
-const SUMMARY: &str = "The user's skills, which every conversation of the user receives: list, add, update, remove, enable, disable. Install and manage skills only with these commands, never with other tools such as `npx skills add`: Demi does not see a skill another tool installs, and it would reach no other host and no other conversation. Name a source by its repository, owner/repo for GitHub or an https URL; any spelling of one repository names the same source.";
+const SUMMARY: &str = "The user's skills, which every conversation of the user receives: list, add, update, remove, enable, disable. Demi sees only the skills these commands install; one another tool installs reaches no other host and no other conversation. Name a source by its repository, owner/repo for GitHub or an https URL; any spelling of one repository names the same source.";
 
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "The user's skills: list, add, update, remove, enable, disable; a skill is installed only this way.";

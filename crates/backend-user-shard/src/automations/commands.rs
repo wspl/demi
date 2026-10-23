@@ -48,10 +48,10 @@ const ENTRY: &str = "Runs the agent on a schedule, once, every interval, by cron
 
 const LIST_SUMMARY: &str = "List the user's automations: id, whether it is on, its trigger's kind, its next and last run, and its name; show gives the schedule, the tasks and the target.";
 const SHOW_SUMMARY: &str = "Show one automation: its trigger, a repeat's tasks with their ids, its target, model, prompt, state and latest runs.";
-const CREATE_SUMMARY: &str = "Create an automation, on at once, with the message each run sends on stdin. One trigger: --repeat with --task-at for its first task, --at, --every, --cron, --watch with --every for a change, or --url. Without --conversation or --new it wakes this conversation. Restate the schedule in words and get the user's agreement first. Needs the user's permission.";
+const CREATE_SUMMARY: &str = "Create an automation, on at once, with the message each run sends on stdin. One trigger: --repeat with --task-at for its first task, --at, --every, --cron, --watch with --every for a change, or --url. Without --conversation or --new it wakes this conversation. Needs the user's permission.";
 const EDIT_SUMMARY: &str = "Change the parts the options name and keep the others. --repeat changes a repeat's cycle and keeps its tasks; another trigger option replaces the trigger. A repeat's task: --task picks one by its id (the only one by default) for --task-at, --holidays and stdin; --add-task adds one; --delete-task removes one. Without tasks, stdin replaces the message. --paused pauses it, --on turns it on. Needs the user's permission.";
 const RUN_SUMMARY: &str = "Run an automation now, as the user's Run Now does, whatever its schedule, its limit or whether it is paused; --task picks a repeat's task when it has several.";
-const DELETE_SUMMARY: &str = "Delete an automation and its runs' records; their conversations stay and join the sidebar. Only when the user asks for it. Needs the user's permission.";
+const DELETE_SUMMARY: &str = "Delete an automation and its runs' records; their conversations stay and join the sidebar. Needs the user's permission.";
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

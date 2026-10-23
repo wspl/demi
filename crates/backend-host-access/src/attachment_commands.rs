@@ -80,7 +80,7 @@ const SUMMARY: &str = "Give the user files of this host as attachments of the co
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "Makes a Host file an attachment of the conversation, or downloads one.";
 
-const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Deliver one in your reply as <attachment id=\"a3\" /> on a line of its own, not also a link to its path: an image shows, a video and audio play, and any other file is a card the user opens. A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";
+const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Deliver one in your reply as <attachment id=\"a3\" /> on a line of its own, not also a link to its path: an image shows, a video and audio play, and any other file is a card the user opens. A file is at most 25 MiB. Returns no medium; demi file view shows you a file.";
 
 const DOWNLOAD_SUMMARY: &str = "Write attachments of the conversation, such as a file the user sent as <attachment id=\"a7\" ... />, into the current directory, or the one --dir names, under their names, and print each one's path. A file never replaces another: it takes the first free name, and the same file already there is that file.";
 

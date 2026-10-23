@@ -7,7 +7,7 @@ use demi_agent_transcript::bound_text;
 use demi_shared_types::{Block, NodeId, TurnId, UserContentBlock};
 
 /// The sentence the block of the side questions source starts with.
-const TOLD: &str = "The user asked these aside and was answered there; they show what the user was unsure of, for you to know, with no need to answer them again.";
+const TOLD: &str = "The user asked these aside and was answered there; they show what the user was unsure of.";
 
 /// One side question as the agent hears of it: its quoted words and each
 /// question asked in it whose turn ended, the first and each follow-up, in

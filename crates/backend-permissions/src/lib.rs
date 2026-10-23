@@ -395,7 +395,7 @@ pub async fn check(
     shard.asked(&conversation, request, ask);
     shard.raised().await;
     port.awaits_user(Some(&format!(
-        "waiting for the user's permission to {action}; its end will report to you, so do not run it again"
+        "waiting for the user's permission to {action}; its end will report to you"
     )))
     .await?;
     let passed = async {

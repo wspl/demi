@@ -9,7 +9,7 @@ use demi_command_package_browser_protocol::browser::*;
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's summary.
-const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. A new Host needs demi browser install once before its first browser command. Use inspect to obtain node references; never guess them. Run a sequence of steps as one script: chain the commands in one shell call and read each result with --json to decide the next.";
+const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. A new Host needs demi browser install once before its first browser command. Node references come from inspect. Run a sequence of steps as one script: chain the commands in one shell call and read each result with --json to decide the next.";
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "A real browser on the Host: pages, tabs, sign-ins, clicks, forms, uploads, downloads, screenshots, read-only scripts, CDP.";
 
@@ -20,7 +20,7 @@ const FAILURE: &str =
     "a browser error on stderr with nonzero exit status; an action is never replayed automatically";
 
 /// When the agent shows a tab.
-const SHOW: &str = "Show a tab to the user: their work panel opens and selects it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Do not show the tabs you open to check your own work. Showing does not bring the tab to the front of the Host’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
+const SHOW: &str = "Show a tab to the user: their work panel opens and selects it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Showing does not bring the tab to the front of the Host’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
 
 /// Declares each operation's leaf from its name, its input and result types
 /// and its summary; a dotted name is a leaf of a subgroup.
@@ -65,7 +65,7 @@ operations! {
     "download" => DownloadInput, DownloadResult, "Trigger and save a completed download on this Host.";
     "clipboard.write" => ClipboardWriteInput, ClipboardWriteResult, "Write finite raw stdin to the managed clipboard with the declared MIME type.";
     "clipboard.read" => ClipboardReadInput, ClipboardReadResult, "Read clipboard text or export supported MIME entries to Host files.";
-    "eval" => EvalInput, EvalResult, "Run a read-only script and print the value of its last statement, as JSON: a short expression as the last argument, eval t1 'document.title', or statements from stdin. Chrome refuses side effects, and nothing waits for a Promise. Change the page with click, fill, scroll and the other actions.";
+    "eval" => EvalInput, EvalResult, "Run a read-only script and print the value of its last statement, as JSON: a short expression as the last argument, eval t1 'document.title', or statements from stdin. Chrome refuses side effects, and nothing waits for a Promise.";
     "logs" => LogsInput, LogsResult, "Read console entries without clearing them; use the returned cursor to continue.";
     "viewport.set" => ViewportSetInput, ViewportResult, "Set this tab’s viewport in CSS pixels and its pixel ratio (--scale), until the user picks another mode.";
     "viewport.reset" => ViewportResetInput, ViewportResult, "Return this tab to Web mode, where the user’s live view decides its size.";

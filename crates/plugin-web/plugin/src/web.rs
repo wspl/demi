@@ -71,7 +71,7 @@ fn web_group() -> GroupBuilder {
         .leaf(
             LeafBuilder::native(
                 "fetch",
-                "Fetch a URL from this Host and print it, a page as Markdown, one part at a time; save a PDF, an image or any other file and print its path. It runs no JavaScript and signs in nowhere: for a page that needs either, or clicks, use demi browser.",
+                "Fetch a URL from this Host and print it, a page as Markdown, one part at a time; save a PDF, an image or any other file and print its path. It runs no JavaScript and signs in nowhere.",
                 NativeOperation {
                     package: PACKAGE.into(),
                     operation: GET.into(),
