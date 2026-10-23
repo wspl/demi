@@ -29,10 +29,10 @@
 //! (`crates/runner-jobs/src/scratch.rs`).
 //!
 //! It can be sent without checking what runs there because no job of the
-//! conversation runs there when it is sent: an archive, a detach and the
-//! idle clock send it only while the backend holds the conversation's file
-//! gate, and every job runs in a lease of that gate; a move sends it once
-//! the jobs of the conversation on the device it left ended
+//! conversation runs there when it is sent: an archive and the idle clock
+//! send it only while the backend holds the conversation's file gate, and
+//! every job runs in a lease of that gate; a move and a detach send it once
+//! the jobs of the conversation on the device they left ended
 //! (`crates/backend-host-access/src/transition.rs`). Repeating one is
 //! harmless, and it never starts a resident.
 //!

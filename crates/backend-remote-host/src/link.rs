@@ -80,9 +80,10 @@ pub const END_GRACE: Duration = Duration::from_secs(5);
 /// policy on top of the generic plumbing.
 pub trait LinkPolicy {
     /// Whether calls from `job` may run, such as whether the job belongs to
-    /// the conversation of the Host that started it. A refusal is the call's
+    /// the conversation of the Host that started it, and whether the
+    /// conversation still reaches the job's device. A refusal is the call's
     /// failure, before any pipe is minted.
-    fn admit_call(&self, job: &JobOrigin) -> Result<(), String>;
+    fn admit_call<'a>(&'a self, job: &'a JobOrigin) -> LocalBoxFuture<'a, Result<(), String>>;
 
     /// Runs the `rpc` call `invocation` from `job`.
     fn dispatch(

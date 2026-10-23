@@ -72,7 +72,7 @@ pub use node::{CODE_PATHS_MAX, Node, ReplyFiles, code_path};
 pub use server::{
     AgentServer, AgentsSource, AskError, Connection, ContentError, ContentResolver, FileReference, FrameRx, KeptAgents,
     Outgoing, SideCard, side_instruction, Follows,
-    ProviderResolver, QuiescenceWatch, ResolveError, ResolvedFiles, RestoreError, ServerConfig,
+    ProviderResolver, ResolveError, ResolvedFiles, RestoreError, ServerConfig,
     ServerDeps, Tree,
     TreeStores, Working,
 };

@@ -120,7 +120,9 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.48's, which 0.1.46 and 0.1.47 shipped too, before a conversation's
 ///   ledger rows were found by their end.
 /// - 0.1.63's, which 0.1.49 to 0.1.62 shipped too, before a plugin kept what
-///   its package on a Host reported of a conversation.
+///   its package on a Host reported of a conversation and a detach applied at
+///   once instead of waiting, as an agent's did, for its conversation's work
+///   to end.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -305,7 +307,18 @@ pub(crate) const CONTROL: Schema = Schema {
 /// - A plugin keeps what its package on a Host last reported of a
 ///   conversation (`plugin_reports`), which its page reads at once; nothing
 ///   was kept before, so the next report fills it.
+/// - A detach applies at once, so no host keeps a mark to detach once its
+///   conversation's work ends. A detach an agent asked for before the upgrade
+///   is made here, as the commit of a detach makes it: the host leaves the
+///   conversation's, and the conversation's hosts and execution context move
+///   on. Each host's runner lets go of the conversation at its next `hello`,
+///   which names only the conversations it is to hold.
 const CONTROL_FROM_0_1_63: &str = "
+UPDATE conversations
+   SET context_version = context_version + 1, hosts_revision = hosts_revision + 1
+ WHERE id IN (SELECT conversation_id FROM conversation_hosts WHERE detaching = 1);
+DELETE FROM conversation_hosts WHERE detaching = 1;
+ALTER TABLE conversation_hosts DROP COLUMN detaching;
 CREATE TABLE plugin_reports (
   plugin_id       TEXT NOT NULL,
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
@@ -4637,8 +4650,6 @@ CREATE TABLE conversation_hosts (
   -- for a device attached by name, whose commands start in its home.
   cwd             TEXT,
   attached_at     INTEGER NOT NULL,
-  -- An agent's detach, which waits for the tree to be idle.
-  detaching       INTEGER NOT NULL DEFAULT 0 CHECK (detaching IN (0, 1)),
   PRIMARY KEY (conversation_id, device_id)
 ) STRICT;
 CREATE INDEX conversation_hosts_device ON conversation_hosts (device_id);

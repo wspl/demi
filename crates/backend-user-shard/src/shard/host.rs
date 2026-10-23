@@ -151,10 +151,6 @@ impl HostShard for Shard {
         Box::pin(Shard::move_to(self, conversation, to, cancel))
     }
 
-    fn settle_when_idle(&self, conversation: &ConversationId) {
-        Shard::settle_when_idle(self, conversation);
-    }
-
     fn port_forwards(&self) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::port_forwards::PortForwardDto>, String>> {
         Box::pin(async move { self.port_forward_list().await.map_err(|error| error.to_string()) })
     }

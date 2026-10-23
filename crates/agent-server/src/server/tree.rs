@@ -49,7 +49,7 @@ use demi_conversation_socket_protocol::{
     AgentCost, AgentCode, AgentRole, CacheChart, RequestOutput, STORED_EPOCH, ServerFrame, ShellStatus, TranscriptPatch, Version,
 };
 use demi_host_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
-use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
+use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
 use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, SessionPhase};
 use futures_util::future::join_all;
 use tokio::sync::watch;
@@ -864,21 +864,6 @@ impl<H: HostResolver> Tree<H> {
         !self.works() && self.sides_quiescent() && !self.live.runs_commands()
     }
 
-    /// A watch that wakes at each change that may make the tree quiescent or
-    /// not, or its admission free to reserve.
-    ///
-    /// The changes are its root's status, a child's start or close, a command's
-    /// start or end, and a lease or a reservation of its admission. The watch
-    /// does not keep the tree alive, and it wakes once the tree is gone.
-    pub fn watch_quiescence(&self) -> QuiescenceWatch {
-        QuiescenceWatch {
-            status: self.root.session().status_watch(),
-            changes: self.changes.subscribe(),
-            running: self.live.watch_running(),
-            admission: self.admission.subscribe(),
-        }
-    }
-
     /// Attaches a connection beside the others and sends it `opened`, which
     /// carries no data: the page read what it shows by the conversation's
     /// routes, and follows it by the versions it holds
@@ -1142,28 +1127,6 @@ pub(super) fn note_running(sink: &FrameSink, node: &NodeId, running: &Cell<bool>
         running.set(*phase != SessionPhase::Idle);
         if *phase == SessionPhase::Idle {
             sink.stopped(node);
-        }
-    }
-}
-
-/// What [`Tree::watch_quiescence`] answers.
-pub struct QuiescenceWatch {
-    status: watch::Receiver<Status>,
-    changes: watch::Receiver<u64>,
-    running: watch::Receiver<BTreeMap<CommandId, bool>>,
-    admission: watch::Receiver<GateState>,
-}
-
-impl QuiescenceWatch {
-    /// Resolves at the next change after the last one this watch saw, or
-    /// once the tree is gone, after which it resolves at once.
-    pub async fn changed(&mut self) {
-        // An error is the tree gone, which the caller finds when it looks.
-        tokio::select! {
-            _ = self.status.changed() => {}
-            _ = self.changes.changed() => {}
-            _ = self.running.changed() => {}
-            _ = self.admission.changed() => {}
         }
     }
 }

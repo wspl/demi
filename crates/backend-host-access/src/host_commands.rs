@@ -9,7 +9,8 @@
 //! - `devices` lists the user's devices.
 //! - `pair` pairs the computer whose installer shows a code and attaches it.
 //! - `attach` attaches a device at once.
-//! - `detach` marks a device to detach once the conversation's work ends.
+//! - `detach` detaches a device at once, stopping the conversation's commands
+//!   there.
 //! - `move` makes a host and a directory where the conversation runs, at once,
 //!   and answers once it is made.
 //!
@@ -50,7 +51,7 @@ use std::rc::{Rc, Weak};
 use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
 };
-use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
+use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob, Withdrawal};
 use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
     Call, DEMI_ROOT, GroupBuilder, LeafBuilder, ProcessEnd, RpcError,
@@ -94,7 +95,7 @@ const INSTALL_COMMAND_SUMMARY: &str = "The command that installs the runner on a
 
 const PAIR_SUMMARY: &str = "Pair the computer whose installer shows `<code>` with the user's account and attach it to this conversation, so `demi host shell --host` reaches it.";
 
-const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi host list`, once this conversation's work ends.";
+const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi host list`, at once; this conversation's commands that run there end.";
 
 const LIST_SUMMARY: &str = "List the Hosts this conversation can reach with `demi host shell --host`: name, id, status, role (primary or attached) and the directory commands start in.";
 
@@ -717,22 +718,11 @@ async fn detach(
             host.name
         )));
     }
-    let marked = shard
-        .control()
-        .mark_detach(conversation.clone(), host.device.clone())
+    shard
+        .transition(&conversation, RecordChange::Detach(host.device.clone()).into())
         .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?;
-    if !marked {
-        return Err(RpcError::Failed(format!(
-            "{wanted}: not attached to this conversation"
-        )));
-    }
-    shard.settle_when_idle(&conversation);
-    port.stdout(format!(
-        "{} is detached when this conversation's work ends; until then commands can still run there.\n",
-        host.name
-    ))
-    .await?;
+        .map_err(|refusal| RpcError::Failed(format!("{}: {refusal}", host.name)))?;
+    port.stdout(format!("{} is detached.\n", host.name)).await?;
     Ok(0)
 }
 
@@ -958,6 +948,7 @@ async fn run_on_host(
     stdout
         .source_from(device)
         .map_err(|error| error.to_string())?;
+    let withdrawal = Rc::new(Withdrawal::default());
     // The admission's waits end with the call.
     let cancel = CancellationToken::new();
     shard.tasks().spawn_local({
@@ -982,8 +973,25 @@ async fn run_on_host(
                     _ => format!("{} is offline", target.name),
                 });
             }
+            // The detach of its Host ends it: the conversation holds it as
+            // it holds an agent's own job there.
+            let _held = shard
+                .conversations()
+                .slot(conversation)
+                .hold_job(target.device.clone(), None, withdrawal.clone());
+            // A detach of the Host that committed since the admission, or
+            // that comes while the directories install, ends the call here,
+            // before the job starts.
+            shard
+                .reaches(conversation, &target.device, &withdrawal)
+                .await
+                .map_err(|error| error.message)?;
             shard
                 .install_directories(&target.device, host)
+                .await
+                .map_err(|error| error.message)?;
+            shard
+                .reaches(conversation, &target.device, &withdrawal)
                 .await
                 .map_err(|error| error.message)?;
             let start = JobStart {
@@ -1013,6 +1021,18 @@ async fn run_on_host(
                     end = job.end() => end,
                     () = port.cancelled() => {
                         stop(&job, &stdout, stdin.as_ref()).await
+                    }
+                    reason = withdrawal.asked() => {
+                        stdout.fail(&reason);
+                        if let Some(stdin) = &stdin {
+                            stdin.fail(&reason);
+                        }
+                        // A runner that is away cannot report the stop.
+                        if job.abandon_if_away(&reason) {
+                            job.end().await
+                        } else {
+                            job.stop().await
+                        }
                     }
                 };
                 ended.cancel();
@@ -1062,6 +1082,10 @@ async fn run_on_host(
     let Some(ran) = ran else {
         return Ok(130);
     };
+    // Its Host was detached: the caller reads why as the call's failure.
+    if let Some(reason) = withdrawal.reason() {
+        return Err(reason);
+    }
     match ran.status {
         ProcessEnd::NotStarted(error) => {
             let detail = error

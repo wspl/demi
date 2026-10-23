@@ -27,7 +27,6 @@ mod live_reads;
 pub(crate) mod notifications;
 pub(crate) mod project_files;
 pub(crate) mod organize;
-pub(crate) mod pending;
 pub(crate) mod product;
 mod providers;
 pub(crate) mod restart_resume;
@@ -65,7 +64,6 @@ pub use self::deletion::finish_deletions;
 pub use self::attachment_facts::{attachment_facts, reply_blocks};
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
-pub use self::pending::settle_pending;
 pub use self::restart_resume::resume_after_restart;
 pub use self::announcement::AgentsError;
 pub(crate) use self::product::ShardHosts;
@@ -176,7 +174,6 @@ pub(crate) fn conversation_parts(
             Rc::new(move |root: &NodeId| {
                 let conversation = conversation_of(root);
                 if let Some(shard) = shard.upgrade() {
-                    shard.poke_pending(&conversation);
                     shard.follow_runs(&conversation);
                     shard.follow_failed_turn(&conversation);
                     shard.follow_turn_end(&conversation);

@@ -399,7 +399,7 @@ async fn run(
     origin: Rc<JobOrigin>,
     entry: &Rc<CallEntry>,
 ) -> Result<u8, Ended> {
-    link.policy().admit_call(&origin)?;
+    link.policy().admit_call(&origin).await?;
     let stdout = link.pipes().call_stdout(link.device());
     stdout.hold_source().map_err(|error| error.to_string())?;
     let stdin = call.stdin.then(|| link.pipes().call_stdin(link.device()));

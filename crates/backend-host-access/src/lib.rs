@@ -189,9 +189,6 @@ pub trait HostShard {
     /// Never waits: the operation that named it holds the conversation's
     /// file gate.
     fn directory_named(&self, conversation: &ConversationId, named: DirectoryNamed);
-    /// Makes the detaches an agent asked for once the conversation's tree is
-    /// next idle (`crates/backend-user-shard/src/conversation/pending.rs`).
-    fn settle_when_idle(&self, conversation: &ConversationId);
     /// The user's port forwards, as `demi host forward list` names them.
     fn port_forwards(&self) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::port_forwards::PortForwardDto>, String>>;
     /// Adds a port forward from its defaults with `patch` over them.

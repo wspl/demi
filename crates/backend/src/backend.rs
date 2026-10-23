@@ -62,7 +62,7 @@ use demi_backend_http::{AppState, Edge, Site, WebBuildError, manage_socket, runn
 use demi_backend_user_shard::conversation::cost::follow_usage;
 use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
 use demi_backend_user_shard::conversation::{
-    finish_deletions, recover_forks, resume_after_restart, settle_pending,
+    finish_deletions, recover_forks, resume_after_restart,
 };
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
@@ -419,11 +419,6 @@ impl Backend {
         // the backend serves. A failure does not stop the start: the next
         // start finishes it, and no request finds its conversation meanwhile.
         start_step("pending_deletions", finish_deletions(&services.control, &shards.shards())).await;
-        // Each detach an agent asked for that a restart cut off is made,
-        // before a page opens its tree
-        // (`crates/backend-user-shard/src/conversation/pending.rs`). A failure
-        // does not stop the start: the next start makes it.
-        start_step("pending_detaches", settle_pending(&services.control, &shards.shards())).await;
         // A credential request's command ended with the run before, so no one waits
         // for its answer; and a credential whose time came while the backend was down
         // is removed.

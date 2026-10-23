@@ -1,7 +1,7 @@
-//! The changes that end a conversation's target: a move (a target switch),
-//! an archive and a detach.
+//! The changes that end a conversation's target: a move (a target switch), an
+//! archive and a detach.
 //!
-//! An archive and a detach run while the conversation is held for them
+//! An archive runs while the conversation is held for it
 //! (`hold_for_transition`):
 //!
 //! - The shard reserves the idle tree.
@@ -9,11 +9,33 @@
 //!   end.
 //! - The file gate is reserved.
 //!
-//! Each commits, then tells the connected Hosts it leaves to let go of the
+//! It commits, then tells the connected Hosts it leaves to let go of the
 //! conversation and answers: nothing waits for them and nothing is stored, as
 //! the Hosts hold what the records say after their next `hello`
 //! (`crates/backend-host-access/src/access.rs`). The shard's `transition` is
 //! the one entry every change of a conversation goes through.
+//!
+//! A detach holds nothing and waits for no work and no Host, whatever the
+//! conversation does, in order:
+//!
+//! ```text
+//! 1. end the Host's transfers, streams and the one-shot calls like them;
+//!    await them
+//! 2. commit: the Host leaves the conversation's, and each agent's next
+//!    request says so; nothing more when it was not attached
+//! 3. ask every job of the conversation on the Host to stop, and answer
+//! 4. once the jobs ended, tell the Host to release the conversation, unless
+//!    the conversation reaches it again
+//! ```
+//!
+//! A job is stopped as an abort stops it, and its end says the Host was
+//! detached. One whose Host cannot be reached at that moment ends as lost with
+//! the same reason, since nothing could report the stop. A job that was
+//! admitted before the commit and registers after it, or has not started, ends
+//! without starting: each registers with the conversation, then checks that
+//! its device is still one of its Hosts. The release is sent once no job is
+//! left, as every release is
+//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
 //!
 //! A move stops and waits for nothing, in order:
 //!
@@ -57,6 +79,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 
 use crate::HostShard;
+use crate::access::HostAccessError;
 use crate::transfer::TransfersClosed;
 
 /// Why a change was not applied.
@@ -150,6 +173,12 @@ impl From<Unselectable> for ChangeRefusal {
     }
 }
 
+/// What a command that a detach stopped says of its Host: the reason its end
+/// tells and the failure of a call made there.
+pub fn detached_reason(host: &str) -> String {
+    format!("{host} was detached from this conversation")
+}
+
 /// A target switch made: where it went from and to, the execution-context
 /// revision it made, and the workspace its destination made, if it did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +210,7 @@ fn wait_ended(conversation: &ConversationId, what: &'static str, waited: std::ti
 }
 
 impl dyn HostShard + '_ {
-    /// Holds the conversation for an archive or a detach once the shard
+    /// Holds the conversation for an archive once the shard
     /// reserved its idle tree, `tree`: its transfers and streams ended and
     /// their release awaited, and its file gate reserved. A busy file gate
     /// refuses.
@@ -205,29 +234,6 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// Holds the conversation for the detaches an agent asked for, once the
-    /// shard reserved its idle tree: as [`hold_for_transition`](Self::hold_for_transition)
-    /// does, except that it waits for the Host operations that hold the file
-    /// gate to end, since nobody is there to retry a refusal.
-    pub async fn hold_when_free(
-        &self,
-        id: &ConversationId,
-        tree: Option<Reservation>,
-    ) -> TransitionHold {
-        let slot = self.conversations().slot(id);
-        let waited = std::time::Instant::now();
-        let transfers = slot.transfers.close().await;
-        wait_ended(id, "transfers", waited);
-        let waited = std::time::Instant::now();
-        let files = slot.file_gate().reserve().await;
-        wait_ended(id, "file_gate", waited);
-        TransitionHold {
-            _files: files,
-            _transfers: transfers,
-            _tree: tree,
-        }
-    }
-
     /// Commits a change of the conversation's record.
     pub async fn commit(
         &self,
@@ -239,7 +245,7 @@ impl dyn HostShard + '_ {
             .change_conversation(id.clone(), change)
             .await?
         {
-            ChangeOutcome::Applied => Ok(()),
+            ChangeOutcome::Applied | ChangeOutcome::Unchanged => Ok(()),
             ChangeOutcome::Missing => Err(ChangeRefusal::NotFound),
             ChangeOutcome::Archived => Err(ChangeRefusal::Archived),
         }
@@ -365,20 +371,53 @@ impl dyn HostShard + '_ {
         Ok(())
     }
 
-    /// The held detach of `device`: the commit, then the Host is told while it
-    /// was attached.
+    /// The detach of `device`, in the steps of this module's comment:
+    /// answers once the Host has left the conversation and its jobs were
+    /// asked to stop, and none waits for the Host. Answers whether the
+    /// commit removed the Host, which is when the jobs were asked and the
+    /// release is due ([`release_detached`](Self::release_detached)): a device
+    /// that is not attached detaches as nothing, ending no transfer.
     pub async fn detach(
         &self,
         record: &ConversationRecord,
         device: DeviceId,
-    ) -> Result<(), ChangeRefusal> {
+    ) -> Result<bool, ChangeRefusal> {
         let attached = self.control().attached_hosts(record.id.clone()).await?;
-        let was_attached = attached.iter().any(|host| host.device == device);
-        self.commit(&record.id, RecordChange::Detach(device.clone())).await?;
-        if was_attached {
-            self.tell_release(&record.id, std::slice::from_ref(&device), false);
+        let Some(host) = attached.into_iter().find(|host| host.device == device) else {
+            return Ok(false);
+        };
+        let slot = self.conversations().slot(&record.id);
+        let transfers = slot.transfers.close_device(&device).await;
+        let committed = self
+            .control()
+            .change_conversation(record.id.clone(), RecordChange::Detach(device.clone()))
+            .await;
+        drop(transfers);
+        match committed? {
+            ChangeOutcome::Applied => {}
+            // Another detach or a move to the Host came first.
+            ChangeOutcome::Unchanged => return Ok(false),
+            ChangeOutcome::Missing => return Err(ChangeRefusal::NotFound),
+            ChangeOutcome::Archived => return Err(ChangeRefusal::Archived),
         }
-        Ok(())
+        let reason = detached_reason(&host.name);
+        slot.withdraw_jobs_on(&device, &reason);
+        Ok(true)
+    }
+
+    /// The release of `device`, which a detach of the conversation `id`
+    /// removed (§ step 4): sent once the conversation's jobs there ended, and
+    /// not sent when the conversation reaches the device again by then, a
+    /// move to it or a new attach having come first. A release that fails is
+    /// logged and fails nothing.
+    pub async fn release_detached(&self, id: &ConversationId, device: &DeviceId) {
+        self.conversations().slot(id).jobs_ended_on(device).await;
+        match self.conversation_hosts(id).await {
+            Ok(hosts) if hosts.iter().any(|host| host.device == *device) => {}
+            // A conversation deleted meanwhile was released by its deletion.
+            Err(HostAccessError::Missing) => {}
+            Ok(_) | Err(_) => self.tell_release(id, std::slice::from_ref(device), false),
+        }
     }
 
     /// Tells every Host the conversation reaches, primary and attached, to

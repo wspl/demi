@@ -59,7 +59,7 @@ use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
-    CommandCatalog, JobEnd, JobMedium, JobOutput, JobStart, RemoteHost, RemoteJob,
+    CommandCatalog, JobEnd, JobMedium, JobOutput, JobStart, RemoteHost, RemoteJob, Withdrawal,
     device_jobs::Newest, manifest::CommandSelection,
 };
 
@@ -68,15 +68,27 @@ use crate::{
 /// job's start, output and edit publication, and refuses when the
 /// conversation's Host is no longer `host`. `cancel` ends its waits before
 /// the job starts. While the job's start waits for its Host, a paired
-/// device whose runner is away, it says so through `waiting`.
+/// device whose runner is away, it says so through `waiting`. It holds
+/// `withdrawal` while the job runs, and makes the request when the Host
+/// leaves the conversation; the environment stops the command.
 pub trait HostAccess {
     fn run_job<'a>(
         &'a self,
         host: &'a HostKey,
         cancel: CancellationToken,
         waiting: JobWaiting<'a>,
+        withdrawal: Rc<Withdrawal>,
         job: LocalBoxFuture<'a, ()>,
     ) -> LocalBoxFuture<'a, Result<(), HostError>>;
+
+    /// Registers a job taken up again after a restart, which runs on `host`,
+    /// with the conversation, as [`run_job`](Self::run_job) does a new one,
+    /// until the answer is dropped.
+    fn hold_adopted<'a>(
+        &'a self,
+        host: &'a HostKey,
+        withdrawal: Rc<Withdrawal>,
+    ) -> LocalBoxFuture<'a, Option<Box<dyn std::any::Any>>>;
 }
 
 /// How a job whose start may wait for its Host (`crates/backend-host-access/src/access.rs`) shows it: waiting for the device it names, and no
@@ -294,6 +306,8 @@ struct Running {
     stop: CancellationToken,
     /// Its job, once started.
     job: watch::Sender<Option<RemoteJob>>,
+    /// Asks it to end as lost, when its Host leaves the conversation.
+    withdrawal: Rc<Withdrawal>,
     /// The output the backend received within the streams' views, in the
     /// order it came: the whole output when neither stream went beyond.
     received: RefCell<Vec<OutputRecord>>,
@@ -433,6 +447,7 @@ impl RemoteShellEnvironment {
         let running = Rc::new(Running {
             stop,
             job: watch::Sender::new(None),
+            withdrawal: Rc::default(),
             received: RefCell::new(Vec::new()),
             settled: watch::Sender::new(false),
         });
@@ -463,6 +478,27 @@ impl RemoteShellEnvironment {
         running: Rc<Running>,
         record: Rc<RefCell<CommandRecord>>,
     ) {
+        // The Host leaving the conversation stops the command as an abort
+        // does, and its end says why. A command whose runner is away at that
+        // moment ends as lost, since only that runner could report the stop.
+        self.0.tasks.spawn_local({
+            let environment = self.clone();
+            let running = running.clone();
+            let command = command.clone();
+            async move {
+                tokio::select! {
+                    reason = running.withdrawal.asked() => {
+                        let _ = environment.stop_command(&command);
+                        let job = running.job.borrow().clone();
+                        if let Some(job) = job {
+                            job.abandon_if_away(&reason);
+                        }
+                    }
+                    () = running.settled() => {}
+                    () = environment.0.detached.cancelled() => {}
+                }
+            }
+        });
         let failure: RefCell<Option<String>> = RefCell::new(None);
         let followed = Cell::new(Followed::Ended);
         let mut wait = None;
@@ -485,6 +521,16 @@ impl RemoteShellEnvironment {
             adopt @ Begin::Adopt { .. } => adopt,
         };
         let adopted = matches!(job, Begin::Adopt { .. });
+        // A command taken up again counts as the conversation's job on its
+        // Host, so a detach of the Host stops it.
+        let _held = match (&self.0.options.access, adopted) {
+            (Some(access), true) => {
+                access
+                    .hold_adopted(&self.0.options.host.key(), running.withdrawal.clone())
+                    .await
+            }
+            _ => None,
+        };
         let job = async {
             let ran = match job {
                 Begin::Start { request, job, .. } => {
@@ -533,7 +579,7 @@ impl RemoteShellEnvironment {
             (Some(access), Some(_)) if !adopted => {
                 let key = self.0.options.host.key();
                 let waiting = JobWaiting { shown: &shown };
-                let ran = access.run_job(&key, admission.clone(), waiting, Box::pin(job));
+                let ran = access.run_job(&key, admission.clone(), waiting, running.withdrawal.clone(), Box::pin(job));
                 let let_go = async {
                     self.0.detached.cancelled().await;
                     admission.cancel();
@@ -562,8 +608,12 @@ impl RemoteShellEnvironment {
             && record.borrow().is_running()
         {
             let mut output = running.received.take();
-            let (end, page) = if running.stop.is_cancelled() {
-                (CommandEnd::Stopped, String::new())
+            let (end, page) = if running.stop.is_cancelled() || running.withdrawal.reason().is_some() {
+                let page = running
+                    .withdrawal
+                    .reason()
+                    .map_or_else(String::new, |reason| push_reason(&mut output, &reason));
+                (CommandEnd::Stopped, page)
             } else {
                 (CommandEnd::Exited { exit_code: 127 }, push_reason(&mut output, &reason))
             };
@@ -607,7 +657,7 @@ impl RemoteShellEnvironment {
         let context = (self.0.options.context)()
             .await
             .map_err(|error| error.message)?;
-        if running.stop.is_cancelled() {
+        if running.stop.is_cancelled() || running.withdrawal.reason().is_some() {
             return Err("Shell command aborted".into());
         }
         // Every job starts in its node's working directory on the Host, the
@@ -619,6 +669,10 @@ impl RemoteShellEnvironment {
         env.insert("PWD".into(), cwd.clone());
         if let Some(keeper) = &self.0.options.keeper {
             keeper.started(command, id, start).await;
+        }
+        // A Host detached while the job waited for the keeper never starts it.
+        if let Some(reason) = running.withdrawal.reason() {
+            return Err(reason);
         }
         let job = self
             .0
@@ -674,6 +728,7 @@ impl RemoteShellEnvironment {
         };
         tokio::pin!(stop);
         let mut stopped = false;
+
         let mut attachments = job.clone();
         loop {
             let follow = watch_open && *watching.borrow_and_update();
@@ -826,7 +881,7 @@ impl RemoteShellEnvironment {
         };
         let (files, kept_output, media) = tokio::join!(retained, kept_output, self.media(job));
         set_files(files);
-        let (output, mut page, read) = match kept_output {
+        let (mut output, mut page, read) = match kept_output {
             None => (WholeOutput::new(received, None), String::new(), false),
             Some(Ok(output)) => (output, String::new(), true),
             Some(Err(error)) => {
@@ -871,6 +926,11 @@ impl RemoteShellEnvironment {
         // (`crates/agent-server/src/server/tree/live.rs`), whatever signal ended the job.
         let stopped = running.stop.is_cancelled();
         let end = if stopped {
+            // A stop that the Host's detach made says why, as the end of a
+            // command that never ran does.
+            if let Some(reason) = running.withdrawal.reason() {
+                page.push_str(&push_reason(output.records_mut(), &reason));
+            }
             CommandEnd::Stopped
         } else {
             CommandEnd::Exited { exit_code }

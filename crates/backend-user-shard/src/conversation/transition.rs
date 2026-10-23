@@ -6,11 +6,14 @@
 //! - A rename, a pin or a change of the model settings waits while a transition
 //!   holds the conversation, and is then applied as if it arrived afterwards.
 //!   The model settings change one at a time (`settings.rs`).
-//! - An archive, a restore and a detach are transitions. Each holds the
+//! - An archive and a restore are transitions. Each holds the
 //!   conversation, with its idle tree reserved, its file transfers, user
 //!   streams and the one-shot calls admitted like them ended, and its file gate
 //!   reserved. Each commits, then tells the connected devices it leaves to
 //!   release the conversation, and waits for none (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+//! - A detach applies at once and waits for no Host, whatever the conversation
+//!   does, as a move does: the Host leaves, its jobs are asked to stop, and it
+//!   answers; the Host hears the release once they ended.
 //! - A move stops and waits for nothing: it reads its destination as typed, ends the
 //!   transfers and streams, and commits, advancing the execution-context
 //!   revision, so each agent's next request names the new place. The commands
@@ -50,9 +53,9 @@ struct MoveSteps {
 }
 
 /// Whether a change of the record is a transition, which holds the
-/// conversation: an archive, a restore and a detach.
+/// conversation: an archive and a restore.
 fn change_is_transition(change: &RecordChange) -> bool {
-    matches!(change, RecordChange::Archived(_) | RecordChange::Detach(_))
+    matches!(change, RecordChange::Archived(_))
 }
 
 impl Shard {
@@ -138,6 +141,16 @@ impl Shard {
                 let _turn = slot.settings.acquire().await;
                 return self.change_settings(&record.id, change).await.map(|()| None);
             }
+            ConversationChange::Record(RecordChange::Detach(device)) => {
+                // A detach holds nothing and waits for no work: it ends the
+                // conversation's jobs on the Host
+                // (`crates/backend-host-access/src/transition.rs`).
+                let removed = host.detach(&record, device.clone()).await?;
+                if removed {
+                    self.release_detached(&record.id, device);
+                }
+                return Ok(None);
+            }
             ConversationChange::Record(change) if !change_is_transition(&change) => {
                 // A field update waits while a transition holds the
                 // conversation, and applies as if it arrived afterwards.
@@ -184,9 +197,6 @@ impl Shard {
                     self.mark(Part::Workspaces);
                 }
                 restored.map(|()| None)
-            }
-            ConversationChange::Record(RecordChange::Detach(device)) => {
-                host.detach(&record, device).await.map(|()| None)
             }
             ConversationChange::Record(change) => host.commit(&record.id, change).await.map(|()| None),
             ConversationChange::Settings(_) | ConversationChange::Target(_) => {
@@ -328,6 +338,20 @@ impl Shard {
         self.tasks().spawn_local(async move {
             tokio::select! {
                 () = shard.host_shard().release_departed(&id, &device) => {}
+                () = shard.closed() => {}
+            }
+        });
+    }
+
+    /// Releases `device`, which a detach of the conversation `id` removed,
+    /// once the commands running there ended, as a task of the shard; the
+    /// shard's close ends the wait.
+    fn release_detached(&self, id: &ConversationId, device: DeviceId) {
+        let shard = self.this();
+        let id = id.clone();
+        self.tasks().spawn_local(async move {
+            tokio::select! {
+                () = shard.host_shard().release_detached(&id, &device) => {}
                 () = shard.closed() => {}
             }
         });
