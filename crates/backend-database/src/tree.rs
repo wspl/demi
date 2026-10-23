@@ -621,7 +621,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     turn: row.turn,
                     title: row.title,
                     script: row.script,
-                    background: row.background,
+                    service: row.service,
                     started: row.started,
                     unsent: row.unsent,
                 })

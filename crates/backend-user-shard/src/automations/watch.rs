@@ -103,7 +103,7 @@ async fn run_command(
             turn: None,
         },
         title: "Change watch".into(),
-        background: true,
+        service: true,
         viewable: Viewable {
             model: "none".into(),
             media_types: Some(Vec::new()),

@@ -358,7 +358,7 @@ struct CallCommandState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartedCommand {
     pub command: CommandId,
-    pub background: bool,
+    pub service: bool,
 }
 
 /// What a call that something other than its tool ended shows of the
@@ -492,9 +492,9 @@ pub enum ToolEffect {
     /// The call returned while its command still runs.
     ///
     /// The session watches it: its end wakes the node, and so does its silence
-    /// once unless it runs in the `background`
+    /// once unless it is a `service`
     /// (`crates/agent-session/src/reports.rs`).
-    Background { command: CommandId, background: bool },
+    Running { command: CommandId, service: bool },
 }
 
 /// A tool that failed; its call completes as `Tool failed: <message>`.

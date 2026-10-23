@@ -1526,7 +1526,7 @@ impl SessionCore {
                 ToolView::Shell(view)
             });
             if let (CallEnd::Shutdown, Some(started)) = (end, started) {
-                self.watched.add(started.command, Watch::started(started.background));
+                self.watched.add(started.command, Watch::started(started.service));
             }
             self.transcript.complete_tool_call(
                 &call.tool_use_id,
@@ -2008,10 +2008,10 @@ impl SessionCore {
     // Command reports.
 
     /// Watches `command`, which a call left running, so that its end wakes
-    /// the node, and its silence once unless it runs in the `background`. A
+    /// the node, and its silence once unless it is a `service`. A
     /// Stop of the action leaves it running.
-    pub(super) fn watch_command(&mut self, command: CommandId, background: bool) {
-        self.watched.add(command, Watch::started(background));
+    pub(super) fn watch_command(&mut self, command: CommandId, service: bool) {
+        self.watched.add(command, Watch::started(service));
     }
 
     /// Admits a command's report for the next boundary.

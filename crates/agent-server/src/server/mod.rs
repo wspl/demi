@@ -155,7 +155,7 @@ pub struct ServerConfig {
     pub outbox_steps: usize,
     /// How long a tree stays live once it is detached and quiescent.
     pub idle_tree: Duration,
-    /// The longest a `shell` call watches a command that is not in the background,
+    /// The longest a `shell` call watches a command that is not a service,
     /// in milliseconds (`crates/agent-tools/src/lib.rs`): [`CALL_WINDOW_MS`] in the
     /// product, which a test shortens to see a call return within its time.
     pub call_window_ms: u32,

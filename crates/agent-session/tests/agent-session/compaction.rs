@@ -614,7 +614,7 @@ async fn a_compact_stopped_after_a_finished_answer_leaves_no_stop_to_continue() 
 #[tokio::test(flavor = "local")]
 async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_nor_a_report() {
     let provider = ScriptedRuntime::new([
-        Turn::Events(background_call("17", true, "Build")),
+        Turn::Events(service_call("17", true, "Build")),
         answer("building"),
         Turn::pending(),
         answer("read the news"),
@@ -628,7 +628,7 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
     let runtime = test_runtime(Vec::new());
     let commands = runtime.commands.clone();
     let runtime = TestRuntime {
-        tools: vec![background_tool(&commands)],
+        tools: vec![service_tool(&commands)],
         ..runtime
     };
     let session = start_at(

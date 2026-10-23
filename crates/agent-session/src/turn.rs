@@ -904,8 +904,8 @@ async fn record_result(
         relist_later_calls(s, &call.tool_use_id).await;
     }
     match outcome.effect {
-        Some(ToolEffect::Background { command, background }) => {
-            s.update(|core| core.watch_command(command.clone(), background));
+        Some(ToolEffect::Running { command, service }) => {
+            s.update(|core| core.watch_command(command.clone(), service));
             reports::start_watch(s, &command);
         }
         None => {}

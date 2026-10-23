@@ -44,7 +44,7 @@
 //!   the node.
 //! - `service: true` is for a command that runs until stopped, such as a
 //!   development server: its call returns once its output has been quiet for
-//!   [`QUIET`], or after [`BACKGROUND_WINDOW`], and only its exit wakes the node.
+//!   [`QUIET`], or after [`SERVICE_WINDOW`], and only its exit wakes the node.
 //!
 //! # Calls and steps
 //!
@@ -208,11 +208,11 @@ pub fn runs_together(tool: &str) -> bool {
     tool == SHELL
 }
 
-/// How long a background command's call waits for its output to be quiet.
+/// How long a service's call waits for its output to be quiet.
 const QUIET: Duration = Duration::from_secs(2);
-/// The longest a background command's call watches it.
-const BACKGROUND_WINDOW: Duration = Duration::from_secs(30);
-/// The longest a call watches a command that is not in the background, in
+/// The longest a service's call watches it.
+const SERVICE_WINDOW: Duration = Duration::from_secs(30);
+/// The longest a call watches a command that is not a service, in
 /// milliseconds: thirty seconds, which the tool's text states.
 pub const CALL_WINDOW_MS: u32 = 30_000;
 
@@ -238,7 +238,7 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub feed: &'a Rc<dyn PageFeed>,
     /// The conversation's numbers, which its environments are made with.
     pub numbers: &'a Rc<dyn Numbers>,
-    /// The longest a call watches a command that is not in the background, in
+    /// The longest a call watches a command that is not a service, in
     /// milliseconds: [`CALL_WINDOW_MS`] in the product.
     pub call_window_ms: u32,
 }
@@ -389,7 +389,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 turn: Some(call.turn),
             },
             title: input.description.0.clone(),
-            background: input.service,
+            service: input.service,
             viewable: Viewable {
                 model: call.model.model.id.clone(),
                 media_types: call.request_limits.tool_results.viewable(&call.model.model),
@@ -420,7 +420,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         };
         call.command.started(StartedCommand {
             command: command.clone(),
-            background: input.service,
+            service: input.service,
         });
         let window_ms = (!input.service).then_some(self.call_window_ms);
         let (status, ended_by) = watch(
@@ -438,6 +438,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             _ => None,
         };
         let (outcome_name, exit) = match &status.state {
+            CommandState::Running { .. } if input.service => ("service_running", None),
             CommandState::Running { .. } => ("moved_to_background", None),
             CommandState::Exited { exit_code, .. } => ("exited", Some(*exit_code)),
             CommandState::Aborted => ("stopped", None),
@@ -463,9 +464,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         )
         .await;
         if running {
-            outcome.effect = Some(ToolEffect::Background {
+            outcome.effect = Some(ToolEffect::Running {
                 command,
-                background: input.service,
+                service: input.service,
             });
         } else {
             self.release(environment.as_ref(), &command).await;
@@ -498,7 +499,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             },
             title: running.title.clone(),
             script: running.script.clone(),
-            background: running.background,
+            service: running.service,
             running: ran,
             seen: running.place,
             unsent: running.unsent.clone(),
@@ -554,7 +555,7 @@ impl Drop for CallStop {
 /// Watches `command` until the first of these happens:
 ///
 /// - it ends;
-/// - `window_ms` passes, or for a background command, its output has been quiet
+/// - `window_ms` passes, or for a service, its output has been quiet
 ///   for 2 seconds or 30 seconds have passed;
 /// - `until` resolves.
 ///
@@ -575,7 +576,7 @@ async fn watch<T>(
             None => {
                 tokio::select! {
                     quiet = quiet(environment, command) => quiet,
-                    () = tokio::time::sleep(BACKGROUND_WINDOW) => Ok(()),
+                    () = tokio::time::sleep(SERVICE_WINDOW) => Ok(()),
                 }
             }
         }

@@ -137,7 +137,7 @@ use self::{
     reports::Watched,
 };
 
-/// How long a command that is not in the background prints nothing before it
+/// How long a command that is not a service prints nothing before it
 /// wakes its node, once (`crates/agent-session/src/reports.rs`).
 pub const SILENCE_LIMIT: Duration = Duration::from_secs(600);
 
@@ -146,7 +146,7 @@ pub const SILENCE_LIMIT: Duration = Duration::from_secs(600);
 pub struct SessionConfig {
     /// How long after the first unsaved change a save starts.
     pub persist_interval: Duration,
-    /// How long a command that is not in the background prints nothing before
+    /// How long a command that is not a service prints nothing before
     /// it wakes its node, once (`crates/agent-session/src/reports.rs`).
     pub silence: Duration,
     pub retry: RetryPolicy,
@@ -795,7 +795,7 @@ impl AgentSession {
                 && watched.get(&started.command).is_none()
             {
                 // It wakes the node as its call asked, which its record kept.
-                watched.add(started.command.clone(), Watch::started(started.background));
+                watched.add(started.command.clone(), Watch::started(started.service));
             }
             transcript.complete_tool_call(
                 &call.tool_use_id,
