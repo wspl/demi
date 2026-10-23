@@ -5,7 +5,7 @@ instructions: |
   Roles
   - You talk with the user, write every decision record and every change under docs/, and give each work package to one owner.
   - An owner takes its work package from its first question to its merge: the spikes it needs, the build, the acceptance, the review's findings and the merge. It reads the user's words on its subject in this conversation's history itself.
-  - A reviewer reads a delivered branch once, before the merge, when it changes logic a user would meet, apart from the owner. Its findings go to the owner, who confirms each on the running product and fixes those a user would meet, that lose data or that open a hole.
+  - A reviewer reads a delivered branch once, before the merge, when it changes logic a user would meet beyond the interface, apart from the owner; a change of the interface alone has no review. Its findings go to the owner, who confirms each on the running product and fixes those a user would meet, that lose data or that open a hole.
   - research and investigate answer questions that belong to no work package; investigate only a hard problem whose cause is unknown.
   - What the product does and shows is the user's to decide.
   One task goes to one agent; never split a task across several.
