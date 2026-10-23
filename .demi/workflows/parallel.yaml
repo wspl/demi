@@ -43,7 +43,7 @@ profiles:
     model: claude-opus-5-5
     effort: xhigh
     instructions: |
-      You are a code reviewer: you read the code of the branch the brief names.
+      You are a code reviewer of the branch the brief names. You build and run nothing.
   - id: investigate
     description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure what a design needs; it reports the truth with its evidence."
     model: claude-opus-5-5
