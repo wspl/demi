@@ -184,6 +184,8 @@ pub enum RecordChange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeOutcome {
     Applied,
+    /// A detach of a device that is not attached: nothing changed.
+    Unchanged,
     /// No conversation has the id.
     Missing,
     /// The conversation is archived, and the change is not its restore.
@@ -537,9 +539,6 @@ impl ControlService {
                     // An archive withdraws the permission requests, decided ones
                     // whose message was not delivered among them, and keeps the
                     // grants.
-                    //
-                    // It drops the move and the detaches an agent asked for as well
-                    // (`crates/backend-host-access/src/transition.rs`).
                     if *archived {
                         archive_in(&transaction, &id)?;
                     } else {
@@ -569,14 +568,6 @@ impl ControlService {
                 RecordChange::Attach(host) => {
                     if insert_attached_host(&transaction, &id, host, now)? {
                         advance_context(&transaction, &id)?;
-                    } else {
-                        // Attached already: an attach cancels the detach an
-                        // agent asked for.
-                        transaction.execute(
-                            "UPDATE conversation_hosts SET detaching = 0
-                             WHERE conversation_id = ?1 AND device_id = ?2",
-                            params![id.as_str(), host.device.as_str()],
-                        )?;
                     }
                     1
                 }
@@ -585,10 +576,11 @@ impl ControlService {
                         "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
                         params![id.as_str(), device.as_str()],
                     )?;
-                    if removed > 0 {
-                        advance_context(&transaction, &id)?;
-                        raise_hosts_revision(&transaction, &id)?;
+                    if removed == 0 {
+                        return Ok(ChangeOutcome::Unchanged);
                     }
+                    advance_context(&transaction, &id)?;
+                    raise_hosts_revision(&transaction, &id)?;
                     removed
                 }
             };
@@ -1118,13 +1110,8 @@ impl ControlService {
 
 /// Archives the conversation `id`. An archive withdraws the permission
 /// requests, decided ones whose message was not delivered among them, and
-/// keeps the grants; it drops the detaches an agent asked for as well
-/// (`crates/backend-host-access/src/transition.rs`).
+/// keeps the grants.
 pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result<(), StorageError> {
-    connection.execute(
-        "UPDATE conversation_hosts SET detaching = 0 WHERE conversation_id = ?1",
-        [id.as_str()],
-    )?;
     connection.execute("DELETE FROM permission_requests WHERE conversation_id = ?1", [id.as_str()])?;
     connection.execute("UPDATE conversations SET archived = 1 WHERE id = ?1", [id.as_str()])?;
     Ok(())
@@ -1150,85 +1137,6 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
     };
     let selected = super::selection::project_of(connection, &device, path, now)?;
     super::devices::set_selection(connection, id, &selected.selection)
-}
-
-/// What waits for a conversation's tree to be idle: the attached devices an
-/// agent asked to detach.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PendingChanges {
-    pub detaching: Vec<DeviceId>,
-}
-
-impl PendingChanges {
-    pub fn is_empty(&self) -> bool {
-        self.detaching.is_empty()
-    }
-}
-
-impl ControlService {
-    /// Marks the attached `device` to detach once the conversation's tree is
-    /// idle, as an agent's `demi host detach` asks; answers whether it is
-    /// attached, false marking nothing.
-    pub async fn mark_detach(
-        &self,
-        id: ConversationId,
-        device: DeviceId,
-    ) -> Result<bool, StorageError> {
-        self.call(move |connection, _| {
-            let marked = connection.execute(
-                "UPDATE conversation_hosts SET detaching = 1
-                 WHERE conversation_id = ?1 AND device_id = ?2",
-                params![id.as_str(), device.as_str()],
-            )?;
-            Ok(marked == 1)
-        })
-        .await
-    }
-
-    /// What waits for the conversation's tree to be idle.
-    pub async fn pending_changes(&self, id: ConversationId) -> Result<PendingChanges, StorageError> {
-        self.call(move |connection, _| {
-            let detaching = connection
-                .prepare_cached(
-                    "SELECT device_id FROM conversation_hosts
-                     WHERE conversation_id = ?1 AND detaching = 1 ORDER BY attached_at, rowid",
-                )?
-                .query_map([id.as_str()], |row| row.get::<_, String>(0))?
-                .map(|device| {
-                    decode(
-                        "conversation_hosts",
-                        "device_id",
-                        DeviceId::try_from(device?),
-                    )
-                })
-                .collect::<Result<_, _>>()?;
-            Ok(PendingChanges { detaching })
-        })
-        .await
-    }
-
-    /// The conversations of every user that hold a pending change, with
-    /// their owners, which a start makes once their trees are idle.
-    pub async fn conversations_pending(&self) -> Result<Vec<(UserId, ConversationId)>, StorageError> {
-        self.call(move |connection, _| {
-            connection
-                .prepare_cached(
-                    "SELECT user_id, id FROM conversations WHERE archived = 0
-                       AND EXISTS (SELECT 1 FROM conversation_hosts
-                                   WHERE conversation_id = conversations.id AND detaching = 1)",
-                )?
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
-                .map(|row| {
-                    let (owner, id) = row?;
-                    Ok((
-                        decode("conversations", "user_id", UserId::try_from(owner))?,
-                        decode("conversations", "id", ConversationId::try_from(id.as_str()))?,
-                    ))
-                })
-                .collect()
-        })
-        .await
-    }
 }
 
 /// The conversation's attached hosts, first attached first, each by its device's

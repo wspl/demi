@@ -72,7 +72,7 @@ use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTar
 use demi_backend_database::devices::DeviceRecord;
 use demi_agent_tools::duration;
 use demi_backend_database::workspaces::TypedDirectory;
-use demi_backend_remote_host::{Admission, Link, RemoteHost, WeakLink};
+use demi_backend_remote_host::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_host_interface::{HostError, HostErrorKind, HostFs};
 use demi_runner_protocol::files::FsFailure;
@@ -118,8 +118,9 @@ pub struct ConversationSlot {
     /// is read, handed to the session and taken off the list before the
     /// next is read, so two pages never send it twice.
     pub saved: SerialGate,
-    /// The admissions its running shell jobs hold, each with its job's
-    /// device.
+    /// Its running shell jobs, each with its device, the admission it holds
+    /// when it holds one, and the request that stops it when that device is
+    /// detached.
     jobs: RefCell<Vec<Rc<JobAdmission>>>,
     /// Told whenever a job lets go of its admission.
     jobs_ended: Notify,
@@ -169,12 +170,18 @@ impl Drop for HeldWait {
     }
 }
 
-/// A running job's admission, held until the job ends, unless a move away
-/// from the job's offline Host leaves the job to that Host's runner
-/// without it (`crates/backend-host-access/src/transition.rs`).
+/// A running job, held until the job ends: its admission, unless a move
+/// away from the job's offline Host leaves the job to that Host's runner
+/// without it, or the job holds none of its own, and the request that ends it
+/// when its Host is detached (`crates/backend-host-access/src/transition.rs`).
 struct JobAdmission {
     device: DeviceId,
+    /// Whether the job runs without an admission of its own: it runs inside
+    /// one that its caller holds, or was taken up after a restart. Such a
+    /// job counts as running until it lets go.
+    unadmitted: bool,
     admitted: RefCell<Option<Admitted>>,
+    withdrawal: Rc<Withdrawal>,
 }
 
 /// A job's hold of its admission, registered with its conversation's slot
@@ -195,11 +202,20 @@ impl Drop for HeldJob {
 }
 
 impl ConversationSlot {
-    /// Holds `admitted`, a job's on `device`, while the job runs.
-    pub(crate) fn hold_job(self: &Rc<Self>, device: DeviceId, admitted: Admitted) -> HeldJob {
+    /// Holds the job on `device` while it runs, with its `admitted` when it
+    /// holds one: a job that runs inside an admission of its own holds none.
+    /// A detach of `device` makes `withdrawal`'s request.
+    pub(crate) fn hold_job(
+        self: &Rc<Self>,
+        device: DeviceId,
+        admitted: Option<Admitted>,
+        withdrawal: Rc<Withdrawal>,
+    ) -> HeldJob {
         let entry = Rc::new(JobAdmission {
             device,
-            admitted: RefCell::new(Some(admitted)),
+            unadmitted: admitted.is_none(),
+            admitted: RefCell::new(admitted),
+            withdrawal,
         });
         self.jobs.borrow_mut().push(entry.clone());
         HeldJob {
@@ -223,8 +239,9 @@ impl ConversationSlot {
         self.jobs_ended.notify_waiters();
     }
 
-    /// Resolves once no job of the conversation holds its admission on
-    /// `device`: at once when none runs there.
+    /// Resolves once no job of the conversation runs on `device`, one whose
+    /// admission a move left to its offline Host's runner excepted: at once
+    /// when none runs there.
     pub async fn jobs_ended_on(&self, device: &DeviceId) {
         loop {
             // Made before the check, so an end after it is not missed.
@@ -233,11 +250,19 @@ impl ConversationSlot {
                 .jobs
                 .borrow()
                 .iter()
-                .any(|entry| entry.device == *device && entry.admitted.borrow().is_some());
+                .any(|entry| entry.device == *device && (entry.unadmitted || entry.admitted.borrow().is_some()));
             if !running {
                 return;
             }
             ended.await;
+        }
+    }
+
+    /// Asks every job of the conversation on `device`, a Host it detached, to
+    /// stop for `reason`; waits for none.
+    pub fn withdraw_jobs_on(&self, device: &DeviceId, reason: &str) {
+        for entry in self.jobs.borrow().iter().filter(|entry| entry.device == *device) {
+            entry.withdrawal.withdraw(reason);
         }
     }
 
@@ -788,6 +813,8 @@ impl dyn HostShard + '_ {
         if !self.devices().connected(&selected.device.id) {
             return Err(self.away(&selected.device));
         }
+        // A detach of its device ends it.
+        open.bind(&selected.device.id).map_err(|_| Refusal::Busy)?;
         // A stream shows what the conversation's work left: it makes no
         // directory.
         selected.typed = None;

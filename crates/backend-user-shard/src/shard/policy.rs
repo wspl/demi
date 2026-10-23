@@ -131,12 +131,29 @@ impl LinkPolicy for ShardPolicy {
         }))
     }
 
-    fn admit_call(&self, job: &JobOrigin) -> Result<(), String> {
-        match conversation_of(&job.host) {
-            Some(conversation) if conversation == job.context.conversation => Ok(()),
-            Some(_) => Err("rpc job belongs to another conversation".into()),
-            None => Err("rpc requires a live job dispatched to this device".into()),
-        }
+    fn admit_call<'a>(&'a self, job: &'a JobOrigin) -> LocalBoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            let conversation = match conversation_of(&job.host) {
+                Some(conversation) if conversation == job.context.conversation => conversation,
+                Some(_) => return Err("rpc job belongs to another conversation".into()),
+                None => return Err("rpc requires a live job dispatched to this device".into()),
+            };
+            // Work a command left running on a Host that is no longer the
+            // conversation's, such as one started there with `&` or `nohup`,
+            // goes on as after an ssh session ends, but its calls are
+            // refused. A conversation that cannot be read is refused by what
+            // the call then needs.
+            let shard = self.shard()?;
+            let Ok(conversation) = ConversationId::try_from(conversation) else {
+                return Ok(());
+            };
+            if let Ok(hosts) = shard.host_shard().conversation_hosts(&conversation).await
+                && !hosts.iter().any(|host| host.device == self.device)
+            {
+                return Err("this host is no longer one of the conversation's".into());
+            }
+            Ok(())
+        })
     }
 
     /// Runs the call in its node's commands.

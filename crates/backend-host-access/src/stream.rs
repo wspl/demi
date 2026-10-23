@@ -19,9 +19,9 @@
 //! (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 //!
 //! Once admitted, a stream does not hold the conversation's file gate, so a
-//! transition ends it instead of waiting for it: an archive, a target or
-//! directory change and a detach end the conversation's streams and one-shot
-//! calls as they end its file transfers, and a Cloud stop or reset ends them
+//! transition ends it instead of waiting for it: an archive and a target or
+//! directory change end the conversation's streams and one-shot calls as they
+//! end its file transfers, and a detach those that reached the detached device, and a Cloud stop or reset ends them
 //! with the device's other work. The page reopens its streams by itself
 //! afterwards.
 

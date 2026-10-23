@@ -2,8 +2,9 @@
 //! conversation's Host, for as long as the user's browser takes.
 //!
 //! The shard admits a transfer like any operation and hands the edge the pipe
-//! end and a lease. An archive, a target change or a detach ends the
-//! conversation's open transfers instead of waiting for them. This module also
+//! end and a lease. An archive or a target change ends the conversation's open
+//! transfers instead of waiting for them, and a detach those that reached the
+//! detached device. This module also
 //! decides what a download answers from the file's metadata: its version, a
 //! conditional request, and the part a `Range` asks for.
 //!
@@ -51,7 +52,7 @@ use demi_host_interface::{
     ByteRange, FileStat, HostError, WhenExists, WriteOptions,
 };
 use demi_runner_protocol::wire::ReadAt;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
 use http::{HeaderMap, HeaderValue, StatusCode};
 use tokio::sync::{oneshot, watch};
@@ -130,6 +131,7 @@ impl dyn HostShard + '_ {
         let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
         let waits = Waits::until_ended(cancel, &open.ended);
         let admitted = self.admit_host(&record.id, None, waits).await?;
+        bind_to(&open, &admitted)?;
         let host = &admitted.host.host;
         // The read answers the file's metadata with its first bytes, so it
         // is the one request (`crates/runner-host/src/lib.rs`): it asks for
@@ -216,6 +218,7 @@ impl dyn HostShard + '_ {
         let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
         let waits = Waits::until_ended(cancel, &open.ended);
         let admitted = self.admit_host(&record.id, None, waits).await?;
+        bind_to(&open, &admitted)?;
         let host = admitted.host.host.clone();
         let pipe = host.write_pipe()?;
         let writer = pipe.writer().expect("a pipe just made has its source free");
@@ -273,6 +276,20 @@ impl dyn HostShard + '_ {
     }
 }
 
+/// Binds `open` to the device `admitted` reaches, so a detach of it ends the
+/// transfer.
+fn bind_to(open: &OpenTransfer, admitted: &Admitted) -> Result<(), Refusal> {
+    let device = admitted
+        .host
+        .host
+        .device_id()
+        .and_then(|device| DeviceId::try_from(device).ok());
+    match device {
+        Some(device) => open.bind(&device).map_err(|_| Refusal::Busy),
+        None => Ok(()),
+    }
+}
+
 /// The conversation's open file transfers and user streams, and whether a
 /// transition is closing them.
 pub struct TransferSet {
@@ -283,6 +300,19 @@ pub struct TransferSet {
     /// How many transitions hold the transfers closed; while any does, a
     /// new transfer is refused.
     closings: Cell<u32>,
+    /// The open transfers and streams, each with the device it reached once
+    /// admitted, which a detach of that device ends.
+    entries: RefCell<Vec<Entry>>,
+    /// The devices a detach is ending the transfers of: one is not bound to
+    /// them meanwhile.
+    closed_devices: RefCell<Vec<DeviceId>>,
+    next: Cell<u64>,
+}
+
+struct Entry {
+    id: u64,
+    ended: CancellationToken,
+    device: Option<DeviceId>,
 }
 
 /// A transition is ending the conversation's transfers: a new one waits for
@@ -296,7 +326,30 @@ pub struct TransfersBusy;
 /// unregisters it, which the transition waits for.
 pub struct OpenTransfer {
     set: Rc<TransferSet>,
+    id: u64,
     pub ended: CancellationToken,
+}
+
+/// A detach's hold that keeps new transfers and streams from reaching a
+/// device; dropping it lets them in again.
+pub struct DeviceClosed {
+    set: Rc<TransferSet>,
+    device: DeviceId,
+}
+
+impl OpenTransfer {
+    /// Says which device the admitted transfer reaches, so a detach of it
+    /// ends this one. Refused while a detach of that device is ending its
+    /// transfers.
+    pub fn bind(&self, device: &DeviceId) -> Result<(), TransfersBusy> {
+        if self.set.closed_devices.borrow().contains(device) {
+            return Err(TransfersBusy);
+        }
+        if let Some(entry) = self.set.entries.borrow_mut().iter_mut().find(|entry| entry.id == self.id) {
+            entry.device = Some(device.clone());
+        }
+        Ok(())
+    }
 }
 
 /// A transition's hold that keeps the conversation's transfers closed;
@@ -309,6 +362,9 @@ impl TransferSet {
             generation: RefCell::new(CancellationToken::new()),
             open: watch::Sender::new(0),
             closings: Cell::new(0),
+            entries: RefCell::default(),
+            closed_devices: RefCell::default(),
+            next: Cell::new(0),
         })
     }
 
@@ -326,10 +382,43 @@ impl TransferSet {
             return Err(TransfersBusy);
         }
         self.open.send_modify(|open| *open += 1);
+        let id = self.next.get();
+        self.next.set(id + 1);
+        let ended = self.generation.borrow().child_token();
+        self.entries.borrow_mut().push(Entry {
+            id,
+            ended: ended.clone(),
+            device: None,
+        });
         Ok(OpenTransfer {
             set: self.clone(),
-            ended: self.generation.borrow().child_token(),
+            id,
+            ended,
         })
+    }
+
+    /// Ends the open transfers and streams that reached `device`, refuses
+    /// new ones to it until the answer is dropped, and resolves once the
+    /// ended ones let go of their admission. The others go on.
+    pub async fn close_device(self: &Rc<Self>, device: &DeviceId) -> DeviceClosed {
+        self.closed_devices.borrow_mut().push(device.clone());
+        let closed = DeviceClosed {
+            set: self.clone(),
+            device: device.clone(),
+        };
+        let mut open = self.open.subscribe();
+        loop {
+            let mut bound = false;
+            for entry in self.entries.borrow().iter().filter(|entry| entry.device.as_ref() == Some(device)) {
+                entry.ended.cancel();
+                bound = true;
+            }
+            if !bound {
+                return closed;
+            }
+            // The set holds the sender while anyone watches it.
+            let _ = open.changed().await;
+        }
     }
 
     /// Ends every open transfer, refuses new ones until the answer is
@@ -350,7 +439,17 @@ impl TransferSet {
 
 impl Drop for OpenTransfer {
     fn drop(&mut self) {
+        self.set.entries.borrow_mut().retain(|entry| entry.id != self.id);
         self.set.open.send_modify(|open| *open -= 1);
+    }
+}
+
+impl Drop for DeviceClosed {
+    fn drop(&mut self) {
+        let mut closed = self.set.closed_devices.borrow_mut();
+        if let Some(at) = closed.iter().position(|device| *device == self.device) {
+            closed.remove(at);
+        }
     }
 }
 

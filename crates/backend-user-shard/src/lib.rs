@@ -75,8 +75,8 @@
 //! switch that has won its storage write still restarts the conversation's idle
 //! watch even if the page disconnected.
 //!
-//! Transitions such as switch, archive and detach run as spawned shard tasks
-//! once they hold the conversation.
+//! Transitions such as a switch and an archive run as spawned shard tasks once
+//! they hold the conversation.
 //!
 //! # Threading and placement
 //!

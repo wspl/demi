@@ -2,8 +2,9 @@
 //! (`crates/backend-database/src/conversation_index.rs`).
 //!
 //! The route is a detach; the conversation's metadata lists the hosts. A detach
-//! is a transition and reaches the conversation's nodes at their next context
-//! block. The conversation's agents attach the devices.
+//! applies at once, whatever the conversation does, and reaches the
+//! conversation's nodes at their next context block. The conversation's agents
+//! attach the devices.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -15,8 +16,10 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_host_access::transition::ChangeRefusal;
 
-/// Detaches a device, which hears the conversation release; a device that
-/// is not attached detaches as nothing.
+/// Detaches a device: answers once it has left the conversation and the
+/// conversation's commands there were asked to stop, waiting for no Host; the
+/// device hears the release once they ended. A device that is not attached
+/// detaches as nothing.
 pub(super) async fn detach(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

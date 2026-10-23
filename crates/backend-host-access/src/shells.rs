@@ -25,7 +25,7 @@ use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::running::{self, RunningCommand};
 use demi_backend_remote_host::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteHost,
-    RemoteShellEnvironment, edited_file, encode_output,
+    RemoteShellEnvironment, Withdrawal, edited_file, encode_output,
 };
 use demi_backend_runners::command_context::command_context;
 use demi_backend_runners::files::text_of;
@@ -117,6 +117,7 @@ impl dyn HostShard + '_ {
         host: &HostKey,
         cancel: &CancellationToken,
         wait: DeviceWait<'_>,
+        withdrawal: Rc<Withdrawal>,
         job: LocalBoxFuture<'_, ()>,
     ) -> Result<(), HostError> {
         let device = device_of(host)
@@ -142,10 +143,65 @@ impl dyn HostShard + '_ {
         let _held = self
             .conversations()
             .slot(id)
-            .hold_job(device.clone(), admitted);
+            .hold_job(device.clone(), Some(admitted), withdrawal.clone());
+        // A detach that committed since the admission, or does while the job
+        // installs its directories, ends it here, before it starts.
+        self.reaches(id, &device, &withdrawal).await?;
         self.install_directories(&device, &admitted_host).await?;
+        self.reaches(id, &device, &withdrawal).await?;
         job.await;
         Ok(())
+    }
+
+    /// Registers a job taken up again after a restart, which runs on the
+    /// device of `host`, with its conversation until the answer is dropped,
+    /// so a detach of the device stops it. A device the conversation no
+    /// longer reaches stops it at once.
+    pub async fn hold_adopted(
+        &self,
+        id: &ConversationId,
+        host: &HostKey,
+        withdrawal: Rc<Withdrawal>,
+    ) -> Option<Box<dyn std::any::Any>> {
+        let device = device_of(host).and_then(|device| DeviceId::try_from(device).ok())?;
+        let held = self
+            .conversations()
+            .slot(id)
+            .hold_job(device.clone(), None, withdrawal.clone());
+        // A failure to say is no reason to stop it: the withdrawal holds
+        // the reason when it was made.
+        let _ = self.reaches(id, &device, &withdrawal).await;
+        Some(Box::new(held))
+    }
+
+    /// Whether `device` is still the conversation's primary Host or one
+    /// attached to it. When it is not, the job's `withdrawal` is made, and
+    /// the answer is the error that ends the job without starting it. A
+    /// withdrawal made already ends it the same way.
+    pub(crate) async fn reaches(
+        &self,
+        id: &ConversationId,
+        device: &DeviceId,
+        withdrawal: &Withdrawal,
+    ) -> Result<(), HostError> {
+        if let Some(reason) = withdrawal.reason() {
+            return Err(HostError::new(HostErrorKind::Unavailable, reason));
+        }
+        // A conversation that cannot be read is no reason to end the job:
+        // what refuses it says so.
+        let Ok(hosts) = self.conversation_hosts(id).await else {
+            return Ok(());
+        };
+        if hosts.iter().any(|host| host.device == *device) {
+            return Ok(());
+        }
+        let name = match self.control().device(device.clone()).await {
+            Ok(Some(record)) => record.name,
+            _ => device.to_string(),
+        };
+        let reason = crate::transition::detached_reason(&name);
+        withdrawal.withdraw(&reason);
+        Err(HostError::new(HostErrorKind::Unavailable, reason))
     }
 
 }
@@ -269,11 +325,23 @@ struct JobAccess {
 }
 
 impl HostAccess for JobAccess {
+    fn hold_adopted<'a>(
+        &'a self,
+        host: &'a HostKey,
+        withdrawal: Rc<Withdrawal>,
+    ) -> LocalBoxFuture<'a, Option<Box<dyn std::any::Any>>> {
+        Box::pin(async move {
+            let shard = self.shard.upgrade()?;
+            shard.hold_adopted(&self.conversation, host, withdrawal).await
+        })
+    }
+
     fn run_job<'a>(
         &'a self,
         host: &'a HostKey,
         cancel: CancellationToken,
         waiting: JobWaiting<'a>,
+        withdrawal: Rc<Withdrawal>,
         job: LocalBoxFuture<'a, ()>,
     ) -> LocalBoxFuture<'a, Result<(), HostError>> {
         Box::pin(async move {
@@ -283,7 +351,7 @@ impl HostAccess for JobAccess {
                 .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
             let shown = Shown(waiting);
             let wait = DeviceWait { shown: &shown };
-            shard.run_job(&self.conversation, host, &cancel, wait, job).await
+            shard.run_job(&self.conversation, host, &cancel, wait, withdrawal, job).await
         })
     }
 }

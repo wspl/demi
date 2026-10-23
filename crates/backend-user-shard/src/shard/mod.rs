@@ -55,7 +55,6 @@ use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
 
 use crate::conversation::claude_cli::{ClaudeCli, ClaudeMachine};
-use crate::conversation::pending::PendingWatches;
 use crate::conversation::project_files::ProjectFiles;
 use crate::conversation::notifications::Notifications;
 use crate::conversation::retry_resume::RetryResumes;
@@ -145,9 +144,6 @@ pub struct Shard {
     /// The project files its conversations use, kept current by the
     /// runner's file watch.
     project_files: ProjectFiles,
-    /// Each conversation's watch for its tree to be idle, which makes the
-    /// changes its agent asked for then.
-    pending_watches: PendingWatches,
     /// The calls that wait for the answers to their requests.
     waits: demi_backend_permissions::Waits,
     /// What rearms the expiry of the user's credentials.
@@ -242,7 +238,6 @@ impl Shard {
             plugin_installs: PluginInstalls::default(),
             permission_revisions: demi_backend_page_sync::Revisions::default(),
             project_files,
-            pending_watches: PendingWatches::default(),
             waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
             forwards: port_forwards::ForwardsHeld::default(),
@@ -271,10 +266,6 @@ impl Shard {
 
     pub(crate) fn automations(&self) -> &crate::automations::Automations {
         &self.automations
-    }
-
-    pub(crate) fn pending_watches(&self) -> &PendingWatches {
-        &self.pending_watches
     }
 
     pub(crate) fn retry_resumes(&self) -> &RetryResumes {
@@ -396,7 +387,6 @@ impl Shard {
         closed("the sync channels ended", self.sync_channels.wait()).await;
         self.services.sync.forget(self.user());
         self.stop_idle_watches();
-        self.pending_watches.clear();
         self.retry_resumes.clear();
         self.cloud.stop();
         self.titles.abort_all();

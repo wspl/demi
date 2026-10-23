@@ -53,6 +53,11 @@ impl WholeOutput {
         &self.records
     }
 
+    /// The records, to add a line to them: the reason a command was stopped.
+    pub fn records_mut(&mut self) -> &mut Vec<OutputRecord> {
+        &mut self.records
+    }
+
     pub fn missing(&self) -> Option<&Missing> {
         self.missing.as_ref()
     }

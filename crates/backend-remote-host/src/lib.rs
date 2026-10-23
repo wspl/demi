@@ -31,6 +31,7 @@ mod remote_host;
 mod offers;
 mod session;
 mod shell_environment;
+mod withdrawal;
 #[cfg(feature = "edge")]
 mod runner_socket;
 #[cfg(feature = "edge")]
@@ -61,6 +62,7 @@ pub use remote_host::{
 pub use runner_socket::{close_frame, socket_frame};
 #[cfg(feature = "edge")]
 pub use stream_pipe::{accept_call_sink, accept_stream_pipe};
+pub use withdrawal::Withdrawal;
 pub use shell_environment::{
     CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteShellEnvironment,
     RemoteShellEnvironmentFactory, edited_file,
