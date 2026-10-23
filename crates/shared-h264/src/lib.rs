@@ -29,7 +29,12 @@
 //!   [`hardware`] says no codes in software, which keeps up with a phone's
 //!   logical size and not with its pixels, so the caller that has the choice
 //!   of size asks first.
+//! - [`bitstream`] is the one other thing the crate holds: the helpers of the
+//!   programs that read or rewrite a stream's parameter sets, Annex B
+//!   framing, emulation prevention and the bits of a payload, which the
+//!   recording's export and the mobile live view share.
 
+pub mod bitstream;
 #[cfg(windows)]
 mod mediafoundation;
 #[cfg(windows)]

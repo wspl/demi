@@ -36,7 +36,11 @@ use windows::{
     core::{GUID, Interface as _},
 };
 
-use crate::{Error, Picture, Raw, Rate, Result, Settings, nv12::Nv12};
+use crate::{
+    Error, Picture, Raw, Rate, Result, Settings,
+    bitstream::{SPS, annex_b, kind, units},
+    nv12::Nv12,
+};
 
 /// 100-nanosecond units to the microsecond.
 const TICKS: i64 = 10;
@@ -254,9 +258,9 @@ impl MediaFoundation {
             (bytes, sample.GetSampleTime().map_err(failed("an output's time"))?)
         };
         let mut data = bytes;
-        let key = units(&data).any(|unit| unit & 0x1f == 5);
+        let key = units(&data).iter().any(|unit| kind(unit) == Some(5));
         if key {
-            if units(&data).any(|unit| unit & 0x1f == 7) {
+            if units(&data).iter().any(|unit| kind(unit) == Some(SPS)) {
                 self.headers = parameter_sets(&data);
             } else if !self.headers.is_empty() {
                 let mut with = self.headers.clone();
@@ -272,36 +276,10 @@ impl MediaFoundation {
     }
 }
 
-/// The first byte of each NAL unit of an Annex B stream.
-fn units(data: &[u8]) -> impl Iterator<Item = u8> + '_ {
-    data.windows(4)
-        .enumerate()
-        .filter(|(at, window)| window[..3] == [0, 0, 1] || (window[..3] == [0, 0, 0] && data.get(at + 3) == Some(&1)))
-        .filter_map(|(at, window)| if window[2] == 1 { data.get(at + 3).copied() } else { data.get(at + 4).copied() })
-}
-
-/// The SPS and PPS units of an Annex B key frame, start codes included.
+/// The SPS and PPS units of an Annex B key frame.
 fn parameter_sets(data: &[u8]) -> Vec<u8> {
-    let mut starts: Vec<usize> = Vec::new();
-    let mut at = 0;
-    while at + 3 <= data.len() {
-        if data[at..at + 3] == [0, 0, 1] {
-            // The start code may be four bytes.
-            starts.push(if at > 0 && data[at - 1] == 0 { at - 1 } else { at });
-            at += 3;
-        } else {
-            at += 1;
-        }
-    }
-    let mut sets = Vec::new();
-    for (index, start) in starts.iter().enumerate() {
-        let end = starts.get(index + 1).copied().unwrap_or(data.len());
-        let code = if data[*start] == 0 && data[*start + 1] == 0 && data[*start + 2] == 0 { 4 } else { 3 };
-        if matches!(data.get(start + code).map(|byte| byte & 0x1f), Some(7 | 8)) {
-            sets.extend_from_slice(&data[*start..end]);
-        }
-    }
-    sets
+    let sets: Vec<&[u8]> = units(data).into_iter().filter(|unit| matches!(kind(unit), Some(SPS | 8))).collect();
+    annex_b(&sets)
 }
 
 fn media_type(subtype: &GUID, settings: Settings, fps: u32) -> Result<IMFMediaType> {
