@@ -99,7 +99,7 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
     - A part that is not there takes no room, so the next one moves up by the
       same step.
     - A press in the dock, on the composer or its empty space, closes the newest
-      window as one on the transcript does. Only the Agents and Running chips
+      window as one on the transcript does. Only the Agents, Running and Service chips
       keep it.
   -->
   <div class="session-dock relative">
@@ -152,10 +152,12 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       shows only while one of its parts holds an element.
 
       The chips keep their room: on a narrow row the reading gives way, its
-      speed first.
+      speed first. When the chips alone are wider than the row, as four are on
+      a phone, they stay on one line and scroll sideways, so the dock's height
+      does not change.
     -->
     <div ref="rowRef" class="hidden items-center gap-1.5 pb-2 has-[>*>*]:flex">
-      <div ref="chipsRef" class="flex shrink-0 items-center gap-1.5">
+      <div ref="chipsRef" class="flex min-w-0 shrink items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
         <slot name="chips" />
       </div>
       <span v-if="showScrollToBottom" class="w-chip shrink-0" />

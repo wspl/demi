@@ -34,7 +34,7 @@ mod told;
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, HashMap},
     rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
@@ -564,6 +564,7 @@ impl<H: HostResolver> Tree<H> {
                 tree.clone(),
                 session.status_watch(),
                 changes.subscribe(),
+                live.watch_running(),
                 deps.status_changed.clone(),
             ));
             let sending = tokio::task::spawn_local(live::send_changes(live.clone()));
@@ -822,13 +823,19 @@ impl<H: HostResolver> Tree<H> {
         &self.sink
     }
 
-    /// Whether the tree will go on working without the user, which makes its
-    /// conversation running: a child is live, or the root runs or waits to run. A
-    /// command that outlives its turn does not count, as that section says.
+    /// Whether the tree will go on working by itself: a child is live, or the
+    /// root runs or waits to run.
     pub fn works(&self) -> bool {
         !self.children.borrow().is_empty()
             || !self.starting.borrow().is_empty()
             || !quiescent(&self.root.session().status())
+    }
+
+    /// Whether the conversation is running: the tree works, or a command that
+    /// is not a service still runs, since its end wakes the agent, as a
+    /// child's does. A service does not count, for it runs until stopped.
+    pub fn is_running(&self) -> bool {
+        self.works() || self.live.awaits_commands()
     }
 
     /// Ends every command of the tree's nodes whose start still waits for
@@ -1143,7 +1150,7 @@ pub(super) fn note_running(sink: &FrameSink, node: &NodeId, running: &Cell<bool>
 pub struct QuiescenceWatch {
     status: watch::Receiver<Status>,
     changes: watch::Receiver<u64>,
-    running: watch::Receiver<BTreeSet<CommandId>>,
+    running: watch::Receiver<BTreeMap<CommandId, bool>>,
     admission: watch::Receiver<GateState>,
 }
 
@@ -1188,21 +1195,23 @@ async fn follow_paths<H: HostResolver>(tree: Weak<Tree<H>>, mut paths: watch::Re
 }
 
 /// Tells the product, through `status_changed`, that the tree opened, and
-/// each time it starts or stops working by itself.
+/// each time its conversation starts or stops running.
 async fn report_working<H: HostResolver>(
     tree: Weak<Tree<H>>,
     mut status: watch::Receiver<Status>,
     mut changes: watch::Receiver<u64>,
+    mut running: watch::Receiver<BTreeMap<CommandId, bool>>,
     status_changed: Rc<dyn Fn(&NodeId)>,
 ) {
     let mut reported = None;
     loop {
         status.mark_unchanged();
         changes.mark_unchanged();
+        running.mark_unchanged();
         let Some(live) = tree.upgrade() else {
             return;
         };
-        let state = live.works();
+        let state = live.is_running();
         if reported != Some(state) {
             reported = Some(state);
             status_changed(live.root.id());
@@ -1212,6 +1221,7 @@ async fn report_working<H: HostResolver>(
         tokio::select! {
             changed = status.changed() => if changed.is_err() { return },
             changed = changes.changed() => if changed.is_err() { return },
+            changed = running.changed() => if changed.is_err() { return },
         }
     }
 }
@@ -1224,7 +1234,7 @@ async fn evict_when_idle<H: HostResolver>(
     mut attachments: watch::Receiver<Vec<Attachment>>,
     mut status: watch::Receiver<Status>,
     mut changes: watch::Receiver<u64>,
-    mut running: watch::Receiver<BTreeSet<CommandId>>,
+    mut running: watch::Receiver<BTreeMap<CommandId, bool>>,
 ) {
     loop {
         attachments.mark_unchanged();

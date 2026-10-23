@@ -191,6 +191,7 @@
     "endCommand": "End Command",
     "closeTab": "Close Tab",
     "chip": "{count} Running",
+    "serviceChip": "{count} Service | {count} Services",
     "loading": "Loading terminal…",
     "unavailable": "Couldn’t load the terminal."
   },

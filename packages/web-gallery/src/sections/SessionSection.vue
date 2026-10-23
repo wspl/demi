@@ -156,7 +156,7 @@ import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { useCallTerminals, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
+import { useCallTerminals, firstRunningOfKind, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -231,6 +231,7 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
+import { useGalleryTerminalChips } from '../terminal-chips'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import { notSavedOnTop, sevenSaved, twoSaved } from '../fixtures/saved'
@@ -398,7 +399,8 @@ useLiveGalleryCommand(terminals)
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
 const exhibitOpen = ref(true)
 const exhibitAgentId = ref<string | null>(firstRunningSubagentId(agents))
-const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
+const terminalChips = useGalleryTerminalChips(() => terminals)
+const exhibitTerminalId = ref<string | null>(firstRunningOfKind(terminals, 'command'))
 /** One child per variant of the line that says what a child runs on. */
 const runLines = [workSubagent(), ...gallerySubagents()]
 /** What the children's context cards show and do beside their usage. */
@@ -448,7 +450,7 @@ function resetWindows(): void {
   }
   exhibitOpen.value = true
   exhibitAgentId.value = firstRunningSubagentId(agents)
-  exhibitTerminalId.value = firstRunningTerminalId(terminals)
+  exhibitTerminalId.value = firstRunningOfKind(terminals, 'command')
 }
 // The Agents panel open while a request waits: the card stands over the panel's lower part.
 const coverRequests = ref<RequestView[]>([rootRequest()])
@@ -514,7 +516,7 @@ watch(
     }
     exhibitOpen.value = true
     exhibitAgentId.value = firstRunningSubagentId(agents)
-    exhibitTerminalId.value = firstRunningTerminalId(terminals)
+    exhibitTerminalId.value = firstRunningOfKind(terminals, 'command')
   },
   { immediate: true },
 )
@@ -2159,7 +2161,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDockChip"
-        note="28px capsule with status dots. The Agents chip counts the live children and Running the commands, each dot breathing gently as every running thing does (StatusDot), and shows only while one runs, as Running shows only while a command runs; a finished child opens from its receipt's name or a link to it. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
+        note="28px capsule with status dots. The Agents chip counts the live children and Running the commands that went to the background and are not services, each dot breathing gently as every running thing does (StatusDot), and shows only while one runs; a finished child opens from its receipt's name or a link to it. Service counts the services, the commands that run until stopped, with the Activity icon, a pulse line, and no dot, since a service that runs is in its settled state; it shows only while one runs, and a service never keeps its conversation running. Agents opens its window; a second click closes it (Agents Chip in Windows). Running and Service open the terminal window on their oldest command, a press on the other chip moves it there, and a press on the chip that owns it closes it."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="resume">
@@ -2169,7 +2171,16 @@ onBeforeUnmount(() => {
             </SessionDockChip>
           </GallerySpecimen>
           <GallerySpecimen variant="running">
-            <TerminalChip :terminals="terminals" @open="productWould('Open the Terminals Window')" />
+            <TerminalChip :terminals="terminals" kind="command" :active-id="terminalChips.activeId.value" @open="terminalChips.press('command')" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="service">
+            <TerminalChip :terminals="terminals" kind="service" :active-id="terminalChips.activeId.value" @open="terminalChips.press('service')" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="running and service, as the dock shows them">
+            <div class="flex gap-2">
+              <TerminalChip :terminals="terminals" kind="command" :active-id="terminalChips.activeId.value" @open="terminalChips.press('command')" />
+              <TerminalChip :terminals="terminals" kind="service" :active-id="terminalChips.activeId.value" @open="terminalChips.press('service')" />
+            </div>
           </GallerySpecimen>
           <GallerySpecimen variant="ready">
             <SessionDockChip dot="success" @click="productWould('Show What Is Ready')">Ready</SessionDockChip>

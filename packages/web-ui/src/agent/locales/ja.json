@@ -191,6 +191,7 @@
     "endCommand": "コマンドを終了",
     "closeTab": "タブを閉じる",
     "chip": "{count} 件を実行中",
+    "serviceChip": "{count} 件のサービス",
     "loading": "ターミナルを読み込んでいます…",
     "unavailable": "ターミナルを読み込めませんでした。"
   },

@@ -24,6 +24,7 @@ pub fn shell_status(view: PageView) -> ShellStatus {
         tool_use_id: view.tool_use_id,
         title: view.title,
         script: view.script.to_string(),
+        service: view.service,
         tail: view.tail,
         chars: view.chars,
         running_ms: view.running_ms,
