@@ -10,7 +10,7 @@
 //!   the build container's image.
 //!
 //! With these tools a developer's machine, Linux or macOS, builds every target
-//! a change needs. The release workflow builds each Linux target on a runner of
+//! a change needs. The build workflow builds each Linux target on a runner of
 //! its own architecture, so only `x86_64-apple-darwin`, which Apple's toolchain
 //! builds on an arm64 Mac as it does for every Mac application, is built for an
 //! architecture other than the one that compiles it.
@@ -106,7 +106,7 @@ const IOS_HELPER_TARGET: &str = "aarch64-apple-darwin";
 
 /// The Apple SDK the Apple targets are built against: the one the Command
 /// Line Tools and Xcode 26.6 install, on a developer's Mac and on the
-/// release workflow's `macos-26` runner alike.
+/// build workflow's `macos-26` runner alike.
 pub(super) const APPLE_SDK_VERSION: &str = "26.5";
 /// The Windows SDK and C runtime: what cargo-xwin downloads from another
 /// platform, and what a Windows build's Visual Studio environment must

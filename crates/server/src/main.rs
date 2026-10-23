@@ -16,7 +16,7 @@
 //! A server runs one release at a time, and every part of Demi on it follows
 //! that release. Nothing negotiates versions: the backend, the machine manager,
 //! the web app, the runners and the command programs of a deployment are always
-//! built from one workspace version, so none of the wires between them accepts
+//! built from one build version, so none of the wires between them accepts
 //! another.
 //!
 //! Only these meet a part of another release, each a contract that a release
@@ -73,7 +73,7 @@ use crate::{journal::Journal, layout::Layout, services::Systemd, settings::Setti
 
 /// Installs, upgrades and rolls back this Demi server.
 #[derive(Parser)]
-#[command(name = "demi-server", version = demi_shared_artifacts::WORKSPACE_VERSION)]
+#[command(name = "demi-server", version = demi_shared_artifacts::BUILD_VERSION)]
 struct Cli {
     #[command(subcommand)]
     command: Action,
@@ -145,7 +145,7 @@ fn main() -> ExitCode {
 
 /// This program's release.
 fn own_version() -> Version {
-    Version::parse(demi_shared_artifacts::WORKSPACE_VERSION).expect("the workspace version is a version")
+    Version::parse(demi_shared_artifacts::BUILD_VERSION).expect("the build version is a version")
 }
 
 /// Runs `work` holding the lock that keeps one `demi-server` at a time.

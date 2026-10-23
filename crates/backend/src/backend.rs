@@ -297,7 +297,7 @@ pub async fn publish_commands(
     Ok(publish_native(
         &commands,
         files,
-        demi_shared_artifacts::WORKSPACE_VERSION,
+        demi_shared_artifacts::BUILD_VERSION,
         runners.as_ref(),
         &objects,
         cancel,

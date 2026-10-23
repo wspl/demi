@@ -1,48 +1,51 @@
-# Builds a release and publishes it as a GitHub release.
+# Publishes a build as a GitHub release.
 #
 # Starting it:
 #
 # - A manual start on a branch, `gh workflow run release.yml --ref <branch>`,
-#   publishes the workspace version in Cargo.toml of the branch's newest commit.
-#   It refuses a version that has a release already, never changes the version,
-#   and creates the tag v<version> on the commit it built (the npm packages'
-#   tags name their package, so the two never collide).
-# - Nothing else starts it: an ordinary push builds no release, and a release
-#   never starts by pushing its tag, because a run reads only the caches of its
-#   own branch and the default branch, so a run started by a tag could not read
-#   the previous release's.
-# - With `prerelease`, as a deploy starts it after committing the next version
-#   (docs/delivery/upgrades.md), it publishes a pre-release, which no installer
-#   takes as the newest and which a later `gh release edit` publishes.
+#   publishes the build of the branch's newest commit, or with `commit`, of that
+#   commit, which must be in the branch's history. It refuses a version that has
+#   a release already, and creates the tag v<version> on the commit it published
+#   (the npm packages' tags name their package, so the two never collide).
+# - Nothing else starts it: an ordinary push builds (build.yml) and publishes
+#   nothing.
+# - With `prerelease`, as a deploy starts it (docs/delivery/upgrades.md), it
+#   publishes a pre-release, which no installer takes as the newest and which a
+#   later `gh release edit` publishes.
 #
-# Each platform's targets build natively on the newest free standard runner of
-# that platform, one target's group of programs per job, so no runner compiles
-# two targets or two groups one after the other, and every step is a command of
-# the repository: the workflow only orders them and carries files between jobs.
-# A job waits only for the files it uses.
+# The files come from the commit's build, which build.yml made when the commit
+# was pushed:
 #
-#   programs (12 jobs) -+-> server release amd64: root, files, image -+-> publish
-#   server (2 jobs) ----+                                             |
-#   web ----------------+-> server release arm64: root, files, image -+
+#   find the commit's build ─┬─ finished, its files kept ─► publish them
+#                            ├─ running or waiting ───────► wait, then publish
+#                            └─ none, failed, or expired ─► build.yml, then
+#                                                           publish
 #
-# No job compiles or compresses what another already did: a command-program job
-# packages its programs, which compresses them, and a runner job compresses its
-# runner, and the server release jobs reuse those copies.
-#
-# The release runs no check: developers run them, and release acceptance runs
-# the shared Rust suite on each platform that ships a feature.
+# Only a build of the branch is found, and only one whose files are all kept for
+# two more hours (.github/scripts/build-files.sh). A build whose files expired is
+# not found, and a build that was cancelled because a newer push took its place
+# never finished: both are built again here, by the build.yml of the branch's
+# newest commit, so a commit that is not the newest is built again only when
+# `.github` is the same in both.
 name: Release
 
 on:
   workflow_dispatch:
     inputs:
+      commit:
+        description: The full SHA of the commit to publish, the branch's newest when empty.
+        type: string
+        default: ""
       prerelease:
         description: Publish a pre-release, never marked latest, as a deploy does.
         type: boolean
         default: false
 
+# The jobs that read another run's files and runs also read the repository's
+# actions.
 permissions:
   contents: read
+  actions: read
 
 # One run of a branch at a time, the others waiting in order: a release or a
 # deploy is never cancelled by the next one, as the default single pending
@@ -52,377 +55,176 @@ concurrency:
   cancel-in-progress: false
   queue: max
 
-env:
-  CARGO_TERM_COLOR: always
-  # Cargo judges a source file by its checksum rather than its mtime, which a
-  # fresh checkout sets to the checkout's time: by mtime, every vendored crate
-  # restored from the previous release's cache compiled again. The unstable flag
-  # only lets Cargo accept the setting, so both are needed. These are in the
-  # workflow, not .cargo/config.toml, so a developer's builds keep mtimes.
-  #
-  # A build script's `rerun-if-changed` files are still compared by time, so a
-  # vendored crate's build script watches no file of the repository: it names
-  # its inputs as compiled sources (`include_str!`, `include!`), or watches
-  # environment variables, as uucore and sed do. Restoring times from commits
-  # was rejected, since a change committed before the cached build would be
-  # missed.
-  CARGO_UNSTABLE_CHECKSUM_FRESHNESS: true
-  CARGO_BUILD_FINGERPRINT: content
-
 jobs:
-  version:
-    name: Version
+  find:
+    name: Find the build
     runs-on: ubuntu-26.04
     outputs:
+      commit: ${{ steps.commit.outputs.commit }}
       version: ${{ steps.version.outputs.version }}
+      run-id: ${{ steps.build.outputs.run-id }}
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          fetch-depth: 0
+          filter: tree:0
+      - id: commit
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - id: version
-        name: Check the version
+        uses: ./.github/actions/version
+      - name: Check the version
         env:
-          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.commit.outputs.commit }}
         run: |
-          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
-          [ -n "$version" ] || { echo 'no workspace version in Cargo.toml' >&2; exit 1; }
           [ "$GITHUB_REF_TYPE" = branch ] || {
-            echo 'a release starts on a branch, whose caches the next release reads' >&2
+            echo 'a release starts on a branch, whose caches the next build reads' >&2
             exit 1
           }
-          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "v$version has a release already: a published version is immutable" >&2
+          # The version counts the commit's history, so it names the commit
+          # only along one line of history: a commit of another branch would
+          # take the version of the branch's commit with the same count.
+          git merge-base --is-ancestor "$COMMIT" "origin/$GITHUB_REF_NAME" || {
+            echo "$COMMIT is not in the history of $GITHUB_REF_NAME" >&2
+            exit 1
+          }
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "v$VERSION has a release already: a published version is immutable" >&2
             exit 1
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-  # Each target's programs in two jobs, the runner and the command programs,
-  # so no runner compiles two targets or two groups one after the other.
-  programs:
-    name: ${{ matrix.group }} ${{ matrix.target }}
-    needs: version
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      # Every job's result in one run: any failure stops the release anyway,
-      # at the server release that needs them all.
-      fail-fast: false
-      matrix:
-        target:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
-          - x86_64-pc-windows-msvc
-          - aarch64-pc-windows-msvc
-        group: [runner, commands]
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-26
-          - target: x86_64-apple-darwin
-            runner: macos-26
-          - target: x86_64-unknown-linux-musl
-            runner: ubuntu-26.04
-          - target: aarch64-unknown-linux-musl
-            runner: ubuntu-26.04-arm
-          - target: x86_64-pc-windows-msvc
-            runner: windows-2025
-            msvc: amd64
-          - target: aarch64-pc-windows-msvc
-            runner: windows-11-arm
-            msvc: arm64
-          - group: runner
-            packages: --package demi-runner
-          - group: commands
-            # demi-mobile's iOS helper is built on the aarch64-apple-darwin
-            # job, with that runner's Xcode (`crates/plugin-mobile/command/src/ios/mod.rs`).
-            packages: --package demi-file --package demi-fetch --package demi-browser --package demi-claude-code --package demi-mobile
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/native-tools
-        with:
-          msvc: ${{ matrix.msvc }}
-      - uses: ./.github/actions/rust-cache
-        with:
-          key: ${{ matrix.target }}-${{ matrix.group }}
-      # xtask builds alone here, without its developer features, which leaves
-      # out the commands that only a developer runs, `contracts` and `dev`, and
-      # with them the backend they compile.
-      - name: Build
-        if: runner.os != 'Windows'
-        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
-      # Not in bash: Git's /usr/bin/link comes before MSVC's link.exe there.
-      - name: Build
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
-      # Demi's own certificate, the same in every release, so macOS keeps
-      # the user's grants to the runner across updates
-      # (`crates/runner/src/autostart.rs`). Signed
-      # before packaging, which hashes the program as it ships.
-      - name: Sign the runner
-        if: runner.os == 'macOS' && matrix.group == 'runner'
+      # The newest finished build of the branch whose files are all kept;
+      # failing that, the newest that has not finished, which this step waits
+      # for and then looks again. A cancelled or failed build, and one whose
+      # files expired, is no build.
+      - id: build
+        name: Find the commit's build
         env:
-          CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
-          PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+          COMMIT: ${{ steps.commit.outputs.commit }}
         run: |
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          secret=$(openssl rand -hex 16)
-          security create-keychain -p "$secret" "$keychain"
-          security set-keychain-settings -lut 3600 "$keychain"
-          security unlock-keychain -p "$secret" "$keychain"
-          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
-          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$PASSWORD" -T /usr/bin/codesign -f pkcs12
-          rm "$RUNNER_TEMP/signing.p12"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$secret" "$keychain" > /dev/null
-          # codesign looks for an identity only in the search list, and
-          # finds a self-signed one, which no trust setting vouches for,
-          # only by its hash.
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          runner=".cache/native-target/${{ matrix.target }}/release/demi-runner"
-          codesign --force --sign 250817EDB3EADABE250D5271ABB40DBD8B5984E9 --keychain "$keychain" --identifier sh.demi.runner --timestamp=none "$runner"
-          codesign --verify -R='identifier "sh.demi.runner" and certificate root = H"250817edb3eadabe250d5271abb40dbd8b5984e9"' "$runner"
-          security delete-keychain "$keychain"
-      # Packaging compresses each program into the cache, by its SHA-256,
-      # where the server release finds the copies made, so it compresses
-      # none itself; what packaging publishes is thrown away.
-      - name: Compress the programs
-        run: |
-          for argument in ${{ matrix.packages }}; do
-            [ "$argument" != --package ] || continue
-            cargo run --locked --package xtask --no-default-features -- native package \
-              --package "$argument" --target ${{ matrix.target }} \
-              --output "$RUNNER_TEMP/packages/$argument" --compressed compressed
+          for _ in 1 2 3; do
+            runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --commit "$COMMIT" \
+              --branch "$GITHUB_REF_NAME" --limit 20 --json databaseId,status,conclusion)
+            for id in $(jq -r '.[] | select(.conclusion == "success") | .databaseId' <<< "$runs"); do
+              if .github/scripts/build-files.sh "$id" > /dev/null; then
+                echo "run-id=$id" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done
+            running=$(jq -r '[.[] | select(.status != "completed")][0].databaseId // empty' <<< "$runs")
+            [ -n "$running" ] || break
+            gh run watch "$running" --repo "$GITHUB_REPOSITORY" --interval 30 > /dev/null || true
           done
-      - uses: ./.github/actions/collect-programs
-        with:
-          name: native-${{ matrix.target }}-${{ matrix.group }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: compressed-${{ matrix.target }}-${{ matrix.group }}
-          path: compressed
-          retention-days: 1
-      # The server release of this architecture, which builds its image too,
-      # runs the xtask this job built rather than compiling its own.
-      - uses: actions/upload-artifact@v7
-        if: runner.os == 'Linux' && matrix.group == 'runner'
-        with:
-          name: xtask-${{ matrix.target }}
-          path: target/debug/xtask
-          retention-days: 1
-
-  server:
-    name: server ${{ matrix.target }}
-    needs: version
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-musl
-            runner: ubuntu-26.04
-          - target: aarch64-unknown-linux-musl
-            runner: ubuntu-26.04-arm
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/native-tools
-      - uses: ./.github/actions/rust-cache
-        with:
-          key: ${{ matrix.target }}
-      - name: Build
-        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} --package demi-backend --package demi-machine-manager --package demi-server
-      - uses: ./.github/actions/collect-programs
-        with:
-          name: native-${{ matrix.target }}-server
-
-  web:
-    name: Web app
-    needs: version
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      # The Bun that `packageManager` in package.json names, the one
-      # developers use: a newer Bun on GitHub, whose ICU words a date
-      # differently, changes nothing until the version is raised there.
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-      # The contracts the packages are built from compile the workspace.
-      - uses: ./.github/actions/rust-cache
-      - run: bun install --frozen-lockfile
-      # The packages the web app imports are built first, as their dist/.
-      - run: bun run build
-      # The release's third-party notices, written into the built web app,
-      # whose server releases carry them at their roots
-      # (`crates/xtask/src/notices.rs`).
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-about@0.9.2
-      - run: bun xtask notices --web packages/web/dist
-      - uses: actions/upload-artifact@v7
-        with:
-          name: web
-          path: packages/web/dist
-          retention-days: 1
-
-  # Each Linux architecture's server release in one job: its root, the
-  # release's files, and the Cloud image built from them, so an
-  # architecture's image starts as soon as its own root is assembled. A
-  # matrix job cannot wait for one leg of another matrix, which is why the
-  # image is not a job of its own. Both legs assemble the release's files
-  # from the same executables and compressed copies; publish checks they
-  # are the same and publishes one copy.
-  server-release:
-    name: Server release ${{ matrix.arch }}
-    needs: [version, programs, server, web]
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-26.04
-            target: x86_64-unknown-linux-musl
-          - arch: arm64
-            runner: ubuntu-26.04-arm
-            target: aarch64-unknown-linux-musl
-    env:
-      VERSION: ${{ needs.version.outputs.version }}
-    steps:
-      # For the image build script and its pins.
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: native-*
-          path: ${{ runner.temp }}/native
-          merge-multiple: true
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: compressed-*
-          path: compressed
-          merge-multiple: true
-      - uses: actions/download-artifact@v8
-        with:
-          name: web
-          path: ${{ runner.temp }}/web
-      - uses: actions/download-artifact@v8
-        with:
-          name: xtask-${{ matrix.target }}
-          path: ${{ runner.temp }}/xtask
-      - name: Gather the executables
+          echo "run-id=" >> "$GITHUB_OUTPUT"
+      # The called build.yml is the branch's newest commit's, while its sources
+      # and actions are the commit's.
+      - name: Check that the branch's build can build the commit
+        if: steps.build.outputs.run-id == ''
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
         run: |
-          chmod +x "$RUNNER_TEMP/xtask/xtask"
-          mkdir -p native-target
-          for archive in "$RUNNER_TEMP"/native/native-*.tar; do
-            tar -xf "$archive" -C native-target
-          done
-      # The release's files are the ones the release offers at its download
-      # location.
-      - name: Assemble the root and the release's files
-        run: |
-          mkdir -p dist/server
-          "$RUNNER_TEMP/xtask/xtask" server-release --publish --output "$RUNNER_TEMP/root" \
-            --files files --downloads "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/" \
-            --server ${{ matrix.target }} --web "$RUNNER_TEMP/web" \
-            --artifacts native-target --compressed compressed
-          tar --zstd -cf "dist/server/demi-$VERSION-server-linux-${{ matrix.arch }}.tar.zst" \
-            -C "$RUNNER_TEMP/root" .
-          cp "native-target/${{ matrix.target }}/release/demi-server" \
-            "dist/server/demi-server-${{ matrix.target }}"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: server-${{ matrix.arch }}
-          path: dist/server
-          retention-days: 1
-      - uses: actions/upload-artifact@v7
-        with:
-          name: files-${{ matrix.arch }}
-          path: files
-          retention-days: 1
-      # The Ubuntu packages the build downloads are kept between releases, so a
-      # build downloads only what Ubuntu changed since the last one, and a slow
-      # mirror costs only that. A cache entry is never overwritten: the key
-      # names the set of packages, and the build saves an entry only when the
-      # set is not the restored one's.
-      - id: packages
-        name: Restore the Ubuntu packages
-        uses: actions/cache/restore@v6
-        with:
-          path: ${{ runner.temp }}/packages
-          key: ubuntu-packages-${{ matrix.arch }}
-          restore-keys: ubuntu-packages-${{ matrix.arch }}-
-      # The build's apt fetches from the Ubuntu mirror in GitHub's own
-      # network, which the runner itself uses, rather than from across the
-      # internet, where one release's build waited four minutes on stalled
-      # downloads; the image still names Ubuntu's archive.
-      - id: image
-        name: Build the image
-        run: |
-          sudo bash cloud-guest-image/rootfs/build.sh \
-            --xtask "$RUNNER_TEMP/xtask/xtask" \
-            --release "$RUNNER_TEMP/root" \
-            --files "$PWD/files" \
-            --work "$RUNNER_TEMP/work" \
-            --packages "$RUNNER_TEMP/packages" \
-            --output "$RUNNER_TEMP/out/image" \
-            --mirror http://azure.archive.ubuntu.com/ubuntu
-          mkdir -p dist/image
-          tar -cf "dist/image/demi-$VERSION-image-linux-${{ matrix.arch }}.tar" -C "$RUNNER_TEMP/out" image
-          echo "key=ubuntu-packages-${{ matrix.arch }}-$(ls "$RUNNER_TEMP/packages" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-      - name: Save the Ubuntu packages
-        if: steps.packages.outputs.cache-matched-key != steps.image.outputs.key
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/packages
-          key: ${{ steps.image.outputs.key }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: image-${{ matrix.arch }}
-          path: dist/image
-          retention-days: 1
+          git diff --quiet "$COMMIT" "$GITHUB_SHA" -- .github || {
+            echo "$COMMIT has no build to publish, and the workflows of $GITHUB_REF_NAME's newest commit would build it differently: publish the newest commit instead" >&2
+            exit 1
+          }
+
+  build:
+    name: Build
+    needs: find
+    if: needs.find.outputs.run-id == ''
+    uses: ./.github/workflows/build.yml
+    with:
+      commit: ${{ needs.find.outputs.commit }}
+    secrets: inherit
 
   publish:
     name: Publish
-    needs: [version, server-release]
+    needs: [find, build]
+    if: ${{ !cancelled() && needs.find.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write
+      actions: read
     env:
-      VERSION: ${{ needs.version.outputs.version }}
+      VERSION: ${{ needs.find.outputs.version }}
+      COMMIT: ${{ needs.find.outputs.commit }}
       PRERELEASE: ${{ inputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
     steps:
       # For install.sh.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.find.outputs.commit }}
+      # A download by pattern skips an artifact that is gone without an error,
+      # so what the build has is checked first, and what was downloaded after.
+      - id: files
+        name: Check that the build's files are kept
+        env:
+          RUN_ID: ${{ needs.find.outputs.run-id || github.run_id }}
+        run: echo "symbols=$(.github/scripts/build-files.sh "$RUN_ID")" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v8
         with:
+          run-id: ${{ needs.find.outputs.run-id || github.run_id }}
+          github-token: ${{ github.token }}
           pattern: server-*
           path: dist
           merge-multiple: true
       - uses: actions/download-artifact@v8
         with:
+          run-id: ${{ needs.find.outputs.run-id || github.run_id }}
+          github-token: ${{ github.token }}
           pattern: image-*
           path: dist
           merge-multiple: true
       - uses: actions/download-artifact@v8
         with:
+          run-id: ${{ needs.find.outputs.run-id || github.run_id }}
+          github-token: ${{ github.token }}
           pattern: files-*
           path: ${{ runner.temp }}/files
       # Each executable's debug file for each target, which the release
       # publishes beside its assets and no device downloads.
       - uses: actions/download-artifact@v8
         with:
+          run-id: ${{ needs.find.outputs.run-id || github.run_id }}
+          github-token: ${{ github.token }}
           pattern: symbols-*
-          path: dist
-          merge-multiple: true
+          path: ${{ runner.temp }}/symbols
       # Each architecture's server release assembled the release's files,
       # which both roots' manifests name: one copy is published, so the two
       # must be the same file for file.
       - name: Check that both architectures' files are the same
         run: diff --recursive "$RUNNER_TEMP/files/files-amd64" "$RUNNER_TEMP/files/files-arm64"
+      # A version is published once, so a release that lacks an asset is
+      # never published: `demi-server upgrade` needs a server release and an
+      # image for the architecture it runs on.
+      - name: Check that every asset was downloaded
+        env:
+          SYMBOLS: ${{ steps.files.outputs.symbols }}
+        run: |
+          missing=0
+          for file in \
+            dist/demi-"$VERSION"-server-linux-{amd64,arm64}.tar.zst \
+            dist/demi-"$VERSION"-image-linux-{amd64,arm64}.tar \
+            dist/demi-server-{x86_64,aarch64}-unknown-linux-musl; do
+            [ -s "$file" ] || { echo "missing: $file" >&2; missing=1; }
+          done
+          [ -n "$(ls -A "$RUNNER_TEMP/files/files-amd64")" ] || { echo "missing: the release's files" >&2; missing=1; }
+          directories=$(find "$RUNNER_TEMP/symbols" -mindepth 1 -maxdepth 1 -type d | wc -l)
+          [ "$directories" -eq "$SYMBOLS" ] || {
+            echo "missing: debug files: $directories of $SYMBOLS artifacts downloaded" >&2
+            missing=1
+          }
+          for directory in "$RUNNER_TEMP"/symbols/*/; do
+            [ -n "$(ls -A "$directory")" ] || { echo "missing: files in $directory" >&2; missing=1; }
+          done
+          exit "$missing"
       - name: Publish the release
         run: |
           cp "$RUNNER_TEMP"/files/files-amd64/* dist/
+          cp "$RUNNER_TEMP"/symbols/*/* dist/
           # The release's licenses, notice and third-party notices, as
           # assets, from the root of a server release.
           tar --zstd -xf "dist/demi-$VERSION-server-linux-amd64.tar.zst" -C dist \
@@ -437,4 +239,4 @@ jobs:
             kind=(--prerelease --latest=false)
           fi
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "Demi $VERSION" --generate-notes "${kind[@]}" ./*
+            --target "$COMMIT" --title "Demi $VERSION" --generate-notes "${kind[@]}" ./*

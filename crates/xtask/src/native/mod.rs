@@ -10,7 +10,7 @@
 //! the server's programs keep musl's (`shared-cli` holds the reasons). Cargo
 //! merges the features of every package one invocation builds, so the Host
 //! programs and the server programs are built in separate invocations, here and
-//! in the release workflow: built together, the backend would take mimalloc
+//! in the build workflow: built together, the backend would take mimalloc
 //! too.
 
 mod build;

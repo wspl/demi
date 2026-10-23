@@ -16,8 +16,8 @@ The image goes into the `image/` directory of the server release
 (`crates/xtask/src/server_release.rs`) whose runner and command package
 releases it embeds.
 
-The release workflow builds the published images this way on its `ubuntu-26.04`
-and `ubuntu-26.04-arm` runners (`.github/workflows/release.yml`). The rest of
+The build workflow builds the published images this way on its `ubuntu-26.04`
+and `ubuntu-26.04-arm` runners (`.github/workflows/build.yml`). The rest of
 this page describes a developer's build.
 
 ## Build on the developer's machine

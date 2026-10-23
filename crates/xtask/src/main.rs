@@ -7,7 +7,7 @@
 //! dependencies, built again whenever either changes, so the repository has no
 //! Cargo alias for it.
 //!
-//! The release workflow is the one exception: on its hosted runners it builds
+//! The build workflow is the one exception: on its hosted runners it builds
 //! xtask alone, without the developer features that compile the backend
 //! (`contracts`, `dev`, `logos`).
 //!
@@ -15,9 +15,9 @@
 //!
 //! - On a developer's machine, whose cross tools compile the targets of the
 //!   Hosts in use whatever its platform.
-//! - In the release workflow, which builds every release, a deploy's
-//!   pre-release included, on GitHub's hosted runners, each platform's targets
-//!   on a runner of that platform.
+//! - In the build workflow, which builds every push and every release, a
+//!   deploy's pre-release included, on GitHub's hosted runners, each platform's
+//!   targets on a runner of that platform.
 //!
 //! A developer builds and packages only the targets of the Hosts in use: trying
 //! a runner change on an x86_64 Linux machine that is also its own Cloud's
@@ -51,9 +51,9 @@
 //! workspace built beside them, which a whole-selection build places in the
 //! target directory.
 //!
-//! The release workflow builds and publishes and runs no check. Developers run
-//! the checks on their machines, and release acceptance checks the artifacts
-//! and installers on each platform that ships a feature:
+//! The build workflow builds and runs no check. Developers run the checks on
+//! their machines, and release acceptance checks the artifacts and installers on
+//! each platform that ships a feature:
 //!
 //! - A Linux executable with an ELF interpreter or a shared-library dependency
 //!   fails.

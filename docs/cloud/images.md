@@ -29,7 +29,7 @@ Build amd64 and arm64 separately. Native executable targets are
 
 Assemble the Linux filesystem on a Linux builder of the image's architecture:
 
-- For a published release, the release workflow's `ubuntu-26.04` and
+- For a published release, the build workflow's `ubuntu-26.04` and
   `ubuntu-26.04-arm` runners, which give a job root through passwordless
   `sudo`.
 - For development, a Linux machine or VM of the developer's, with the targets

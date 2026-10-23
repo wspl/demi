@@ -41,7 +41,7 @@ const RESOLVER_FILES: [&str; 2] = ["/run/systemd/resolve/resolv.conf", "/etc/res
 /// The Cloud machine manager: runs users' Cloud machines as gVisor
 /// sandboxes and serves the backend over a Unix socket.
 #[derive(Debug, clap::Parser)]
-#[command(name = "demi-machine-manager", version = demi_shared_artifacts::WORKSPACE_VERSION)]
+#[command(name = "demi-machine-manager", version = demi_shared_artifacts::BUILD_VERSION)]
 struct Cli {
     /// Fence and save what a stopped manager left behind, then exit (the
     /// service's stop-post command).

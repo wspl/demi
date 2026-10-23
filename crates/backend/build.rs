@@ -3,7 +3,7 @@
 //
 // The branch is, in order:
 //
-// 1. The release workflow's `GITHUB_REF_NAME`.
+// 1. The build workflow's `GITHUB_REF_NAME`.
 // 2. The checkout's branch.
 // 3. None, for a checkout on no branch or outside Git.
 use std::process::Command;

@@ -33,7 +33,7 @@
 //! # Signing on macOS
 //!
 //! A grant of the protected folders is remembered per designated requirement,
-//! so the release workflow signs the runner with Demi's own certificate, the
+//! so the build workflow signs the runner with Demi's own certificate, the
 //! same in every release (`sh.demi.runner`). An ad hoc signature names the
 //! build's hash, and the system would ask again after every update.
 //!

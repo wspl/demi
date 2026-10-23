@@ -61,7 +61,7 @@
  * 6. Creates one package tag per artifact.
  *
  * A package's tag names the package, so it never collides with the
- * `v<workspace version>` tag the release workflow creates.
+ * `v0.1.<commit count>` tag the release workflow creates.
  *
  * The Rust workspace version (`[workspace.package]` in Cargo.toml, which every
  * crate inherits) and this group's version change independently: a release of

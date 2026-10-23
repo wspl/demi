@@ -122,8 +122,8 @@ pub struct Options {
     /// The built web app to copy into web/ [default: no web/].
     #[arg(long, value_name = "DIRECTORY")]
     pub(crate) web: Option<PathBuf>,
-    /// Names the command packages with the workspace version itself; only
-    /// the release workflow publishes.
+    /// Names the command packages with the build version itself; only
+    /// the build workflow passes it.
     #[arg(long)]
     pub(crate) publish: bool,
     /// The Cargo target directory the build wrote [default:
@@ -227,7 +227,7 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
             output: &release,
             caches: &options.caches,
             versioning,
-            version: demi_shared_artifacts::WORKSPACE_VERSION,
+            version: demi_shared_artifacts::BUILD_VERSION,
         };
         println!("{}", native::package(&spec, cancel).await?);
         native::split(&release, executable, stage.path(), &files, cancel).await?;
