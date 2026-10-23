@@ -191,6 +191,7 @@
     "endCommand": "停止命令",
     "closeTab": "关闭标签页",
     "chip": "{count} 个正在运行",
+    "serviceChip": "{count} 个服务",
     "loading": "正在加载终端…",
     "unavailable": "无法加载终端。"
   },

@@ -122,7 +122,7 @@ impl Shard {
         &self.notifications
     }
 
-    /// Follows the conversation's status: as its tree starts to work, notes
+    /// Follows the conversation's status: as its tree starts to run, notes
     /// the turn that had ended last; as it rests, notifies of the turn that
     /// ended last then, if it is another. Called on each change of the
     /// tree's status.
@@ -133,7 +133,7 @@ impl Shard {
         let tree = self.agent().tree(&root_of(conversation));
         let mut working = self.notifications.working.borrow_mut();
         match tree {
-            Some(tree) if tree.works() => {
+            Some(tree) if tree.is_running() => {
                 working
                     .entry(conversation.clone())
                     .or_insert_with(|| tree.root().session().ended_turn());

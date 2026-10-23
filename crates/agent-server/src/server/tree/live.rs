@@ -38,7 +38,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeSet,
+    collections::BTreeMap,
     rc::{Rc, Weak},
     time::Duration,
 };
@@ -69,8 +69,8 @@ pub(crate) struct LiveOutput {
     /// Wakes the sending task when a command starts to wait.
     wake: Notify,
     /// The commands that run, in every node of the tree, whether or not a
-    /// connection is attached.
-    running: watch::Sender<BTreeSet<CommandId>>,
+    /// connection is attached, each with whether it is a service.
+    running: watch::Sender<BTreeMap<CommandId, bool>>,
 }
 
 /// A command whose new output waits: its view is read when it is sent.
@@ -89,7 +89,7 @@ impl LiveOutput {
             waiting: RefCell::default(),
             sent: Cell::new(None),
             wake: Notify::new(),
-            running: watch::Sender::new(BTreeSet::new()),
+            running: watch::Sender::new(BTreeMap::new()),
         })
     }
 
@@ -97,8 +97,14 @@ impl LiveOutput {
         !self.running.borrow().is_empty()
     }
 
+    /// Whether a command runs that is not a service, whose end the agent
+    /// waits for.
+    pub(crate) fn awaits_commands(&self) -> bool {
+        self.running.borrow().values().any(|service| !service)
+    }
+
     /// Changes whenever a command of the tree starts or ends.
-    pub(crate) fn watch_running(&self) -> watch::Receiver<BTreeSet<CommandId>> {
+    pub(crate) fn watch_running(&self) -> watch::Receiver<BTreeMap<CommandId, bool>> {
         self.running.subscribe()
     }
 
@@ -115,15 +121,15 @@ impl LiveOutput {
     /// end goes at once, with nothing of the command after it. Without an
     /// attached connection nothing is sent or kept.
     fn changed(&self, subagent: &Option<NodeId>, record: &Rc<RefCell<CommandRecord>>) {
-        let (command, running) = {
+        let (command, running, service) = {
             let record = record.borrow();
-            (record.command_id().clone(), record.is_running())
+            (record.command_id().clone(), record.is_running(), record.is_service())
         };
         self.running.send_if_modified(|commands| {
             if running {
-                commands.insert(command.clone())
+                commands.insert(command.clone(), service) != Some(service)
             } else {
-                commands.remove(&command)
+                commands.remove(&command).is_some()
             }
         });
         if !self.sink.attached() {

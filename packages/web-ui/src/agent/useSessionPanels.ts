@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { firstRunningSubagentId, type SubagentRecord } from './subagents'
-import { firstRunningTerminalId, type TerminalRecord } from './terminals'
+import { firstRunningOfKind, shownKind, type ChipKind, type TerminalRecord } from './terminals'
 
 /**
  * The dock opens one window at a time: the Agents panel, on one child or on
@@ -53,10 +53,14 @@ export function useSessionPanels(
   function toggleAgents(): void {
     agentsOpen.value = !agentsOpen.value
   }
-  function toggleTerminals(): void {
-    activeTerminalId.value = activeTerminalId.value
-      ? null
-      : firstRunningTerminalId(terminals())
+  /**
+   * The press of the Running chip, or of the Service chip: the window opens on
+   * the oldest running command the chip counts, moves there while it shows a
+   * command of the other chip, and closes while it shows one of this chip's.
+   */
+  function toggleTerminals(kind: ChipKind): void {
+    activeTerminalId.value =
+      shownKind(terminals(), activeTerminalId.value) === kind ? null : firstRunningOfKind(terminals(), kind)
   }
   function close(): void {
     panel.value = null

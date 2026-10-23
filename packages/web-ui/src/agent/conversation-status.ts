@@ -1,6 +1,7 @@
 import type { StatusDotTone } from '../ui/StatusDot.vue'
 import type { ConversationState } from './types'
 import { isSubagentRunning, type SubagentRecord } from './subagents'
+import { isTerminalRunning, type TerminalRecord } from './terminals'
 
 export type ConversationStatus = 'idle' | 'active' | 'done' | 'error' | 'aborted'
 
@@ -35,10 +36,20 @@ export function statusTone(status: ConversationStatus, outcome?: { read: boolean
   }
 }
 
-/** A conversation remains active until its root and all children finish. */
+/**
+ * A conversation remains active until its root and all children finish, and
+ * while a command that is not a service runs, whose end wakes its agent. A
+ * service runs until stopped, so it never keeps the conversation active; the
+ * backend counts the same way (`crates/agent-server/src/server/tree.rs`).
+ */
 export function isConversationActive(
   phase: ConversationState['phase'],
   subagents: readonly Pick<SubagentRecord, 'phase'>[] = [],
+  terminals: readonly Pick<TerminalRecord, 'phase' | 'service'>[] = [],
 ): boolean {
-  return phase !== 'idle' || subagents.some((agent) => isSubagentRunning(agent.phase))
+  return (
+    phase !== 'idle' ||
+    subagents.some((agent) => isSubagentRunning(agent.phase)) ||
+    terminals.some((terminal) => isTerminalRunning(terminal.phase) && !terminal.service)
+  )
 }

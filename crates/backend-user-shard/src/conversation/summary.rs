@@ -71,7 +71,7 @@ impl Shard {
         let live = self
             .agent()
             .tree(&root_of(&record.id))
-            .map(|tree| (tree.works(), tree.root().session().phase()));
+            .map(|tree| (tree.is_running(), tree.root().session().phase()));
         let facts = self.summary_facts(&record.id).await;
         let resolved = self.host_shard().resolve_target(&record).await?;
         Ok(ConversationSummary {
@@ -230,9 +230,10 @@ fn last_turn(turn: &EndedTurn) -> LastTurn {
 }
 
 /// A conversation's status: running or compacting while its live tree will
-/// go on working without the user, interrupted when its checkpoint was saved
-/// in a turn and no tree is live, else what its latest terminal block says.
-/// `live` is whether the live tree works, and its root's phase.
+/// go on working without the user, or a command that is not a service still
+/// runs; interrupted when its checkpoint was saved in a turn and no tree is
+/// live; else what its latest terminal block says. `live` is whether the live
+/// tree is running, and its root's phase.
 fn status(live: Option<(bool, SessionPhase)>, facts: &SummaryFacts) -> ConversationStatus {
     match live {
         Some((true, SessionPhase::Compacting)) => return ConversationStatus::Compacting,

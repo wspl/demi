@@ -35,6 +35,9 @@ pub struct CommandRecord {
     /// That call's script, which the pages' view of the command carries
     /// with its title.
     script: Arc<str>,
+    /// Whether the call started it as a service, a command that runs until
+    /// stopped, which the conversation does not wait for.
+    service: bool,
     started: Instant,
     last_output: Instant,
     phase: Phase,
@@ -94,6 +97,7 @@ pub struct PageView {
     pub tool_use_id: String,
     pub title: String,
     pub script: Arc<str>,
+    pub service: bool,
     pub state: PageState,
     pub tail: String,
     pub chars: u64,
@@ -169,13 +173,14 @@ pub enum Ending {
 
 impl CommandRecord {
     /// A running command that the `shell` call `tool_use_id`, titled
-    /// `title`, started with `script`.
-    pub fn new(command_id: CommandId, tool_use_id: String, title: String, script: &str) -> Self {
-        Self::taken_up(command_id, tool_use_id, title, script, std::time::Duration::ZERO, Seen::default())
+    /// `title`, started with `script`, as a service when `service`.
+    pub fn new(command_id: CommandId, tool_use_id: String, title: String, script: &str, service: bool) -> Self {
+        Self::taken_up(command_id, tool_use_id, title, script, service, std::time::Duration::ZERO, Seen::default())
     }
 
     /// A running command that the `shell` call `tool_use_id`, titled
-    /// `title`, started with `script` `running` ago and that is taken up
+    /// `title`, started with `script` `running` ago, as a service when
+    /// `service`, and that is taken up
     /// again, whose output the model had seen as far as `seen`: its output
     /// arrives again from its start, and the model's view passes over what
     /// it saw.
@@ -184,6 +189,7 @@ impl CommandRecord {
         tool_use_id: String,
         title: String,
         script: &str,
+        service: bool,
         running: std::time::Duration,
         seen: Seen,
     ) -> Self {
@@ -193,6 +199,7 @@ impl CommandRecord {
             tool_use_id,
             title,
             script: Arc::from(script),
+            service,
             started: now.checked_sub(running).unwrap_or(now),
             last_output: now,
             phase: Phase::Running,
@@ -220,6 +227,11 @@ impl CommandRecord {
     /// call had none.
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    /// Whether its call started it as a service.
+    pub fn is_service(&self) -> bool {
+        self.service
     }
 
     /// Whether it runs while its start waits for its Host.
@@ -480,6 +492,7 @@ impl CommandRecord {
             tool_use_id: self.tool_use_id.clone(),
             title: self.title.clone(),
             script: Arc::clone(&self.script),
+            service: self.service,
             state: match &self.phase {
                 Phase::Running => PageState::Running,
                 Phase::Waiting { host } => PageState::Waiting { host: host.clone() },

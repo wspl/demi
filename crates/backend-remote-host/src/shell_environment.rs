@@ -349,6 +349,7 @@ impl RemoteShellEnvironment {
             request.caller.tool_use_id.clone(),
             request.title.clone(),
             &request.script,
+            request.service,
         );
         let (running, record) = self.hold(&command, record, cancel.child_token());
         let environment = self.clone();
@@ -395,6 +396,7 @@ impl RemoteShellEnvironment {
             caller.tool_use_id.clone(),
             title.clone(),
             &script,
+            service,
             running,
             seen,
         );

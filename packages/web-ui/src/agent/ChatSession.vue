@@ -1021,8 +1021,15 @@ watch(
               />
               <TerminalChip
                 :terminals="terminals"
-                :open="activeTerminalId !== null"
-                @open="toggleTerminals"
+                kind="command"
+                :active-id="activeTerminalId"
+                @open="toggleTerminals('command')"
+              />
+              <TerminalChip
+                :terminals="terminals"
+                kind="service"
+                :active-id="activeTerminalId"
+                @open="toggleTerminals('service')"
               />
               <AutomationsChip
                 v-if="automations?.length"

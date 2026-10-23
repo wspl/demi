@@ -15,7 +15,7 @@ import { subagentEntryFields } from '@demicodes/web-ui/agent/subagents'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
-  if (isConversationActive(conversation.phase, conversation.subagents)) {
+  if (isConversationActive(conversation.phase, conversation.subagents, conversation.terminals)) {
     conversation.status = 'active'
     return
   }

@@ -65,6 +65,12 @@ export interface TerminalRecord {
   toolUseId?: string
   /** The subagent that runs it; absent for the root's commands. */
   subagentId?: string
+  /**
+   * Whether its call started it as a service, a command that runs until
+   * stopped: its end wakes its agent, but its conversation does not wait for
+   * it.
+   */
+  service?: boolean
 }
 
 /**
@@ -247,6 +253,7 @@ export function followFrame(
     waitingFor: status.status === 'running' ? status.waitingFor ?? undefined : undefined,
     toolUseId: status.toolUseId,
     ...(subagentId === undefined ? {} : { subagentId }),
+    ...(status.service ? { service: true } : {}),
   }
 }
 
@@ -428,6 +435,36 @@ export function runningTerminals(
 }
 
 /**
+ * Which chip counts a command: Running counts the commands that went to the
+ * background and are not services, Service counts the services.
+ */
+export type ChipKind = 'command' | 'service'
+
+export function chipKindOf(terminal: Pick<TerminalRecord, 'service'>): ChipKind {
+  return terminal.service ? 'service' : 'command'
+}
+
+/** The running commands the chip of `kind` counts, oldest first. */
+export function runningOfKind(terminals: readonly TerminalRecord[], kind: ChipKind): TerminalRecord[] {
+  return runningTerminals(terminals).filter((terminal) => chipKindOf(terminal) === kind)
+}
+
+/** The oldest running command of `kind`, which its chip opens the window on. */
+export function firstRunningOfKind(terminals: readonly TerminalRecord[], kind: ChipKind): string | null {
+  return runningOfKind(terminals, kind)[0]?.id ?? null
+}
+
+/** The kind of the command the window shows, `activeId`; none while it shows none. */
+export function shownKind(terminals: readonly TerminalRecord[], activeId: string | null): ChipKind | null {
+  const shown = activeId === null ? undefined : terminals.find((terminal) => terminal.id === activeId)
+  return shown ? chipKindOf(shown) : null
+}
+
+export function chipLabel(kind: ChipKind, count: number): string {
+  return kind === 'service' ? t('terminals.serviceChip', { count }, count) : t('terminals.chip', { count })
+}
+
+/**
  * A command's mark: running, done, or stopped; a stopped command is never
  * shown as done, and neither is a lost one, which its row tags grey as a
  * stopped one.
@@ -440,16 +477,6 @@ export function terminalStatus(phase: TerminalPhase): ConversationStatus {
     return 'aborted'
   }
   return 'done'
-}
-
-export function runningChipLabel(count: number): string {
-  return t('terminals.chip', { count })
-}
-
-export function firstRunningTerminalId(
-  terminals: readonly TerminalRecord[],
-): string | null {
-  return runningTerminals(terminals)[0]?.id ?? null
 }
 
 /**

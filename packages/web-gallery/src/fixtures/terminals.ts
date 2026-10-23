@@ -44,6 +44,19 @@ export function leftRunningCommand(): TerminalRecord {
   }
 }
 
+/** A development server the agent started an hour ago, which runs until stopped. */
+export function previewService(): TerminalRecord {
+  return {
+    id: 'term-preview',
+    title: 'Serve the pricing page preview',
+    script: 'bun run preview --port 4173',
+    phase: 'running',
+    startedAt: ago(3_600_000),
+    output: 'Local: http://localhost:4173/\n',
+    service: true,
+  }
+}
+
 export function galleryTerminals(): TerminalRecord[] {
   return [
     {
@@ -83,6 +96,7 @@ export function galleryTerminals(): TerminalRecord[] {
       startedAt: ago(20_000),
       output: '4\nchanged: packages/web/src/auth.test.ts\nchanged: packages/web/src/cookie.ts\n',
     },
+    previewService(),
     {
       id: LIVE_TERMINAL_ID,
       title: RUNNING_SHELL_DESCRIPTION,

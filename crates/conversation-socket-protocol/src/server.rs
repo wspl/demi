@@ -668,6 +668,11 @@ pub struct CommandView {
     /// terminal opens with.
     #[garde(skip)]
     pub script: String,
+    /// Whether its call started it as a service, a command that runs until
+    /// stopped: its end wakes its agent, but its conversation does not wait
+    /// for it.
+    #[garde(skip)]
+    pub service: bool,
     /// The last 4,096 characters of the pages' view of its output: its
     /// output in the order it reached the backend, with a note where the
     /// runner left some out.
