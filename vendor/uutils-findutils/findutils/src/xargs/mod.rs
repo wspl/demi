@@ -459,6 +459,9 @@ impl CommandBuilder<'_> {
         };
 
         let mut command = Command::new(entry_point);
+        // What -t prints: the command and its arguments, as GNU's xargs
+        // prints them, never the environment the command runs with.
+        let mut shown: Vec<OsString> = vec![entry_point.to_os_string()];
 
         if let Some(replace_str) = &self.options.replace {
             // Replace all occurrences in initial args with the extra arg,
@@ -472,12 +475,15 @@ impl CommandBuilder<'_> {
                 })
                 .collect();
 
+            shown.extend(initial_args.iter().cloned());
             command
                 .args(&initial_args)
                 .env_clear()
                 .envs(&self.options.env);
         } else {
             // don't do any replacement
+            shown.extend(initial_args.iter().cloned());
+            shown.extend(self.extra_args.iter().cloned());
             command
                 .args(initial_args)
                 .args(&self.extra_args)
@@ -490,7 +496,8 @@ impl CommandBuilder<'_> {
         }
 
         if self.options.verbose {
-            uucore::context_eprintln!("{command:?}");
+            let line: Vec<_> = shown.iter().map(|word| word.to_string_lossy()).collect();
+            uucore::context_eprintln!("{}", line.join(" "));
         }
 
         match &self.options.action {
