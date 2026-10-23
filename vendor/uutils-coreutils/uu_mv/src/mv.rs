@@ -847,6 +847,15 @@ fn rename(
     #[cfg(not(unix))] _hardlink_tracker: Option<()>,
     #[cfg(not(unix))] _hardlink_scanner: Option<()>,
 ) -> io::Result<()> {
+    // Windows' null device is moved neither to nor from, before any fallback to
+    // copying and removing could take the file into it, as in Git Bash.
+    if uucore::context::is_null_device(from) || uucore::context::is_null_device(to) {
+        let moving = translate!("mv-error-cannot-move", "source" => from.quote(), "target" => to.quote());
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("{moving}: Read-only file system"),
+        ));
+    }
     let mut backup_path = None;
     let replacing = to.context_exists();
 

@@ -28,6 +28,12 @@ pub fn get_default_standard_utils_paths() -> Vec<std::path::PathBuf> {
 /// opening it fails.
 pub const NULL_DEVICE: &str = "/dev/null";
 
+/// Whether `path` is a null device that needs the host's help to be one: only
+/// Windows', whose `NUL` is no file.
+pub(crate) fn is_null_device(_path: &std::path::Path) -> bool {
+    false
+}
+
 /// Opens a null file that will discard all I/O.
 ///
 /// This is a stub implementation that returns an error.

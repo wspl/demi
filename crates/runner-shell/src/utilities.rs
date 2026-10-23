@@ -27,9 +27,9 @@
 //!
 //! On Windows `/dev/null` and `/dev/zero` are devices for operands too, and
 //! `/tmp` is the temporary folder (`%TMP%`, else `%TEMP%`) and `/c/…` is
-//! `C:\…`, as in Git Bash. The exception is the
-//! utilities that read the operand's kind first, which refuse the devices
-//! since Windows tells nothing of its null device's kind.
+//! `C:\…`, as in Git Bash. Windows tells nothing of its null device's kind,
+//! so a utility that reads the operand's kind first sees an empty regular
+//! file, and one that moves it is refused, as in Git Bash.
 //!
 //! Only a utility's open of a file and start of a program wait out a lack of
 //! open files. Making every utility wait would change most of them, and the

@@ -153,7 +153,7 @@ impl OpenOptions {
         if let Some(file) = super::descriptor(path.as_ref()) {
             return super::duplicate(&file).map(File::from);
         }
-        let zeros = matches!(super::device(path.as_ref()), Some(super::Device::Zero));
+        let zeros = super::zero_device(path.as_ref());
         let path = super::resolve(path);
         #[allow(unused_mut, reason = "only Unix has a umask")]
         let mut options = self.0.clone();
@@ -210,10 +210,60 @@ pub fn metadata(path: impl AsRef<Path>) -> io::Result<Metadata> {
     if let Some(file) = super::descriptor(path.as_ref()) {
         return file.metadata();
     }
-    std::fs::metadata(super::resolve(path))
+    let path = super::resolve(path);
+    if super::null_device(&path) {
+        return null_metadata();
+    }
+    std::fs::metadata(path)
 }
 pub fn symlink_metadata(path: impl AsRef<Path>) -> io::Result<Metadata> {
-    std::fs::symlink_metadata(super::resolve(path))
+    let path = super::resolve(path);
+    if super::null_device(&path) {
+        return null_metadata();
+    }
+    std::fs::symlink_metadata(path)
+}
+
+/// The metadata of Windows' null device, which it gives none: that of an empty
+/// regular file, as Git Bash's utilities see it, so `cp /dev/null x` makes an
+/// empty `x`.
+fn null_metadata() -> io::Result<Metadata> {
+    null_file()?.metadata()
+}
+
+/// The empty file that stands for Windows' null device wherever a utility
+/// asks it for information: made on first use in the temporary folder, and
+/// removed by Windows when the process ends or dies.
+#[cfg(windows)]
+pub(crate) fn null_file() -> io::Result<&'static std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    static EMPTY: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+    // Made one at a time, and kept only once made, so a failure (a full
+    // temporary folder) is tried again by the next call instead of lasting for
+    // the runner's life.
+    static MAKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    const FILE_FLAG_DELETE_ON_CLOSE: u32 = 0x0400_0000;
+    const SHARE_ALL: u32 = 0x7;
+    if let Some(file) = EMPTY.get() {
+        return Ok(file);
+    }
+    let _making = MAKING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(file) = EMPTY.get() {
+        return Ok(file);
+    }
+    let name = format!("demi-null-{}", std::process::id());
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .share_mode(SHARE_ALL)
+        .custom_flags(FILE_FLAG_DELETE_ON_CLOSE)
+        .open(std::env::temp_dir().join(name))?;
+    Ok(EMPTY.get_or_init(|| file))
+}
+#[cfg(not(windows))]
+pub(crate) fn null_file() -> io::Result<&'static std::fs::File> {
+    unreachable!("only Windows has no information for its null device")
 }
 pub fn read(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
@@ -276,7 +326,12 @@ pub fn read_link(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     std::fs::read_link(super::resolve(path))
 }
 pub fn canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
-    std::fs::canonicalize(super::resolve(path))
+    let path = super::resolve(path);
+    if super::null_device(&path) {
+        // The path Windows gives the device.
+        return Ok(PathBuf::from(r"\\.\NUL"));
+    }
+    std::fs::canonicalize(path)
 }
 pub fn write(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
     let path = super::resolve(path);
@@ -308,16 +363,30 @@ pub fn set_permissions(path: impl AsRef<Path>, permissions: Permissions) -> io::
     std::fs::set_permissions(super::resolve(path), permissions)
 }
 pub fn rename(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> io::Result<()> {
-    std::fs::rename(super::resolve(source), super::resolve(destination))
+    let (source, destination) = (super::resolve(source), super::resolve(destination));
+    if super::null_device(&source) || super::null_device(&destination) {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Read-only file system"));
+    }
+    std::fs::rename(source, destination)
 }
 pub fn copy(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> io::Result<u64> {
-    std::fs::copy(super::resolve(source), super::resolve(destination))
+    let (source, destination) = (super::resolve(source), super::resolve(destination));
+    if super::null_device(&source) {
+        // The null device holds nothing: its copy is an empty file.
+        std::fs::File::create(destination)?;
+        return Ok(0);
+    }
+    std::fs::copy(source, destination)
 }
 pub fn hard_link(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> io::Result<()> {
     std::fs::hard_link(super::resolve(source), super::resolve(destination))
 }
 pub fn exists(path: impl AsRef<Path>) -> io::Result<bool> {
-    std::fs::exists(super::resolve(path))
+    let path = super::resolve(path);
+    if super::null_device(&path) {
+        return Ok(true);
+    }
+    std::fs::exists(path)
 }
 
 #[cfg(unix)]

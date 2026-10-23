@@ -103,6 +103,11 @@ impl FileInformation {
             }
             custom_flags |= windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
             open_options.custom_flags(custom_flags);
+            if crate::context::null_device(&crate::context::resolve(path.as_ref())) {
+                // Windows tells nothing of its null device: it is the empty file
+                // the context's utilities see in its place.
+                return Self::from_file(crate::context::fs::null_file()?);
+            }
             let file = open_options.read(true).open(path.as_ref())?;
             Self::from_file(&file)
         }
