@@ -36,9 +36,9 @@
 //!   the command still running, which then goes on in the background. The
 //!   tool's text says so. While the command waits for the user's permission,
 //!   the call holds and its window does not run: the user's allow, or a denial,
-//!   ends the wait. A response's other calls and a user's steer wait at
-//!   most the window to be read. A human steer ends no window, since steering
-//!   rather than sending now means the user chose to wait.
+//!   ends the wait. Only the user's send now ends a window early. A steer, an
+//!   agent's message and a command report are read at the next boundary,
+//!   after the call's result, as are a response's other calls.
 //! - A command in the background wakes the node when it ends, and once when it
 //!   has printed nothing for the session's silence limit
 //!   (`crates/agent-session/src/reports.rs`); nothing else wakes the node about
@@ -84,7 +84,7 @@ use std::{
 use bytes::Bytes;
 use demi_agent_session::{
     CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
-    ToolOutcome, WindowEnd,
+    ToolOutcome,
 };
 use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand};
 use demi_host_interface::{
@@ -359,7 +359,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     async fn shell(&self, call: ToolInvocation, input: ShellInput) -> Result<ToolOutcome, CallError> {
         // A call after one that the user's send now returned never
         // starts.
-        if call.arrival.sent_now() {
+        if call.send_now.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
         let began = std::time::Instant::now();
@@ -425,18 +425,18 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             service: input.service,
         });
         let window_ms = (!input.service).then_some(self.call_window_ms);
-        let (status, ended_by) = watch(
+        let (status, sent_now) = watch(
             environment.as_ref(),
             &command,
             window_ms,
-            call.arrival.arrived(),
+            call.send_now.arrived(),
         )
         .await?;
         stopping.disarm();
         let running = matches!(status.state, CommandState::Running { .. });
-        let moved = match (ended_by, running && !input.service) {
-            (Some(WindowEnd::SentNow), _) => Some(Moved::SentNow),
-            (None, true) => Some(Moved::TimePassed),
+        let moved = match (sent_now, running && !input.service) {
+            (true, _) => Some(Moved::SentNow),
+            (false, true) => Some(Moved::TimePassed),
             _ => None,
         };
         let (outcome_name, exit) = match &status.state {
@@ -559,24 +559,21 @@ impl Drop for CallStop {
 /// - it ends;
 /// - `window_ms` passes, or for a service, its output has been quiet
 ///   for 2 seconds or 30 seconds have passed;
-/// - `until` resolves.
+/// - `until` resolves: the user sent a message now.
 ///
 /// While the command waits for the user's answer, the window does not run: it
-/// starts again from the moment the command goes on. What arrives meanwhile
-/// does not end the watch before the user has answered:
+/// starts again from the moment the command goes on. A message the user sends
+/// now denies the request, and the call returns as any call does, with its
+/// command or when its window has passed.
 ///
-/// - A message the user sends now denies the request, and the call returns as
-///   any call does, with its command or when its window has passed.
-/// - Anything else that ends a window ends it once the command goes on.
-///
-/// Then returns its status, with what `until` gave when it ended the watch.
-/// Ending the watch never stops the command.
+/// Then returns its status, and whether `until` ended the watch. Ending the
+/// watch never stops the command.
 async fn watch(
     environment: &dyn ShellEnvironment,
     command: &CommandId,
     window_ms: Option<u32>,
-    until: impl Future<Output = WindowEnd>,
-) -> Result<(CommandStatus, Option<WindowEnd>), ShellError> {
+    until: impl Future<Output = ()>,
+) -> Result<(CommandStatus, bool), ShellError> {
     // Whether the command waits for the user, which its job tells once it has
     // started; until then it does not.
     let (told, awaits) = tokio::sync::watch::channel(false);
@@ -588,31 +585,23 @@ async fn watch(
     };
     let window = window(environment, command, window_ms, awaits.clone());
     let until = async {
-        let reason = until.await;
-        let mut awaits = awaits;
+        until.await;
+        // The message denies the request it arrives beside, and the
+        // command's end follows; it is read after the result.
         if *awaits.borrow() {
-            match reason {
-                // The message denies the request it arrives beside, and the
-                // command's end follows; it is read after the result.
-                WindowEnd::SentNow => return std::future::pending().await,
-                // The sender lives in the watch, which holds this future.
-                WindowEnd::Input => {
-                    awaits.wait_for(|awaits| !*awaits).await.ok();
-                }
-            }
+            std::future::pending::<()>().await;
         }
-        reason
     };
-    let mut ended_by = None;
+    let mut sent_now = false;
     tokio::select! {
         ended = environment.ended(command) => {
             ended?;
         }
         watched = window => watched?,
-        reason = until => ended_by = Some(reason),
+        () = until => sent_now = true,
         never = telling => match never {},
     }
-    Ok((environment.status(command)?, ended_by))
+    Ok((environment.status(command)?, sent_now))
 }
 
 /// Resolves when the watch's time has passed (`watch`), which stands still

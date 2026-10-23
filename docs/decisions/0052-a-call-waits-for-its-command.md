@@ -1,5 +1,5 @@
 ---
-status: accepted, superseded in part by 0071
+status: accepted, superseded in part by 0071 and 0077
 ---
 
 # A shell call waits for its command, and a command wakes the agent only when it ends

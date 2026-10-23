@@ -47,7 +47,7 @@ use super::{
     input::{Input, InputQueue, Opens, Take},
     persist::PersistMarks,
     reports::Watched,
-    runtime::{Arrivals, CallCommand, CommandLook, SessionRuntime},
+    runtime::{CallCommand, CommandLook, SessionRuntime},
 };
 
 pub(crate) struct SessionCore {
@@ -1792,15 +1792,6 @@ impl SessionCore {
     /// taken yet.
     pub(super) fn send_now_pending(&self) -> bool {
         matches!(&self.activity, Activity::Running(run) if run.send_now.is_some())
-    }
-
-    /// What the windows of the running calls watch for
-    /// (`crates/agent-tools/src/lib.rs`).
-    pub(super) fn window_arrivals(&self) -> Arrivals {
-        Arrivals {
-            joining: self.inputs.joining(),
-            send_now: self.send_now_pending(),
-        }
     }
 
     /// Takes what the user sent now, at a boundary.
