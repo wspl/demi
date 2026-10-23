@@ -3,7 +3,7 @@ import { computed, ref, useTemplateRef, watch } from 'vue'
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import { onClickOutside, useElementSize } from '@vueuse/core'
 import { niceTicks } from '@demicodes/utils'
-import { pageLanguage } from '../i18n/text'
+import { formatHitRate } from '../ui/percent'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { showAbove } from '../overlay/stacking'
 import { formatClockAgo, formatClockRange } from '../ui/dates'
@@ -204,7 +204,6 @@ const { floatingStyles } = useFloating(reference, tip, {
 const elevation = useLayerElevation()
 const z = showAbove()
 
-const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 1 })
 const tipGroup = computed(() => (shown.value === null ? null : groups.value[shown.value] ?? null))
 /** Whether the tip's group is one call, whose own tip it shows. */
 const tipCall = computed(() => tipGroup.value !== null && tipGroup.value.first === tipGroup.value.last)
@@ -277,7 +276,7 @@ watch(shown, () => {
           <div class="mb-1 text-fg-subtle tabular-nums">{{ formatClockAgo(tipGroup.from, now) }}</div>
           <div class="cost-tip-row">
             <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
-            <span class="font-medium text-fg-emphasis tabular-nums">{{ percent.format(tipGroup.rate) }}</span>
+            <span class="font-medium text-fg-emphasis tabular-nums">{{ formatHitRate(tipGroup.rate) }}</span>
           </div>
           <template v-if="tipGroup.misses.length">
             <div class="mt-1 text-on-danger">{{ t('context.cost.miss', { cause: t(`context.cost.cause.${tipGroup.misses[0]}`) }) }}</div>
@@ -300,7 +299,7 @@ watch(shown, () => {
           </div>
           <div class="cost-tip-row">
             <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
-            <span class="font-medium text-fg-emphasis tabular-nums">{{ percent.format(tipGroup.rate) }}</span>
+            <span class="font-medium text-fg-emphasis tabular-nums">{{ formatHitRate(tipGroup.rate) }}</span>
           </div>
           <div v-for="cause in tipGroup.misses" :key="cause" class="mt-1 text-on-danger">{{ t('context.cost.miss', { cause: t(`context.cost.cause.${cause}`) }) }}</div>
           <div v-if="tipGroup.price !== null" class="cost-tip-row">

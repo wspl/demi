@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { pageLanguage } from '../i18n/text'
+import { formatHitRate } from '../ui/percent'
 import CardSection from '../ui/CardSection.vue'
 import Fold from '../ui/Fold.vue'
 import FoldChevron from '../ui/FoldChevron.vue'
@@ -84,12 +84,11 @@ const rate = computed(() => counted.value?.rate ?? null)
 // shows when the last hour has no rate: an hour of no call of the agent's, or
 // a count still awaited.
 const charted = computed(() => (chart.value?.points.length ?? 0) > 0)
-const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 0 })
 
 /** The two figures of the closed section, each that can be computed. */
 const figures = computed(() => [
   ...(price.value === null ? [] : [{ key: 'price', value: formatDollars(price.value), label: t('context.cost.price') }]),
-  ...(rate.value === null ? [] : [{ key: 'rate', value: percent.format(rate.value), label: t('context.cost.hitRate') }]),
+  ...(rate.value === null ? [] : [{ key: 'rate', value: formatHitRate(rate.value), label: t('context.cost.hitRate') }]),
 ])
 
 const kinds = computed(() => {
@@ -176,7 +175,7 @@ function share(price: number): string {
       <CardSection v-if="rate !== null || charted" subtle>
         <SectionRow>
           <span>{{ t('context.cost.hitRate') }}</span>
-          <span v-if="rate !== null" class="ml-1.5 tabular-nums text-fg-emphasis">{{ percent.format(rate) }}</span>
+          <span v-if="rate !== null" class="ml-1.5 tabular-nums text-fg-emphasis">{{ formatHitRate(rate) }}</span>
         </SectionRow>
         <div v-if="chart && charted" class="px-3">
           <CacheHitChart :chart="chart" :pinned-tip="pinnedTip" />
