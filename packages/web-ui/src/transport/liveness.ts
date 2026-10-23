@@ -33,14 +33,15 @@
  * connection, as through a VPN's tunnel, goes on working. Coming back online is a
  * return.
  *
- * The page reports why it replaced a socket through its error reports.
+ * A socket that dies is the network's ordinary event, which the page handles by
+ * connecting again: it writes `socket.closed` (every close) or `socket.broken`
+ * (a socket it let go) to its log, as lines of information, never as error
+ * reports.
  */
 import { readonly, ref } from 'vue'
 import { defaultDocument, defaultNavigator, defaultWindow, useDocumentVisibility, useEventListener } from '@vueuse/core'
 import type { PagePing } from '@demicodes/protocol'
-import { reportError } from '../infra/errors'
 import { PAGE_ID, PAGE_PARAMETER, pageLog } from '../infra/log'
-import { t } from './locales/text'
 
 /** Two and a half of the longest heartbeat, the backend's 30 seconds: a socket silent this long is broken. */
 const SILENCE_MS = 75_000
@@ -65,21 +66,13 @@ const HANDSHAKE_MS = 10_000
 /** How long a socket has to answer the return's ping: a working one answers in well under a second. */
 const PONG_MS = 5_000
 
-/**
- * The reasons of the backend's closes that end a socket as expected, which the
- * page does not report: its Host went offline or stopped, a transition such as
- * a move to another Host replaced it, or the backend shuts down. A close with
- * the same code and another reason, such as 1011 `internal_error`, is a failure.
- */
-const EXPECTED_ENDS = new Set(['host_unreachable', 'conversation_changed', 'backend_closing'])
-
 /** The conversation a socket's URL names, as `/api/conversations/<id>/socket` does. */
 const CONVERSATION_OF_URL = /\/conversations\/([^/]+)/
 
 /** Why the page let an open socket go that had not closed. */
 type Break = 'silence' | 'return' | 'probe'
 
-/** What the page's report says of each, after the socket's name. */
+/** What the page's log says of each. */
 const BREAK_WORDS: Record<Break, string> = {
   silence: 'brought nothing for 75 seconds',
   return: 'had brought nothing for 75 seconds by the clock when the page returned',
@@ -120,9 +113,9 @@ export function nextPingId(): number {
 /** The page's closed sockets, each by what connects it at once instead of after its wait. */
 const waiting = new Set<() => void>()
 
-/** Reports why the page replaced its socket named `name`, for a developer; the user sees what the page shows. */
-function reportReplaced(name: string, why: string): void {
-  reportError(t('socketReplaced'), `The ${name} ${why}`, { site: 'socketReplaced', userVisible: false })
+/** Logs why the page let go of its socket named `name`, which it then connects again. */
+function logBroken(name: string, why: string): void {
+  pageLog.info('socket.broken', { socket: name, why })
 }
 
 /**
@@ -144,9 +137,10 @@ function reconnectWait(failures: number): number {
  * - One whose opening handshake has not completed within `HANDSHAKE_MS` cannot be
  *   made, and is closed, which the web browser reports to its owner as it reports
  *   a refused one, with its `close` event.
- * - An open socket whose connection breaks, or that the backend closes for a
- *   failure, is reported under `name`, such as "conversation socket". One the
- *   page closes, or the backend ends as expected (`EXPECTED_ENDS`), is not.
+ * - Every close is logged under `name`, such as "conversation socket", with its
+ *   code and reason, and whether the page or the backend ended it. A close is the
+ *   network's ordinary event, not a failure of the page: its owner connects
+ *   again.
  */
 export function openSocket(url: string | URL, name: string): WebSocket {
   // The page names its load in the URL, as in `X-Demi-Page` of its requests.
@@ -189,7 +183,7 @@ export function openSocket(url: string | URL, name: string): WebSocket {
       settled()
       abandoned = true
       letGoAtReturn += 1
-      reportReplaced(name, 'was still opening when the page returned')
+      logBroken(name, 'was still opening when the page returned')
       socket.close()
     },
   })
@@ -207,11 +201,6 @@ export function openSocket(url: string | URL, name: string): WebSocket {
       pageLog.info('socket.closed', { ...fields, open_ms: openMs, life_ms: ms() }, conversation)
     } else {
       pageLog.warn('socket.failed', { ...fields, open_ms: ms() }, conversation)
-    }
-    // A socket that never opened is one more attempt that failed; 1000 is
-    // a normal end, which its owner does not replace.
-    if (opened && !closedByPage && event.code !== 1000 && !EXPECTED_ENDS.has(event.reason)) {
-      reportReplaced(name, `closed with ${event.code}${event.reason ? ` ${event.reason}` : ''}`)
     }
     // Its owners start their wait as the close reaches them, which the
     // browser delivers after the return's own sweep of the waits: so it
@@ -278,7 +267,7 @@ export interface SilenceWatch {
  *   may have waited in the browser since before the page went away. It calls
  *   `broken` when the `pong` has not come within `PONG_MS`.
  *
- * Each break is reported under `name`. The socket's owner stops the watch when it
+ * Each break is logged under `name`. The socket's owner stops the watch when it
  * lets the socket go, whatever the reason.
  */
 export function watchSilence(name: string, broken: () => void, ping?: (id: number) => void): SilenceWatch {
@@ -312,7 +301,7 @@ export function watchSilence(name: string, broken: () => void, ping?: (id: numbe
       letGoAtReturn += 1
     }
     stop()
-    reportReplaced(name, BREAK_WORDS[why])
+    logBroken(name, BREAK_WORDS[why])
     broken()
   }
   /** Breaks the socket for `why` when it has been silent long enough by the clock, else watches the rest. */
