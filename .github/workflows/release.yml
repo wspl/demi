@@ -339,21 +339,42 @@ jobs:
           name: files-${{ matrix.arch }}
           path: files
           retention-days: 1
+      # The Ubuntu packages the build downloads are kept between releases, so a
+      # build downloads only what Ubuntu changed since the last one, and a slow
+      # mirror costs only that. A cache entry is never overwritten: the key
+      # names the set of packages, and the build saves an entry only when the
+      # set is not the restored one's.
+      - id: packages
+        name: Restore the Ubuntu packages
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/packages
+          key: ubuntu-packages-${{ matrix.arch }}
+          restore-keys: ubuntu-packages-${{ matrix.arch }}-
       # The build's apt fetches from the Ubuntu mirror in GitHub's own
       # network, which the runner itself uses, rather than from across the
       # internet, where one release's build waited four minutes on stalled
       # downloads; the image still names Ubuntu's archive.
-      - name: Build the image
+      - id: image
+        name: Build the image
         run: |
           sudo bash cloud-guest-image/rootfs/build.sh \
             --xtask "$RUNNER_TEMP/xtask/xtask" \
             --release "$RUNNER_TEMP/root" \
             --files "$PWD/files" \
             --work "$RUNNER_TEMP/work" \
+            --packages "$RUNNER_TEMP/packages" \
             --output "$RUNNER_TEMP/out/image" \
             --mirror http://azure.archive.ubuntu.com/ubuntu
           mkdir -p dist/image
           tar -cf "dist/image/demi-$VERSION-image-linux-${{ matrix.arch }}.tar" -C "$RUNNER_TEMP/out" image
+          echo "key=ubuntu-packages-${{ matrix.arch }}-$(ls "$RUNNER_TEMP/packages" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: Save the Ubuntu packages
+        if: steps.packages.outputs.cache-matched-key != steps.image.outputs.key
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/packages
+          key: ${{ steps.image.outputs.key }}
       - uses: actions/upload-artifact@v7
         with:
           name: image-${{ matrix.arch }}
