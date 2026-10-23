@@ -81,15 +81,19 @@ impl dyn HostShard + '_ {
             .control()
             .device(device.clone())
             .await
-            .map_err(|error| HostError::failed(None, error.to_string()))?
-            .ok_or_else(|| HostError::new(HostErrorKind::Unavailable, "the conversation's device is gone"))?;
-        let admission = match device_record.kind {
-            demi_web_api_protocol::devices::DeviceKind::Managed => self
+            .map_err(|error| HostError::failed(None, error.to_string()))?;
+        let admission = match device_record {
+            Some(record) if record.kind == demi_web_api_protocol::devices::DeviceKind::Managed => self
                 .cloud_shard()
-                .operation_admission(&device_record)
+                .operation_admission(&record)
                 .await
                 .map_err(|error| HostError::failed(None, error.to_string()))?,
-            demi_web_api_protocol::devices::DeviceKind::User => demi_backend_remote_host::Admission::Free,
+            Some(_) => demi_backend_remote_host::Admission::Free,
+            // A revoked device: the commands taken up on it are lost.
+            None => {
+                self.devices().removed(&device);
+                demi_backend_remote_host::Admission::Free
+            }
         };
         Ok(Rc::new(self.devices().adopting_host(
             device,

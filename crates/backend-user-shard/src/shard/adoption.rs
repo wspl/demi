@@ -575,7 +575,7 @@ impl Shard {
     /// stay outside any workspace, and its runner hears that it was revoked and
     /// removes itself. The user's revocation and the runner's own request both
     /// come here.
-    pub async fn revoke_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
+    pub async fn revoke_device(self: &Rc<Self>, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         let removal = self
             .services()
             .control
@@ -594,6 +594,9 @@ impl Shard {
             .map(|workspace| workspace.name.clone())
             .collect();
         self.devices().revoke(&device, projects);
+        // The commands recorded on it that the backend no longer holds, as
+        // after a restart, are taken up to be lost with it.
+        self.take_up(removal.running.iter().cloned());
         // The forwards it was an end of went with it, and its exposed
         // ports.
         self.forwards_changed().await;

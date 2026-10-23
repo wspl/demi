@@ -863,8 +863,15 @@ impl Devices {
         slot.revoked.replace(Some(projects));
         self.disconnect(device, REVOKED);
         // The device's commands go with it, and the calls they made.
-        slot.jobs.lose_all(REVOKED_LOST);
+        slot.jobs.lose_for_good(REVOKED_LOST);
         slot.session.end(REVOKED_LOST);
+    }
+
+    /// Loses the commands taken up on `device` from now on, which the
+    /// backend's records name although the device was revoked: no runner
+    /// will list them.
+    pub fn removed(&self, device: &DeviceId) {
+        self.slot(device).jobs.lose_for_good(REVOKED_LOST);
     }
 
     /// Ends every connection as the backend shuts down, and records the

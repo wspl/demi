@@ -60,6 +60,10 @@ struct Table {
     /// The instance and the release of the device's runner that last said
     /// hello since the backend started.
     runner: Option<(u64, String)>,
+    /// Why every job of the device is lost for good, once the device is
+    /// gone: a job taken up afterwards is lost at once, since no runner
+    /// will list it.
+    gone: Option<String>,
 }
 
 /// One job of the device.
@@ -375,6 +379,11 @@ impl DeviceJobs {
         if job.shared.ended().is_some() {
             forget(&mut table, id);
         }
+        if let Some(reason) = table.gone.clone()
+            && let Some(job) = table.jobs.remove(id)
+        {
+            job.lose(id, &reason);
+        }
         claimed
     }
 
@@ -500,11 +509,22 @@ impl DeviceJobs {
     /// the output that waited for a read of its kept output; an end that
     /// waited too gives way to the loss, since its output cannot be read.
     pub fn lose_all(&self, reason: &str) {
-        self.0.borrow_mut().contexts.clear();
-        let jobs: Vec<(String, JobEntry)> = self.0.borrow_mut().jobs.drain().collect();
+        let jobs: Vec<(String, JobEntry)> = {
+            let mut table = self.0.borrow_mut();
+            table.contexts.clear();
+            table.jobs.drain().collect()
+        };
         for (id, job) in jobs {
             job.lose(&id, reason);
         }
+    }
+
+    /// [`DeviceJobs::lose_all`] for a device that is gone for good: a job
+    /// taken up afterwards is lost for the same reason, since no runner will
+    /// list it.
+    pub fn lose_for_good(&self, reason: &str) {
+        self.0.borrow_mut().gone = Some(reason.to_owned());
+        self.lose_all(reason);
     }
 
     /// Matches the jobs `hello` lists with those the device knows, for the new

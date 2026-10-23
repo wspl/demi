@@ -35,6 +35,9 @@ pub struct DeviceRemoval {
     /// the device, where they no longer run, and those it was attached to,
     /// each once.
     pub conversations: Vec<ConversationId>,
+    /// The conversations that recorded commands running on the device, which
+    /// the removal's cascade forgot in the control database's index of them.
+    pub running: Vec<ConversationId>,
 }
 
 /// A device as a change left it, and the conversations whose execution
@@ -427,6 +430,20 @@ impl ControlService {
                     conversations.push(conversation);
                 }
             }
+            let running = {
+                let mut statement = transaction
+                    .prepare_cached("SELECT DISTINCT conversation_id FROM running_jobs WHERE device_id = ?1")?;
+                let mut rows = statement.query([device.as_str()])?;
+                let mut running = Vec::new();
+                while let Some(row) = rows.next()? {
+                    running.push(decode(
+                        "running_jobs",
+                        "conversation_id",
+                        ConversationId::try_from(row.get::<_, String>("conversation_id")?),
+                    )?);
+                }
+                running
+            };
             // A forward of which the device was an end goes with it, and
             // so do its exposed ports and the workflows kept of it.
             transaction.execute(
@@ -440,6 +457,7 @@ impl ControlService {
             Ok(DeviceRemoval {
                 workspaces,
                 conversations,
+                running,
             })
         })
         .await
