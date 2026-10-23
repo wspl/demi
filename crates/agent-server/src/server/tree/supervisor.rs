@@ -13,14 +13,14 @@
 //! lifecycle is its client's.
 //!
 //! A child exists because a parent's context is expensive. It works in a
-//! session of its own, and only what it sends the parent returns, never its
+//! session of its own, and only what it wrote returns with its end, never its
 //! tool history. It is not a session copy: compaction's copy carries history, a
 //! child starts empty.
 //!
 //! ```text
 //!  root --spawn, resume, abort--> child --(same verbs)--> grandchild
 //!    ^                                    |
-//!    '------ reports, and the notice of its end -----'
+//!    '------ the notice of its end, with its texts ---'
 //!  any live node --send, show, list--> any live node  (the agent directory)
 //! ```
 //!
@@ -40,10 +40,14 @@
 //! - The close is saved before its completion goes to the parent. The
 //!   completion's id names the round (`subagent:<child>:<round>`), so no older
 //!   completion acknowledges the next round of a resumed child.
-//! - A completion is only a notice of how the round ended, finished, failed or
-//!   stopped, and carries no word the child wrote: a child reports with
-//!   `demi agent send parent`, which no later answer of its own replaces. A failed
-//!   child's notice carries the failure reason Demi recorded.
+//! - A completion is the notice of how the round ended, finished, failed or
+//!   stopped, with every text the child wrote since the round began, whole and
+//!   in order, so no later answer of its own replaces an earlier one. A failed
+//!   child's notice carries the failure reason Demi recorded after them. The
+//!   parent receives one notice per end, and none for a child it aborted
+//!   itself (`abort` told it), nor for the children a closing child takes
+//!   with it (the closing child decided that). A child the user stops from the
+//!   page sends one, stopped.
 //! - A start runs in a task of the tree, so a creation command cancelled after
 //!   reaching the supervisor still creates its child. A start under way counts
 //!   as a live child of its owner, which therefore does not close under it.
@@ -57,10 +61,12 @@
 //!
 //! # Design decisions
 //!
-//! - A child that leaves a command running for its parent stays live until it
-//!   ends, so it tells the parent with `demi agent send parent`. Told only to
-//!   leave a server running, a child detached it from its job (`nohup`, then
-//!   `setsid`), which left a process no command stands for.
+//! - A child that leaves a command running stays live until it ends, so its
+//!   words go to the parent when the work they report is done. A service (a
+//!   command started to run until stopped) is no such work: it does not keep a
+//!   child from ending, and it is stopped when the child ends, as an abort
+//!   stops it. Told to leave a server running, a child detached it from its
+//!   job (`nohup`, then `setsid`), which left a process no command stands for.
 //! - A child goes on with another profile by `resume --profile`, the same
 //!   child with its whole history; no command copies a child's history into a
 //!   second child.
@@ -74,8 +80,8 @@
 //!   close).
 //! - `send --wait`: reciprocal waits would block each other, and ask-and-answer
 //!   is a close then `resume`.
-//! - `wait` or `result` verbs: the child's reports are its messages, and the
-//!   completion notice only says it ended.
+//! - `wait` or `result` verbs: the child's texts come with the notice of its
+//!   end.
 //! - Lifecycle authority over other agents' children.
 //! - Tailing a child's transcript into its parent's context, the failure
 //!   subagents exist to avoid.
@@ -214,12 +220,30 @@ pub(crate) enum StartInput {
     },
 }
 
+/// Who stops a child, which decides whether its parent is told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Stop {
+    /// The child's parent aborts it, or closes and takes its children with
+    /// it: the parent knows, so no notice reaches it.
+    Parent,
+    /// The user stops it from the page, or Demi's transition of a Host does
+    /// as the user's Stop would: its parent is told once, as of any end.
+    User,
+}
+
 /// How a child closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CloseKind {
     Completed,
-    Aborted,
+    Aborted(Stop),
     Error,
+}
+
+impl CloseKind {
+    /// Whether the child's parent receives the notice of the end.
+    fn notifies(self) -> bool {
+        self != Self::Aborted(Stop::Parent)
+    }
 }
 
 /// Why a child's provider runtime could not be had.
@@ -1265,8 +1289,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Closes every live descendant the store holds of `parent`, deepest
-    /// first, as aborted. Their completions stay undelivered in the store,
-    /// for the round of `parent` that next restores its children.
+    /// first, as aborted. `parent` aborts them, so it receives no notice.
     fn abort_stored_children<'a>(&'a self, parent: &'a NodeId) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
             let children = match self.store.children(parent).await {
@@ -1282,8 +1305,9 @@ impl<H: HostResolver> Tree<H> {
                     phase: ClosePhase::Aborted,
                     at: self.clock.now(),
                 };
-                if let Err(error) = self.store.close_node(&child.id, close).await {
-                    self.report(format!("subagent {} did not close: {error}", child.id));
+                match self.store.close_node(&child.id, close).await {
+                    Ok(()) => self.settle_unnotified(&child).await,
+                    Err(error) => self.report(format!("subagent {} did not close: {error}", child.id)),
                 }
             }
         })
@@ -1305,11 +1329,11 @@ impl<H: HostResolver> Tree<H> {
     /// - no action runs or waits;
     /// - no agent message or command report waits to be read;
     /// - no child of its own is live;
-    /// - no command it started still runs.
+    /// - no command it started still runs, services aside.
     ///
     /// A turn it ended to wait for its commands or children is no end, and a
-    /// child that reported by message and went on to wait closes only when none
-    /// of these is left.
+    /// child that went on to wait closes only when none of these is left. A
+    /// service it started is not a command it waits for.
     fn decide(&self, child: &Child<H>) -> Decision {
         if child.closing.get() || self.disposing.get() {
             return Decision::Stop;
@@ -1321,7 +1345,7 @@ impl<H: HostResolver> Tree<H> {
             let status = session.status();
             let quiescent = status.settle == Settle::Settled
                 && !status.input
-                && !status.commands
+                && !status.awaited
                 && self.children_of(child.id()).is_empty()
                 && !self.starting.borrow().contains_key(child.id());
             if !quiescent {
@@ -1335,14 +1359,20 @@ impl<H: HostResolver> Tree<H> {
 
     /// Runs `child`'s close in a task of the tree, which dispose waits for.
     /// The caller has set `closing`.
+    ///
+    /// The session is held here, in the step that decides the close, so that
+    /// nothing wakes it while the close waits for its parent's lifecycle: a
+    /// service that exits in that wait would otherwise open a round the
+    /// close's dispose cuts.
     fn begin_close(self: &Rc<Self>, child: Rc<Child<H>>, kind: CloseKind) {
+        child.node.session().hold();
         let tree = self.clone();
         self.lifecycle
             .spawn_local(async move { tree.close(&child, kind).await });
     }
 
     /// Aborts a live child and its subtree, and returns once it is closed.
-    pub(crate) async fn abort_child(self: &Rc<Self>, id: &NodeId) {
+    pub(crate) async fn abort_child(self: &Rc<Self>, id: &NodeId, by: Stop) {
         let Some(child) = self.child(id) else {
             return;
         };
@@ -1351,7 +1381,7 @@ impl<H: HostResolver> Tree<H> {
         }
         if !child.closing.replace(true) {
             child.stop_supervision();
-            self.begin_close(child.clone(), CloseKind::Aborted);
+            self.begin_close(child.clone(), CloseKind::Aborted(by));
         }
         let mut closed = child.closed.subscribe();
         // The sender lives in the child this call holds.
@@ -1359,19 +1389,21 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Aborts every live child of `owner`, each with its subtree.
-    pub(crate) async fn abort_children_of(self: &Rc<Self>, owner: &NodeId) {
+    pub(crate) async fn abort_children_of(self: &Rc<Self>, owner: &NodeId, by: Stop) {
         for child in self.children_of(owner) {
-            self.abort_child(child.id()).await;
+            self.abort_child(child.id(), by).await;
         }
     }
 
     /// Closes a child.
     ///
-    /// An abort or a failure first stops what the child still runs and then
-    /// closes its subtree. Then its session saves its final checkpoint, the
+    /// Every close stops the commands the child still runs, which are services
+    /// when it completes; an abort or a failure also stops what else it runs
+    /// and closes its subtree. Then its session saves its final checkpoint, the
     /// close is committed, the child leaves the directory with a `closed`
-    /// frame, and its completion goes to its parent, whose save marks it
-    /// delivered.
+    /// frame, and its completion, with what it wrote this round, goes to its
+    /// parent, whose save marks it delivered. A child its parent aborted sends
+    /// none and is marked delivered at once.
     async fn close(self: &Rc<Self>, child: &Rc<Child<H>>, kind: CloseKind) {
         let record = child.node.record().clone();
         let owner = self.node(&child.parent());
@@ -1381,26 +1413,26 @@ impl<H: HostResolver> Tree<H> {
         };
         let session = child.node.session();
         if kind != CloseKind::Completed {
-            // Nothing runs again: the completions of its subtree wait in
-            // its final checkpoint for a later round.
-            session.hold();
             stop_all(session).await;
-            // Its commands are asked to stop too, and the close does not wait
-            // for their ends, which only their runners report: a runner that is
-            // away, or a job it cannot end, would hold the close as long. They
-            // stay stopping meanwhile.
-            let shells = child.node.stop_shells().await;
-            self.keep_stopping(&record, shells);
+        }
+        // Its commands are asked to stop, the services of a child that
+        // completes among them, and the close does not wait for their ends,
+        // which only their runners report: a runner that is away, or a job it
+        // cannot end, would hold the close as long. They stay stopping
+        // meanwhile.
+        let shells = child.node.stop_shells().await;
+        self.keep_stopping(&record, shells);
+        if kind != CloseKind::Completed {
             // A start of its own under way ends first, so its child is
             // closed with the others.
             let _turn = self.starts.acquire(child.id().clone()).await;
-            Box::pin(self.abort_children_of(child.id())).await;
+            Box::pin(self.abort_children_of(child.id(), Stop::Parent)).await;
         }
         // The completion names the block of the child's transcript it comes
         // from: a failed child's failure record.
         let (phase, origin) = match kind {
             CloseKind::Completed => (ClosePhase::Completed, None),
-            CloseKind::Aborted => (ClosePhase::Aborted, None),
+            CloseKind::Aborted(_) => (ClosePhase::Aborted, None),
             CloseKind::Error => (
                 ClosePhase::Error {
                     failure: child.failure.borrow().clone().unwrap_or_default(),
@@ -1433,11 +1465,14 @@ impl<H: HostResolver> Tree<H> {
         }
         self.bump();
         match committed {
-            Ok(()) => {
+            Ok(()) if kind.notifies() => {
                 if let Some(owner) = &owner {
                     self.deliver(owner, &record, &close, origin).await;
                 }
             }
+            // Its parent aborted it and needs no notice, so the round counts
+            // as delivered: resume is refused until it does.
+            Ok(()) => self.settle_unnotified(&record).await,
             // The child stays live and quiescent in the store: the next
             // restore closes it again.
             Err(error) => self.report(format!("subagent {} did not close: {error}", record.id)),
@@ -1484,6 +1519,41 @@ impl<H: HostResolver> Tree<H> {
         );
     }
 
+    /// Marks the closed round of `record` delivered, though no notice of it
+    /// is sent.
+    async fn settle_unnotified(&self, record: &NodeRecord) {
+        if let Err(error) = self.store.mark_delivered(&record.id, record.round).await {
+            self.report(format!("subagent {} was not marked delivered: {error}", record.id));
+        }
+    }
+
+    /// The texts the child `record` wrote in its current round, whole and in
+    /// order, as paragraphs; empty when it wrote none or its transcript does
+    /// not read, which only costs its notice the words.
+    async fn written(&self, record: &NodeRecord) -> String {
+        let read = self
+            .store
+            .session_store(&record.id)
+            .blocks_of(vec![Kind::Text], 0..PATH_END)
+            .await;
+        match read {
+            Ok(blocks) => blocks
+                .into_iter()
+                .filter_map(|(_, block)| match block {
+                    Block::Text(text) if text.created_at >= record.started_at && !text.text.trim().is_empty() => {
+                        Some(text.text)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            Err(error) => {
+                self.report(format!("the texts of subagent {} were not read: {error}", record.id));
+                String::new()
+            }
+        }
+    }
+
     /// Hands a closed round's completion, which comes from the block `origin`
     /// of the child's transcript, to its parent; the parent's save marks it
     /// delivered.
@@ -1496,7 +1566,7 @@ impl<H: HostResolver> Tree<H> {
         close: &NodeClose,
         origin: Option<BlockId>,
     ) {
-        let message = completion(record, close, origin);
+        let message = completion(record, close, origin, self.written(record).await);
         let message_id = message.id.clone();
         match owner.session().accept_agent_message(message).await {
             Ok(()) => tracing::info!(
@@ -1955,19 +2025,24 @@ pub(super) async fn stop_all(session: &AgentSession) {
 /// A closed round's completion message
 /// (`crates/shared-types/src/agent_message.rs`).
 ///
-/// Its id names the round, and its body is the failure reason of a failed
-/// round, which can be empty, and empty otherwise. It comes from the block
-/// `origin` of the child's transcript, a failed child's failure record.
-fn completion(record: &NodeRecord, close: &NodeClose, origin: Option<BlockId>) -> AgentMessage {
+/// Its id names the round, and its body is the texts `written` by the child in
+/// the round, then the failure reason of a failed round. It comes from the
+/// block `origin` of the child's transcript, a failed child's failure record.
+fn completion(record: &NodeRecord, close: &NodeClose, origin: Option<BlockId>, written: String) -> AgentMessage {
     let round = CompletionId {
         child: record.id.clone(),
         round: record.round,
     };
-    let (content, outcome) = match &close.phase {
-        ClosePhase::Completed => (String::new(), CompletionOutcome::Completed),
-        ClosePhase::Aborted => (String::new(), CompletionOutcome::Aborted),
-        ClosePhase::Error { failure } => (failure.clone(), CompletionOutcome::Failed),
+    let (failure, outcome) = match &close.phase {
+        ClosePhase::Completed => (None, CompletionOutcome::Completed),
+        ClosePhase::Aborted => (None, CompletionOutcome::Aborted),
+        ClosePhase::Error { failure } => (Some(failure.as_str()), CompletionOutcome::Failed),
     };
+    let content = std::iter::once(written.as_str())
+        .chain(failure)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
     AgentMessage {
         id: round.block_id(),
         sender: Some(Sender {
@@ -2009,11 +2084,8 @@ fn subagent_preamble(child: u64, parent: u64, can_spawn: bool) -> String {
         "This session may not spawn subagents."
     };
     [
-        format!("You are a subagent: agent {child} of this conversation, spawned by agent {parent}. Your transcript starts empty; the task brief in the first user message is your entire context."),
-        "Your session ends once nothing you started still runs: no queued or unread messages or command reports, no running children or commands of your own. To wait for your commands or children, end your turn: their end wakes you.".to_owned(),
+        format!("You are agent {child} of this conversation, a subagent of agent {parent}: its messages reach you as user messages, and what you write reaches it."),
         spawning.to_owned(),
-        "`demi agent send <id|parent>` delivers a message through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). `demi agent list` renders the whole agent tree with your position.".to_owned(),
-        "You are not talking to the product user; do not address them.".to_owned(),
     ]
     .join("\n")
 }

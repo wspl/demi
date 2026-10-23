@@ -59,7 +59,7 @@ pub use self::agents::{KeptAgents, SideCard};
 pub(crate) use self::following::{Following, compare_stored};
 pub(crate) use self::profiles::{Deleted, ListedProfile, ProfileAnswer};
 pub use self::sides::{AskError, side_instruction};
-pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry, list_text};
+pub(crate) use self::supervisor::{ShownAgent, StartInput, Stop, TreeEntry, list_text};
 use self::{agents::Agents, live::LiveOutput, reading::OutputReadings, sides::Side, supervisor::{Child, Summary}};
 use super::{AgentServer, ResolveError, connection::{Follows, Outbox}};
 use crate::{
@@ -695,7 +695,7 @@ impl<H: HostResolver> Tree<H> {
     pub async fn interrupt(self: &Rc<Self>, hold: &str) -> Reservation {
         let stop = async {
             self.root.session().stop_running(hold).await;
-            self.abort_children_of(self.root.id()).await;
+            self.abort_children_of(self.root.id(), Stop::User).await;
             self.interrupt_sides(hold).await;
             self.root.end_shells().await;
         };

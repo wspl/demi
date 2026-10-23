@@ -2,7 +2,8 @@
 //!
 //! The input is one of:
 //!
-//! - an explicit message, or the notice of a child's end;
+//! - an explicit message, or the notice of a child's end, which carries what the
+//!   child wrote;
 //! - the user's decision on a permission request, which reaches the agent that
 //!   asked the same way;
 //! - the user's move of the conversation, which the user tells the root of;
@@ -16,10 +17,11 @@
 //! text prefix.
 //!
 //! A completion's ID names the child and the round, so it identifies exactly
-//! one round of one child. A completion is only a notice of how the round ended:
-//! it carries no word the child wrote, and a failed one the reason Demi gives for
-//! the failure. Editing and Fork are not offered on a receipt, and compaction
-//! keeps what it tells as context, never as a human instruction.
+//! one round of one child. A completion tells how the round ended and carries
+//! every text the child wrote in it, whole and in order, and for a failed one
+//! the reason Demi gives for the failure after them. Editing and Fork are not
+//! offered on a receipt, and compaction keeps what it tells as context, never
+//! as a human instruction.
 
 use std::{fmt, str::FromStr};
 
@@ -50,9 +52,9 @@ pub struct AgentMessage {
     /// When the message was sent; for a completion, when the child closed.
     #[garde(skip)]
     pub timestamp: Timestamp,
-    /// The body: a failed completion's failure reason, which can be empty, and
-    /// nothing for another completion, which an earlier release gave the
-    /// child's last answer. An explicit message is never empty.
+    /// The body: a completion's texts of the child's round, then a failed
+    /// one's failure reason; it can be empty when the child wrote none. An
+    /// explicit message is never empty.
     #[garde(custom(has_body_when_explicit(&self.event)))]
     pub content: String,
     #[garde(dive)]

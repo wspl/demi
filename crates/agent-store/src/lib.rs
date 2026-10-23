@@ -24,8 +24,10 @@
 //!   the two leaves a quiescent live node, and the next restore closes it with
 //!   the same result.
 //! - A closed round stays undelivered until the parent's checkpoint carries its
-//!   completion. That save marks exactly that child round delivered in the same
-//!   commit, so a stale completion cannot mark a newer round delivered.
+//!   completion, or until it is marked delivered because its parent aborted it
+//!   and needs none. The parent's save marks exactly that child round
+//!   delivered in the same commit, so a stale completion cannot mark a newer
+//!   round delivered.
 //! - A closed child is archived, never pruned: it lives exactly as long as its
 //!   root, so a revivable ID stays revivable. Reopening one is a commit too,
 //!   which starts the next round with the message queued.
@@ -242,8 +244,8 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// Marks the completion of the node's round `round` delivered, when it
-    /// reached its parent by a path the parent's checkpoint cannot show. A
-    /// completion of an earlier round marks nothing.
+    /// reached its parent by a path the parent's checkpoint cannot show, or
+    /// the parent needs none. A completion of an earlier round marks nothing.
     fn mark_delivered<'a>(
         &'a self,
         id: &'a NodeId,

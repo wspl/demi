@@ -3078,6 +3078,7 @@ impl SessionCore {
             settle: self.settle(),
             input: self.inputs.has_agent_input() || self.inputs.has_report(),
             commands: !self.watched.is_empty(),
+            awaited: self.watched.awaits(),
         }
     }
 

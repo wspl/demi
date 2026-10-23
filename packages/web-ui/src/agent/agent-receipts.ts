@@ -135,7 +135,7 @@ function senderName(message: AgentMessage): string {
  * The named block is:
  *
  * - an update's call that sent it
- * - nothing for a finished or stopped child, whose notice carries no word of its own
+ * - nothing for a finished or stopped child, whose words are several blocks, not one
  * - a failed child's failure record
  */
 export interface ReceiptOrigin {

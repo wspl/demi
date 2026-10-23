@@ -4,9 +4,8 @@
 //! The list is a collection kept in sync by its [`Version`]: the conversation's
 //! route answers it whole at a version, and each `agent` frame carries one
 //! changed entry at the version after it. A page that meets a gap or another
-//! epoch reads the route again. An entry carries no result: a child reports to
-//! its parent by message, and its parent's transcript holds the messages and
-//! the notice of its end.
+//! epoch reads the route again. An entry carries no result: its parent's
+//! transcript holds the notice of its end, with what it wrote.
 //!
 //! An entry also carries the agent's waiting inputs, its queue and its
 //! pending steers, so a command that changes them settles on the entry, never

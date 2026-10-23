@@ -114,8 +114,9 @@ const SUITE_PATHS_UPDATE = 'The status file still lists the suites under `test/m
  * The receipts the gallery's children sent their parent, one of each kind:
  * an update names the block of its
  * child's transcript it came from, the call that sent it, and a notice of an
- * end carries no word of the child's: only a failed child's names its failure
- * record and says why.
+ * end names no block of the child's transcript: only a failed child's names its
+ * failure record and says why. The page's row shows none of the notice's
+ * words, so the specimens' contents stay empty.
  */
 export const agentReceiptMessages: AgentMessage[] = [
   {

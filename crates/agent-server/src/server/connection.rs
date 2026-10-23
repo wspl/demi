@@ -48,7 +48,7 @@ use demi_agent_store::SavedVersions;
 use super::{
     AgentServer,
     content::{ContentResolver, resolve_edit, resolve_message},
-    tree::{Following, Tree, compare_stored},
+    tree::{Following, Stop, Tree, compare_stored},
 };
 
 /// What a connection follows of the tree: the agents, and the nodes whose
@@ -665,10 +665,10 @@ impl<H: HostResolver> Connection<H> {
                 self.send(ServerFrame::AbortResult { result });
             }
             // The agents' entries show what these stopped.
-            ClientFrame::AbortSubagents {} => tree.abort_children_of(tree.root().id()).await,
+            ClientFrame::AbortSubagents {} => tree.abort_children_of(tree.root().id(), Stop::User).await,
             ClientFrame::AbortSubagent { subagent_id } => {
                 if tree.is_child_of(&subagent_id, tree.root().id()) {
-                    tree.abort_child(&subagent_id).await;
+                    tree.abort_child(&subagent_id, Stop::User).await;
                 }
             }
             ClientFrame::Retry {} | ClientFrame::Resume {} => {

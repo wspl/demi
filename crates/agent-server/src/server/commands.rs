@@ -42,21 +42,21 @@ use super::{
     profile_commands::{PROFILES_CATEGORY, profiles_group},
     workflow_commands::{WORKFLOW_CATEGORY, workflows_group},
     shell_output::shell_group,
-    tree::{ShownAgent, StartInput, Tree, TreeEntry, list_text},
+    tree::{ShownAgent, StartInput, Stop, Tree, TreeEntry, list_text},
 };
 
 /// The one description of a spawn's brief.
-const SPAWN_PROMPT: &str = "The child's first user message and only task brief. The child starts with an empty transcript and cannot see this conversation: do not refer to prior turns, and do not paste this conversation or the product user's message unchanged. Include the goal for this child, applicable decisions and constraints, whether to edit or only report, how to verify, and every concrete identifier it needs (paths, ids, error text, commands already tried and their key results). State what the report it sends you must contain.";
+const SPAWN_PROMPT: &str = "The first message the child receives; it sees nothing else of this conversation.";
 
-const SPAWN_SUMMARY: &str = "Start a child agent session and return its id immediately after creation. The child runs independently of this command. It reports to you with messages, and a notice that it finished, failed or was stopped arrives when it ends; each wakes you when idle. When you have no independent work left, end your turn and let them wake you. Do not poll agent list/show to wait for children. Use agent send to communicate and agent abort to stop it. Children can spawn children of their own.";
+const SPAWN_SUMMARY: &str = "Start a child agent and return its id at once. When it ends, you receive what it wrote and how it ended.";
 
-const SEND_SUMMARY: &str = "Deliver information to any live agent in the tree, or parent. A busy recipient incorporates it through internal steering; an idle recipient wakes. Returns after durable acceptance, without waiting for an answer. A child reports to its parent this way; its answers reach no one. Archived recipients must be reopened by their parent with resume.";
+const SEND_SUMMARY: &str = "Send a message to a live agent of the tree, or to your parent: a busy one receives it at its next step, an idle one wakes. Returns once it is accepted. An archived agent is reopened by its parent with resume.";
 
 const ABORT_SUMMARY: &str = "Abort your own running children, each with its whole subtree. Siblings are untouched; only the spawning session may abort a child. --json takes one id.";
 
-const RESUME_SUMMARY: &str = "Revive one of your own archived children with a new user message on its preserved transcript, which it keeps whole under the same number and description. It goes on with the profile it runs on, or with the one you name, whose model, effort, Context and instructions it takes from this round on, whichever vendor's model that is. Return its id immediately after accepting the message; the child reports to you with messages, and the notice of its end arrives separately. Use agent send to communicate and agent abort to stop it. Archived ids are in agent list.";
+const RESUME_SUMMARY: &str = "Reopen one of your archived children with a new message. It keeps its transcript, number and description, and goes on with its profile or the one you name. When it ends, you receive what it wrote since and how it ended.";
 
-const LIST_SUMMARY: &str = "List the agents of this conversation's tree from the root down, each node's children after it: status, profile, execution, seconds since start and since the last event, and description; --all adds the archived children (finished, revivable by their parent). A read, not a wait — not for polling loops.";
+const LIST_SUMMARY: &str = "List the agents of this conversation's tree from the root down, each node's children after it: status, profile, execution, seconds since start and since the last event, and description; --all adds the archived children (finished, revivable by their parent).";
 
 /// The `--profile` option's description, which names no profile: the help
 /// is rendered once per tree, and the profiles change with the user's
@@ -67,7 +67,7 @@ const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles. W
 /// for the reason [`PROFILE_OPTION`]'s does not.
 const RESUME_PROFILE_OPTION: &str = "The name of one of the user's subagent profiles to go on with. Without it the child goes on with the profile it runs on; `demi agent profiles list` lists the profiles, with when to use each.";
 
-const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state and recent tool titles with durations; for an archived one, how and when it closed, with the reason if it failed. Idle (s), the seconds since its last event, and Execution for (s) tell motion from stall. Omits what it said, tool outputs, file contents, and older turns: its last line is the history read that prints its latest blocks. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
+const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state and recent tool titles with durations; for an archived one, how and when it closed, with the reason if it failed. Idle (s), the seconds since its last event, and Execution for (s) tell motion from stall. Omits what it said, tool outputs, file contents, and older turns: its last line is the history read that prints its latest blocks. Several ids show each in order; --json takes one.";
 
 /// The input of `demi agent spawn`.
 #[derive(Deserialize, JsonSchema)]
@@ -500,7 +500,7 @@ async fn abort<H: HostResolver>(
             fail_one(&port, &call.command, number, "not one of your running children").await?;
             continue;
         };
-        call.tree.abort_child(&child).await;
+        call.tree.abort_child(&child, Stop::Parent).await;
         if call.json {
             return json(
                 &port,

@@ -76,7 +76,7 @@ use demi_provider_common::{ProviderRuntime, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
     Clock, CommandEnd, CommandId, CommandReport, ModelSelection, ReportEvent, NodeId, QueuedMessage, TurnId,
-    REPORTING_SOURCE, WORKING_DIRECTORY_SOURCE,
+    WORKING_DIRECTORY_SOURCE,
 };
 use futures_util::{FutureExt, future::LocalBoxFuture};
 
@@ -591,22 +591,6 @@ fn working_directory(cwd: Option<String>, seen: &[SeenContext<'_>]) -> Option<Ne
     })
 }
 
-/// What a child's `agent_reporting` block tells it: how its parent hears from
-/// it, and when it ends.
-const REPORTING_TEXT: &str = "Your parent receives only what you send it with `demi agent send parent`, whatever an earlier instruction says of your final answer: send your report there, and again whenever the parent needs something more. Your answers stay in your own transcript and reach no one. Your session ends once nothing you started still runs, and the parent is told only that it ended.";
-
-/// The `agent_reporting` block a child's next request needs, given the context
-/// blocks it receives, `seen`: one, unless it receives one already, so a child
-/// has it before its first request and after each compaction.
-fn reporting(seen: &[SeenContext<'_>]) -> Option<NewContext> {
-    (!seen.iter().any(|seen| seen.source == REPORTING_SOURCE)).then(|| NewContext {
-        source: REPORTING_SOURCE.to_owned(),
-        text: REPORTING_TEXT.to_owned(),
-        instructions: Vec::new(),
-        cwd: None,
-    })
-}
-
 impl<H: HostResolver> NodeRuntime<H> {
     /// Where the conversation works now, read through its resolver.
     async fn placement(&self) -> Result<Placement, HostError> {
@@ -902,9 +886,6 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                         "a context source failed"
                     ),
                 }
-            }
-            if self.record.borrow().cwd.is_some() {
-                news.extend(reporting(seen));
             }
             news.extend(working_directory(cwd, seen));
             news

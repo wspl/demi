@@ -125,6 +125,14 @@ impl Watched {
         self.commands.is_empty()
     }
 
+    /// Whether a command that is not a service is watched: one whose end the
+    /// node waits for.
+    pub(super) fn awaits(&self) -> bool {
+        self.commands
+            .iter()
+            .any(|watched| watched.watch != Watch::Background)
+    }
+
     /// Each command watched with how it wakes the node, as the checkpoint
     /// keeps it.
     pub(super) fn watches(&self) -> Vec<CommandWatch> {

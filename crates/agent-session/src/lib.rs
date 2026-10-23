@@ -495,6 +495,9 @@ pub struct Status {
     /// A command the session's calls left running still runs, and will
     /// report to it (`crates/agent-session/src/reports.rs`).
     pub commands: bool,
+    /// One of those commands is not a service: its end is what the session
+    /// waits for, where one that runs until stopped is not waited for.
+    pub awaited: bool,
 }
 
 /// What a session is doing, as a supervisor observes it
