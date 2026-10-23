@@ -102,6 +102,7 @@
     "resizeChanges": "已變更的檔案",
     "resizeCommits": "提交清單",
     "resizeUploads": "上傳",
+    "switchDirectory": "切換目錄",
     "uploadFiles": "上傳檔案…",
     "couldNotRefresh": "無法重新整理",
     "noAccess": "沒有存取權限",

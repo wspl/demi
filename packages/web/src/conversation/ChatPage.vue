@@ -261,7 +261,8 @@ const attachments = useMessageAttachments(() => props.id)
  *   file watch keeps current.
  * - Files opened through the `file` intent while a plugin opens it, at their
  *   lines.
- * - Commits opened through the `commit` intent.
+ * - Commits opened through the `commit` intent, and a branch through the `branch` intent.
+ * - The history a subagent's bar reads its branch from.
  * - Which paths of a reply's inline code are files, from the Host, whose home a
  *   `~/` path starts from.
  * - The attachments they deliver, a card's opened through the `attachment`
@@ -286,6 +287,10 @@ const files = computed<ConversationFiles | undefined>(() => {
       : undefined,
     openCommit: work.canOpen('commit')
       ? ({ commit, root }) => work.openIn(current.id, { intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
+      : undefined,
+    history: (root) => conversationFiles(current.id).history(root),
+    openBranch: work.canOpen('branch')
+      ? ({ root, branch }) => work.openIn(current.id, { intent: 'branch', payload: { root, branch } })
       : undefined,
     commitHash: async ({ commit, root }) => {
       const history = conversationFiles(current.id).history(root)

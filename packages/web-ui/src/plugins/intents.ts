@@ -32,6 +32,12 @@ export interface IntentPayloads {
    */
   commit: { commit: string; root?: string }
   /**
+   * A branch of the repository the folder `root` is in, as a subagent's status
+   * bar names it: its commits, and the repository's uncommitted changes while it
+   * is the branch checked out. Null is HEAD, for a detached one.
+   */
+  branch: { root: string; branch: string | null }
+  /**
    * An attachment of the conversation (`crates/backend-host-access/src/attachment_commands.rs`) that is no image, video or audio, as its block's card opens
    * it: its number, its file's name and size in bytes, and where its stored
    * copy loads from.

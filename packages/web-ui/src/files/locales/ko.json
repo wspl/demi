@@ -102,6 +102,7 @@
     "resizeChanges": "변경된 파일",
     "resizeCommits": "커밋 목록",
     "resizeUploads": "업로드",
+    "switchDirectory": "디렉터리 전환",
     "uploadFiles": "파일 업로드…",
     "couldNotRefresh": "새로 고칠 수 없음",
     "noAccess": "액세스 권한 없음",

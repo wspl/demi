@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, provide, ref, type Component } from 'vue'
+import type { Alignment } from '@floating-ui/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { disabledTooltip } from './disabled'
 import Popover from './Popover.vue'
@@ -43,6 +44,11 @@ const props = withDefaults(defineProps<{
    * inside of the trigger's region (Popover).
    */
   side?: 'top' | 'bottom'
+  /**
+   * The trigger's edge the menu lines up with, in place of the inward rule (Popover), whose reason
+   * the caller says at the call.
+   */
+  align?: Alignment
   offset?: number
   anchorInset?: number
   shiftPadding?: number
@@ -162,6 +168,7 @@ defineExpose({ open, close })
         :anchor-el="triggerRef"
         :anchor-inset="props.anchorInset"
         :side="props.side"
+        :align="props.align"
         :offset="props.offset"
         :shift-padding="props.shiftPadding"
         :ignore-els="ignoreEls"

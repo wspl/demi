@@ -9,6 +9,11 @@ import type { Alignment } from '@floating-ui/vue'
  */
 const REGION_SELECTOR = '[data-region]'
 
+/** The pane around `el`: its nearest marked region, null for the viewport. */
+export function regionOf(el: Element): Element | null {
+  return el.closest(REGION_SELECTOR)
+}
+
 /** A box's horizontal extent, in viewport pixels. */
 export interface Span {
   left: number
@@ -60,6 +65,6 @@ export function paneBox(el: Element | null): Box {
 
 /** The extent of the region around `el`: its nearest marked region, else the viewport. */
 export function regionSpan(el: Element): Span {
-  const box = boxOf(el.closest(REGION_SELECTOR))
+  const box = boxOf(regionOf(el))
   return { left: box.x, width: box.width }
 }

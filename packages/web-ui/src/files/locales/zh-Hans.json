@@ -102,6 +102,7 @@
     "resizeChanges": "已更改的文件",
     "resizeCommits": "提交列表",
     "resizeUploads": "上传",
+    "switchDirectory": "切换目录",
     "uploadFiles": "上传文件…",
     "couldNotRefresh": "无法刷新",
     "noAccess": "无访问权限",

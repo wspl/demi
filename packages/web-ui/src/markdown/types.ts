@@ -1,4 +1,5 @@
 import type { MessageAgents } from '../agent/agent-links'
+import type { CommitHistorySource } from '../files/history'
 import type { FileContents } from '../files/types'
 import type { PictureCopy } from '@demicodes/protocol'
 
@@ -137,6 +138,28 @@ export interface ConversationFiles {
    * Commit Hash.
    */
   commitHash?(target: MessageCommitTarget): Promise<string>
+  /**
+   * The history of the repository the folder `root` is in, whose checked-out
+   * branch a subagent's status bar shows; null while the Host is not known.
+   * Absent where no bar reads a branch.
+   */
+  history?(root: string): CommitHistorySource | null
+  /**
+   * Shows a branch's commits, and the uncommitted changes in the folder
+   * `root` while it is the branch checked out, in the Change view's Commits
+   * mode, through the `branch` intent; absent while no plugin the user has on
+   * opens it, so a branch shows as text.
+   */
+  openBranch?(target: MessageBranchTarget): void
+}
+
+/**
+ * A branch of the repository the folder `root` is in; null is HEAD, which
+ * stands for the commit a detached HEAD names.
+ */
+export interface MessageBranchTarget {
+  root: string
+  branch: string | null
 }
 
 /**

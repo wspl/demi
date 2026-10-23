@@ -44,6 +44,8 @@ export function galleryAttachmentOrigin(
  * - A commit link's Copy Commit Hash reads the gallery's one repository.
  * - An attachment block's card opens its file through `openAttachment`, which
  *   outside a panel says what the product would do.
+ * - A subagent's bar reads its branch from `history` and opens it through
+ *   `openBranch`, which outside a panel says what the product would do.
  */
 export function galleryConversationFiles(
   source: MemoryFileSource,
@@ -51,8 +53,12 @@ export function galleryConversationFiles(
   openCommit: NonNullable<ConversationFiles['openCommit']>,
   showInFiles: NonNullable<ConversationFiles['showInFiles']> = ({ path }) => productWould(`Show ${baseName(path)} in the File View’s Tree`),
   openAttachment: NonNullable<ConversationFiles['openAttachment']> = (_id, { name }) => productWould(`Open ${name} in the Work Panel`),
+  history: NonNullable<ConversationFiles['history']> = () => sharedHistory.source,
+  openBranch: NonNullable<ConversationFiles['openBranch']> = ({ branch }) => productWould(`Open ${branch ?? 'HEAD'} in the Change View’s Commits`),
 ): ConversationFiles {
   return {
+    history,
+    openBranch,
     openCommit,
     openAttachment,
     home: source.home,

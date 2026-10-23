@@ -21,7 +21,7 @@ import type { HostArtifact } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { CommitHistorySource } from '../files/history'
 import type { TranscriptRequest } from '../files/request-changes'
-import type { FileBrowserSource } from '../files/types'
+import type { FileBrowserSource, FileDirectory } from '../files/types'
 import { provideOnScreen } from '../files/on-screen'
 import { reportDefect, reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
@@ -129,6 +129,12 @@ export interface ConversationFileService {
   readonly workspace: { source: FileBrowserSource; root: string; name?: string } | null
   /** Where the conversation's work runs, which a retained edit's paths are relative to. */
   readonly root: string | null
+  /**
+   * The directories the conversation's agents work in, each once: the main
+   * agent's first, then each running subagent's in the order they were
+   * spawned. Empty while the conversation's directory is not known.
+   */
+  readonly directories: readonly FileDirectory[]
   /**
    * The uncommitted changes of the working tree under `directory`, on the
    * conversation's Host; the conversation's own without one.
@@ -410,6 +416,7 @@ export interface PanelKind<Data> {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
     edit?(payload: IntentPayloads['edit'], current: Data | null): Data
     commit?(payload: IntentPayloads['commit'], current: Data | null): Data
+    branch?(payload: IntentPayloads['branch'], current: Data | null): Data
     attachment?(payload: IntentPayloads['attachment'], current: Data | null): Data
     media?(payload: IntentPayloads['media'], current: Data | null): Data
     web?(payload: IntentPayloads['web'], current: Data | null): Data

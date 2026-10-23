@@ -19,7 +19,7 @@ import { createOverlayFamily, overlayFamilyKey, overlayOwnerKey } from '../overl
 import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
 import { stackAbove } from '../overlay/stacking'
-import { inwardAlignment, regionSpan } from './region'
+import { inwardAlignment, regionOf, regionSpan } from './region'
 import { usePhone } from './phone'
 import Sheet from './Sheet.vue'
 
@@ -44,6 +44,13 @@ const props = withDefaults(defineProps<{
    * toward the inside of its trigger's region.
    */
   placement?: Placement
+  /**
+   * The trigger's edge the panel lines up with, in place of the inward rule. The panel
+   * then stays on that edge and shifts along the screen where it would run past one,
+   * rather than flipping to the trigger's other edge; it stops against the edge of the
+   * pane (`data-region`) around the trigger.
+   */
+  align?: Alignment
   offset?: number
   shiftPadding?: number
   ignoreEls?: HTMLElement[]
@@ -159,7 +166,7 @@ watch(
     if (!open || !el)
       return
     const rect = virtualRef.value.getBoundingClientRect()
-    alignment.value = inwardAlignment({ left: rect.left, width: rect.width }, regionSpan(el))
+    alignment.value = props.align ?? inwardAlignment({ left: rect.left, width: rect.width }, regionSpan(el))
   },
   { immediate: true },
 )
@@ -178,6 +185,13 @@ const pinned = usePinnedOpen(() => props.isOpen, container)
 // Above the dialog or menu it opens from, a dialog stacked over another included.
 const z = stackAbove()
 const boundary = computed(() => container?.value ?? undefined)
+// A panel that keeps the edge it was told to line up with stays inside the pane of its trigger,
+// stopping against the pane's edge rather than the screen's.
+const shiftBoundary = computed(() => {
+  if (boundary.value)
+    return boundary.value
+  return (props.align && props.anchorEl ? regionOf(props.anchorEl) : null) ?? undefined
+})
 
 // A panel a catalog pins inside its host stays there; on a phone's page a menu is a sheet.
 const phone = usePhone()
@@ -192,13 +206,13 @@ const { floatingStyles, placement: resolvedPlacement } = useFloating(virtualRef,
   strategy: 'fixed',
   middleware: computed(() => [
     offsetMiddleware(props.offset),
-    flip({ padding: EDGE_PADDING, boundary: boundary.value }),
+    flip({ padding: EDGE_PADDING, boundary: boundary.value, flipAlignment: props.align === undefined }),
     // Keep the panel on-screen, but stop following once the trigger scrolls away.
     shift(
       {
         padding: props.shiftPadding,
         limiter: limitShift(),
-        boundary: boundary.value
+        boundary: shiftBoundary.value
       }
     ),
     size({

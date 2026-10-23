@@ -102,6 +102,7 @@
     "resizeChanges": "変更されたファイル",
     "resizeCommits": "コミット一覧",
     "resizeUploads": "アップロード",
+    "switchDirectory": "ディレクトリを切り替える",
     "uploadFiles": "ファイルをアップロード…",
     "couldNotRefresh": "更新できませんでした",
     "noAccess": "アクセス権なし",

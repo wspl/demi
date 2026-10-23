@@ -1,6 +1,7 @@
 // The `changes` plugin's page (`packages/plugin-sdk/src/index.ts`): the pinned
 // `change` kind and the Change view. The view opens the `edit` intent of the
-// file pills and the `commit` intent of commit links.
+// file pills, the `commit` intent of commit links and the `branch` intent of a
+// subagent's branch.
 import { defineComponent, h } from 'vue'
 import { FileDiff } from '@lucide/vue'
 import { ICON_PX, definePage, type PanelKind } from '@demicodes/plugin-sdk'
@@ -8,7 +9,7 @@ import { PLUGIN } from './generated/plugin'
 import { t } from './locales/text'
 import ChangeBadge from './ChangeBadge.vue'
 import ChangeTab from './ChangeTab.vue'
-import { changeDataSchema, changePlace, firstChangeData, showCommit, showRequestEdit, type ChangeData } from './data'
+import { changeDataSchema, changePlace, firstChangeData, showCommit, showFolderBranch, showRequestEdit, type ChangeData } from './data'
 
 const ChangeMark = defineComponent({
   setup: () => () => h(FileDiff, { size: ICON_PX.markIn28 }),
@@ -27,6 +28,7 @@ export const changeKind: PanelKind<ChangeData> = {
   intents: {
     edit: (payload, current) => showRequestEdit(current ?? firstChangeData(), payload),
     commit: (payload, current) => showCommit(current ?? firstChangeData(), payload),
+    branch: (payload, current) => showFolderBranch(current ?? firstChangeData(), payload),
   },
 }
 

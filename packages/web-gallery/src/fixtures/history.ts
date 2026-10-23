@@ -88,6 +88,9 @@ function fixed<T>(read: () => { value: T | undefined; answer: KeptAnswer }): Sho
  * - `docs/guide`, older.
  * - A commit no branch holds, as a rebase leaves one.
  *
+ * `sourceOn` is the same repository seen from another working tree: a checkout of it on another branch, as a
+ * subagent's folder is.
+ *
  * `commit` adds a commit to the branch checked out, as one made in a terminal would, and
  * the list follows.
  */
@@ -118,17 +121,22 @@ export function galleryHistory() {
     'docs/guide': guide,
   })
   const all = () => new Map([...Object.values(histories.value).flat(), orphan].map((commit) => [commit.id, commit]))
-  const branches = (): BranchList => ({
+  const branches = (current: string | null = 'main'): BranchList => ({
     branches: Object.keys(histories.value).sort((a, b) => Date.parse(histories.value[b]![0]!.time) - Date.parse(histories.value[a]![0]!.time)),
-    current: 'main',
-    head: null,
+    current,
+    // A detached HEAD names the commit it stands on.
+    head: current === null ? histories.value['feat/cart']![0]!.id : null,
   })
   const find = (commit: string) => [...all().values()].filter((candidate) => candidate.id.startsWith(commit.toLowerCase()))
 
-  const source: CommitHistorySource = {
-    showBranches: () => fixed(() => ({ value: branches(), answer: 'value' })),
+  /**
+   * The repository as a working tree sees it, on the branch `current` names now,
+   * or on a detached HEAD while it names null.
+   */
+  const sourceOn = (current: () => string | null): CommitHistorySource => ({
+    showBranches: () => fixed(() => ({ value: branches(current()), answer: 'value' })),
     showLog: (branch, after) => fixed<CommitLogPage>(() => {
-      const list = histories.value[branch ?? 'main']
+      const list = histories.value[branch ?? current() ?? 'feat/cart']
       if (!list)
         return { value: undefined, answer: 'gone' }
       const start = after === '' ? 0 : list.findIndex((commit) => commit.id === after) + 1
@@ -163,7 +171,9 @@ export function galleryHistory() {
         answer: 'value',
       }
     }),
-  }
+  })
+  const source = sourceOn(() => 'main')
+
   /** A commit on the branch checked out, made now, as the agent's shell or the user's terminal would. */
   function commit(message: string): void {
     const list = histories.value.main!
@@ -171,7 +181,7 @@ export function galleryHistory() {
     made.message = message
     histories.value = { ...histories.value, main: [made, ...list] }
   }
-  return { source, commit, ids: { latest: () => histories.value.main![0]!.id, cart: cart[0]!.id, orphan: orphan.id, root: main.at(-1)!.id } }
+  return { source, sourceOn, commit, ids: { latest: () => histories.value.main![0]!.id, cart: cart[0]!.id, orphan: orphan.id, root: main.at(-1)!.id } }
 }
 
 export type GalleryHistory = ReturnType<typeof galleryHistory>

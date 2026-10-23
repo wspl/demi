@@ -31,9 +31,10 @@ export const changeDataSchema = z.object({
   /** In Commits, the file of the item to show; null selects its first file. */
   file: z.string().nullable(),
   /**
-   * The directory Commits mode reads when a commit link named one: the
-   * working directory of the agent that wrote it, null for the
-   * conversation's; absent, the request's.
+   * The directory Commits mode reads when a commit link or a subagent's
+   * branch named one: the working directory of the agent that wrote the
+   * link, or the folder of the branch, null for the conversation's; absent,
+   * the request's.
    */
   root: z.string().nullable().optional(),
   /** The request, its file and its edit, or All Changes; null before any was opened. */
@@ -150,6 +151,16 @@ export function showItem(data: ChangeData, commit: string | null): ChangeData {
 export function showCommit(data: ChangeData, payload: IntentPayloads['commit']): ChangeData {
   const shown = go(data, { mode: 'commits', commit: payload.commit, file: null, root: payload.root ?? null, request: data.request })
   return { ...shown, place: true }
+}
+
+/**
+ * The `branch` intent: a subagent's branch, in Commits mode on its folder,
+ * at the top of its list: the uncommitted changes while it is the branch
+ * checked out.
+ */
+export function showFolderBranch(data: ChangeData, payload: IntentPayloads['branch']): ChangeData {
+  const shown = go(data, { mode: 'commits', commit: null, file: null, root: payload.root, request: data.request })
+  return { ...shown, branch: payload.branch, place: false }
 }
 
 /** The list placed on `branch` for the commit a link opened. */

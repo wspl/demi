@@ -12,7 +12,7 @@ import { TREE_WIDTH } from './file-view'
 import { t } from './locales/text'
 import { baseName } from '@demicodes/utils'
 import { normalizePath, parentPath } from './paths'
-import type { FileBrowserSource } from './types'
+import type { FileBrowserSource, FileDirectory } from './types'
 
 /**
  * One file of a Host, read through its source: the whole path as crumbs from the
@@ -43,6 +43,8 @@ const props = defineProps<{
   root: string
   /** What the tree's caption says in place of the root directory's name. */
   rootName?: string
+  /** The directories the host can show, with the one shown: the tree's caption is a menu of them when that makes several. */
+  directories?: readonly FileDirectory[]
   /** The file, by absolute path. */
   path: string | null
   /**
@@ -61,6 +63,8 @@ const emit = defineEmits<{
   open: [path: string]
   back: []
   forward: []
+  /** The tree's caption chose another of `directories`. */
+  switchDirectory: [directory: string]
 }>()
 
 const tree = defineModel<boolean>('tree', { default: true })
@@ -228,8 +232,11 @@ onBeforeUnmount(() => {
         :source="source"
         :root="root"
         :root-name="rootName"
+        :directories="directories"
+        :home="source.home"
         :selected="located ?? path"
         @open="openFromTree"
+        @switch="emit('switchDirectory', $event)"
       />
     </template>
   </TreeFrame>
