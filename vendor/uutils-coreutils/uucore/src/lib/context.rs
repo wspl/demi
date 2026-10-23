@@ -286,6 +286,16 @@ pub(crate) fn null_device(path: &Path) -> bool {
     cfg!(windows) && path.as_os_str().eq_ignore_ascii_case("NUL")
 }
 
+/// The path a symlink's text names: a relative `target` is relative to the
+/// directory of the `link` it is the text of, not to the job's. The result is
+/// lexical, for the `context_` queries to resolve.
+pub fn link_target(target: &Path, link: &Path) -> PathBuf {
+    if target.is_absolute() || target.has_root() {
+        return target.to_owned();
+    }
+    link.parent().unwrap_or(Path::new("")).join(target)
+}
+
 /// Whether `path`, as the invocation reads it, names Windows' null device,
 /// which a utility must not move or remove as it does a file.
 pub fn is_null_device(path: impl AsRef<Path>) -> bool {

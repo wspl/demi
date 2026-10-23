@@ -17,7 +17,8 @@ pub enum AccessMatcher {
 
 impl Matcher for AccessMatcher {
     fn matches(&self, file_info: &WalkEntry, _: &mut MatcherIO) -> bool {
-        let path = file_info.path();
+        // The job's path, not the process's.
+        let path = uucore::context::resolve(file_info.path());
 
         match self {
             Self::Readable => path.readable(),

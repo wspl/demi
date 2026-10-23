@@ -600,7 +600,8 @@ pub fn link(src: &Path, dst: &Path, settings: &Settings) -> LnResult<()> {
 #[cfg(windows)]
 pub fn symlink<P1: AsRef<Path>, P2: AsRef<Path>>(src: P1, dst: P2) -> io::Result<()> {
     use uucore::context::fs::{symlink_dir, symlink_file};
-    if src.as_ref().context_is_dir() {
+    // A relative target is relative to the link's own directory.
+    if uucore::context::link_target(src.as_ref(), dst.as_ref()).context_is_dir() {
         symlink_dir(src, dst)
     } else {
         symlink_file(src, dst)

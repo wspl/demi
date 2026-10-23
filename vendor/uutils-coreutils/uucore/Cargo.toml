@@ -580,4 +580,6 @@ patches = [
     "A host may read a path otherwise than the system does (Control::map_path, asked by context::resolve), such as /tmp and /c/… on Windows, as in Git Bash, so a file a utility writes there is one Git's utilities read",
     "The process feature builds with the context's Child, whose id is none for a utility the owner runs: signalling such a child fails as signalling a process that is gone does; on Windows the feature is not built, since its code signals processes by handle, which the context's Child lacks",
     "On Windows the null device has the metadata of an empty regular file, as in Git Bash (context::fs::metadata, symlink_metadata, exists), as do the PathExt and FileKindExt queries, FileInformation and canonicalize, so cp and install read it as a source and copy it to an empty file, and mv refuses it (context::is_null_device), where upstream stat failed with `Incorrect function`",
+    "fs::volume_path_name reads its path against the job's directory (context::resolve), so cp sizes a copy by the job's volume",
+    "context::link_target (added) names the path a symlink's relative text points to, relative to the link's directory, not the job's; on Windows a program named with a separator (`./bin/tool.exe`) is read against the job's directory by context::process::Command::new, where Windows looked in the process's",
 ]

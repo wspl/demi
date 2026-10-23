@@ -3067,8 +3067,21 @@ fn copy_socket(dest: &Path, overwrite: OverwriteMode, debug: bool) -> CopyResult
         fs::remove_file(dest)?;
     }
 
-    UnixListener::bind(dest)?;
-    Ok(())
+    // The job's path, not the process's.
+    let path = uucore::context::resolve(dest);
+    // GNU makes the socket with mknod where the system allows it: a path
+    // beyond sun_path's limit (about 100 bytes) cannot be bound.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let mode = Mode::from_bits_truncate((0o777 & !uucore::context::umask()) as mode_t);
+        nix_mknod(&path, SFlag::S_IFSOCK, mode, 0).map_err(io::Error::from)?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        UnixListener::bind(&path)?;
+        Ok(())
+    }
 }
 
 #[cfg(unix)]
@@ -3088,7 +3101,7 @@ fn copy_node(
         SFlag::S_IFBLK
     };
     let mode = Mode::from_bits_truncate(source_metadata.mode() as mode_t);
-    nix_mknod(dest, sflag, mode, source_metadata.rdev() as dev_t)
+    nix_mknod(&uucore::context::resolve(dest), sflag, mode, source_metadata.rdev() as dev_t)
         .map_err(|e| translate!("cp-error-cannot-create-special-file", "path" => dest.quote(), "error" => e.desc()).into())
 }
 

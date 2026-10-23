@@ -614,7 +614,7 @@ impl Chmoder {
             // We buffer all paths in this dir to not keep too many fd's open during recursion
             let mut paths_in_this_dir = Vec::new();
 
-            for dir_entry in file_path.read_dir()? {
+            for dir_entry in uucore::context::fs::read_dir(file_path)? {
                 match dir_entry {
                     Ok(entry) => paths_in_this_dir.push(entry.path()),
                     Err(err) => {

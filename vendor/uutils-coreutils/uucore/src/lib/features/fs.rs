@@ -998,7 +998,7 @@ pub struct DiskFreeSpace {
 /// directory.
 #[cfg(windows)]
 pub fn volume_path_name(path: &Path) -> IOResult<PathBuf> {
-    let wide: Vec<u16> = path
+    let wide: Vec<u16> = crate::context::resolve(path)
         .as_os_str()
         .encode_wide()
         .chain(std::iter::once(0))

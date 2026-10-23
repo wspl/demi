@@ -244,7 +244,7 @@ pub fn remove_dir_with_special_cases(path: &Path, options: &Options, error_occur
             show_permission_denied_error(path);
             true
         }
-        Err(_) if !error_occurred && path.read_dir().is_err() => {
+        Err(_) if !error_occurred && fs::read_dir(path).is_err() => {
             // For compatibility with GNU test case on Linux
             // Check if directory is readable by attempting to read it
             show_permission_denied_error(path);

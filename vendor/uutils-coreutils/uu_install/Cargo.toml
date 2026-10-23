@@ -160,4 +160,5 @@ patches = [
     "Windows builds it: there it has no Unix mode or owner, so a mode is not applied and an owner or group is a number that changes nothing",
     "On macOS the options of its own install are read: -B names the backup suffix, -b backs up to file.old, and -f takes file flags and ignores them",
     "A file made through a directory descriptor (install -D, -t, the safe copy) is recorded as an edit of its destination around the copy, as the context's own opens are",
+    "install -s runs strip through uucore::context::process::Command, in the job's directory with its environment and ended with the invocation, where upstream ran it as the runner's own process",
 ]

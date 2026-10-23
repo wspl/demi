@@ -20,7 +20,6 @@ use uucore::context::io::{Write, stdout};
 #[cfg(unix)]
 use std::path::MAIN_SEPARATOR;
 use std::path::{Path, PathBuf};
-use std::process;
 use thiserror::Error;
 use uucore::backup_control::{self, BackupMode, backup_would_destroy_source};
 use uucore::buf_copy::copy_fast;
@@ -1129,7 +1128,9 @@ fn strip_file(to: &Path, b: &Behavior) -> UResult<()> {
     } else {
         to.to_path_buf()
     };
-    match process::Command::new(&b.strip_program).arg(&to).status() {
+    // Run by the context, in the job's directory with its environment, and
+    // ended with the invocation.
+    match uucore::context::process::Command::new(&b.strip_program).arg(&to).status() {
         Ok(status) => {
             if !status.success() {
                 // Follow GNU's behavior: if strip fails, removes the target

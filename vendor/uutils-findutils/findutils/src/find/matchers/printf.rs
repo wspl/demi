@@ -550,7 +550,7 @@ fn format_directive<'entry>(
 
         FormatDirective::Type { follow_links } => if file_info.path_is_symlink() {
             if *follow_links {
-                match file_info.path().metadata().map_err(WalkError::from) {
+                match uucore::context::fs::metadata(file_info.path()).map_err(WalkError::from) {
                     Ok(meta) => format_non_link_file_type(meta.file_type().into()),
                     Err(e) if e.is_not_found() => 'N',
                     Err(e) if e.is_loop() => 'L',

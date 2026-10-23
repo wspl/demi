@@ -140,4 +140,5 @@ maintainer = "demi-runner"
 patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
     "On macOS what only its own chmod does, access control lists (-E, -C, -I, -N and the modes +a, -a#, +ai, =a#), is done by /bin/chmod, in the job's directory and with its streams",
+    "chmod -R reads a directory's entries at the job's path (uucore::context::fs::read_dir)",
 ]
