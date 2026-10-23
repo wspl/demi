@@ -12,6 +12,7 @@ import {
   type SelectionFieldActions,
   type SelectionFieldOffer,
 } from '../../ui/context-menu'
+import { rangeHas } from './anchors'
 import { publishMarks } from './highlights'
 import CommentQuote from './CommentQuote.vue'
 import SelectionField from './SelectionField.vue'
@@ -55,11 +56,15 @@ import { chosenWay, closePictureField, pictureField, quoteOfRange, type FieldWay
  * their menu is open, which reads it, and the field takes the focus again as the
  * menu closes.
  *
- * Closing: Escape, ✕, a press elsewhere and another selection close it and drop
+ * Closing: Escape, ✕, a click elsewhere and another selection close it and drop
  * what was typed. Another selection is one that keeps neither end of the one the
- * field opened for. On a phone a swipe down on the sheet or Back closes it, and
- * so does a tap on the page that clears the selection; a touch that becomes a
- * scroll is no tap.
+ * field opened for. A press on the page decides nothing until it is released, so
+ * the field stays as it is while words are clicked again and again: a click on
+ * the selected words leaves it, and a click that selects the same words or
+ * extends them leaves it in place, as a double or triple click does; one that
+ * clears the selection elsewhere closes it, and a drag stands it aside until it
+ * ends. On a phone a swipe down on the sheet or Back closes it, and so does a tap
+ * on the page that clears the selection; a touch that becomes a scroll is no tap.
  *
  * It steps aside while a context menu is open, the one control for the selection
  * then, and comes back as the menu closes, with what was typed.
@@ -75,6 +80,14 @@ const opening = ref(0)
 const way = ref<FieldWay>('comment')
 /** A mouse holds the selection it drags: the field waits for its release. */
 const dragging = ref(false)
+/** What a press acts on instead of the text under it: a link, a button, a picture or other media. */
+const ACTS = 'a, button, [role="button"], img, video, audio, canvas, svg'
+/**
+ * A press on the page, from its start until it is released: it decides the
+ * selection then. `onText` is whether it is on the words themselves, not on what
+ * acts when it is pressed.
+ */
+let press: { x: number; y: number; dragged: boolean; onText: boolean } | null = null
 /** The field has had the focus, which ended the selection on the page until the field closes. */
 const focused = ref(false)
 /** An action is under way. */
@@ -115,21 +128,40 @@ function open(): void {
   focusWanted.value = !phone.value || pictureField.value !== null
 }
 
-function read(): void {
+/**
+ * Reads the page's selection. `released` is where a press on the page ended and
+ * whether it was on the words, which took the focus from the field that held it:
+ * that press is what the selection is read for, however many clicks make it.
+ */
+function read(released?: { x: number; y: number; onText: boolean }): void {
+  // The press is still deciding the selection: a click collapses it for a moment
+  // before its second click selects the words, and a drag changes it by the pixel.
+  if (press)
+    return
   // The selection is the field's own text then.
-  if (focused.value)
+  if (focused.value && !released)
     return
   const now = selectionFieldOffer()
+  const held = selection.value
   if (!now) {
+    if (held && released) {
+      // A click on the selected words is none on the page: the field stays. One on a link, a button or a picture is a click elsewhere, which acts.
+      if (released.onText && rangeHas(held.range, released.x, released.y)) {
+        focusWanted.value = true
+        return
+      }
+      closeAll()
+    }
     selection.value = null
     // Nothing is selected: the same words selected again are new.
     dismissed = null
     return
   }
-  const held = selection.value
   if (held && sameEnd(held.range, now.range)) {
-    // Extended or shrunk: the same field follows.
+    // Extended or shrunk, or the same words again: the same field follows.
     selection.value = now
+    if (released)
+      focusWanted.value = true
     return
   }
   if (dismissed && sameEnd(dismissed, now.range))
@@ -199,7 +231,7 @@ function restoreSelection(): void {
 const listeners = new AbortController()
 onMounted(() => {
   const { signal } = listeners
-  document.addEventListener('selectionchange', read, { signal })
+  document.addEventListener('selectionchange', () => read(), { signal })
   /** A touch that may still be a tap: one that becomes a scroll is cancelled and is none. */
   let tap: { x: number; y: number } | null = null
   document.addEventListener('pointerdown', (event) => {
@@ -224,21 +256,45 @@ onMounted(() => {
     }
     if (event.button !== 0 || inside)
       return
+    // A press starts a selection of its own: even the same words are new. The
+    // field it leaves stands until the press is released, so that the clicks of a
+    // double click do not close and open it again.
+    dismissed = null
+    press = { x: event.clientX, y: event.clientY, dragged: false, onText: !(target instanceof Element ? target : target.parentElement)?.closest(ACTS) }
+    if (!selection.value)
+      closeAll()
+  }, { capture: true, signal })
+  document.addEventListener('pointermove', (event) => {
+    // The pointer moved this far, which the system takes for a drag: it selects words of its own.
+    if (!press || press.dragged || event.buttons === 0 || Math.hypot(event.clientX - press.x, event.clientY - press.y) < 4)
+      return
+    press.dragged = true
     dragging.value = event.pointerType === 'mouse'
     closeAll()
-    // A press starts a selection of its own: even the same words are new.
     dismissed = null
   }, { capture: true, signal })
   document.addEventListener('pointerup', (event) => {
     dragging.value = false
     const pressed = tap
     tap = null
+    const released = press ? { x: event.clientX, y: event.clientY, onText: press.onText } : undefined
+    press = null
     // The focus in the field ended the selection on the page, so a tap on the page elsewhere is what clears it then.
     if (phone.value && pressed && Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) < 10 && (focused.value || pictureField.value))
       closeAll()
-    read()
+    read(released)
   }, { capture: true, signal })
-  document.addEventListener('pointercancel', () => (tap = null), { capture: true, signal })
+  // The press ends without a release when the system takes it over, as for dragging text, or the window loses it.
+  const endPress = () => {
+    tap = null
+    dragging.value = false
+    if (press) {
+      press = null
+      read()
+    }
+  }
+  document.addEventListener('pointercancel', endPress, { capture: true, signal })
+  window.addEventListener('blur', endPress, { signal })
   // The focus in the field ended the selection on the page, so Copy copies what the field holds for it.
   document.addEventListener('copy', (event) => {
     const held = selection.value
@@ -269,7 +325,7 @@ watch([focused, selection], ([now, held]) => {
 watch(selection, (now, _before, onCleanup) => {
   if (!now)
     return
-  const observer = new MutationObserver(read)
+  const observer = new MutationObserver(() => read())
   observer.observe(now.object, { childList: true, subtree: true, characterData: true })
   onCleanup(() => observer.disconnect())
 })

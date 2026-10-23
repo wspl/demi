@@ -1839,6 +1839,9 @@ html[data-theme="light"] .file-pill {
   text-underline-offset: 3px;
   cursor: pointer;
   transition: background-color 0.15s;
+  /* Its words are the sentence's to select: a control selects no text, which would cut a selection short at the link. */
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .agent-link:is(:hover, :focus-visible) {
@@ -1926,11 +1929,68 @@ html[data-theme="light"] .file-pill {
    (`StreamedMarkdown`). */
 .markdown-body .message-link-icon,
 .agent-link-mark {
-  display: inline-flex;
+  display: inline-block;
+  vertical-align: -2px;
+  white-space: nowrap;
+  /* The box has a bottom-edge baseline only when it clips, so it sits as a
+     flex box with one icon did. */
+  overflow: hidden;
+}
+
+/* An icon is laid out as inline content in its box, never as a flex container,
+   a block or an absolutely placed box: Chrome ends the paragraph a triple click
+   selects at one of those in running text, so a sentence with a link in it
+   would be cut at the link's icon. */
+
+/* A file's, commit's or web page's icon: centered in its 14px box, as the flex
+   box centered it. `FileIcon` holds a plain outline smaller than its box until
+   the picture comes, so the icon is centered whatever its height: its middle
+   moved to the box's middle. */
+.markdown-body .message-link-icon {
   width: 14px;
   height: 14px;
   margin-right: 0.25em;
-  vertical-align: -2px;
+  line-height: 0;
+  text-align: center;
+}
+
+.markdown-body .message-link-icon > *,
+.markdown-body .message-link-icon > span > * {
+  display: inline-block;
+  vertical-align: top;
+  position: relative;
+  top: 7px;
+  transform: translateY(-50%);
+}
+
+.markdown-body .message-link-icon > span {
+  /* FileIcon's own box is as large as this one: its middle is this one's. */
+  top: 0;
+  transform: none;
+}
+
+/* An agent's mark has the state's dot on its corner, which reaches past the
+   robot and breathes up to 1.15 times its size: the box is larger by the room
+   it needs, and its margins take that room back. The dot stands in the line
+   after the robot, moved back over its corner (`CornerDot`). */
+.agent-link-mark {
+  box-sizing: border-box;
+  width: 17px;
+  height: 17px;
+  padding-top: 3px;
+  margin: -3px calc(0.25em - 3px) 0 0;
+  line-height: 0;
+}
+
+.agent-link-mark > span,
+.agent-link-mark > span > * {
+  display: inline-block;
+  vertical-align: top;
+}
+
+.agent-link-mark [data-corner-dot] {
+  position: relative;
+  margin-left: -6px;
 }
 
 .markdown-body code {
