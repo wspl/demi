@@ -349,7 +349,8 @@
       "price": "依 API 計價",
       "hitRate": "快取命中率",
       "range": {
-        "lastHour": "過去 1 小時",
+        "hour": "1 小時",
+        "day": "1 天",
         "all": "全部"
       },
       "kind": {

@@ -1,11 +1,11 @@
 import { apiRequest, readResponse } from './client'
-import { lastHourCostSchema, type LastHourCost } from './generated/web-api'
+import { recentCostSchema, type CostWindow, type RecentCost } from './generated/web-api'
 
 /**
- * What the conversation's calls of the last 60 minutes cost, as the backend
- * counts them from its usage ledger.
+ * What the conversation's calls of the last hour or the last day cost, as the
+ * backend counts them from its usage ledger.
  */
-export async function readLastHourCost(conversationId: string, signal?: AbortSignal): Promise<LastHourCost> {
-  const response = await apiRequest(`/conversations/${encodeURIComponent(conversationId)}/cost/last-hour`, { signal })
-  return readResponse(response, lastHourCostSchema)
+export async function readRecentCost(conversationId: string, window: CostWindow, signal?: AbortSignal): Promise<RecentCost> {
+  const response = await apiRequest(`/conversations/${encodeURIComponent(conversationId)}/cost/recent?window=${window}`, { signal })
+  return readResponse(response, recentCostSchema)
 }

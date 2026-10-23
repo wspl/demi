@@ -269,7 +269,8 @@ pub struct ConversationMetadata {
     pub other_cost: AgentCost,
     /// When the conversation's first call ended, whichever agent made it;
     /// null before it made one. The context card offers the last hour's cost
-    /// once this is more than an hour ago.
+    /// once this is more than an hour ago, and the last day's once it is more
+    /// than a day ago.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
     pub first_call_at: Option<Timestamp>,
@@ -299,28 +300,40 @@ pub struct ConversationMetadata {
     pub permissions: ConversationPermissions,
 }
 
-/// `GET /conversations/:id/cost/last-hour`: what the conversation's calls of
-/// the last 60 minutes cost, counted by the backend from its usage ledger.
+/// How far back `GET /conversations/:id/cost/recent` counts, as its `window`
+/// query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum CostWindow {
+    /// The last 60 minutes.
+    Hour,
+    /// The last 24 hours.
+    Day,
+}
+
+/// `GET /conversations/:id/cost/recent?window=hour|day`: what the
+/// conversation's calls of the window cost, counted by the backend from its
+/// usage ledger.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct LastHourCost {
-    /// Each agent that made a call in the hour, and the rows of no agent, such
+pub struct RecentCost {
+    /// Each agent that made a call in the window, and the rows of no agent, such
     /// as a title's, when there are some: the rows of no agent first, then the
     /// agents by number. An agent that made none has no entry.
     #[garde(dive)]
-    pub agents: Vec<LastHourAgent>,
+    pub agents: Vec<RecentAgent>,
 }
 
-/// What one agent's calls of the last hour cost.
+/// What one agent's calls of the window cost.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct LastHourAgent {
+pub struct RecentAgent {
     /// The agent's number; null for the rows of no agent.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<u64>")]
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub agent: Option<u64>,
-    /// What its calls of the hour cost, as `AgentCost` keeps the cost of all
+    /// What its calls of the window cost, as `AgentCost` keeps the cost of all
     /// of them.
     #[garde(dive)]
     pub cost: AgentCost,

@@ -27,8 +27,8 @@ export interface AgentPrice {
 /**
  * What a card's Cost section shows: the cost, and the cache chart of the
  * agent it shows, which the backend counts and the page reads when the card
- * opens, and what the same agents cost in the last hour, which the backend
- * counts when a card that shows it asks.
+ * opens, and what the same agents cost in the last hour and the last day,
+ * which the backend counts when a card that shows one asks.
  */
 export interface CostShown {
   cost: ConversationCostView
@@ -36,38 +36,51 @@ export interface CostShown {
   node?: string | null
   /** Null until the page read it. */
   chart: CacheChart | null
-  /** What the last read of the last hour answered; null until the first read of it answers. */
-  lastHour: LastHourShown | null
+  /** What the last read of each window answered; null until the first read of it answers. */
+  recent: Record<CostWindow, RecentShown | null>
   /** When the conversation's first call ended, as an ISO time; null before it made one. */
   firstCallAt: string | null
 }
 
-/** What the card's agents cost in the last hour, and the cache's share of the shown agent's prompts. */
-export interface LastHourShown {
+/** What the card's agents cost in a window, and the cache's share of the shown agent's prompts. */
+export interface RecentShown {
   cost: ConversationCostView
   /** Null without a turn call that sent a prompt. */
   rate: number | null
 }
 
-/** How far back the Cost section counts: the last 60 minutes, or the whole conversation. */
-export type CostRange = 'lastHour' | 'all'
+/** A span the backend counts back from now: the last 60 minutes or the last 24 hours. */
+export type CostWindow = 'hour' | 'day'
 
-/** What the backend counts of one agent's last hour; null for the rows of no agent. */
-export interface LastHourEntry {
+/** How far back the Cost section counts: a window, or the whole conversation. */
+export type CostRange = CostWindow | 'all'
+
+/** What the backend counts of one agent's window; null for the rows of no agent. */
+export interface RecentEntry {
   agent: number | null
   cost: AgentCost
   rate: number | null
 }
 
-const HOUR_MS = 60 * 60 * 1000
+/** The windows by their span, shortest first, with how long each counts back. */
+const WINDOW_MS: readonly (readonly [CostWindow, number])[] = [
+  ['hour', 60 * 60 * 1000],
+  ['day', 24 * 60 * 60 * 1000],
+]
 
 /**
- * Whether the card offers the last hour: from the time the conversation's
- * first call is more than an hour old, before which both ranges would show
- * the same.
+ * The ranges the card offers, by their span: each window from the time the
+ * conversation's first call is older than it, before which it would show what
+ * All shows, and All always.
  */
-export function lastHourOffered(firstCallAt: string | null, now: number = Date.now()): boolean {
-  return firstCallAt !== null && now - Date.parse(firstCallAt) > HOUR_MS
+export function offeredRanges(firstCallAt: string | null, now: number = Date.now()): CostRange[] {
+  const age = firstCallAt === null ? 0 : now - Date.parse(firstCallAt)
+  return [...WINDOW_MS.filter(([, span]) => age > span).map(([window]) => window), 'all']
+}
+
+/** The range the card counts: the user's choice, or All where the card does not offer it. */
+export function shownRange(range: CostRange, firstCallAt: string | null, now: number = Date.now()): CostRange {
+  return offeredRanges(firstCallAt, now).includes(range) ? range : 'all'
 }
 
 /** Where the browser keeps the range the Cost section counts, for every conversation. */
@@ -76,25 +89,26 @@ const COST_RANGE_KEY = 'demi-cost-range'
 /** The range the Cost section counts, All until the user chooses. */
 export function useCostRange(): Ref<CostRange> {
   return useLocalStorage<CostRange>(COST_RANGE_KEY, 'all', {
-    serializer: { read: (raw) => (raw === 'lastHour' ? 'lastHour' : 'all'), write: (range) => range },
+    // The choice kept when only the hour was offered, as `lastHour`, reads as `hour`.
+    serializer: { read: (raw) => (raw === 'hour' || raw === 'lastHour' ? 'hour' : raw === 'day' ? 'day' : 'all'), write: (range) => range },
   })
 }
 
 /**
- * Starts a watch of the conversation's last hour, which the page keeps
+ * Starts a watch of the conversation's `window`, which the page keeps
  * current while it runs, and answers the function that ends it. A card that
- * shows the last hour holds one for as long as it shows it.
+ * shows a window holds one for as long as it shows it.
  */
-export type CostWatch = () => () => void
+export type CostWatch = (window: CostWindow) => () => void
 
 const costWatchKey: InjectionKey<CostWatch> = Symbol('cost-watch')
 
-/** Gives the cards below the page's way of keeping the last hour current. */
+/** Gives the cards below the page's way of keeping a window current. */
 export function provideCostWatch(watch: CostWatch): void {
   provide(costWatchKey, watch)
 }
 
-/** The watch a card starts while it shows the last hour; none where nothing counts it. */
+/** The watch a card starts while it shows a window; none where nothing counts it. */
 export function useCostWatch(): CostWatch | undefined {
   return inject(costWatchKey, undefined)
 }
@@ -165,15 +179,15 @@ export function agentCost(cost: AgentCost): ConversationCostView {
 }
 
 /**
- * What the last hour's `entries` come to for the conversation's card, `node`
+ * What a window's `entries` come to for the conversation's card, `node`
  * null, or for the agent numbered `node`: an agent without an entry made no
- * call in the hour.
+ * call in the window.
  */
-export function lastHourOf(
-  entries: readonly LastHourEntry[],
+export function recentOf(
+  entries: readonly RecentEntry[],
   subagents: readonly { number: number, profile: string | null }[],
   node: number | null,
-): LastHourShown {
+): RecentShown {
   const of = (agent: number | null) => entries.find((entry) => entry.agent === agent)
   const costOf = (agent: number | null) => of(agent)?.cost ?? NO_COST
   if (node !== null)

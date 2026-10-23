@@ -90,10 +90,10 @@ function openAutomation(id: string): void {
 }
 // An automation's message names it in the transcript and leads to it.
 provideAutomationOpener(openAutomation)
-// The cards of the open conversation, the composer's and its subagents' windows', keep its last hour current while they show it.
-provideCostWatch(() => {
+// The cards of the open conversation, the composer's and its subagents' windows', keep the window of its cost they show current.
+provideCostWatch((window) => {
   const current = conversation.value
-  return current ? store.watchLastHour(current) : () => {}
+  return current ? store.watchRecentCost(current, window) : () => {}
 })
 // The transcripts of the open conversation show a loading row at an edge only
 // while a page is being read for it.

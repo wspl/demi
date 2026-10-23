@@ -349,7 +349,8 @@
       "price": "API 換算価格",
       "hitRate": "キャッシュヒット率",
       "range": {
-        "lastHour": "過去 1 時間",
+        "hour": "1 時間",
+        "day": "1 日",
         "all": "すべて"
       },
       "kind": {

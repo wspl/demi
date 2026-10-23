@@ -1,9 +1,9 @@
 import { ref } from 'vue'
 import type { CacheChart, CacheMiss, ChartPoint } from '@demicodes/protocol'
-import { type AgentPrice, type ConversationCostView, type CostShown, type LastHourShown, lastHourOf } from '@demicodes/web-ui/agent/context-cost'
+import { type AgentPrice, type ConversationCostView, type CostShown, type CostWindow, type RecentShown, recentOf } from '@demicodes/web-ui/agent/context-cost'
 import { type GlobalProfiles, workflowProfiles } from '@demicodes/web-ui/agent/workflow-menu'
 import { demoSubagentProfiles } from './subagent-profiles'
-import { MINUTE } from './time'
+import { DAY, MINUTE } from './time'
 
 /** A deterministic sequence in [0, 1), so every load draws the same conversation. */
 function sequence(seed: number): () => number {
@@ -81,6 +81,8 @@ export interface ChartShape {
   calls: number
   size: number
   first?: number
+  /** How long ago its first call ended, where that is not about a minute a call. */
+  age?: number
 }
 
 /** The shapes of the conversations the specimens show. */
@@ -94,6 +96,8 @@ export const SHAPES = {
   forty: { calls: 40, size: 1 },
   thirty: { calls: 30, size: 1 },
   sixty: { calls: 60, size: 2 },
+  /** Three days and a half, so the card offers the last day as well. */
+  days: { calls: 180, size: 5, age: 3.5 * DAY },
   /** The latest 400 of a thousand calls, ten a point. */
   giant: { calls: 1_000, size: 10, first: 601 },
 } satisfies Record<string, ChartShape>
@@ -137,7 +141,7 @@ function costView(main: number, others: readonly AgentPrice[], calls: number, pr
  * that holds the first call, a miss or the first call after a compaction
  * reads less from the cache.
  */
-export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', shape: ChartShape = SHAPES.long, priced = true): { cost: ConversationCostView, chart: CacheChart, lastHour: LastHourShown, firstCallAt: string } {
+export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', shape: ChartShape = SHAPES.long, priced = true): { cost: ConversationCostView, chart: CacheChart, recent: Record<CostWindow, RecentShown>, firstCallAt: string } {
   const random = sequence(7)
   const { calls, size } = shape
   const first = shape.first ?? 1
@@ -185,18 +189,23 @@ export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', shape: C
     : points.reduce((sum, point) => sum + point.rate * (point.last - point.first + 1), 0) / window
   const chart = { rate, size, points }
   // The last hour holds the latest calls a minute apart, 55 at most, and a
-  // quarter of what each subagent cost.
-  const hourCalls = Math.min(calls, 55)
-  const hourOthers = others.map((agent) => ({ ...agent, price: agent.price / 4 }))
-  const lastHour = {
-    cost: costView(calls < 4 ? main : (main * hourCalls) / calls, hourOthers, hourCalls + hourOthers.length, priced),
-    rate: Math.min(0.99, rate + 0.02),
+  // quarter of what each subagent cost over the conversation; the last day, 120
+  // calls at most, and half of what each subagent cost.
+  const windowOf = (limit: number, share: number, extra: number): RecentShown => {
+    const count = Math.min(calls, limit)
+    const shared = others.map((agent) => ({ ...agent, price: agent.price * share }))
+    return {
+      cost: costView(calls < 4 ? main : (main * count) / calls, shared, count + shared.length, priced),
+      rate: Math.min(0.99, rate + extra),
+    }
   }
-  return { cost, chart, lastHour, firstCallAt: new Date(Date.now() - calls * 65_000).toISOString() }
+  const recent = { hour: windowOf(55, 0.25, 0.02), day: windowOf(120, 0.5, 0.01) }
+  const age = shape.age ?? calls * 65_000
+  return { cost, chart, recent, firstCallAt: new Date(Date.now() - age).toISOString() }
 }
 
-/** A conversation that made no call in the last hour, as the page shows the backend's empty answer. */
-const QUIET_HOUR: LastHourShown = lastHourOf([], [], null)
+/** A conversation that made no call in the last hour or day, as the page shows the backend's empty answer. */
+const QUIET: RecentShown = recentOf([], [], null)
 
 /**
  * What a card specimen holds of its conversation's cost, as the product's
@@ -211,7 +220,7 @@ export function useCardCost(
   const cost = ref<CostShown>({
     cost: fixture.cost,
     chart: fixture.chart,
-    lastHour: quiet ? QUIET_HOUR : fixture.lastHour,
+    recent: quiet ? { hour: QUIET, day: QUIET } : fixture.recent,
     firstCallAt: fixture.firstCallAt,
   })
   return { cost }
