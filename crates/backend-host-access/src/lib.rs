@@ -49,7 +49,7 @@
 //! - Stream admission serves user streams, one-shot user calls that must not
 //!   wake the Host and a plugin's reads of a conversation's files.
 //! - Lifecycle access is the conversation release, told to each connected
-//!   runner at once, and the release of a package's services for every
+//!   runner at once, and the release of a package's residents for every
 //!   conversation, which a plugin turned off asks of each connected Host. It
 //!   stores nothing: a Host that is away, or loses the message, holds what the
 //!   records say after its next `hello`.

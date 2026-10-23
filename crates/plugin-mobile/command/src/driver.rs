@@ -106,7 +106,7 @@ pub struct Screen {
 }
 
 /// One element of the screen's tree as the platform's accessibility
-/// service reads it.
+/// resident reads it.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RawElement {
     pub role: String,

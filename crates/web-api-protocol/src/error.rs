@@ -295,7 +295,7 @@ pub enum ErrorCode {
     UnknownStream,
     /// A user stream is a WebSocket, and the request is not an upgrade.
     UpgradeRequired,
-    /// The Host could not open the stream: its service failed to start or
+    /// The Host could not open the stream: its resident failed to start or
     /// refused it.
     StreamFailed,
     /// Another user's conversation holds the id, or a Fork reserved it.

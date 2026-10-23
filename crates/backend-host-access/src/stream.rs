@@ -1,7 +1,7 @@
 //! User streams and one-shot user calls
 //! (`crates/runner-jobs/src/commands/streams.rs`): an operation of a native
 //! package that serves the conversation's user directly, in the resident
-//! service that holds the conversation's state.
+//! resident that holds the conversation's state.
 //!
 //! A stream's bytes go both ways for as long as the page keeps it open, and the
 //! edge relays them under the stream's lease, as it does a file transfer. A
@@ -31,7 +31,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_backend_remote_host::{
-    Pipe, PipeReader, PipeWriter, ServiceCallError, ServiceRequest, ServiceStream,
+    Pipe, PipeReader, PipeWriter, ResidentCallError, ResidentRequest, ResidentStream,
 };
 use demi_backend_runners::command_context::command_context;
 use demi_backend_runners::native::NativeCatalog;
@@ -52,13 +52,13 @@ use crate::transfer::OpenTransfer;
 
 /// The native operation a user stream or a one-shot user call runs, as a
 /// direct channel's introduction carries it too.
-pub use demi_runner_protocol::direct::ServiceBinding;
+pub use demi_runner_protocol::direct::ResidentBinding;
 
 /// The user streams a page may open, by name. Each binds an operation of a
 /// published package; the plugins declare them, fixed for the backend's
 /// lifetime.
 #[derive(Debug, Clone, Default)]
-pub struct UserStreams(Arc<HashMap<String, ServiceBinding>>);
+pub struct UserStreams(Arc<HashMap<String, ResidentBinding>>);
 
 impl UserStreams {
     /// The `declared` streams, each a name and its operation, that the
@@ -72,7 +72,7 @@ impl UserStreams {
             if !native.serves(&binding.package, &[binding.operation.as_str()]) {
                 return None;
             }
-            let binding = ServiceBinding {
+            let binding = ResidentBinding {
                 package: native.package(&binding.package)?.clone(),
                 operation: binding.operation.clone(),
             };
@@ -81,12 +81,12 @@ impl UserStreams {
         Self(Arc::new(bound.collect()))
     }
 
-    pub fn get(&self, name: &str) -> Option<&ServiceBinding> {
+    pub fn get(&self, name: &str) -> Option<&ResidentBinding> {
         self.0.get(name)
     }
 
     /// Every stream, by name.
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &ServiceBinding)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &ResidentBinding)> {
         self.0.iter().map(|(name, binding)| (name.as_str(), binding))
     }
 }
@@ -108,7 +108,7 @@ pub struct UserStream {
 pub enum StreamError {
     #[error(transparent)]
     Access(#[from] HostAccessError),
-    /// The Host could not open the stream: its service failed to start, or
+    /// The Host could not open the stream: its resident failed to start, or
     /// refused it.
     #[error("{0}")]
     Failed(String),
@@ -143,8 +143,8 @@ pub enum UserCallKind {
 /// A one-shot user call: the operation, its arguments, and the most its
 /// JSON answer may be, so that an answer cannot take memory without end.
 #[derive(Debug, Clone)]
-pub struct ServiceCall {
-    pub binding: ServiceBinding,
+pub struct ResidentCall {
+    pub binding: ResidentBinding,
     pub args: Map<String, Value>,
     pub max_bytes: usize,
 }
@@ -156,7 +156,7 @@ pub enum UserCallError {
     #[error(transparent)]
     Access(#[from] HostAccessError),
     #[error(transparent)]
-    Call(#[from] ServiceCallError),
+    Call(#[from] ResidentCallError),
 }
 
 impl dyn HostShard + '_ {
@@ -167,12 +167,12 @@ impl dyn HostShard + '_ {
     pub async fn open_user_stream(
         &self,
         id: &ConversationId,
-        binding: &ServiceBinding,
+        binding: &ResidentBinding,
         cancel: &CancellationToken,
     ) -> Result<UserStream, StreamError> {
         let access = self.admit_stream(id, None, Attention::Watches, cancel).await?;
         let request = self
-            .service_request(&access.conversation, &access.host, binding, None)
+            .resident_request(&access.conversation, &access.host, binding, None)
             .await?;
         let device = access.device.as_str();
         let input = self.pipes().to_device(device);
@@ -187,11 +187,11 @@ impl dyn HostShard + '_ {
                 access
                     .host
                     .host
-                    .open_service(request, input.wire_ref(), output.wire_ref()),
+                    .open_resident(request, input.wire_ref(), output.wire_ref()),
             )
             .await;
         let refused = match opened {
-            Ok(Ok(service)) => {
+            Ok(Ok(resident)) => {
                 let (watched, watching) = watch::channel(true);
                 let watching = access.watching.map(|lease| Watching {
                     lease: Some(lease),
@@ -200,7 +200,7 @@ impl dyn HostShard + '_ {
                     conversation: access.conversation.clone(),
                     watched: watching,
                 });
-                let lease = self.lease_stream(access.open, watching, service, input, output);
+                let lease = self.lease_stream(access.open, watching, resident, input, output);
                 return Ok(UserStream {
                     to_host,
                     from_host,
@@ -227,7 +227,7 @@ impl dyn HostShard + '_ {
         &self,
         id: &ConversationId,
         kind: UserCallKind,
-        call: &ServiceCall,
+        call: &ResidentCall,
         cancel: &CancellationToken,
     ) -> Result<Bytes, UserCallError> {
         let attention = match kind {
@@ -236,11 +236,11 @@ impl dyn HostShard + '_ {
                 return self
                     .with_reading_host(&record.id, None, cancel, async |host| {
                         let request = self
-                            .service_request(&record.id, host, &call.binding, Some(&call.args))
+                            .resident_request(&record.id, host, &call.binding, Some(&call.args))
                             .await?;
                         let answer = host
                             .host
-                            .call_service(request, Bytes::new(), call.max_bytes)
+                            .call_resident(request, Bytes::new(), call.max_bytes)
                             .await?;
                         Ok::<_, UserCallError>(answer)
                     })
@@ -253,7 +253,7 @@ impl dyn HostShard + '_ {
         // in, so a transition ends the call.
         let access = self.admit_stream(id, None, attention, cancel).await?;
         let request = self
-            .service_request(
+            .resident_request(
                 &access.conversation,
                 &access.host,
                 &call.binding,
@@ -266,7 +266,7 @@ impl dyn HostShard + '_ {
                 access
                     .host
                     .host
-                    .call_service(request, Bytes::new(), call.max_bytes),
+                    .call_resident(request, Bytes::new(), call.max_bytes),
             )
             .await??;
         Ok(answer)
@@ -319,15 +319,15 @@ impl dyn HostShard + '_ {
     /// - The conversation's directory as the working directory.
     /// - `args` for a one-shot call, which answers in JSON.
     ///
-    /// The runner fetches the service's executable from where the published
+    /// The runner fetches the resident's executable from where the published
     /// catalog says, while the work is open.
-    async fn service_request(
+    async fn resident_request(
         &self,
         conversation: &ConversationId,
         host: &ConversationHost,
-        binding: &ServiceBinding,
+        binding: &ResidentBinding,
         args: Option<&Map<String, Value>>,
-    ) -> Result<ServiceRequest, HostAccessError> {
+    ) -> Result<ResidentRequest, HostAccessError> {
         let context = command_context(
             self.control(),
             self.user(),
@@ -335,7 +335,7 @@ impl dyn HostShard + '_ {
             CommandCaller::User {},
         )
         .await?;
-        Ok(ServiceRequest {
+        Ok(ResidentRequest {
             context,
             package: binding.package.clone(),
             operation: binding.operation.clone(),
@@ -352,14 +352,14 @@ impl dyn HostShard + '_ {
     /// The shard's owner task keeps the stream registered with the
     /// conversation's transfers, and its lease of the stream gate, until the
     /// edge drops the lease or a transition ends the stream. Then both pipes
-    /// fail, which cancels an invocation still running, and the service stops
+    /// fail, which cancels an invocation still running, and the resident stops
     /// serving the stream's artifact requests. A pipe that completed stays
     /// complete.
     fn lease_stream(
         &self,
         open: OpenTransfer,
         watching: Option<Watching>,
-        service: ServiceStream,
+        resident: ResidentStream,
         input: Pipe,
         output: Pipe,
     ) -> Lease {
@@ -379,7 +379,7 @@ impl dyn HostShard + '_ {
             }
             input.fail("the user stream ended");
             output.fail("the user stream ended");
-            drop(service);
+            drop(resident);
             drop(open);
         });
         lease

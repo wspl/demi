@@ -1,4 +1,4 @@
-//! The last bytes of a stream within a limit: a service's or an invocation's
+//! The last bytes of a stream within a limit: a resident's or an invocation's
 //! standard error, and the view of a job's output.
 
 /// Keeps the last `limit` bytes pushed into it.

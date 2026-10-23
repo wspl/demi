@@ -2,13 +2,13 @@ use bytes::Bytes;
 use demi_command_protocol::{
     ARTIFACTS_PATH, CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH,
     MAX_METADATA_BYTES, MAX_RECORD_BYTES, MESSAGES_PATH, Metadata, NUMBERS_PATH, ProtocolError, Record,
-    RecordDecoder, SHUTDOWN_PATH, ServiceInfo, StreamOpen, encode_input,
+    RecordDecoder, SHUTDOWN_PATH, ResidentInfo, StreamOpen, encode_input,
 };
 use http::{Method, Request};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
-    RequestStream, ServiceError,
+    RequestStream, ResidentError,
     stream::{CONNECTION_WINDOW, send_bytes},
 };
 
@@ -19,7 +19,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn connect<T>(io: T) -> Result<(Self, h2::client::Connection<T, Bytes>), ServiceError>
+    pub async fn connect<T>(io: T) -> Result<(Self, h2::client::Connection<T, Bytes>), ResidentError>
     where
         T: AsyncRead + AsyncWrite + Unpin,
     {
@@ -32,12 +32,12 @@ impl Client {
         Ok((Self { sender }, connection))
     }
 
-    pub async fn info(&self) -> Result<ServiceInfo, ServiceError> {
+    pub async fn info(&self) -> Result<ResidentInfo, ResidentError> {
         let mut sender = self.sender.clone().ready().await?;
         let (response, _input) = sender.send_request(request(Method::GET, INFO_PATH), true)?;
         let response = response.await?;
         if !response.status().is_success() {
-            return Err(ServiceError::Rejected(response.status().as_u16()));
+            return Err(ResidentError::Rejected(response.status().as_u16()));
         }
         let mut body = response.into_body();
         let mut bytes = Vec::new();
@@ -49,7 +49,7 @@ impl Client {
             bytes.extend_from_slice(&chunk);
             body.flow_control().release_capacity(chunk.len())?;
         }
-        let info: ServiceInfo = serde_json::from_slice(&bytes)?;
+        let info: ResidentInfo = serde_json::from_slice(&bytes)?;
         info.validate()?;
         Ok(info)
     }
@@ -57,7 +57,7 @@ impl Client {
     pub async fn invoke(
         &self,
         invocation: &impl Metadata,
-    ) -> Result<(CommandInput, CommandOutput), ServiceError> {
+    ) -> Result<(CommandInput, CommandOutput), ResidentError> {
         self.invoke_at(INVOKE_PATH, invocation.encode()?).await
     }
 
@@ -66,26 +66,26 @@ impl Client {
     pub async fn conversation(
         &self,
         request: &ConversationRequest,
-    ) -> Result<(CommandInput, CommandOutput), ServiceError> {
+    ) -> Result<(CommandInput, CommandOutput), ResidentError> {
         self.invoke_at(CONVERSATION_PATH, request.encode()?).await
     }
 
-    /// Opens the service's numbers stream (`crates/command-protocol/src/numbers.rs`), which the caller answers.
-    pub async fn numbers(&self) -> Result<RequestStream, ServiceError> {
+    /// Opens the resident's numbers stream (`crates/command-protocol/src/numbers.rs`), which the caller answers.
+    pub async fn numbers(&self) -> Result<RequestStream, ResidentError> {
         self.request_stream(NUMBERS_PATH).await
     }
 
-    /// Opens the service's artifacts stream (`crates/command-protocol/src/artifacts.rs`), which the caller answers.
-    pub async fn artifacts(&self) -> Result<RequestStream, ServiceError> {
+    /// Opens the resident's artifacts stream (`crates/command-protocol/src/artifacts.rs`), which the caller answers.
+    pub async fn artifacts(&self) -> Result<RequestStream, ResidentError> {
         self.request_stream(ARTIFACTS_PATH).await
     }
 
-    /// Opens the service's messages stream (`crates/command-protocol/src/messages.rs`), which the caller answers.
-    pub async fn messages(&self) -> Result<RequestStream, ServiceError> {
+    /// Opens the resident's messages stream (`crates/command-protocol/src/messages.rs`), which the caller answers.
+    pub async fn messages(&self) -> Result<RequestStream, ResidentError> {
         self.request_stream(MESSAGES_PATH).await
     }
 
-    async fn request_stream(&self, path: &'static str) -> Result<RequestStream, ServiceError> {
+    async fn request_stream(&self, path: &'static str) -> Result<RequestStream, ResidentError> {
         let (input, output) = self.invoke_at(path, StreamOpen {}.encode()?).await?;
         Ok(RequestStream { input, output })
     }
@@ -94,12 +94,12 @@ impl Client {
         &self,
         path: &str,
         metadata: Bytes,
-    ) -> Result<(CommandInput, CommandOutput), ServiceError> {
+    ) -> Result<(CommandInput, CommandOutput), ResidentError> {
         let mut sender = self.sender.clone().ready().await?;
         let (response, mut input) = sender.send_request(request(Method::POST, path), false)?;
         if path == CONVERSATION_PATH {
             // The metadata is the whole request, so it leaves with its end:
-            // nothing is left to send once the service can answer it
+            // nothing is left to send once the resident can answer it
             // (`crates/command-protocol/src/lib.rs`).
             input.send_data(metadata, true)?;
         } else {
@@ -108,7 +108,7 @@ impl Client {
         let response = response.await?;
         if !response.status().is_success() {
             input.send_reset(h2::Reason::CANCEL);
-            return Err(ServiceError::Rejected(response.status().as_u16()));
+            return Err(ResidentError::Rejected(response.status().as_u16()));
         }
         Ok((
             CommandInput { stream: input },
@@ -120,12 +120,12 @@ impl Client {
         ))
     }
 
-    pub async fn shutdown(&self) -> Result<(), ServiceError> {
+    pub async fn shutdown(&self) -> Result<(), ResidentError> {
         let mut sender = self.sender.clone().ready().await?;
         let (response, _input) = sender.send_request(request(Method::POST, SHUTDOWN_PATH), true)?;
         let response = response.await?;
         if !response.status().is_success() {
-            return Err(ServiceError::Rejected(response.status().as_u16()));
+            return Err(ResidentError::Rejected(response.status().as_u16()));
         }
         Ok(())
     }
@@ -136,7 +136,7 @@ fn request(method: Method, path: &str) -> Request<()> {
         .method(method)
         .uri(format!("http://demi{path}"))
         .body(())
-        .expect("constant service endpoint")
+        .expect("constant resident endpoint")
 }
 
 pub struct CommandInput {
@@ -144,22 +144,22 @@ pub struct CommandInput {
 }
 
 impl CommandInput {
-    pub async fn write(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+    pub async fn write(&mut self, bytes: Bytes) -> Result<(), ResidentError> {
         let sent = send_bytes(&mut self.stream, encode_input(bytes)?).await;
         self.unless_answered(sent)
     }
-    pub fn end(&mut self) -> Result<(), ServiceError> {
+    pub fn end(&mut self) -> Result<(), ResidentError> {
         let sent = self.stream.send_data(Bytes::new(), true);
-        self.unless_answered(sent.map_err(ServiceError::from))
+        self.unless_answered(sent.map_err(ResidentError::from))
     }
     pub fn cancel(&mut self) {
         self.stream.send_reset(h2::Reason::CANCEL);
     }
 
-    /// A service that finished without reading all input resets the request
+    /// A resident that finished without reading all input resets the request
     /// with NO_ERROR once its response is complete; input sent after that,
     /// a chunk or its end, is dropped, not a failure (`crates/command-protocol/src/lib.rs`).
-    fn unless_answered(&mut self, sent: Result<(), ServiceError>) -> Result<(), ServiceError> {
+    fn unless_answered(&mut self, sent: Result<(), ResidentError>) -> Result<(), ResidentError> {
         let Err(error) = sent else {
             return Ok(());
         };
@@ -180,7 +180,7 @@ pub struct CommandOutput {
 }
 
 impl CommandOutput {
-    pub async fn next(&mut self) -> Result<Option<Record>, ServiceError> {
+    pub async fn next(&mut self) -> Result<Option<Record>, ResidentError> {
         let Some(decoder) = &mut self.decoder else {
             return Ok(None);
         };

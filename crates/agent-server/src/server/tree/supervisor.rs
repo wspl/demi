@@ -76,7 +76,7 @@
 //!
 //! # Not offered
 //!
-//! - Resident children that idle for mail (an accepted message only defers a
+//! - Children that stay idle waiting for mail (an accepted message only defers a
 //!   close).
 //! - `send --wait`: reciprocal waits would block each other, and ask-and-answer
 //!   is a close then `resume`.

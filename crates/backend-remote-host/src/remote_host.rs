@@ -32,7 +32,7 @@ use crate::{
     ArtifactResolver, HostSubscriber, Link,
     device_jobs::{Claimed, DeviceJobs, NewJob},
     link::{
-        Answer, Expected, JobEnd, JobMedium, JobOrigin, JobOutput, ServiceEntry, Shared,
+        Answer, Expected, JobEnd, JobMedium, JobOrigin, JobOutput, ResidentEntry, Shared,
         SpawnEntry,
     },
     manifest::CommandSelection,
@@ -740,23 +740,23 @@ impl RemoteHost {
         Ok((collect_pipe(reader, usize::MAX).await?, read_at))
     }
 
-    /// Opens a user stream: `request`'s operation in the resident service
+    /// Opens a user stream: `request`'s operation in the resident
     /// that holds the conversation's state, its input and output the two
     /// pipes (`crates/runner-jobs/src/commands/streams.rs`). It admits no work: a stream is
     /// retention, not activity.
-    pub async fn open_service(
+    pub async fn open_resident(
         &self,
-        request: ServiceRequest,
+        request: ResidentRequest,
         input: PipeRef,
         output: PipeRef,
-    ) -> Result<ServiceStream, HostError> {
+    ) -> Result<ResidentStream, HostError> {
         let link = self.link()?;
         let stream_id = uuid::Uuid::new_v4().simple().to_string();
         let (done, ended) = oneshot::channel();
         link.with_state(|state| {
-            state.add_service(
+            state.add_resident(
                 stream_id.clone(),
-                ServiceEntry {
+                ResidentEntry {
                     package: request.package.clone(),
                     resolver: request.resolver.clone(),
                     attached: request.attached.clone(),
@@ -765,13 +765,13 @@ impl RemoteHost {
                 },
             );
         });
-        let stream = ServiceStream {
+        let stream = ResidentStream {
             link: link.clone(),
             stream_id: stream_id.clone(),
             ended,
         };
-        let opened = link.wait_for(stream_id.clone(), Expected::Service)?;
-        link.send(&Inbound::ServiceOpen {
+        let opened = link.wait_for(stream_id.clone(), Expected::Resident)?;
+        link.send(&Inbound::ResidentOpen {
             stream_id,
             context: request.context,
             package: request.package,
@@ -786,43 +786,43 @@ impl RemoteHost {
         Ok(stream)
     }
 
-    /// One question, one answer: opens a service stream, sends `input` as its
+    /// One question, one answer: opens a resident stream, sends `input` as its
     /// whole input, and returns its whole output, at most `max_bytes` of it.
     /// An invocation that exits nonzero fails with its code, its standard
     /// error's tail and its output.
-    pub async fn call_service(
+    pub async fn call_resident(
         &self,
-        request: ServiceRequest,
+        request: ResidentRequest,
         input: Bytes,
         max_bytes: usize,
-    ) -> Result<Bytes, ServiceCallError> {
+    ) -> Result<Bytes, ResidentCallError> {
         let link = self.link()?;
-        let to_service = link.pipes().to_device(link.device());
-        let from_service = link.pipes().from_device(link.device());
-        let mut writer = to_service.writer().map_err(pipe_error)?;
-        let mut reader = from_service.reader().map_err(pipe_error)?;
+        let to_resident = link.pipes().to_device(link.device());
+        let from_resident = link.pipes().from_device(link.device());
+        let mut writer = to_resident.writer().map_err(pipe_error)?;
+        let mut reader = from_resident.reader().map_err(pipe_error)?;
         let abandon = |reason: &str| {
-            to_service.fail(reason);
-            from_service.fail(reason);
+            to_resident.fail(reason);
+            from_resident.fail(reason);
         };
         let mut stream = match self
-            .open_service(request, to_service.wire_ref(), from_service.wire_ref())
+            .open_resident(request, to_resident.wire_ref(), from_resident.wire_ref())
             .await
         {
             Ok(stream) => stream,
             Err(error) => {
-                abandon("service call failed");
+                abandon("resident call failed");
                 return Err(match error.kind {
-                    // The runner's `service_error`: the service did not
+                    // The runner's `resident_error`: the resident did not
                     // start, or the runner refused it.
-                    HostErrorKind::Failed { .. } => ServiceCallError::NotOpened(error.message),
+                    HostErrorKind::Failed { .. } => ResidentCallError::NotOpened(error.message),
                     _ => error.into(),
                 });
             }
         };
         let sent = writer.write(input).await;
         if let Err(failure) = sent {
-            abandon("service call failed");
+            abandon("resident call failed");
             return Err(broken(&link, failure).into());
         }
         writer.end();
@@ -830,15 +830,15 @@ impl RemoteHost {
         while let Some(chunk) = reader.next().await {
             let chunk = chunk.map_err(|failure| broken(&link, failure))?;
             if answer.len() + chunk.len() > max_bytes {
-                abandon("service call failed");
-                return Err(ServiceCallError::TooLarge(max_bytes));
+                abandon("resident call failed");
+                return Err(ResidentCallError::TooLarge(max_bytes));
             }
             answer.extend_from_slice(&chunk);
         }
         let end = stream.done().await?;
         let answer = answer.freeze();
         if end.exit_code != 0 {
-            return Err(ServiceCallError::Exited {
+            return Err(ResidentCallError::Exited {
                 exit_code: end.exit_code,
                 stderr: end.stderr,
                 stdout: answer,
@@ -1289,7 +1289,7 @@ fn send_stdin(
 }
 
 /// A user stream to open, or a one-shot call.
-pub struct ServiceRequest {
+pub struct ResidentRequest {
     pub context: CommandContext,
     pub package: PackageDescriptor,
     pub operation: String,
@@ -1317,7 +1317,7 @@ pub struct AttachedArtifact {
 
 /// How a user stream's invocation completed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServiceEnd {
+pub struct ResidentEnd {
     pub exit_code: u8,
     /// The bounded tail of its standard error.
     pub stderr: String,
@@ -1325,16 +1325,16 @@ pub struct ServiceEnd {
 
 /// An open user stream. Closing it, or dropping it, ends the answers to its
 /// artifact requests.
-pub struct ServiceStream {
+pub struct ResidentStream {
     link: Link,
     stream_id: String,
-    ended: oneshot::Receiver<Result<ServiceEnd, HostError>>,
+    ended: oneshot::Receiver<Result<ResidentEnd, HostError>>,
 }
 
-impl ServiceStream {
+impl ResidentStream {
     /// How the invocation completed; an error when the runner went before it
     /// said.
-    pub async fn done(&mut self) -> Result<ServiceEnd, HostError> {
+    pub async fn done(&mut self) -> Result<ResidentEnd, HostError> {
         let link = &self.link;
         (&mut self.ended)
             .await
@@ -1342,35 +1342,35 @@ impl ServiceStream {
     }
 }
 
-impl Drop for ServiceStream {
+impl Drop for ResidentStream {
     fn drop(&mut self) {
-        let service = self
+        let resident = self
             .link
-            .with_state(|state| state.remove_service(&self.stream_id));
-        if let Some(service) = service {
-            service.cancel.cancel();
+            .with_state(|state| state.remove_resident(&self.stream_id));
+        if let Some(resident) = resident {
+            resident.cancel.cancel();
         }
     }
 }
 
-/// Why a one-shot service call failed.
+/// Why a one-shot resident call failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ServiceCallError {
+pub enum ResidentCallError {
     #[error(transparent)]
     Host(#[from] HostError),
-    /// The Host could not open the call: its package's service did not
+    /// The Host could not open the call: its package's resident did not
     /// start, or the runner refused it, in the runner's words.
     #[error("{0}")]
     NotOpened(String),
     /// The invocation exited nonzero; `stderr` is the tail of what it wrote
     /// there, `stdout` its whole output.
-    #[error("Service call exited with {exit_code}: {}", .stderr.trim())]
+    #[error("Resident call exited with {exit_code}: {}", .stderr.trim())]
     Exited {
         exit_code: u8,
         stderr: String,
         stdout: Bytes,
     },
-    #[error("Service answer exceeds {0} bytes")]
+    #[error("Resident answer exceeds {0} bytes")]
     TooLarge(usize),
 }
 

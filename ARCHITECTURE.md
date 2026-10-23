@@ -93,7 +93,7 @@ the plugin contract or the runner's port instead.
 A shared mechanism goes where its use decides:
 
 -   A mechanism answered without knowing who asked or why goes in the runner
-    wire. A file operation, a working-tree listing and a service stream are
+    wire. A file operation, a working-tree listing and a resident stream are
     examples.
 -   A mechanism usable by any plugin goes in the plugin contract. A Host
     directory is an example.

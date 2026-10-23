@@ -469,7 +469,7 @@ fn control(
                 sink.miss(*missed);
             }
         }
-        // The driver is gone once the service stops.
+        // The driver is gone once the resident stops.
         let _gone = events.send(event);
         return Ok(());
     }

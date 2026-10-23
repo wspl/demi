@@ -12,7 +12,7 @@
 //!     | OCI bundle and `runsc` commands
 //!     v
 //! One user's gVisor/systrap sandbox
-//!     init -> runner -> jobs and native services -> Chrome
+//!     init -> runner -> jobs and residents -> Chrome
 //!     |
 //!     +---- authenticated outbound connection ----> Backend (runner socket)
 //! ```

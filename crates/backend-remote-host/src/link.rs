@@ -37,7 +37,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_protocol::{ArtifactLocation, CommandContext, PackageDescriptor, ServiceSequence};
+use demi_command_protocol::{ArtifactLocation, CommandContext, PackageDescriptor, ResidentSequence};
 use demi_host_interface::{
     HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, ProcessEnd, ProcessOutput,
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
@@ -109,12 +109,12 @@ pub trait LinkPolicy {
     /// Answers once the take-up was asked for, or why it cannot be.
     fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>>;
 
-    /// A native service on the device asks for `count` numbers of
+    /// A resident on the device asks for `count` numbers of
     /// `conversation`'s `sequence` (`crates/command-protocol/src/numbers.rs`): the first of them, reserved, or why there are none.
     fn reserve_numbers(
         &self,
         conversation: String,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         count: u32,
     ) -> LocalBoxFuture<'static, Result<u64, String>>;
 
@@ -132,7 +132,7 @@ pub trait LinkPolicy {
     /// active again, as the stream's admission's did, or why there is none.
     fn watch_stream(&self, conversation: String) -> LocalBoxFuture<'static, Result<GateLease, String>>;
 
-    /// A native service on the device told its plugin something, or its
+    /// A resident on the device told its plugin something, or its
     /// state was lost (`crates/command-protocol/src/messages.rs`). The
     /// connection hands its events on one after another, in the order the
     /// runner sent them.
@@ -186,17 +186,17 @@ pub enum ForwardEvent {
     Closed { peer: String },
 }
 
-/// What a native service's package says to its plugin, through the runner.
+/// What a resident's package says to its plugin, through the runner.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PackageEvent {
-    /// The service of `package` told its plugin `message` about
+    /// The resident of `package` told its plugin `message` about
     /// `conversation`.
     Message {
         package: String,
         conversation: String,
         message: serde_json::Value,
     },
-    /// The service of `package` ended without releasing its conversations.
+    /// The resident of `package` ended without releasing its conversations.
     Lost { package: String },
 }
 
@@ -365,7 +365,7 @@ struct State {
     /// What waits for a reply, by request or stream id.
     waiting: HashMap<String, Waiting>,
     spawns: HashMap<String, SpawnEntry>,
-    services: HashMap<String, ServiceEntry>,
+    residents: HashMap<String, ResidentEntry>,
     artifact_requests: HashSet<String>,
     numbers_requests: HashSet<String>,
     /// The manifest this connection last carried, which later jobs share.
@@ -425,7 +425,7 @@ pub(crate) enum Expected {
     PackageRelease,
     Sync,
     Prefetch,
-    Service,
+    Resident,
     JobRead,
     JobMediaRead,
     DirectOffer,
@@ -707,12 +707,12 @@ pub(crate) struct SpawnEntry {
     pub(crate) _lease: Option<GateLease>,
 }
 
-pub(crate) struct ServiceEntry {
+pub(crate) struct ResidentEntry {
     pub(crate) package: PackageDescriptor,
     pub(crate) resolver: Rc<dyn crate::ArtifactResolver>,
     pub(crate) attached: Vec<crate::AttachedArtifact>,
     pub(crate) cancel: CancellationToken,
-    pub(crate) done: Option<oneshot::Sender<Result<crate::ServiceEnd, HostError>>>,
+    pub(crate) done: Option<oneshot::Sender<Result<crate::ResidentEnd, HostError>>>,
 }
 
 impl Link {
@@ -1042,7 +1042,7 @@ impl Link {
         answered.receive().await.map(|_| ())
     }
 
-    /// Tells the runner, in the background, to release what its services
+    /// Tells the runner, in the background, to release what its residents
     /// hold for `conversation`, and with `over` what it keeps itself: its
     /// recordings. Nothing waits for it and nothing keeps it: a message the
     /// runner never answers changes nothing, since its next `hello` names what
@@ -1057,7 +1057,7 @@ impl Link {
         });
     }
 
-    /// Tells the runner, in the background, to stop the services of
+    /// Tells the runner, in the background, to stop the residents of
     /// `packages`, as [`Self::tell_conversation_release`] does.
     pub fn tell_package_release(&self, packages: Vec<String>) {
         let link = self.clone();
@@ -1086,7 +1086,7 @@ impl Link {
         }
     }
 
-    /// Asks the runner to release what its services hold for
+    /// Asks the runner to release what its residents hold for
     /// `conversation`, and with `over`, since the conversation is archived or
     /// deleted, what it keeps itself: its recordings.
     async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), HostError> {
@@ -1099,7 +1099,7 @@ impl Link {
         .map(|_| ())
     }
 
-    /// Asks the runner to stop the services of `packages`, which ends what
+    /// Asks the runner to stop the residents of `packages`, which ends what
     /// they hold for every conversation.
     async fn release_packages(&self, packages: Vec<String>) -> Result<(), HostError> {
         self.call(Expected::PackageRelease, |id| Inbound::PackageRelease { id, packages })
@@ -1386,7 +1386,7 @@ impl Link {
             Expected::PackageRelease => "package_release",
             Expected::Sync => "sync",
             Expected::Prefetch => "prefetch",
-            Expected::Service => "service",
+            Expected::Resident => "resident",
             Expected::JobRead => "job_read",
             Expected::JobMediaRead => "job_media_read",
             Expected::DirectOffer => "direct_offer",
@@ -1623,10 +1623,10 @@ impl Link {
                     log.store(lines, missed);
                 }
             }
-            Outbound::ServiceOpened { stream_id } => {
-                self.answer(&stream_id, Expected::Service, Answer::Done);
+            Outbound::ResidentOpened { stream_id } => {
+                self.answer(&stream_id, Expected::Resident, Answer::Done);
             }
-            Outbound::ServiceError {
+            Outbound::ResidentError {
                 stream_id,
                 code,
                 message,
@@ -1634,11 +1634,11 @@ impl Link {
                 &stream_id,
                 HostError::failed(Some(code.to_string()), message),
             ),
-            Outbound::ServiceDone {
+            Outbound::ResidentDone {
                 stream_id,
                 exit_code,
                 stderr,
-            } => self.end_service(&stream_id, Ok(crate::ServiceEnd { exit_code, stderr })),
+            } => self.end_resident(&stream_id, Ok(crate::ResidentEnd { exit_code, stderr })),
             Outbound::SpawnOutput {
                 spawn_id,
                 stream,
@@ -1886,14 +1886,14 @@ impl Link {
         let _ = waiting.answer.send(Err(error));
     }
 
-    fn end_service(&self, stream: &str, end: Result<crate::ServiceEnd, HostError>) {
+    fn end_resident(&self, stream: &str, end: Result<crate::ResidentEnd, HostError>) {
         let done = self
             .0
             .state
             .borrow_mut()
-            .services
+            .residents
             .get_mut(stream)
-            .and_then(|service| service.done.take());
+            .and_then(|resident| resident.done.take());
         if let Some(done) = done {
             // A stream's owner that stopped waiting has closed it.
             let _ = done.send(end);
@@ -2105,13 +2105,13 @@ impl Link {
         });
     }
 
-    /// Answers a native service's request for conversation numbers, which
+    /// Answers a resident's request for conversation numbers, which
     /// the policy decides (`crates/command-protocol/src/numbers.rs`).
     fn reserve_numbers(
         &self,
         id: String,
         conversation: String,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         count: u32,
     ) {
         let admitted = {
@@ -2179,12 +2179,12 @@ impl Link {
                 if let Some(direct) = state.direct_streams.get(&owner.stream_id) {
                     return Some(Granted::Admitting(direct.admitted.subscribe()));
                 }
-                let service = state.services.get(&owner.stream_id)?;
+                let resident = state.residents.get(&owner.stream_id)?;
                 Some(Granted::Now(Grant {
-                    packages: vec![service.package.clone()],
-                    resolver: service.resolver.clone(),
-                    attached: service.attached.clone(),
-                    cancel: service.cancel.clone(),
+                    packages: vec![resident.package.clone()],
+                    resolver: resident.resolver.clone(),
+                    attached: resident.attached.clone(),
+                    cancel: resident.cancel.clone(),
                 }))
             }
         }
@@ -2194,7 +2194,7 @@ impl Link {
     ///
     /// - Replies fail as offline.
     /// - Processes end as lost.
-    /// - Service and direct streams close (a direct stream's token is a child
+    /// - Resident and direct streams close (a direct stream's token is a child
     ///   of `closed`).
     /// - The device's pipes fail, but a call's: its calls go on with their
     ///   session.
@@ -2212,7 +2212,7 @@ impl Link {
         let aborted = Aborted {
             host_calls: state.waiting.len(),
             spawns: state.spawns.len(),
-            services: state.services.len(),
+            residents: state.residents.len(),
             tasks: 0,
         };
         for (_, waiting) in state.waiting {
@@ -2223,9 +2223,9 @@ impl Link {
         for (_, spawn) in state.spawns {
             spawn.shared.finish(ProcessEnd::Lost(reason.into()));
         }
-        for (_, mut service) in state.services {
-            service.cancel.cancel();
-            if let Some(done) = service.done.take() {
+        for (_, mut resident) in state.residents {
+            resident.cancel.cancel();
+            if let Some(done) = resident.done.take() {
                 // An owner that stopped waiting has closed its stream.
                 let _ = done.send(Err(HostError::offline(reason)));
             }
@@ -2281,7 +2281,7 @@ pub(crate) struct Aborted {
     /// The Host's calls that waited for an answer.
     host_calls: usize,
     spawns: usize,
-    services: usize,
+    residents: usize,
     /// The tasks of the backend's that outlasted [`END_GRACE`].
     tasks: usize,
 }
@@ -2299,12 +2299,12 @@ impl StateView<'_> {
         self.0.spawns.remove(id)
     }
 
-    pub(crate) fn add_service(&mut self, id: String, entry: ServiceEntry) {
-        self.0.services.insert(id, entry);
+    pub(crate) fn add_resident(&mut self, id: String, entry: ResidentEntry) {
+        self.0.residents.insert(id, entry);
     }
 
-    pub(crate) fn remove_service(&mut self, id: &str) -> Option<ServiceEntry> {
-        self.0.services.remove(id)
+    pub(crate) fn remove_resident(&mut self, id: &str) -> Option<ResidentEntry> {
+        self.0.residents.remove(id)
     }
 }
 
@@ -2590,7 +2590,7 @@ impl LinkDriver {
             frames_out = frames_out.get(),
             host_calls_aborted = aborted.host_calls,
             spawns_aborted = aborted.spawns,
-            services_aborted = aborted.services,
+            residents_aborted = aborted.residents,
             tasks_aborted = aborted.tasks,
             "a runner connection's life ended"
         );

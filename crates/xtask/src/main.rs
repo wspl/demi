@@ -68,7 +68,7 @@
 //! cargo test --workspace   # the compaction tests; --test <name>: one target
 //! ```
 //!
-//! `crates/command-sdk/examples/benchmark.rs` is a standalone synthetic service
+//! `crates/command-sdk/examples/benchmark.rs` is a standalone synthetic resident
 //! and client that measures the machine and build it runs on. It never calls a
 //! model.
 //!

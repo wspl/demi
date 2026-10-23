@@ -1,5 +1,5 @@
 //! The split of a stream into lines, for the Host log: the runner's own
-//! diagnostics and a service's standard error.
+//! diagnostics and a resident's standard error.
 
 /// A longer line of text continues on the next line.
 pub const LINE_BYTES: usize = demi_command_protocol::STDERR_LINE_BYTES;

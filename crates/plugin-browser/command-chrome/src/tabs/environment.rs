@@ -14,7 +14,7 @@
 //!
 //! - The runtime directory is Chrome's temporary directory. Its singleton
 //!   socket's path has a limit (108 bytes on Linux), so it lives in the short
-//!   `/tmp`, not in the service's `TMPDIR`, which can be any length.
+//!   `/tmp`, not in the resident's `TMPDIR`, which can be any length.
 //! - The profile can grow large, so it lives on disk (`TMPDIR` when absolute,
 //!   else `/var/tmp`), never a memory-backed `/tmp`: the Cloud's is 256 MiB of
 //!   its memory.
@@ -28,10 +28,10 @@
 //!
 //! # Cleanup after a crash
 //!
-//! No Chrome outlives its service. When a service ends without retiring (crash,
+//! No Chrome outlives its resident. When a resident ends without retiring (crash,
 //! kill, missed shutdown deadline), three rules cover it:
 //!
-//! 1. The lock file, which the operating system releases whenever the service
+//! 1. The lock file, which the operating system releases whenever the resident
 //!    ends.
 //! 2. On Linux, the parent-death signal (`driver::process`).
 //! 3. A sweep at the next start, limited to its own user's directories.
@@ -39,12 +39,12 @@
 //! The sweep works as follows:
 //!
 //! - It first takes the lock of each runtime directory. One it can take belongs
-//!   to no running service, so its marked processes, profile and directory are
-//!   removed. A held one belongs to another service (an upgrade's previous
+//!   to no running resident, so its marked processes, profile and directory are
+//!   removed. A held one belongs to another resident (an upgrade's previous
 //!   release) and is never touched.
 //! - Then it removes profiles whose runtime directory is gone.
 //! - A lock file takes its name only once it is held, so a sweep in another
-//!   service finds either no lock or a held one.
+//!   resident finds either no lock or a held one.
 
 use std::{
     future::Future,
@@ -148,7 +148,7 @@ const STAGED_LOCK: &str = "demi-profile.lock.new";
 #[cfg(unix)]
 const PROFILE_LINK: &str = "profile";
 
-/// The user a service sweeps browser directories for: its own. Other
+/// The user a resident sweeps browser directories for: its own. Other
 /// users' directories in the shared bases are neither opened nor reported.
 #[derive(Clone, Copy, Debug)]
 struct Owner {
@@ -157,7 +157,7 @@ struct Owner {
 }
 
 impl Owner {
-    /// The user this service runs as.
+    /// The user this resident runs as.
     fn current() -> Self {
         Self {
             // SAFETY: `geteuid` has no preconditions and cannot fail.
@@ -201,8 +201,8 @@ pub struct DirectoryBases {
 impl DirectoryBases {
     /// This Host's directory bases.
     ///
-    /// - On Unix the runtime directories go in `/tmp`, whatever the service's
-    ///   own temporary directory is. The profiles go in the service's `TMPDIR`
+    /// - On Unix the runtime directories go in `/tmp`, whatever the resident's
+    ///   own temporary directory is. The profiles go in the resident's `TMPDIR`
     ///   when it names a directory, otherwise in `/var/tmp`, which is on disk
     ///   on Linux, macOS and the Cloud.
     /// - On Windows both are the system's temporary directory, where one
@@ -238,7 +238,7 @@ impl DirectoryBases {
 struct EnvironmentDirectories {
     runtime: tempfile::TempDir,
     profile: Option<tempfile::TempDir>,
-    /// Held until retirement has removed both, however this service ends.
+    /// Held until retirement has removed both, however this resident ends.
     lock: std::fs::File,
 }
 
@@ -248,7 +248,7 @@ impl EnvironmentDirectories {
     ///
     /// 1. The runtime directory comes first with its lock held, whose file
     ///    takes the name the sweep opens only once it is held, so that a sweep
-    ///    running meanwhile, in another service of the same user, leaves it
+    ///    running meanwhile, in another resident of the same user, leaves it
     ///    alone.
     /// 2. On Unix the link comes next.
     /// 3. Then comes the profile the link names, so that a running
@@ -617,11 +617,11 @@ where
     after_cleanup(outcome, cleanup)
 }
 
-/// Removes what browsers left behind when their service ended without
+/// Removes what browsers left behind when their resident ended without
 /// retiring them, in two passes over this
 /// user's directories; another user's are left alone, without a word.
-/// First the runtime directories: one whose lock this service can take
-/// belongs to no running service, so its marked Chrome processes end the
+/// First the runtime directories: one whose lock this resident can take
+/// belongs to no running resident, so its marked Chrome processes end the
 /// way retirement ends them, then the profile its link names goes, then the
 /// directory. One whose lock is held, or that has no lock yet, is left
 /// alone. Then the profiles whose runtime directory is gone, which happens
@@ -629,7 +629,7 @@ where
 /// has one.
 ///
 /// Without the installed Chrome's location the sweep cannot find an orphan's
-/// processes, so it leaves the runtime directories to the next service:
+/// processes, so it leaves the runtime directories to the next resident:
 /// removing a profile under a Chrome that still runs would leave both.
 pub async fn sweep_orphans(chrome: &crate::driver::installation::Chrome) {
     let installations = chrome.roots().await;
@@ -663,7 +663,7 @@ async fn sweep_orphans_in(bases: &DirectoryBases, installations: Option<Vec<Path
         };
         let runtime = bases.runtime.join(format!("{RUNTIME_PREFIX}{identity}"));
         // Any other answer leaves the profile to its runtime directory, which
-        // the first pass or its running service looks after.
+        // the first pass or its running resident looks after.
         let gone = matches!(
             tokio::fs::symlink_metadata(&runtime).await,
             Err(error) if error.kind() == io::ErrorKind::NotFound
@@ -708,7 +708,7 @@ async fn sweep_orphan(runtime: &Path, installations: Vec<PathBuf>, owner: Owner)
     };
     match lock.try_lock() {
         Ok(()) => {}
-        // A running service's environment holds it.
+        // A running resident's environment holds it.
         Err(std::fs::TryLockError::WouldBlock) => return Ok(()),
         Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
     }
@@ -732,7 +732,7 @@ async fn sweep_orphan(runtime: &Path, installations: Vec<PathBuf>, owner: Owner)
 async fn linked_profile(runtime: &Path, owner: Owner) -> Result<Option<PathBuf>> {
     let profile = match tokio::fs::read_link(runtime.join(PROFILE_LINK)).await {
         Ok(profile) => profile,
-        // Its service ended before it made the link, and so the profile.
+        // Its resident ended before it made the link, and so the profile.
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };

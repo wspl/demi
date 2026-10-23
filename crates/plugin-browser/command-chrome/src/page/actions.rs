@@ -68,7 +68,7 @@ pub enum TabResult {
     ContentRead(ContentReadResult),
 }
 
-/// Execute a schema-validated tab command through the same admission used by the service.
+/// Execute a schema-validated tab command through the same admission used by the resident.
 pub async fn execute(
     tab: &BrowserTab,
     operation: &str,
@@ -212,7 +212,7 @@ pub async fn command_admitted(
         }
 
         // Each branch has its own heap allocation; large command futures must
-        // not be embedded together on native-service or test-thread stacks.
+        // not be embedded together on native-resident or test-thread stacks.
         let branch: futures_util::future::BoxFuture<'_, Result<TabResult>> = match command {
             BrowserOperation::Probe(input) => Box::pin(async {
                 Ok(TabResult::Probe(

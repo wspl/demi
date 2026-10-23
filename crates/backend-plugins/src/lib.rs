@@ -18,7 +18,7 @@
 //! instance     made at its first request   dropped with its tasks
 //! commands     in every open tree          gone: a call fails as any
 //!                                          unknown command does
-//! Hosts        opened again on demand      its packages' services stop
+//! Hosts        opened again on demand      its packages' residents stop
 //! panel tabs   opened again on demand      closed
 //! data         kept either way
 //! ```

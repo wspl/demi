@@ -31,7 +31,7 @@ use demi_live_view_protocol::{
     ChunkAck, LiveHello, LiveKeyframe, LiveRelease, Platform, PointerAction, SourceId, ViewerInput,
 };
 use demi_command_protocol::{CommandError, Completion};
-use demi_command_sdk::{Input as ServiceInput, InvocationContext, ServiceError};
+use demi_command_sdk::{Input as ResidentInput, InvocationContext, ResidentError};
 
 use crate::live::protocol::{TabId, ViewportMode};
 use crate::live::{
@@ -85,7 +85,7 @@ pub trait ViewedBrowser: Send + Sync + 'static {
 pub async fn serve<B: ViewedBrowser>(
     browser: Arc<B>,
     context: InvocationContext,
-) -> Result<Completion, ServiceError> {
+) -> Result<Completion, ResidentError> {
     let InvocationContext {
         input,
         output,
@@ -113,7 +113,7 @@ pub async fn serve<B: ViewedBrowser>(
             exit_code: 0,
             error: None,
         }),
-        Err(Failure::Cancelled) => Err(ServiceError::Cancelled),
+        Err(Failure::Cancelled) => Err(ResidentError::Cancelled),
         Err(Failure::Protocol(message)) => Ok(Completion {
             exit_code: 2,
             error: Some(CommandError {
@@ -129,7 +129,7 @@ type Inbounds = mpsc::Receiver<Result<LiveViewerMessage, String>>;
 /// Splits the page's bytes into messages; acknowledgements go to the
 /// delivery, chosen files to the uploads.
 fn read(
-    input: ServiceInput,
+    input: ResidentInput,
 ) -> (
     Inbounds,
     mpsc::Receiver<Vec<ChunkAck>>,

@@ -5,7 +5,7 @@
 //! Each open device a page shows has a stream of its own, whose only state is
 //! whether it is looked at.
 //!
-//! The page and the service ship in the same release; there is no version.
+//! The page and the resident ship in the same release; there is no version.
 
 use demi_shared_types::Nullable;
 use schemars::JsonSchema;
@@ -54,7 +54,7 @@ pub enum LiveViewerMessage {
     },
     /// Whether the stream is looked at: whether a view of it shows in a
     /// visible page. A stream starts not looked at; while it is not, the
-    /// service sends nothing.
+    /// resident sends nothing.
     Looked {
         #[garde(skip)]
         looked: bool,
@@ -249,7 +249,7 @@ pub struct LiveDevice {
     pub orientation: Orientation,
 }
 
-/// What the service sends on one device's stream, only while the stream is
+/// What the resident sends on one device's stream, only while the stream is
 /// looked at, but for [`LiveModuleMessage::Gone`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]

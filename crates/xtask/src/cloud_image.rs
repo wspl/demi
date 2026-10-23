@@ -30,7 +30,7 @@
 //!   `/usr/bin/demi-runner` and `/usr/bin/demi` as links to them.
 //! - Each command package's executable at
 //!   `/opt/demi/artifacts/<sha256>/<executable>`, from which the runner starts
-//!   command services instead of downloading them, after checking each against
+//!   command residents instead of downloading them, after checking each against
 //!   the backend's pinned descriptor.
 //!
 //! The image also makes the runner's two directories, private to `demi`:

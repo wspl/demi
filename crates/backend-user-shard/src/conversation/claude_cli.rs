@@ -52,7 +52,7 @@ use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
 use demi_backend_providers::llm::claude_releases::ReleaseError;
 use demi_backend_remote_host::{
-    AttachedArtifact, Link, RemoteHost, ServiceCallError, ServiceRequest, WeakLink,
+    AttachedArtifact, Link, RemoteHost, ResidentCallError, ResidentRequest, WeakLink,
 };
 use demi_backend_runners::command_context::{command_context, provider_context};
 use demi_command_package_claude_code_protocol::{
@@ -1625,7 +1625,7 @@ async fn ensure(
 /// Runs `operation` of the package on `target` with `input` as its whole
 /// input and `attached` as the artifacts it may install, and decodes the one
 /// document it answers. A nonzero exit keeps a failure document; an output
-/// with no document is a service that failed.
+/// with no document is a resident that failed.
 async fn call<T: DeserializeOwned>(
     services: &Services,
     target: &CliTarget,
@@ -1648,7 +1648,7 @@ async fn call<T: DeserializeOwned>(
             "this deployment does not carry the demi.claude-code package, which installs it".into(),
         ));
     };
-    let request = ServiceRequest {
+    let request = ResidentRequest {
         context: target.context.clone(),
         package: package.clone(),
         operation: operation.name().to_owned(),
@@ -1660,11 +1660,11 @@ async fn call<T: DeserializeOwned>(
     };
     let (output, exit) = match target
         .host
-        .call_service(request, input, MAX_ANSWER_BYTES)
+        .call_resident(request, input, MAX_ANSWER_BYTES)
         .await
     {
         Ok(output) => (output, None),
-        Err(ServiceCallError::Exited {
+        Err(ResidentCallError::Exited {
             exit_code,
             stderr,
             stdout,

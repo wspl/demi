@@ -28,7 +28,7 @@ use demi_command_protocol::{
     CommandError, Completion, MAX_MEDIUM_BYTES, is_binary, sniff_media_type,
 };
 use demi_command_sdk::{
-    InvocationContext, ServiceError,
+    InvocationContext, ResidentError,
     errors::reason,
     edits::{Recorder, Recording},
 };
@@ -154,7 +154,7 @@ pub enum FileError {
     Patch(#[from] PatchError),
     /// The result could not be sent back.
     #[error(transparent)]
-    Output(#[from] ServiceError),
+    Output(#[from] ResidentError),
     /// A write failed and restoring the files written before it failed too.
     #[error("{error}{}", .rollbacks.iter().map(|failure| format!("\nRollback failed: {failure}")).collect::<String>())]
     Rollback {
@@ -170,7 +170,7 @@ pub async fn invoke(
     context: InvocationContext,
     operation: Operation,
     mutations: SerialGate,
-) -> Result<Completion, ServiceError> {
+) -> Result<Completion, ResidentError> {
     let result = match operation {
         Operation::View(args) => return view(context, &args).await,
         Operation::Edit(args) => {
@@ -191,7 +191,7 @@ pub async fn invoke(
             exit_code: 0,
             error: None,
         }),
-        Err(FileError::Cancelled) => Err(ServiceError::Cancelled),
+        Err(FileError::Cancelled) => Err(ResidentError::Cancelled),
         Err(FileError::Output(error)) => Err(error),
         Err(error) => Ok(failure(&error)),
     }
@@ -212,7 +212,7 @@ pub fn failure(error: &FileError) -> Completion {
 /// order. One that fails writes
 /// `<command>: <path>: <reason>` to stderr, and the next one is viewed; the
 /// command prints nothing to stdout and exits 1 when any failed.
-async fn view(mut context: InvocationContext, args: &ViewArgs) -> Result<Completion, ServiceError> {
+async fn view(mut context: InvocationContext, args: &ViewArgs) -> Result<Completion, ResidentError> {
     let command = context.request.command.clone();
     let named = args.path.as_deref().unwrap_or_default();
     // Stdin that is the job's own input would wait until the job ends.
@@ -242,7 +242,7 @@ async fn view(mut context: InvocationContext, args: &ViewArgs) -> Result<Complet
         };
         match result {
             Ok(()) => {}
-            Err(FileError::Cancelled) => return Err(ServiceError::Cancelled),
+            Err(FileError::Cancelled) => return Err(ResidentError::Cancelled),
             Err(FileError::Output(error)) => return Err(error),
             Err(error) => {
                 failed = true;

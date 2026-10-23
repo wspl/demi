@@ -1,5 +1,5 @@
 //! One registration: the installation state and its lock, the device token, the
-//! local command endpoint, the service registry and the reconnect loop.
+//! local command endpoint, the resident registry and the reconnect loop.
 //!
 //! Each backend connection in turn is served by its own owner
 //! ([`crate::connection::serve`]).
@@ -28,7 +28,7 @@ use crate::{
     management::{Endpoint, Management, Phase, Revocation},
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
-use demi_runner_command_packages::ServiceRegistry;
+use demi_runner_command_packages::ResidentRegistry;
 use demi_runner_jobs::scratch::Scratch;
 use demi_runner_jobs::commands::{
     contexts::{ContextPaths, Contexts},
@@ -65,7 +65,7 @@ pub struct Options {
     pub executable: PathBuf,
     pub cwd: PathBuf,
     /// The device environment, which jobs, raw processes and resident
-    /// services start from (`crates/runner/src/environment.rs`).
+    /// residents start from (`crates/runner/src/environment.rs`).
     pub env: BTreeMap<String, String>,
     pub runner: wire::RunnerInfo,
     pub token: Option<DeviceToken>,
@@ -198,19 +198,19 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     // looks on every Host, and a paired device has nothing there; Cloud
     // images are Linux only, so a Windows runner does not look.
     let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
-    // A resident service finds the installation, as a job does, by
+    // A resident finds the installation, as a job does, by
     // DEMI_HOME (`crates/runner/src/environment.rs`), whoever called it.
-    let mut services_env = options.env.clone();
-    services_env.insert(
+    let mut residents_env = options.env.clone();
+    residents_env.insert(
         "DEMI_HOME".to_owned(),
         state.root.to_string_lossy().into_owned(),
     );
-    let registry = ServiceRegistry::new(
+    let registry = ResidentRegistry::new(
         options.artifacts.clone(),
         image,
         Some(options.backend.clone()),
         options.cwd.clone(),
-        services_env,
+        residents_env,
     )
     .await
     .map_err(io::Error::other)?;
@@ -228,7 +228,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     }
     let dispatcher = Arc::new(Dispatcher {
         contexts: Contexts::new(index.subscribe()),
-        services: registry.handle(),
+        residents: registry.handle(),
         pipes: pipes.clone(),
     });
     let server = Server::start(Arc::new(Endpoint {
@@ -258,7 +258,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         state: Arc::new(state),
         token,
         management,
-        services: registry.handle(),
+        residents: registry.handle(),
         cached: registry.installed(),
         dispatcher,
         index,

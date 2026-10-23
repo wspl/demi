@@ -36,7 +36,7 @@
 //!   boots while a reset stays possible, and a reset clears the recorded
 //!   losses.
 //! - Idle rule: the rule applies across every conversation using the device.
-//!   Tabs, resident services, attachments and a look at what runs there do not
+//!   Tabs, residents, attachments and a look at what runs there do not
 //!   keep it active, and maintenance does not restart the idle clock. A running
 //!   Cloud hears each conversation's release as a paired device does. A stop
 //!   needs none, since it ends everything a release would, and cleanup never

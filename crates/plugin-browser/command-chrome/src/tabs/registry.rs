@@ -21,7 +21,7 @@
 //! - A number that cannot be drawn (the backend has 15 seconds) fails only the
 //!   step that needs it; the environment and its other tabs stay.
 //! - Every change of what `browser.tabs` lists also tells `plugin-browser` with
-//!   `{"tabs":"changed"}`; the service keeps the conversations that changed
+//!   `{"tabs":"changed"}`; the resident keeps the conversations that changed
 //!   since it last wrote, so a burst costs one message.
 
 use std::{

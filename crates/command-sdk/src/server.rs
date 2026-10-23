@@ -5,7 +5,7 @@ use demi_command_protocol::{
     ARTIFACTS_PATH, CONVERSATION_PATH, is_conversation_scope, CommandError, Completion, ConversationRequest, INFO_PATH,
     INVOKE_PATH, Invocation, MAX_MEDIUM_BYTES, MAX_METADATA_BYTES, MAX_RECORD_BYTES, MediumFacts, Metadata,
     MESSAGES_PATH, NUMBERS_PATH,
-    ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, StreamOpen, VERSION,
+    ProtocolError, Record, SHUTDOWN_PATH, ResidentInfo, StreamOpen, VERSION,
 };
 use futures_util::future::poll_fn;
 use h2::{Reason, server::SendResponse};
@@ -20,7 +20,7 @@ use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument as _;
 
 use crate::{
-    Input, ServiceError,
+    Input, ResidentError,
     artifacts::{Artifacts, ArtifactsAsk},
     asking::{self, Asked, Pending},
     messages::{Messages, MessagesAsk},
@@ -51,20 +51,20 @@ pub struct ConversationContext {
 /// Handlers own per-invocation state and must cooperate with cancellation.
 /// Blocking and CPU work must run away from the connection's async worker.
 pub trait Handler: Send + Sync + 'static {
-    /// What opens each invocation: [`Invocation`] for a native service.
+    /// What opens each invocation: [`Invocation`] for a resident.
     type Metadata: Metadata;
 
     fn operations(&self) -> Vec<String>;
     fn invoke(
         &self,
         context: InvocationContext<Self::Metadata>,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>>;
 
     /// Trusted parent-only lifecycle calls, never declared CLI operations.
     fn conversation(
         &self,
         context: ConversationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         Box::pin(async move {
             let body = if context.request == (ConversationRequest::Status {}) {
                 Bytes::from_static(b"{\"conversations\":[]}")
@@ -79,8 +79,8 @@ pub trait Handler: Send + Sync + 'static {
         })
     }
 
-    /// Invocations have stopped before the service releases conversation state.
-    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
+    /// Invocations have stopped before the resident releases conversation state.
+    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ResidentError>> + Send>> {
         Box::pin(async { Ok(()) })
     }
 
@@ -88,7 +88,7 @@ pub trait Handler: Send + Sync + 'static {
     /// (`crates/command-protocol/src/numbers.rs`); the runner's numbers
     /// stream answers its draws.
     fn numbers(&self, numbers: Numbers) {
-        // A service that names nothing with conversation numbers draws none.
+        // A resident that names nothing with conversation numbers draws none.
         drop(numbers);
     }
 
@@ -96,7 +96,7 @@ pub trait Handler: Send + Sync + 'static {
     /// (`crates/command-protocol/src/messages.rs`); the runner's messages
     /// stream takes what it sends.
     fn messages(&self, messages: Messages) {
-        // A service whose plugin needs to hear nothing sends nothing.
+        // A resident whose plugin needs to hear nothing sends nothing.
         drop(messages);
     }
 
@@ -104,7 +104,7 @@ pub trait Handler: Send + Sync + 'static {
     /// (`crates/command-protocol/src/artifacts.rs`); the runner's artifacts
     /// stream answers its requests.
     fn artifacts(&self, artifacts: Artifacts) {
-        // A service that needs nothing beside its executable asks for none.
+        // A resident that needs nothing beside its executable asks for none.
         drop(artifacts);
     }
 }
@@ -115,7 +115,7 @@ type Relay = Box<
             Input,
             Output,
             CancellationToken,
-        ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>>
         + Send,
 >;
 
@@ -169,28 +169,28 @@ impl Output {
         self
     }
 
-    pub(crate) async fn pull(&self) -> Result<(), ServiceError> {
+    pub(crate) async fn pull(&self) -> Result<(), ResidentError> {
         let _turn = self.turn.lock().await;
         self.send(Record::InputPull).await
     }
 
-    pub async fn stdout(&self, bytes: Bytes) -> Result<(), ServiceError> {
+    pub async fn stdout(&self, bytes: Bytes) -> Result<(), ResidentError> {
         self.write(bytes, Record::Stdout).await
     }
 
-    pub async fn stderr(&self, bytes: Bytes) -> Result<(), ServiceError> {
+    pub async fn stderr(&self, bytes: Bytes) -> Result<(), ResidentError> {
         self.write(bytes, Record::Stderr).await
     }
 
     /// Returns `bytes`, which `facts` describe, as a medium (`crates/runner-jobs/src/commands/command_output.rs`): the runner hands it to the invocation's job. A
     /// writer of an invocation that is no job command's refuses it, as it
     /// refuses a medium over [`MAX_MEDIUM_BYTES`].
-    pub async fn medium(&self, facts: MediumFacts, mut bytes: Bytes) -> Result<(), ServiceError> {
+    pub async fn medium(&self, facts: MediumFacts, mut bytes: Bytes) -> Result<(), ResidentError> {
         if !self.media {
-            return Err(ServiceError::failed(MediumRefused::NotAJobCommand));
+            return Err(ResidentError::failed(MediumRefused::NotAJobCommand));
         }
         if bytes.len() as u64 > MAX_MEDIUM_BYTES {
-            return Err(ServiceError::failed(MediumRefused::TooLarge(bytes.len())));
+            return Err(ResidentError::failed(MediumRefused::TooLarge(bytes.len())));
         }
         let _turn = self.turn.lock().await;
         self.send(Record::Medium {
@@ -209,7 +209,7 @@ impl Output {
         &self,
         mut bytes: Bytes,
         record: fn(Bytes) -> Record,
-    ) -> Result<(), ServiceError> {
+    ) -> Result<(), ResidentError> {
         while !bytes.is_empty() {
             let count = bytes.len().min(MAX_RECORD_BYTES);
             let item = record(bytes.split_to(count));
@@ -219,18 +219,18 @@ impl Output {
         Ok(())
     }
 
-    async fn send(&self, record: Record) -> Result<(), ServiceError> {
+    async fn send(&self, record: Record) -> Result<(), ResidentError> {
         tokio::select! {
             biased;
-            _ = self.cancellation.cancelled() => Err(ServiceError::Cancelled),
-            result = self.sender.send(record) => result.map_err(|_| ServiceError::Cancelled),
+            _ = self.cancellation.cancelled() => Err(ResidentError::Cancelled),
+            result = self.sender.send(record) => result.map_err(|_| ResidentError::Cancelled),
         }
     }
 }
 
 /// Serves one parent-owned connection and joins cooperative invocation tasks.
-/// A cancellation deadline fault requires the process owner to retire the service.
-pub async fn serve<T, H>(io: T, handler: Arc<H>) -> Result<(), ServiceError>
+/// A cancellation deadline fault requires the process owner to retire the resident.
+pub async fn serve<T, H>(io: T, handler: Arc<H>) -> Result<(), ResidentError>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     H: Handler + ?Sized,
@@ -243,12 +243,12 @@ pub async fn serve_cancellable<T, H>(
     io: T,
     handler: Arc<H>,
     owner: CancellationToken,
-) -> Result<(), ServiceError>
+) -> Result<(), ResidentError>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     H: Handler + ?Sized,
 {
-    let catalog = ServiceInfo {
+    let catalog = ResidentInfo {
         protocol_version: VERSION,
         operations: handler.operations(),
     };
@@ -268,8 +268,8 @@ where
         .initial_connection_window_size(CONNECTION_WINDOW)
         .max_pending_accept_reset_streams(usize::MAX);
     let mut connection = tokio::select! {
-        _ = owner.cancelled() => return Err(ServiceError::Cancelled),
-        result = tokio::time::timeout(METADATA_TIMEOUT, builder.handshake(io)) => result.map_err(|_| ServiceError::HandshakeTimeout)??,
+        _ = owner.cancelled() => return Err(ResidentError::Cancelled),
+        result = tokio::time::timeout(METADATA_TIMEOUT, builder.handshake(io)) => result.map_err(|_| ResidentError::HandshakeTimeout)??,
     };
     let cancellation = owner.child_token();
     let (numbers, draws) = Numbers::channel();
@@ -312,7 +312,7 @@ where
                                 let mut stream = response.send_response(Response::new(()), false)?;
                                 send_bytes(&mut stream, body).await?;
                                 stream.send_data(Bytes::new(), true)?;
-                                Ok::<_, ServiceError>(())
+                                Ok::<_, ResidentError>(())
                             });
                         }
                         (&Method::POST, SHUTDOWN_PATH) => {
@@ -359,7 +359,7 @@ where
                     }
                 }
                 finished = tasks.join_next(), if !tasks.is_empty() => {
-                    if let Some(Ok(Err(error @ (ServiceError::CancellationDeadline | ServiceError::ConversationCleanup(_))))) = finished {
+                    if let Some(Ok(Err(error @ (ResidentError::CancellationDeadline | ResidentError::ConversationCleanup(_))))) = finished {
                         break Err(error);
                     }
                     // Invocation failures are represented by stream reset; other calls remain usable.
@@ -371,7 +371,7 @@ where
     drop(connection);
     while let Some(result) = tasks.join_next().await {
         if let Ok(Err(
-            error @ (ServiceError::CancellationDeadline | ServiceError::ConversationCleanup(_)),
+            error @ (ResidentError::CancellationDeadline | ResidentError::ConversationCleanup(_)),
         )) = result
         {
             outcome = Err(error);
@@ -381,7 +381,7 @@ where
     match tokio::time::timeout(CANCEL_TIMEOUT, handler.close()).await {
         Ok(Ok(())) => outcome,
         Ok(Err(error)) => Err(error),
-        Err(_) => Err(ServiceError::CancellationDeadline),
+        Err(_) => Err(ResidentError::CancellationDeadline),
     }
 }
 
@@ -403,7 +403,7 @@ fn call_span(operation: &str, invocation: Option<&str>, conversation: Option<&st
     span
 }
 
-fn reject(response: &mut SendResponse<Bytes>, status: StatusCode) -> Result<(), ServiceError> {
+fn reject(response: &mut SendResponse<Bytes>, status: StatusCode) -> Result<(), ResidentError> {
     let mut headers = Response::new(());
     *headers.status_mut() = status;
     response.send_response(headers, true)?;
@@ -429,7 +429,7 @@ async fn invoke<H: Handler + ?Sized>(
     operations: Vec<String>,
     cancellation: CancellationToken,
     kind: Kind,
-) -> Result<(), ServiceError> {
+) -> Result<(), ResidentError> {
     let _cancel_on_drop = cancellation.drop_guard_ref();
     let mut body = HttpInput::new(request.into_body());
     enum Call<M> {
@@ -442,7 +442,7 @@ async fn invoke<H: Handler + ?Sized>(
             Kind::Conversation => {
                 let request: ConversationRequest = body.metadata().await?;
                 request.validate()?;
-                Ok::<_, ServiceError>(Call::Conversation(request))
+                Ok::<_, ResidentError>(Call::Conversation(request))
             }
             Kind::Invocation => {
                 let request: H::Metadata = body.metadata().await?;
@@ -452,18 +452,18 @@ async fn invoke<H: Handler + ?Sized>(
             Kind::Stream { relay, finish } => {
                 let open: StreamOpen = body.metadata().await?;
                 open.validate()?;
-                let relay = relay.ok_or(ServiceError::Rejected(StatusCode::CONFLICT.as_u16()))?;
+                let relay = relay.ok_or(ResidentError::Rejected(StatusCode::CONFLICT.as_u16()))?;
                 Ok(Call::Stream(relay, finish))
             }
         }
     };
     let metadata = tokio::select! {
-        _ = cancellation.cancelled() => return Err(ServiceError::Cancelled),
+        _ = cancellation.cancelled() => return Err(ResidentError::Cancelled),
         result = tokio::time::timeout(METADATA_TIMEOUT, metadata) => result,
     };
     let call = match metadata {
         Ok(Ok(value)) => value,
-        Ok(Err(ServiceError::Rejected(status))) => {
+        Ok(Err(ResidentError::Rejected(status))) => {
             let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST);
             return reject(&mut response, status);
         }
@@ -530,14 +530,14 @@ async fn invoke<H: Handler + ?Sized>(
     let outcome = loop {
         tokio::select! {
             biased;
-            _ = cancellation.cancelled() => break Err(ServiceError::Cancelled),
-            _ = poll_fn(|cx| stream.poll_reset(cx)) => break Err(ServiceError::Cancelled),
+            _ = cancellation.cancelled() => break Err(ResidentError::Cancelled),
+            _ = poll_fn(|cx| stream.poll_reset(cx)) => break Err(ResidentError::Cancelled),
             record = receiver.recv() => {
                 match record {
                     Some(record) => {
                         let encoded = record.encode()?;
                         let sent = tokio::select! {
-                            _ = cancellation.cancelled() => Err(ServiceError::Cancelled),
+                            _ = cancellation.cancelled() => Err(ResidentError::Cancelled),
                             result = send_bytes(&mut stream, encoded) => result,
                         };
                         if let Err(error) = sent {
@@ -568,16 +568,16 @@ async fn invoke<H: Handler + ?Sized>(
                 task.abort();
                 // Native work may be non-cooperative; the owner must retire
                 // this process rather than treating task abortion as cleanup.
-                return Err(ServiceError::CancellationDeadline);
+                return Err(ResidentError::CancellationDeadline);
             }
             Ok(Err(error)) if release => {
-                return Err(ServiceError::ConversationCleanup(error.to_string()));
+                return Err(ResidentError::ConversationCleanup(error.to_string()));
             }
-            Ok(Ok(Err(error))) if release && !matches!(error, ServiceError::Cancelled) => {
-                return Err(ServiceError::ConversationCleanup(error.to_string()));
+            Ok(Ok(Err(error))) if release && !matches!(error, ResidentError::Cancelled) => {
+                return Err(ResidentError::ConversationCleanup(error.to_string()));
             }
             Ok(Ok(Ok(completion))) if release && completion.exit_code != 0 => {
-                return Err(ServiceError::ConversationCleanup(format!(
+                return Err(ResidentError::ConversationCleanup(format!(
                     "release exited with status {}: {:?}",
                     completion.exit_code, completion.error
                 )));
@@ -586,11 +586,11 @@ async fn invoke<H: Handler + ?Sized>(
             // its result cannot be delivered on the reset stream.
             _ => {}
         }
-        return outcome.and(Err(ServiceError::Cancelled));
+        return outcome.and(Err(ResidentError::Cancelled));
     };
     let completion = match completion {
         Ok(Ok(completion)) => completion,
-        Ok(Err(ServiceError::Cancelled)) => return Err(ServiceError::Cancelled),
+        Ok(Err(ResidentError::Cancelled)) => return Err(ResidentError::Cancelled),
         Ok(Err(error)) => Completion {
             exit_code: 1,
             error: Some(CommandError {
@@ -598,8 +598,8 @@ async fn invoke<H: Handler + ?Sized>(
                 message: error.to_string(),
             }),
         },
-        Err(error) if release => return Err(ServiceError::ConversationCleanup(error.to_string())),
-        Err(error) => return Err(ServiceError::Task(error)),
+        Err(error) if release => return Err(ResidentError::ConversationCleanup(error.to_string())),
+        Err(error) => return Err(ResidentError::Task(error)),
     };
     let cleanup_failure = (release && completion.exit_code != 0).then(|| {
         format!(
@@ -615,7 +615,7 @@ async fn invoke<H: Handler + ?Sized>(
     }
     .await;
     if let Some(error) = cleanup_failure {
-        return Err(ServiceError::ConversationCleanup(error));
+        return Err(ResidentError::ConversationCleanup(error));
     }
     sent
 }

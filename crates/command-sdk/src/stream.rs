@@ -12,7 +12,7 @@ use crate::Output;
 pub(crate) const CONNECTION_WINDOW: u32 = (1 << 31) - 1;
 
 #[derive(Debug, Error)]
-pub enum ServiceError {
+pub enum ResidentError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -23,7 +23,7 @@ pub enum ServiceError {
     Json(#[from] serde_json::Error),
     #[error("command cancelled")]
     Cancelled,
-    /// The service has no such operation.
+    /// The resident has no such operation.
     #[error("unknown operation {0}")]
     UnknownOperation(String),
     /// The command failed; the cause says why, and is the whole message.
@@ -32,29 +32,29 @@ pub enum ServiceError {
     /// The handler's task panicked or was aborted.
     #[error("command handler failed: {0}")]
     Task(#[from] tokio::task::JoinError),
-    /// The service could not draw conversation numbers
+    /// The resident could not draw conversation numbers
     /// (`crates/command-protocol/src/numbers.rs`).
     #[error("conversation numbers: {0}")]
     Numbers(String),
-    /// The service's message did not reach the runner's connection
+    /// The resident's message did not reach the runner's connection
     /// (`crates/command-protocol/src/messages.rs`).
     #[error("plugin message: {0}")]
     Messages(String),
-    /// The runner installed no artifact the service asked for
+    /// The runner installed no artifact the resident asked for
     /// (`crates/command-protocol/src/artifacts.rs`).
     #[error("artifact: {0}")]
     Artifacts(String),
-    #[error("conversation cleanup failed; retire the service process: {0}")]
+    #[error("conversation cleanup failed; retire the resident process: {0}")]
     ConversationCleanup(String),
-    #[error("handler exceeded cancellation deadline; retire the service process")]
+    #[error("handler exceeded cancellation deadline; retire the resident process")]
     CancellationDeadline,
-    #[error("HTTP/2 service handshake timed out")]
+    #[error("HTTP/2 resident handshake timed out")]
     HandshakeTimeout,
-    #[error("service rejected HTTP request with status {0}")]
+    #[error("resident rejected HTTP request with status {0}")]
     Rejected(u16),
 }
 
-impl ServiceError {
+impl ResidentError {
     /// A command that failed for `cause`: an error of the handler's own, or
     /// a message.
     pub fn failed(cause: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
@@ -77,11 +77,11 @@ pub(crate) fn peer_closed(error: &h2::Error) -> bool {
     })
 }
 
-/// Pull-driven input shared by local dispatch and HTTP/2 services.
+/// Pull-driven input shared by local dispatch and HTTP/2 residents.
 pub struct Input(InputSource);
 
 type LocalInput =
-    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Bytes, ServiceError>> + Send>>;
+    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Bytes, ResidentError>> + Send>>;
 
 enum InputSource {
     Http(HttpInput),
@@ -92,7 +92,7 @@ enum InputSource {
 
 impl Input {
     pub fn from_stream(
-        stream: impl futures_util::Stream<Item = Result<Bytes, ServiceError>> + Send + 'static,
+        stream: impl futures_util::Stream<Item = Result<Bytes, ResidentError>> + Send + 'static,
     ) -> Self {
         Self(InputSource::Local(sync_wrapper::SyncWrapper::new(
             Box::pin(stream),
@@ -104,7 +104,7 @@ impl Input {
         Self(InputSource::Http(input))
     }
 
-    pub async fn next(&mut self) -> Result<Option<Bytes>, ServiceError> {
+    pub async fn next(&mut self) -> Result<Option<Bytes>, ResidentError> {
         match &mut self.0 {
             InputSource::Http(input) => input.next().await,
             InputSource::Local(input) => poll_fn(|cx| input.get_mut().as_mut().poll_next(cx))
@@ -138,7 +138,7 @@ impl HttpInput {
 
     /// Requests exactly one caller chunk. HTTP/2 capacity is transport
     /// backpressure, not permission to read from the caller's live stdin.
-    pub async fn next(&mut self) -> Result<Option<Bytes>, ServiceError> {
+    pub async fn next(&mut self) -> Result<Option<Bytes>, ResidentError> {
         if self.ended {
             return Ok(None);
         }
@@ -170,7 +170,7 @@ impl HttpInput {
 
     pub(crate) async fn metadata<T: serde::de::DeserializeOwned>(
         &mut self,
-    ) -> Result<T, ServiceError> {
+    ) -> Result<T, ResidentError> {
         let prefix = self.read_exact(4).await?;
         let length = u32::from_be_bytes(prefix[..].try_into().unwrap()) as usize;
         if length > MAX_METADATA_BYTES {
@@ -180,7 +180,7 @@ impl HttpInput {
         Ok(serde_json::from_slice(&json)?)
     }
 
-    async fn read_exact(&mut self, length: usize) -> Result<Bytes, ServiceError> {
+    async fn read_exact(&mut self, length: usize) -> Result<Bytes, ResidentError> {
         let mut result = BytesMut::with_capacity(length);
         while result.len() < length {
             if self.pending.is_empty() {
@@ -202,12 +202,12 @@ impl HttpInput {
 pub(crate) async fn send_bytes(
     stream: &mut SendStream<Bytes>,
     mut bytes: Bytes,
-) -> Result<(), ServiceError> {
+) -> Result<(), ResidentError> {
     while !bytes.is_empty() {
         stream.reserve_capacity(bytes.len());
         let capacity = poll_fn(|cx| stream.poll_capacity(cx))
             .await
-            .ok_or(ServiceError::Cancelled)??;
+            .ok_or(ResidentError::Cancelled)??;
         if capacity == 0 {
             continue;
         }

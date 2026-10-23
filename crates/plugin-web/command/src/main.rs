@@ -10,7 +10,7 @@ async fn main() {
     // as they are.
     demi_command_sdk::log_to_stderr("web");
     if let Err(error) = demi_command_sdk::serve_stdio(Arc::new(demi_fetch::DemiFetch)).await {
-        tracing::error!(event = "web_service.exited", %error, "the service ended with an error");
+        tracing::error!(event = "web_resident.exited", %error, "the resident ended with an error");
         std::process::exit(1);
     }
     // The executable owns synchronous Windows stdio workers; HTTP/2 has drained.

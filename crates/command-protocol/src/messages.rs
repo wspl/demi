@@ -1,24 +1,24 @@
-//! The messages stream: what a service tells the plugin of its package about
+//! The messages stream: what a resident tells the plugin of its package about
 //! the state it keeps for a conversation, which the runner forwards to the
 //! backend, and the runner's answer once its connection took a message.
 //!
 //! # Flow
 //!
-//! The service tells when its state changes; nobody asks it, so an agent that
+//! The resident tells when its state changes; nobody asks it, so an agent that
 //! runs `rg` a thousand times moves no message.
 //!
 //! - The runner answers a message once its connection took it.
-//! - A service has a bounded number unanswered, so one that writes faster than
+//! - A resident has a bounded number unanswered, so one that writes faster than
 //!   the backend reads waits in its send and nothing piles up between.
 //! - A message says the state whole, so the runner tells the backend the
 //!   latest message of each conversation again whenever a connection starts,
 //!   and the backend keeps the latest it was told.
-//! - A service that would say the same thing twice says it once: the browser
+//! - A resident that would say the same thing twice says it once: the browser
 //!   keeps the conversations whose tabs changed since its last message, so a
 //!   burst of title and favicon changes costs one.
 //!
 //! ```text
-//! Service                         Runner                         Backend
+//! Resident                         Runner                         Backend
 //!   |<-- POST /v1/messages ----------|  opened after GET /v1/info    |
 //!   |--- {id 4, c1, {"tabs":..}} --->|--- package_message ---------->|--> plugin
 //!   |<-- {id 4} ---------------------|  taken by the connection      |
@@ -31,11 +31,11 @@
 //!
 //! # Lost state
 //!
-//! When the state a service kept for a conversation ends without the service
-//! saying so, whoever sees it end says it in the service's place, and the
+//! When the state a resident kept for a conversation ends without the resident
+//! saying so, whoever sees it end says it in the resident's place, and the
 //! plugin receives a `package_lost` request for the conversation:
 //!
-//! - The runner sends it with the package when the service ends without
+//! - The runner sends it with the package when the resident ends without
 //!   releasing its conversations, as a crash does.
 //! - The backend sends it for every package when the runner starts anew (its
 //!   hello names another instance than the device's last) or a Cloud stops.
@@ -51,8 +51,8 @@ use serde_with::rust::unwrap_or_skip;
 use super::invocation::conversation_name;
 use super::{MAX_RECORD_BYTES, ProtocolError};
 
-/// One message for the plugin, which the service writes as one standard
-/// output record. `id` is the service's own, unique among its messages in
+/// One message for the plugin, which the resident writes as one standard
+/// output record. `id` is the resident's own, unique among its messages in
 /// flight; what `message` says is the package's and its plugin's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

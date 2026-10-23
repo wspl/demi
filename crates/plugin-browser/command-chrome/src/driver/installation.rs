@@ -6,7 +6,7 @@
 //! Chrome only from an installation the runner already holds. Nothing here
 //! downloads anything itself.
 //!
-//! The installation is shared by every conversation and service of the runner
+//! The installation is shared by every conversation and resident of the runner
 //! and goes through the runner's artifact cache, so it needs no root. Demi
 //! keeps one version; the cache removes the older one when a release pins a
 //! newer.
@@ -46,7 +46,7 @@ use crate::driver::text;
 /// Reads the Host's glibc version, none on a Host without glibc.
 type GlibcReader = dyn Fn() -> std::io::Result<Option<GlibcVersion>> + Send + Sync;
 
-/// The Chrome a service starts, through the runner that installs it.
+/// The Chrome a resident starts, through the runner that installs it.
 /// Cloning shares the one source.
 #[derive(Clone)]
 pub struct Chrome {
@@ -75,7 +75,7 @@ pub struct Installation {
 }
 
 impl Chrome {
-    /// Takes the service's artifacts source, which the runner answers.
+    /// Takes the resident's artifacts source, which the runner answers.
     pub fn attach(&self, artifacts: Artifacts) {
         self.artifacts.send_replace(Some(artifacts));
     }
@@ -172,8 +172,8 @@ impl Chrome {
 
     /// Where Chrome's executables live, its helpers' included, for finding
     /// its processes: each installation of the line the runner has, once
-    /// the service has its artifacts source; none when the runner could not
-    /// list them, as when it ended the service's streams first.
+    /// the resident has its artifacts source; none when the runner could not
+    /// list them, as when it ended the resident's streams first.
     pub async fn roots(&self) -> Option<Vec<PathBuf>> {
         let mut attached = self.artifacts.subscribe();
         // The sender lives as long as this Chrome, so the wait ends only
@@ -194,8 +194,8 @@ impl Chrome {
         }
     }
 
-    /// The service's artifacts source, which a call always finds: the
-    /// service takes it before it admits one.
+    /// The resident's artifacts source, which a call always finds: the
+    /// resident takes it before it admits one.
     fn source(&self) -> Result<Artifacts> {
         self.artifacts.borrow().clone().ok_or_else(|| {
             BrowserError::Installation("demi-browser has no artifacts source".to_owned())
@@ -223,7 +223,7 @@ async fn install_reporting(
     install: ArtifactInstall,
     lines: &mpsc::Sender<String>,
     mut line: impl FnMut(ArtifactProgress) -> Option<String>,
-) -> std::result::Result<PathBuf, demi_command_sdk::ServiceError> {
+) -> std::result::Result<PathBuf, demi_command_sdk::ResidentError> {
     let (progress, mut reports) = Artifacts::progress();
     let installing = source.install(install, Some(progress));
     tokio::pin!(installing);

@@ -2,14 +2,14 @@
 //! context, arguments, working directory and environment, and how it
 //! completes.
 //!
-//! The command context travels from the backend to the services like this:
+//! The command context travels from the backend to the residents like this:
 //!
 //! ```text
 //! Backend: builds it, keeps it in the job's or stream's record
-//!    | job_start { context }, service_open { context }
+//!    | job_start { context }, resident_open { context }
 //!    v
 //! Runner: keeps it in the job's live execution context
-//!    |-- native invocation { context, edits, cwd, env, args } --> service
+//!    |-- native invocation { context, edits, cwd, env, args } --> resident
 //!    `-- rpc_call { jobId } --> backend, which reads its own record
 //! ```
 
@@ -131,7 +131,7 @@ pub const PROVIDER_SCOPE_PREFIX: &str = "provider-";
 pub const AUTOMATION_SCOPE_PREFIX: &str = "automation-";
 
 /// Whether the scope `name` of a context is a conversation's, not the one of
-/// work that belongs to none: a service names a conversation in its log only
+/// work that belongs to none: a resident names a conversation in its log only
 /// when the work serves one.
 pub fn is_conversation_scope(name: &str) -> bool {
     !name.starts_with(PROVIDER_SCOPE_PREFIX) && !name.starts_with(AUTOMATION_SCOPE_PREFIX)

@@ -69,7 +69,7 @@ The following table lists what each part is responsible for:
 | Backend | Authorize users, host agent sessions, persist conversations, resolve providers, and manage execution targets and each user's Cloud. |
 | Providers | Implement each vendor's authentication and inference transport inside the backend. |
 | Runner | Execute Host operations and shell jobs, and dispatch declared commands. |
-| Native command service | Run independently released native operations beside the target's files. |
+| Native command resident | Run independently released native operations beside the target's files. |
 | Machine manager | Run each user's Cloud as a gVisor sandbox with persistent volumes on a Linux host. |
 
 Most providers make HTTP requests from the backend. Claude Code instead runs
@@ -84,7 +84,7 @@ The following files define the boundaries:
 
 - Providers: `crates/backend-providers/src/lib.rs`
 - Claude Code: `crates/provider-claude-code/src/lib.rs`
-- Native command services, which are separate from provider CLIs:
+- Native command residents, which are separate from provider CLIs:
   `crates/command-protocol/src/lib.rs`
 
 Rust types in a contract crate that both ends link define each wire between
@@ -102,7 +102,7 @@ agent to edit a file:
 1. The page sends the conversation action to the backend.
 2. The backend runs the agent and selects the authorized execution target.
 3. The runner executes the shell job. A declared native command calls a
-   resident command service on the laptop, and an application callback returns
+   resident command on the laptop, and an application callback returns
    to the backend.
 4. The backend records the conversation result and streams updates to the
    page.

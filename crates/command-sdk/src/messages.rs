@@ -5,7 +5,7 @@
 
 use tokio::sync::mpsc;
 
-use crate::ServiceError;
+use crate::ResidentError;
 use crate::asking::{Answered, Asked, Asker, Pending};
 use demi_command_protocol::{MessageAnswer, PluginMessage, ProtocolError};
 
@@ -52,7 +52,7 @@ impl Asked for MessagesAsk {
 /// A message waiting for the runner to take it.
 pub type Told = Pending<MessagesAsk>;
 
-/// Tells the plugin of the service's package what changed. Cloning shares
+/// Tells the plugin of the resident's package what changed. Cloning shares
 /// the one stream.
 #[derive(Clone)]
 pub struct Messages {
@@ -61,7 +61,7 @@ pub struct Messages {
 
 impl Messages {
     /// A sender whose messages arrive at the returned receiver, where the
-    /// service's messages stream, or a test, takes them.
+    /// resident's messages stream, or a test, takes them.
     pub fn channel() -> (Self, mpsc::Receiver<Told>) {
         let (asker, told) = Asker::channel();
         (Self { asker }, told)
@@ -75,7 +75,7 @@ impl Messages {
         &self,
         conversation: &str,
         message: serde_json::Value,
-    ) -> Result<(), ServiceError> {
+    ) -> Result<(), ResidentError> {
         // Checked here, where the caller learns why, rather than where the
         // runner reads it and breaks the stream.
         let message = PluginMessage {
@@ -87,7 +87,7 @@ impl Messages {
         self.asker
             .ask(message, None)
             .await
-            .ok_or_else(|| ServiceError::Messages("the messages stream has ended".into()))?
-            .map_err(ServiceError::Messages)
+            .ok_or_else(|| ResidentError::Messages("the messages stream has ended".into()))?
+            .map_err(ResidentError::Messages)
     }
 }

@@ -11,7 +11,7 @@
 //! Beside each entry a record names its line and version. A line is the package
 //! and the name, the versions of one thing. The records let the cache answer
 //! which artifacts of a line it has, and remove a line's older ones once a
-//! newer one is installed, except those a running service holds. A Host
+//! newer one is installed, except those a running resident holds. A Host
 //! therefore keeps one Claude Code CLI, one Chrome and one executable of each
 //! package, however often each is updated, beside what still runs.
 //!
@@ -30,7 +30,7 @@
 //! no partial or mismatched file is ever executed.
 //!
 //! Only publication writes the cache, so an entry is verified once, as it is
-//! published, and a later use does not read it again: hashing it per service
+//! published, and a later use does not read it again: hashing it per resident
 //! start would read the whole executable. A damaged entry fails the install
 //! rather than being repaired.
 //!
@@ -55,7 +55,7 @@
 //!
 //! - Publication under a digest, and of an archive under a lock beside it, lets
 //!   two installs of one artifact each download it but publish one copy.
-//! - Each install removes only what its own services do not hold. Runners of
+//! - Each install removes only what its own residents do not hold. Runners of
 //!   different releases that share a cache can therefore remove each other's
 //!   older versions, which they then download again.
 
@@ -314,7 +314,7 @@ struct LineRecord {
     installed_at: u64,
 }
 
-/// The digests running services hold, which no line's removal takes.
+/// The digests running residents hold, which no line's removal takes.
 /// Cloning shares the counts.
 #[derive(Clone, Default)]
 pub struct Holds(Arc<Mutex<HashMap<String, usize>>>);
@@ -394,7 +394,7 @@ impl ArtifactCache {
         self.contents.subscribe()
     }
 
-    /// The digests running services hold.
+    /// The digests running residents hold.
     pub fn holds(&self) -> &Holds {
         &self.holds
     }
@@ -404,7 +404,7 @@ impl ArtifactCache {
     /// cache.
     ///
     /// - Once the artifact is there, the cache records it in its line and
-    ///   removes the line's other artifacts that no running service holds.
+    ///   removes the line's other artifacts that no running resident holds.
     /// - A cached entry whose metadata shows damage fails the install.
     /// - A download reports to `progress` at each tenth of the artifact's size,
     ///   and an archive once more as it is unpacked.
@@ -707,7 +707,7 @@ impl ArtifactCache {
     }
 
     /// Removes the other artifacts of `wanted`'s line that no running
-    /// service holds, and the staging files of its other versions that no
+    /// resident holds, and the staging files of its other versions that no
     /// install of this cache is downloading (`crates/shared-artifacts/src/download.rs`). A removal that fails, as of a file in use on Windows, is
     /// left for a later install; an image's copy is only forgotten.
     async fn remove_older(&self, wanted: &Wanted<'_>) {
@@ -1081,7 +1081,7 @@ fn digest_of(artifact: &PackageArtifact) -> Digest {
 /// The cached file at `destination`, when there is one.
 ///
 /// The entry was verified as it was published, and only publication writes the
-/// cache, so a hit is not read again: every service start would otherwise hash
+/// cache, so a hit is not read again: every resident start would otherwise hash
 /// the whole executable. Damage its metadata shows fails the install; it is not
 /// repaired.
 async fn cached(

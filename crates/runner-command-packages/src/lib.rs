@@ -1,36 +1,36 @@
-//! Resident native services: the verified executable cache, the service
-//! processes, and the registry that keeps each one resident while something
-//! holds a lease on it.
+//! Residents: the verified executable cache, the processes of the residents,
+//! and the registry that keeps each one alive while something holds a lease
+//! on it.
 //!
-//! A service starts, and is admitted to calls, in this order:
+//! A resident starts, and is admitted to calls, in this order:
 //!
 //! ```text
-//! Runner                                       Command service
+//! Runner                                       Command resident
 //!   |--- start the verified executable ---------------->|
 //!   |--- GET /v1/info ---------------------------------->|
 //!   |<-- protocol version + operations ------------------|
 //!   |    checked against the pinned descriptor           |
 //!   |--- POST /v1/numbers, /v1/artifacts, /v1/messages ->|  open for the
-//!   |                                                    |  service's life
+//!   |                                                    |  resident's life
 //!   |--- POST /v1/invoke (one stream per call) --------->|  reused by later
 //!   |<-- stdout / stderr records, one completion --------|  calls
 //!   |--- POST /v1/shutdown, when no lease is left ------>|  drain, exit
 //! ```
 //!
 //! The runner owns the child and its three pipes. The handshake does not ask
-//! the service for its hash: the verified file is what establishes which
+//! the resident for its hash: the verified file is what establishes which
 //! executable runs. A start fails on a timeout, a missing or an extra
 //! operation, or another wire version, and releases the process and its
 //! transports.
 //!
-//! One service serves every call that needs the same artifact digest, from
+//! One resident serves every call that needs the same artifact digest, from
 //! every conversation of the device; different immutable artifacts run side
 //! by side, and concurrent starts of one share a launch. The runner's own
-//! account is the only security context, so no service crosses a privilege
+//! account is the only security context, so no resident crosses a privilege
 //! boundary. Sharing saves the cost of starting a process and a connection;
 //! it is not a performance promise for any command.
 //!
-//! A service that exits or breaks the protocol fails each call it held with
+//! A resident that exits or breaks the protocol fails each call it held with
 //! its exit status and the end of its standard error (which the Host log
 //! holds too). A call is never replayed, since its side effects may have
 //! happened. A new startup catalog makes new pinned bindings; it never swaps
@@ -45,14 +45,14 @@ mod registry;
 
 use std::{fmt, path::PathBuf, time::SystemTime};
 
-use demi_command_protocol::{ArtifactLocation, PackageArtifact, ServiceSequence};
+use demi_command_protocol::{ArtifactLocation, PackageArtifact, ResidentSequence};
 use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
 pub use invocations::Invoking;
-pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
+pub use registry::{Resident, ResidentHandle, ResidentLease, ResidentRegistry};
 
-/// Why a resident service could not be had, or why it ended.
+/// Why a resident could not be had, or why it ended.
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
     /// The executable could not be downloaded, copied or verified.
@@ -70,34 +70,34 @@ pub enum RuntimeError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    Service(#[from] demi_command_sdk::ServiceError),
-    #[error("native service does not match its package descriptor")]
+    Resident(#[from] demi_command_sdk::ResidentError),
+    #[error("resident does not match its package descriptor")]
     CatalogMismatch,
-    #[error("native service did not answer within its {0} deadline")]
+    #[error("resident did not answer within its {0} deadline")]
     Deadline(&'static str),
-    /// The registry shut the service down: nothing held it any longer, or
+    /// The registry shut the resident down: nothing held it any longer, or
     /// the backend connection ended.
-    #[error("native service was shut down")]
+    #[error("resident was shut down")]
     Stopped,
-    /// The service ended on its own.
+    /// The resident ended on its own.
     #[error(transparent)]
-    Exited(#[from] ServiceExit),
+    Exited(#[from] ResidentExit),
 }
 
-/// How a resident service ended on its own, which every call that fails with
+/// How a resident ended on its own, which every call that fails with
 /// it reports (`crates/command-protocol/src/lib.rs`).
 #[derive(Debug, Clone, thiserror::Error)]
-pub struct ServiceExit {
+pub struct ResidentExit {
     /// The package, such as `demi.file`.
-    pub service: String,
+    pub resident: String,
     pub reason: ExitReason,
-    /// The end of the service's standard error.
+    /// The end of the resident's standard error.
     pub stderr: String,
 }
 
-impl fmt::Display for ServiceExit {
+impl fmt::Display for ResidentExit {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "native service {} {}", self.service, self.reason)?;
+        write!(formatter, "resident {} {}", self.resident, self.reason)?;
         let stderr = self.stderr.trim_end();
         if !stderr.is_empty() {
             write!(formatter, "; its standard error ended with:\n{stderr}")?;
@@ -176,23 +176,23 @@ pub trait ArtifactResolver: Send + Sync + 'static {
     ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>>;
 }
 
-/// Where a service's requests to the backend go: its conversation numbers
+/// Where a resident's requests to the backend go: its conversation numbers
 /// (`crates/command-protocol/src/numbers.rs`) and its messages to its plugin (§
 /// Messages to the plugin).
 ///
-/// It is the backend connection the service started under, which a lost
-/// connection ends together with the service.
-pub trait ServiceBackend: Send + Sync + 'static {
+/// It is the backend connection the resident started under, which a lost
+/// connection ends together with the resident.
+pub trait ResidentBackend: Send + Sync + 'static {
     /// The first of `count` numbers of `conversation`'s `sequence`, or why
     /// the backend gave none.
     fn reserve(
         &self,
         conversation: String,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         count: u32,
     ) -> BoxFuture<'_, Result<u64, String>>;
 
-    /// Hands `message` about `conversation` from the service of `package`
+    /// Hands `message` about `conversation` from the resident of `package`
     /// to the connection, once the connection has room; waits for a
     /// connection while the runner has none, and fails once it stopped
     /// waiting.
@@ -203,7 +203,7 @@ pub trait ServiceBackend: Send + Sync + 'static {
         message: serde_json::Value,
     ) -> BoxFuture<'_, Result<(), String>>;
 
-    /// Says that the service of `package` ended without releasing its
+    /// Says that the resident of `package` ended without releasing its
     /// conversations, as a crash does, so what it kept is lost.
     fn lost(&self, package: String) -> BoxFuture<'_, ()>;
 }

@@ -10,9 +10,9 @@ use bytes::Bytes;
 use demi_command_declarations::{MAX_STDIN_BODY, UsageError};
 use demi_command_protocol::{Completion, Invocation, LocalInvocation};
 use demi_command_sdk::{
-    Exchange, ExchangeError, Handler, Input, InvocationContext, Output, ServiceError,
+    Exchange, ExchangeError, Handler, Input, InvocationContext, Output, ResidentError,
 };
-use demi_runner_command_packages::ServiceHandle;
+use demi_runner_command_packages::ResidentHandle;
 use demi_runner_process::{
     command_client::{RAW, RawCommand},
     pipes::PipeClient,
@@ -28,7 +28,7 @@ pub const RUNNER: &str = "demi-runner";
 #[derive(Clone)]
 pub struct Dispatcher {
     pub contexts: Contexts,
-    pub services: ServiceHandle,
+    pub residents: ResidentHandle,
     pub pipes: PipeClient,
 }
 
@@ -42,14 +42,14 @@ impl Handler for Dispatcher {
     fn invoke(
         &self,
         context: InvocationContext<LocalInvocation>,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         let dispatcher = self.clone();
         Box::pin(async move {
             let output = context.output.clone();
             match context.request.operation.as_str() {
                 RAW => dispatcher.command(context).await,
                 operation => reported(
-                    Err(ServiceError::UnknownOperation(operation.into())),
+                    Err(ResidentError::UnknownOperation(operation.into())),
                     &output,
                     RUNNER,
                 )
@@ -64,12 +64,12 @@ impl Handler for Dispatcher {
 /// program or command `name`, `<name>: <error>`, and ends it with 1
 /// (`crates/host-interface/src/rpc.rs`).
 pub async fn reported(
-    result: Result<Completion, ServiceError>,
+    result: Result<Completion, ResidentError>,
     output: &Output,
     name: &str,
-) -> Result<Completion, ServiceError> {
+) -> Result<Completion, ResidentError> {
     match result {
-        Err(ServiceError::Cancelled) => Err(ServiceError::Cancelled),
+        Err(ResidentError::Cancelled) => Err(ResidentError::Cancelled),
         Err(error) => {
             output.stderr(format!("{name}: {error}\n").into()).await?;
             Ok(completed(1))
@@ -83,12 +83,12 @@ enum Failure {
     /// It does not fit its command: clap's text, told whole, exit 2.
     Usage(UsageError),
     /// What stopped it, told after the command's path, exit 1.
-    Service(ServiceError),
+    Resident(ResidentError),
 }
 
-impl From<ServiceError> for Failure {
-    fn from(error: ServiceError) -> Self {
-        Self::Service(error)
+impl From<ResidentError> for Failure {
+    fn from(error: ResidentError) -> Self {
+        Self::Resident(error)
     }
 }
 
@@ -105,7 +105,7 @@ impl Dispatcher {
     async fn command(
         &self,
         invocation: InvocationContext<LocalInvocation>,
-    ) -> Result<Completion, ServiceError> {
+    ) -> Result<Completion, ResidentError> {
         let output = invocation.output.clone();
         let raw: RawCommand = match serde_json::from_value(invocation.request.args.clone()) {
             Ok(raw) => raw,
@@ -119,7 +119,7 @@ impl Dispatcher {
                 output.stderr(format!("{error}\n").into()).await?;
                 Ok(completed(2))
             }
-            Err(Failure::Service(error)) => reported(Err(error), &output, &name).await,
+            Err(Failure::Resident(error)) => reported(Err(error), &output, &name).await,
         }
     }
 
@@ -134,12 +134,12 @@ impl Dispatcher {
         let context = self
             .contexts
             .get(&raw.context)
-            .map_err(ServiceError::failed)?;
+            .map_err(ResidentError::failed)?;
         let root = context
             .manifest
             .roots
             .get(&raw.root)
-            .ok_or_else(|| ServiceError::failed(DispatchError::NotARoot))?;
+            .ok_or_else(|| ResidentError::failed(DispatchError::NotARoot))?;
         let selected = root.tree.select(&raw.argv)?;
         *name = selected.path.join(" ");
         let parsed = selected.parse(&raw.argv)?;
@@ -155,21 +155,21 @@ impl Dispatcher {
             let leaf = selected
                 .node
                 .leaf()
-                .ok_or_else(|| ServiceError::failed(DispatchError::NotALeaf))?;
+                .ok_or_else(|| ResidentError::failed(DispatchError::NotALeaf))?;
             let body = if leaf.stdin_target(&parsed.values).is_some() {
                 // A terminal is the live channel, not a finite command body.
                 let mut bytes = Vec::new();
                 if !raw.live {
                     while let Some(chunk) = invocation.input.next().await? {
                         if bytes.len() + chunk.len() > MAX_STDIN_BODY {
-                            return Err(ServiceError::failed(DispatchError::BodyTooLarge).into());
+                            return Err(ResidentError::failed(DispatchError::BodyTooLarge).into());
                         }
                         bytes.extend_from_slice(&chunk);
                     }
                 }
                 Some(
                     String::from_utf8(bytes)
-                        .map_err(|_| ServiceError::failed(DispatchError::BodyNotText))?,
+                        .map_err(|_| ResidentError::failed(DispatchError::BodyNotText))?,
                 )
             } else {
                 None
@@ -191,11 +191,11 @@ impl Dispatcher {
                     .manifest
                     .packages
                     .get(&binding.descriptor_hash)
-                    .ok_or_else(|| ServiceError::failed(DispatchError::MissingDescriptor))?;
+                    .ok_or_else(|| ResidentError::failed(DispatchError::MissingDescriptor))?;
                 let resolver = Arc::new(JobArtifacts::new(self.contexts.clone()));
                 // What the program asks for during the call is located for
                 // this job (`crates/command-protocol/src/artifacts.rs`).
-                let _invoking = self.services.invoking(
+                let _invoking = self.residents.invoking(
                     &invocation.request.invocation_id,
                     &descriptor.id,
                     resolver.clone(),
@@ -206,7 +206,7 @@ impl Dispatcher {
                 // JSON document (`crates/runner-command-packages/src/cache.rs`).
                 let (lines, mut told) = tokio::sync::mpsc::unbounded_channel::<String>();
                 let quiet = parsed.json;
-                let acquiring = self.services.acquire_telling(
+                let acquiring = self.residents.acquire_telling(
                     descriptor,
                     resolver,
                     Arc::new(context.connection.clone()),
@@ -229,7 +229,7 @@ impl Dispatcher {
                 while let Ok(line) = told.try_recv() {
                     output.stderr(line.into()).await?;
                 }
-                let mut resident = acquired.map_err(ServiceError::failed)?;
+                let mut resident = acquired.map_err(ResidentError::failed)?;
                 let request = Invocation {
                     context: context.command.clone(),
                     json: Some(parsed.json),
@@ -248,21 +248,21 @@ impl Dispatcher {
                         .client()
                         .invoke(&request)
                         .await
-                        .map_err(Failed::Service)?;
+                        .map_err(Failed::Resident)?;
                     native_exchange(input, response, &mut invocation.input, &mut output, &path)
                         .await
                 };
                 match exchange.await {
                     Ok(code) => code,
                     Err(
-                        Failed::Caller(error) | Failed::Service(error @ ServiceError::Cancelled),
+                        Failed::Caller(error) | Failed::Resident(error @ ResidentError::Cancelled),
                     ) => {
                         return Err(error.into());
                     }
-                    // A call that failed with its service reports how the
-                    // service ended (`crates/command-protocol/src/lib.rs`).
-                    Err(Failed::Service(error)) => {
-                        return Err(ServiceError::failed(resident.failure(error).await).into());
+                    // A call that failed with its resident reports how the
+                    // resident ended (`crates/command-protocol/src/lib.rs`).
+                    Err(Failed::Resident(error)) => {
+                        return Err(ResidentError::failed(resident.failure(error).await).into());
                     }
                 }
             } else {
@@ -294,22 +294,22 @@ impl Dispatcher {
         };
         tokio::select! {
             biased;
-            _ = context.cancel.cancelled() => Err(ServiceError::Cancelled.into()),
-            _ = invocation.cancellation.cancelled() => Err(ServiceError::Cancelled.into()),
+            _ = context.cancel.cancelled() => Err(ResidentError::Cancelled.into()),
+            _ = invocation.cancellation.cancelled() => Err(ResidentError::Cancelled.into()),
             result = execute => result,
         }
     }
 }
 
-/// Which end of a native call failed: the service or the caller.
+/// Which end of a native call failed: the resident or the caller.
 enum Failed {
-    Service(ServiceError),
-    Caller(ServiceError),
+    Resident(ResidentError),
+    Caller(ResidentError),
 }
 
-/// Drives one native call: the caller's input goes to the service one chunk
-/// per pull, and the service's records come back to the caller. A failure
-/// the service reports is told after the command's `path`, its code left
+/// Drives one native call: the caller's input goes to the resident one chunk
+/// per pull, and the resident's records come back to the caller. A failure
+/// the resident reports is told after the command's `path`, its code left
 /// to `--json` callers of the package.
 async fn native_exchange(
     sender: demi_command_sdk::CommandInput,
@@ -322,7 +322,7 @@ async fn native_exchange(
         .run(input, output)
         .await
         .map_err(|error| match error {
-            ExchangeError::Service(error) => Failed::Service(error),
+            ExchangeError::Resident(error) => Failed::Resident(error),
             ExchangeError::Input(error) | ExchangeError::Output(error) => Failed::Caller(error),
         })?;
     if let Some(error) = completion.error {

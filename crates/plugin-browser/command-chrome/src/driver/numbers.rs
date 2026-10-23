@@ -1,6 +1,6 @@
 //! A conversation's tab numbers.
 //!
-//! The service draws them from the conversation's `tab` sequence in the backend
+//! The resident draws them from the conversation's `tab` sequence in the backend
 //! eight at a time (`crates/command-protocol/src/numbers.rs`), so most tabs
 //! take theirs without waiting. A number it never uses is a gap.
 //!
@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use demi_command_protocol::ServiceSequence;
+use demi_command_protocol::ResidentSequence;
 use demi_command_sdk::Numbers;
 use tokio::sync::watch;
 
@@ -38,7 +38,7 @@ const CLOSED: usize = 256;
 pub struct TabNumbers(Arc<Inner>);
 
 struct Inner {
-    /// Where more come from; none for a service that was given no numbers
+    /// Where more come from; none for a resident that was given no numbers
     /// source.
     numbers: Option<Numbers>,
     conversation: String,
@@ -58,7 +58,7 @@ impl TabNumbers {
     }
 
     /// The tab numbers of `conversation`, drawn from `numbers` once the
-    /// service has a numbers source.
+    /// resident has a numbers source.
     pub fn from_source(numbers: Option<Numbers>, conversation: String) -> Self {
         Self(Arc::new(Inner {
             numbers,
@@ -77,9 +77,9 @@ impl TabNumbers {
             return Ok(number);
         }
         let numbers = self.0.numbers.as_ref().ok_or_else(|| {
-            BrowserError::Unavailable("the service was given no tab numbers".into())
+            BrowserError::Unavailable("the resident was given no tab numbers".into())
         })?;
-        let draw = numbers.draw(&self.0.conversation, ServiceSequence::Tab, DRAW);
+        let draw = numbers.draw(&self.0.conversation, ResidentSequence::Tab, DRAW);
         let first = tokio::time::timeout(DRAW_TIMEOUT, draw)
             .await
             .map_err(|_| {
@@ -106,7 +106,7 @@ impl TabNumbers {
     }
 
     /// Follows the changes to what the conversation's browsers show, which
-    /// the service tells the plugin of.
+    /// the resident tells the plugin of.
     pub fn watch_changes(&self) -> watch::Receiver<u64> {
         self.0.changes.subscribe()
     }

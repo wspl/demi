@@ -1,45 +1,45 @@
-//! The service registry: one owner task keeps a registration's resident
-//! services by artifact digest, counts the leases on each, and decides when a
-//! service ends.
+//! The resident registry: one owner task keeps a registration's resident
+//! residents by artifact digest, counts the leases on each, and decides when a
+//! resident ends.
 //!
 //! A lease holder tells the registry when it takes its lease. The registry sees
 //! the lease end when its holder drops it. Nobody waits for the decision: the
 //! connection's message handling never blocks on it.
 //!
-//! A service stays while anything leases it:
+//! A resident stays while anything leases it:
 //!
 //! - a live execution context whose pinned manifest names its artifact;
 //! - an open user stream running in it;
-//! - a start in progress, for a call waiting until the service is ready;
+//! - a start in progress, for a call waiting until the resident is ready;
 //! - the connection's installed manifests, so consecutive jobs reuse the
-//!   service: for each package, the release the latest installed manifest
+//!   resident: for each package, the release the latest installed manifest
 //!   naming it names (an older release keeps none, so after the startup catalog
-//!   moves a package, the old service ends with its last job);
+//!   moves a package, the old resident ends with its last job);
 //! - the release the connection's user streams bound last, one per package,
 //!   until the connection ends or a stream binds another release.
 //!
-//! A service whose leases all ended is asked which conversations it holds:
+//! A resident whose leases all ended is asked which conversations it holds:
 //!
 //! - An answer counts only when no lease came or went and no release ended
-//!   while it was on its way. The service answers from what it holds at that
+//!   while it was on its way. The resident answers from what it holds at that
 //!   moment: a check that follows one release can be answered while a second
-//!   release still runs, and trusting it would keep a service that holds
+//!   release still runs, and trusting it would keep a resident that holds
 //!   nothing.
-//! - A check that fails or takes over 5 seconds keeps the service and is
-//!   logged. A service that cannot say what it holds is not one that holds
+//! - A check that fails or takes over 5 seconds keeps the resident and is
+//!   logged. A resident that cannot say what it holds is not one that holds
 //!   nothing, and stopping it would end every conversation it serves.
 //!
-//! Against its leases a service is retired only as faulty: it exits, breaks the
+//! Against its leases a resident is retired only as faulty: it exits, breaks the
 //! protocol, fails a conversation release, or keeps a handler past the
-//! cancellation grace. Losing the backend connection stops every service, and
-//! the backend stops a package's services when the user turns its plugin off
+//! cancellation grace. Losing the backend connection stops every resident, and
+//! the backend stops a package's residents when the user turns its plugin off
 //! (`crates/backend-plugins/src/lib.rs`).
 //!
 //! For example, a job whose manifest names `demi.browser` holds a lease on its
 //! artifact while the job runs, and the installed manifest holds another. When
 //! the connection installs a manifest with a newer `demi.browser`, the old
 //! artifact's last lease ends when its last job does. The registry then asks
-//! the old service which conversations it holds: it stops a service that holds
+//! the old resident which conversations it holds: it stops a resident that holds
 //! none, and keeps one that holds some or cannot say.
 
 use std::{
@@ -51,9 +51,9 @@ use std::{
 
 use demi_command_protocol::{
     ArtifactForm, ArtifactProgress, ConversationRequest, ConversationStatus, PackageDescriptor,
-    Record, ServiceInfo, megabytes,
+    Record, ResidentInfo, megabytes,
 };
-use demi_command_sdk::{Client, ServiceError};
+use demi_command_sdk::{Client, ResidentError};
 use demi_runner_process::backend::Backend;
 use demi_runner_protocol::wire::HostArtifact;
 use tokio::{
@@ -68,33 +68,33 @@ use demi_command_protocol::host_target;
 const PROGRAM: &str = "program";
 
 use crate::{
-    ArtifactResolver, ServiceBackend, RuntimeError,
+    ArtifactResolver, ResidentBackend, RuntimeError,
     cache::{ArtifactCache, Wanted},
-    invocations::{Invocations, Invoking, ServiceArtifacts},
-    process::ResidentService,
+    invocations::{Invocations, Invoking, ResidentArtifacts},
+    process::ResidentProcess,
 };
 
-/// How long a service has to say which conversations it holds.
+/// How long a resident has to say which conversations it holds.
 const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long a service has to release a conversation: long enough for a
+/// How long a resident has to release a conversation: long enough for a
 /// browser to close its tabs and remove its profile.
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
 /// The most a conversation operation's answer may hold: it is held whole in
-/// memory, and a service may answer without end.
+/// memory, and a resident may answer without end.
 const ANSWER_BYTES: usize = 1024 * 1024;
 /// Requests waiting for the owner; a sender waits for room, so that a slow
 /// owner does not grow memory.
 const REQUESTS: usize = 64;
 
 /// The registry's owner task and the handle to it.
-pub struct ServiceRegistry {
-    handle: ServiceHandle,
+pub struct ResidentRegistry {
+    handle: ResidentHandle,
     contents: watch::Receiver<Vec<HostArtifact>>,
     owner: tokio::task::JoinHandle<()>,
 }
 
-impl ServiceRegistry {
-    /// Services start in `cwd` with exactly `env`; their artifacts are
+impl ResidentRegistry {
+    /// Residents start in `cwd` with exactly `env`; their artifacts are
     /// cached in `cache`, or taken from the copies the Host's image
     /// preinstalled in `image`, when given, and those the backend serves
     /// itself come the way `backend` reaches it.
@@ -123,7 +123,7 @@ impl ServiceRegistry {
             stop: CancellationToken::new(),
         };
         Ok(Self {
-            handle: ServiceHandle {
+            handle: ResidentHandle {
                 requests,
                 invocations,
             },
@@ -132,7 +132,7 @@ impl ServiceRegistry {
         })
     }
 
-    pub fn handle(&self) -> ServiceHandle {
+    pub fn handle(&self) -> ResidentHandle {
         self.handle.clone()
     }
 
@@ -142,14 +142,14 @@ impl ServiceRegistry {
         self.contents.clone()
     }
 
-    /// Stops every service and waits until each has ended. The owner also
+    /// Stops every resident and waits until each has ended. The owner also
     /// ends by itself once every handle is gone.
     pub async fn close(self) {
         // An owner that has ended already has nothing left to stop.
         let _closed = self.handle.requests.send(Request::Close).await;
         self.owner
             .await
-            .expect("the service registry does not panic");
+            .expect("the resident registry does not panic");
     }
 }
 
@@ -162,14 +162,14 @@ enum Request {
     Acquire {
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
-        backend: Arc<dyn ServiceBackend>,
+        backend: Arc<dyn ResidentBackend>,
         reply: oneshot::Sender<Result<Acquired, RuntimeError>>,
     },
     Release {
         conversation: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
-    /// Stops the services of the packages named, or every service.
+    /// Stops the residents of the packages named, or every resident.
     Stop {
         packages: Option<Vec<String>>,
         reply: oneshot::Sender<()>,
@@ -177,7 +177,7 @@ enum Request {
     Close,
 }
 
-/// A service's life as its callers see it.
+/// A resident's life as its callers see it.
 #[derive(Clone)]
 enum State {
     /// Its executable is being installed, with how far the install got,
@@ -185,37 +185,37 @@ enum State {
     Starting(Option<Installing>),
     Ready {
         client: Client,
-        info: Arc<ServiceInfo>,
+        info: Arc<ResidentInfo>,
     },
     Ended(Arc<RuntimeError>),
 }
 
-/// How far the install of a service's executable got: none before its
+/// How far the install of a resident's executable got: none before its
 /// download reported anything.
 #[derive(Clone, Copy, Default)]
 struct Installing {
     progress: Option<ArtifactProgress>,
 }
 
-/// How long a service's install goes unsaid before its caller's command
+/// How long a resident's install goes unsaid before its caller's command
 /// tells of it (`crates/runner-command-packages/src/cache.rs`).
 const QUIET_INSTALL: Duration = Duration::from_secs(2);
 
 struct Acquired {
     /// Held while the caller waits for the start.
-    _waiting: ServiceLease,
+    _waiting: ResidentLease,
     state: watch::Receiver<State>,
 }
 
 /// Sends requests to the registry. Cloning shares the one registry.
 #[derive(Clone)]
-pub struct ServiceHandle {
+pub struct ResidentHandle {
     requests: mpsc::Sender<Request>,
     invocations: Invocations,
 }
 
-impl ServiceHandle {
-    /// Registers `invocation`, which the caller starts in a service of
+impl ResidentHandle {
+    /// Registers `invocation`, which the caller starts in a resident of
     /// `package` for the work `resolver` locates artifacts for, until the
     /// returned guard drops: the artifacts the program asks for during it
     /// are located for that work (`crates/command-protocol/src/artifacts.rs`).
@@ -228,23 +228,23 @@ impl ServiceHandle {
         self.invocations.register(invocation, package, resolver)
     }
 
-    /// A lease that keeps the service of `digest` resident until it drops,
-    /// whether or not that service runs yet.
-    pub async fn lease(&self, digest: String) -> ServiceLease {
-        let (lease, alive) = ServiceLease::new();
+    /// A lease that keeps the resident of `digest` alive until it drops,
+    /// whether or not that resident runs yet.
+    pub async fn lease(&self, digest: String) -> ResidentLease {
+        let (lease, alive) = ResidentLease::new();
         // A closed registry keeps nothing; the lease then means nothing.
         let _closed = self.requests.send(Request::Lease { digest, alive }).await;
         lease
     }
 
-    /// The service of `descriptor`'s artifact for this host, started when
+    /// The resident of `descriptor`'s artifact for this host, started when
     /// none runs, with its requests to the backend going to `backend`. Callers asking
     /// at once share one start.
     pub async fn acquire(
         &self,
         descriptor: &PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
-        backend: Arc<dyn ServiceBackend>,
+        backend: Arc<dyn ResidentBackend>,
         cancel: &CancellationToken,
     ) -> Result<Resident, Arc<RuntimeError>> {
         self.acquire_telling(descriptor, resolver, backend, cancel, |_| {})
@@ -252,7 +252,7 @@ impl ServiceHandle {
     }
 
     /// [`Self::acquire`] for a command, which `tell`s its caller of an
-    /// install of the service's executable that takes longer than two
+    /// install of the resident's executable that takes longer than two
     /// seconds, in one line that names it, so that what the command prints
     /// after it is not pushed out of a reader that keeps only the first
     /// lines.
@@ -260,7 +260,7 @@ impl ServiceHandle {
         &self,
         descriptor: &PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
-        backend: Arc<dyn ServiceBackend>,
+        backend: Arc<dyn ResidentBackend>,
         cancel: &CancellationToken,
         mut tell: impl FnMut(String) + Send,
     ) -> Result<Resident, Arc<RuntimeError>> {
@@ -326,8 +326,8 @@ impl ServiceHandle {
         }
     }
 
-    /// Releases `conversation` in every running service, all at once, and
-    /// retires each service whose release fails.
+    /// Releases `conversation` in every running resident, all at once, and
+    /// retires each resident whose release fails.
     pub async fn release_conversation(&self, conversation: &str) -> Result<(), String> {
         let (reply, answer) = oneshot::channel();
         self.requests
@@ -336,20 +336,20 @@ impl ServiceHandle {
                 reply,
             })
             .await
-            .map_err(|_| "the service registry is closed".to_owned())?;
+            .map_err(|_| "the resident registry is closed".to_owned())?;
         answer
             .await
-            .map_err(|_| "the service registry is closed".to_owned())?
+            .map_err(|_| "the resident registry is closed".to_owned())?
     }
 
-    /// Stops every service, as losing the backend connection does
+    /// Stops every resident, as losing the backend connection does
     /// (`crates/runner/src/connection/kept.rs`), and waits until each has ended.
     pub async fn stop_all(&self) {
         self.stop(None).await;
     }
 
-    /// Stops the services of `packages`, by their ids, and waits until each
-    /// has ended: a service that stops releases every conversation it
+    /// Stops the residents of `packages`, by their ids, and waits until each
+    /// has ended: a resident that stops releases every conversation it
     /// holds, and the next caller of a package starts it again.
     pub async fn stop_packages(&self, packages: Vec<String>) {
         self.stop(Some(packages)).await;
@@ -364,20 +364,20 @@ impl ServiceHandle {
     }
 }
 
-/// One claim on a digest's service; dropping it ends the claim, which the
+/// One claim on a digest's resident; dropping it ends the claim, which the
 /// registry sees as the closing of its `alive` channel.
-pub struct ServiceLease {
+pub struct ResidentLease {
     _alive: oneshot::Sender<()>,
 }
 
-impl ServiceLease {
+impl ResidentLease {
     fn new() -> (Self, oneshot::Receiver<()>) {
         let (alive, watched) = oneshot::channel();
         (Self { _alive: alive }, watched)
     }
 }
 
-/// A running service a caller invokes.
+/// A running resident a caller invokes.
 pub struct Resident {
     client: Client,
     state: watch::Receiver<State>,
@@ -389,16 +389,16 @@ impl Resident {
     }
 
     /// What a call that failed with `error` reports. When the call failed
-    /// because its service went away, that is how the service ended, with
+    /// because its resident went away, that is how the resident ended, with
     /// its exit status and the end of its standard error.
-    pub async fn failure(&mut self, error: ServiceError) -> String {
+    pub async fn failure(&mut self, error: ResidentError) -> String {
         let connection_lost = match &error {
-            ServiceError::Http2(error) => error.is_io() || error.is_go_away(),
-            ServiceError::Io(_) => true,
+            ResidentError::Http2(error) => error.is_io() || error.is_go_away(),
+            ResidentError::Io(_) => true,
             _ => false,
         };
         if connection_lost {
-            // The service's owner publishes its end once it has reaped it.
+            // The resident's owner publishes its end once it has reaped it.
             let ended = self
                 .state
                 .wait_for(|state| matches!(state, State::Ended(_)))
@@ -421,17 +421,17 @@ struct Owner {
     entries: HashMap<String, Entry>,
     /// One watch per lease, ending with its digest when the lease drops.
     leases: JoinSet<String>,
-    /// Numbers the services started, so a late report about one that has
+    /// Numbers the residents started, so a late report about one that has
     /// ended is not taken for its successor.
     generation: u64,
     lifecycles: JoinSet<(String, u64)>,
     checks: JoinSet<Checked>,
     work: JoinSet<Work>,
-    /// Stops every service; each one's own token is a child of it.
+    /// Stops every resident; each one's own token is a child of it.
     stop: CancellationToken,
 }
 
-/// One artifact digest: the leases on it and its current service.
+/// One artifact digest: the leases on it and its current resident.
 #[derive(Default)]
 struct Entry {
     leases: usize,
@@ -458,13 +458,13 @@ struct Checked {
 
 /// What a release task hands back to the owner.
 enum Work {
-    /// Services whose release failed, to retire before `reply` goes out.
+    /// Residents whose release failed, to retire before `reply` goes out.
     Released {
         failed: Vec<(String, u64)>,
         errors: Vec<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
-    /// Retirements that have ended; idle services are reconsidered.
+    /// Retirements that have ended; idle residents are reconsidered.
     Retired {
         result: Result<(), String>,
         reply: oneshot::Sender<Result<(), String>>,
@@ -487,7 +487,7 @@ impl Owner {
                     self.unlease(&digest);
                 }
                 Some(ended) = self.lifecycles.join_next() => {
-                    let (digest, generation) = ended.expect("service lifecycles do not panic");
+                    let (digest, generation) = ended.expect("resident lifecycles do not panic");
                     self.ended(&digest, generation);
                 }
                 Some(checked) = self.checks.join_next() => {
@@ -563,7 +563,7 @@ impl Owner {
         &mut self,
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
-        backend: Arc<dyn ServiceBackend>,
+        backend: Arc<dyn ResidentBackend>,
     ) -> Result<Acquired, RuntimeError> {
         if self.stop.is_cancelled() {
             return Err(RuntimeError::Cancelled);
@@ -576,13 +576,13 @@ impl Owner {
         let digest = artifact.sha256.clone();
         // The waiting caller's lease counts at once, so a start never begins
         // with nothing holding it.
-        let (waiting, alive) = ServiceLease::new();
+        let (waiting, alive) = ResidentLease::new();
         self.lease(digest.clone(), alive);
         let entry = self
             .entries
             .get_mut(&digest)
             .expect("the lease made the entry");
-        // A service that has just ended, before its owner reported it, is
+        // A resident that has just ended, before its owner reported it, is
         // one to start again.
         if let Some(current) = &entry.current
             && !matches!(&*current.state.borrow(), State::Ended(_))
@@ -627,7 +627,7 @@ impl Owner {
     }
 
     /// Decides about a digest whose leases changed: a start nothing waits
-    /// for any longer stops, and a running service without leases is asked
+    /// for any longer stops, and a running resident without leases is asked
     /// what it holds.
     fn consider(&mut self, digest: &str) {
         let Some(entry) = self.entries.get_mut(digest) else {
@@ -647,12 +647,12 @@ impl Owner {
         };
         let Some(client) = client else {
             tracing::info!(
-                event = "service.state_changed",
-                service = current.id.as_str(),
+                event = "resident.state_changed",
+                resident = current.id.as_str(),
                 from = "starting",
                 to = "stopped",
                 cause = "not_needed",
-                "a service is no longer needed and its start stops"
+                "a resident is no longer needed and its start stops"
             );
             current.stop.cancel();
             self.entries.remove(digest);
@@ -689,7 +689,7 @@ impl Owner {
         if entry.leases > 0 {
             return;
         }
-        // Leases came and went while the service answered: what it holds
+        // Leases came and went while the resident answered: what it holds
         // may have changed since.
         if entry.changes != checked.changes {
             self.consider(&checked.digest);
@@ -699,33 +699,33 @@ impl Owner {
             Ok(true) => {}
             Ok(false) => {
                 tracing::info!(
-                    event = "service.state_changed",
-                    service = current.id.as_str(),
+                    event = "resident.state_changed",
+                    resident = current.id.as_str(),
                     from = "ready",
                     to = "stopped",
                     cause = "no_lease_no_conversation",
-                    "a service holds no lease or conversation and stops"
+                    "a resident holds no lease or conversation and stops"
                 );
                 current.stop.cancel();
                 self.entries.remove(&checked.digest);
             }
-            // A service that cannot say what it holds is not one that holds
+            // A resident that cannot say what it holds is not one that holds
             // nothing: stopping it would end every conversation it serves.
             Err(error) => {
                 tracing::warn!(
-                    event = "service.state_changed",
-                    service = current.id.as_str(),
+                    event = "resident.state_changed",
+                    resident = current.id.as_str(),
                     from = "ready",
                     to = "ready",
                     cause = "holds_unknown",
                     %error,
-                    "a service did not say which conversations it holds, so it stays"
+                    "a resident did not say which conversations it holds, so it stays"
                 );
             }
         }
     }
 
-    /// A service ended by itself or after it was stopped.
+    /// A resident ended by itself or after it was stopped.
     fn ended(&mut self, digest: &str, generation: u64) {
         let Some(entry) = self.entries.get_mut(digest) else {
             return;
@@ -743,7 +743,7 @@ impl Owner {
     }
 
     fn release(&mut self, conversation: String, reply: oneshot::Sender<Result<(), String>>) {
-        // A release never starts a service (`crates/backend-user-shard/src/lifecycle/conversations.rs`): only running ones hold conversations.
+        // A release never starts a resident (`crates/backend-user-shard/src/lifecycle/conversations.rs`): only running ones hold conversations.
         let running: Vec<_> = self
             .entries
             .iter()
@@ -798,7 +798,7 @@ impl Owner {
                 errors,
                 reply,
             } => {
-                // Failed cleanup retires the faulty service before the
+                // Failed cleanup retires the faulty resident before the
                 // release is answered (`crates/command-protocol/src/conversation.rs`).
                 let ending = self.retire_where(|digest, current| {
                     failed.contains(&(digest.to_owned(), current.generation))
@@ -820,7 +820,7 @@ impl Owner {
             Work::Retired { result, reply } => {
                 // The caller may have gone; the release happened regardless.
                 let _gone = reply.send(result);
-                // A released conversation may leave a service holding none,
+                // A released conversation may leave a resident holding none,
                 // and an answer about what it holds that was given before the
                 // release ended may still name the conversation: the release
                 // is a change, after which such an answer is asked again.
@@ -838,9 +838,9 @@ impl Owner {
         }
     }
 
-    /// Stops the current services `selected` picks by digest and service
+    /// Stops the current residents `selected` picks by digest and resident
     /// and returns what to watch for their ends. Their leases stay: the next
-    /// caller starts a new service.
+    /// caller starts a new resident.
     fn retire_where(
         &mut self,
         selected: impl Fn(&str, &Current) -> bool,
@@ -862,7 +862,7 @@ impl Owner {
     }
 }
 
-/// What a service starts from: its executable and descriptor, where the
+/// What a resident starts from: its executable and descriptor, where the
 /// executable comes from, the invocations its program's artifacts are
 /// located for, where its requests to the backend go, and its working
 /// directory and environment.
@@ -871,13 +871,13 @@ struct Start<'a> {
     descriptor: &'a PackageDescriptor,
     invocations: Invocations,
     resolver: Arc<dyn ArtifactResolver>,
-    backend: Arc<dyn ServiceBackend>,
+    backend: Arc<dyn ResidentBackend>,
     cwd: &'a std::path::Path,
     env: &'a BTreeMap<String, String>,
 }
 
-/// One service's life: install its executable, start it, publish it ready,
-/// and publish how it ended. The executable is held while the service
+/// One resident's life: install its executable, start it, publish it ready,
+/// and publish how it ended. The executable is held while the resident
 /// lives, so no newer version of the package removes it.
 async fn live(
     cache: &Arc<ArtifactCache>,
@@ -907,13 +907,13 @@ async fn live(
         let executable = cache.install(&wanted, start.resolver, &progress, &stop).await;
         state.send_replace(State::Starting(None));
         let executable = executable?;
-        let artifacts = Arc::new(ServiceArtifacts {
+        let artifacts = Arc::new(ResidentArtifacts {
             cache: cache.clone(),
             package: descriptor.id.clone(),
             invocations: start.invocations,
             held: std::sync::Mutex::default(),
         });
-        ResidentService::start(
+        ResidentProcess::start(
             &executable,
             descriptor,
             start.cwd,
@@ -925,18 +925,18 @@ async fn live(
         .await
     }
     .await;
-    let service = match started {
-        Ok(service) => service,
+    let resident = match started {
+        Ok(resident) => resident,
         Err(error) => {
             if !matches!(error, RuntimeError::Cancelled) {
                 tracing::warn!(
-                    event = "service.state_changed",
-                    service = descriptor.id.as_str(),
+                    event = "resident.state_changed",
+                    resident = descriptor.id.as_str(),
                     from = "starting",
                     to = "failed",
                     ms = began.elapsed().as_millis() as u64,
                     %error,
-                    "a service did not start"
+                    "a resident did not start"
                 );
             }
             state.send_replace(State::Ended(Arc::new(error)));
@@ -944,48 +944,48 @@ async fn live(
         }
     };
     tracing::info!(
-        event = "service.state_changed",
-        service = descriptor.id.as_str(),
+        event = "resident.state_changed",
+        resident = descriptor.id.as_str(),
         from = "starting",
         to = "ready",
         ms = began.elapsed().as_millis() as u64,
-        pid = service.pid(),
-        "a service started"
+        pid = resident.pid(),
+        "a resident started"
     );
     let ready = std::time::Instant::now();
     state.send_replace(State::Ready {
-        client: service.client().clone(),
-        info: Arc::new(service.info().clone()),
+        client: resident.client().clone(),
+        info: Arc::new(resident.info().clone()),
     });
-    let ended = service.ended().await;
+    let ended = resident.ended().await;
     let Some(reason) = ended.reason else {
-        // A service asked to stop released its conversations first.
+        // A resident asked to stop released its conversations first.
         tracing::info!(
-            event = "service.state_changed",
-            service = descriptor.id.as_str(),
+            event = "resident.state_changed",
+            resident = descriptor.id.as_str(),
             from = "ready",
             to = "stopped",
             cause = "asked",
             ms = ready.elapsed().as_millis() as u64,
-            "a service stopped"
+            "a resident stopped"
         );
         state.send_replace(State::Ended(Arc::new(RuntimeError::Stopped)));
         return;
     };
-    let exit = crate::ServiceExit {
-        service: descriptor.id.clone(),
+    let exit = crate::ResidentExit {
+        resident: descriptor.id.clone(),
         reason,
         stderr: ended.stderr,
     };
     // Its standard error is in the log already, line by line.
     tracing::warn!(
-        event = "service.state_changed",
-        service = exit.service.as_str(),
+        event = "resident.state_changed",
+        resident = exit.resident.as_str(),
         from = "ready",
         to = "exited",
         ms = ready.elapsed().as_millis() as u64,
         reason = %exit.reason,
-        "a service ended by itself"
+        "a resident ended by itself"
     );
     state.send_replace(State::Ended(Arc::new(exit.into())));
     // What it kept for its conversations went with it, unsaid
@@ -993,7 +993,7 @@ async fn live(
     start.backend.lost(descriptor.id.clone()).await;
 }
 
-/// Whether the service holds any conversation (`crates/command-protocol/src/conversation.rs`).
+/// Whether the resident holds any conversation (`crates/command-protocol/src/conversation.rs`).
 async fn status(client: &Client) -> Result<bool, String> {
     let answer = tokio::time::timeout(
         STATUS_TIMEOUT,

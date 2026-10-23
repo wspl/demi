@@ -29,7 +29,7 @@ pub enum PanelReason {
     DriverError,
     DeviceLost,
     Cancelled,
-    /// The package's service did not start on the Host.
+    /// The package's resident did not start on the Host.
     MobileUnavailable,
     // The view's notices.
     CaptureFailed,

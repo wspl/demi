@@ -433,7 +433,7 @@ impl ControlService {
         .await
     }
 
-    /// The owner's conversations a Host is to hold services for: those not
+    /// The owner's conversations a Host is to hold residents for: those not
     /// archived whose target resolves to `device`, or that `device` is
     /// attached to. A target that cannot be resolved holds nothing.
     pub async fn conversations_on(

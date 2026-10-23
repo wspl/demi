@@ -95,7 +95,7 @@ pub enum Request {
         tab: PanelTab,
     },
     /// The command package the plugin's commands bind said `message` about
-    /// `conversation`, from a service on one of the conversation's Hosts.
+    /// `conversation`, from a resident on one of the conversation's Hosts.
     ///
     /// The package says the whole of its state the moment it changes, and
     /// again whenever a runner's connection starts: the plugin never asks a Host.
@@ -109,7 +109,7 @@ pub enum Request {
         message: Value,
     },
     /// What the plugin's command package kept for `conversation` on a Host
-    /// ended without the package saying so: its service crashed, its runner
+    /// ended without the package saying so: its resident crashed, its runner
     /// started anew or its Cloud stopped.
     PackageLost {
         user: UserId,

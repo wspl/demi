@@ -11,7 +11,7 @@
 //!   ([`Kept`]) holds the simulators Demi booted and the open devices with
 //!   their conversations and handles.
 //! - A conversation's devices are taken back when it first reaches the
-//!   service, each under its handle, while it is *resuming*: listed as open,
+//!   resident, each under its handle, while it is *resuming*: listed as open,
 //!   its tab saying it reconnects, and a command on it waiting, as long as
 //!   its caller does. The take-back waits for a simulator to finish booting,
 //!   and tries again while the Host cannot say whether the simulator is there
@@ -22,7 +22,7 @@
 //!   device.
 //! - A conversation whose devices the record holds but which is no longer on
 //!   this Host, as one deleted while the Host was offline, is released as
-//!   the service starts.
+//!   the resident starts.
 //!
 //! One owner changes the registry: opening and closing take turns on one lock,
 //! so a device is never opened twice nor closed while it opens. The plugin
@@ -44,7 +44,7 @@ use demi_command_package_mobile_protocol::mobile::{
     DeviceId, DevicesChange, ListResult, MobileMessage, MobilePlatform, PowerState,
     Simulator, Unavailable,
 };
-use demi_command_protocol::ServiceSequence;
+use demi_command_protocol::ResidentSequence;
 use demi_command_sdk::{Messages, Numbers};
 use demi_live_view_protocol::{LiveActivity, LivePoint};
 use demi_shared_recording::Live;
@@ -300,7 +300,7 @@ impl Closing {
     }
 }
 
-/// A device of this service whose connection is being made, for the first
+/// A device of this resident whose connection is being made, for the first
 /// time or again: it is listed as open under its handle, and its tab says it
 /// reconnects.
 struct Resuming {
@@ -315,9 +315,9 @@ struct Resuming {
 struct State {
     /// By the simulator's native id.
     open: HashMap<String, Arc<OpenDevice>>,
-    /// The devices this service holds without a connection, by native id.
+    /// The devices this resident holds without a connection, by native id.
     resuming: HashMap<String, Resuming>,
-    /// The conversations that reached this service, whose recorded devices
+    /// The conversations that reached this resident, whose recorded devices
     /// it took back then.
     served: HashSet<String>,
 }
@@ -347,7 +347,7 @@ pub struct Devices {
     /// views follow that device's own changes.
     revision: watch::Sender<u64>,
     tasks: TaskTracker,
-    /// Cancelled once the service closes: its tasks end.
+    /// Cancelled once the resident closes: its tasks end.
     stopping: CancellationToken,
     /// The simulators Demi booted and the open devices, across the
     /// programs' ends.
@@ -387,7 +387,7 @@ impl Devices {
 
     /// Releases what the record holds for the conversations that are no
     /// longer on this Host, which no release reached: the Host was offline
-    /// when they ended, or no service ran. A simulator Demi booted for one
+    /// when they ended, or no resident ran. A simulator Demi booted for one
     /// shuts down, as its conversation's release shuts it down.
     async fn sweep(self: Arc<Self>) {
         for device in self.kept.forget_where_gone(|conversation| (self.exists)(conversation)) {
@@ -424,7 +424,7 @@ impl Devices {
         }
     }
 
-    /// `conversation` reached this service: the devices the record holds for
+    /// `conversation` reached this resident: the devices the record holds for
     /// it are each listed as open at once and taken back under its handle by
     /// a task of its own. Only the first reach of a conversation does it.
     pub fn reached(self: &Arc<Self>, conversation: &str) {
@@ -434,7 +434,7 @@ impl Devices {
     }
 
     /// The record's devices of `conversation` when it first reaches the
-    /// service, as resuming ones.
+    /// resident, as resuming ones.
     fn claim(&self, conversation: &str) -> Vec<Opened> {
         let mut state = self.state.lock().expect("the registry is intact");
         if !state.served.insert(conversation.to_owned()) {
@@ -478,7 +478,7 @@ impl Devices {
     /// to finish booting, and tries again, with growing waits, while the
     /// Host cannot say whether the simulator is there or the device cannot
     /// be attached. Only a simulator that is not there, or is shut down,
-    /// closes the device as lost, and a close, a release or the service's
+    /// closes the device as lost, and a close, a release or the resident's
     /// end stops the task.
     ///
     /// Boxed, since taking a device back starts the task that takes it back
@@ -527,7 +527,7 @@ impl Devices {
         }
     }
 
-    /// Waits `wait`; answers false once the service ends.
+    /// Waits `wait`; answers false once the resident ends.
     async fn pause(&self, wait: Duration) -> bool {
         tokio::select! {
             () = tokio::time::sleep(wait) => true,
@@ -613,7 +613,7 @@ impl Devices {
         self.changed(&entry.conversation);
     }
 
-    /// Closes a device of this service that has no connection: removes it
+    /// Closes a device of this resident that has no connection: removes it
     /// from the registry and the record, and shuts its simulator down when
     /// Demi booted it, as the close of a connected one does.
     async fn end_resuming(self: &Arc<Self>, entry: &Opened, why: Closing) -> Ended {
@@ -653,7 +653,7 @@ impl Devices {
     }
 
     /// Waits until `settled` holds of the registry, or `cancel` or the
-    /// service's end says stop, or [`RESUME_WAIT`] has passed.
+    /// resident's end says stop, or [`RESUME_WAIT`] has passed.
     async fn wait_until<T>(
         &self,
         cancel: &CancellationToken,
@@ -722,7 +722,7 @@ impl Devices {
         devices
     }
 
-    /// `conversation`'s device `handle`. One this service is taking back
+    /// `conversation`'s device `handle`. One this resident is taking back
     /// is waited for, for [`RESUME_WAIT`] at most and not past `cancel`;
     /// the take-back goes on whatever becomes of the wait.
     pub async fn get(
@@ -876,7 +876,7 @@ impl Devices {
             .numbers
             .get()
             .ok_or_else(|| MobileError::Failed("the numbers stream is not open".into()))?;
-        let number = match numbers.draw(conversation, ServiceSequence::Device, 1).await {
+        let number = match numbers.draw(conversation, ResidentSequence::Device, 1).await {
             Ok(number) => number,
             Err(error) => {
                 let failure = self.let_go(&driver, &device, &simulator.native_id, booted).await;
@@ -932,7 +932,7 @@ impl Devices {
     }
 
     /// Closes every device of `conversation`: its release. The conversation
-    /// need not have reached the service before: what the record holds for
+    /// need not have reached the resident before: what the record holds for
     /// it is released too.
     pub async fn release(self: &Arc<Self>, conversation: &str) {
         // Not resumed: the devices it claims are only to be closed.
@@ -954,7 +954,7 @@ impl Devices {
         }
     }
 
-    /// Lets every device go as the service ends, shutting none down and
+    /// Lets every device go as the resident ends, shutting none down and
     /// forgetting none: the next program takes them back.
     pub async fn close_all(self: &Arc<Self>) {
         let open: Vec<Arc<OpenDevice>> = self.state.lock().expect("the registry is intact").open.values().cloned().collect();
@@ -1035,14 +1035,14 @@ impl Devices {
                 failure: None,
             };
         }
-        // The device is gone for its views, unless the service ends, which
+        // The device is gone for its views, unless the resident ends, which
         // they reconnect to.
         if why != Closing::Ending {
             open.gone.cancel();
         }
         open.closed.cancel();
         // The recording ends with every frame it holds kept, before the device
-        // is let go and the service may end.
+        // is let go and the resident may end.
         let reason = match why {
             Closing::Ending => EndReason::Interrupted,
             _ => EndReason::Closed,
@@ -1060,7 +1060,7 @@ impl Devices {
             }
         }
         let driver = self.driver(open.platform);
-        // A service that ends forgets nothing: the next one takes the device
+        // A resident that ends forgets nothing: the next one takes the device
         // back.
         if why != Closing::Ending {
             self.kept.closed(&open.native_id);
@@ -1247,7 +1247,7 @@ impl Announcer {
         .expect("the message serializes");
         tasks.spawn(async move {
             stopping.run_until_cancelled(async move {
-            // A service whose runner never opens the messages stream, as in
+            // A resident whose runner never opens the messages stream, as in
             // a test without a plugin, has nobody to tell.
             let messages = loop {
                 if let Some(messages) = messages.get() {
@@ -1265,7 +1265,7 @@ impl Announcer {
                     continue;
                 };
                 if let Err(error) = messages.send(&conversation, message.clone()).await {
-                    // The stream ends with the service; nobody is left to tell.
+                    // The stream ends with the resident; nobody is left to tell.
                     tracing::warn!(event = "mobile_plugin.announce_failed", %conversation, %error, "the plugin was not told of a conversation's devices");
                     return;
                 }

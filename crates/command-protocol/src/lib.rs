@@ -3,15 +3,15 @@
 //!
 //! ```text
 //! Backend --- job + pinned manifest (MessagePack/WebSocket) ---> Runner
-//! Runner  --- native invocation (HTTP/2 over stdio) ---> command service
+//! Runner  --- native invocation (HTTP/2 over stdio) ---> command resident
 //! ```
 //!
-//! The runner is the HTTP/2 client and the service its server, over the child's
-//! standard input and output: no port, TLS, HTTP/1 upgrade or gRPC. The service
+//! The runner is the HTTP/2 client and the resident its server, over the child's
+//! standard input and output: no port, TLS, HTTP/1 upgrade or gRPC. The resident
 //! is resident and serves many calls, one stream per invocation, so an
 //! algorithm ships and releases without the runner.
 //!
-//! A native service never receives a raw command line. The runner's dispatcher
+//! A resident never receives a raw command line. The runner's dispatcher
 //! validates the context, parses the input and sends a validated operation,
 //! whether the call came from a brush builtin or an external client. `rpc`
 //! leaves go to the backend instead.
@@ -26,7 +26,7 @@
 //! - Exactly one completion record ends a handled invocation, and nothing
 //!   follows it. A response without one is a failure even after HTTP 200. The
 //!   HTTP status only reports a rejection before execution (invalid metadata,
-//!   an unknown operation, a service shutting down), never how many calls run.
+//!   an unknown operation, a resident shutting down), never how many calls run.
 //!   Once execution starts, failure is the completion, and the output carries
 //!   any partial result.
 //! - Input is demand-driven: the caller sends exactly one chunk per input pull
@@ -37,11 +37,11 @@
 //!   `RST_STREAM(NO_ERROR)`, and what the caller sends afterwards is dropped,
 //!   not an error. A conversation request therefore carries its metadata with
 //!   END_STREAM: a caller that sent it in a second step could find the request
-//!   already reset, and a release the service answered would look failed, which
-//!   retires the service.
+//!   already reset, and a release the resident answered would look failed, which
+//!   retires the resident.
 //! - A medium is a medium record then its bytes, with no other record between.
 //!   Sizes that do not add up, bytes without a medium and a medium over
-//!   [`MAX_MEDIUM_BYTES`] break the protocol. The service neither routes nor
+//!   [`MAX_MEDIUM_BYTES`] break the protocol. The resident neither routes nor
 //!   keeps media: the runner hands each to the invocation's job.
 //! - The wire's own values are decoded and validated where they enter, and
 //!   sizes are checked while decoding, before any allocation of that size.
@@ -81,10 +81,10 @@ pub use invocation::{
 pub use line_counts::line_counts;
 pub use media::{MAX_MEDIUM_BYTES, MediumFacts, is_binary, sniff_media_type};
 pub use messages::{MessageAnswer, PluginMessage};
-pub use numbers::{NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
+pub use numbers::{NumbersAnswer, NumbersRequest, ResidentSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
-    ServiceInfo, TARGETS, VERSION, canonical_digest, digest,
+    ResidentInfo, TARGETS, VERSION, canonical_digest, digest,
     host_target, is_digest, is_target, target, target_artifact, target_artifacts,
 };
 
@@ -94,7 +94,7 @@ pub const MAX_METADATA_BYTES: usize = 256 * 1024;
 /// The most bytes of one response record's payload or one input chunk: the
 /// protocol's framing, which every reader allocates a record's length for.
 pub const MAX_RECORD_BYTES: usize = 64 * 1024;
-/// The longest line of a service's standard error that stays whole: the
+/// The longest line of a resident's standard error that stays whole: the
 /// runner reads the stream line by line for the Host's log, and continues a
 /// longer line on the next, which breaks a line of the log in two.
 pub const STDERR_LINE_BYTES: usize = 4096;
@@ -113,10 +113,10 @@ pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'sta
     fn validate(&self) -> Result<(), ProtocolError>;
     fn operation(&self) -> &str;
 
-    /// The invocation's ID, which a service's log lines name it by.
+    /// The invocation's ID, which a resident's log lines name it by.
     fn invocation_id(&self) -> &str;
 
-    /// The conversation the invocation serves, which a service's log lines
+    /// The conversation the invocation serves, which a resident's log lines
     /// name; none for a local caller, which names only its execution context.
     fn conversation(&self) -> Option<&str>;
 

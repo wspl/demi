@@ -9,7 +9,7 @@
 //! - the steps that may hold up the control thread, and its watch;
 //! - the local command client, and the job shell contract.
 //!
-//! The crate knows nothing of the backend connection, jobs, commands, services
+//! The crate knows nothing of the backend connection, jobs, commands, residents
 //! or the shell that implements the job shell contract.
 
 pub mod backend;

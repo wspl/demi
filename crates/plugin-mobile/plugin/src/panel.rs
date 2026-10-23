@@ -4,8 +4,8 @@
 //! - A tab is added when the agent opens the device.
 //! - A tab is removed when the device closes or is lost, that is, when the
 //!   Host no longer lists it as open. A
-//!   service that starts again, an update or a stopped Host loses no tab: the
-//!   Host's service takes its devices back under their handles, and a stopped
+//!   resident that starts again, an update or a stopped Host loses no tab: the
+//!   Host's resident takes its devices back under their handles, and a stopped
 //!   Host's tabs stay as they were until it lists them again.
 //! - Closing a tab closes its device, as `demi mobile close` does.
 //! - A device the agent opens on an attached Host has no tab: the panel shows

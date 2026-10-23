@@ -10,7 +10,7 @@
 //!
 //! - A content pipe: one finite thing (a file, kept output, edit copies,
 //!   media), sent as the body of `PUT /api/pipes/:id`.
-//! - A stream pipe: bytes that must arrive as they are written (a service
+//! - A stream pipe: bytes that must arrive as they are written (a resident
 //!   stream's output, a job's input and output passed on while it runs), sent
 //!   over a WebSocket at the same path.
 //!

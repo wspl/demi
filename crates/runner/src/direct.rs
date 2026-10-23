@@ -5,7 +5,7 @@
 //! The runner carries out each channel's operation as it carries out the
 //! backend's request for the same thing (`demi_runner_host`), with the same
 //! functions, limits, atomic writes and file watches. It opens a `stream` as a
-//! `service_open`, with a `user` caller in the conversation the header names.
+//! `resident_open`, with a `user` caller in the conversation the header names.
 //!
 //! It tells the backend each stream's opening (`direct_stream`), before the
 //! stream asks the backend for its artifacts as a stream the backend opened
@@ -45,7 +45,7 @@ use demi_runner_protocol::{
         DirectoryEntry, Effect, FileWatchMessage, FileWatchRequest, FsFailure, PageSubscriptions,
         Subject, protected_path,
     },
-    wire::{self, FsResult, Inbound, Outbound, ServiceErrorCode},
+    wire::{self, FsResult, Inbound, Outbound, ResidentErrorCode},
 };
 use futures_util::{StreamExt, future::BoxFuture};
 use tokio::{runtime::Handle, sync::mpsc};
@@ -56,7 +56,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 /// it without end.
 const STREAM_OUTPUT: usize = 4;
 
-/// The Host operations and service streams of one backend connection, which
+/// The Host operations and resident streams of one backend connection, which
 /// its peers' channels carry out. `Send` and `Sync`: the peers run on a
 /// thread of their own.
 pub struct HostOperations {
@@ -362,8 +362,8 @@ impl Operations for HostOperations {
                 Ok(Ok(())) => {}
                 Ok(Err(StreamRefusal::Refused { code, message })) => {
                     let code = match code {
-                        ServiceErrorCode::UnknownOperation => ChannelErrorCode::UnknownStream,
-                        ServiceErrorCode::ServiceFailed | ServiceErrorCode::Refused => {
+                        ResidentErrorCode::UnknownOperation => ChannelErrorCode::UnknownStream,
+                        ResidentErrorCode::ResidentFailed | ResidentErrorCode::Refused => {
                             ChannelErrorCode::StreamFailed
                         }
                     };

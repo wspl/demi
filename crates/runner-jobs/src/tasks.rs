@@ -42,7 +42,7 @@ use crate::{
 };
 use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, CommandContext, Viewable};
-use demi_runner_command_packages::ServiceHandle;
+use demi_runner_command_packages::ResidentHandle;
 use demi_runner_process::{
     job_shell::{JobCommands, JobShell, JobStart, ShellJob},
     pipes::{PipeClient, report_pipe},
@@ -109,7 +109,7 @@ pub struct Commands {
     /// How its commands reach the backend, whichever connection serves.
     pub connection: ConnectionHandle,
     pub paths: ContextPaths,
-    pub services: ServiceHandle,
+    pub residents: ResidentHandle,
     /// The local endpoint command clients reach.
     pub endpoint: String,
     /// The installation directory, `DEMI_HOME`.
@@ -429,7 +429,7 @@ impl JobConfig {
             )
             .await?,
         );
-        let leases = contexts::leases(&context.manifest, &commands.services).await;
+        let leases = contexts::leases(&context.manifest, &commands.residents).await;
         commands
             .connection
             .register_context(context.clone(), leases)

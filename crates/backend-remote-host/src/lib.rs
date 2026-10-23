@@ -4,7 +4,7 @@
 //!   routed by id, liveness, and the plumbing of the rpc calls a job's
 //!   declared commands make;
 //! - [`RemoteHost`], a Host over its device's connection, with job,
-//!   working-tree, network, log and service facets, whose file contents
+//!   working-tree, network, log and resident facets, whose file contents
 //!   travel through pipes, and its file watches ([`HostWatch`]), shared by
 //!   the pages that follow the same path;
 //! - pipe records ([`Pipes`]) and their `Send` ends;
@@ -55,7 +55,7 @@ pub use pipes::{
 pub use session::{Beginning, DeviceSession};
 pub use remote_host::{
     Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
-    ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity, host_paths,
+    ResidentCallError, ResidentEnd, ResidentRequest, ResidentStream, byte_stream, collect_pipe, host_identity, host_paths,
 };
 #[cfg(feature = "edge")]
 pub use runner_socket::{close_frame, socket_frame};

@@ -13,7 +13,7 @@ async fn main() {
     let result =
         demi_command_sdk::serve_stdio(Arc::new(demi_claude_code::DemiClaude::default())).await;
     if let Err(error) = result {
-        tracing::error!(event = "claude_code_service.exited", %error, "the service ended with an error");
+        tracing::error!(event = "claude_code_resident.exited", %error, "the resident ended with an error");
         std::process::exit(1);
     }
     // The executable owns synchronous Windows stdio workers; HTTP/2 has drained.

@@ -889,7 +889,7 @@ fn main() {
     // A root command's alias passes its arguments through untouched.
     let cli = (name == PROGRAM).then(<Cli as clap::Parser>::parse);
     // Shutdown leaves the runtimes' remaining threads to the process exit
-    // below; runner shutdown has joined its owned jobs and services already.
+    // below; runner shutdown has joined its owned jobs and residents already.
     let result = if let Some(cli) = cli {
         // The control thread's state belongs to one registration, so it runs
         // alone; shell jobs have a runtime of their own.

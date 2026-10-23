@@ -10,7 +10,7 @@ use demi_command_package_fetch_protocol::{
 };
 use demi_command_protocol::{CommandError, Completion, sniff_media_type};
 use demi_shared_types::thousands;
-use demi_command_sdk::{InvocationContext, ServiceError, errors::reason};
+use demi_command_sdk::{InvocationContext, ResidentError, errors::reason};
 use reqwest::{StatusCode, Url};
 
 use crate::{
@@ -44,7 +44,7 @@ enum FetchError {
     #[error("the file could not be saved: {}", reason(.0))]
     Save(std::io::Error),
     #[error(transparent)]
-    Output(#[from] ServiceError),
+    Output(#[from] ResidentError),
 }
 
 /// The completion of a fetch that failed with `message`.
@@ -58,11 +58,11 @@ pub fn failure(message: String) -> Completion {
     }
 }
 
-pub async fn get(context: InvocationContext, args: FetchArgs) -> Result<Completion, ServiceError> {
+pub async fn get(context: InvocationContext, args: FetchArgs) -> Result<Completion, ResidentError> {
     let cancellation = context.cancellation.clone();
     let deadline = Duration::from_millis(args.timeout_ms());
     let fetched = tokio::select! {
-        () = cancellation.cancelled() => return Err(ServiceError::Cancelled),
+        () = cancellation.cancelled() => return Err(ResidentError::Cancelled),
         fetched = tokio::time::timeout(deadline, fetch(&context, &args)) => fetched,
     };
     let result = match fetched {
@@ -140,11 +140,11 @@ async fn print_part(
         // The final URL came from the response, so it parses; a page kept
         // in the cache is one the fetch wrote.
         let url = Url::parse(&page.final_url).map_err(|error| {
-            ServiceError::Failed(format!("the page's URL does not parse: {error}").into())
+            ResidentError::Failed(format!("the page's URL does not parse: {error}").into())
         })?;
         tokio::task::spawn_blocking(move || markdown(&html, &url))
             .await
-            .map_err(|error| ServiceError::Failed(error.to_string().into()))?
+            .map_err(|error| ResidentError::Failed(error.to_string().into()))?
     } else {
         page.text
     };

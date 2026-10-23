@@ -1,14 +1,14 @@
 //! One invocation driven to its completion
-//! (`crates/command-protocol/src/lib.rs`): each input pull of the service is
-//! answered with one chunk from the caller's source, and the service's records
+//! (`crates/command-protocol/src/lib.rs`): each input pull of the resident is
+//! answered with one chunk from the caller's source, and the resident's records
 //! are sorted into standard output, standard error and the one completion.
 //!
-//! For example, a command client reads its terminal only when the service asks
+//! For example, a command client reads its terminal only when the resident asks
 //! for input, and writes what comes back to its own standard output and error.
 //! A user stream reads the page's pipe and uploads to another. Both are an
 //! [`Exchange`] with their own [`InputSource`] and [`OutputSink`].
 //!
-//! A medium the service returns reaches the sink whole.
+//! A medium the resident returns reaches the sink whole.
 
 use std::future::Future;
 
@@ -16,7 +16,7 @@ use bytes::{Bytes, BytesMut};
 use demi_command_protocol::{Completion, MediumFacts, ProtocolError, Record};
 use tokio::sync::mpsc;
 
-use crate::{CommandInput, CommandOutput, ServiceError};
+use crate::{CommandInput, CommandOutput, ResidentError};
 
 /// Where an invocation's input comes from.
 pub trait InputSource {
@@ -34,7 +34,7 @@ pub trait OutputSink {
 
     fn stderr(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), Self::Error>>;
 
-    /// A medium the service returned (`crates/runner-jobs/src/commands/command_output.rs`), whole,
+    /// A medium the resident returned (`crates/runner-jobs/src/commands/command_output.rs`), whole,
     /// with the facts its record gave.
     fn medium(
         &mut self,
@@ -46,8 +46,8 @@ pub trait OutputSink {
 /// Which side of an exchange failed.
 #[derive(Debug)]
 pub enum ExchangeError<I, O> {
-    /// The service, or the connection to it, failed or broke the protocol.
-    Service(ServiceError),
+    /// The resident, or the connection to it, failed or broke the protocol.
+    Resident(ResidentError),
     Input(I),
     Output(O),
 }
@@ -79,9 +79,9 @@ impl Exchange {
         let send = async {
             while demanded.recv().await.is_some() {
                 match source.next().await.map_err(ExchangeError::Input)? {
-                    Some(bytes) => input.write(bytes).await.map_err(ExchangeError::Service)?,
+                    Some(bytes) => input.write(bytes).await.map_err(ExchangeError::Resident)?,
                     None => {
-                        input.end().map_err(ExchangeError::Service)?;
+                        input.end().map_err(ExchangeError::Resident)?;
                         break;
                     }
                 }
@@ -94,7 +94,7 @@ impl Exchange {
             // The medium whose bytes are arriving: its size, its facts, and
             // its bytes so far.
             let mut medium: Option<(u64, MediumFacts, BytesMut)> = None;
-            while let Some(record) = output.next().await.map_err(ExchangeError::Service)? {
+            while let Some(record) = output.next().await.map_err(ExchangeError::Resident)? {
                 if medium.is_some() && !matches!(record, Record::MediumBytes(_)) {
                     return Err(broken("a medium's bytes are interleaved with another record"));
                 }
@@ -118,7 +118,7 @@ impl Exchange {
                         sink.stderr(bytes).await.map_err(ExchangeError::Output)?
                     }
                     Record::InputPull => pull.try_send(()).map_err(|_| {
-                        ExchangeError::Service(
+                        ExchangeError::Resident(
                             ProtocolError::Invalid("overlapping input demands".into()).into(),
                         )
                     })?,
@@ -133,7 +133,7 @@ impl Exchange {
                         .map_err(ExchangeError::Output)?;
                 }
             }
-            completion.ok_or(ExchangeError::Service(ProtocolError::Incomplete.into()))
+            completion.ok_or(ExchangeError::Resident(ProtocolError::Incomplete.into()))
         };
         let result = tokio::select! {
             result = receive => result,
@@ -146,16 +146,16 @@ impl Exchange {
     }
 }
 
-/// A service that broke the record protocol.
+/// A resident that broke the record protocol.
 fn broken<I, O>(reason: &str) -> ExchangeError<I, O> {
-    ExchangeError::Service(ProtocolError::Invalid(reason.into()).into())
+    ExchangeError::Resident(ProtocolError::Invalid(reason.into()).into())
 }
 
 /// The input of a local invocation, for a caller that forwards it.
 impl InputSource for crate::Input {
-    type Error = ServiceError;
+    type Error = ResidentError;
 
-    async fn next(&mut self) -> Result<Option<Bytes>, ServiceError> {
+    async fn next(&mut self) -> Result<Option<Bytes>, ResidentError> {
         crate::Input::next(self).await
     }
 }

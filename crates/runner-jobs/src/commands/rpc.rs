@@ -17,7 +17,7 @@ use crate::{
 };
 use bytes::Bytes;
 use demi_command_declarations::Parsed;
-use demi_command_sdk::{Input, ServiceError};
+use demi_command_sdk::{Input, ResidentError};
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::wire::{self, PipeRef};
 use futures_util::StreamExt;
@@ -106,7 +106,7 @@ pub async fn running_hint(
     connection: &ConnectionHandle,
     job_id: &str,
     hint: Option<&str>,
-) -> Result<Option<RunningHint>, ServiceError> {
+) -> Result<Option<RunningHint>, ResidentError> {
     let (Some(hint), Some(connection)) = (hint, connection.current()) else {
         return Ok(None);
     };
@@ -116,13 +116,13 @@ pub async fn running_hint(
         invocation_id: id.clone(),
         hint: Some(hint.into()),
     })
-    .map_err(ServiceError::failed)?;
+    .map_err(ResidentError::failed)?;
     let clear = wire::encode(&wire::Outbound::JobRunningHint {
         job_id: job_id.into(),
         invocation_id: id,
         hint: None,
     })
-    .map_err(ServiceError::failed)?;
+    .map_err(ResidentError::failed)?;
     let guard = RunningHint {
         clear: Some(clear),
         connection: connection.clone(),
@@ -130,7 +130,7 @@ pub async fn running_hint(
     connection
         .control
         .send(set)
-        .map_err(|_| ServiceError::Cancelled)?;
+        .map_err(|_| ResidentError::Cancelled)?;
     Ok(Some(guard))
 }
 
@@ -144,14 +144,14 @@ pub async fn invoke(
     input: Input,
     output: &mut CommandOutput<'_>,
     cancel: CancellationToken,
-) -> Result<u8, ServiceError> {
+) -> Result<u8, ResidentError> {
     let handle = request.context.connection.clone();
     tokio::select! {
         biased;
-        _ = request.context.cancel.cancelled() => return Err(ServiceError::Cancelled),
-        _ = cancel.cancelled() => return Err(ServiceError::Cancelled),
+        _ = request.context.cancel.cancelled() => return Err(ResidentError::Cancelled),
+        _ = cancel.cancelled() => return Err(ResidentError::Cancelled),
         connected = handle.connected() => connected
-            .map_err(|_| ServiceError::failed(io::Error::other(UNREACHABLE)))?,
+            .map_err(|_| ResidentError::failed(io::Error::other(UNREACHABLE)))?,
     };
     let lane = handle.lane().clone();
     let id = uuid::Uuid::new_v4().simple().to_string();
@@ -161,7 +161,7 @@ pub async fn invoke(
     if !handle
         .register_call(id.clone(), events, stop.clone())
     {
-        return Err(ServiceError::Cancelled);
+        return Err(ResidentError::Cancelled);
     }
     let mut pending = Pending {
         id: id.clone(),
@@ -181,7 +181,7 @@ pub async fn invoke(
         env: request.env.clone(),
         stdin: request.finite,
     })
-    .map_err(ServiceError::failed)?;
+    .map_err(ResidentError::failed)?;
     let result = async {
         lane.push(message);
         if !request.live {
@@ -198,8 +198,8 @@ pub async fn invoke(
     // carry its messages.
     let result = tokio::select! {
         biased;
-        _ = request.context.cancel.cancelled() => Err(ServiceError::Cancelled),
-        _ = stop.cancelled() => Err(ServiceError::Cancelled),
+        _ = request.context.cancel.cancelled() => Err(ResidentError::Cancelled),
+        _ = stop.cancelled() => Err(ResidentError::Cancelled),
         result = result => result,
     };
     pending.completed = result.is_ok();
@@ -213,7 +213,7 @@ async fn exchange(
     input: Input,
     output: &mut CommandOutput<'_>,
     transport: &CallTransport<'_>,
-) -> Result<u8, ServiceError> {
+) -> Result<u8, ResidentError> {
     let errors = output.errors();
     let &CallTransport {
         id,
@@ -232,42 +232,42 @@ async fn exchange(
                 CallEvent::Pipes { stdin, stdout } => {
                     let (stdin_sender, stdout_sender) = pipe_senders
                         .take()
-                        .ok_or_else(|| ServiceError::failed(RpcError::DuplicatePipes))?;
+                        .ok_or_else(|| ResidentError::failed(RpcError::DuplicatePipes))?;
                     if stdin.is_some() != request.finite {
-                        return Err(ServiceError::failed(RpcError::InputDisagrees));
+                        return Err(ResidentError::failed(RpcError::InputDisagrees));
                     }
                     stdin_sender
                         .send(stdin)
-                        .map_err(|_| ServiceError::Cancelled)?;
+                        .map_err(|_| ResidentError::Cancelled)?;
                     stdout_sender
                         .send(Some(stdout))
-                        .map_err(|_| ServiceError::Cancelled)?;
+                        .map_err(|_| ResidentError::Cancelled)?;
                 }
                 CallEvent::Stderr(bytes) => errors.stderr(bytes).await?,
                 CallEvent::Pull if request.live => pull
                     .try_send(())
-                    .map_err(|_| ServiceError::failed(RpcError::OverlappingDemands))?,
+                    .map_err(|_| ResidentError::failed(RpcError::OverlappingDemands))?,
                 CallEvent::Pull => connection.push(stdin_end(id)?),
                 CallEvent::Lost(reason) => {
-                    return Err(ServiceError::failed(io::Error::other(reason)));
+                    return Err(ResidentError::failed(io::Error::other(reason)));
                 }
                 CallEvent::Exit(code) => {
                     if let Some((stdin, stdout)) = pipe_senders.take() {
                         if code == 0 {
-                            return Err(ServiceError::failed(RpcError::SuccessBeforePipes));
+                            return Err(ResidentError::failed(RpcError::SuccessBeforePipes));
                         }
-                        stdin.send(None).map_err(|_| ServiceError::Cancelled)?;
-                        stdout.send(None).map_err(|_| ServiceError::Cancelled)?;
+                        stdin.send(None).map_err(|_| ResidentError::Cancelled)?;
+                        stdout.send(None).map_err(|_| ResidentError::Cancelled)?;
                     }
                     return Ok(code);
                 }
             }
         }
-        Err(ServiceError::Cancelled)
+        Err(ResidentError::Cancelled)
     };
     let download = async {
         let Some(reference): Option<PipeRef> =
-            stdout_receiver.await.map_err(|_| ServiceError::Cancelled)?
+            stdout_receiver.await.map_err(|_| ResidentError::Cancelled)?
         else {
             return Ok(());
         };
@@ -313,7 +313,7 @@ async fn download(
     stop: &CancellationToken,
     output: &mut CommandOutput<'_>,
     reference: &PipeRef,
-) -> Result<(), ServiceError> {
+) -> Result<(), ResidentError> {
     let mut unwritten = None;
     let result = async {
         let mut stream = pipes.resumed(&reference.url, stop.clone()).await?;
@@ -329,7 +329,7 @@ async fn download(
     .await;
     report(connection, reference, &result)?;
     match unwritten {
-        Some(error) => Err(ServiceError::failed(io::Error::other(error))),
+        Some(error) => Err(ResidentError::failed(io::Error::other(error))),
         None => Ok(()),
     }
 }
@@ -341,14 +341,14 @@ async fn send_input(
     mut demanded: mpsc::Receiver<()>,
     mut input: Input,
     transport: &CallTransport<'_>,
-) -> Result<(), ServiceError> {
+) -> Result<(), ResidentError> {
     let &CallTransport {
         id,
         output: connection,
         stop,
     } = transport;
     if live {
-        let _reference = reference.await.map_err(|_| ServiceError::Cancelled)?;
+        let _reference = reference.await.map_err(|_| ResidentError::Cancelled)?;
         while demanded.recv().await.is_some() {
             let message = match input.next().await? {
                 Some(bytes) => wire::encode(&wire::Outbound::RpcStdin {
@@ -360,12 +360,12 @@ async fn send_input(
                     return Ok(());
                 }
             }
-            .map_err(ServiceError::failed)?;
+            .map_err(ResidentError::failed)?;
             connection.push(message);
         }
         return Ok(());
     }
-    if let Some(reference) = reference.await.map_err(|_| ServiceError::Cancelled)? {
+    if let Some(reference) = reference.await.map_err(|_| ResidentError::Cancelled)? {
         let token = stop.clone();
         let body = futures_util::stream::unfold((input, token), |(mut input, stop)| async move {
             tokio::select! {
@@ -393,13 +393,13 @@ fn report(
     output: &wire::Lane,
     reference: &PipeRef,
     result: &io::Result<()>,
-) -> Result<(), ServiceError> {
+) -> Result<(), ResidentError> {
     let message = wire::encode(&wire::Outbound::PipeDone {
         pipe_id: reference.id.clone(),
         ok: result.is_ok(),
         error: result.as_ref().err().map(ToString::to_string),
     })
-    .map_err(ServiceError::failed)?;
+    .map_err(ResidentError::failed)?;
     output.push(message);
     Ok(())
 }
@@ -417,9 +417,9 @@ enum RpcError {
 }
 
 /// The frame that ends a call's standard input.
-fn stdin_end(call_id: &str) -> Result<wire::Frame, ServiceError> {
+fn stdin_end(call_id: &str) -> Result<wire::Frame, ResidentError> {
     wire::encode(&wire::Outbound::RpcStdinEnd {
         call_id: call_id.into(),
     })
-    .map_err(ServiceError::failed)
+    .map_err(ResidentError::failed)
 }

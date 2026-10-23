@@ -162,7 +162,7 @@ impl Plugin for Instance {
                     Ok(Reply::Done)
                 }
                 // What the package kept on a Host ended without its word, as
-                // when the runner restarted: the Host's service takes its open
+                // when the runner restarted: the Host's resident takes its open
                 // devices back, which listing them starts, and the tabs follow
                 // what it lists.
                 Request::PackageLost { conversation, .. } => {

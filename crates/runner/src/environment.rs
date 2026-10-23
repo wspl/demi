@@ -20,7 +20,7 @@
 //!   `DEMI_RELEASE_ID` to choose a release would otherwise read the runner's.
 //! - cmd keeps the per-drive entries, and no program may be given them back.
 //!
-//! The same environment reaches jobs, raw processes and resident services.
+//! The same environment reaches jobs, raw processes and residents.
 //! Runner-owned variables (the endpoint, the context handle, `DEMI_HOME`, the
 //! alias directory on `PATH`) override caller values.
 //!
