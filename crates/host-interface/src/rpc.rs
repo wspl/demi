@@ -188,15 +188,11 @@ pub enum PortRequest {
     ReadStdin {},
     /// The next interactive write to the calling job, until it ends.
     ReadLiveStdin {},
-    /// The call waits for the user's answer, until it ends or says it no
-    /// longer does: meanwhile its job's result carries `line` in place of
-    /// the next step a running command's result suggests
-    /// (`crates/agent-tools/src/result.rs`), and the job reports no
-    /// progress. None says it waits no longer.
-    AwaitsUser {
-        #[serde(deserialize_with = "Option::deserialize")]
-        line: Option<String>,
-    },
+    /// Whether the call waits for the user's answer, until it ends or says it
+    /// no longer does: meanwhile the shell call that runs its job does not
+    /// return and its window does not run (`crates/agent-tools/src/lib.rs`),
+    /// and the job reports no progress.
+    AwaitsUser { awaits: bool },
 }
 
 /// The reply to a [`PortRequest`].
@@ -260,13 +256,10 @@ impl RpcPort {
         )
     }
 
-    /// Says that the call waits for the user's answer, with `line` for the
-    /// model to read meanwhile, or none once it no longer does
+    /// Says whether the call waits for the user's answer
     /// ([`PortRequest::AwaitsUser`]).
-    pub async fn awaits_user(&self, line: Option<&str>) -> Result<(), PortError> {
-        let request = PortRequest::AwaitsUser {
-            line: line.map(str::to_owned),
-        };
+    pub async fn awaits_user(&self, awaits: bool) -> Result<(), PortError> {
+        let request = PortRequest::AwaitsUser { awaits };
         written(self.transport.request(request).await?, "awaits_user")
     }
 

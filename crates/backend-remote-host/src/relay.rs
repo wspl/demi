@@ -625,8 +625,8 @@ impl PortTransport for RelayPort {
                         .await?
                         .map(B64Bytes::new),
                 }),
-                PortRequest::AwaitsUser { line } => {
-                    self.await_user(line);
+                PortRequest::AwaitsUser { awaits } => {
+                    self.await_user(awaits);
                     Ok(PortResponse::Written {})
                 }
             }
@@ -635,22 +635,21 @@ impl PortTransport for RelayPort {
 }
 
 impl RelayPort {
-    /// Says that the call waits for the user's answer, its line beside the
-    /// lines its runner registered under a key of the call's own, or that
-    /// it no longer does.
-    fn await_user(&self, line: Option<String>) {
+    /// Says whether the call waits for the user's answer, under a key of the
+    /// call's own.
+    fn await_user(&self, awaits: bool) {
         let key = format!("call:{}", self.call_id);
         // A job the device no longer holds has ended, and its wait with it.
         let _ = self
             .link
             .device_jobs()
-            .with(&self.entry.job_id, |job| job.shared.await_user(key, line));
+            .with(&self.entry.job_id, |job| job.shared.await_user(key, awaits));
     }
 }
 
 impl Drop for RelayPort {
     /// The call ended, however it ended: it waits no longer.
     fn drop(&mut self) {
-        self.await_user(None);
+        self.await_user(false);
     }
 }

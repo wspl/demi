@@ -218,12 +218,17 @@ impl SessionRuntime for TestRuntime {
         })
     }
 
-    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
-        self.commands
+    fn awaits_user<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Option<tokio::sync::watch::Receiver<bool>>> {
+        let awaits = self
+            .commands
             .awaits
             .borrow()
             .get(command)
-            .map(tokio::sync::watch::Sender::subscribe)
+            .map(tokio::sync::watch::Sender::subscribe);
+        Box::pin(std::future::ready(awaits))
     }
 
     /// The nth progress report, as having run n seconds, and the end once

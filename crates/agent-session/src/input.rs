@@ -25,7 +25,7 @@
 
 use std::collections::HashMap;
 
-use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer, Timestamp};
+use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, CommandReport, PendingSteer, Timestamp};
 
 use demi_agent_store::PendingAgentInput;
 
@@ -100,7 +100,9 @@ pub(super) struct InputQueue {
     /// causes no request.
     arrivals: u64,
     /// How many of them were agent messages and command reports, which end
-    /// a shell call's window (`crates/agent-tools/src/lib.rs`).
+    /// a shell call's window (`crates/agent-tools/src/lib.rs`), but for the
+    /// user's decisions on permission requests: a decision answers the call
+    /// that waited and is no news for any window.
     joining: u64,
     /// When each steer and agent message that came while the session ran was
     /// admitted, by its id, for the line that says how long it waited; one a
@@ -129,7 +131,8 @@ impl InputQueue {
     }
 
     pub(super) fn add(&mut self, input: Input) {
-        if !matches!(input, Input::Steer(_)) {
+        let decision = matches!(&input, Input::Agent(input) if matches!(input.message.event, AgentMessageEvent::Permission { .. }));
+        if !matches!(input, Input::Steer(_)) && !decision {
             self.joining += 1;
         }
         self.entries.push(input);

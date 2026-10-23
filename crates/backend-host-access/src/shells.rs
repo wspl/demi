@@ -610,7 +610,10 @@ impl ShellEnvironment for Registered {
         self.environment.outliving(command)
     }
 
-    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
+    fn awaits_user<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Option<tokio::sync::watch::Receiver<bool>>> {
         self.environment.awaits_user(command)
     }
 

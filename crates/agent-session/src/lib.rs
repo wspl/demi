@@ -1199,8 +1199,8 @@ impl AgentSession {
     /// Delivers a pending steer now: the running round is cut short
     /// without stopping anything, and the turn goes on with the steer. A
     /// steer that is no longer pending changes nothing.
-    pub fn steer_now(&self, id: &BlockId) {
-        self.shared.update(|core| core.steer_now(id));
+    pub fn steer_now(&self, id: &BlockId) -> bool {
+        self.shared.update(|core| core.steer_now(id))
     }
 
     /// Admits a message from another agent of the tree; it returns once the

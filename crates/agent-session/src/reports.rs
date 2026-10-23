@@ -240,7 +240,12 @@ async fn next_silence(runtime: &dyn SessionRuntime, command: &CommandId, silence
         let quiet = runtime.quiet(command).unwrap_or_default();
         let quiet = resumed.map_or(quiet, |at| quiet.min(at.elapsed()));
         let left = silence.saturating_sub(quiet);
-        let Some(mut awaits) = runtime.awaits_user(command) else {
+        // A job that has not started has not asked for anything.
+        let started = tokio::select! {
+            started = runtime.awaits_user(command) => started,
+            () = tokio::time::sleep(left) => return,
+        };
+        let Some(mut awaits) = started else {
             tokio::time::sleep(left).await;
             return;
         };

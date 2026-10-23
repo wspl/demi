@@ -246,9 +246,11 @@ impl<H: HostResolver> Connection<H> {
     /// delays the frames behind it. A failure is answered as a frame, never
     /// returned.
     ///
-    /// Answers whether the session took the message the frame carries: a `send`
-    /// it admitted or a `steer` it accepted, which the backend needs to know of
-    /// a message saved for later.
+    /// Answers whether the session took what the frame asks of it: a `send`
+    /// it admitted, a `steer` it accepted, a stop it carried out, an edit or a
+    /// retry it began. The backend needs to know it of a message saved for
+    /// later and of an action that denies the requests of the agent's calls
+    /// that wait for the user.
     pub async fn handle(&self, frame: ClientFrame) -> bool {
         let command = frame.kind();
         self.handle_as(frame, command).await
@@ -569,7 +571,7 @@ impl<H: HostResolver> Connection<H> {
     }
 
     /// Handles a frame of an attached connection; answers whether the
-    /// session took the message a `send` or `steer` carries.
+    /// session took what it asks ([`handle`](Self::handle)).
     async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame, kind: ClientFrameKind) -> bool {
         let session = tree.root().session();
         match frame {
@@ -633,7 +635,7 @@ impl<H: HostResolver> Connection<H> {
                 let at = Self::shown_at(tree, &session).await;
                 self.remove_result(steer_id.into_string(), removed, at);
             }
-            ClientFrame::SteerNow { steer_id } => session.steer_now(&steer_id),
+            ClientFrame::SteerNow { steer_id } => return session.steer_now(&steer_id),
             // The backend keeps the saved messages and hands the session
             // the `send` or `steer` a saved message becomes.
             ClientFrame::SendSaved { .. } => {
@@ -651,7 +653,7 @@ impl<H: HostResolver> Connection<H> {
                 self.remove_result(message_id.into_string(), removed, at);
             }
             ClientFrame::SendQueuedMessage { message_id } => {
-                session.send_queued_message(&message_id);
+                return session.send_queued_message(&message_id);
             }
             ClientFrame::ClearMessageQueue {} => {
                 session.clear_message_queue();
@@ -663,22 +665,31 @@ impl<H: HostResolver> Connection<H> {
                 // though started commands run on (`crates/backend-host-access/src/access.rs`).
                 tree.stop_waiting().await;
                 self.send(ServerFrame::AbortResult { result });
+                return true;
             }
             // The agents' entries show what these stopped.
-            ClientFrame::AbortSubagents {} => tree.abort_children_of(tree.root().id(), Stop::User).await,
+            ClientFrame::AbortSubagents {} => {
+                tree.abort_children_of(tree.root().id(), Stop::User).await;
+                return true;
+            }
             ClientFrame::AbortSubagent { subagent_id } => {
                 if tree.is_child_of(&subagent_id, tree.root().id()) {
                     tree.abort_child(&subagent_id, Stop::User).await;
+                    return true;
                 }
             }
             ClientFrame::Retry {} | ClientFrame::Resume {} => {
-                self.recover(session, kind).await;
+                return self.recover(session, kind).await;
             }
             // A subagent's context card compacts that child, the root's the root.
             ClientFrame::Compact { node } => match node {
-                None => self.recover(session, kind).await,
+                None => {
+                    self.recover(session, kind).await;
+                }
                 Some(id) => match tree.node(&id) {
-                    Some(node) => self.recover(node.session(), kind).await,
+                    Some(node) => {
+                        self.recover(node.session(), kind).await;
+                    }
                     None => self.reject(kind, agent_ended()),
                 },
             },
@@ -688,10 +699,12 @@ impl<H: HostResolver> Connection<H> {
                     Ok(turn_id) => EditOutcome::Accepted { turn_id },
                     Err(refusal) => EditOutcome::Rejected { refusal },
                 };
+                let accepted = matches!(outcome, EditOutcome::Accepted { .. });
                 self.send(ServerFrame::EditResult {
                     operation_id,
                     outcome,
                 });
+                return accepted;
             }
             ClientFrame::Regenerate { request } => {
                 let operation_id = request.operation_id.clone();
@@ -699,10 +712,12 @@ impl<H: HostResolver> Connection<H> {
                     Ok(turn_id) => EditOutcome::Accepted { turn_id },
                     Err(refusal) => EditOutcome::Rejected { refusal },
                 };
+                let accepted = matches!(outcome, EditOutcome::Accepted { .. });
                 self.send(ServerFrame::EditResult {
                     operation_id,
                     outcome,
                 });
+                return accepted;
             }
             // The switch's patches reach every connection, and the tree
             // tells which children it moved; only a refusal is this one's.
@@ -721,8 +736,9 @@ impl<H: HostResolver> Connection<H> {
                 }
             }
             ClientFrame::ShellAbort { command_id } => {
-                if let Err(error) = tree.shell_abort(&command_id).await {
-                    self.error(AgentCode::ShellStopFailed, error);
+                match tree.shell_abort(&command_id).await {
+                    Ok(()) => return true,
+                    Err(error) => self.error(AgentCode::ShellStopFailed, error),
                 }
             }
             ClientFrame::Open { .. }
@@ -739,10 +755,10 @@ impl<H: HostResolver> Connection<H> {
 impl<H: HostResolver> Connection<H> {
     /// Retries or resumes the root's session, or compacts a node's,
     /// refusing while it is busy; a resume carries `reason` to the model.
-    async fn recover(&self, session: &AgentSession, kind: ClientFrameKind) {
+    async fn recover(&self, session: &AgentSession, kind: ClientFrameKind) -> bool {
         if let Some(refusal) = busy(session) {
             self.reject(kind, refusal);
-            return;
+            return false;
         }
         // The user compacts only a context that is full enough. The estimate
         // may read media, during which an action can start, so the phase is
@@ -754,7 +770,7 @@ impl<H: HostResolver> Connection<H> {
                 .or_else(|| busy(session));
             if let Some(refusal) = refusal {
                 self.reject(kind, refusal);
-                return;
+                return false;
             }
         }
         let admitted = match kind {
@@ -762,8 +778,12 @@ impl<H: HostResolver> Connection<H> {
             ClientFrameKind::Resume => session.resume(None),
             _ => session.compact(),
         };
-        if let Err(error) = admitted {
-            self.reject(kind, error.refusal());
+        match admitted {
+            Ok(_) => true,
+            Err(error) => {
+                self.reject(kind, error.refusal());
+                false
+            }
         }
     }
 
