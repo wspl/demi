@@ -386,9 +386,6 @@ pub enum ErrorCode {
     UploadNotFound,
     /// Another live session's push subscription has that endpoint.
     PushEndpointTaken,
-    /// The draft's replaced version is not the one the request names any
-    /// more: a save or another page's action changed it.
-    DraftChanged,
     /// The conversation keeps as many messages saved for later as it may.
     SavedFull,
     /// The conversation has no message saved for later of that id.

@@ -1,10 +1,10 @@
 import type { ComposerAttachmentInput } from '@demicodes/web-ui/agent/message-input/attachments'
 
-/** A message saved for later that a specimen starts with: its text and its files, and whether the server did not save it. */
+/** A message saved for later that a specimen starts with: its text and its files, and whether the server has not taken it yet. */
 export interface SeedSaved {
   text: string
   files?: ComposerAttachmentInput[]
-  notSaved?: boolean
+  saving?: boolean
 }
 
 /** Two saved messages, the older with files. */
@@ -16,9 +16,9 @@ export const twoSaved: SeedSaved[] = [
   },
 ]
 
-/** Two saved messages under one the server did not save, as when the conversation kept 200 already. */
-export const notSavedOnTop: SeedSaved[] = [
-  { text: 'Then check whether the CDN still caches the old certificate.', notSaved: true },
+/** Two saved messages under one the server has not taken yet, as while a save is sent again. */
+export const savingOnTop: SeedSaved[] = [
+  { text: 'Then check whether the CDN still caches the old certificate.', saving: true },
   ...twoSaved,
 ]
 

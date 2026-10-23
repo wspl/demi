@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { t as shared } from '../locales/text'
-import { ArrowUp, Paperclip, Pencil, RotateCw, Trash2 } from '@lucide/vue'
+import { ArrowUp, Paperclip, Pencil, Trash2 } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import MenuItem from '../ui/MenuItem.vue'
@@ -20,12 +19,10 @@ import type { SavedRow } from './saved'
  * - It shows the message's first line and, when the message has files, their
  *   count, with no time.
  * - Pressing it edits the message.
+ * - A message the server has not taken yet reads Saving…, before the count.
  * - Edit, Send and Delete always stand at the row's end, where the row keeps
  *   their inset, the count before them. They are quiet, and take the normal
  *   icon color while the pointer or the focus is on the row.
- *
- * A message the server did not save reads Not Saved in secondary red, with
- * Retry in Send's place.
  */
 defineProps<{
   rows: SavedRow[]
@@ -35,14 +32,13 @@ defineProps<{
   onEdit?: Action<[id: string]>
   onSend?: Action<[id: string]>
   onDelete?: Action<[id: string]>
-  onRetry?: Action<[id: string]>
 }>()
 
 /**
- * Edit, Send, Retry and Delete of one saved message exclude each other
+ * Edit, Send and Delete of one saved message exclude each other
  * (`operations.ts`).
  */
-function onSaved(action: 'edit' | 'send' | 'retry' | 'delete', id: string) {
+function onSaved(action: 'edit' | 'send' | 'delete', id: string) {
   return { action, target: `saved:${id}`, group: 'saved' }
 }
 </script>
@@ -59,7 +55,7 @@ function onSaved(action: 'edit' | 'send' | 'retry' | 'delete', id: string) {
       >
         <span class="min-w-0 truncate">{{ row.preview }}</span>
         <template #actions>
-          <span v-if="row.state === 'notSaved'" class="mr-1 whitespace-nowrap text-on-danger">{{ t('composer.saved.notSaved') }}</span>
+          <span v-if="row.state === 'saving'" class="mr-1 whitespace-nowrap text-fg-subtle">{{ t('composer.saved.saving') }}</span>
           <span v-if="row.attachmentCount" class="mr-1 inline-flex items-center gap-0.5 whitespace-nowrap text-fg-subtle">
             <Paperclip :size="ICON_PX.in28" class="shrink-0" />
             {{ row.attachmentCount }}
@@ -74,17 +70,7 @@ function onSaved(action: 'edit' | 'send' | 'retry' | 'delete', id: string) {
               @click.stop="onEdit?.(row.id)"
             />
           </Tooltip>
-          <Tooltip v-if="row.state === 'notSaved'" :content="shared('common.retry')" class="inline-flex saved-action">
-            <IconButton
-              :icon="RotateCw"
-              variant="ghost"
-              size="xs"
-              :aria-label="shared('common.retry')"
-              :operation="onSaved('retry', row.id)"
-              @click.stop="onRetry?.(row.id)"
-            />
-          </Tooltip>
-          <Tooltip v-else :content="t('composer.saved.send')" class="inline-flex saved-action">
+          <Tooltip :content="t('composer.saved.send')" class="inline-flex saved-action">
             <IconButton
               :icon="ArrowUp"
               variant="ghost"

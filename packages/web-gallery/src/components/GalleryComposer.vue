@@ -88,8 +88,6 @@ const props = withDefaults(
     messageEdit?: MessageEditState | null
     /** The uploads this composer and its edits send files through; its own stand-in without one. */
     upload?: UploadFile
-    /** A version of the draft that a later save replaced, which the composer offers to restore. */
-    replaced?: string
     /** Plugins changed since the conversation opened: the composer offers a reload. */
     pluginsChanged?: boolean
     /**
@@ -147,24 +145,19 @@ const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
 /** The files the message has, in the order of its capsules; the rest wait for an undo. */
 const carried = ref<string[]>(attached.value.map((item) => item.id))
-/** A draft's text and files, as the replaced version keeps them. */
-interface DraftVersion {
-  text: string
-  files: ComposerAttachment[]
-}
-/** A message saved for later as the product's server keeps it: its text and its files, and whether the server did not save it. */
+/** A message saved for later as the product's server keeps it: its text and its files, and whether the server has not taken it yet. */
 interface SavedMessage {
   id: string
   markdown: string
   files: ComposerAttachment[]
-  notSaved: boolean
+  saving: boolean
 }
 const savedMessages = ref<SavedMessage[]>(
   (props.saved ?? []).map((seed) => ({
     id: createId(),
     markdown: seed.text,
     files: (seed.files ?? []).map((item) => composerAttachment(item)),
-    notSaved: seed.notSaved === true,
+    saving: seed.saving === true,
   })),
 )
 const savedOpen = ref(props.savedOpen === true)
@@ -176,12 +169,8 @@ const savedRows = computed<SavedRow[]>(() => savedMessages.value.map((saved) => 
   id: saved.id,
   preview: savedPreview(saved.markdown),
   attachmentCount: saved.files.length,
-  state: saved.notSaved ? 'notSaved' : 'saved',
+  state: saved.saving ? 'saving' : 'saved',
 })))
-/** The version a later save replaced, as the product's backend keeps it. */
-const replacedVersion = ref<DraftVersion | null>(
-  props.replaced ? { text: props.replaced, files: [] } : null,
-)
 /** Whether the reload is offered, and whether one is under way, as the product's summary and store hold them. */
 const pluginsChanged = ref(props.pluginsChanged === true)
 const reloading = ref(false)
@@ -393,7 +382,7 @@ function saveForLater() {
     forget(item.id, true)
   }
   savedMessages.value = [
-    { id: createId(), markdown: draft.value, files, notSaved: false },
+    { id: createId(), markdown: draft.value, files, saving: false },
     ...savedMessages.value,
   ]
   draft.value = ''
@@ -496,7 +485,7 @@ function saveSavedEdit() {
     return
   }
   const edited = editedMessage(saved, open.content)
-  savedMessages.value = savedMessages.value.map((each) => each.id === open.savedId ? { ...each, ...edited, notSaved: false } : each)
+  savedMessages.value = savedMessages.value.map((each) => each.id === open.savedId ? { ...each, ...edited, saving: false } : each)
   savedEdit.value = null
 }
 
@@ -534,12 +523,6 @@ function sendSaved(id: string, way: SendWay) {
   }
 }
 
-/** Retry on a message the server did not save: here it is saved at once, and a toast names what the product would do. */
-function retrySaved(id: string) {
-  savedMessages.value = savedMessages.value.map((each) => each.id === id ? { ...each, notSaved: false } : each)
-  productWould('Save the Message Again')
-}
-
 /** Removes a saved message at once, with Undo in a toast that saves it again, the newest on the list, as the product's does. */
 function deleteSaved(id: string) {
   const taken = takeSaved(id)
@@ -552,7 +535,7 @@ function deleteSaved(id: string) {
     action: {
       label: 'Undo',
       run: () => {
-        savedMessages.value = [{ ...taken.saved, id: createId(), notSaved: false }, ...savedMessages.value]
+        savedMessages.value = [{ ...taken.saved, id: createId(), saving: false }, ...savedMessages.value]
       },
     },
   })
@@ -756,29 +739,6 @@ function attachRemote(file: { host: string; path: string }) {
   attached.value.push(item)
   composer.value?.insertCapsules([composerCapsule(item)])
 }
-/**
- * Exchanges the replaced version with the draft, as the product's restore
- * does: the draft it displaces is offered in its place, unless it is empty,
- * and what the composer held for an undo goes.
- */
-function restoreReplaced() {
-  const restored = replacedVersion.value
-  if (!restored) {
-    return
-  }
-  const displaced: DraftVersion = {
-    text: draft.value,
-    files: carried.value.flatMap((id) => attached.value.filter((item) => item.id === id)),
-  }
-  for (const item of attached.value.filter((file) => !carried.value.includes(file.id))) {
-    forget(item.id, true)
-  }
-  replacedVersion.value = displaced.text.trim() || displaced.files.length ? displaced : null
-  attached.value = [...restored.files]
-  carried.value = restored.files.map((file) => file.id)
-  draft.value = restored.text
-  shown.value += 1
-}
 
 function changeModel(change: ModelSettingsChange) {
   settings.value = applyModelChange(settings.value, change)
@@ -826,7 +786,6 @@ onBeforeUnmount(() => {
     :instructions="demoInstructions"
     :cost="cardCost.cost.value"
     :cost-profiles="costProfiles"
-    :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
     :saved="savedRows"
     :workflow="workflow"
@@ -836,15 +795,12 @@ onBeforeUnmount(() => {
     @edit-saved="editSaved"
     @send-saved="sendSaved"
     @delete-saved="deleteSaved"
-    @retry-saved="retrySaved"
     :plugins-changed="pluginsChanged"
     :reloading="reloading"
     :offline-host="offlineHost"
     @move-host="moveHost"
     remote-files
     @reload-plugins="reloadPlugins"
-    @restore-replaced="restoreReplaced"
-    @dismiss-replaced="replacedVersion = null"
     @submit="submit"
     @configure="emit('configure')"
     @restore="emit('restore')"

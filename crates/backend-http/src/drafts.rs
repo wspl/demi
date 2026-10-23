@@ -1,8 +1,6 @@
-//! `GET/PUT /conversations/:id/draft` and `POST .../draft/replaced`: the
-//! conversation's draft.
+//! `GET/PUT /conversations/:id/draft`: the conversation's draft.
 //!
-//! - A save always changes the draft, keeping the version it replaced when it
-//!   was built on an older revision.
+//! - A save always changes the draft: the draft is the last one saved.
 //! - An archived conversation reads its draft and refuses the rest.
 
 use std::sync::Arc;
@@ -14,7 +12,7 @@ use demi_backend_database::drafts::{DraftRefusal, StagedFile};
 use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::ClientContent;
 use demi_web_api_protocol::drafts::{
-    ATTACHMENT_MARK, DraftAnswer, DraftSave, DraftWritten, ReplacedDraftAction,
+    ATTACHMENT_MARK, DraftAnswer, DraftSave, DraftWritten,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::AttachmentId;
@@ -51,7 +49,6 @@ pub(super) async fn save(
         .save_draft(
             record.id.clone(),
             user.id.clone(),
-            save.base,
             save.text,
             files,
             save.comments,
@@ -60,24 +57,6 @@ pub(super) async fn save(
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Metadata(record.id));
     Ok(Json(saved))
-}
-
-/// Restores or dismisses the replaced version the request names.
-pub(super) async fn replaced(
-    State(services): State<Arc<Services>>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    body: Result<JsonBody<ReplacedDraftAction>, ApiError>,
-) -> Result<Json<DraftWritten>, ApiError> {
-    let record = owned(&services, &user.id, &id).await?;
-    let JsonBody(request) = body?;
-    let changed = services
-        .control
-        .change_replaced_draft(record.id.clone(), request.action, request.revision)
-        .await?
-        .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Metadata(record.id));
-    Ok(Json(changed))
 }
 
 /// A draft's files as storage takes them, when `text` holds one mark per
@@ -127,11 +106,6 @@ fn refused(refusal: DraftRefusal) -> ApiError {
             StatusCode::NOT_FOUND,
             ErrorCode::UploadNotFound,
             format!("No upload {id}"),
-        ),
-        DraftRefusal::Changed => ApiError::new(
-            StatusCode::CONFLICT,
-            ErrorCode::DraftChanged,
-            "The draft's replaced version is not that one any more",
         ),
     }
 }

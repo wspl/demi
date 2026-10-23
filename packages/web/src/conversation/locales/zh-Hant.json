@@ -26,8 +26,6 @@
     "changeWorkflow": "無法變更工作流程",
     "clearDraft": "無法清除草稿",
     "recallMessage": "無法收回訊息",
-    "restoreDraft": "無法還原草稿",
-    "dismissDraft": "無法捨棄草稿",
     "connectionLost": "連線已中斷",
     "connectionLostMessage": "Demi 可能沒有收到你的請求。重新連線後請檢查對話。",
     "requestNotAccepted": "對話未接受該請求。",

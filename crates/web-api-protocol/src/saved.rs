@@ -18,16 +18,13 @@ use crate::ids::SavedMessageId;
 pub const SAVED_MAX: usize = 200;
 
 /// `POST /conversations/:id/saved/from-draft`: the composer's message, as a
-/// draft's `PUT` names it, with the revision its text was built on and the id
-/// the page gives the new message.
+/// draft's `PUT` names it, with the id the page gives the new message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SavedFromDraft {
     /// The new message's id, which the page chooses.
     #[garde(skip)]
     pub id: SavedMessageId,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub base: u64,
     #[garde(skip)]
     pub text: String,
     #[garde(dive)]

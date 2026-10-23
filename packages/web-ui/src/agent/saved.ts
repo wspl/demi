@@ -2,11 +2,8 @@ import { isMacOS } from '@tiptap/core'
 import { ATTACHMENT_MARK } from '../markdown/user-markdown'
 import { t } from './locales/text'
 
-/**
- * Where a message of the list stands: kept by the server, on its way there,
- * or refused, which the list shows as Not Saved with Retry and Delete.
- */
-export type SavedRowState = 'saved' | 'saving' | 'notSaved'
+/** Where a message of the list stands: kept by the server, or on its way there. */
+export type SavedRowState = 'saved' | 'saving'
 
 /**
  * One message saved for later as the list under the composer shows it: the

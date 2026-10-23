@@ -34,6 +34,13 @@ const remoteSchema = z.object({
   path: z.string(),
   deviceId: z.string(),
 })
+
+/**
+ * `over` of a composer written over whatever the backend holds: it is kept
+ * whatever revision the backend's draft reads at.
+ */
+export const OVER_ANY = -1
+
 export const draftSchema = z.object({
   messageEdit: messageEditStateSchema.nullable().optional(),
   /** The messages sent and not yet confirmed, in the order they were sent. */
@@ -56,24 +63,26 @@ export const draftSchema = z.object({
     }),
   ),
   /**
-   * The Saves of saved messages' edits the backend has not confirmed, each
-   * the message's id with its new text and files, which go again after a
-   * reload.
+   * The saves of messages for later and of their edits the backend has not
+   * taken, each the message's id with its text and files, which go again
+   * after a reload.
    */
   savedWrites: z
-    .array(z.object({ id: z.string(), text: z.string(), files: z.array(draftFileSchema) }))
-    .default([]),
-  /** The messages the backend did not save, which the list shows as Not Saved until their user retries or deletes them. */
-  notSaved: z
-    .array(z.object({ id: z.string(), text: z.string(), files: z.array(draftFileSchema), reason: z.string() }))
+    .array(z.object({
+      kind: z.enum(['save', 'edit']).default('edit'),
+      id: z.string(),
+      text: z.string(),
+      files: z.array(draftFileSchema),
+    }))
     .default([]),
   /**
-   * The revision of the backend's draft the composer's text was built on,
-   * while the backend has not confirmed a change of it; null when the
-   * composer holds what the backend has, or for a conversation the backend
-   * does not have yet.
+   * The revision of the backend's draft the composer's text was written over,
+   * while the backend has not accepted it, kept here and never sent; null when
+   * the composer holds what the backend has, or for a conversation the backend
+   * does not have yet. A page that finds the backend's draft at another
+   * revision, accepted or replaced since, shows the backend's draft instead.
    */
-  base: z.number().int().nonnegative().nullable(),
+  over: z.number().int().min(OVER_ANY).nullable(),
   local: z
     .object({
       phase: z.enum(['draft', 'pending']),
@@ -114,6 +123,8 @@ export const draftSchema = z.object({
     .nullable(),
 })
 export type SavedDraft = z.infer<typeof draftSchema>
+/** A Save for Later or an edit of a saved message the backend has not taken. */
+export type SavedWrite = SavedDraft['savedWrites'][number]
 export type SavedFile = z.infer<typeof fileSchema>
 
 /**
@@ -121,7 +132,7 @@ export type SavedFile = z.infer<typeof fileSchema>
  * record's shape, whose upgrade turns the previous release's records into
  * the new one.
  */
-const DRAFTS_VERSION = 5
+const DRAFTS_VERSION = 6
 
 /** A message on its way as release 0.1.21 stored it: one per conversation, or none. */
 const pendingSendV1Schema = z.looseObject({
@@ -150,6 +161,63 @@ const draftV4Schema = z.looseObject({
   messageEdit: z.looseObject({}).nullable().optional(),
 })
 
+/** A record as version 5 stored it, before `over` and with its messages not saved. */
+const draftV5Schema = z.looseObject({
+  base: z.number().int().nonnegative().nullable().optional(),
+  notSaved: z.array(z.looseObject({
+    text: z.string(),
+    files: z.array(draftFileSchema),
+  })).optional(),
+  text: z.string().optional(),
+  files: z.array(z.looseObject({})).optional(),
+  local: z.unknown().optional(),
+})
+
+/** A message's file as the record stores a composer's. */
+function storedFile(file: z.infer<typeof draftFileSchema>): z.infer<typeof fileSchema> | z.infer<typeof remoteSchema> {
+  const id = crypto.randomUUID()
+  if (file.type === 'upload') {
+    return {
+      kind: 'file',
+      id,
+      name: file.fileName,
+      file: null,
+      upload: { id: file.ref, mediaType: file.mediaType, sha256: file.sha256 },
+      ...(file.snippet ? { snippet: file.snippet } : {}),
+    }
+  }
+  return {
+    kind: 'reference',
+    id,
+    name: file.path.split('/').pop() || file.path,
+    host: file.deviceId,
+    path: file.path,
+    deviceId: file.deviceId,
+  }
+}
+
+/**
+ * The record `value` of version 5 as version 6: `base` is `over`, and each
+ * message not saved is the composer's, before its text, with its files before
+ * the composer's, in the order of their marks. A composer of a conversation
+ * the backend has is then one the backend does not have, written over
+ * whatever it holds.
+ */
+function draftV5ToV6(value: unknown): unknown {
+  const old = draftV5Schema.safeParse(value)
+  if (!old.success) {
+    return value
+  }
+  const { base, notSaved, ...rest } = old.data
+  const brought = (notSaved ?? []).filter((message) => message.text.trim() || message.files.length)
+  if (brought.length === 0) {
+    return { ...rest, over: base ?? null }
+  }
+  const text = [...brought.map((message) => message.text), rest.text ?? ''].filter((part) => part !== '').join('\n\n')
+  const files = [...brought.flatMap((message) => message.files.map(storedFile)), ...(rest.files ?? [])]
+  return { ...rest, text, files, over: rest.local ? null : OVER_ANY }
+}
+
 /**
  * Upgrades the draft database from `oldVersion`:
  *
@@ -162,6 +230,10 @@ const draftV4Schema = z.looseObject({
  *   its path on the Host, which the backend has since numbered, so the rest of
  *   the draft stays and the user opens the edit again.
  * - One of version 4 marks an edit in progress as a sent message's.
+ * - One of version 5 renames each record's `base` to `over`, and puts each
+ *   message of its `notSaved`, which the page no longer keeps, back in the
+ *   composer, before the text it holds, as a refused Save for Later's goes
+ *   back.
  *
  * A record of another shape stays as it was, and its read reports it.
  */
@@ -206,6 +278,9 @@ function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
       if (edited.success && edited.data.messageEdit) {
         value = { ...edited.data, messageEdit: { kind: 'message', ...edited.data.messageEdit } }
       }
+    }
+    if (oldVersion < 6) {
+      value = draftV5ToV6(value)
     }
     if (value !== cursor.value) {
       cursor.update(value)
@@ -295,7 +370,7 @@ export async function deleteDraft(
 
 /**
  * What a conversation's page held as it closed: the composer's text the backend
- * does not have, with the revision it was built on and the files of its marks,
+ * does not have, with the revision it was written over and the files of its marks,
  * and the messages on their way, with what their files are without their bytes,
  * which the IndexedDB record carries. An IndexedDB write still under way when
  * the page goes can be lost, such as a send's, whose files make it long, so the
@@ -305,12 +380,13 @@ export async function deleteDraft(
 const lastWordsSchema = z.object({
   composer: z
     .object({
-      base: z.number().int().nonnegative().nullable(),
+      over: z.number().int().min(OVER_ANY).nullable().default(OVER_ANY),
       text: z.string(),
       attachmentIds: z.array(z.string()),
     })
     .nullable(),
   pendingSends: draftSchema.shape.pendingSends,
+  savedWrites: draftSchema.shape.savedWrites,
   files: draftSchema.shape.files,
 })
 export type LastWords = z.infer<typeof lastWordsSchema>

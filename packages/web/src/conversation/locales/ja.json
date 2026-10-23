@@ -26,8 +26,6 @@
     "changeWorkflow": "ワークフローを変更できませんでした",
     "clearDraft": "下書きを消去できませんでした",
     "recallMessage": "メッセージを取り消せませんでした",
-    "restoreDraft": "下書きを復元できませんでした",
-    "dismissDraft": "下書きを破棄できませんでした",
     "connectionLost": "接続が切断されました",
     "connectionLostMessage": "Demi がリクエストを受信できていない可能性があります。再接続後にチャットを確認してください。",
     "requestNotAccepted": "チャットがリクエストを受け付けませんでした。",

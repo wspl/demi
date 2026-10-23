@@ -73,7 +73,7 @@ pub(super) async fn from_draft(
     let files = staged_files(&save.text, save.files)?;
     let answer = services
         .control
-        .save_from_draft(record.id.clone(), user.id.clone(), save.id, save.base, save.text, files)
+        .save_from_draft(record.id.clone(), user.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Metadata(record.id));

@@ -251,12 +251,7 @@
   "notices": {
     "hostOffline": "{name} 已離線。",
     "moveHost": "移到其他主機…",
-    "pluginsChanged": "外掛程式已變更",
-    "replacedDraft": "較新的儲存取代了{draft}",
-    "quoted": "「{text}」",
-    "restore": "還原",
-    "dismiss": "關閉",
-    "dismissDraft": "關閉被取代的草稿"
+    "pluginsChanged": "外掛程式已變更"
   },
   "composer": {
     "placeholder": "想問什麼都可以…",
@@ -284,7 +279,7 @@
     "afterEdit": "編輯完成後可用",
     "saved": {
       "count": "已暫存 {count} 則",
-      "notSaved": "未儲存",
+      "saving": "正在儲存…",
       "edit": "編輯",
       "send": "傳送",
       "delete": "刪除"

@@ -26,8 +26,6 @@
     "changeWorkflow": "Could Not Change the Workflow",
     "clearDraft": "Could Not Clear the Draft",
     "recallMessage": "Could Not Recall the Message",
-    "restoreDraft": "Could Not Restore the Draft",
-    "dismissDraft": "Could Not Dismiss the Draft",
     "connectionLost": "Connection Lost",
     "connectionLostMessage": "Demi may not have received your request. Check the conversation once it reconnects.",
     "requestNotAccepted": "The conversation didn’t accept the request.",
