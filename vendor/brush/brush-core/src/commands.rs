@@ -297,17 +297,18 @@ fn forward_external_outputs(
         let Some(OpenFile::Controlled { file, control }) = context.try_fd(fd) else {
             continue;
         };
-        // Descriptor duplication retains its control. One pipe preserves the
-        // order of stdout/stderr writes when the shell uses `2>&1`.
-        let file = if let Some((_, writer)) = forwarded.iter().find(|(previous, _)| std::sync::Arc::ptr_eq(previous, &control)) {
+        // Descriptor duplication retains its control, so `2>&1` forwards one
+        // writer, which keeps the order of the two streams' writes and one
+        // position. So do two redirections the host says are one file.
+        let shared = forwarded
+            .iter()
+            .find(|(previous, writer)| std::sync::Arc::ptr_eq(previous, &control) || host.shares_output(&file, writer));
+        let file = if let Some((_, writer)) = shared {
             control.duplicate(writer)?
         } else {
             let (writer, completion) = host.external_output(file)?;
-            if let Some(completion) = completion {
-                let copy = control.duplicate(&writer)?;
-                forwarded.push((control, copy));
-                outputs.push(completion);
-            }
+            forwarded.push((control.clone(), control.duplicate(&writer)?));
+            outputs.extend(completion);
             writer
         };
         if fd == OpenFiles::STDOUT_FD {

@@ -102,6 +102,13 @@ pub trait ExecutionHost: Any + Send + Sync {
     fn external_output(&self, file: File) -> io::Result<(File, Option<OutputCompletion>)> {
         Ok((file, None))
     }
+    /// Whether `file`, a redirection of another stream, is the file `forwarded`
+    /// was made of, which that stream's child already writes, so that one
+    /// writer serves both.
+    fn shares_output(&self, file: &File, forwarded: &File) -> bool {
+        let _ = (file, forwarded);
+        false
+    }
     /// Reject further execution after cancellation.
     fn check(&self) -> io::Result<()>;
     /// Track work until its guard is dropped, including detached interpreter tasks.

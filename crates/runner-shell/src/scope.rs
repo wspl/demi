@@ -11,11 +11,12 @@
 //! - An external program's stdout or stderr redirected into a registered file
 //!   is handed the file itself, as bash does. The recorder reads the file's
 //!   before side then and its after side once, when the program has exited;
-//!   the command completes after that (`external_output`). On Windows, a file
-//!   opened for appending goes through a runner-owned pipe that forwards into
-//!   it through the recorder, as MSYS programs refuse an appending handle
-//!   (`appends`). A background task's program writes the file itself and
-//!   unrecorded, as it may outlive the job and the runner.
+//!   the command completes after that (`external_output`). A background
+//!   task's program writes the file itself and unrecorded, as it may outlive
+//!   the job and the runner. On Windows a program redirected to a file opened
+//!   for appending gets it opened for writing at its end instead (`at_end`),
+//!   since MSYS2 programs refuse an appending handle; the shell and the
+//!   utilities keep the one opened for appending.
 //! - What an external program writes through its other inherited descriptors
 //!   stays outside tracking.
 //!
@@ -385,37 +386,40 @@ impl Scope {
         (file_identity(&current).ok()? == identity).then_some(path)
     }
 
-    /// An external program's output into `file`, which a pipe carries: the
-    /// runner reads it and writes the file through the recorder. The command
-    /// completes once the pipe has drained, a forwarding error failing it.
-    #[cfg(windows)]
-    fn piped_output(
+    /// Hands `file` to a program as its output. The program writes it itself.
+    /// A foreground program's edit is the file as it is now against the file
+    /// as it is once the program has exited; a background task's program is
+    /// not recorded.
+    fn recorded_output(
         &self,
         file: File,
     ) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
-        let (reader, writer) = self.descriptors(super::job::pipe)?;
+        // A background task's program may outlive the job and the runner. Its
+        // writes are not recorded as edits, as those of a job that has ended
+        // are not.
+        if self.background {
+            return Ok((file, None));
+        }
+        let Some(path) = self.file_path(&file) else {
+            return Ok((file, None));
+        };
+        let Some(held) = self.recorder().and_then(|edits| edits.hold(&path).ok()) else {
+            return Ok((file, None));
+        };
         let scope = self.clone();
-        let completion = self.tasks.spawn_blocking(move || -> io::Result<()> {
-            let mut buffer = vec![0; 64 * 1024];
-            loop {
-                let count = scope.read(&reader, &mut buffer)?;
-                if count == 0 {
-                    return Ok(());
-                }
-                let mut bytes = &buffer[..count];
-                while !bytes.is_empty() {
-                    let count = scope.write(&file, bytes)?;
-                    if count == 0 {
-                        return Err(io::ErrorKind::WriteZero.into());
-                    }
-                    bytes = &bytes[count..];
-                }
-            }
-        });
+        let tasks = self.tasks.clone();
         Ok((
-            writer,
+            file,
             Some(Box::pin(async move {
-                completion.await.map_err(io::Error::other)?
+                tasks
+                    .spawn_blocking(move || {
+                        if scope.recorder().is_some() {
+                            // A failure is logged; it never fails the command.
+                            let _ = held.settle();
+                        }
+                    })
+                    .await
+                    .map_err(io::Error::other)
             })),
         ))
     }
@@ -532,8 +536,45 @@ impl Scope {
     }
 }
 
+/// The file a program is given for a `>>` file, which the shell and the
+/// utilities keep open for appending. A handle with append access and none to
+/// write at a position is one MSYS2 programs refuse, so the program gets the
+/// same file opened again for writing, at its end. Its writes then land where
+/// its own last write ended, not at the file's end. None for a file not opened
+/// for appending, or that cannot be opened again.
+#[cfg(windows)]
+fn at_end(file: &File) -> Option<File> {
+    use std::io::{Seek, SeekFrom};
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::{
+        Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE},
+        Storage::FileSystem::{
+            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, ReOpenFile,
+        },
+    };
+    if !appends(file) {
+        return None;
+    }
+    // Opened again from the handle, so it is the very file the shell wrote,
+    // wherever a rename has put it, and no path is needed.
+    let handle = unsafe {
+        ReOpenFile(
+            file.as_raw_handle(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            0,
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let mut opened = File::from(unsafe { OwnedHandle::from_raw_handle(handle) });
+    opened.seek(SeekFrom::End(0)).ok()?;
+    Some(opened)
+}
+
 /// Whether `file` was opened for appending: with append access and none to
-/// write at a position, which a handle of `>>` has and MSYS programs refuse.
+/// write at a position.
 #[cfg(windows)]
 fn appends(file: &File) -> bool {
     use std::os::windows::io::AsRawHandle;
@@ -621,39 +662,21 @@ impl ExecutionHost for Scope {
         &self,
         file: File,
     ) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
-        // A background task's program may outlive the job and the runner. Its
-        // writes are not recorded as edits, as those of a job that has ended
-        // are not.
-        if self.background {
-            return Ok((file, None));
-        }
-        let Some(path) = self.file_path(&file) else {
-            return Ok((file, None));
-        };
         #[cfg(windows)]
-        if appends(&file) {
-            return self.piped_output(file);
-        }
-        let Some(held) = self.recorder().and_then(|edits| edits.hold(&path).ok()) else {
-            return Ok((file, None));
-        };
-        let scope = self.clone();
-        let tasks = self.tasks.clone();
-        Ok((
-            file,
-            Some(Box::pin(async move {
-                tasks
-                    .spawn_blocking(move || {
-                        if scope.recorder().is_some() {
-                            // A failure is logged; it never fails the command.
-                            let _ = held.settle();
-                        }
-                    })
-                    .await
-                    .map_err(io::Error::other)
-            })),
-        ))
+        let file = at_end(&file).unwrap_or(file);
+        self.recorded_output(file)
     }
+
+    #[cfg(windows)]
+    fn shares_output(&self, file: &File, forwarded: &File) -> bool {
+        // `prog >> f 2>> f`: both streams are one handle moved to the end,
+        // as one open file description is on Unix, or each would overwrite
+        // the other.
+        appends(file)
+            && !appends(forwarded)
+            && file_identity(file).ok() == file_identity(forwarded).ok()
+    }
+
     fn check(&self) -> io::Result<()> {
         self.check()
     }
