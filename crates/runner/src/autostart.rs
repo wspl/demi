@@ -571,7 +571,7 @@ mod linux {
     /// the private socket in the user's runtime directory, which a process
     /// started without a login session may not name.
     async fn systemctl(arguments: &[&str]) -> Result<String, String> {
-        let mut command = system("systemctl");
+        let mut command = tokio::process::Command::new("systemctl");
         command.arg("--user").args(arguments);
         if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
             let runtime = PathBuf::from(format!("/run/user/{}", rustix::process::getuid().as_raw()));
@@ -613,7 +613,7 @@ mod linux {
         if Path::new("/var/lib/systemd/linger").join(&user).exists() {
             return Ok(Supervision::Restarts);
         }
-        let mut linger = system("loginctl");
+        let mut linger = tokio::process::Command::new("loginctl");
         linger.arg("enable-linger");
         match run("loginctl", linger).await {
             Ok(_) => Ok(Supervision::Restarts),
@@ -658,7 +658,7 @@ use linux as manager;
 /// value of the user's registry.
 #[cfg(windows)]
 mod windows {
-    use super::{AutostartUnavailable, Registration, SUPERVISED, Supervision, run, system, task};
+    use super::{AutostartUnavailable, Registration, SUPERVISED, Supervision, run, task};
 
     /// What the log calls this manager.
     pub const MECHANISM: &str = "scheduled_task";
@@ -711,7 +711,7 @@ mod windows {
         Register-ScheduledTask -TaskName $name -Xml $env:DEMI_TASK_XML.Replace($env:DEMI_TASK_USER, $sid) -Force | Out-Null";
 
     async fn powershell(script: &str, registration: &Registration, extra: &[(&str, String)]) -> Result<String, String> {
-        let mut command = system("powershell.exe");
+        let mut command = tokio::process::Command::new("powershell.exe");
         command
             .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &format!("{NAMED}{script}")])
             .env("DEMI_TASK_NAME", registration.name());
