@@ -201,8 +201,9 @@ pub fn compose_std_command<S: AsRef<OsStr>, SE: extensions::ShellExtensions>(
                 cmd.args(leading).arg(command_name);
                 cmd
             }
-            // A script this shell runs itself never reaches here: `execute_via_external` starts it.
-            Some(crate::execution_host::ScriptInterpreter::Shell(_)) | None => {
+            // A script the host runs as a builtin never reaches here: `execute_via_external`
+            // runs it.
+            Some(crate::execution_host::ScriptInterpreter::Builtin(..)) | None => {
                 std::process::Command::new(command_name.replace('/', "\\"))
             }
         }
@@ -467,7 +468,7 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
             };
 
             if let Some(path) = path {
-                self.execute_via_external(&path)
+                self.execute_via_external(&path).await
             } else {
                 // Bash updates $_ even when the command is not found, so mirror
                 // that here before reporting the error.
@@ -482,7 +483,20 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
             }
         } else {
             let command_name = self.shell.absolute_path(&self.command_name);
-            self.execute_via_external(command_name.as_path())
+            // A program the host runs as one of its builtins, `/bin/bash` as its `bash`, whether
+            // or not the file exists.
+            if let Some(host) = self.shell.execution_host()
+                && let Some(name) = host.builtin_at(command_name.as_path())
+                && let Some(builtin) = self.shell.builtins().get(&name).cloned()
+                && !builtin.disabled
+            {
+                if let Some(first) = self.args.first_mut() {
+                    *first = CommandArg::String(name.clone());
+                }
+                self.command_name = name;
+                return self.execute_via_builtin(builtin).await;
+            }
+            self.execute_via_external(command_name.as_path()).await
         }
     }
 
@@ -619,11 +633,14 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
         result
     }
 
-    /// The options this shell sets before it runs the script file `path` as a command, when
-    /// its host has this shell run it, as on Windows, where no system loader reads the
-    /// file's first line.
-    #[cfg(windows)]
-    fn options_of_script_run_here(&self, path: &Path) -> Result<Option<Vec<std::ffi::OsString>>, error::Error> {
+    /// The builtin of the host that runs the script file `path` as a command, when the host
+    /// has it run here, in place of the system's start of the file: the shell its first line
+    /// names, or on Windows, which runs no script by itself, the one that runs it. It is the
+    /// builtin and the leading arguments before the script's path.
+    fn builtin_running_script(
+        &self,
+        path: &Path,
+    ) -> Result<Option<(builtins::Registration<SE>, String, Vec<std::ffi::OsString>)>, error::Error> {
         let Some(host) = self.shell.execution_host() else {
             return Ok(None);
         };
@@ -632,49 +649,35 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
             .script_interpreter(path, search.as_deref().map(std::ffi::OsStr::new))
             .map_err(|error| error::ErrorKind::FailedToExecuteCommand(self.command_name.clone(), error))?;
         Ok(match interpreter {
-            Some(crate::execution_host::ScriptInterpreter::Shell(options)) => Some(options),
+            Some(crate::execution_host::ScriptInterpreter::Builtin(name, options)) => self
+                .shell
+                .builtins()
+                .get(&name)
+                .filter(|builtin| !builtin.disabled)
+                .cloned()
+                .map(|builtin| (builtin, name, options)),
             _ => None,
         })
     }
 
-    /// Runs the script file `path` in a copy of this shell, as a process the shell started
-    /// would run it: the script's arguments are its positional parameters, and what it sets
-    /// stays in the copy.
-    #[cfg(windows)]
-    fn execute_via_subshell(
-        self,
-        path: &Path,
-        options: Vec<std::ffi::OsString>,
-    ) -> Result<ExecutionSpawnResult, error::Error> {
-        let mut shell = self.shell;
-        let last_arg = Self::take_last_arg(&self.args);
-        let mut subshell: Shell<SE> = (*shell).clone();
-        let guard = subshell.execution_guard();
-        let path = path.to_owned();
-        let args: Vec<String> = self.args[1..].iter().map(ToString::to_string).collect();
-        let params = self.params;
-        let task = tokio::task::spawn_blocking(move || {
-            let _guard = guard;
-            tokio::runtime::Handle::current().block_on(async move {
-                let result = subshell.run_script_as_command(&path, &options, args, &params).await?;
-                Ok(ExecutionResult::from(result.exit_code))
-            })
-        });
-
-        // Update $_ after command execution.
-        shell.update_last_arg_variable(last_arg);
-
-        if let Some(post_execute) = self.post_execute {
-            let _ = post_execute(&mut shell);
-        }
-
-        Ok(ExecutionSpawnResult::StartedTask(task))
-    }
-
-    fn execute_via_external(self, path: &Path) -> Result<ExecutionSpawnResult, error::Error> {
-        #[cfg(windows)]
-        if let Some(options) = self.options_of_script_run_here(path)? {
-            return self.execute_via_subshell(path, options);
+    async fn execute_via_external(mut self, path: &Path) -> Result<ExecutionSpawnResult, error::Error> {
+        if let Some((builtin, name, options)) = self.builtin_running_script(path)? {
+            // The builtin runs as the shell program would: as `bash [options] script args`,
+            // the script named as the command named it, or by its path when found on `PATH`.
+            let script = if sys::fs::contains_path_separator(&self.command_name) {
+                self.command_name.clone()
+            } else {
+                path.to_string_lossy().into_owned()
+            };
+            let mut args: Vec<CommandArg> = std::iter::once(name.clone())
+                .chain(options.iter().map(|option| option.to_string_lossy().into_owned()))
+                .chain(std::iter::once(script))
+                .map(CommandArg::String)
+                .collect();
+            args.extend(self.args.drain(1..));
+            self.args = args;
+            self.command_name = name;
+            return self.execute_via_builtin(builtin).await;
         }
         let mut shell = self.shell;
         let last_arg = Self::take_last_arg(&self.args);

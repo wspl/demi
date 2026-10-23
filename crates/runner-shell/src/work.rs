@@ -11,10 +11,11 @@
 //! A background task runs in the runner, so no operating-system process stands
 //! for it:
 //!
-//! - `$!` names it with an id no process ID takes ([`FIRST_TASK`]) and no other
-//!   task of the runner takes, and `kill`, `wait` and `jobs -p` take it wherever
-//!   bash takes a process ID. The id is the runner's, so a later command's
-//!   `kill` reaches a task the command that started it left running.
+//! - `$!` names it with an id no process ID takes ([`ABOVE_PROCESSES`]), no
+//!   other task of the runner takes and, but by chance, no other runner's,
+//!   and `kill`, `wait` and `jobs -p` take it wherever bash takes a process
+//!   ID. The id is the runner's, so a later command's `kill` reaches a task
+//!   the command that started it left running.
 //! - `kill` on a task's id stops its shell work at its next step and sends
 //!   `SIGTERM` to every process group it started (`KILL` kills them and the
 //!   rest of its work).
@@ -43,9 +44,20 @@ use demi_runner_process::process::Stray;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-/// The id of a job's first background task: one more than Linux's largest
-/// process ID, so no process takes it.
-pub(crate) const FIRST_TASK: i32 = 4_194_305;
+/// One more than Linux's largest process ID, so that no process takes an id
+/// from here up.
+const ABOVE_PROCESSES: i32 = 4_194_305;
+
+/// The id of this runner's first background task. Every runner of a machine
+/// numbers its tasks, and a script names a file by `$$`, as `/tmp/x.$$`, so
+/// the runners start at places of their own, chosen at random among two
+/// million, a thousand tasks apart; two runners share an id only when they
+/// draw the same place.
+static FIRST_TASK: LazyLock<i32> = LazyLock::new(|| {
+    use std::hash::{BuildHasher as _, Hasher as _};
+    let place = std::collections::hash_map::RandomState::new().build_hasher().finish() % 2_000_000;
+    ABOVE_PROCESSES + i32::try_from(place).expect("the place fits") * 1000
+});
 
 /// The tasks of every job of the runner that run, by id: a task keeps running
 /// after its command, and a later command signals it by the id `$!` gave. A
@@ -196,6 +208,12 @@ pub(crate) struct Work {
     /// The job's utilities that run now, by name, with how many of each:
     /// what a killed job names when it ends without them.
     utilities: Mutex<BTreeMap<&'static str, usize>>,
+    /// The background jobs of a nested `sh` or `bash` that has ended: it
+    /// leaves them running as a process that ends does, and the end of the
+    /// job's script waits for those that hold its output, as for its own.
+    left: Mutex<Vec<brush_core::jobs::Job>>,
+    /// Told whenever a nested shell leaves jobs.
+    left_told: tokio::sync::Notify,
 }
 
 /// One of the job's utilities, counted as running until it drops.
@@ -277,6 +295,8 @@ impl Work {
             starting: RwLock::default(),
             outliving: watch::Sender::new(Vec::new()),
             utilities: Mutex::default(),
+            left: Mutex::default(),
+            left_told: tokio::sync::Notify::new(),
         };
         (work, roots)
     }
@@ -324,6 +344,25 @@ impl Work {
         utilities.keys().copied().collect()
     }
 
+    /// A nested shell has ended and leaves `jobs` running.
+    pub(crate) fn leave(&self, jobs: Vec<brush_core::jobs::Job>) {
+        if jobs.is_empty() {
+            return;
+        }
+        self.left.lock().expect("the left jobs are intact").extend(jobs);
+        self.left_told.notify_one();
+    }
+
+    /// The jobs nested shells have left since this was last asked.
+    pub(crate) fn take_left(&self) -> Vec<brush_core::jobs::Job> {
+        std::mem::take(&mut *self.left.lock().expect("the left jobs are intact"))
+    }
+
+    /// Resolves once a nested shell has left jobs.
+    pub(crate) async fn left_jobs(&self) {
+        self.left_told.notified().await;
+    }
+
     /// The script has ended, and `tasks`, by their command lines, still run.
     pub(crate) fn outlived_by(&self, tasks: Vec<String>) {
         self.outliving.send_if_modified(|current| {
@@ -347,7 +386,7 @@ impl Work {
     /// Numbers a new background task of this job, for the whole runner, until
     /// the entry drops.
     pub(crate) fn add_task(self: &Arc<Self>, stop: Arc<Stop>) -> TaskEnd {
-        let id = FIRST_TASK + STARTED.fetch_add(1, Ordering::Relaxed);
+        let id = *FIRST_TASK + STARTED.fetch_add(1, Ordering::Relaxed);
         TASKS.lock().expect("the runner's task table is intact").insert(
             id,
             Task {

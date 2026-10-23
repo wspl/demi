@@ -49,18 +49,27 @@ const CONTEXT: &str = "[Execution context ";
 /// The line that opens a switch's announcement.
 const SWITCHED: &str = "[Execution target switched]";
 
-/// What every block says of a job's standard utilities (`crates/runner-shell/src/utilities.rs`).
-const UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host";
+/// What a block for Linux, or for a Host whose system is not known, says of a
+/// job's standard utilities and shells (`crates/runner-shell/src/utilities.rs`):
+/// the utilities that write files or start programs are Demi's, so that their
+/// changes are recorded, and the others are the system's own.
+const UTILITIES: &str = "sh, bash and the standard utilities that write files or start programs (sed, cp, mv, rm, find, xargs, …) are Demi's own, GNU's, and what they write is recorded as your changes; every other program (grep, ls, cat, tar, patch, python, …) is the system's own, and what it writes is not recorded";
+
+/// What a block for a Mac says: the utilities that write files or start
+/// programs are Demi's, so that their changes are recorded, and the others
+/// are the Mac's own, BSD, in /bin and /usr/bin.
+const MACOS_UTILITIES: &str = "sh, bash and the standard utilities that write files or start programs (sed, cp, mv, rm, find, xargs, …) are Demi's own, GNU's, read macOS's forms too (`sed -i ''`), and what they write is recorded as your changes; every other program (grep, ls, cat, tar, patch, python, …) is macOS's own, in /bin and /usr/bin, and what it writes is not recorded";
 
 /// Where the agent keeps the files only it needs (`crates/runner-jobs/src/scratch.rs`), which every block says after where shells start.
 const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation.";
 
-/// Where a Mac keeps its own, BSD utilities, which a block for a Mac adds.
-const MACOS_UTILITIES: &str = "macOS's own are in /usr/bin";
+/// What a block for Windows says of its utilities: the others are Git for
+/// Windows' (`crates/runner/src/git.rs`).
+const WINDOWS_UTILITIES: &str = "sh, bash and the standard utilities that write files or start programs (sed, cp, mv, rm, find, xargs, …) are Demi's own, GNU's, and what they write is recorded as your changes; every other utility (grep, ls, cat, …) is Git for Windows' own, and any other program is the system's, and what they write is not recorded";
 
 /// What a block for Windows adds: what the shell is, since a model
-/// otherwise guesses Git Bash or MSYS and writes `/c/…` paths.
-const WINDOWS_SHELLS: &str = "Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes.";
+/// otherwise guesses Git Bash or MSYS, and which drive path a program takes.
+const WINDOWS_SHELLS: &str = "Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. The shell and its utilities read /c/Users/… as C:/Users/…, a Windows program only C:/Users/…; quote a path with backslashes.";
 
 /// The line of a block after the conversation's attached hosts changed.
 const ATTACHED_CHANGED: &str = "[Attached hosts changed]";
@@ -208,16 +217,16 @@ impl Shard {
     ///   them;
     /// - the directory its shells start in, and where the files only the agent
     ///   needs go;
-    /// - that its standard utilities are GNU's, with where a Mac's own are and
-    ///   what a Windows Host's shell is.
+    /// - which of its standard utilities are Demi's own, GNU's, and which the
+    ///   system's, and what a Windows Host's shell is.
     ///
     /// A Host whose runner never connected, such as a Cloud not made yet, is named
     /// without its system.
     async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
         let (device, name) = self.primary_host(target).await?;
         let utilities = match device.as_ref().map(|record| &record.platform) {
-            Some(RunnerPlatform::Darwin) => format!("{UTILITIES}; {MACOS_UTILITIES}."),
-            Some(RunnerPlatform::Win32) => format!("{UTILITIES}. {WINDOWS_SHELLS}"),
+            Some(RunnerPlatform::Darwin) => format!("{MACOS_UTILITIES}."),
+            Some(RunnerPlatform::Win32) => format!("{WINDOWS_UTILITIES}. {WINDOWS_SHELLS}"),
             _ => format!("{UTILITIES}."),
         };
         let host = match device.and_then(|record| record.os) {

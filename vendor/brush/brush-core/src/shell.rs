@@ -66,6 +66,11 @@ pub struct Shell<SE: extensions::ShellExtensions = extensions::DefaultShellExten
     #[cfg_attr(feature = "serde", serde(skip))]
     child_attributes: crate::execution_host::ChildAttributes,
 
+    /// How many `for`, `while` and `until` loops the shell is inside, so that `break` and
+    /// `continue` outside any are what bash says they are, a warning.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    loop_depth: usize,
+
     /// Injected error behavior.
     #[cfg_attr(feature = "serde", serde(skip, default = "default_error_formatter"))]
     error_formatter: SE::ErrorFormatter,
@@ -159,6 +164,7 @@ impl<SE: extensions::ShellExtensions> Clone for Shell<SE> {
         Self {
             execution_host: self.execution_host.clone(),
             child_attributes: self.child_attributes.clone(),
+            loop_depth: self.loop_depth,
             error_formatter: self.error_formatter.clone(),
             traps: self.traps.clone(),
             open_files: self.open_files.clone(),

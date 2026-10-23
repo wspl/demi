@@ -68,3 +68,5 @@ mv-prompt-overwrite = écraser {$target} ?
 # Messages de progression
 mv-progress-moving = déplacement
 mv-error-dest-appeared = la destination { $path } a été remplacée pendant le déplacement ; refus de la suivre
+mv-help-help = Afficher l'aide.
+mv-help-no-dereference = ne pas suivre la destination si c'est un lien symbolique vers un répertoire

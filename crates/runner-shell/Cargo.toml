@@ -31,15 +31,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
 
-ripgrep = "15.2.0"
-jaq = { version = "3.1.1", default-features = false }
 uucore = { version = "0.11", features = ["fs", "mode"] }
-uu_stat = "0.11"
-uu_cat = "0.11"
-uu_head = "0.11"
-uu_tail = "0.11"
-uu_wc = "0.11"
-uu_ls = "0.11"
 uu_cp = "0.11"
 uu_mv = "0.11"
 uu_rm = "0.11"
@@ -49,26 +41,20 @@ uu_touch = "0.11"
 uu_tee = "0.11"
 uu_sort = "0.11"
 uu_uniq = "0.11"
-uu_cut = "0.11"
-uu_tr = "0.11"
-uu_paste = "0.11"
-uu_nl = "0.11"
-uu_tac = "0.11"
-uu_basename = "0.11"
-uu_dirname = "0.11"
-uu_realpath = "0.11"
 uu_env = "0.11"
-uu_seq = "0.11"
-uu_date = "0.11"
-uu_sleep = "0.11"
 uu_mktemp = "0.11"
-uu_du = "0.11"
-uu_df = "0.11"
-uu_od = "0.11"
-uu_grep = "0.2.0"
+uu_ln = "0.11"
+uu_link = "0.11"
+uu_unlink = "0.11"
+uu_truncate = "0.11"
+uu_split = "0.11"
+uu_csplit = "0.11"
+uu_shuf = "0.11"
+uu_shred = "0.11"
+uu_install = "0.11"
+uu_dd = "0.11"
 sed = "0.2.0"
 findutils = "0.10.0"
-diffutils = "0.5.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -76,6 +62,9 @@ rlimit = "0.11"
 rustix = { version = "1", features = ["event", "process"] }
 uu_chmod = "0.11"
 uu_chown = "0.11"
+uu_chgrp = "0.11"
+uu_mkfifo = "0.11"
+uu_mknod = "0.11"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Wdk_Storage_FileSystem", "Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_IO"] }

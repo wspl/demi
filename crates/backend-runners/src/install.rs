@@ -691,6 +691,80 @@ function Invoke-DemiControl([string]$Action) {
     $process.Dispose()
   }
 }
+# The folder Git for Windows is installed in, as the runner finds it
+# (`crates/runner/src/git.rs`), or $null when it finds none.
+function Get-DemiGit {
+  $git = [Diagnostics.ProcessStartInfo]::new()
+  $git.FileName = $demiExe
+  $git.Arguments = 'git'
+  $git.UseShellExecute = $false
+  $git.CreateNoWindow = $true
+  $git.RedirectStandardOutput = $true
+  $process = [Diagnostics.Process]::Start($git)
+  try {
+    $output = $process.StandardOutput.ReadToEnd()
+    $process.WaitForExit()
+    if ($process.ExitCode -eq 0) { return $output.Trim() }
+    return $null
+  } finally {
+    $process.Dispose()
+  }
+}
+# Installs Git for Windows, whose `usr\bin` holds the utilities a job runs
+# besides Demi's own, with its own installer, silently. An account in the
+# Administrators group installs it for every user, without asking: the
+# installer raises the one UAC prompt. A standard account chooses when asked:
+# for every user, with an administrator's name and password at the UAC
+# prompt, or for this user alone in its own folder, with no prompt; a window
+# that cannot ask installs for this user alone. The installer's download is
+# checked by the digest GitHub publishes for it and by its signature.
+function Install-DemiGit {
+  # The group's claim, not its membership: an unelevated process of an
+  # administrator holds the group for denial only, which its groups omit.
+  $everyone = @([Security.Principal.WindowsIdentity]::GetCurrent().Claims | Where-Object { $_.Value -eq 'S-1-5-32-544' }).Count -gt 0
+  if (-not $everyone) {
+    try {
+      $choices = @(
+        [Management.Automation.Host.ChoiceDescription]::new('&Every user', 'Asks for an administrator''s name and password.'),
+        [Management.Automation.Host.ChoiceDescription]::new('&Me only', 'Installs in your own folder and asks for nothing.')
+      )
+      $everyone = $Host.UI.PromptForChoice('Git for Windows', 'Demi runs the utilities of Git for Windows, such as ls and grep, and it is not installed. Install it for:', $choices, 1) -eq 0
+    } catch {
+      $everyone = $false
+    }
+  }
+  $kind = if ($demiTarget -eq 'aarch64-pc-windows-msvc') { 'arm64' } else { '64-bit' }
+  $installer = Join-Path ([IO.Path]::GetTempPath()) ('git-for-windows-' + [Guid]::NewGuid().ToString('N') + '.exe')
+  try {
+    Write-Output 'Installing Git for Windows...'
+    $demiPreviousProgress = $ProgressPreference
+    try {
+      $ProgressPreference = 'SilentlyContinue'
+      $release = Invoke-RestMethod -UseBasicParsing -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{ 'User-Agent' = 'demi-installer' }
+      $asset = $release.assets | Where-Object { $_.name -like "Git-*-$kind.exe" } | Select-Object -First 1
+      if (-not $asset) { throw 'Git for Windows has no installer for this system' }
+      Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $installer
+    } finally {
+      $ProgressPreference = $demiPreviousProgress
+    }
+    if ($asset.digest -and (Get-FileHash -Algorithm SHA256 $installer).Hash -ne ($asset.digest -replace '^sha256:', '')) {
+      throw 'Git for Windows download checksum mismatch'
+    }
+    if ((Get-AuthenticodeSignature $installer).Status -ne 'Valid') {
+      throw 'Git for Windows installer signature is not valid'
+    }
+    $options = '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES'
+    if ($everyone) {
+      $process = Start-Process -FilePath $installer -ArgumentList $options -Verb RunAs -Wait -PassThru
+    } else {
+      $folder = Join-Path $env:LOCALAPPDATA 'Programs\Git'
+      $process = Start-Process -FilePath $installer -ArgumentList ($options + ('/DIR="' + $folder + '"')) -Wait -PassThru
+    }
+    if ($process.ExitCode -ne 0) { throw "its installer exited with code $($process.ExitCode)" }
+  } finally {
+    if (Test-Path $installer) { Remove-Item -Force $installer }
+  }
+}
 try {
   try {
     [IO.Directory]::CreateDirectory($demiStage) | Out-Null
@@ -714,6 +788,15 @@ try {
       }
     } else {
       Move-Item $demiStage $demiBin
+    }
+    # A job's utilities besides Demi's own are Git for Windows': a device is
+    # not added without it, so a failed or refused install ends the setup.
+    if (-not (Get-DemiGit)) {
+      try {
+        Install-DemiGit
+      } catch {
+        throw "Git for Windows was not installed: $($_.Exception.Message)"
+      }
     }
     $env:DEMI_HOME = $demiState
     $env:DEMI_RELEASE_ID = $demiRelease

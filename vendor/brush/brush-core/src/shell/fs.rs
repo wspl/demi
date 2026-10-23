@@ -165,11 +165,27 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
     /// * `path` - The path to get the absolute form of.
     pub fn absolute_path(&self, path: impl AsRef<Path>) -> PathBuf {
         let path = path.as_ref();
+        if let Some(mapped) = self.mapped_path(path) {
+            return mapped;
+        }
         if path.as_os_str().is_empty() || path.is_absolute() {
             path.to_owned()
         } else {
             self.working_dir().join(path)
         }
+    }
+
+    /// Whether the embedding owner's host runs the program `name` stands for itself
+    /// (`ExecutionHost::stands_in_for`).
+    pub fn host_stands_in_for(&self, name: &str) -> bool {
+        self.execution_host().is_some_and(|host| host.stands_in_for(name))
+    }
+
+    /// `path` as the embedding owner's host reads it where a path is not the
+    /// system's own (`ExecutionHost::map_path`), or none.
+    pub(crate) fn mapped_path(&self, path: &Path) -> Option<PathBuf> {
+        self.execution_host()?
+            .map_path(path, &|name| self.env_str(name).map(|value| value.into_owned()))
     }
 
     /// Opens the given file, using the context of this shell and the provided execution parameters.

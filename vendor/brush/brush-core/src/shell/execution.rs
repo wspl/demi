@@ -81,21 +81,7 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
     ) -> Result<ExecutionResult, error::Error> {
         let path = path.as_ref();
         tracing::debug!("sourcing: {}", path.display());
-
-        let mut options = std::fs::File::options();
-        options.read(true);
-
-        let opened_file: openfiles::OpenFile = self
-            .open_file(&options, false, path, params)
-            .map_err(|e| error::ErrorKind::FailedSourcingFile(path.to_owned(), e))?;
-
-        if opened_file.is_dir() {
-            return Err(error::ErrorKind::FailedSourcingFile(
-                path.to_owned(),
-                std::io::Error::from(std::io::ErrorKind::IsADirectory),
-            )
-            .into());
-        }
+        let opened_file = self.open_script_file(path, params)?;
 
         let source_info = crate::SourceInfo::from(path.to_owned());
 
@@ -114,6 +100,30 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
         }
 
         Ok(result)
+    }
+
+    /// Opens the file a script is read from.
+    fn open_script_file(
+        &self,
+        path: &Path,
+        params: &ExecutionParameters,
+    ) -> Result<openfiles::OpenFile, error::Error> {
+        let mut options = std::fs::File::options();
+        options.read(true);
+
+        let opened_file: openfiles::OpenFile = self
+            .open_file(&options, false, path, params)
+            .map_err(|e| error::ErrorKind::FailedSourcingFile(path.to_owned(), e))?;
+
+        if opened_file.is_dir() {
+            return Err(error::ErrorKind::FailedSourcingFile(
+                path.to_owned(),
+                std::io::Error::from(std::io::ErrorKind::IsADirectory),
+            )
+            .into());
+        }
+
+        Ok(opened_file)
     }
 
     /// Source the given file as a shell script, returning the execution result.
@@ -231,25 +241,152 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
         Ok(result)
     }
 
-    /// Runs the script file `path` as a command of another shell would: `options` are set as
-    /// `set` takes them, then the file runs with `args` as its positional parameters, and the
-    /// shell's exit handling runs after it. The shell is not used again.
-    #[cfg(windows)]
-    pub(crate) async fn run_script_as_command(
+    /// Executes the given text as a shell reads a script or a `-c` string:
+    /// each command runs once the text up to its end is read, so one that
+    /// precedes a syntax error has run when the error is reported, and an
+    /// `exit` before text that does not parse ends the shell without
+    /// reading it.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The text to execute.
+    /// * `source_info` - Information about the source of the text.
+    /// * `params` - Execution parameters.
+    pub async fn run_string_incrementally(
         &mut self,
-        path: &Path,
-        options: &[std::ffi::OsString],
-        args: Vec<String>,
+        text: &str,
+        source_info: &crate::SourceInfo,
         params: &ExecutionParameters,
     ) -> Result<ExecutionResult, error::Error> {
-        if !options.is_empty() {
-            let words = options.iter().map(|option| option.to_string_lossy()).collect::<Vec<_>>().join(" ");
-            let source_info = crate::SourceInfo::from(path.to_owned());
-            self.run_string(format!("set {words}"), &source_info, params).await?;
+        // Text that parses as a whole, which nearly every script does, runs
+        // as one program.
+        let parse_result = self.parse_string(text);
+        if parse_result.is_ok() {
+            return self.run_parsed_result(parse_result, source_info, params).await;
         }
+
+        let mut result = ExecutionResult::success();
+        let mut chunk = String::new();
+        let mut first_line = 1;
+        for (index, line) in text.split_inclusive('\n').enumerate() {
+            if chunk.is_empty() {
+                first_line = index + 1;
+            }
+            chunk.push_str(line);
+            // Blank lines in front keep the line numbers of what follows.
+            let padded = format!("{}{chunk}", "\n".repeat(first_line - 1));
+            match self.parse_string(padded) {
+                Ok(program) => {
+                    chunk.clear();
+                    result = self
+                        .run_parsed_result(Ok(program), source_info, params)
+                        .await?;
+                    if !result.is_normal_flow() {
+                        return Ok(result);
+                    }
+                }
+                // More lines may complete it.
+                Err(error) if Self::is_incomplete(&error) => {}
+                Err(error) => {
+                    return self
+                        .run_parsed_result(Err(error), source_info, params)
+                        .await;
+                }
+            }
+        }
+        if chunk.is_empty() {
+            return Ok(result);
+        }
+        let padded = format!("{}{chunk}", "\n".repeat(first_line - 1));
+        let parse_result = self.parse_string(padded);
+        self.run_parsed_result(parse_result, source_info, params).await
+    }
+
+    /// Whether `error` is the input ending before a command does, which more
+    /// input can mend.
+    fn is_incomplete(error: &brush_parser::ParseError) -> bool {
+        use brush_parser::{ParseError, TokenizerError};
+        match error {
+            ParseError::ParsingAtEndOfInput => true,
+            ParseError::ParsingNear(_) => false,
+            ParseError::Tokenizing { inner, .. } => matches!(
+                inner,
+                TokenizerError::UnterminatedEscapeSequence
+                    | TokenizerError::UnterminatedSingleQuote(_)
+                    | TokenizerError::UnterminatedAnsiCQuote(_)
+                    | TokenizerError::UnterminatedDoubleQuote(_)
+                    | TokenizerError::UnterminatedBackquote(_)
+                    | TokenizerError::UnterminatedExtendedGlob(_)
+                    | TokenizerError::UnterminatedVariable
+                    | TokenizerError::UnterminatedCommandSubstitution
+                    | TokenizerError::UnterminatedExpansion
+                    | TokenizerError::UnterminatedHereDocuments(..)
+            ),
+        }
+    }
+
+    /// Executes the script file at `path` as `run_script` does, reading it as
+    /// `run_string_incrementally` reads text: a script may carry data that is
+    /// not a program after its `exit`.
+    ///
+    /// # Arguments
+    ///
+    /// * `script_path` - The path to the script file to execute.
+    /// * `args` - The arguments to pass to the script as positional parameters.
+    pub async fn run_script_incrementally<S: Into<String>, P: AsRef<Path>, I: Iterator<Item = S>>(
+        &mut self,
+        script_path: P,
+        args: I,
+    ) -> Result<ExecutionResult, error::Error> {
+        let params = self.default_exec_params();
+        let path = script_path.as_ref();
+        let mut file = self.open_script_file(path, &params)?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|e| error::ErrorKind::FailedSourcingFile(path.to_owned(), e))?;
+        let text = String::from_utf8_lossy(&bytes);
+        let source_info = crate::SourceInfo::from(path.to_owned());
+
+        self.call_stack.push_script(
+            callstack::ScriptCallType::Run,
+            &source_info,
+            args.map(Into::into),
+        );
         let result = self
-            .parse_and_execute_script_file(path, args.into_iter(), params, callstack::ScriptCallType::Run)
+            .run_string_incrementally(&text, &source_info, &params)
+            .await;
+        self.call_stack.pop();
+        let mut result = result?;
+        if matches!(
+            result.next_control_flow,
+            ExecutionControlFlow::ReturnFromFunctionOrScript
+        ) {
+            result.next_control_flow = ExecutionControlFlow::Normal;
+        }
+
+        // Give the shell a chance to run on-exit tasks, but ignore the result.
+        let _ = self.on_exit().await;
+
+        Ok(result)
+    }
+
+    /// Executes a `-c` command string as `run_dash_c_command` does, reading it
+    /// as `run_string_incrementally` reads text.
+    ///
+    /// # Arguments
+    ///
+    /// * `command` - The command to execute.
+    pub async fn run_dash_c_incrementally(
+        &mut self,
+        command: &str,
+    ) -> Result<ExecutionResult, error::Error> {
+        self.start_command_string_mode();
+        let params = self.default_exec_params();
+        let source_info = SourceInfo::from("-c");
+        let result = self
+            .run_string_incrementally(command, &source_info, &params)
             .await?;
+        self.end_command_string_mode()?;
         let _ = self.on_exit().await;
         Ok(result)
     }

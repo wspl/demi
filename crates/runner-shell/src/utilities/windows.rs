@@ -1,4 +1,5 @@
-//! `chmod` and `chown` on Windows, which has no Unix mode or owner.
+//! `chmod`, `chown` and `chgrp` on Windows, which has no Unix mode, owner or
+//! group.
 //!
 //! Each reads GNU's command line and checks what GNU's checks (its operands,
 //! the mode or the owner and group, and each file), failing with GNU's message
@@ -15,7 +16,7 @@ use uucore::{context::fs, display::Quotable, error::io_message};
 /// GNU's status for every failure of these utilities.
 const FAILED: i32 = 1;
 
-/// The options the two utilities share.
+/// The options the utilities share.
 #[derive(Default)]
 struct Options {
     recursive: bool,
@@ -395,4 +396,49 @@ fn known(account: &str) -> bool {
     };
     found != 0
         || std::io::Error::last_os_error().raw_os_error() == Some(ERROR_INSUFFICIENT_BUFFER as i32)
+}
+
+const CHGRP_USAGE: &str = "\
+Usage: chgrp [OPTION]... GROUP FILE...
+  or:  chgrp [OPTION]... --reference=RFILE FILE...
+Change the group of each FILE to GROUP.
+Windows has no Unix group: a valid change succeeds and changes nothing.
+GROUP is a number or the name of a Windows account.
+
+  -c, --changes          like verbose but report only when a change is made
+  -f, --silent, --quiet  suppress most error messages
+  -v, --verbose          output a diagnostic for every file processed
+      --dereference      affect the referent of each symbolic link (default)
+  -h, --no-dereference   affect symbolic links instead of their referents
+      --reference=RFILE  use RFILE's group
+  -R, --recursive        operate on files and directories recursively
+      --help        display this help and exit
+      --version     output version information and exit
+";
+
+pub fn chgrp(args: Vec<OsString>) -> i32 {
+    let name = "chgrp";
+    let mut options = match read(name, args, true, CHGRP_USAGE) {
+        Read::Run(options) => options,
+        Read::Done(status) => return status,
+    };
+    let (group, files) = match files(name, &mut options) {
+        Ok(found) => found,
+        Err(status) => return status,
+    };
+    if let Some(group) = &group
+        && !group.is_empty()
+        && !group.bytes().all(|byte| byte.is_ascii_digit())
+        && !known(group)
+    {
+        uucore::context_eprintln!("{name}: invalid group: {}", group.quote());
+        return FAILED;
+    }
+    let mut status = 0;
+    for file in &files {
+        if !walk(name, &options, file, &mut |_, _| {}) {
+            status = FAILED;
+        }
+    }
+    status
 }

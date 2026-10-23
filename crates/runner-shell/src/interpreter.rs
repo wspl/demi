@@ -74,23 +74,7 @@ pub async fn execute(
             },
         ),
     ]);
-    let mut registrations = registrations();
-    if let Some(commands) = &options.scope.commands {
-        for name in &commands.roots {
-            registrations.insert(
-                name.clone(),
-                builtins::Registration {
-                    execute_func: crate::declared::execute,
-                    content_func: |name, _, _| {
-                        Ok(format!("{name}: use {name} --help for command options"))
-                    },
-                    disabled: false,
-                    special_builtin: false,
-                    declaration_builtin: false,
-                },
-            );
-        }
-    }
+    let registrations = job_builtins(&options.scope);
     let mut builder = Shell::builder()
         .execution_host(
             Arc::new(options.scope.clone()) as Arc<dyn brush_core::execution_host::ExecutionHost>
@@ -106,6 +90,11 @@ pub async fn execute(
         builder = builder.var(name, variable);
     }
     let mut shell = builder.build().await?;
+    // `$BASH` names the shell, which runs this one again (`"$BASH" -c …`), as
+    // `bash` does for a shell a job starts (`nested.rs`).
+    shell
+        .env_mut()
+        .set_global("BASH", brush_core::ShellVariable::new(crate::nested::BASH))?;
     if options.login {
         restore_execution_context(&mut shell, &options.env)?;
         shell.set_working_dir(cwd)?;
@@ -117,10 +106,35 @@ pub async fn execute(
     // keeps the job running, and the job says which do; those that do not run
     // on without it.
     let work = options.scope.work.clone();
-    crate::process_builtins::wait_tasks(&mut shell, true, |tasks| work.outlived_by(tasks)).await?;
+    crate::process_builtins::wait_tasks(&mut shell, true, Some(&work), |tasks| work.outlived_by(tasks)).await?;
     Ok(ShellResult {
         code: result.exit_code.into(),
     })
+}
+
+/// The builtins of a job's shell under `scope`: the standard builtins and
+/// utilities, and the commands the job declares.
+pub(crate) fn job_builtins(
+    scope: &Scope,
+) -> HashMap<String, builtins::Registration<brush_core::extensions::DefaultShellExtensions>> {
+    let mut registrations = registrations();
+    if let Some(commands) = &scope.commands {
+        for name in &commands.roots {
+            registrations.insert(
+                name.clone(),
+                builtins::Registration {
+                    execute_func: crate::declared::execute,
+                    content_func: |name, _, _| {
+                        Ok(format!("{name}: use {name} --help for command options"))
+                    },
+                    disabled: false,
+                    special_builtin: false,
+                    declaration_builtin: false,
+                },
+            );
+        }
+    }
+    registrations
 }
 
 /// The builtins every job's shell has: brush's, the runner's own in place of
@@ -130,9 +144,10 @@ pub(crate) fn registrations()
 -> HashMap<String, builtins::Registration<brush_core::extensions::DefaultShellExtensions>> {
     let mut registrations = brush_builtins::default_builtins(brush_builtins::BuiltinSet::BashMode);
     crate::process_builtins::register(&mut registrations);
-    for &(name, _) in crate::utilities::UTILITIES {
+    crate::nested::register(&mut registrations);
+    for (name, _) in crate::utilities::UTILITIES {
         registrations.insert(
-            name.to_owned(),
+            (*name).to_owned(),
             builtins::Registration {
                 execute_func: execute_utility,
                 content_func: |name, _, _| {
@@ -160,7 +175,7 @@ pub(crate) fn scope(shell: &Shell) -> io::Result<Scope> {
 /// Login profiles configure user tools; the runner's own variables, its
 /// `DEMI_*` names, stay authoritative. `TMPDIR` is the device's, which a
 /// profile may set as for any other program (`crates/runner-shell/src/lib.rs`).
-fn restore_execution_context(
+pub(crate) fn restore_execution_context(
     shell: &mut Shell,
     env: &BTreeMap<String, String>,
 ) -> Result<(), brush_core::Error> {
@@ -206,18 +221,7 @@ fn execute_utility(
             .map(|(name, _)| *name)
             .find(|name| *name == context.command_name)
             .ok_or_else(|| io::Error::other("unregistered native utility"))?;
-        let env = context
-            .shell
-            .env()
-            .iter_exported()
-            .filter(|(_, variable)| variable.value().is_set())
-            .map(|(name, variable)| {
-                (
-                    name.clone(),
-                    variable.value().to_cow_str(context.shell).into_owned(),
-                )
-            })
-            .collect();
+        let env = crate::nested::exported(context.shell);
         let stdin = Arc::new(invocation_file(&context, 0)?);
         let scope = scope(context.shell)?;
         // The utility's files and the programs it starts get the umask and

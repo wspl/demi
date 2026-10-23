@@ -117,7 +117,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 - **組み合わせ自在**：コマンドはパイプや `&&` でつなげられるので、通常なら何回ものツール呼び出しが必要な作業を 1 ステップで行えます。
 - **簡潔なプロンプト**：モデルに見えるのはコマンドグループごとに 1 行だけで、必要なときに `--help` を読みます。機能が増えても、リクエストは肥大化しません。
-- **どこでも同じ**：どのマシンも、Rust で書かれた同じ bash 互換シェルと GNU ツール（[brush](https://github.com/reubeno/brush)、[uutils](https://github.com/uutils/coreutils)、ripgrep、[jaq](https://github.com/01mf02/jaq)）を実行します。クラウドで動くスクリプトは、macOS や Windows でもそのまま動きます。
+- **どこでも同じシェル**：どのマシンも、Rust で書かれた同じ bash 互換シェル（[brush](https://github.com/reubeno/brush)）を実行するので、クラウドで動くスクリプトは macOS や Windows でもそのまま動きます。ファイルを変更するツールはどのマシンでも GNU 版（[uutils](https://github.com/uutils/coreutils)）なので、それらによる変更は記録されます。それ以外のプログラム（tar や python など）はシステム標準のもので、その変更は記録されません。Windows ではそれ以外のツールは Git for Windows のものです。Git for Windows が無ければ Demi のセットアップがインストールします。
 - **どのモデルでも同じ**：どのプロバイダーのモデルにも同じひとつのツールが見えるので、モデルを切り替えてもエージェントにできることは変わりません。
 - **長時間のジョブに対応**：コマンドはバックグラウンドで動き続け、終わると報告するので、開発サーバーやテストスイートが会話を止めません。
 

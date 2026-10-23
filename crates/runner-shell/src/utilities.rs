@@ -1,24 +1,35 @@
-//! In-process uutils adapters; algorithms remain in the contextual upstream
-//! crates.
+//! The utilities a job runs in the runner, from uutils and the
+//! GNU-compatible tools vendored beside it ([`UTILITIES`]), and the `sh` and
+//! `bash` that start them (`nested.rs`).
 //!
-//! The utilities run in the runner, from uutils and the GNU-compatible tools
-//! vendored beside it ([`UTILITIES`]), so their writes pass through the job's
-//! scope and edit tracking records them. A Host's own programs of these names
-//! stay where the system keeps them.
+//! Two rules decide which utility runs:
 //!
-//! Options, output, messages and exit statuses are GNU's, in English, on every
-//! Host, and every path is resolved against the job's directory, never the
-//! runner's own.
+//! 1. Demi's own, on every system: the job's shell, `sh` and `bash`, and every
+//!    utility that can write files or start programs, so that what it writes,
+//!    and what the programs it starts write, are the command's edits, which
+//!    only the runner's own utilities record. [`UTILITIES`] lists them.
+//! 2. Every other utility is the system's own: GNU's on Linux, macOS's on a
+//!    Mac, Git for Windows' on Windows (`crates/runner/src/git.rs`). One the
+//!    Host lacks is missing, as it is on the machine itself.
+//!
+//! A utility that runs in the runner takes macOS's forms on a Mac where GNU's
+//! refuses them or reads them otherwise (`sed -i ''`, `cp -c`), so that a model
+//! that writes macOS's gets what it meant; elsewhere options, output, messages
+//! and exit statuses are GNU's, in English. Every path is resolved against the
+//! job's directory, never the runner's own.
 //!
 //! A utility that starts a program (`find -exec`, `xargs`, `env`, `timeout`):
 //!
-//! - runs a bare name that is one of these utilities in the runner ([`named`]),
-//!   as the shell would;
-//! - runs the program at a path such as `/usr/bin/sed`.
+//! - runs a utility of these named by its file name in the runner ([`named`]),
+//!   as the shell would, a path such as `/usr/bin/sed` or `/bin/bash`
+//!   included;
+//! - runs any other program as the system does.
 //!
-//! On Windows `/dev/null` and `/dev/zero` are devices for operands too, as in
-//! Git Bash. The exception is the utilities that read the operand's kind first,
-//! which refuse them since Windows tells nothing of its null device's kind.
+//! On Windows `/dev/null` and `/dev/zero` are devices for operands too, and
+//! `/tmp` is the temporary folder (`%TMP%`, else `%TEMP%`) and `/c/…` is
+//! `C:\…`, as in Git Bash. The exception is the
+//! utilities that read the operand's kind first, which refuse the devices
+//! since Windows tells nothing of its null device's kind.
 //!
 //! Only a utility's open of a file and start of a program wait out a lack of
 //! open files. Making every utility wait would change most of them, and the
@@ -30,13 +41,8 @@ mod windows;
 /// One utility's entry point: its arguments, the utility's own name first.
 type Entry = fn(Vec<std::ffi::OsString>) -> i32;
 
-/// Every utility a job runs in process, by the name a script calls it.
+/// Every utility a job runs in the runner, by the name a script calls it.
 pub const UTILITIES: &[(&str, Entry)] = &[
-    ("cat", |args| uu_cat::uumain(args.into_iter())),
-    ("head", |args| uu_head::uumain(args.into_iter())),
-    ("tail", |args| uu_tail::uumain(args.into_iter())),
-    ("wc", |args| uu_wc::uumain(args.into_iter())),
-    ("ls", |args| uu_ls::uumain(args.into_iter())),
     ("cp", |args| uu_cp::uumain(args.into_iter())),
     ("mv", |args| uu_mv::uumain(args.into_iter())),
     ("rm", |args| uu_rm::uumain(args.into_iter())),
@@ -46,26 +52,26 @@ pub const UTILITIES: &[(&str, Entry)] = &[
     ("tee", |args| uu_tee::uumain(args.into_iter())),
     ("sort", |args| uu_sort::uumain(args.into_iter())),
     ("uniq", |args| uu_uniq::uumain(args.into_iter())),
-    ("cut", |args| uu_cut::uumain(args.into_iter())),
-    ("tr", |args| uu_tr::uumain(args.into_iter())),
-    ("paste", |args| uu_paste::uumain(args.into_iter())),
-    ("nl", |args| uu_nl::uumain(args.into_iter())),
-    ("tac", |args| uu_tac::uumain(args.into_iter())),
-    ("basename", |args| uu_basename::uumain(args.into_iter())),
-    ("dirname", |args| uu_dirname::uumain(args.into_iter())),
-    ("realpath", |args| uu_realpath::uumain(args.into_iter())),
     ("env", |args| uu_env::uumain(args.into_iter())),
-    ("seq", |args| uu_seq::uumain(args.into_iter())),
-    ("date", |args| uu_date::uumain(args.into_iter())),
-    ("sleep", |args| uu_sleep::uumain(args.into_iter())),
     ("mktemp", |args| uu_mktemp::uumain(args.into_iter())),
-    ("stat", stat),
-    ("du", |args| uu_du::uumain(args.into_iter())),
-    ("df", |args| uu_df::uumain(args.into_iter())),
-    ("od", |args| uu_od::uumain(args.into_iter())),
     ("chmod", chmod),
     ("chown", chown),
-    ("grep", |args| uu_grep::uumain(args.into_iter())),
+    ("chgrp", chgrp),
+    ("ln", |args| uu_ln::uumain(args.into_iter())),
+    ("link", |args| uu_link::uumain(args.into_iter())),
+    ("unlink", |args| uu_unlink::uumain(args.into_iter())),
+    ("truncate", |args| uu_truncate::uumain(args.into_iter())),
+    ("split", |args| uu_split::uumain(args.into_iter())),
+    ("csplit", |args| uu_csplit::uumain(args.into_iter())),
+    ("shuf", |args| uu_shuf::uumain(args.into_iter())),
+    ("shred", |args| uu_shred::uumain(args.into_iter())),
+    ("dd", |args| uu_dd::uumain(args.into_iter())),
+    ("install", |args| uu_install::uumain(args.into_iter())),
+    // Upstream builds these for Unix only: Windows has no such files.
+    #[cfg(unix)]
+    ("mkfifo", |args| uu_mkfifo::uumain(args.into_iter())),
+    #[cfg(unix)]
+    ("mknod", |args| uu_mknod::uumain(args.into_iter())),
     ("sed", |args| sed::sed::uumain(args.into_iter())),
     ("find", |args| {
         findutils::find::find_main(
@@ -84,25 +90,11 @@ pub const UTILITIES: &[(&str, Entry)] = &[
                 .collect::<Vec<_>>(),
         )
     }),
-    ("diff", |args| {
-        usage("diff", &args, "Compare files or directories. -u unified, -c context, -y side by side, -q brief, -s identical, -e ed script, -r recursive, -N absent files as empty, -x PAT exclude, -i -b -w -B ignore case, space changes, all space, blank lines, -a binary as text.")
-            .unwrap_or_else(|| diffutilslib::diff::main(args.into_iter().peekable()))
-    }),
-    ("cmp", |args| {
-        usage(
-            "cmp",
-            &args,
-            "Compare files byte by byte. -s silent, -l list differences, -n LIMIT, -i SKIP.",
-        )
-        .unwrap_or_else(|| diffutilslib::cmp::main(args.into_iter().peekable()))
-    }),
-    ("jq", jaq::uumain),
-    ("rg", ripgrep::uumain),
+    // Finding a command: a name the runner runs prints bare.
+    ("which", crate::which::uumain),
+    #[cfg(windows)]
+    ("where", crate::which::where_main),
 ];
-
-fn stat(args: Vec<std::ffi::OsString>) -> i32 {
-    uu_stat::uumain(args.into_iter())
-}
 
 #[cfg(unix)]
 fn chmod(args: Vec<std::ffi::OsString>) -> i32 {
@@ -112,6 +104,16 @@ fn chmod(args: Vec<std::ffi::OsString>) -> i32 {
 #[cfg(unix)]
 fn chown(args: Vec<std::ffi::OsString>) -> i32 {
     uu_chown::uumain(args.into_iter())
+}
+
+#[cfg(unix)]
+fn chgrp(args: Vec<std::ffi::OsString>) -> i32 {
+    uu_chgrp::uumain(args.into_iter())
+}
+
+#[cfg(windows)]
+fn chgrp(args: Vec<std::ffi::OsString>) -> i32 {
+    windows::chgrp(args)
 }
 
 #[cfg(windows)]
@@ -124,33 +126,43 @@ fn chown(args: Vec<std::ffi::OsString>) -> i32 {
     windows::chown(args)
 }
 
-/// The usage `diff` and `cmp` print for `--help`, which their library lacks.
-fn usage(name: &str, args: &[std::ffi::OsString], summary: &str) -> Option<i32> {
-    if !args.iter().any(|arg| arg == "--help") {
-        return None;
-    }
-    uucore::context_println!("Usage: {name} [OPTION]... FILE1 FILE2");
-    uucore::context_println!("{summary}");
-    Some(0)
-}
-
 fn strings(args: &[std::ffi::OsString]) -> Vec<String> {
     args.iter()
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect()
 }
 
-/// The utility a child program's name names: a utility that starts a
-/// program by one of these bare names, as `find -exec`, `xargs` and `env`
-/// do, starts that utility, as the job's shell would run the name; a path
-/// names a program.
+/// The utility a program's name names, by the file name of `program`,
+/// whatever directory a path puts it in, as for `sh` and `bash`: the runner's
+/// `sed` is what `sed`, `/usr/bin/sed` and `"$(which sed)"` run, and so a
+/// script that names the system's path for a utility still has its writes
+/// recorded. On Windows the case of the name and an `.exe` are not part of it.
 pub(crate) fn named(program: &std::ffi::OsStr) -> Option<&'static str> {
-    let program = program.to_str()?;
+    if let Some(shell) = crate::nested::shell_named(program) {
+        return Some(shell);
+    }
+    let text = program.to_str()?;
+    let name = if cfg!(windows) {
+        text.rsplit(['/', '\\']).next()?
+    } else {
+        text.rsplit('/').next()?
+    };
+    let name = if cfg!(windows) && name.len() > 4 && name[name.len() - 4..].eq_ignore_ascii_case(".exe") {
+        &name[..name.len() - 4]
+    } else {
+        name
+    };
     let mut names = UTILITIES
         .iter()
         .map(|(name, _)| *name)
         .chain([crate::timeout::NAME, crate::nohup::NAME]);
-    names.find(|name| *name == program)
+    names.find(|known| {
+        if cfg!(windows) {
+            known.eq_ignore_ascii_case(name)
+        } else {
+            *known == name
+        }
+    })
 }
 
 /// Starts the utility `context.name`, which a utility started as its child

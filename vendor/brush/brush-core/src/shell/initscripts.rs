@@ -119,20 +119,17 @@ impl<SE: extensions::ShellExtensions> Shell<SE> {
                     }
                 }
             } else {
-                let env_var_name = if self.options.sh_mode {
-                    "ENV"
-                } else {
-                    "BASH_ENV"
-                };
-
-                if self.env.is_set(env_var_name) {
-                    //
-                    // TODO(well-known-vars): look at $ENV/BASH_ENV; source its expansion if that
-                    // file exists
-                    //
-                    return error::unimp(
-                        "load config from $ENV/BASH_ENV for non-interactive, non-login shell",
-                    );
+                // A non-interactive shell reads $BASH_ENV, as bash does and
+                // unless it is in POSIX mode, where no startup file is read
+                // (`sh` reads $ENV only when interactive); a file that is
+                // not there is no error.
+                if !self.options.sh_mode
+                    && !self.options.posix_mode
+                    && let Some(path) = self.env_str("BASH_ENV").map(|path| path.into_owned())
+                    && !path.is_empty()
+                {
+                    self.source_if_exists(std::path::Path::new(&path), &params)
+                        .await?;
                 }
             }
         }

@@ -86,7 +86,12 @@ pub fn getsid(pid: i32) -> Result<pid_t, Errno> {
 #[cfg(not(target_os = "fuchsia"))]
 impl ChildExt for Child {
     fn send_signal(&mut self, signal: usize) -> io::Result<()> {
-        let pid = Pid::from_raw(self.id() as pid_t);
+        // A child the embedding owner runs as one of its utilities has no
+        // process to signal.
+        let Some(id) = self.id() else {
+            return Err(io::Error::from_raw_os_error(libc::ESRCH));
+        };
+        let pid = Pid::from_raw(id as pid_t);
         let result = if signal == 0 {
             nix_signal::kill(pid, None)
         } else {

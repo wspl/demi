@@ -82,6 +82,10 @@ pub struct FileSystemMatcher {
     fs_text: String,
     #[cfg(unix)]
     cache: RefCell<Option<Cache>>,
+    /// macOS's `-fstype local`: the device and whether it is a local file system, for the
+    /// latest file asked about.
+    #[cfg(target_os = "macos")]
+    local: RefCell<Option<(String, bool)>>,
 }
 
 impl FileSystemMatcher {
@@ -90,6 +94,8 @@ impl FileSystemMatcher {
         Self {
             fs_text,
             cache: RefCell::new(None),
+            #[cfg(target_os = "macos")]
+            local: RefCell::new(None),
         }
     }
 
@@ -118,6 +124,20 @@ impl Matcher for FileSystemMatcher {
             return false;
         };
         let dev_id = metadata.dev().to_string();
+
+        // macOS's find takes `local` for any file system that is not a network's.
+        #[cfg(target_os = "macos")]
+        if self.fs_text == "local" {
+            if let Some((dev, local)) = &*self.local.borrow() {
+                if *dev == dev_id {
+                    return *local;
+                }
+            }
+            let local = uucore::fsext::read_fs_list()
+                .is_ok_and(|list| list.iter().rfind(|fs| fs.dev_id == dev_id).is_some_and(|fs| !fs.remote));
+            *self.local.borrow_mut() = Some((dev_id, local));
+            return local;
+        }
 
         if let Ok(result) = fs_type_for_dev(dev_id, &self.cache) {
             result == self.fs_text

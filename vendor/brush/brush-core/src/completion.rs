@@ -330,6 +330,7 @@ impl Spec {
                 .expand(
                     shell.working_dir(),
                     Some(&patterns::Pattern::accept_all_expand_filter),
+                    &|path| shell.mapped_path(path),
                     &patterns::FilenameExpansionOptions::default(),
                 )?
                 .into_paths();
@@ -1227,6 +1228,7 @@ async fn get_file_completions(
         .expand(
             shell.working_dir(),
             Some(&path_filter),
+            &|path| shell.mapped_path(path),
             &patterns::FilenameExpansionOptions::default(),
         )
         .unwrap_or_default()

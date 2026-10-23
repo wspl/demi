@@ -8,6 +8,21 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
         self.call_stack.in_sourced_script()
     }
 
+    /// Returns whether or not the shell is executing inside a `for`, `while` or `until` loop.
+    pub const fn in_loop(&self) -> bool {
+        self.loop_depth > 0
+    }
+
+    /// Notes that a loop starts, and, once it ends, [`Self::leave_loop`].
+    pub(crate) const fn enter_loop(&mut self) {
+        self.loop_depth += 1;
+    }
+
+    /// Notes that a loop has ended.
+    pub(crate) const fn leave_loop(&mut self) {
+        self.loop_depth = self.loop_depth.saturating_sub(1);
+    }
+
     /// Returns whether or not the shell is actively executing in a shell function.
     pub fn in_function(&self) -> bool {
         self.call_stack.in_function()

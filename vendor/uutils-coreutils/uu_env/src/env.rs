@@ -107,6 +107,10 @@ struct Options<'a> {
     sets: Vec<(Cow<'a, OsStr>, Cow<'a, OsStr>)>,
     program: Vec<&'a OsStr>,
     argv0: Option<&'a OsStr>,
+    /// macOS's `-P`: the directories the program is searched in, in place of
+    /// `PATH`.
+    #[cfg_attr(not(target_os = "macos"), expect(dead_code, reason = "only macOS's env has -P"))]
+    search_path: Option<&'a OsStr>,
     #[cfg(all(unix, not(target_os = "fuchsia")))]
     ignore_signal: SignalRequest,
     #[cfg(all(unix, not(target_os = "fuchsia")))]
@@ -340,7 +344,7 @@ fn load_config_file(opts: &mut Options) -> UResult<()> {
 }
 
 pub fn uu_app() -> Command {
-    Command::new("env")
+    let command = Command::new("env")
         .version(uucore::crate_version!())
         .help_template(uucore::localized_help_template("env"))
         .about(translate!("env-about"))
@@ -460,7 +464,18 @@ pub fn uu_app() -> Command {
                 .long(options::LIST_SIGNAL_HANDLING)
                 .action(ArgAction::SetTrue)
                 .help(translate!("env-help-list-signal-handling")),
-        )
+        );
+    // macOS's own env: -P searches the program in the given directories.
+    #[cfg(target_os = "macos")]
+    let command = command.arg(
+        Arg::new("bsd-search-path")
+            .short('P')
+            .value_name("altpath")
+            .action(ArgAction::Set)
+            .value_parser(ValueParser::os_string())
+            .help("Search the program in altpath instead of PATH (macOS)"),
+    );
+    command
 }
 
 pub fn parse_args_from_str(text: &NativeIntStr) -> UResult<Vec<NativeIntString>> {
@@ -891,7 +906,24 @@ impl EnvAppData {
         do_debug_printing: bool,
         #[cfg(all(unix, not(target_os = "fuchsia")))] signal_actions: SignalActionLog,
     ) -> Result<(), Box<dyn UError>> {
-        let prog = Cow::from(opts.program[0]);
+        #[allow(unused_mut)]
+        let mut prog = Cow::from(opts.program[0]);
+        // macOS's -P: a name without a directory is looked for in the given
+        // directories, and found there it is run by its path.
+        #[cfg(target_os = "macos")]
+        if let Some(search_path) = opts.search_path
+            && !prog.as_encoded_bytes().contains(&b'/')
+            && let Some(found) = std::env::split_paths(search_path)
+                .map(|dir| uucore::context::resolve(dir).join(&*prog))
+                .find(|candidate| {
+                    uucore::context::fs::metadata(candidate).is_ok_and(|meta| {
+                        use std::os::unix::fs::PermissionsExt;
+                        meta.is_file() && meta.permissions().mode() & 0o111 != 0
+                    })
+                })
+        {
+            prog = Cow::Owned(found.into_os_string());
+        }
 
         let arg0 = match opts.argv0 {
             None => prog.clone(),
@@ -1011,6 +1043,11 @@ fn make_options<'a>(
         sets: vec![],
         program: vec![],
         argv0,
+        search_path: if cfg!(target_os = "macos") {
+            matches.get_one::<OsString>("bsd-search-path").map(OsString::as_os_str)
+        } else {
+            None
+        },
         #[cfg(all(unix, not(target_os = "fuchsia")))]
         ignore_signal,
         #[cfg(all(unix, not(target_os = "fuchsia")))]

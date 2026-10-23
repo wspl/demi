@@ -133,4 +133,6 @@ check-cfg = [
 maintainer = "demi-runner"
 patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "On macOS `mktemp -t prefix` names a prefix, as its own mktemp reads it: the name is the prefix, a dot and ten random characters; a template with X's keeps GNU's meaning",
+    "A file is made through the context's own open, in the shell job's working directory, so that it is one of the command's edits; the tempfile crate made it in the runner's own directory",
 ]

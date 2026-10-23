@@ -71,6 +71,7 @@ pub(crate) static NEEDS_RE: LazyLock<ByteRegex> = LazyLock::new(|| {
              | \\[WwDdSsPp]      # Unicode classes
              | \\[AzBb]          # Empty matches
              | \\[0-9]           # Back-references
+             | \\[$^]            # Escaped anchors, which the literal path would read as anchors
            )
         ",
     )

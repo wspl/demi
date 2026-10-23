@@ -30,6 +30,8 @@ pub struct Config {
     follow: Follow,
     new_paths: Option<Vec<String>>,
     files0_argument: Option<String>,
+    /// macOS's `-E`: `-regex` reads extended regular expressions.
+    bsd_extended_regex: bool,
 }
 
 impl Default for Config {
@@ -50,6 +52,7 @@ impl Default for Config {
             follow: Follow::Never,
             new_paths: None, // This option exclusively for -files0-from argument.
             files0_argument: None, //This option also is used for file0-from
+            bsd_extended_regex: false,
         }
     }
 }
@@ -163,6 +166,24 @@ fn parse_args(args: &[&str]) -> Result<ParsedInfo, Box<dyn Error>> {
             "-H" => config.follow = Follow::Roots,
             "-L" => config.follow = Follow::Always,
             "-P" => config.follow = Follow::Never,
+            // macOS's own options before the paths: -E extended regular
+            // expressions, -s sorted, -d depth first, -x one file system,
+            // -X (names for xargs, nothing to do here) and -f a path.
+            #[cfg(target_os = "macos")]
+            "-E" => config.bsd_extended_regex = true,
+            #[cfg(target_os = "macos")]
+            "-s" => config.sorted_output = true,
+            #[cfg(target_os = "macos")]
+            "-d" => config.depth_first = true,
+            #[cfg(target_os = "macos")]
+            "-x" => config.same_file_system = true,
+            #[cfg(target_os = "macos")]
+            "-X" => {}
+            #[cfg(target_os = "macos")]
+            "-f" if i + 1 < args.len() => {
+                i += 1;
+                paths.push(args[i].to_string());
+            }
             "--" => {
                 // End of flags
                 i += 1;
@@ -183,7 +204,7 @@ fn parse_args(args: &[&str]) -> Result<ParsedInfo, Box<dyn Error>> {
         paths.push(args[i].to_string());
         i += 1;
     }
-    if i == paths_start {
+    if paths.is_empty() && i == paths_start {
         paths.push(".".to_string());
     }
     let matcher = matchers::build_top_level_matcher(&args[i..], &mut config)?;

@@ -50,8 +50,6 @@ const FALLBACK_TMPDIR: &str = "/tmp";
 
 #[derive(Error, Debug)]
 enum MkTempError {
-    #[error("{}", translate!("mktemp-error-persist-file", "path" => .0.quote()))]
-    PersistError(PathBuf),
 
     #[error("{}", translate!("mktemp-error-must-end-in-x", "template" => .0.quote()))]
     MustEndInX(String),
@@ -233,6 +231,19 @@ impl Params {
                     ));
                 }
             }
+        };
+
+        // macOS's `mktemp -t prefix` names the prefix of the name, to which
+        // it adds ten random characters; a template that has its own X's is
+        // GNU's, and stays as it is.
+        #[cfg(target_os = "macos")]
+        let template_str = if options.treat_as_template
+            && options.suffix.is_none()
+            && find_last_contiguous_block_of_xs(&template_str).is_none()
+        {
+            format!("{template_str}.XXXXXXXXXX")
+        } else {
+            template_str
         };
 
         // The template argument must end in 'X' if a suffix option is given.
@@ -569,7 +580,7 @@ fn make_temp_dir(dir: &Path, prefix: &str, rand: usize, suffix: &str) -> UResult
     #[cfg(unix)]
     builder.permissions(fs::Permissions::from_mode(0o700));
 
-    match builder.tempdir_in(dir) {
+    match builder.tempdir_in(uucore::context::resolve(dir)) {
         Ok(d) => {
             // `keep` consumes the TempDir without removing it
             let path = d.keep();
@@ -596,20 +607,28 @@ fn make_temp_dir(dir: &Path, prefix: &str, rand: usize, suffix: &str) -> UResult
 /// If the file could not be written to disk or if the directory does
 /// not exist.
 fn make_temp_file(dir: &Path, prefix: &str, rand: usize, suffix: &str) -> UResult<PathBuf> {
-    let mut builder = Builder::new();
-    builder.prefix(prefix).rand_bytes(rand).suffix(suffix);
-    match builder.tempfile_in(dir) {
-        // `keep` ensures that the file is not deleted
-        Ok(named_tempfile) => match named_tempfile.keep() {
-            Ok((_, pathbuf)) => Ok(pathbuf),
-            Err(e) => Err(MkTempError::PersistError(e.file.path().to_path_buf()).into()),
-        },
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            let filename = format!("{prefix}{}{suffix}", "X".repeat(rand));
-            let path = Path::new(dir).join(filename);
-            Err(MkTempError::NotFound(translate!("mktemp-template-type-file"), path).into())
+    // The file is made through the job's own open, in the job's directory,
+    // so that it is one of the command's edits; the `tempfile` crate would
+    // make it in the runner's own directory and record nothing. A name that
+    // exists is made again, up to 65,536 times: a template of a few X's has
+    // few names, and all of them may exist.
+    let mut attempts = 0u32;
+    loop {
+        let path = dry_exec(dir, prefix, rand, suffix);
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        match options.open(&path) {
+            Ok(_) => return Ok(path),
+            Err(e) if e.kind() == ErrorKind::AlreadyExists && attempts < 1 << 16 => attempts += 1,
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                let filename = format!("{prefix}{}{suffix}", "X".repeat(rand));
+                let path = Path::new(dir).join(filename);
+                return Err(MkTempError::NotFound(translate!("mktemp-template-type-file"), path).into());
+            }
+            Err(e) => return Err(e.into()),
         }
-        Err(e) => Err(e.into()),
     }
 }
 

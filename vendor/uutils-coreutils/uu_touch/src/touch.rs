@@ -77,6 +77,10 @@ pub struct Options {
     /// When true, error when file doesn't exist and either `--no-dereference`
     /// was passed or the file couldn't be created
     pub strict: bool,
+
+    /// macOS's `-A`: seconds to add to the times each file would be given,
+    /// which are its own when no source names others.
+    pub adjust: Option<i64>,
 }
 
 pub enum InputFile {
@@ -200,6 +204,36 @@ fn shr2(s: &str) -> String {
     result
 }
 
+/// What macOS's `-A [-][[hh]mm]SS` asks for, in seconds.
+#[cfg(target_os = "macos")]
+fn adjustment(matches: &ArgMatches) -> UResult<Option<i64>> {
+    let Some(text) = matches.get_one::<String>("bsd-adjust") else {
+        return Ok(None);
+    };
+    let (sign, digits) = match text.strip_prefix('-') {
+        Some(digits) => (-1, digits),
+        None => (1, text.as_str()),
+    };
+    if digits.is_empty() || digits.len() > 6 || !all_digits(digits) {
+        return Err(USimpleError::new(1, format!("out of range or illegal time specification: [-][[hh]mm]SS")));
+    }
+    // Seconds are the last two digits, minutes the two before, hours the rest.
+    let value = |range: std::ops::Range<usize>| -> i64 {
+        digits.get(range).and_then(|part| part.parse().ok()).unwrap_or(0)
+    };
+    let len = digits.len();
+    let seconds = value(len.saturating_sub(2)..len);
+    let minutes = if len > 2 { value(len.saturating_sub(4)..len - 2) } else { 0 };
+    let hours = if len > 4 { value(0..len - 4) } else { 0 };
+    Ok(Some(sign * (hours * 3600 + minutes * 60 + seconds)))
+}
+
+#[cfg(not(target_os = "macos"))]
+#[allow(clippy::unnecessary_wraps)]
+fn adjustment(_: &ArgMatches) -> UResult<Option<i64>> {
+    Ok(None)
+}
+
 #[uucore::main]
 pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     let matches = uucore::clap_localization::handle_clap_result(uu_app(), args)?;
@@ -261,6 +295,7 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         date,
         change_times: determine_atime_mtime_change(&matches),
         strict: false,
+        adjust: adjustment(&matches)?,
     };
 
     touch(&files, &opts)?;
@@ -269,7 +304,7 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
 }
 
 pub fn uu_app() -> Command {
-    Command::new("touch")
+    let command = Command::new("touch")
         .version(uucore::crate_version!())
         .help_template(uucore::localized_help_template("touch"))
         .about(translate!("touch-about"))
@@ -355,7 +390,17 @@ pub fn uu_app() -> Command {
                 .num_args(1..)
                 .value_parser(clap::value_parser!(OsString))
                 .value_hint(clap::ValueHint::AnyPath),
-        )
+        );
+    // macOS's own touch: -A moves the times by [-][[hh]mm]SS.
+    #[cfg(target_os = "macos")]
+    let command = command.arg(
+        Arg::new("bsd-adjust")
+            .short('A')
+            .value_name("[-][[hh]mm]SS")
+            .allow_hyphen_values(true)
+            .help("adjust the times by this much (macOS)"),
+    );
+    command
         .group(
             ArgGroup::new(options::SOURCES)
                 .args([
@@ -429,6 +474,19 @@ pub fn touch(files: &[InputFile], opts: &Options) -> Result<(), TouchError> {
         let (path, is_stdout) = match file {
             InputFile::Stdout => (Cow::Owned(pathbuf_from_stdout()?), true),
             InputFile::Path(path) => (Cow::Borrowed(path), false),
+        };
+        let (atime, mtime) = match opts.adjust {
+            Some(seconds) => {
+                // Without a source of times the file's own are moved.
+                let (atime, mtime) = if matches!(opts.source, Source::Now) && opts.date.is_none() {
+                    stat(&path, !opts.no_deref).unwrap_or((atime, mtime))
+                } else {
+                    (atime, mtime)
+                };
+                let shift = |time: FileTime| FileTime::from_unix_time(time.unix_seconds() + seconds, time.nanoseconds());
+                (shift(atime), shift(mtime))
+            }
+            None => (atime, mtime),
         };
         touch_file(&path, is_stdout, opts, atime, mtime).map_err(|e| {
             TouchError::TouchFileError {
@@ -998,6 +1056,7 @@ mod tests {
                 date: Some("yesterday".to_owned()),
                 change_times: ChangeTimes::Both,
                 strict: false,
+                adjust: None,
             },
         ) {
             Err(TouchError::InvalidFiletime(filetime)) => assert_eq!(filetime, invalid_filetime),

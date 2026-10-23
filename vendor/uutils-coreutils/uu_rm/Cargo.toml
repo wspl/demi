@@ -162,4 +162,5 @@ check-cfg = [
 maintainer = "demi-runner"
 patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "On macOS the options of its own rm are read: -x is --one-file-system, and -P and -W are accepted and ignored",
 ]

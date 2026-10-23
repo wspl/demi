@@ -450,7 +450,11 @@ fn build_matcher_tree(
 ) -> Result<(usize, Box<dyn Matcher>), Box<dyn Error>> {
     let mut top_level_matcher = ListMatcherBuilder::new();
 
-    let mut regex_type = regex::RegexType::default();
+    let mut regex_type = if cfg!(target_os = "macos") && config.bsd_extended_regex {
+        regex::RegexType::PosixExtended
+    } else {
+        regex::RegexType::default()
+    };
 
     // can't use getopts for a variety or reasons:
     // order of arguments is important
@@ -589,16 +593,19 @@ fn build_matcher_tree(
                 i += 1;
                 Some(NewerMatcher::new(args[i], config.follow)?.into_box())
             }
-            "-mtime" | "-atime" | "-ctime" => {
+            "-mtime" | "-atime" | "-ctime" | "-Btime"
+                if args[i] != "-Btime" || cfg!(target_os = "macos") =>
+            {
                 if i >= args.len() - 1 {
                     return Err(From::from(format!("missing argument to {}", args[i])));
                 }
                 let file_time_type = match args[i] {
+                    "-Btime" => FileTimeType::Created,
                     "-atime" => FileTimeType::Accessed,
                     "-ctime" => FileTimeType::Changed,
                     "-mtime" => FileTimeType::Modified,
                     // This shouldn't be possible. We've already checked the value
-                    // is one of those three values.
+                    // is one of those values.
                     _ => unreachable!("Encountered unexpected value {}", args[i]),
                 };
                 let days = convert_arg_to_comparable_value(args[i], args[i + 1])?;
@@ -807,8 +814,32 @@ fn build_matcher_tree(
                     return Err(From::from(format!("missing argument to {}", args[i])));
                 }
                 i += 1;
+                // macOS's `-perm +mode` is what GNU writes `-perm /mode`.
+                #[cfg(target_os = "macos")]
+                if let Some(mode) = args[i].strip_prefix('+') {
+                    Some(PermMatcher::new(&format!("/{mode}"))?.into_box())
+                } else {
+                    Some(PermMatcher::new(args[i])?.into_box())
+                }
+                #[cfg(not(target_os = "macos"))]
                 Some(PermMatcher::new(args[i])?.into_box())
             }
+            // macOS's file flags and ACLs: a file seen here has no flags worth
+            // matching and no ACL, so these hold of no file, but `-flags 0`.
+            #[cfg(target_os = "macos")]
+            "-flags" => {
+                if i >= args.len() - 1 {
+                    return Err(From::from(format!("missing argument to {}", args[i])));
+                }
+                i += 1;
+                if matches!(args[i], "0" | "none") {
+                    Some(TrueMatcher.into_box())
+                } else {
+                    Some(FalseMatcher.into_box())
+                }
+            }
+            #[cfg(target_os = "macos")]
+            "-acl" => Some(FalseMatcher.into_box()),
             "-prune" => Some(PruneMatcher::new().into_box()),
             "-quit" => Some(QuitMatcher.into_box()),
             "-writable" => Some(AccessMatcher::Writable.into_box()),
@@ -898,8 +929,25 @@ fn build_matcher_tree(
                 Some(TrueMatcher.into_box())
             }
             "-d" | "-depth" => {
+                // macOS's `-depth n` is true at depth n, here as the whole
+                // run's, which `-mindepth n -maxdepth n` is.
+                #[cfg(target_os = "macos")]
+                let at_depth = args
+                    .get(i + 1)
+                    .filter(|_| args[i] == "-depth")
+                    .and_then(|next| next.parse::<usize>().ok());
+                #[cfg(target_os = "macos")]
+                if let Some(depth) = at_depth {
+                    config.min_depth = depth;
+                    config.max_depth = depth;
+                    i += 1;
+                }
+                #[cfg(not(target_os = "macos"))]
+                let at_depth: Option<usize> = None;
                 // TODO add warning if it appears after actual testing criterion
-                config.depth_first = true;
+                if at_depth.is_none() {
+                    config.depth_first = true;
+                }
                 Some(TrueMatcher.into_box())
             }
             "-mount" | "-xdev" => {

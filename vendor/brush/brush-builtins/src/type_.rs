@@ -175,7 +175,12 @@ impl TypeCommand {
             }
 
             // Check for builtins.
-            if shell.builtins().get(name).is_some_and(|b| !b.disabled) {
+            // A program the host runs itself is the system's file of that name where there is
+            // one, as the system's `type` says.
+            if shell.builtins().get(name).is_some_and(|b| !b.disabled)
+                && !(shell.host_stands_in_for(name)
+                    && shell.find_executables_in_path(name).next().is_some())
+            {
                 types.push(ResolvedType::Builtin);
                 if !self.all_locations {
                     return types;

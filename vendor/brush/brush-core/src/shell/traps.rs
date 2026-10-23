@@ -34,7 +34,7 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
     /// * `signal`: Signal to run handler for.
     ///
     /// * `params`: Execution parameters to use for handler.
-    pub(crate) async fn invoke_trap_handler(
+    pub async fn invoke_trap_handler(
         &mut self,
         signal: TrapSignal,
         params: &ExecutionParameters,

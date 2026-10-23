@@ -71,3 +71,5 @@ mv-prompt-overwrite-mode = replace {$target}, overriding mode {$mode_info}?
 # Progress messages
 mv-progress-moving = moving
 mv-error-dest-appeared = destination { $path } was replaced while moving; refusing to follow it
+mv-help-help = Print help information.
+mv-help-no-dereference = do not follow the destination when it is a symbolic link to a directory

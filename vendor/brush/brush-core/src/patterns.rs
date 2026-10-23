@@ -1,7 +1,10 @@
 //! Shell patterns
 
 use crate::{error, regex, sys, trace_categories};
-use std::{collections::VecDeque, path::Path};
+use std::{
+    collections::VecDeque,
+    path::{Path, PathBuf},
+};
 
 /// Represents a piece of a shell pattern.
 #[derive(Clone, Debug)]
@@ -161,11 +164,14 @@ impl Pattern {
     ///
     /// * `working_dir` - The current working directory, used for relative paths.
     /// * `path_filter` - Optionally provides a function that filters paths after expansion.
+    /// * `map_path` - What the host reads an absolute path as (`Shell::mapped_path`), so a
+    ///   pattern below `/tmp` lists that folder and its matches keep the pattern's own prefix.
     #[expect(clippy::too_many_lines)]
     pub(crate) fn expand<PF>(
         &self,
         working_dir: &Path,
         path_filter: Option<&PF>,
+        map_path: &dyn Fn(&Path) -> Option<PathBuf>,
         options: &FilenameExpansionOptions,
     ) -> Result<PatternExpansionResult, error::Error>
     where
@@ -233,11 +239,37 @@ impl Pattern {
         });
 
         let prefix_to_remove;
+        // The host reads some absolute paths otherwise than the system does (`/tmp`, `/c/…`
+        // on Windows): its first literal component names where the listing starts, and the
+        // matches are given back below the name the pattern wrote.
+        let mut remapped: Option<(String, String)> = None;
         let mut paths_so_far = if let Some(root) = absolute_root {
             prefix_to_remove = None;
             // Skip the first component; it was consumed to determine the root.
             components.remove(0);
-            vec![root]
+            let named = if root == Path::new("/") {
+                components.first().and_then(|first| {
+                    let literal = first.iter().all(|piece| {
+                        !matches!(piece, PatternPiece::Pattern(_))
+                            || !requires_expansion(piece.as_str(), self.enable_extended_globbing)
+                    });
+                    let name: String = first.iter().map(|piece| piece.as_str()).collect();
+                    (literal && !name.is_empty()).then(|| format!("/{name}"))
+                })
+            } else {
+                None
+            };
+            match named.and_then(|named| map_path(Path::new(&named)).map(|mapped| (named, mapped))) {
+                Some((named, mapped)) => {
+                    components.remove(0);
+                    let listed = sys::fs::normalize_path_separators(&mapped.to_string_lossy())
+                        .trim_end_matches('/')
+                        .to_owned();
+                    remapped = Some((named, listed));
+                    vec![mapped]
+                }
+                None => vec![root],
+            }
         } else {
             // Build a prefix to remove after glob expansion so results are
             // returned relative to the working directory. The prefix is
@@ -333,6 +365,13 @@ impl Pattern {
                     && let Some(stripped) = path_ref.strip_prefix(prefix_to_remove.as_str())
                 {
                     path_ref = stripped;
+                }
+
+                if let Some((named, listed)) = &remapped
+                    && let Some(rest) = path_ref.strip_prefix(listed.as_str())
+                    && (rest.is_empty() || rest.starts_with('/'))
+                {
+                    return Some(format!("{named}{rest}"));
                 }
 
                 Some(path_ref.to_string())
@@ -966,6 +1005,7 @@ mod tests {
         let result = pattern.expand::<fn(&Path) -> bool>(
             scratch.path(),
             None,
+            &|_| None,
             &FilenameExpansionOptions::default(),
         )?;
 
@@ -1007,6 +1047,7 @@ mod tests {
         let result = pattern.expand::<fn(&Path) -> bool>(
             Path::new("/"),
             None,
+            &|_| None,
             &FilenameExpansionOptions::default(),
         )?;
 

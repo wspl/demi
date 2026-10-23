@@ -27,7 +27,9 @@ pub(crate) struct CdCommand {
 
     /// By default it is the value of the HOME shell variable. If `TARGET_DIR` is "-", it is
     /// converted to $OLDPWD. bash takes one; more are an error it words itself.
-    target_dirs: Vec<PathBuf>,
+    /// An empty name is a word like any, which clap's path parser would refuse.
+    #[arg(value_parser = clap::value_parser!(std::ffi::OsString))]
+    target_dirs: Vec<std::ffi::OsString>,
 }
 
 impl builtins::Command for CdCommand {
@@ -49,7 +51,11 @@ impl builtins::Command for CdCommand {
         let mut should_print = false;
         let mut target_dir = if let Some(target_dir) = self.target_dirs.first() {
             // `cd -', equivalent to `cd $OLDPWD'
-            if target_dir.as_os_str() == "-" {
+            // `cd ''` stays where it is, as bash's does.
+            if target_dir.is_empty() {
+                return Ok(ExecutionResult::success());
+            }
+            if target_dir == "-" {
                 should_print = true;
                 if let Some(oldpwd) = context.shell.env_str("OLDPWD") {
                     PathBuf::from(oldpwd.to_string())
@@ -59,7 +65,7 @@ impl builtins::Command for CdCommand {
                 }
             } else {
                 // TODO(cd): remove clone, and use temporary lifetime extension after rust 1.75
-                target_dir.clone()
+                PathBuf::from(target_dir)
             }
         // `cd' without arguments is equivalent to `cd $HOME'
         } else {

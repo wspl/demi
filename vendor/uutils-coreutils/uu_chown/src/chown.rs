@@ -76,7 +76,7 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
 }
 
 pub fn uu_app() -> Command {
-    Command::new("chown")
+    let command = Command::new("chown")
         .version(uucore::crate_version!())
         .help_template(uucore::localized_help_template("chown"))
         .about(translate!("chown-about"))
@@ -148,7 +148,24 @@ pub fn uu_app() -> Command {
                 .action(ArgAction::SetTrue),
         )
         // Add common arguments with chgrp, chown & chmod
-        .args(uucore::perms::common_args())
+        .args(uucore::perms::common_args());
+    // macOS's own chown: -n (the owner is a number) and -x (stay on one file
+    // system) are read and ignored.
+    #[cfg(target_os = "macos")]
+    let command = command
+        .arg(
+            Arg::new("bsd-numeric")
+                .short('n')
+                .help("accepted and ignored (macOS)")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("bsd-one-file-system")
+                .short('x')
+                .help("accepted and ignored (macOS)")
+                .action(ArgAction::SetTrue),
+        );
+    command
 }
 
 /// Parses the user string to extract the UID.

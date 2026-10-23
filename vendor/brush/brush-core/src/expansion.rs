@@ -824,6 +824,7 @@ impl<'a, SE: extensions::ShellExtensions> WordExpander<'a, SE> {
             .expand(
                 self.shell.working_dir(),
                 Some(&patterns::Pattern::accept_all_expand_filter),
+                &|path| self.shell.mapped_path(path),
                 &options,
             )
             .unwrap_or_default();
@@ -852,6 +853,10 @@ impl<'a, SE: extensions::ShellExtensions> WordExpander<'a, SE> {
         &mut self,
         word_piece: brush_parser::word::WordPiece,
     ) -> Result<Expansion, error::Error> {
+        let backquoted = matches!(
+            word_piece,
+            brush_parser::word::WordPiece::BackquotedCommandSubstitution(_)
+        );
         let expansion: Expansion = match word_piece {
             brush_parser::word::WordPiece::Text(s) => {
                 Expansion::from(ExpansionPiece::Splittable(s))
@@ -907,6 +912,14 @@ impl<'a, SE: extensions::ShellExtensions> WordExpander<'a, SE> {
             }
             brush_parser::word::WordPiece::BackquotedCommandSubstitution(s)
             | brush_parser::word::WordPiece::CommandSubstitution(s) => {
+                // The text of a backquoted command has its backslashes read before the
+                // command is: `\\` is `\`, `\$` is `$`, and between double quotes `\"` is
+                // `"`, as bash reads them (`\`` is already `` ` ``, in the parser).
+                let s = if backquoted {
+                    unescape_backquoted(&s, self.in_double_quotes)
+                } else {
+                    s
+                };
                 let mut cmd_output = if !self.disable_command_substitutions {
                     commands::invoke_command_in_subshell_and_get_output(self.shell, self.params, s)
                         .await?
@@ -1821,9 +1834,13 @@ impl<'a, SE: extensions::ShellExtensions> WordExpander<'a, SE> {
             brush_parser::word::SpecialParameter::CurrentOptionFlags => {
                 Expansion::from(self.shell.options().option_flags())
             }
-            brush_parser::word::SpecialParameter::ProcessId => {
-                Expansion::from(std::process::id().to_string())
-            }
+            brush_parser::word::SpecialParameter::ProcessId => Expansion::from(
+                self.shell
+                    .execution_host()
+                    .and_then(|host| host.process_id())
+                    .unwrap_or_else(std::process::id)
+                    .to_string(),
+            ),
             brush_parser::word::SpecialParameter::LastBackgroundProcessId => {
                 Expansion::from(
                     self.shell
@@ -2215,4 +2232,24 @@ mod tests {
         assert_eq!(to_initial_capitals(" a "), String::from(" A "));
         assert_eq!(to_initial_capitals(""), String::new());
     }
+}
+
+/// The command a backquoted command substitution holds, once the backslashes that
+/// bash removes before it parses the command are: those before `\`, `$`, and, between
+/// double quotes, `"`. Any other backslash stays.
+fn unescape_backquoted(text: &str, in_double_quotes: bool) -> String {
+    let mut command = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\'
+            && let Some(&next) = chars.peek()
+            && (matches!(next, '\\' | '$') || (in_double_quotes && next == '"'))
+        {
+            command.push(next);
+            chars.next();
+        } else {
+            command.push(c);
+        }
+    }
+    command
 }

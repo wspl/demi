@@ -192,4 +192,6 @@ maintainer = "demi-runner"
 patches = [
     "Symbolic links, FIFOs and metadata take paths resolved against the shell job's working directory",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "`-h` is not help, as GNU's mv has no short help option: only `--help` is, so `mv -h` is the usage error GNU gives; on macOS `-h` is its own: a destination that is a symbolic link to a directory is replaced, not moved into",
+    "A path is made absolute against the shell job's working directory (uucore::context::resolve), where upstream used the process's, so a destination such as x/y/z, whose directory the process's own directory lacks, is moved to",
 ]

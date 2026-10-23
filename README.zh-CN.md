@@ -117,7 +117,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 - **可组合**：命令之间可以用管道和 `&&` 串联，通常需要多次工具调用的事，一步就能完成。
 - **提示词精简**：每组命令在提示词中只占一行，模型需要时再读 `--help`。能力再多，也不会让每次请求变得臃肿。
-- **处处一致**：每台机器都运行同一套用 Rust 编写的 bash 兼容 Shell 和 GNU 工具（[brush](https://github.com/reubeno/brush)、[uutils](https://github.com/uutils/coreutils)、ripgrep、[jaq](https://github.com/01mf02/jaq)）。在云端能跑的脚本，在 macOS 和 Windows 上同样能跑。
+- **处处同一个 Shell**：每台机器都运行同一个用 Rust 编写的 bash 兼容 Shell（[brush](https://github.com/reubeno/brush)），在云端能跑的脚本，在 macOS 和 Windows 上同样能跑。会改动文件的工具在每台机器上都是 GNU 版（[uutils](https://github.com/uutils/coreutils)），它们做的改动都会被记录；其余程序（如 tar、python）用系统自带的，其改动不会被记录，Windows 上其余的工具用 Git for Windows 的，缺少时由 Demi 的设置安装。
 - **模型无关**：所有模型面对的都是同一个工具，换模型不会改变 Agent 的能力。
 - **适合长任务**：命令在后台持续运行，结束后自动汇报，开发服务器和测试套件不会阻塞对话。
 

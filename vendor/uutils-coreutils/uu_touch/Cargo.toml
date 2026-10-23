@@ -163,4 +163,5 @@ maintainer = "demi-runner"
 patches = [
     "File times are set on paths resolved against the shell job's working directory",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "On macOS the options of its own touch are read: -A [-][[hh]mm]SS moves the times each file would be given, its own when no -t, -r or -d names others, by that much",
 ]

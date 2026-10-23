@@ -24,6 +24,10 @@
 //! Runner-owned variables (the endpoint, the context handle, `DEMI_HOME`, the
 //! alias directory on `PATH`) override caller values.
 //!
+//! On Windows the `usr\bin` of Git for Windows, where the utilities Demi does
+//! not run itself are, is in `PATH`, at its end where the Host's has none
+//! (`git.rs`).
+//!
 //! On macOS the `LANG` Terminal sets and no profile does is completed
 //! ([`complete`]) from the user's language with UTF-8, since `ls` and `git`
 //! print a non-ASCII file name as question marks without it.
@@ -170,7 +174,9 @@ pub fn complete(env: &mut BTreeMap<String, String>) {
     if !env.contains_key("LANG") {
         env.insert("LANG".into(), macos::lang());
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    crate::git::complete(env);
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = env;
 }
 
