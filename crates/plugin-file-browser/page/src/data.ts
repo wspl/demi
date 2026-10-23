@@ -76,6 +76,16 @@ export function showFile(data: FileData, path: string, line?: number, root?: str
   }
 }
 
+/**
+ * The view showing the tree of `directory`, one of the conversation's agents'
+ * directories, with no file: a move, as to another file. `own` is the
+ * conversation's directory, which the data leaves unnamed.
+ */
+export function showDirectory(data: FileData, directory: string, own: string | null): FileData {
+  const root = directory === own ? undefined : directory
+  return data.path === '' && data.root === root ? data : { path: '', ...(root === undefined ? {} : { root }) }
+}
+
 /** The view showing `folder` in its tree, the file shown staying: a move, as to another file. */
 export function locateFolder(data: FileData, folder: string): FileData {
   return data.folder === folder ? data : { ...data, folder }

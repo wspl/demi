@@ -3279,7 +3279,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Working Directory"
-        note="A child works in a directory of its own (What an Agent Runs On): here it was spawned into another checkout of the project, checkouts/2, and moved into src/auth. The page reads every relative path against the directory the child wrote it in, so its first link, src/auth/cookie.ts, opens the file of its checkout and not the conversation's file of the same name, and its second, cookie.ts, written after the move, opens the same file by its short name. The File view opens for that directory: its path bar shows the whole path and its tree is the checkout's. The file pill under the child's edit opens the Change view for the same directory, and the folder in the bar's left group opens the File view on the directory's tree. The panel's own tabs, here File, stay on the conversation's directory until a link of a child opens them for its own."
+        note="A child works in a directory of its own (What an Agent Runs On): here it was spawned into another checkout of the project, checkouts/2, and moved into src/auth. The page reads every relative path against the directory the child wrote it in, so its first link, src/auth/cookie.ts, opens the file of its checkout and not the conversation's file of the same name, and its second, cookie.ts, written after the move, opens the same file by its short name. The File view opens for that directory: its path bar shows the whole path and its tree is the checkout's. The file pill under the child's edit opens the Change view for the same directory, and the folder in the bar's left group opens the File view on the directory's tree. The panel's own tabs, here File, stay on the conversation's directory until a link of a child opens them for its own. The child's bar shows the branch checked out in its folder (What an Agent Runs On); pressing it opens the Change view in Commits mode on that folder and that branch, and Check Out Another Branch steps the child's folder through two branches and a detached HEAD, as a checkout would, the bar following at once. While a child runs, the File tab's caption, the directory's name, is a menu of the conversation's directories and the child's, with a check at the one shown; choosing the child's shows its tree. The menu lists the conversation's directory, each running child's, and the one shown, each once: stopping the child whose directory is shown leaves it in the menu, still checked, so the way back to the conversation's stays."
       >
         <GalleryAgentDirectory />
       </GallerySection>
@@ -3291,7 +3291,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="What an Agent Runs On"
-        note="The Agents window's bar says what a child is doing and what it runs on in segments, as an editor's status bar does: each item stands in its own segment, told apart by spacing, never by dividers. A segment that acts when pressed, the folder, Forked from agent N and the context indicator, shows a hover background over its whole extent, reaching to within the bar's small inset of the window's edge, the same on every side it touches, and Tab reaches it with a focus ring (one specimen pins that background); a segment that only explains, the state, the profile and the model, shows its tip and no background. Two groups say what a child is doing and what it runs on. On the left: the child's state dot, the one its tab wears, the state, Running, Finished, Stopped or Failed, how long the round has run, in the duration words of the reset times (42s, 16m 48s, 1h 5m) and counting with the page's clock while it runs, the folder it works in, its own name with the whole path as its tip, which opens the File view on that directory's tree (a toast here, naming the directory; the next section opens a real panel), and Forked from agent N for a fork, a link to that agent: its mark and the click of a message's link, which opens the Agents window on its tab here, shown in its own segment. The round is not shown. On the right: the profile as a tag, none for the inherit profile; the model's name as the model menu shows it, pointed at naming the provider and the full name, and for the inherit profile Inherited from this conversation; the effort, or Thinking off; Fast when it is on. Where the room runs out, Forked from gives way first, then the model's name and the folder's name, which leaves the folder's icon and its tip; the state and the time always stay (the last three specimens, by width). The Agents window shows it as a bar along its bottom edge (an ended child's bar has no context indicator: finished, stopped and failed show none)."
+        note="The Agents window's bar says what a child is doing and what it runs on in segments, as an editor's status bar does: each item stands in its own segment, told apart by spacing, never by dividers. A segment that acts when pressed, the folder, the branch, Forked from agent N and the context indicator, shows a hover background over its whole extent, reaching to within the bar's small inset of the window's edge, the same on every side it touches, and Tab reaches it with a focus ring (one specimen pins that background, the branch’s included); a segment that only explains, the state, the profile and the model, shows its tip and no background. Two groups say what a child is doing and what it runs on. On the left: the child's state dot, the one its tab wears, the state, Running, Finished, Stopped or Failed, how long the round has run, in the duration words of the reset times (42s, 16m 48s, 1h 5m) and counting with the page's clock while it runs, the folder it works in, its own name with the whole path as its tip, which opens the File view on that directory's tree (a toast here, naming the directory; the next section opens a real panel), the branch checked out in that folder, after it, with the branch icon, or HEAD and the commit while HEAD is detached, nothing while the folder is in no repository or its Host is away, which opens the Change view in Commits mode on that folder and branch (a toast here), and Forked from agent N for a fork, a link to that agent: its mark and the click of a message's link, which opens the Agents window on its tab here, shown in its own segment. The round is not shown. On the right: the profile as a tag, none for the inherit profile; the model's name as the model menu shows it, pointed at naming the provider and the full name, and for the inherit profile Inherited from this conversation; the effort, or Thinking off; Fast when it is on. Where the room runs out, Forked from gives way first, then the branch, then the model's name and the folder's name, which leaves the folder's icon and its tip; the state and the time always stay (the last four specimens, by width). The Agents window shows it as a bar along its bottom edge (an ended child's bar has no context indicator: finished, stopped and failed show none)."
       >
         <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
           <GallerySpecimen v-for="run in runLines" :key="run.id" :variant="runLineVariants[run.id] ?? run.name" wide>
@@ -3307,7 +3307,7 @@ onBeforeUnmount(() => {
               @refresh-limits="agentContext.refresh"
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="pressable segments pinned hovered · the folder, Forked from and the context indicator">
+          <GallerySpecimen variant="pressable segments pinned hovered · the folder, the branch, Forked from and the context indicator">
             <AgentStatusBar
               class="w-[46rem] [&_[data-acting]]:bg-hover"
               :run="runLines[2]!"
@@ -3338,6 +3338,20 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="narrower · Forked from gives way · 36rem">
             <AgentStatusBar
               class="w-[36rem]"
+              :run="runLines[2]!"
+              :usage="runLines[2]!.contextUsage"
+              v-bind="agentCompaction(runLines[2]!)"
+              :instructions="[]"
+              :limits="agentContext.limits.value"
+              :cost="agentCost.cost.value"
+              @compact="agentContext.compact"
+              @open-instruction="agentContext.openInstruction"
+              @refresh-limits="agentContext.refresh"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="narrower still · the branch gives way · 31rem">
+            <AgentStatusBar
+              class="w-[31rem]"
               :run="runLines[2]!"
               :usage="runLines[2]!.contextUsage"
               v-bind="agentCompaction(runLines[2]!)"

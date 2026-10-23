@@ -14,6 +14,7 @@ import { historyReads, readEditCopies, workingTreeReads } from './changes'
 import { ConversationWatch, type FollowHost } from './file-watch'
 import { directRoute } from '../direct'
 import { directFileReads, directWatchLink } from '../direct/operations'
+import { agentDirectories } from '@demicodes/web-ui/agent/working-directory'
 import { useConversations } from './store'
 
 /** Each conversation's service, made once for the page's lifetime. */
@@ -132,6 +133,16 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   const workspace = computed(() => source.value && root.value
     ? { source: source.value, root: root.value, name: name.value }
     : null)
+  // The main agent's directory, which carries the Cloud's workspace name, and each running subagent's.
+  const directories = computed(() => {
+    const own = root.value
+    if (!own)
+      return []
+    return agentDirectories(own, conversation.value?.subagents ?? []).map((path) => ({
+      path,
+      ...(path === own && name.value ? { name: name.value } : {}),
+    }))
+  })
   // One change set per working tree the views show: the conversation's, and each directory a child works in.
   const trees = new Map<string, ReturnType<typeof keptChangeSet>>()
   function treeChanges(directory: string | undefined) {
@@ -181,6 +192,9 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     },
     get root() {
       return root.value
+    },
+    get directories() {
+      return directories.value
     },
     changes(directory): ChangeSetSource {
       return treeChanges(directory) ?? emptyChangeSet

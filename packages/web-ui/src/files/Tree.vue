@@ -81,6 +81,8 @@ const emit = defineEmits<{
 }>()
 
 defineSlots<{
+  /** In place of the caption's plain text; it takes the caption's room itself. */
+  caption?(): unknown
   /** After the caption, at the row's end. */
   captionTrailing?(): unknown
   mark?(props: { row: R }): unknown
@@ -343,7 +345,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
         class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted phone:h-11 phone:text-[15px]"
         :content="captionTitle"
       >
-        <span class="min-w-0 flex-1 truncate">{{ caption }}</span>
+        <slot name="caption"><span class="min-w-0 flex-1 truncate">{{ caption }}</span></slot>
         <slot name="captionTrailing" />
       </Tooltip>
       <!-- Each pinned row in its own clip; only the deepest slides up as its

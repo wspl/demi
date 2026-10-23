@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { FileView, PaneReading, treeLayout, usePage, usePaneReady, type TabUpdate } from '@demicodes/plugin-sdk'
-import { fileView, locateFolder, shownPath, showFile, showMode, treeShown, type FileData } from './data'
+import { fileView, locateFolder, shownPath, showDirectory, showFile, showMode, treeShown, type FileData } from './data'
 
 /**
  * The File view of one conversation: one file of its Host beside the Host's
@@ -31,6 +31,11 @@ const root = computed(() => props.data.root ?? workspace.value?.root ?? '/')
 /** A file picked in the tree or a link in a document, in the directory the view was opened for. */
 function open(path: string): void {
   emit('update', showFile(props.data, path, undefined, props.data.root))
+}
+
+/** A directory the tree's caption chose among the conversation's agents'. */
+function switchDirectory(directory: string): void {
+  emit('update', showDirectory(props.data, directory, workspace.value?.root ?? null))
 }
 
 /** A folder the crumb row went to; the view lets go of one as another file opens, which says so itself. */
@@ -68,6 +73,7 @@ watch([() => props.data.tree, view], ([tree, shown]) => {
     :source="workspace.source"
     :root="root"
     :root-name="data.root === undefined ? workspace.name : undefined"
+    :directories="files.directories"
     :path="data.path ? shownPath(root, data.path) : null"
     :line="data.line ?? null"
     :can-back="page.panel.canGo(conversation, 'back')"
@@ -75,6 +81,7 @@ watch([() => props.data.tree, view], ([tree, shown]) => {
     @update:mode="choose"
     @update:folder="locate"
     @open="open"
+    @switch-directory="switchDirectory"
     @back="page.panel.go('back')"
     @forward="page.panel.go('forward')"
   />

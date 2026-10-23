@@ -8,7 +8,9 @@ const emit = defineEmits<{ close: [] }>()
 </script>
 
 <template>
+  <!-- The panel is a pane of its own, as the product's is (`SidebarLayout`), so a menu stays inside it. -->
   <WorkPanel
+    data-region
     :panel="work.panel.value"
     :pinned="work.pinned.value"
     :kinds="work.kinds.value"

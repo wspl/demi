@@ -4,6 +4,7 @@ import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import { dockWindowShare } from '../dock-window-share'
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
+import { agentDirectories } from '@demicodes/web-ui/agent/working-directory'
 import { provideMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { useAgentContext } from '../agent-context'
@@ -26,7 +27,20 @@ import GalleryWorkPanel from './GalleryWorkPanel.vue'
  */
 const agentContext = useAgentContext()
 const workspace = createGalleryWorkspace()
-const files = galleryFiles(workspace)
+/**
+ * The branch checked out in the child's folder: Check Out Another Branch steps
+ * through two branches and a detached HEAD, as the child's commands would.
+ */
+const BRANCHES: (string | null)[] = ['feat/cart', 'docs/guide', null]
+const slotBranch = ref<string | null>(BRANCHES[0]!)
+function checkOutNext(): void {
+  slotBranch.value = BRANCHES[(BRANCHES.indexOf(slotBranch.value) + 1) % BRANCHES.length]!
+}
+const agents = reactive([slotSubagent()])
+const files = galleryFiles(workspace, {
+  directories: () => agentDirectories(workspace.root, agents),
+  slotBranch: () => slotBranch.value,
+})
 const work = useGalleryWork('file', { files, browser: galleryBrowser([]) })
 useGalleryTranscripts(() => ({ blocks: [], subagents: [{ id: SLOT_NODE, blocks: slotBlocks() }] }))
 provideEditSelection(() => work.selectEdit)
@@ -39,10 +53,11 @@ const conversationFiles = galleryConversationFiles(workspace.source, ({ path, li
   work.openIn({ intent: 'file', payload: { path, tree: true, ...(root === undefined ? {} : { root }) } })
 }, (id, { name, size, url }) => {
   work.openIn({ intent: 'attachment', payload: { id, name, size, url } })
+}, (root) => files.history(root), ({ root, branch }) => {
+  work.openIn({ intent: 'branch', payload: { root, branch } })
 })
 provideMessageFiles(() => ({ ...conversationFiles, cwd: workspace.root }))
 
-const agents = reactive([slotSubagent()])
 const open = ref(true)
 const activeId = ref<string | null>(agents[0]!.id)
 /** Stop Agent or Stop All on the child: it stops, and its tab stays while the window shows it. */
@@ -59,6 +74,7 @@ function stop(): void {
   <div class="flex flex-col gap-3">
     <div class="flex flex-wrap gap-2">
       <Button variant="ghost" size="sm" :disabled="open" @click="open = true">Open Again</Button>
+      <Button variant="ghost" size="sm" @click="checkOutNext">Check Out Another Branch</Button>
     </div>
     <DockWindowArea v-model:share="dockWindowShare" class="h-[26rem]">
       <SubagentPanel

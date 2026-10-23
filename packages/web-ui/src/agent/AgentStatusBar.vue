@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { around, t } from './locales/text'
 import { computed } from 'vue'
-import { Folder } from '@lucide/vue'
+import { Folder, GitBranch } from '@lucide/vue'
 import { baseName } from '@demicodes/utils'
 import { formatSpan } from '../ui/dates'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
@@ -17,6 +17,8 @@ import type { UsageLimits } from './context-usage'
 import type { CostShown } from './context-cost'
 import { useElapsedTime } from '../composables/useElapsedTime'
 import { useMessageFiles } from '../markdown/message-files'
+import { shownBranchName } from '../files/history'
+import { useShowing } from '../files/showing'
 import { statusTone } from './conversation-status'
 import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from './subagents'
 
@@ -29,14 +31,15 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
  *
  * - the state and time
  * - the folder the child works in
+ * - the branch checked out in it
  * - *Forked from agent N*
  * - the profile
  * - the model with its effort
  * - the context indicator
  *
  * A segment that acts when pressed shows a hover background over its whole
- * extent. The folder, the forked-from link and the context indicator act when
- * pressed. The other segments only explain.
+ * extent. The folder, the branch, the forked-from link and the context indicator
+ * act when pressed. The other segments only explain.
  *
  * The segments run close to the window's ends (`.status-bar`):
  *
@@ -49,12 +52,20 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
  * order:
  *
  * 1. *Forked from*
- * 2. the model's name
- * 3. the profile's tag
- * 4. the folder's name, which leaves its icon and its tip
+ * 2. the branch
+ * 3. the model's name
+ * 4. the profile's tag
+ * 5. the folder's name, which leaves its icon and its tip
  *
  * A phone's bar thus keeps the effort whole beside the context indicator. The
  * state and the time always stay.
+ *
+ * The branch is the one checked out in the child's folder, `HEAD (3f2a9c1)`
+ * while HEAD is detached. It shows nothing while the folder is in no
+ * repository or its Host is away, though the page keeps the last answer. It
+ * follows the repository's head as the page keeps its history
+ * (`keptHistory`), so a checkout, whoever makes it, shows at once. Pressing it
+ * opens the Change view in Commits mode on that folder and branch.
  *
  * An ended child's session is closed, so its bar has no context indicator.
  */
@@ -119,6 +130,16 @@ const openFolder = computed(() => {
   const open = files()?.open
   return open ? () => open({ path: '', line: null, root: props.run.cwd }) : null
 })
+// The branch checked out in the child's folder, from the repository's history as the page keeps it.
+const history = computed(() => files()?.history?.(props.run.cwd) ?? null)
+const branches = useShowing(() => history.value, () => 'branches', (source) => source.showBranches())
+// A failed read keeps the last answer beside its failure (`ShownEntry`); the bar says nothing it cannot confirm.
+const branchList = computed(() => branches.entry.value?.failure ? undefined : branches.entry.value?.value)
+const branchName = computed(() => branchList.value ? shownBranchName(null, branchList.value) : null)
+const openBranch = computed(() => {
+  const open = files()?.openBranch
+  return open ? () => open({ root: props.run.cwd, branch: branchList.value?.current ?? null }) : null
+})
 const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.find(props.run.forkedFrom) ?? null))
 /**
  * What *Forked from agent N* says around the agent's name, as the language
@@ -146,6 +167,19 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         </StatusBarSegment>
         <template #overlay>
           <div>{{ run.cwd }}</div>
+        </template>
+      </Tooltip>
+      <!--
+        The branch gives way before the folder's name does: where the bar is
+        narrower, it is gone.
+      -->
+      <Tooltip v-if="branchName !== null" tag="span" class="hidden min-w-0 @min-[34rem]:flex" wide>
+        <StatusBarSegment :acting="openBranch !== null" class="min-w-0" @click="openBranch?.()">
+          <GitBranch :size="icons.chip" class="shrink-0" aria-hidden="true" />
+          <span class="max-w-48 truncate">{{ branchName }}</span>
+        </StatusBarSegment>
+        <template #overlay>
+          <div>{{ branchName }}</div>
         </template>
       </Tooltip>
       <!--

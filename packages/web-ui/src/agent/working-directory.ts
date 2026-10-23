@@ -1,5 +1,6 @@
 import type { Block } from '@demicodes/protocol'
 import type { MessageFiles } from '../markdown/types'
+import { isSubagentRunning, type SubagentRecord } from './subagents'
 
 /**
  * Where an agent wrote what it wrote (`crates/agent-server/src/node/mod.rs`):
@@ -52,4 +53,17 @@ export function blockMessageFiles(conversation: MessageFiles | undefined, direct
   if (!conversation)
     return undefined
   return directory !== null ? childMessageFiles(conversation, directory) : conversation
+}
+
+/**
+ * The directories the conversation's agents work in, each once: the main
+ * agent's `root` first, then each running subagent's on the conversation's
+ * path, in the order they were spawned (by number, as a round's start is not
+ * the agent's). The Files tab's directory menu lists them.
+ */
+export function agentDirectories(root: string, agents: readonly SubagentRecord[]): string[] {
+  const children = agents
+    .filter((agent) => agent.onPath && isSubagentRunning(agent.phase))
+    .toSorted((a, b) => a.number - b.number)
+  return [...new Set([root, ...children.map((agent) => agent.cwd)])]
 }

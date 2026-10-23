@@ -303,6 +303,12 @@ function selectHost(target: 'folder' | 'file', id: string) {
 
 // The Tree view: one source per specimen, and the pinned-path specimens set up scrolled.
 const treeRows = rowsSource()
+/** The directories three agents work in, the main agent's root and two folders in it, which the caption's menu switches between. */
+const treeAgents = [{ path: TREE_ROOT }, { path: `${TREE_ROOT}/src` }, { path: `${TREE_ROOT}/docs` }]
+/** The agents that run: Stop the Agents drops the two children's, as they end. */
+const treeDirectories = ref(treeAgents)
+const treeDirectory = ref(TREE_ROOT)
+const treeDirectoryPick = ref<string | null>(null)
 
 // Symbolic links: a tree unfolded through a link at depth, and a File view
 // of each kind of link, each going where its tree's clicks take it.
@@ -510,6 +516,27 @@ onMounted(() => {
         <GallerySpecimen variant="rows · live">
           <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">
             <FileTree :source="treeRows" :root="TREE_ROOT" :selected="treeSelected" @open="treeSelected = $event" />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Directories"
+        note="A conversation whose agents work in several directories, the main agent's and each running subagent's, shows the tree's caption as a menu: the directory's name with a chevron at its right, one button. Its rows are the composer's directory menu's, a folder icon, the name, the location in grey and a check at the end of the one shown, listed main agent first and then the subagents in the order they were spawned, each directory once. Choosing one shows its tree in place of the last; the caption's name and the check follow. The directory shown stays in the menu when its agent stops or moves on, still checked, so the way back stays; Stop the Agents shows it, and the caption turns to plain text only when the directory shown is the only one. With one directory the caption stays plain text."
+      >
+        <GallerySpecimen variant="several directories · live">
+          <div class="mb-2 flex gap-1">
+            <Button size="sm" :disabled="treeDirectories.length === 1" @click="treeDirectories = [treeAgents[0]!]">Stop the Agents</Button>
+            <Button size="sm" :disabled="treeDirectories.length > 1" @click="treeDirectories = treeAgents">Start Them Again</Button>
+          </div>
+          <div class="gallery-frame h-[20rem] w-[260px] overflow-hidden bg-surface-editor">
+            <FileTree
+              :source="treeRows"
+              :root="treeDirectory"
+              :directories="treeDirectories"
+              :selected="treeDirectoryPick"
+              @open="treeDirectoryPick = $event"
+              @switch="treeDirectory = $event; treeDirectoryPick = null"
+            />
           </div>
         </GallerySpecimen>
       </GallerySection>

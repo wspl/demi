@@ -102,6 +102,7 @@
     "resizeChanges": "Changed files",
     "resizeCommits": "Commit list",
     "resizeUploads": "Uploads",
+    "switchDirectory": "Switch directory",
     "uploadFiles": "Upload Files…",
     "couldNotRefresh": "Couldn’t refresh",
     "noAccess": "No access",

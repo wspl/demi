@@ -3,17 +3,22 @@ import { usePaneReady } from '../agent/pane-ready'
 import { errorMessage } from '../infra/errors'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, watch } from 'vue'
-import { RefreshCw, Upload } from '@lucide/vue'
+import { ChevronDown, RefreshCw, Upload } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import type { ContextMenuDeclaration } from '../ui/context-menu'
 import { useFileDrop } from '../composables/useFileDrop'
 import { showToast } from '../infra/toast'
 import { appOverlayStore } from '../overlay/appOverlay'
+import Button from '../ui/Button.vue'
 import CornerDot from '../ui/CornerDot.vue'
+import Dropdown from '../ui/Dropdown.vue'
+import Menu from '../ui/Menu.vue'
 import IconButton from '../ui/IconButton.vue'
+import { useIconPx } from '../ui/icon-metrics'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import DirectoryChoice from './DirectoryChoice.vue'
 import FileUploadList from './FileUploadList.vue'
 import LinkMark from './LinkMark.vue'
 import { readLinkAgain } from './link-activation'
@@ -34,7 +39,7 @@ import {
   type UploadItem,
 } from './file-uploads'
 import type { TreeDropTarget, TreeRow } from './tree'
-import type { FileBrowserEntry, FileBrowserFailure, FileBrowserLink, FileBrowserSource, Showing } from './types'
+import type { FileBrowserEntry, FileBrowserFailure, FileBrowserLink, FileBrowserSource, FileDirectory, Showing } from './types'
 import { baseName } from '@demicodes/utils'
 import { joinPath, normalizePath, parentPath, relativePath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
@@ -56,6 +61,10 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  *   why on hover.
  * - The control at the caption's end lists every open directory again, turning
  *   while they load.
+ * - Given `directories` the caption is a menu of them and the directory shown,
+ *   each once, its chevron at its right, the one shown checked; choosing one
+ *   asks the host to show it (`switch`). With one directory the caption is plain
+ *   text.
  *
  * Uploading:
  *
@@ -82,6 +91,10 @@ const props = defineProps<{
   root: string
   /** What heads the tree in place of the root directory's name. */
   rootName?: string
+  /** The directories the host can show here, with the one shown: the caption is a menu when that makes several. */
+  directories?: readonly FileDirectory[]
+  /** The Host's home, which a directory's location is written from. */
+  home?: string | null
   /** The selected row, by absolute path: the open file, or a directory the host located. */
   selected: string | null
   /**
@@ -93,7 +106,27 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   open: [path: string]
+  switch: [directory: string]
 }>()
+
+const icons = useIconPx()
+const directoryOpen = ref(false)
+/**
+ * The menu's rows: the host's directories, then the one shown when they lack it,
+ * as after its agent stopped or moved on, so it never leaves the menu. A menu
+ * only when that makes several.
+ */
+const directoryChoices = computed<readonly FileDirectory[]>(() => {
+  const listed = props.directories ?? []
+  const shown = normalizePath(props.root)
+  const choices = listed.some((directory) => normalizePath(directory.path) === shown) ? listed : [...listed, { path: props.root }]
+  return choices.length > 1 ? choices : []
+})
+function switchTo(path: string): void {
+  directoryOpen.value = false
+  if (path !== normalizePath(props.root))
+    emit('switch', path)
+}
 
 /** The uploads list's height before its divider is moved: its rows, up to this. */
 const UPLOADS_FIT_PX = 240
@@ -640,6 +673,31 @@ defineExpose({
       @activate="activate"
       :row-menu="rowMenu"
     >
+      <template v-if="directoryChoices.length > 0" #caption>
+        <!-- The menu opens from the caption's left edge, toward the tree, and stops against the pane's right edge, the way a menu opens from a caption in macOS. -->
+        <Dropdown v-model:open="directoryOpen" :overlay-store="appOverlayStore" align="start" width="shrink" class="-ml-2 min-w-0">
+          <template #trigger>
+            <Button class="max-w-full font-medium text-fg-muted" variant="ghost" size="sm" :aria-label="t('tree.switchDirectory')">
+              <span class="truncate">{{ rootName }}</span>
+              <ChevronDown :size="icons.in20" class="shrink-0" aria-hidden="true" />
+            </Button>
+          </template>
+          <template #content>
+            <Menu>
+              <DirectoryChoice
+                v-for="directory in directoryChoices"
+                :key="directory.path"
+                :path="directory.path"
+                :home="home"
+                :name="directory.name"
+                :selected="normalizePath(directory.path) === normalizePath(root)"
+                @select="switchTo(directory.path)"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
+        <span class="flex-1" />
+      </template>
       <template #captionTrailing>
         <Tooltip :content="t('actions.refresh')" class="ml-2 shrink-0">
           <IconButton

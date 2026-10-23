@@ -224,6 +224,8 @@ const alignmentDirectory = reactive<Record<string, string>>({
   'panel-start': 'demi',
   'panel-end': 'photo-album',
 })
+/** The pinned-start specimen's two triggers, one by the inward rule and one lined up with its start edge. */
+const startAlignment = reactive<Record<string, string>>({ inward: 'demi', start: 'demi' })
 const widthDirectory = reactive({
   content: widthDirectories[0]!,
   shrink: widthDirectories[0]!,
@@ -1073,7 +1075,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Dropdown Alignment"
-        note="A menu grows toward the inside of the pane its trigger sits in: from a trigger in the pane’s end half it lines up with the trigger’s end and grows back across the pane, and otherwise with its start. The pane is the region a layout primitive marks (the sidebar, the conversation, the work panel, a dialog, a settings page), so a trigger at the work panel’s start opens rightward though it sits in the window’s right half. Whether a menu opens below or above is the caller’s, and it flips where it would not fit."
+        note="A menu grows toward the inside of the pane its trigger sits in: from a trigger in the pane’s end half it lines up with the trigger’s end and grows back across the pane, and otherwise with its start. The pane is the region a layout primitive marks (the sidebar, the conversation, the work panel, a dialog, a settings page), so a trigger at the work panel’s start opens rightward though it sits in the window’s right half. Whether a menu opens below or above is the caller’s, and it flips where it would not fit. A menu whose trigger is a caption that must not move, such as the Files tab’s directory name, may say which edge it lines up with (align): it then stays on that edge wherever the trigger is, grows rightward from a trigger at the pane’s end, and stops against the pane’s right edge, shifted left only as far as it must be, instead of flipping to the trigger’s end and covering the pane. Its two triggers here, in the pane’s end half, show the difference: the first opens back across the pane from its end, the second forward from its start."
       >
         <GallerySpecimen variant="start and end of two panes" wide>
           <div class="flex w-[44rem] max-w-full overflow-hidden rounded-lg ring-1 ring-line">
@@ -1112,6 +1114,36 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               </div>
               <div class="flex h-20 select-none items-center justify-center text-[12px] text-fg-faint">{{ pane.label }}</div>
             </div>
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="the same trigger at a pane's end · by the inward rule, and lined up with its start" wide>
+          <div data-region class="flex w-[44rem] max-w-full flex-col overflow-hidden rounded-lg bg-surface ring-1 ring-line">
+            <div class="flex h-11 items-center justify-end gap-2 pl-2 pr-40">
+              <template v-for="rule in (['inward', 'start'] as const)" :key="rule">
+                <Dropdown :overlay-store="appOverlayStore" width="shrink" :align="rule === 'start' ? 'start' : undefined">
+                  <template #trigger>
+                    <Button variant="ghost" class="max-w-full">
+                      <Folder :size="ICON_PX.in28" />
+                      <span class="max-w-28 truncate">{{ startAlignment[rule] }}</span>
+                    </Button>
+                  </template>
+                  <template #content="{ close }">
+                    <Menu @click="close">
+                      <MenuItem
+                        v-for="directory in alignmentDirectories.slice(0, 2)"
+                        :key="directory"
+                        :icon="Folder"
+                        :label="directory"
+                        choice
+                        :is-selected="directory === startAlignment[rule]"
+                        @select="startAlignment[rule] = directory"
+                      />
+                    </Menu>
+                  </template>
+                </Dropdown>
+              </template>
+            </div>
+            <div class="flex h-20 select-none items-center justify-center text-[12px] text-fg-faint">Inward, then start-aligned</div>
           </div>
         </GallerySpecimen>
       </GallerySection>

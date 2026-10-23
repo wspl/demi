@@ -184,6 +184,13 @@ export interface FileUploadOptions {
   progress(sent: number): void
 }
 
+/** A directory a view can show among several, by its absolute path. */
+export interface FileDirectory {
+  path: string
+  /** What stands for its own name, such as the Cloud's Workspace. */
+  name?: string
+}
+
 /** A shortcut in the sidebar: a home, a recent workspace, a pinned directory. */
 export interface FileBrowserPlace {
   path: string

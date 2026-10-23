@@ -10,8 +10,7 @@ import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
-import DirectoryLabel from '@demicodes/web-ui/files/DirectoryLabel.vue'
-import { directoryParts } from '@demicodes/web-ui/files/paths'
+import DirectoryChoice from '@demicodes/web-ui/files/DirectoryChoice.vue'
 import type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
@@ -124,19 +123,15 @@ defineExpose({ browse })
         <template #content>
           <!-- The menu lays its rows on one grid and scrolls itself; nothing wraps the items. -->
           <Menu>
-            <MenuItem
+            <DirectoryChoice
               v-for="item in projects"
               :key="item.id"
-              :icon="Folder"
-              :label="directoryParts(item.path, home).name"
-              :hint="item.path"
-              choice
-              :is-selected="item.id === selectedProjectId"
+              :path="item.path"
+              :home="home"
+              :selected="item.id === selectedProjectId"
               :disabled="locked || item.disabled"
               @select="selectProject(item.id)"
-            >
-              <DirectoryLabel :path="item.path" :home="home" />
-            </MenuItem>
+            />
             <MenuDivider v-if="projects.length" />
             <MenuItem
               :icon="Folder"
