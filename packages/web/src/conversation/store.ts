@@ -1,4 +1,4 @@
-import { computed, markRaw, reactive, type Raw, ref, watch } from 'vue'
+import { computed, markRaw, reactive, type Raw, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, deferred, isAbortError, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
@@ -2992,7 +2992,10 @@ export const useConversations = defineStore('conversations', () => {
     if (signal.aborted) {
       return
     }
-    conversation.savedWrites = conversation.savedWrites.filter((each) => each !== write)
+    // By identity, never by id: a newer edit of the same message took this
+    // write's place in the queue and stays until its own answer. The queue is
+    // reactive, so both sides are read raw.
+    conversation.savedWrites = conversation.savedWrites.filter((each) => toRaw(each) !== toRaw(write))
     saveDrafts()
   }
 
