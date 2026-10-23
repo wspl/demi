@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0072
 ---
 
 # The cost shows the last hour

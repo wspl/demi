@@ -12,7 +12,7 @@
     "restoreStoredDraft": "無法還原草稿",
     "readDraft": "無法讀取草稿",
     "readSaved": "無法讀取暫存的訊息",
-    "readLastHour": "無法讀取過去 1 小時的費用",
+    "readRecentCost": "無法讀取近期費用",
     "readAgents": "無法讀取智慧體",
     "readMessages": "無法讀取訊息",
     "updateConversations": "無法更新對話",

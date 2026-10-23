@@ -1,4 +1,5 @@
 <script setup lang="ts" generic="T extends string">
+import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { pressOnKey } from './button-events'
@@ -43,6 +44,14 @@ import type { SentenceText, TitleText } from './ui-text'
  * and the accessible name, and is square: as wide as it is tall, the icon in its
  * centre.
  *
+ * Fit:
+ *
+ * - `fit` sizes each labelled segment by its own label plus its side padding,
+ *   as a mini switch in a section's heading row wants, where equal columns
+ *   would leave two short labels in empty space. The control is as wide as its
+ *   labels together and neither stretches nor narrows, so the thumb takes the
+ *   chosen segment's measured place and width.
+ *
  * Choosing:
  *
  * - Two options are one toggle: a click anywhere on the control, the chosen
@@ -61,6 +70,8 @@ const props = withDefaults(defineProps<{
   size?: 'xs' | 'sm' | 'md'
   /** Icons without labels; every option then needs an icon. */
   iconOnly?: boolean
+  /** Each labelled segment is as wide as its label and padding, not one shared width. */
+  fit?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
@@ -78,6 +89,43 @@ const selectedIndex = computed(
 )
 
 const segments = ref<HTMLElement | null>(null)
+
+/**
+ * Where the chosen segment stands in the track, measured, for `fit`, whose
+ * segments differ in width. It is read from the layout's rectangles, which keep
+ * the fraction of a pixel that `offsetLeft` and `offsetWidth` round away, and
+ * undone for the scale of the track's ancestors.
+ */
+const fitted = ref<{ left: number, width: number } | null>(null)
+/** The thumb slides between segments only after its first place, so it does not grow from the left as the control appears. */
+const slides = ref(false)
+
+function measureFitted(): void {
+  const track = segments.value
+  const chosen = track?.querySelectorAll<HTMLElement>('[role="radio"]')[selectedIndex.value]
+  if (!track || !chosen) {
+    fitted.value = null
+    return
+  }
+  const box = chosen.getBoundingClientRect()
+  const frame = track.getBoundingClientRect()
+  // A card or a sheet that scales in as it opens scales the rectangles too, and the thumb's own CSS pixels do not scale.
+  const scale = frame.width / Number.parseFloat(getComputedStyle(track).width) || 1
+  fitted.value = { left: (box.left - frame.left) / scale, width: box.width / scale }
+}
+
+onMounted(() => {
+  if (!props.fit)
+    return
+  measureFitted()
+  void nextTick(() => requestAnimationFrame(() => { slides.value = true }))
+})
+// A label's width changes with the font and the language, after the first paint.
+useResizeObserver(() => (props.fit ? segments.value : null), measureFitted)
+watch(() => (props.fit ? [selectedIndex.value, props.options] : null), (fit) => {
+  if (fit)
+    void nextTick(measureFitted)
+})
 
 /** A labelled segment's tooltip shows only while its label is cut. */
 function labelCut(trigger: HTMLElement): boolean {
@@ -138,18 +186,22 @@ function choose(clicked: T | undefined) {
     :disabled="!tooltipContent"
     tag="div"
     class="inline-flex max-w-full overflow-x-auto [scrollbar-width:none]"
-    :data-field="iconOnly ? undefined : true"
+    :data-field="iconOnly || fit ? undefined : true"
     :open-delay-ms="80"
   >
     <!-- Labelled segments are equal columns that may narrow to nothing, so the thumb's share stays theirs;
-         the grid's least width keeps each label's first 3em with its padding, then the box scrolls. -->
+         the grid's least width keeps each label's first 3em with its padding, then the box scrolls.
+         With `fit` they are as wide as their labels and the thumb is measured. -->
     <div
       ref="segments"
-      class="relative grid grow grid-flow-col rounded-md bg-(--fill-color) p-[2px] [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_6%)] *:on-fill"
+      class="relative grid grid-flow-col rounded-md bg-(--fill-color) p-[2px] [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_6%)] *:on-fill"
       :class="[
         iconOnly
           ? 'w-max shrink-0 auto-cols-fr'
-          : [
+          : fit
+            ? 'w-max shrink-0 auto-cols-auto'
+            : [
+              'grow',
               'auto-cols-[minmax(0,1fr)] min-w-[calc(var(--segment-least)*var(--segments)+4px)]',
               // 3em of the label's size, with the segment's padding; a phone pads its segments wider.
               size === 'xs'
@@ -167,12 +219,15 @@ function choose(clicked: T | undefined) {
     >
       <span
         aria-hidden="true"
-        class="segmented-thumb pointer-events-none absolute inset-y-[2px] left-[2px] transition-transform duration-200 ease-out motion-reduce:transition-none"
-        :class="size === 'xs' && !iconOnly ? 'rounded-[4px]' : 'rounded-[5px]'"
-        :style="{
-        width: `calc((100% - 4px) / ${options.length})`,
-        transform: `translateX(${selectedIndex * 100}%)`,
-      }"
+        class="segmented-thumb pointer-events-none absolute inset-y-[2px] duration-200 ease-out motion-reduce:transition-none"
+        :class="[
+          fit ? 'left-0' : 'left-[2px]',
+          size === 'xs' && !iconOnly ? 'rounded-[4px]' : 'rounded-[5px]',
+          fit ? (slides ? 'transition-[transform,width]' : 'transition-none') : 'transition-transform',
+        ]"
+        :style="fit
+          ? { width: `${fitted?.width ?? 0}px`, transform: `translateX(${fitted?.left ?? 0}px)`, visibility: fitted ? undefined : 'hidden' }
+          : { width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${selectedIndex * 100}%)` }"
       />
       <Tooltip
         v-for="(option, index) in options"
@@ -192,7 +247,7 @@ function choose(clicked: T | undefined) {
           iconOnly
             ? (size === 'md' ? 'size-segment' : 'size-5 phone:size-segment')
             : size === 'xs'
-              ? 'h-4 rounded-[4px] px-1.5 text-control-2xs leading-4 phone:h-segment phone:rounded-[5px] phone:px-2 phone:text-control-xs'
+              ? [fit ? 'px-2' : 'px-1.5', 'h-4 rounded-[4px] text-control-2xs leading-4 phone:h-segment phone:rounded-[5px] phone:px-2 phone:text-control-xs']
               : (size === 'sm' ? 'rounded-[5px] px-1.5 py-0.5 text-control-xs leading-4 phone:h-segment phone:px-2 phone:py-0' : 'h-segment rounded-[5px] px-2 text-control-sm phone:px-2'),
           model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
         ]"

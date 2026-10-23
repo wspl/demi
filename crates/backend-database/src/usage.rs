@@ -26,13 +26,13 @@
 //!  call, so a new call changes only the last point
 //! ```
 //!
-//! # The last hour
+//! # The last hour and the last day
 //!
-//! The cost of the last hour is not kept: it is summed from the ledger's rows
-//! that ended in the last 60 minutes, per agent, when a page asks.
-//! The rows of one conversation are found by `usage_ledger_conversation`,
-//! ordered by their end, so a read reads that hour's rows of that conversation
-//! and no others.
+//! The cost of the last hour or the last day is not kept: it is summed from the
+//! ledger's rows that ended in the last 60 minutes or 24 hours, per agent, when
+//! a page asks. The rows of one conversation are found by
+//! `usage_ledger_conversation`, ordered by their end, so a read reads that
+//! window's rows of that conversation and no others.
 //!
 //! The counts are the vendor's, so the ledger is a record for reconciliation and
 //! not a bill. Prices tiered by a request's length, as some models charge more
@@ -40,7 +40,7 @@
 
 use demi_conversation_socket_protocol::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 use demi_shared_types::{Cost, Currency, ModelCost, QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
-use demi_web_api_protocol::conversations::LastHourAgent;
+use demi_web_api_protocol::conversations::{CostWindow, RecentAgent};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::usage::{UsageGroup, UserUsage};
@@ -53,8 +53,13 @@ use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 
-/// How far back the cost of the last hour counts.
-const LAST_HOUR_MS: i64 = 60 * 60 * 1000;
+/// How far back the cost of a window counts.
+const fn window_ms(window: CostWindow) -> i64 {
+    match window {
+        CostWindow::Hour => 60 * 60 * 1000,
+        CostWindow::Day => 24 * 60 * 60 * 1000,
+    }
+}
 
 /// The most recent turn calls of an agent a cache chart counts.
 ///
@@ -396,12 +401,12 @@ impl ControlService {
         .await
     }
 
-    /// What the conversation's calls that ended in the last hour cost, by
-    /// agent, and the share of each agent's turn calls' prompt tokens that
-    /// the cache served, as of the control store's clock.
-    pub async fn conversation_last_hour(&self, conversation: ConversationId) -> Result<Vec<LastHourAgent>, StorageError> {
+    /// What the conversation's calls that ended in `window` cost, by agent,
+    /// and the share of each agent's turn calls' prompt tokens that the cache
+    /// served, as of the control store's clock.
+    pub async fn conversation_recent(&self, conversation: ConversationId, window: CostWindow) -> Result<Vec<RecentAgent>, StorageError> {
         self.call(move |connection, now| {
-            last_hour(connection, conversation.as_str(), now.as_millisecond() - LAST_HOUR_MS)
+            recent(connection, conversation.as_str(), now.as_millisecond() - window_ms(window))
         })
         .await
     }
@@ -764,19 +769,19 @@ fn add_cost(
 
 /// The rows of conversation `?1` that ended after `?2`, with what `row_usage`,
 /// `row_prices` and the cost's call count read of a row.
-const LAST_HOUR: &str = "SELECT agent, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+const RECENT: &str = "SELECT agent, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
        cost, cost_currency, api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
        call_number
      FROM usage_ledger WHERE conversation_id = ?1 AND ended_at > ?2";
 
-/// What the rows that ended in the last hour add up to, per agent and for the
+/// What the rows that ended after `since` add up to, per agent and for the
 /// rows of no agent, the rows of no agent first: each row is added as the kept
 /// cost adds it (`add_row`), and the share of the prompts the cache served is
 /// counted over the turn calls alone.
-fn last_hour(connection: &Connection, conversation: &str, since: i64) -> Result<Vec<LastHourAgent>, StorageError> {
+fn recent(connection: &Connection, conversation: &str, since: i64) -> Result<Vec<RecentAgent>, StorageError> {
     // The cost, and the prompt tokens and the part the cache read.
     let mut agents: BTreeMap<Option<u64>, (AgentCost, u64, u64)> = BTreeMap::new();
-    let mut statement = connection.prepare_cached(LAST_HOUR)?;
+    let mut statement = connection.prepare_cached(RECENT)?;
     let mut rows = statement.query(params![conversation, since])?;
     while let Some(row) = rows.next()? {
         let agent = row
@@ -795,7 +800,7 @@ fn last_hour(connection: &Connection, conversation: &str, since: i64) -> Result<
     }
     Ok(agents
         .into_iter()
-        .map(|(agent, (cost, prompt, read))| LastHourAgent { agent, cost, rate: read_share(read, prompt) })
+        .map(|(agent, (cost, prompt, read))| RecentAgent { agent, cost, rate: read_share(read, prompt) })
         .collect())
 }
 

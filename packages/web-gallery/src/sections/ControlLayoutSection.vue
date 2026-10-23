@@ -57,7 +57,7 @@ const surfaces = [
 <template>
   <GallerySection
     title="Control Layout"
-    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. Icon segments are square, and a control with two options is one toggle: a click anywhere on it, the chosen segment and the frame included, switches to the other. In a container narrower than its segments, the segments narrow together, as macOS's do, each label cut short with an ellipsis and whole in its tooltip, down to its first few characters; in one narrower still, it scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
+    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. Icon segments are square, a mini control may fit each segment to its label and padding instead of sharing one width, and a control with two options is one toggle: a click anywhere on it, the chosen segment and the frame included, switches to the other. In a container narrower than its segments, the segments narrow together, as macOS's do, each label cut short with an ellipsis and whole in its tooltip, down to its first few characters; in one narrower still, it scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
   >
     <div class="mb-6 flex flex-wrap gap-4">
       <div
@@ -69,6 +69,7 @@ const surfaces = [
       >
         <p class="text-chrome text-fg-muted">{{ surface.name }}</p>
         <Segmented v-model="selected" :options="segmentOptions" size="xs" />
+        <Segmented v-model="selected" :options="segmentOptions" size="xs" fit />
         <Segmented v-model="selected" :options="segmentOptions" size="sm" />
         <Segmented v-model="selected" :options="segmentOptions" />
         <Segmented v-model="selected" :options="segmentOptions" disabled />

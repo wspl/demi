@@ -9,7 +9,7 @@ import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import SectionRow from '../ui/SectionRow.vue'
 import { formatDollars } from '../ui/numbers'
 import CacheHitChart from './CacheHitChart.vue'
-import { type CostRange, type CostShown, lastHourOffered, profileRows } from './context-cost'
+import { type CostRange, type CostShown, offeredRanges, profileRows, shownRange } from './context-cost'
 import { t } from './locales/text'
 
 /**
@@ -31,11 +31,13 @@ import { t } from './locales/text'
  * the chart before its fourth call.
  *
  * Once the conversation's first call is more than an hour old, a mini switch in
- * the caption, before its chevron, counts the last hour instead of the whole
- * conversation: the prices, the profiles' shares, the rate and the closed
+ * the caption, before its chevron, counts the last hour, 1H, instead of the
+ * whole conversation, All, and once it is more than a day old, the last day,
+ * 1D, too: the prices, the profiles' shares, the rate and the closed
  * section's two figures; the chart stays, with the rate's label alone when
- * the hour has no rate. The last hour's figures are left out until the
- * backend's first count of them arrives.
+ * the window has no rate. A window's figures are left out until the
+ * backend's first count of them arrives. A range the conversation does not
+ * offer counts as All.
  */
 const props = defineProps<{
   state: CostShown
@@ -59,29 +61,38 @@ const emit = defineEmits<{
   toggle: []
 }>()
 
-/** The range the section counts; the whole conversation unless the parent says. */
-const range = defineModel<CostRange>('range', { default: 'all' })
-const rangeOptions = computed<readonly SegmentedOption<CostRange>[]>(() => [
-  { value: 'lastHour', label: t('context.cost.range.lastHour') },
-  { value: 'all', label: t('context.cost.range.all') },
-])
-const offered = computed(() => lastHourOffered(props.state.firstCallAt))
-const counting = computed(() => offered.value && range.value === 'lastHour')
+/** The range the user chose; the whole conversation unless the parent says. */
+const chosen = defineModel<CostRange>('range', { default: 'all' })
+const rangeLabels: Record<CostRange, () => SegmentedOption<CostRange>['label']> = {
+  hour: () => t('context.cost.range.hour'),
+  day: () => t('context.cost.range.day'),
+  all: () => t('context.cost.range.all'),
+}
+const rangeOptions = computed<readonly SegmentedOption<CostRange>[]>(() =>
+  offeredRanges(props.state.firstCallAt).map((value) => ({ value, label: rangeLabels[value]() })))
+const offered = computed(() => rangeOptions.value.length > 1)
+/** The range the section counts: the choice, or All where the conversation does not offer it. */
+const range = computed({
+  get: () => shownRange(chosen.value, props.state.firstCallAt),
+  set: (value: CostRange) => { chosen.value = value },
+})
+const span = computed(() => (range.value === 'all' ? null : range.value))
+const counting = computed(() => span.value !== null)
 
-/** What the section counts now: null while the last hour's count is awaited. */
-const counted = computed(() => (counting.value
-  ? props.state.lastHour
+/** What the section counts now: null while a window's count is awaited. */
+const counted = computed(() => (span.value
+  ? props.state.recent[span.value]
   : { cost: props.state.cost, rate: props.state.chart?.rate ?? null }))
 const cost = computed(() => counted.value?.cost ?? null)
 const chart = computed(() => props.state.chart)
 
-// An hour without a priced call costs nothing, where the whole conversation
+// A window without a priced call costs nothing, where the whole conversation
 // that has no priced call has no price.
 const price = computed(() => cost.value?.totals.price.total
   ?? (counting.value && cost.value && props.state.cost.totals.price.total !== null ? 0 : null))
 const rate = computed(() => counted.value?.rate ?? null)
 // The chart is the agent's latest calls whatever the range counts, so it
-// shows when the last hour has no rate: an hour of no call of the agent's, or
+// shows when the window has no rate: a window of no call of the agent's, or
 // a count still awaited.
 const charted = computed(() => (chart.value?.points.length ?? 0) > 0)
 
@@ -131,7 +142,7 @@ function share(price: number): string {
           <span v-if="open && price !== null" class="ml-1.5 truncate tabular-nums text-fg-emphasis">{{ formatDollars(price) }}</span>
         </button>
         <template #end>
-          <span v-if="offered" class="mr-1" @click.stop><Segmented v-model="range" :options="rangeOptions" size="xs" /></span>
+          <span v-if="offered" class="mr-1" @click.stop><Segmented v-model="range" :options="rangeOptions" size="xs" fit /></span>
           <FoldChevron :open="open" :size="ICON_PX.in20" />
         </template>
       </SectionRow>

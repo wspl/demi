@@ -349,7 +349,8 @@
       "price": "Equivalent API price",
       "hitRate": "Cache hit rate",
       "range": {
-        "lastHour": "Last Hour",
+        "hour": "1H",
+        "day": "1D",
         "all": "All"
       },
       "kind": {

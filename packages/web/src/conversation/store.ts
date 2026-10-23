@@ -5,7 +5,7 @@ import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import { NO_COST, agentCost, conversationCost, lastHourOf, type CostShown } from '@demicodes/web-ui/agent/context-cost'
+import { NO_COST, agentCost, conversationCost, recentOf, type CostShown, type CostWindow } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { finishedSubagents, runningSubagents } from '@demicodes/web-ui/agent/subagents'
@@ -32,9 +32,9 @@ import { viewAbandoned, viewOpened, viewRead } from '@demicodes/web-ui/infra/vie
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal, type RefusedAction } from '@demicodes/web-ui/sidebar/refused-toast'
-import { readLastHourCost } from '../api/cost'
+import { readRecentCost } from '../api/cost'
 import { forkConversation } from '../api/message-fork'
-import { createLastHourWatch } from './last-hour'
+import { createRecentCostWatch } from './recent-cost'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import {
   applyModelChange,
@@ -495,7 +495,7 @@ export const useConversations = defineStore('conversations', () => {
       contextUsage: null,
       cost: NO_COST,
       charts: {},
-      lastHour: null,
+      recent: { hour: null, day: null },
     }
   }
 
@@ -1680,7 +1680,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.lastError = null
     conversation.cost = NO_COST
     conversation.charts = {}
-    conversation.lastHour = null
+    conversation.recent = { hour: null, day: null }
     clearSession(conversation)
   }
 
@@ -1943,29 +1943,34 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * What the context card of the conversation, `node` null, or of its
    * agent `node`, shows of their cost: from their agents' metadata, with
-   * the cache chart of the node it shows, and the last hour's cost while a
-   * card shows it (`watchLastHour`).
+   * the cache chart of the node it shows, and the last hour's and the last
+   * day's cost while a card shows them (`watchRecentCost`).
    */
   function costShown(conversation: Conversation, node: string | null = null): CostShown | null {
     const chart = conversation.charts[node ?? conversation.id] ?? null
     const firstCallAt = conversation.metadata.shown.value?.firstCallAt ?? null
-    const lastHour = (number: number | null) =>
-      conversation.lastHour ? lastHourOf(conversation.lastHour.agents, conversation.subagents, number) : null
+    const recent = (number: number | null) => {
+      const of = (window: CostWindow) => {
+        const answer = conversation.recent[window]
+        return answer ? recentOf(answer.agents, conversation.subagents, number) : null
+      }
+      return { hour: of('hour'), day: of('day') }
+    }
     if (node === null) {
       const other = conversation.metadata.shown.value?.otherCost ?? NO_COST
-      return { cost: conversationCost(conversation.cost, conversation.subagents, other), node: null, chart, lastHour: lastHour(null), firstCallAt }
+      return { cost: conversationCost(conversation.cost, conversation.subagents, other), node: null, chart, recent: recent(null), firstCallAt }
     }
     const agent = conversation.subagents.find((each) => each.id === node)
-    return agent ? { cost: agentCost(agent.cost), node, chart, lastHour: lastHour(agent.number), firstCallAt } : null
+    return agent ? { cost: agentCost(agent.cost), node, chart, recent: recent(agent.number), firstCallAt } : null
   }
 
   /**
-   * Starts keeping the conversation's last hour of cost current, for a card
+   * Starts keeping a window of the conversation's cost current, for a card
    * that shows it; the function it answers ends that.
    */
-  const watchLastHour = createLastHourWatch({
-    read: (conversationId, signal) => readLastHourCost(conversationId, signal),
-    failed: (error) => report('failures.readLastHour', t('failures.readLastHour'), error),
+  const watchRecentCost = createRecentCostWatch({
+    read: (conversationId, window, signal) => readRecentCost(conversationId, window, signal),
+    failed: (error) => report('failures.readRecentCost', t('failures.readRecentCost'), error),
   })
 
   async function runtimeFor(
@@ -3955,7 +3960,7 @@ export const useConversations = defineStore('conversations', () => {
     metadataOf: (id: string): ConversationMetadata | null =>
       items.value.find((item) => item.id === id)?.metadata.shown.value ?? null,
     costShown,
-    watchLastHour,
+    watchRecentCost,
     /**
      * Whether the page has, or is opening, a session of the conversation,
      * whose socket follows the children it reads ahead: none when

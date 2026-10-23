@@ -321,10 +321,10 @@ CREATE TABLE plugin_reports (
 /// current one.
 ///
 /// - A conversation's ledger rows are found by their end, for the cost of its
-///   last hour (`crates/backend-database/src/usage.rs` § The last hour); the
-///   index by conversation alone, which that one serves too, goes. The ledger's
-///   later indexes are made again after it, so the database lists its indexes
-///   in the order a new one does.
+///   last hour and day (`crates/backend-database/src/usage.rs` § The last hour
+///   and the last day); the index by conversation alone, which that one serves
+///   too, goes. The ledger's later indexes are made again after it, so the
+///   database lists its indexes in the order a new one does.
 const CONTROL_FROM_0_1_48: &str = "
 DROP INDEX usage_ledger_conversation;
 DROP INDEX usage_ledger_agent;

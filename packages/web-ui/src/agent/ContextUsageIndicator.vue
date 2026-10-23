@@ -38,7 +38,7 @@ import {
 } from './context-usage'
 import { instructionRows } from './instructions'
 import ContextCost from './ContextCost.vue'
-import { type CostRange, type CostShown, hasCost, lastHourOffered, useCostRange, useCostWatch } from './context-cost'
+import { type CostRange, type CostShown, hasCost, shownRange, useCostRange, useCostWatch } from './context-cost'
 
 /**
  * The composer's context meter: a ring of how full the next request is, as the
@@ -58,7 +58,8 @@ import { type CostRange, type CostShown, hasCost, lastHourOffered, useCostRange,
  * 5. the room before compaction, with Compact
  * 6. what the conversation cost, whose caption opens and closes its details
  *    and, once the conversation is more than an hour old, switches between
- *    the last hour and the whole conversation
+ *    the last hour, the last day once it is more than a day old, and the
+ *    whole conversation
  * 7. the usage limits of the conversation's account
  * 8. last, the instructions the model holds, each of which opens where it is
  *    written
@@ -195,16 +196,20 @@ const costShown = computed(() => hasCost(props.cost?.cost ?? null))
 /** The range the Cost section counts: the browser keeps the user's choice for every conversation. */
 const costRange = props.costRange === undefined ? useCostRange() : ref(props.costRange)
 /**
- * While the card shows the last hour the page keeps it current: a watch
- * stands from the card's opening to its closing, or until the range changes.
+ * While the card shows a window, the last hour or the last day, the page keeps
+ * it current: a watch of that window stands from the card's opening to its
+ * closing, or until the range changes.
  */
 const startWatch = useCostWatch()
 let stopWatch: (() => void) | null = null
 watch(
-  () => open.value && costShown.value && costRange.value === 'lastHour' && lastHourOffered(props.cost?.firstCallAt ?? null),
-  (watching) => {
+  () => {
+    const range = shownRange(costRange.value, props.cost?.firstCallAt ?? null)
+    return open.value && costShown.value && range !== 'all' ? range : null
+  },
+  (window) => {
     stopWatch?.()
-    stopWatch = watching ? (startWatch?.() ?? null) : null
+    stopWatch = window ? (startWatch?.(window) ?? null) : null
   },
   { immediate: true },
 )

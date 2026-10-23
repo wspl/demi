@@ -349,7 +349,8 @@
       "price": "API 환산 가격",
       "hitRate": "캐시 적중률",
       "range": {
-        "lastHour": "지난 1시간",
+        "hour": "1시간",
+        "day": "1일",
         "all": "전체"
       },
       "kind": {
