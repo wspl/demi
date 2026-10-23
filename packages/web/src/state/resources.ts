@@ -242,6 +242,12 @@ export const useResources = defineStore('resources', () => {
       local.value.sidebarWidth = width
     },
   })
+  const sidebarCollapsed = computed({
+    get: () => local.value.sidebarCollapsed ?? false,
+    set: (collapsed: boolean) => {
+      local.value.sidebarCollapsed = collapsed
+    },
+  })
   const asideShare = computed({
     get: () => local.value.asideShare ?? ASIDE_SHARE.default,
     set: (share: number) => {
@@ -385,6 +391,7 @@ export const useResources = defineStore('resources', () => {
     openPairing,
     sidebarOpen,
     sidebarWidth,
+    sidebarCollapsed,
     asideShare,
     dockWindowShare,
     passkeyOfferAnswered,

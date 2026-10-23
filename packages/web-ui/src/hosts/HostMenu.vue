@@ -128,7 +128,7 @@ function connect() {
           <!-- Wide enough for a Windows computer's default name, DESKTOP- and seven characters. -->
           <span
             ref="hostLabel"
-            class="max-w-36 truncate"
+            class="max-w-36 truncate leading-5"
             :class="hostCompact ? COMPACT_LABEL_CLASS : ''"
           >{{ primaryHost.name }}</span>
           <span v-if="downloading" class="text-caption text-fg-faint whitespace-nowrap">

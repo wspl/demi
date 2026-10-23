@@ -8,6 +8,7 @@ import { t as sidebarText } from '@demicodes/web-ui/sidebar/locales/text'
 import { t as authText } from './auth/locales/text'
 import { reloadFor, reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
@@ -309,14 +310,19 @@ async function signOut(): Promise<void> {
     reportError(authText('login.signOutFailed'), error, { site: 'login.signOutFailed', userVisible: true })
   }
 }
+const phone = usePhone()
 /** The bindings from the keyboard settings, by the action each one names. */
 const actions: Record<string, () => void> = {
   new: () => create(null),
   search: () => {
     searchOpen.value = true
   },
+  // A phone's sidebar is the drawer; a computer's collapses.
   sidebar: () => {
-    resources.sidebarOpen = !resources.sidebarOpen
+    if (phone.value)
+      resources.sidebarOpen = !resources.sidebarOpen
+    else
+      resources.sidebarCollapsed = !resources.sidebarCollapsed
   },
   settings: () => void settingsAddress.open(),
 }
@@ -341,6 +347,8 @@ useAppShortcuts(
     <SidebarLayout
       class="min-h-0 flex-1"
       v-model:open="resources.sidebarOpen"
+      v-model:collapsed="resources.sidebarCollapsed"
+      :toggle-shortcut="resources.keys.find((binding) => binding.id === 'sidebar')?.keys"
       v-model:width="sidebarWidth"
       v-model:aside-share="asideShare"
       v-model:aside-open="asideOpen"
