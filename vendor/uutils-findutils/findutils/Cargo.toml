@@ -229,4 +229,6 @@ patches = [
     "The release's tests, benchmarks, examples and CI files are left out",
     "A walk's paths below the starting point are joined with uucore::context::join, / on every system as GNU's find prints them",
     "xargs -t prints the command and its arguments separated by spaces, as GNU's xargs does, where upstream printed the command's Debug form, which holds the whole environment it runs with",
+    "A path that find asks the system about with -L, -H and -printf %Y is read against the job's directory (uucore::context::fs::metadata), where upstream's own read it against the process's",
+    "-readable, -writable and -executable ask the system about the path as the job's (uucore::context::resolve)",
 ]

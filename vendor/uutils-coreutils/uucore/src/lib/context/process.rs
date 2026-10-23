@@ -217,6 +217,18 @@ impl Command {
             .wait_with_output()
     }
     pub fn new(program: impl AsRef<OsStr>) -> Self {
+        // Windows looks for a program named with a separator, `./bin/tool.exe`,
+        // in the process's own directory, not in the child's, so it is read
+        // against the job's here; Unix reads it after the child's `chdir`.
+        #[cfg(windows)]
+        let resolved;
+        #[cfg(windows)]
+        let program = if program.as_ref().as_encoded_bytes().iter().any(|b| matches!(b, b'/' | b'\\')) {
+            resolved = super::resolve(program.as_ref());
+            resolved.as_os_str()
+        } else {
+            program.as_ref()
+        };
         let mut command = std::process::Command::new(program);
         super::CURRENT.with(|current| {
             let current = current.borrow();

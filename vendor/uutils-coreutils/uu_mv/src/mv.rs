@@ -697,7 +697,13 @@ fn exchange_two_paths(from: &Path, to: &Path, opts: &Options) -> UResult<()> {
         return Err(MvError::SameFile(from.quote().to_string(), to.quote().to_string()).into());
     }
 
-    renameat_with(CWD, from, CWD, to, RenameFlags::EXCHANGE)
+    renameat_with(
+        CWD,
+        uucore::context::resolve(from),
+        CWD,
+        uucore::context::resolve(to),
+        RenameFlags::EXCHANGE,
+    )
         .map_err(io::Error::from)
         .map_err_context(
             || translate!("mv-error-cannot-move", "source" => from.quote(), "target" => to.quote()),
@@ -1126,17 +1132,21 @@ fn create_symlink_replace(target: &Path, to: &Path) -> io::Result<()> {
     // ~3% per slot — irrelevant for an 8-char unguessability budget.
     const ALPHABET: &[u8; 62] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
+    // The parent is the job's, not the process's, and the literal one: with
+    // the job's own directory a symlink (`/tmp` on macOS), a parent resolved
+    // first would end in it and O_NOFOLLOW would refuse it.
     let parent = to
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    let parent = uucore::context::resolve(parent);
     let basename = to
         .file_name()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid destination path"))?;
 
     let dir_fd = openat(
         CWD,
-        parent,
+        &parent,
         OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
         Mode::empty(),
     )?;
@@ -1173,8 +1183,11 @@ fn create_symlink_replace(target: &Path, to: &Path) -> io::Result<()> {
 #[cfg(windows)]
 fn rename_symlink_fallback(from: &Path, to: &Path) -> io::Result<()> {
     let path_symlink_points_to = fs::read_link(from)?;
-    if path_symlink_points_to.context_exists() {
-        if path_symlink_points_to.context_is_dir() {
+    // The link's relative text is relative to the link's own directory.
+    let named = uucore::context::link_target(&path_symlink_points_to, from);
+    if named.context_exists() {
+        let to = uucore::context::resolve(to);
+        if named.context_is_dir() {
             windows::fs::symlink_dir(&path_symlink_points_to, to)?;
         } else {
             windows::fs::symlink_file(&path_symlink_points_to, to)?;
@@ -1213,7 +1226,7 @@ fn rename_dir_fallback(
     //    If finding the total size fails for whatever reason,
     //    the progress bar wont be shown for this file / dir.
     //    (Move will probably fail due to permission error later?)
-    let total_size = dir_get_size(from).ok();
+    let total_size = dir_get_size(uucore::context::resolve(from)).ok();
 
     let progress_bar = match (display_manager, total_size) {
         (Some(display_manager), Some(total_size)) => {
@@ -1672,7 +1685,8 @@ fn can_delete_file(path: &Path) -> bool {
         },
     };
 
-    let wide_path = path
+    // The path is the job's, not the process's.
+    let wide_path = uucore::context::resolve(path)
         .as_os_str()
         .encode_wide()
         .chain([0])

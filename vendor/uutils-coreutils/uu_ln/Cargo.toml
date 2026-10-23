@@ -142,4 +142,5 @@ patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
     "The symbolic link is made at a path resolved against the job's directory (uucore::context::fs::symlink, symlink_file and symlink_dir), and a destination that `-f` or `-i` removes is a removal the job records",
     "`-h` is not help, as GNU's ln has no short help option: only `--help` is, so `ln -h` is the usage error GNU gives; on macOS `-h` is `-n`, `-F` removes an empty directory that is the destination of a symbolic link and implies `-f`, and `-w` warns of a symbolic link's missing source",
+    "On Windows ln -s decides whether a link is a directory link by its target read against the link's directory (uucore::context::link_target), not the job's",
 ]

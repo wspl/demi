@@ -121,7 +121,7 @@ impl Follow {
         let path = path.as_ref();
 
         if self.follow_at_depth(depth) {
-            match path.metadata().map_err(WalkError::from) {
+            match uucore::context::fs::metadata(path).map_err(WalkError::from) {
                 Ok(meta) => return Ok(meta),
                 Err(e) if !e.is_not_found() => return Err(e),
                 _ => {}

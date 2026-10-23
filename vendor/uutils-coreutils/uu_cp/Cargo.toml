@@ -217,4 +217,6 @@ patches = [
     "On macOS the options of its own cp are read: -X and -N are accepted and ignored, -S is a flag without a value, `cp -R src/ dst` copies what is in src when dst is a directory, and -n exits 1 for a file it skipped",
     "The destination of each copy, and a backup, is recorded as an edit around the whole copy, as the bytes move by descriptors the context does not see; the context's own record of a cp's opens and writes is off (uucore::context::edit)",
     "On Windows a source that is a device, such as the null device, is not sparse where upstream failed reading its attributes with `Incorrect function`, so cp /dev/null x makes an empty x",
+    "A device node that cp -R copies is made at the job's path (uucore::context::resolve), where upstream made it at the process's",
+    "cp -R of a socket makes it at the job's path, with mknod where Linux allows it as GNU's does, so a long path is not refused by sun_path's limit",
 ]
