@@ -1,5 +1,5 @@
-//! The developer's Codex CLI sign-in `xtask dev` signs the master account's
-//! Codex entry in with: `DEMI_DEV_CODEX_AUTH` names its `auth.json`, whose
+//! The developer's Codex CLI sign-in `xtask dev` makes the master account's
+//! Codex entry hold at each start: `DEMI_DEV_CODEX_AUTH` names its `auth.json`, whose
 //! access token, ID token and account ID, never its refresh token, go to the
 //! backend in a file of this run's that only this user can read, named by
 //! the backend's development flag. No token is ever printed.

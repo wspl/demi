@@ -73,8 +73,8 @@ pub struct Services {
     /// The users' push subscriptions, and the sending to them.
     pub push: Pusher,
     pub vault: Vault,
-    /// The account setup signs the master account's first entry in with, a
-    /// development backend's only (`crates/xtask/src/dev/mod.rs`).
+    /// The account the master account's entry of its family holds from each
+    /// start and from setup, a development backend's only (`crates/xtask/src/dev/mod.rs`).
     pub master_account: Option<SeededAccount>,
     pub assembly: Arc<ProviderAssembly>,
     /// The catalog of image and video models (`crates/provider-common/src/media_catalog.rs`).
@@ -148,7 +148,7 @@ pub struct ProviderSetup {
     pub claude_releases: url::Url,
     pub logins: LoginTiming,
     pub clock: Arc<dyn Clock>,
-    /// The account the master account's first entry is signed in with.
+    /// The account the master account's entry of its family holds.
     pub master_account: Option<SeededAccount>,
 }
 
@@ -351,6 +351,14 @@ impl Services {
         let push_transport = public_push()?;
         let push = Pusher::new(control.clone(), keys.push, push_transport);
         let vault = Vault::new(control.clone(), keys.vault, settings.mode, sync.clone());
+        // A data directory that predates the development sign-in, or holds
+        // an earlier one, is brought to the current one before anything
+        // infers with it.
+        if let Some(account) = &providers.master_account
+            && let Some(master) = control.master().await?
+        {
+            vault.seed(master, account, clock.now()).await?;
+        }
         let models_dev = ModelsDevClient::new(
             http.clone(),
             providers.models_dev_url,

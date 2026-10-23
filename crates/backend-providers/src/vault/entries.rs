@@ -81,8 +81,8 @@ const ACCOUNT_CHANGES_KEPT: usize = 64;
 
 /// An account a subscription entry is created with outside a sign-in:
 ///
-/// - The development backend's Codex sign-in, which the master account is
-///   created with (`crates/xtask/src/dev/mod.rs`).
+/// - The development backend's Codex sign-in, which the master account's
+///   entry holds from each start (`crates/xtask/src/dev/mod.rs`).
 /// - A suite's account whose vendor sign-in cannot run.
 #[derive(Debug, Clone)]
 pub struct SeededAccount {
@@ -627,15 +627,21 @@ impl Vault {
         row.map(|row| self.decode(row)).transpose()
     }
 
-    /// Publishes `seeded` as the one account of a new entry of `owner`'s,
-    /// as a sign-in would have published it; `None` when the owner already
-    /// holds the family's subscription entry.
+    /// Makes the owner's entry of the family hold `seeded`'s account, as a
+    /// sign-in would have published it.
+    ///
+    /// - With no such entry, creates it with the account as its only one.
+    /// - With one, stores the account in it and makes it the active one, so
+    ///   a seed an earlier start made, whose access token has since expired,
+    ///   is replaced by the current one. An account of the same identity
+    ///   that came from another source, such as a sign-in that holds a
+    ///   refresh token, is left as it is.
     pub async fn seed(
         &self,
         owner: UserId,
         seeded: &SeededAccount,
         now: Timestamp,
-    ) -> Result<Option<ProviderEntry>, StorageError> {
+    ) -> Result<(), StorageError> {
         let NewAccount { secret, label } = seeded.account.clone();
         let id = credential_id_for(label.identity_key.as_deref(), &label.label);
         let meta = AccountMeta {
@@ -649,10 +655,48 @@ impl Vault {
         };
         let staged = MemoryCredentialPool::new();
         // A pool held in memory never fails to answer.
-        staged.write(meta, secret).await.expect("a pool in memory stores");
-        staged.set_active(&id).await.expect("a pool in memory selects");
-        self.create_subscription(owner, seeded.family.clone(), seeded.label.clone(), &staged)
+        staged
+            .write(meta.clone(), secret.clone())
             .await
+            .expect("a pool in memory stores");
+        staged.set_active(&id).await.expect("a pool in memory selects");
+        if self
+            .create_subscription(owner.clone(), seeded.family.clone(), seeded.label.clone(), &staged)
+            .await?
+            .is_some()
+        {
+            return Ok(());
+        }
+        let held = self.entries(owner).await?.into_iter().find(|entry| {
+            entry.family == seeded.family && entry.kind() == CredentialKind::Subscription
+        });
+        let Some(entry) = held else {
+            return Ok(());
+        };
+        let id = CredentialId::try_from(id).map_err(|error| StorageError::Corrupt {
+            table: "provider_credentials",
+            column: "id",
+            reason: format!("a seeded account's id is invalid: {error}"),
+        })?;
+        if let Some(existing) = self.account(entry.id.clone(), id.clone()).await? {
+            if existing.source != seeded.source {
+                return Ok(());
+            }
+        }
+        let account = CredentialWrite {
+            secret: secret.map(|secret| self.seal_secret(&entry.id, &id, &secret)),
+            id: id.clone(),
+            identity_key: meta.identity_key,
+            label: meta.label,
+            detail: meta.detail,
+            source: meta.source,
+        };
+        self.write_account(&entry.id, account).await?;
+        if entry.active() != Some(&id) {
+            self.set_active_account(&entry.id, id).await?;
+        }
+        self.mark_changed(&entry.owner);
+        Ok(())
     }
 
     /// Replaces the entry's label, family, configuration, rotation or media
