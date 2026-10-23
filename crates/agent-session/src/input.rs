@@ -25,7 +25,7 @@
 
 use std::collections::HashMap;
 
-use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, CommandReport, PendingSteer, Timestamp};
+use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer, Timestamp};
 
 use demi_agent_store::PendingAgentInput;
 
@@ -99,11 +99,6 @@ pub(super) struct InputQueue {
     /// grow during a round asks the provider once more, and a withdrawn steer
     /// causes no request.
     arrivals: u64,
-    /// How many of them were agent messages and command reports, which end
-    /// a shell call's window (`crates/agent-tools/src/lib.rs`), but for the
-    /// user's decisions on permission requests: a decision answers the call
-    /// that waited and is no news for any window.
-    joining: u64,
     /// When each steer and agent message that came while the session ran was
     /// admitted, by its id, for the line that says how long it waited; one a
     /// checkpoint restored has none. Live only.
@@ -131,10 +126,6 @@ impl InputQueue {
     }
 
     pub(super) fn add(&mut self, input: Input) {
-        let decision = matches!(&input, Input::Agent(input) if matches!(input.message.event, AgentMessageEvent::Permission { .. }));
-        if !matches!(input, Input::Steer(_)) && !decision {
-            self.joining += 1;
-        }
         self.entries.push(input);
         self.arrivals += 1;
     }
@@ -151,10 +142,6 @@ impl InputQueue {
     /// Takes the note of when the input under `id` was admitted.
     pub(super) fn take_admitted(&mut self, id: &str) -> Option<Timestamp> {
         self.admitted.remove(id)
-    }
-
-    pub(super) fn joining(&self) -> u64 {
-        self.joining
     }
 
     /// Whether the human steer `id` is pending.

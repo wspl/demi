@@ -70,7 +70,7 @@ use super::{
     media::model_view,
     persist, reports,
     runtime::{
-        CallCommand, InputArrival, SeenContext, SystemPrompt, ToolEffect, ToolInvocation,
+        CallCommand, SeenContext, SendNowArrival, SystemPrompt, ToolEffect, ToolInvocation,
         ToolOutcome,
     },
 };
@@ -279,11 +279,7 @@ async fn ends_for_message(s: &SessionShared) -> Result<bool, TurnError> {
 /// Resolves once the user sent a message now, which cuts a provider
 /// request short.
 async fn sent_now(s: &SessionShared) {
-    let mut arrivals = s.arrivals.subscribe();
-    if arrivals.wait_for(|arrivals| arrivals.send_now).await.is_err() {
-        // The sender lives in `s`, which outlives this wait.
-        std::future::pending::<()>().await;
-    }
+    SendNowArrival::new(s.send_now.subscribe()).arrived().await;
 }
 
 /// Writes the waiting input but the human steers when some arrived since
@@ -693,7 +689,7 @@ async fn run_tools(
                 step.push(next);
             }
         }
-        let (before, joined) = s.read(|core| (core.inputs.arrivals(), core.inputs.joining()));
+        let before = s.read(|core| core.inputs.arrivals());
         let ran = if demi_provider_common::offers(&tools, &step[0].tool_name) {
             let (model, request_limits) =
                 s.read(|core| (core.model.clone(), core.request_limits()));
@@ -718,7 +714,7 @@ async fn run_tools(
                     input: tool_input(&call.input),
                     model: model.clone(),
                     request_limits,
-                    arrival: InputArrival::new(s.arrivals.subscribe(), joined),
+                    send_now: SendNowArrival::new(s.send_now.subscribe()),
                     command: handle.clone(),
                 })
                 .collect();

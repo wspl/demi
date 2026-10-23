@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0077
 ---
 
 # A call that waits for the user's permission holds until the user allows it

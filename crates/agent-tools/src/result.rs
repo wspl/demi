@@ -245,10 +245,12 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String 
         CommandState::Running { hint, outliving } => {
             match look.moved {
                 Some(Moved::SentNow) => after.push(format!(
-                    "[The user sent a message, so command {command} moved to the background. It keeps running.]"
+                    "[The user sent a message, so command {command} moved to the background. It keeps running; its end wakes you.]"
                 )),
                 Some(Moved::TimePassed) => {
-                    after.push("[The command is still running, so it moved to the background.]".to_owned());
+                    after.push(
+                        "[The command is still running, so it moved to the background; its end wakes you.]".to_owned(),
+                    );
                 }
                 None => {}
             }

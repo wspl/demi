@@ -334,8 +334,8 @@ pub struct ToolInvocation {
     /// a result may attach.
     pub request_limits: RequestLimits,
     /// What ends the window a shell tool watches its command in before its
-    /// time passes (`crates/agent-tools/src/lib.rs`).
-    pub arrival: InputArrival,
+    /// time passes: the user's send now (`crates/agent-tools/src/lib.rs`).
+    pub send_now: SendNowArrival,
     /// Where the call tells its session the command it started, and learns
     /// whether something other than its tool that ends it leaves the
     /// command running (`crates/agent-session/src/core.rs`).
@@ -396,65 +396,30 @@ impl CallCommand {
     }
 }
 
-/// What a session tells the windows of its running calls.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Arrivals {
-    /// How many agent messages and command reports arrived: input that
-    /// joins the turn at its next boundary and ends a window. A human steer and a
-    /// queued message are none.
-    pub(crate) joining: u64,
-    /// The user sent a steer or a queued message now, and the running turn
-    /// has not reached its boundary yet.
-    pub(crate) send_now: bool,
-}
-
-/// Why a window ended before its time passed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowEnd {
-    /// An agent message or a command report arrived.
-    Input,
-    /// The user sent a message now: the command moves to the background,
-    /// and the result says so.
-    SentNow,
-}
-
-/// The arrival of what ends a window (`crates/agent-tools/src/lib.rs`): an agent
-/// message or a command report, which joins the running turn at its next
-/// boundary, or the user's send now.
+/// The user's send now (`crates/agent-tools/src/lib.rs`): the command a call
+/// watches moves to the background, and the result says so.
 #[derive(Debug, Clone)]
-pub struct InputArrival {
-    arrivals: watch::Receiver<Arrivals>,
-    /// How many joining inputs had arrived when the step started.
-    since: u64,
+pub struct SendNowArrival {
+    send_now: watch::Receiver<bool>,
 }
 
-impl InputArrival {
-    /// The arrivals after the `since`th joining input that `arrivals`
-    /// counts.
-    pub(crate) fn new(arrivals: watch::Receiver<Arrivals>, since: u64) -> Self {
-        Self { arrivals, since }
+impl SendNowArrival {
+    pub(crate) fn new(send_now: watch::Receiver<bool>) -> Self {
+        Self { send_now }
     }
 
-    /// Resolves once input arrived after the step started, or the user
-    /// sent a message now, and says which.
-    pub async fn arrived(mut self) -> WindowEnd {
-        let since = self.since;
-        match self
-            .arrivals
-            .wait_for(|arrivals| arrivals.send_now || arrivals.joining > since)
-            .await
-        {
-            Ok(arrivals) if arrivals.send_now => WindowEnd::SentNow,
-            Ok(_) => WindowEnd::Input,
+    /// Resolves once the user sent a message now.
+    pub async fn arrived(mut self) {
+        if self.send_now.wait_for(|sent| *sent).await.is_err() {
             // The session is gone, and nothing will arrive.
-            Err(_) => std::future::pending().await,
+            std::future::pending::<()>().await;
         }
     }
 
     /// Whether the user sent a message now: a call that has not started
     /// then never starts, and completes as [`ToolOutcome::not_run`].
     pub fn sent_now(&self) -> bool {
-        self.arrivals.borrow().send_now
+        *self.send_now.borrow()
     }
 }
 

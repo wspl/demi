@@ -125,8 +125,8 @@ pub use editing::{
 pub use retry::RetryPolicy;
 pub use window::{LatestPage, latest_page};
 pub use runtime::{
-    CallCommand, CommandLook, InputArrival, NewContext, PromptLayer, RunningWork, SeenContext, SessionRuntime, StartedCommand, SystemPrompt,
-    StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
+    CallCommand, CommandLook, NewContext, PromptLayer, RunningWork, SeenContext, SendNowArrival, SessionRuntime, StartedCommand, SystemPrompt,
+    StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
 };
 
 use self::{
@@ -550,9 +550,9 @@ pub(crate) struct SessionShared {
     /// started finishes before the next one starts.
     persist_gate: SerialGate,
     status: watch::Sender<Status>,
-    /// What ends a shell call's window early: one more agent message or
-    /// command report, or the user's send now (`crates/agent-tools/src/lib.rs`).
-    arrivals: watch::Sender<runtime::Arrivals>,
+    /// What ends a shell call's window early: the user's send now
+    /// (`crates/agent-tools/src/lib.rs`).
+    send_now: watch::Sender<bool>,
     /// Wakes the worker when an action starts.
     work: Rc<Notify>,
     /// Wakes the persister when a change makes a save due.
@@ -577,14 +577,14 @@ impl SessionShared {
     /// asked for: wakes the worker or the persister, publishes the
     /// session's status, and delivers the change's events.
     fn update<R>(&self, change: impl FnOnce(&mut SessionCore) -> R) -> R {
-        let (result, effects, arrivals) = {
+        let (result, effects, send_now) = {
             let mut core = self.core.borrow_mut();
             let result = change(&mut core);
-            (result, core.take_effects(), core.window_arrivals())
+            (result, core.take_effects(), core.send_now_pending())
         };
-        self.arrivals.send_if_modified(|published| {
-            let changed = *published != arrivals;
-            *published = arrivals;
+        self.send_now.send_if_modified(|published| {
+            let changed = *published != send_now;
+            *published = send_now;
             changed
         });
         if effects.wake_worker {
@@ -849,13 +849,13 @@ impl AgentSession {
     fn start(core: SessionCore, deps: SessionDeps) -> Self {
         let span = core.span.clone();
         let status = core.status();
-        let arrivals = core.window_arrivals();
+        let send_now = core.send_now_pending();
         let shared = Rc::new(SessionShared {
             core: RefCell::new(core),
             bus: EventBus::default(),
             persist_gate: SerialGate::new(),
             status: watch::Sender::new(status),
-            arrivals: watch::Sender::new(arrivals),
+            send_now: watch::Sender::new(send_now),
             work: Rc::new(Notify::new()),
             persist_wake: Rc::new(Notify::new()),
             runtime_returned: Notify::new(),
