@@ -156,11 +156,15 @@ The design has these benefits:
   step what usually takes several tool calls.
 - **Lean prompts**: The model sees one line per command group and reads
   `--help` when it needs more. New capabilities don't bloat every request.
-- **Same everywhere**: Every machine runs the same bash-compatible shell and
-  GNU tools, written in Rust ([brush](https://github.com/reubeno/brush),
-  [uutils](https://github.com/uutils/coreutils), ripgrep,
-  [jaq](https://github.com/01mf02/jaq)). A script that works in the cloud
-  works on macOS and Windows too.
+- **Same shell everywhere**: Every machine runs the same bash-compatible
+  shell, written in Rust ([brush](https://github.com/reubeno/brush)), so a
+  script that works in the cloud works on macOS and Windows too. The tools
+  that change files are GNU's on every machine
+  ([uutils](https://github.com/uutils/coreutils)), so the changes they make
+  are recorded; every other program, such as `tar` or `python`, is the
+  system's own and its changes are not recorded, and on Windows the other
+  utilities are Git for Windows', which Demi's setup installs when it is
+  missing.
 - **Same for every model**: Every provider sees the same single tool, so
   switching models doesn't change what the agent can do.
 - **Built for long jobs**: Commands keep running in the background and report

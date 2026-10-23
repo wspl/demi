@@ -358,7 +358,7 @@ fn wait(
     }
     Box::pin(async move {
         if words.is_empty() {
-            wait_tasks(context.shell, false, |_| {}).await?;
+            wait_tasks(context.shell, false, None, |_| {}).await?;
             return Ok(ExecutionResult::success());
         }
         let scope = crate::interpreter::scope(context.shell)?;
@@ -436,46 +436,81 @@ async fn task_status(
     }
 }
 
+/// A background task being waited for, by the key `enlist` gave it.
+type Wait = std::pin::Pin<
+    Box<dyn std::future::Future<Output = (usize, Result<u8, brush_core::Error>)> + Send>,
+>;
+
+/// Adds `jobs` to what `wait_tasks` waits for: those that hold the job's
+/// output open, or all when it is not `holding`.
+fn enlist(
+    jobs: Vec<brush_core::jobs::Job>,
+    holding: bool,
+    next: &mut usize,
+    lines: &mut BTreeMap<usize, String>,
+    waits: &mut FuturesUnordered<Wait>,
+) {
+    for job in jobs {
+        let holds = !holding
+            || job
+                .task_id()
+                .and_then(Work::task)
+                .is_none_or(|(_, task)| task.holds_output());
+        if !holds {
+            continue;
+        }
+        let key = *next;
+        *next += 1;
+        lines.insert(key, job.command_line.clone());
+        waits.push(Box::pin(async move { (key, task_status(job).await) }));
+    }
+}
+
 /// Waits for the background tasks of `shell` to end, as `wait` alone and the
 /// end of a script do. A task a signal stopped ended as asked. With `holding`
 /// it waits only for the tasks that hold the job's output open: the others
 /// are the script's no more, and run on. `running` hears the command lines of
 /// the tasks that still run: once those that had ended are waited for, and
-/// again after each end.
+/// again after each end. With `left`, the tasks of the nested shells that
+/// ended and left theirs running are the script's too, as they come.
 pub(crate) async fn wait_tasks(
     shell: &mut Shell,
     holding: bool,
+    left: Option<&Work>,
     mut running: impl FnMut(Vec<String>),
 ) -> Result<(), brush_core::Error> {
-    let jobs = std::mem::take(&mut shell.jobs_mut().jobs);
-    let jobs = jobs.into_iter().filter(|job| {
-        !holding
-            || job
-                .task_id()
-                .and_then(Work::task)
-                .is_none_or(|(_, task)| task.holds_output())
-    });
-    let jobs: Vec<_> = jobs.collect();
-    let mut lines: BTreeMap<usize, String> = jobs
-        .iter()
-        .map(|job| (job.id, job.command_line.clone()))
-        .collect();
-    let mut waits: FuturesUnordered<_> = jobs
-        .into_iter()
-        .map(|job| async move { (job.id, task_status(job).await) })
-        .collect();
+    let mut next = 0usize;
+    let mut lines: BTreeMap<usize, String> = BTreeMap::new();
+    let mut waits: FuturesUnordered<Wait> = FuturesUnordered::new();
+    enlist(
+        std::mem::take(&mut shell.jobs_mut().jobs),
+        holding,
+        &mut next,
+        &mut lines,
+        &mut waits,
+    );
     loop {
-        while let Some(Some((id, status))) = waits.next().now_or_never() {
+        if let Some(work) = left {
+            enlist(work.take_left(), holding, &mut next, &mut lines, &mut waits);
+        }
+        while let Some(Some((key, status))) = waits.next().now_or_never() {
             status?;
-            lines.remove(&id);
+            lines.remove(&key);
         }
         if waits.is_empty() {
             return Ok(());
         }
         running(lines.values().cloned().collect());
-        if let Some((id, status)) = waits.next().await {
+        let ended = match left {
+            Some(work) => tokio::select! {
+                ended = waits.next() => ended,
+                () = work.left_jobs() => continue,
+            },
+            None => waits.next().await,
+        };
+        if let Some((key, status)) = ended {
             status?;
-            lines.remove(&id);
+            lines.remove(&key);
         }
     }
 }
@@ -610,6 +645,27 @@ fn kill(
             let Some(id) = task else {
                 continue;
             };
+            // A signal a shell sends to its own `$$` reaches the trap it set
+            // for it, as a signal to a process does, and runs it before the
+            // next command; a trap that ignores the signal swallows it.
+            if signal != 0 && crate::interpreter::scope(context.shell)?.is_shell(id) {
+                let trapped = crate::signals::name(signal)
+                    .and_then(|name| name.parse::<brush_core::traps::TrapSignal>().ok())
+                    .and_then(|trap| {
+                        let handler = context.shell.traps().get_handler(trap)?;
+                        Some((trap, handler.command.is_empty()))
+                    });
+                if let Some((trap, ignored)) = trapped {
+                    if !ignored {
+                        let params = context.shell.default_exec_params();
+                        let result = context.shell.invoke_trap_handler(trap, &params).await?;
+                        if !result.is_normal_flow() {
+                            return Ok(result);
+                        }
+                    }
+                    continue;
+                }
+            }
             // The task's own job takes the signal: the task may be one a
             // command that has ended left running.
             let Some((work, task)) = Work::task(id).filter(|(_, task)| !task.done.is_cancelled()) else {

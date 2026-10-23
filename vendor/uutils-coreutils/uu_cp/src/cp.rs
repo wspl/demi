@@ -549,7 +549,7 @@ pub fn uu_app() -> Command {
         options::ATTRIBUTES_ONLY,
         options::COPY_CONTENTS,
     ];
-    Command::new("cp")
+    let command = Command::new("cp")
         .version(uucore::crate_version!())
         .about(translate!("cp-about"))
         .help_template(uucore::localized_help_template(uucore::util_name()))
@@ -812,7 +812,34 @@ pub fn uu_app() -> Command {
                 .required(true)
                 .value_hint(clap::ValueHint::AnyPath)
                 .value_parser(ValueParser::os_string()),
+        );
+    // macOS's own cp: -X and -N are read and ignored (no extended attributes
+    // or file flags are copied apart from what -p asks), and -S is a flag
+    // without a value, where GNU's takes a backup suffix.
+    #[cfg(target_os = "macos")]
+    let command = command
+        .mut_arg(backup_control::arguments::OPT_SUFFIX, |suffix| {
+            suffix.short(None::<char>)
+        })
+        .arg(
+            Arg::new("bsd-no-xattr")
+                .short('X')
+                .help("accepted and ignored (macOS)")
+                .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("bsd-no-flags")
+                .short('N')
+                .help("accepted and ignored (macOS)")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("bsd-no-sparse")
+                .short('S')
+                .help("accepted and ignored (macOS)")
+                .action(ArgAction::SetTrue),
+        );
+    command
 }
 
 #[uucore::main]
@@ -833,7 +860,21 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         .map(|v| v.map(PathBuf::from).collect())
         .unwrap_or_default();
 
-    let (sources, target) = parse_path_args(paths, &options)?;
+    #[allow(unused_mut)]
+    let (mut sources, target) = parse_path_args(paths, &options)?;
+
+    // macOS's `cp -R src/ dst` copies what is in src when dst is a directory
+    // already, where GNU's makes dst/src.
+    #[cfg(target_os = "macos")]
+    if options.recursive && !options.no_target_dir && fs::metadata(&target).is_ok_and(|m| m.is_dir()) {
+        use std::os::unix::ffi::OsStrExt as _;
+        for source in &mut sources {
+            let text = source.as_os_str().as_bytes();
+            if text.len() > 1 && text.ends_with(b"/") && fs::metadata(&*source).is_ok_and(|m| m.is_dir()) {
+                source.push(".");
+            }
+        }
+    }
 
     if let Err(error) = copy(&sources, &target, &options) {
         match error {
@@ -1701,7 +1742,8 @@ impl OverwriteMode {
                 if debug {
                     uucore::context_println!("{}", translate!("cp-debug-skipped", "path" => path.quote()));
                 }
-                Err(CpError::Skipped(false))
+                // macOS's cp -n exits 1 for a file it skipped, GNU's 0.
+                Err(CpError::Skipped(cfg!(target_os = "macos")))
             }
             Self::Interactive(_) => {
                 let prompt_yes_result = if let Some((octal, human_readable)) =
@@ -2075,6 +2117,10 @@ fn backup_dest(dest: &Path, backup_path: &Path, is_dest_symlink: bool) -> CopyRe
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
             Err(err) => return Err(err.into()),
         }
+        // A copy the system makes by itself is recorded here, as the copy of
+        // `copy_helper` is: `cp`'s own opens and writes are not recorded one
+        // by one (`UtilityControl` of the runner's shell scope).
+        let _edit = uucore::context::edit(&uucore::context::resolve(backup_path));
         fs::copy(dest, backup_path)?;
     }
     Ok(())
@@ -2976,6 +3022,10 @@ fn copy_helper(
         // applying O_NOFOLLOW here only with `-P`.
         #[cfg(unix)]
         let nofollow = !options.dereference(source_in_command_line);
+        // The destination is recorded as one edit around the whole copy: the
+        // bytes move by descriptors the context does not see (clonefile(2),
+        // copy_file_range(2), CopyFileExW).
+        let _edit = uucore::context::edit(&uucore::context::resolve(dest));
         let copy_debug = copy_on_write(
             source,
             dest,

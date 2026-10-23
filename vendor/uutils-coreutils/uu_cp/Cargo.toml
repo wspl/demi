@@ -214,4 +214,6 @@ patches = [
     "A source that cannot be read is worded as GNU's, cannot stat 'x': No such file or directory, by the error's kind; upstream matched the system's message, which on Windows printed the bare message and (os error 2)",
     "A recursive copy names each source as the user gave its root, below it joined with uucore::context::join, and each target joined the same way, where it printed the root resolved against the working directory",
     "-s with a relative source makes a link only in the current directory, elsewhere reporting <link>: can make relative symbolic links only in current directory and going on with status 1, as GNU's cp does; upstream linked to the relative source from anywhere",
+    "On macOS the options of its own cp are read: -X and -N are accepted and ignored, -S is a flag without a value, `cp -R src/ dst` copies what is in src when dst is a directory, and -n exits 1 for a file it skipped",
+    "The destination of each copy, and a backup, is recorded as an edit around the whole copy, as the bytes move by descriptors the context does not see; the context's own record of a cp's opens and writes is off (uucore::context::edit)",
 ]

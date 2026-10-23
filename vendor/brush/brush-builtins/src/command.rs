@@ -107,8 +107,12 @@ impl CommandCommand {
                 None
             }
         } else {
+            // A program the host runs itself is found as the system's file of that name where
+            // there is one, as the system's `command -v` finds it.
             if let Some(builtin_cmd) = shell.builtins().get(command_name)
                 && !builtin_cmd.disabled
+                && !(shell.host_stands_in_for(command_name)
+                    && shell.find_executables_in_path(command_name).next().is_some())
             {
                 return Some(FoundCommand::Builtin(command_name.to_owned()));
             }

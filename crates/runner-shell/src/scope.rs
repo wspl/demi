@@ -177,6 +177,9 @@ pub struct Scope {
     /// the files they are redirected to themselves, unrecorded
     /// (`external_output`).
     background: bool,
+    /// The number `$$` gives in the shell the scope owns, when the shell is
+    /// an `sh` or `bash` the job started (`crates/runner-shell/src/nested.rs`).
+    shell_id: Option<i32>,
     /// Readable once `cancellation` is, so blocking IO polls it with its
     /// file; made when blocking IO first needs it. A std mutex: the job's
     /// unit threads share it for the moment it takes to make.
@@ -206,6 +209,7 @@ impl Scope {
             commands,
             edits: None,
             background: false,
+            shell_id: None,
             files: Arc::new(Mutex::new(HashMap::new())),
             timings: crate::timing::Timings::default(),
             #[cfg(unix)]
@@ -262,6 +266,27 @@ impl Scope {
             timings: self.timings.part(),
             ..self.clone()
         }
+    }
+
+    /// The part of the job a new `sh` or `bash` runs in, numbered as a
+    /// background task is, which its `$$` gives and `kill` signals it by,
+    /// until the entry drops.
+    pub(crate) fn shell(&self) -> (Self, crate::work::TaskEnd) {
+        let part = self.part();
+        let end = self.work.add_task(part.stop.clone());
+        (
+            Self {
+                shell_id: Some(end.id),
+                ..part
+            },
+            end,
+        )
+    }
+
+    /// Whether `id` is the task of the shell this scope belongs to, the
+    /// number its `$$` gives.
+    pub(crate) fn is_shell(&self, id: i32) -> bool {
+        self.shell_id == Some(id)
     }
 
     /// A background task: a part of its own, and with tasks of its own, so
@@ -636,6 +661,13 @@ impl FileControl for Scope {
 }
 
 impl ExecutionHost for Scope {
+    fn map_path(
+        &self,
+        path: &Path,
+        env: &dyn Fn(&str) -> Option<String>,
+    ) -> Option<PathBuf> {
+        crate::git_paths::map(path, env)
+    }
     /// A background task is a part of the job of its own, numbered within
     /// the runner (`crates/runner-shell/src/work.rs`).
     fn background_task(&self) -> io::Result<Option<BackgroundTask>> {
@@ -707,6 +739,20 @@ impl ExecutionHost for Scope {
         path: Option<&std::ffi::OsStr>,
     ) -> io::Result<Option<brush_core::execution_host::ScriptInterpreter>> {
         crate::shebang::command(script, path)
+    }
+
+    fn builtin_at(&self, path: &Path) -> Option<String> {
+        // A utility of the runner's is its own as a builtin, and so is each
+        // shell, whatever directory the path names.
+        crate::utilities::named(path.as_os_str()).map(str::to_owned)
+    }
+
+    fn stands_in_for(&self, name: &str) -> bool {
+        crate::utilities::named(std::ffi::OsStr::new(name)).is_some()
+    }
+
+    fn process_id(&self) -> Option<u32> {
+        self.shell_id.and_then(|id| u32::try_from(id).ok())
     }
 
     fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
@@ -855,15 +901,18 @@ pub(crate) struct UtilityControl {
 }
 
 impl uucore::context::Control for UtilityControl {
+    fn map_path(&self, path: &Path, env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+        crate::git_paths::map(path, env)
+    }
     fn open(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
         self.scope
-            .open_file(path, options, writing && tracked_utility())
+            .open_file(path, options, writing && recorded_by_use())
     }
     fn edit(&self, path: &Path) -> Option<Box<dyn Send>> {
         tracked_utility().then(|| self.scope.edit(path)).flatten()
     }
     fn edit_file(&self, file: &File) -> Option<Box<dyn Send>> {
-        if !tracked_utility() {
+        if !recorded_by_use() {
             return None;
         }
         self.scope.edit(&self.scope.file_path(file)?)
@@ -891,7 +940,7 @@ impl uucore::context::Control for UtilityControl {
     }
     fn write(&self, file: &File, bytes: &[u8]) -> io::Result<usize> {
         self.scope
-            .write_with_tracking(file, bytes, tracked_utility())
+            .write_with_tracking(file, bytes, recorded_by_use())
     }
     fn sleep(&self, duration: Duration) -> io::Result<()> {
         self.scope.sleep(duration)
@@ -947,6 +996,9 @@ impl uucore::context::Control for UtilityControl {
         if context.name == crate::nohup::NAME {
             return crate::nohup::start(self, context, args);
         }
+        if matches!(context.name, crate::nested::SH | crate::nested::BASH) {
+            return crate::nested::start(self, context, args);
+        }
         let cancellation = self.scope.cancellation.child_token();
         let running = self.scope.work.utility(context.name);
         context.control = Some(Arc::new(UtilityControl {
@@ -957,11 +1009,18 @@ impl uucore::context::Control for UtilityControl {
     }
 }
 
+/// Every utility's writes are edits but `mv`'s, which records its rename as
+/// the rename it is (`edit_rename`) and whose copying fallback is no edit.
 fn tracked_utility() -> bool {
-    !matches!(
-        uucore::context::utility_name(),
-        Some("cp" | "mv" | "mktemp" | "touch")
-    )
+    uucore::context::utility_name() != Some("mv")
+}
+
+/// Whether a utility's opens and writes are recorded one by one. `cp`'s are
+/// not: it records each destination as one edit around its whole copy
+/// (`uucore::context::edit`), as the system copies the bytes by descriptors of
+/// its own, and a record inside another would wait for it for ever.
+fn recorded_by_use() -> bool {
+    tracked_utility() && uucore::context::utility_name() != Some("cp")
 }
 
 #[derive(Eq, Hash, PartialEq)]

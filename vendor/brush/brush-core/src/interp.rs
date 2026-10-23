@@ -916,13 +916,33 @@ impl Execute for ast::CompoundCommand {
                 // the shell, break out of loops, etc.
                 Ok(ExecutionResult::from(subshell_result.exit_code))
             }
-            Self::ForClause(f) => f.execute(shell, params).await,
+            Self::ForClause(f) => {
+                shell.enter_loop();
+                let result = f.execute(shell, params).await;
+                shell.leave_loop();
+                result
+            }
             Self::CaseClause(c) => c.execute(shell, params).await,
             Self::IfClause(i) => i.execute(shell, params).await,
-            Self::WhileClause(w) => (WhileOrUntil::While, w).execute(shell, params).await,
-            Self::UntilClause(u) => (WhileOrUntil::Until, u).execute(shell, params).await,
+            Self::WhileClause(w) => {
+                shell.enter_loop();
+                let result = (WhileOrUntil::While, w).execute(shell, params).await;
+                shell.leave_loop();
+                result
+            }
+            Self::UntilClause(u) => {
+                shell.enter_loop();
+                let result = (WhileOrUntil::Until, u).execute(shell, params).await;
+                shell.leave_loop();
+                result
+            }
             Self::Arithmetic(a) => a.execute(shell, params).await,
-            Self::ArithmeticForClause(a) => a.execute(shell, params).await,
+            Self::ArithmeticForClause(a) => {
+                shell.enter_loop();
+                let result = a.execute(shell, params).await;
+                shell.leave_loop();
+                result
+            }
             Self::Coprocess(c) => c.execute(shell, params).await,
         }
     }

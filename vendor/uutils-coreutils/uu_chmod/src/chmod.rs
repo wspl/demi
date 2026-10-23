@@ -134,9 +134,37 @@ fn extract_negative_modes(args: impl uucore::Args) -> (Option<String>, Vec<OsStr
     (parsed_cmode, clean_args, mode_indices)
 }
 
+/// Whether `args` ask for what only macOS's own chmod does: ACLs, as `-E`,
+/// `-C`, `-I`, `-N` or a mode such as `+a`, `-a#`, `+ai` or `=a#`.
+#[cfg(target_os = "macos")]
+fn asks_for_acls(args: &[OsString]) -> bool {
+    args.iter()
+        .take_while(|arg| *arg != "--")
+        .filter_map(|arg| arg.to_str())
+        .any(|arg| {
+            matches!(arg, "-E" | "-C" | "-I" | "-N")
+                || arg.strip_prefix(['+', '=']).is_some_and(|rest| rest.starts_with('a'))
+                || arg.strip_prefix('-').is_some_and(|rest| {
+                    rest.strip_prefix('a')
+                        .is_some_and(|more| !more.is_empty() && more.chars().all(|c| matches!(c, '#' | 'i')))
+                })
+        })
+}
+
 #[uucore::main]
 pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     let args: Vec<OsString> = args.skip(1).collect(); // skip binary name
+    // An access control list has no counterpart in a mode, so macOS's own
+    // chmod does what is asked, in the job's directory and with its streams.
+    #[cfg(target_os = "macos")]
+    if asks_for_acls(&args) {
+        let status = uucore::context::process::Command::new("/bin/chmod")
+            .args(&args)
+            .status()
+            .map_err(|error| USimpleError::new(1, format!("/bin/chmod: {error}")))?;
+        set_exit_code(status.code().unwrap_or(1));
+        return Ok(());
+    }
     // Kept for the caret in mode diagnostics, which needs the mode as typed,
     // before `extract_negative_modes` replaces a negative mode by a pseudo one.
     let mode_args = uucore::diagnostics::capture(&args);

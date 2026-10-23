@@ -184,7 +184,6 @@ strip = true
 [patch.crates-io]
 chromiumoxide = { path = "vendor/chromiumoxide/chromiumoxide" }
 chromiumoxide_cdp = { path = "vendor/chromiumoxide/chromiumoxide_cdp" }
-jaq-core = { path = "vendor/jaq/jaq-core" }
 sctp-proto = { path = "vendor/sctp-proto/sctp-proto" }
 str0m = { path = "vendor/str0m/str0m" }
 argmax = { path = "vendor/argmax/argmax" }
@@ -192,12 +191,7 @@ process-wrap = { path = "vendor/process-wrap/process-wrap" }
 brush-builtins = { path = "vendor/brush/brush-builtins" }
 brush-core = { path = "vendor/brush/brush-core" }
 uucore = { path = "vendor/uutils-coreutils/uucore" }
-uu_cat = { path = "vendor/uutils-coreutils/uu_cat" }
 uucore_procs = { path = "vendor/uutils-coreutils/uucore_procs" }
-uu_head = { path = "vendor/uutils-coreutils/uu_head" }
-uu_tail = { path = "vendor/uutils-coreutils/uu_tail" }
-uu_wc = { path = "vendor/uutils-coreutils/uu_wc" }
-uu_ls = { path = "vendor/uutils-coreutils/uu_ls" }
 uu_cp = { path = "vendor/uutils-coreutils/uu_cp" }
 uu_mv = { path = "vendor/uutils-coreutils/uu_mv" }
 uu_rm = { path = "vendor/uutils-coreutils/uu_rm" }
@@ -207,35 +201,22 @@ uu_touch = { path = "vendor/uutils-coreutils/uu_touch" }
 uu_tee = { path = "vendor/uutils-coreutils/uu_tee" }
 uu_sort = { path = "vendor/uutils-coreutils/uu_sort" }
 uu_uniq = { path = "vendor/uutils-coreutils/uu_uniq" }
-uu_cut = { path = "vendor/uutils-coreutils/uu_cut" }
-uu_tr = { path = "vendor/uutils-coreutils/uu_tr" }
-uu_paste = { path = "vendor/uutils-coreutils/uu_paste" }
-uu_nl = { path = "vendor/uutils-coreutils/uu_nl" }
-uu_tac = { path = "vendor/uutils-coreutils/uu_tac" }
-uu_basename = { path = "vendor/uutils-coreutils/uu_basename" }
-uu_dirname = { path = "vendor/uutils-coreutils/uu_dirname" }
-uu_realpath = { path = "vendor/uutils-coreutils/uu_realpath" }
 uu_env = { path = "vendor/uutils-coreutils/uu_env" }
-uu_seq = { path = "vendor/uutils-coreutils/uu_seq" }
-uu_date = { path = "vendor/uutils-coreutils/uu_date" }
-uu_sleep = { path = "vendor/uutils-coreutils/uu_sleep" }
 uu_mktemp = { path = "vendor/uutils-coreutils/uu_mktemp" }
-uu_stat = { path = "vendor/uutils-coreutils/uu_stat" }
-uu_du = { path = "vendor/uutils-coreutils/uu_du" }
-uu_df = { path = "vendor/uutils-coreutils/uu_df" }
-uu_od = { path = "vendor/uutils-coreutils/uu_od" }
 uu_chmod = { path = "vendor/uutils-coreutils/uu_chmod" }
 uu_chown = { path = "vendor/uutils-coreutils/uu_chown" }
-
-uu_grep = { path = "vendor/uutils-grep/uu_grep" }
+uu_ln = { path = "vendor/uutils-coreutils/uu_ln" }
+uu_link = { path = "vendor/uutils-coreutils/uu_link" }
+uu_unlink = { path = "vendor/uutils-coreutils/uu_unlink" }
+uu_truncate = { path = "vendor/uutils-coreutils/uu_truncate" }
+uu_split = { path = "vendor/uutils-coreutils/uu_split" }
+uu_csplit = { path = "vendor/uutils-coreutils/uu_csplit" }
+uu_shuf = { path = "vendor/uutils-coreutils/uu_shuf" }
+uu_shred = { path = "vendor/uutils-coreutils/uu_shred" }
+uu_install = { path = "vendor/uutils-coreutils/uu_install" }
+uu_dd = { path = "vendor/uutils-coreutils/uu_dd" }
+uu_chgrp = { path = "vendor/uutils-coreutils/uu_chgrp" }
+uu_mkfifo = { path = "vendor/uutils-coreutils/uu_mkfifo" }
+uu_mknod = { path = "vendor/uutils-coreutils/uu_mknod" }
 sed = { path = "vendor/uutils-sed/sed" }
 findutils = { path = "vendor/uutils-findutils/findutils" }
-diffutils = { path = "vendor/uutils-diffutils/diffutils" }
-
-jaq-std = { path = "vendor/jaq/jaq-std" }
-
-ignore = { path = "vendor/ripgrep/ignore" }
-grep-cli = { path = "vendor/ripgrep/grep-cli" }
-
-jaq = { path = "vendor/jaq/jaq" }
-ripgrep = { path = "vendor/ripgrep/ripgrep" }

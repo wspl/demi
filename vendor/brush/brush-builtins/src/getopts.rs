@@ -298,7 +298,8 @@ fn resolve_option_argument<SE: brush_core::ShellExtensions>(
                 if is_opterr_enabled(context) {
                     writeln!(
                         context.stderr(),
-                        "getopts: option requires an argument -- {c}"
+                        "{}: option requires an argument -- {c}",
+                        context.shell.current_shell_name().unwrap_or_else(|| "getopts".into())
                     )?;
                 }
                 (String::from("?"), None)
@@ -326,7 +327,11 @@ fn report_unknown_option<SE: brush_core::ShellExtensions>(
     c: char,
 ) -> Result<(String, Option<String>), brush_core::Error> {
     if !spec.silent_errors && is_opterr_enabled(context) {
-        writeln!(context.stderr(), "getopts: illegal option -- {c}")?;
+        writeln!(
+            context.stderr(),
+            "{}: illegal option -- {c}",
+            context.shell.current_shell_name().unwrap_or_else(|| "getopts".into())
+        )?;
     }
 
     let optarg = if spec.silent_errors {

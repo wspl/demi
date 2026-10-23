@@ -14,6 +14,13 @@ pub trait Control: Send + Sync {
         let _ = writing;
         options.open(path)
     }
+    /// The path a path stands for where the host reads it otherwise than the
+    /// system does, such as a `/tmp` that is the user's temporary folder;
+    /// `env` gives the utility's variables. With none, the path is the
+    /// system's own.
+    fn map_path(&self, _path: &Path, _env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+        None
+    }
     /// A guard spans one bounded file operation, including its error paths.
     fn edit(&self, _path: &Path) -> Option<Box<dyn Send>> {
         None
@@ -222,6 +229,11 @@ pub fn resolve(path: impl AsRef<Path>) -> PathBuf {
     }
     if device(path).is_some() {
         return PathBuf::from("NUL");
+    }
+    if let Some(mapped) = control().and_then(|control| {
+        control.map_path(path, &|name| env::var(name).ok())
+    }) {
+        return mapped;
     }
     CURRENT.with(|current| {
         let current = current.borrow();

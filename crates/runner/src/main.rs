@@ -80,8 +80,8 @@
 //! The runner is one executable built from seven crates, so that a change to
 //! one part recompiles only that part and what composes it, and a test of one
 //! part links only that part's dependencies. The standard utilities are the
-//! heaviest: only `runner-shell` links brush, the uutils, ripgrep, jaq, sed,
-//! findutils and diffutils, and nothing below the executable depends on it.
+//! heaviest: only `runner-shell` links brush, the uutils, sed and findutils, and
+//! nothing below the executable depends on it.
 //!
 //! ```text
 //! demi-runner (connection, registration, Host log, composition)
@@ -103,6 +103,8 @@ mod detached;
 mod direct;
 mod exposure;
 mod forward;
+#[cfg(windows)]
+mod git;
 mod host_log;
 mod management;
 mod registration;
@@ -325,6 +327,11 @@ enum Action {
         #[command(flatten)]
         installation: Installation,
     },
+    /// Prints the folder Git for Windows is installed in, and exits with 1 when
+    /// the runner finds none; the installer asks before it installs one.
+    #[cfg(windows)]
+    #[command(hide = true)]
+    Git,
     /// Prints this process's environment as JSON between two `mark`s, for
     /// the login shell a starting runner reads the device environment from.
     #[command(name = environment::PRINT, hide = true)]
@@ -396,6 +403,16 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         Action::Environment { mark } => {
             environment::print(&mark)?;
             return Ok(0);
+        }
+        #[cfg(windows)]
+        Action::Git => {
+            return Ok(match git::find() {
+                Some(folder) => {
+                    println!("{}", folder.display());
+                    0
+                }
+                None => 1,
+            });
         }
         Action::Uninstall { installation } => {
             let directory = directory(&installation, None)?;

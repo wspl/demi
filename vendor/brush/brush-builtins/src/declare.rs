@@ -135,7 +135,7 @@ impl builtins::Command for DeclareCommand {
         };
 
         if matches!(verb, DeclareVerb::Local) && !context.shell.in_function() {
-            writeln!(context.stderr(), "can only be used in a function")?;
+            writeln!(context.stderr(), "local: can only be used in a function")?;
             return Ok(ExecutionResult::general_error());
         }
 

@@ -552,6 +552,129 @@ fn parse_command_ending(lines: &ScriptLineProvider, line: &mut ScriptCharProvide
     Ok(())
 }
 
+/// Translates the POSIX bracket expression that starts at `pattern[start]`, a
+/// `[`, into a character class the regex engine reads as the same set, and
+/// gives it with the position after its closing `]`. Inside a bracket
+/// expression a backslash is an ordinary character and a `[` too unless it
+/// opens `[:class:]`, `[.x.]` or `[=x=]`, where the engine would read escapes
+/// and nested classes (autoconf's quoting tests use `[^\|&;<>\(\)\$`\\"*\?[ \t#~]`).
+/// A bracket that never closes is left as it is, for the engine to refuse.
+fn bracket_to_class(pattern: &[u8], start: usize) -> Option<(Vec<u8>, usize)> {
+    fn push_literal(out: &mut Vec<u8>, byte: u8) {
+        // What a class of the engine reads as syntax.
+        if matches!(byte, b'\\' | b'[' | b']' | b'^' | b'-' | b'&' | b'~') {
+            out.push(b'\\');
+        }
+        out.push(byte);
+    }
+    let mut out = vec![b'['];
+    let mut pos = start + 1;
+    if pattern.get(pos) == Some(&b'^') {
+        out.push(b'^');
+        pos += 1;
+    }
+    let mut first = true;
+    loop {
+        let byte = *pattern.get(pos)?;
+        if byte == b']' && !first {
+            out.push(b']');
+            return Some((out, pos + 1));
+        }
+        first = false;
+        // One member: a named class, a collating element or a character.
+        let member = |pos: &mut usize| -> Option<(Option<u8>, Vec<u8>)> {
+            let byte = *pattern.get(*pos)?;
+            if byte == b'[' && matches!(pattern.get(*pos + 1), Some(b':' | b'.' | b'=')) {
+                let kind = pattern[*pos + 1];
+                let close = pattern[*pos + 2..]
+                    .windows(2)
+                    .position(|pair| pair[0] == kind && pair[1] == b']')?
+                    + *pos
+                    + 2;
+                let inner = &pattern[*pos + 2..close];
+                let whole = pattern[*pos..close + 2].to_vec();
+                *pos = close + 2;
+                return if kind == b':' {
+                    Some((None, whole))
+                } else if inner.len() == 1 {
+                    Some((Some(inner[0]), Vec::new()))
+                } else {
+                    Some((None, Vec::new()))
+                };
+            }
+            // As in GNU sed, `\n`, `\t` and the like are their characters here too;
+            // any other backslash is itself.
+            if byte == b'\\'
+                && let Some(control) = pattern.get(*pos + 1).and_then(|next| match next {
+                    b'n' => Some(b'\n'),
+                    b't' => Some(b'\t'),
+                    b'r' => Some(b'\r'),
+                    b'f' => Some(0x0c),
+                    b'v' => Some(0x0b),
+                    b'a' => Some(0x07),
+                    _ => None,
+                })
+            {
+                *pos += 2;
+                return Some((Some(control), Vec::new()));
+            }
+            *pos += 1;
+            Some((Some(byte), Vec::new()))
+        };
+        let (low, class) = member(&mut pos)?;
+        if !class.is_empty() {
+            out.extend_from_slice(&class);
+            continue;
+        }
+        let Some(low) = low else { continue };
+        // A range, unless the `-` is the last character of the expression.
+        if pattern.get(pos) == Some(&b'-') && pattern.get(pos + 1).is_some_and(|next| *next != b']') {
+            pos += 1;
+            let (high, _) = member(&mut pos)?;
+            if let Some(high) = high {
+                push_literal(&mut out, low);
+                out.push(b'-');
+                push_literal(&mut out, high);
+                continue;
+            }
+        }
+        push_literal(&mut out, low);
+    }
+}
+
+/// The bracket expressions of an extended pattern as classes
+/// ([`bracket_to_class`]); the rest is as written.
+fn brackets_to_classes(pattern: &[u8]) -> Vec<u8> {
+    let mut result = Vec::with_capacity(pattern.len());
+    let mut pos = 0;
+    while pos < pattern.len() {
+        match pattern[pos] {
+            b'\\' => {
+                result.push(b'\\');
+                if let Some(next) = pattern.get(pos + 1) {
+                    result.push(*next);
+                }
+                pos += 2;
+            }
+            b'[' => match bracket_to_class(pattern, pos) {
+                Some((class, after)) => {
+                    result.extend_from_slice(&class);
+                    pos = after;
+                }
+                None => {
+                    result.push(b'[');
+                    pos += 1;
+                }
+            },
+            byte => {
+                result.push(byte);
+                pos += 1;
+            }
+        }
+    }
+    result
+}
+
 /// Convert a primitive BRE pattern to a safe ERE-compatible pattern.
 /// - Replaces `\(`, `\)`, `\?`, `\+`, `\|`, `\{` and `\}` with `(`, `)`, `?`, `+`, `|`, `{` and `}`.
 /// - Puts single-digit back-references in non-capturing groups..
@@ -622,6 +745,17 @@ fn bre_to_ere(pattern: &[u8]) -> Vec<u8> {
             }
         } else {
             match c {
+                b'[' => {
+                    if let Some((class, after)) = bracket_to_class(pattern, pos - 1) {
+                        result.extend_from_slice(&class);
+                        pos = after;
+                        at_beginning = false;
+                        // The class ends the previous character, as a `]` would.
+                        previous = Some(b']');
+                        continue;
+                    }
+                    result.push(c);
+                }
                 b'+' | b'?' | b'{' | b'}' | b'|' | b'(' | b')' => {
                     // Escape unsupported ERE metacharacters.
                     result.push(b'\\');
@@ -671,7 +805,7 @@ fn compile_regex(
 
     // Convert basic to extended regular expression if needed.
     let pattern = if context.regex_extended {
-        pattern.to_vec()
+        brackets_to_classes(pattern)
     } else {
         bre_to_ere(pattern)
     };
@@ -770,12 +904,23 @@ pub fn compile_replacement(
                             if let Some(decoded) = parse_char_escape(line) {
                                 push_script_char(&mut literal, decoded, character_mode);
                             } else {
-                                literal.push(b'\\');
-                                literal.push(line.current_byte());
+                                // Any other escaped character is that character, as in
+                                // GNU sed: `\'` is `'` (libtool's quoting writes it).
+                                push_script_char(&mut literal, line.current(), character_mode);
                                 line.advance();
                             }
                         }
                     }
+                }
+
+                // The delimiter ends the replacement even when it is `&`, as
+                // GNU sed's does (`s&a&b&`, which autoconf's config.status writes).
+                c if c == delimiter => {
+                    line.advance(); // skip closing delimiter
+                    if !literal.is_empty() {
+                        parts.push(ReplacementPart::Literal(literal));
+                    }
+                    return Ok(ReplacementTemplate::new(parts));
                 }
 
                 '&' => {
@@ -788,14 +933,6 @@ pub fn compile_replacement(
 
                 '\n' => {
                     return compilation_error(lines, line, UNTERMINATED_S);
-                }
-
-                c if c == delimiter => {
-                    line.advance(); // skip closing delimiter
-                    if !literal.is_empty() {
-                        parts.push(ReplacementPart::Literal(literal));
-                    }
-                    return Ok(ReplacementTemplate::new(parts));
                 }
 
                 _ => {

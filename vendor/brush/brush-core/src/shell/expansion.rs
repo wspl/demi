@@ -7,7 +7,13 @@ use crate::{error, expansion, extensions, interp::ExecutionParameters};
 impl<SE: extensions::ShellExtensions> crate::Shell<SE> {
     /// Returns the current value of the IFS variable, or the default value if it is not set.
     pub fn ifs(&self) -> Cow<'_, str> {
-        self.env_str("IFS").unwrap_or_else(|| " \t\n".into())
+        // `unset IFS` of a local one leaves a placeholder that hides the global, which
+        // is no value either: the default applies, as in bash.
+        if self.env.is_set("IFS") {
+            self.env_str("IFS").unwrap_or_default()
+        } else {
+            " \t\n".into()
+        }
     }
 
     /// Returns the first character of the IFS variable, or a space if it is not set.

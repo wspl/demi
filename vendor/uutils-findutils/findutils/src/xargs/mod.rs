@@ -26,6 +26,17 @@ mod options {
     pub const REPLACE: &str = "replace";
     pub const REPLACE_I: &str = "replace-I";
     pub const VERBOSE: &str = "verbose";
+    // macOS's own xargs.
+    #[cfg(target_os = "macos")]
+    pub const BSD_INSERT: &str = "bsd-insert";
+    #[cfg(target_os = "macos")]
+    pub const BSD_TTY: &str = "bsd-tty";
+    #[cfg(target_os = "macos")]
+    pub const BSD_PROMPT: &str = "bsd-prompt";
+    #[cfg(target_os = "macos")]
+    pub const BSD_IGNORED: &str = "bsd-ignored";
+    #[cfg(target_os = "macos")]
+    pub const BSD_IGNORED_REPLACEMENTS: &str = "bsd-ignored-replacements";
 }
 
 struct Options {
@@ -400,6 +411,12 @@ struct CommandBuilderOptions {
     verbose: bool,
     close_stdin: bool,
     replace: Option<String>,
+    /// macOS's `-J`: the argument that all the input stands in for.
+    insert: Option<String>,
+    /// macOS's `-o`: the command's standard input is the terminal.
+    tty_stdin: bool,
+    /// macOS's `-p`: ask before each command.
+    prompt: bool,
 }
 impl CommandBuilderOptions {
     fn new(
@@ -427,6 +444,9 @@ impl CommandBuilderOptions {
             verbose: false,
             close_stdin: false,
             replace,
+            insert: None,
+            tty_stdin: false,
+            prompt: false,
         })
     }
 }
@@ -480,6 +500,23 @@ impl CommandBuilder<'_> {
                 .args(&initial_args)
                 .env_clear()
                 .envs(&self.options.env);
+        } else if let Some(insert) = self.options.insert.as_ref().filter(|insert| {
+            initial_args.iter().any(|arg| arg.as_os_str() == OsStr::new(insert.as_str()))
+        }) {
+            // macOS's -J: the first argument that is `insert` is replaced by
+            // all the input, which is not appended.
+            let mut placed = false;
+            let mut args: Vec<OsString> = Vec::new();
+            for arg in initial_args {
+                if !placed && arg.as_os_str() == OsStr::new(insert.as_str()) {
+                    args.extend(self.extra_args.iter().cloned());
+                    placed = true;
+                } else {
+                    args.push(arg.to_owned());
+                }
+            }
+            shown.extend(args.iter().cloned());
+            command.args(&args).env_clear().envs(&self.options.env);
         } else {
             // don't do any replacement
             shown.extend(initial_args.iter().cloned());
@@ -493,6 +530,26 @@ impl CommandBuilder<'_> {
 
         if self.options.close_stdin {
             command.stdin(Stdio::null());
+        }
+
+        // macOS's -o gives the command the terminal for its standard input,
+        // and its -p asks about each command on it first; where there is no
+        // terminal the command is not run (-o: it cannot start).
+        if self.options.tty_stdin {
+            let tty = open_terminal().map_err(CommandExecutionError::CannotRun)?;
+            command.stdin(Stdio::from(tty));
+        }
+        if self.options.prompt {
+            let Ok(tty) = open_terminal() else {
+                return Ok(CommandResult::Success);
+            };
+            let line: Vec<_> = shown.iter().map(|word| word.to_string_lossy()).collect();
+            uucore::context_eprint!("{}?...", line.join(" "));
+            let mut answer = String::new();
+            let _ = BufReader::new(tty).read_line(&mut answer);
+            if !answer.trim_start().starts_with(['y', 'Y']) {
+                return Ok(CommandResult::Success);
+            }
         }
 
         if self.options.verbose {
@@ -837,6 +894,19 @@ fn process_input(
     Ok(result)
 }
 
+/// The terminal `-o` and `-p` use, `/dev/tty`: a command has one only when one
+/// of its standard streams is a terminal, as it has a controlling terminal
+/// then. A job's streams are pipes and files, and the runner's own terminal,
+/// if it was started from one, is none of the job's.
+fn open_terminal() -> std::io::Result<fs::File> {
+    use uucore::context::io::IsTerminal as _;
+    if io::stdin().is_terminal() || io::stdout().is_terminal() || io::stderr().is_terminal() {
+        fs::File::open("/dev/tty")
+    } else {
+        Err(std::io::Error::other("no controlling terminal"))
+    }
+}
+
 fn parse_delimiter(s: &str) -> Result<u8, String> {
     match s.strip_prefix('\\') {
         Some(hex) if hex.starts_with('x') => {
@@ -948,7 +1018,7 @@ fn normalize_options(options: Options, matches: &clap::ArgMatches) -> Options {
 }
 
 fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
-    let matches = clap::Command::new("xargs")
+    let command = clap::Command::new("xargs")
         .version(crate_version!())
         .about("Run commands using arguments derived from standard input")
         .arg(
@@ -1096,8 +1166,50 @@ fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
                 .help("Alias for -E")
                 .overrides_with(options::EOF)
                 .value_parser(clap::value_parser!(String)),
+        );
+    // macOS's own xargs: -J puts all the input where its argument is, -o and
+    // -p use the terminal, and -S and -R, which bound -I's replacements, are
+    // read and ignored.
+    #[cfg(target_os = "macos")]
+    let command = command
+        .arg(
+            Arg::new(options::BSD_INSERT)
+                .short('J')
+                .num_args(1)
+                .allow_hyphen_values(true)
+                .value_name("replstr")
+                .value_parser(clap::value_parser!(String))
+                .help("Put all the input where replstr is, in the initial arguments (macOS)"),
         )
-        .try_get_matches_from(args);
+        .arg(
+            Arg::new(options::BSD_TTY)
+                .short('o')
+                .action(ArgAction::SetTrue)
+                .help("Open the terminal as the command's standard input (macOS)"),
+        )
+        .arg(
+            Arg::new(options::BSD_PROMPT)
+                .short('p')
+                .action(ArgAction::SetTrue)
+                .help("Ask before running each command (macOS)"),
+        )
+        .arg(
+            Arg::new(options::BSD_IGNORED)
+                .short('S')
+                .num_args(1)
+                .allow_hyphen_values(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Accepted and ignored (macOS)"),
+        )
+        .arg(
+            Arg::new(options::BSD_IGNORED_REPLACEMENTS)
+                .short('R')
+                .num_args(1)
+                .allow_hyphen_values(true)
+                .value_parser(clap::value_parser!(String))
+                .help("Accepted and ignored (macOS)"),
+        );
+    let matches = command.try_get_matches_from(args);
 
     let matches = match matches {
         Ok(m) => m,
@@ -1129,7 +1241,8 @@ fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
                         .map_or_else(|| 1, std::borrow::ToOwned::to_owned)
                 })
             }),
-        no_run_if_empty: matches.get_flag(options::NO_RUN_IF_EMPTY),
+        // macOS's xargs runs no command for an empty input; GNU's runs one.
+        no_run_if_empty: matches.get_flag(options::NO_RUN_IF_EMPTY) || cfg!(target_os = "macos"),
         null: matches.get_flag(options::NULL),
         replace: [options::REPLACE_I, options::REPLACE]
             .iter()
@@ -1180,6 +1293,14 @@ fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
         )?;
 
     builder_options.verbose = options.verbose;
+    #[cfg(target_os = "macos")]
+    {
+        builder_options.insert = matches.get_one::<String>(options::BSD_INSERT).cloned();
+        builder_options.tty_stdin = matches.get_flag(options::BSD_TTY);
+        builder_options.prompt = matches.get_flag(options::BSD_PROMPT);
+        // -p implies -t.
+        builder_options.verbose |= builder_options.prompt;
+    }
     builder_options.close_stdin = options.arg_file.is_none();
 
     let args_file: Box<dyn Read> = if let Some(path) = &options.arg_file {

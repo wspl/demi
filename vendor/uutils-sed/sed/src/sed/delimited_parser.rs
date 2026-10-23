@@ -304,10 +304,9 @@ fn parse_character_class(
 
                 continue;
             }
-            // Not a POSIX construct — treat as literal
+            // Not a POSIX construct: the `[` is a member of the class, and the
+            // character after it is read as any other, so `[[]` ends at its `]`.
             result.push(b'[');
-            result.push(line.current_byte());
-            line.advance();
             continue;
         }
 
@@ -319,6 +318,10 @@ fn parse_character_class(
             }
             if let Some(decoded) = parse_char_escape(line) {
                 push_script_char(&mut result, decoded, character_mode);
+            } else if line.current() == ']' {
+                // A backslash in a bracket expression is itself, so the `]` it
+                // precedes closes the expression.
+                result.push(b'\\');
             } else {
                 result.push(b'\\');
                 result.push(line.current_byte());

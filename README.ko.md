@@ -117,7 +117,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 - **조합 가능**: 명령을 파이프와 `&&`로 이어 붙일 수 있어, 보통 여러 번의 도구 호출이 필요한 일을 한 번에 처리합니다.
 - **간결한 프롬프트**: 모델에는 명령 그룹마다 한 줄만 보이고, 필요할 때 `--help`를 읽습니다. 기능이 늘어나도 요청이 비대해지지 않습니다.
-- **어디서나 동일**: 모든 컴퓨터가 Rust로 작성된 같은 bash 호환 셸과 GNU 도구([brush](https://github.com/reubeno/brush), [uutils](https://github.com/uutils/coreutils), ripgrep, [jaq](https://github.com/01mf02/jaq))를 실행합니다. 클라우드에서 동작하는 스크립트는 macOS와 Windows에서도 그대로 동작합니다.
+- **어디서나 같은 셸**: 모든 컴퓨터가 Rust로 작성된 같은 bash 호환 셸([brush](https://github.com/reubeno/brush))을 실행하므로, 클라우드에서 동작하는 스크립트는 macOS와 Windows에서도 그대로 동작합니다. 파일을 바꾸는 도구는 모든 컴퓨터에서 GNU 버전([uutils](https://github.com/uutils/coreutils))이라 그 도구가 만든 변경이 기록됩니다. 그 밖의 프로그램(tar, python 등)은 시스템 자체의 것이며 그 변경은 기록되지 않고, Windows에서는 나머지 도구가 Git for Windows의 것입니다. Git for Windows가 없으면 Demi 설정이 설치합니다.
 - **모든 모델에 동일**: 어느 제공자의 모델이든 같은 도구 하나를 보므로, 모델을 바꿔도 에이전트가 할 수 있는 일은 달라지지 않습니다.
 - **오래 걸리는 작업에 적합**: 명령은 백그라운드에서 계속 실행되고 끝나면 보고하므로, 개발 서버나 테스트 스위트가 대화를 막지 않습니다.
 

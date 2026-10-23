@@ -29,7 +29,7 @@ use uucore::context::io::{self, IsTerminal};
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 #[cfg(windows)]
 use std::os::windows;
-use std::path::{Path, PathBuf, absolute};
+use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 use crate::hardlink::{
@@ -110,6 +110,10 @@ pub struct Options {
 
     /// `--exchange` atomically exchange source and destination
     pub exchange: bool,
+
+    /// macOS's `-h`: a destination that is a symbolic link to a directory is
+    /// replaced, not moved into
+    pub no_dereference: bool,
 }
 
 impl Default for Options {
@@ -127,6 +131,7 @@ impl Default for Options {
             debug: false,
             context: None,
             exchange: false,
+            no_dereference: false,
         }
     }
 }
@@ -158,6 +163,8 @@ static OPT_DEBUG: &str = "debug";
 static OPT_CONTEXT: &str = "context";
 static OPT_SELINUX: &str = "selinux";
 static OPT_EXCHANGE: &str = "exchange";
+#[cfg(target_os = "macos")]
+static OPT_NO_DEREFERENCE: &str = "no-dereference";
 
 #[uucore::main]
 pub fn uumain(args: impl uucore::Args) -> UResult<()> {
@@ -227,13 +234,33 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         debug: matches.get_flag(OPT_DEBUG),
         context,
         exchange: matches.get_flag(OPT_EXCHANGE),
+        no_dereference: no_dereference(&matches),
     };
 
     mv(&files[..], &opts)
 }
 
+/// Whether macOS's `-h` was given, which only macOS's `mv` has.
+#[cfg(target_os = "macos")]
+fn no_dereference(matches: &ArgMatches) -> bool {
+    matches.get_flag(OPT_NO_DEREFERENCE)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn no_dereference(_matches: &ArgMatches) -> bool {
+    false
+}
+
 pub fn uu_app() -> Command {
-    Command::new("mv")
+    // GNU's `mv` has no `-h`, which clap would take for help and so move nothing.
+    let command = Command::new("mv")
+        .disable_help_flag(true)
+        .arg(
+            Arg::new("help")
+                .long("help")
+                .help(translate!("mv-help-help"))
+                .action(ArgAction::HelpLong),
+        )
         .version(uucore::crate_version!())
         .about(translate!("mv-about"))
         .help_template(uucore::localized_help_template(uucore::util_name()))
@@ -345,7 +372,15 @@ pub fn uu_app() -> Command {
                 .long(OPT_EXCHANGE)
                 .help(translate!("mv-help-exchange"))
                 .action(ArgAction::SetTrue),
-        )
+        );
+    #[cfg(target_os = "macos")]
+    let command = command.arg(
+        Arg::new(OPT_NO_DEREFERENCE)
+            .short('h')
+            .help(translate!("mv-help-no-dereference"))
+            .action(ArgAction::SetTrue),
+    );
+    command
 }
 
 fn determine_overwrite_mode(matches: &ArgMatches) -> OverwriteMode {
@@ -398,7 +433,9 @@ fn handle_two_paths(source: &Path, target: &Path, opts: &Options) -> UResult<()>
     // `source.context_is_dir() && !source.context_is_symlink()` without the extra `stat` calls.
     let source_is_dir = source_metadata.context_is_dir();
     let target_is_dir = match target.context_symlink_metadata() {
-        Ok(metadata) if metadata.context_is_symlink() => fs::canonicalize(target).is_ok_and(|p| p.context_is_dir()),
+        Ok(metadata) if metadata.context_is_symlink() => {
+            !opts.no_dereference && fs::canonicalize(target).is_ok_and(|p| p.context_is_dir())
+        }
         Ok(metadata) => metadata.context_is_dir(),
         Err(_) => false,
     };
@@ -487,6 +524,12 @@ fn handle_two_paths(source: &Path, target: &Path, opts: &Options) -> UResult<()>
         )
         .map_err(|e| USimpleError::new(1, format!("{e}")))
     }
+}
+
+/// `path` made absolute against the job's working directory, not the
+/// process's: a relative `x/y/z` names a file below the job's directory.
+fn absolute(path: impl AsRef<Path>) -> io::Result<PathBuf> {
+    std::path::absolute(uucore::context::resolve(path))
 }
 
 fn assert_not_same_file(

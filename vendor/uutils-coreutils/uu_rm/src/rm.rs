@@ -248,6 +248,21 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
 
     let force_flag = matches.get_flag(OPT_FORCE);
 
+    // macOS's -W undeletes a whiteout of a union file system and removes
+    // nothing: it fails for a file that is there and for one that is not.
+    #[cfg(target_os = "macos")]
+    if matches.get_flag("bsd-undelete") {
+        for file in &files {
+            let reason = if Path::new(file).context_symlink_metadata().is_ok() {
+                "File exists"
+            } else {
+                "Operation not permitted"
+            };
+            show_error!("{}: {reason}", file.to_string_lossy());
+        }
+        return Err(1.into());
+    }
+
     if files.is_empty() && !force_flag {
         // Still check by hand and not use clap
         // Because "rm -f" is a thing
@@ -366,7 +381,7 @@ fn handle_parse_error(e: clap::Error, args: &[OsString]) -> Box<dyn UError> {
 }
 
 pub fn uu_app() -> Command {
-    Command::new("rm")
+    let command = Command::new("rm")
         .version(uucore::crate_version!())
         .about(translate!("rm-about"))
         .help_template(uucore::localized_help_template(uucore::util_name()))
@@ -483,7 +498,25 @@ pub fn uu_app() -> Command {
                 .value_parser(ValueParser::os_string())
                 .num_args(1..)
                 .value_hint(clap::ValueHint::AnyPath),
+        );
+    // macOS's own rm: -x is --one-file-system, and -P (overwrite first) and
+    // -W (undelete) is read and removes nothing.
+    #[cfg(target_os = "macos")]
+    let command = command
+        .mut_arg(OPT_ONE_FILE_SYSTEM, |one_fs| one_fs.short('x'))
+        .arg(
+            Arg::new("bsd-overwrite")
+                .short('P')
+                .help("accepted and ignored (macOS)")
+                .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("bsd-undelete")
+                .short('W')
+                .help("undelete whiteouts, which removes nothing (macOS)")
+                .action(ArgAction::SetTrue),
+        );
+    command
 }
 
 /// Creates a progress bar for rm operations if conditions are met.

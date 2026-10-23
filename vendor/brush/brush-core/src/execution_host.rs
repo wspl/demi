@@ -12,9 +12,9 @@ pub type OutputCompletion = std::pin::Pin<Box<dyn std::future::Future<Output = i
 pub enum ScriptInterpreter {
     /// A program, started with these leading arguments, the script's path and the script's own.
     Program(std::path::PathBuf, Vec<std::ffi::OsString>),
-    /// This shell, which runs the script as a subshell, after setting these options as `set`
-    /// takes them.
-    Shell(Vec<std::ffi::OsString>),
+    /// The host's builtin of this name, a shell, which runs the script: it is called with these
+    /// leading arguments, the script's path and the script's own, as the shell program would be.
+    Builtin(String, Vec<std::ffi::OsString>),
 }
 
 /// IO behavior supplied by the embedding execution owner.
@@ -109,6 +109,18 @@ pub trait ExecutionHost: Any + Send + Sync {
         let _ = (file, forwarded);
         false
     }
+    /// The path a path of the shell's script stands for where the host reads
+    /// it otherwise than the system does, such as a `/tmp` that is the user's
+    /// temporary folder; `env` gives the shell's variables. With none, the
+    /// path is the system's own.
+    fn map_path(
+        &self,
+        path: &std::path::Path,
+        env: &dyn Fn(&str) -> Option<String>,
+    ) -> Option<std::path::PathBuf> {
+        let _ = (path, env);
+        None
+    }
     /// Reject further execution after cancellation.
     fn check(&self) -> io::Result<()>;
     /// Track work until its guard is dropped, including detached interpreter tasks.
@@ -134,9 +146,10 @@ pub trait ExecutionHost: Any + Send + Sync {
     }
     /// Tells the host that a builtin starts, which runs in the shell's process.
     fn builtin_started(&self) {}
-    /// What runs the file `script` when the system cannot execute it by itself, as Windows
-    /// cannot a script, with `path` the `PATH` the command starts under. With none, the system
-    /// starts `script` itself.
+    /// What runs the file `script`, with `path` the `PATH` the command starts under: a program
+    /// or a builtin of the host when the system cannot execute the file by itself, as Windows
+    /// cannot a script, or when the host runs it in place of what the system would start. With
+    /// none, the system starts `script` itself.
     fn script_interpreter(
         &self,
         script: &std::path::Path,
@@ -144,6 +157,26 @@ pub trait ExecutionHost: Any + Send + Sync {
     ) -> io::Result<Option<ScriptInterpreter>> {
         let _ = (script, path);
         Ok(None)
+    }
+    /// The name of the builtin that stands in for the program at `path`, an absolute path a
+    /// command names, so that the command runs that builtin and not the file. With none, the
+    /// file is the program.
+    fn builtin_at(&self, path: &std::path::Path) -> Option<String> {
+        let _ = path;
+        None
+    }
+    /// Whether the host runs the program a bare `name` stands for itself, as one of its builtins,
+    /// so that `command -v`, `type` and the like answer with the path of the system's program of
+    /// that name where the system has one, as the system's would, and with the name where it has
+    /// none.
+    fn stands_in_for(&self, name: &str) -> bool {
+        let _ = name;
+        false
+    }
+    /// The number `$$` and `BASHPID` give in the shell this host owns, in place of the host
+    /// process's id, when the shell is one of the host's own and not the process.
+    fn process_id(&self) -> Option<u32> {
+        None
     }
     /// Tells the host of a background task that, once the task's own redirections are applied,
     /// it does (`held`) or does not hold the host's own output open.

@@ -254,6 +254,8 @@ pub enum FileTimeType {
     Accessed,
     Changed,
     Modified,
+    /// macOS's `-Btime`: when the file was made.
+    Created,
 }
 
 impl FileTimeType {
@@ -262,6 +264,7 @@ impl FileTimeType {
             Self::Accessed => metadata.accessed(),
             Self::Changed => metadata.changed(),
             Self::Modified => metadata.modified(),
+            Self::Created => metadata.created(),
         }
     }
 }

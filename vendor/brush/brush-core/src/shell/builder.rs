@@ -236,6 +236,7 @@ impl<SE: extensions::ShellExtensions> Default for Shell<SE> {
         Self {
             execution_host: None,
             child_attributes: crate::execution_host::ChildAttributes::default(),
+            loop_depth: 0,
             error_formatter: SE::ErrorFormatter::default(),
             traps: traps::TrapHandlerConfig::default(),
             open_files: openfiles::OpenFiles::default(),

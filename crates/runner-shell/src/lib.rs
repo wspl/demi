@@ -43,15 +43,17 @@
 //!
 //! # Utilities
 //!
-//! Standard utilities behave as GNU's on every Host, macOS included. A script
-//! written on a Linux Cloud runs on a Mac unchanged, and a model that writes a
-//! BSD form (`sed -i ''`) gets GNU's error for it, which names the problem and
-//! is the one models know best.
+//! A utility that writes files or starts programs runs in the runner, so that
+//! its changes are the job's edits, and so do `sh` and `bash`, which are the
+//! job's own shell on every Host (`nested.rs`) so that what they run is
+//! recorded too. Every other utility is the system's own: GNU's on Linux,
+//! macOS's on a Mac, Git for Windows' on Windows (`utilities.rs`).
 //!
-//! On Windows a job takes drive paths as Windows writes them (`C:/Users/…`),
-//! never the Git Bash `/c/…` form, which would name `/c` at the root of the
-//! current drive, and runs a script file by the interpreter its first line
-//! names, as Git Bash does (`shebang.rs`).
+//! On Windows the shell and its utilities read a drive written as Git Bash
+//! writes it (`/c/Users/…`) as `C:\Users\…`, and `/tmp` as the temporary
+//! folder, as Git's utilities do; a program started by name takes only the
+//! Windows form (`C:/Users/…`). A script file runs by the interpreter its
+//! first line names, as Git Bash does (`shebang.rs`).
 //!
 //! # Boundaries
 //!
@@ -62,8 +64,10 @@
 //! change elsewhere recompiles none of them.
 
 mod declared;
+mod git_paths;
 mod interpreter;
 mod job;
+mod nested;
 mod nohup;
 mod process_builtins;
 mod scope;
@@ -72,6 +76,7 @@ mod signals;
 mod timeout;
 mod timing;
 mod utilities;
+mod which;
 mod work;
 
 use demi_runner_process::job_shell::{JobShell, JobStart, ShellJob};

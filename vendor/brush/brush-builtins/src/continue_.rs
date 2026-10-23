@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use clap::Parser;
 
 use brush_core::{ExecutionControlFlow, ExecutionExitCode, ExecutionResult, builtins};
@@ -15,8 +17,18 @@ impl builtins::Command for ContinueCommand {
 
     async fn execute<SE: brush_core::ShellExtensions>(
         &self,
-        _context: brush_core::ExecutionContext<'_, SE>,
+        context: brush_core::ExecutionContext<'_, SE>,
     ) -> Result<brush_core::ExecutionResult, Self::Error> {
+        // Outside any loop it is a warning and nothing more, as in bash, so a script that
+        // breaks out of a block it thinks is a loop (autoconf's configure) goes on.
+        if !context.shell.in_loop() {
+            writeln!(
+                context.stderr(),
+                "continue: only meaningful in a `for', `while', or `until' loop"
+            )?;
+            return Ok(ExecutionResult::success());
+        }
+
         // If specified, which_loop needs to be positive.
         if self.which_loop <= 0 {
             return Ok(ExecutionExitCode::InvalidUsage.into());

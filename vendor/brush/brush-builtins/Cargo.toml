@@ -332,5 +332,10 @@ patches = [
     "fancy-regex 0.19 and uucore 0.11, the versions the runner and the other utilities link, in place of 0.17 and 0.8: one copy of each",
     "cd and pushd word their failures as bash does: cd: ./browse: No such file or directory, cd: too many arguments with status 2, cd: OLDPWD not set",
     "popd words an empty stack as bash does: popd: directory stack empty",
+    "getopts words its two messages as bash does, with the script's name, $0, in front: ./tool: illegal option -- w",
     "jobs lists the jobs its job specs name, and words a spec that names none as bash does: jobs: %9: no such job with status 1; upstream refused job specs as unimplemented",
+    "cd takes an empty operand and stays where it is, as bash's does (`cd \"\"`); upstream's path parser refused it",
+    "command -v and type name the system's file of a program the host runs itself where there is one (Shell::host_stands_in_for)",
+    "break and continue outside a loop warn and return 0, as bash's do, where upstream ended the script (autoconf's configure ends a block with a break that is in no loop)",
+    "local and return word their errors as bash does: local: can only be used in a function, return: can only `return' from a function or sourced script",
 ]

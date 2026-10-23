@@ -22,18 +22,7 @@ pub(super) fn execute(
             .commands
             .as_ref()
             .ok_or_else(|| io::Error::other("missing command context"))?;
-        let env: BTreeMap<_, _> = context
-            .shell
-            .env()
-            .iter_exported()
-            .filter(|(_, variable)| variable.value().is_set())
-            .map(|(name, variable)| {
-                (
-                    name.clone(),
-                    variable.value().to_cow_str(context.shell).into_owned(),
-                )
-            })
-            .collect();
+        let env: BTreeMap<_, _> = crate::nested::exported(context.shell);
         let stdin = Arc::new(invocation_file(&context, 0)?);
         let stdout = Arc::new(invocation_file(&context, 1)?);
         let stderr = Arc::new(invocation_file(&context, 2)?);

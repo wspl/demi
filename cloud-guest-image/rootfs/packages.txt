@@ -9,8 +9,11 @@
 # - `ca-certificates` serve HTTPS.
 # - `git` is what nearly every task uses.
 #
-# The shell, its commands and the tools Demi's own commands use are Demi's
-# executables, not the image's. Compilers, language runtimes such as Node.js and
+# The shell, the utilities that write files or start programs (`cp`, `sed`,
+# `find` and the like) and the tools Demi's own commands use are Demi's
+# executables, not the image's; the other utilities, `grep` and `ls` among them,
+# are Ubuntu's own, and a tool the base lacks, such as `rg` or `jq`, is
+# installed on demand like the rest. Compilers, language runtimes such as Node.js and
 # Python, and tools such as `gh` are installed on demand, by the agent or the
 # user: with `apt` into the system layer, which a system reset empties, or with
 # a version manager into the home, which every reset keeps (the base preinstalls
