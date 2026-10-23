@@ -681,12 +681,16 @@ function ownerOf(node: Node): Element | null {
   return null
 }
 
-/** Whether `item` is of `object`'s own content: in it, and in no control or chrome of it. */
+/**
+ * Whether `item` is of `object`'s own content: in it, and in no control or chrome
+ * of it. An agent's link is text of the sentence it stands in, though it acts as a
+ * button.
+ */
 function ownedBy(item: SelectedItem, object: Element): boolean {
   if (ownerOf(item.node) !== object)
     return false
   const element = item.node instanceof Element ? item.node : item.node.parentElement
-  const apart = element?.closest(`[data-context-chrome], ${CONTROL}`)
+  const apart = element?.closest(`[data-context-chrome], :is(${CONTROL}):not([data-agent-link])`)
   return !apart || !object.contains(apart)
 }
 

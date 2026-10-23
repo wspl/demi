@@ -8,6 +8,11 @@ import StatusDot, { type StatusDotProps } from './StatusDot.vue'
  * The parent is `relative`; the dot sits at its top-right, cut out of what is
  * painted behind it by a ring in that color (`--fill-color`: the button, the row or
  * the surface).
+ *
+ * `data-corner-dot` names the dot for a place that cannot have an absolutely
+ * placed box, and lays it out in the line instead: an agent's link in running
+ * text (`.agent-link-mark`), where such a box would end the paragraph a triple
+ * click selects.
  */
 const props = defineProps<StatusDotProps>()
 </script>
@@ -16,5 +21,6 @@ const props = defineProps<StatusDotProps>()
   <StatusDot
     v-bind="props"
     class="pointer-events-none absolute -right-px -top-px ring-1 ring-(--fill-color)"
+    data-corner-dot
   />
 </template>

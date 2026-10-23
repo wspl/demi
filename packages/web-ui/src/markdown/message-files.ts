@@ -57,7 +57,8 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
  *   reply shows, whose copy is an attachment.
  *   `among` gives the media of the transcript it stands in.
  * - An image inside a link follows the link.
- * - A click on an agent's link opens the agent in the Agents window.
+ * - A click on an agent's link opens the agent in the Agents window; a drag that
+ *   selected its words does not.
  * - A click on a commit's link opens the commit in the Change view.
  * - Any other click is the page's.
  */
@@ -71,6 +72,10 @@ export function openMessageLink(
   const target = event.target instanceof Element ? event.target : null
   const agent = target?.closest('[data-agent-link][role="button"]')
   if (agent && agents) {
+    // A press that selected the link's words was a selection, not a click.
+    const selected = window.getSelection()
+    if (selected && !selected.isCollapsed && selected.containsNode(agent, true))
+      return
     event.preventDefault()
     agents.open(Number(agent.getAttribute('data-agent-link')))
     return
