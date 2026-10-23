@@ -79,7 +79,7 @@ pub(crate) fn apply_unary_predicate_to_str(
         ast::UnaryPredicate::StringHasZeroLength => Ok(operand.is_empty()),
         ast::UnaryPredicate::FileExists => {
             let path = shell.absolute_path(Path::new(operand));
-            Ok(path.exists())
+            Ok(crate::sys::fs::is_null_device(&path) || path.exists())
         }
         ast::UnaryPredicate::FileExistsAndIsBlockSpecialFile => {
             let path = shell.absolute_path(Path::new(operand));

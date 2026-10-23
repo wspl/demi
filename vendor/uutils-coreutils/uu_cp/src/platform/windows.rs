@@ -216,7 +216,13 @@ fn sparse_copy_or_plain(src_file: &mut File, dest: &Path) -> uucore::context::io
 /// Checked on the handle rather than the path so the decision applies to the
 /// same file that is subsequently copied.
 fn is_sparse(file: &File) -> uucore::context::io::Result<bool> {
-    Ok(file.metadata()?.file_attributes() & FILE_ATTRIBUTE_SPARSE_FILE != 0)
+    match file.metadata() {
+        Ok(metadata) => Ok(metadata.file_attributes() & FILE_ATTRIBUTE_SPARSE_FILE != 0),
+        // A device, the null device `/dev/null` is, has no attributes to read
+        // (ERROR_INVALID_FUNCTION): it holds no holes.
+        Err(error) if error.raw_os_error() == Some(ERROR_INVALID_FUNCTION as i32) => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 /// Copies `source` to `dest`, honoring `--sparse` on Windows.

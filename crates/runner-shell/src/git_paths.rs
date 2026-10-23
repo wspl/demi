@@ -1,8 +1,9 @@
 //! The paths of Git Bash that Demi's shell and its utilities read as Git's
 //! utilities do on Windows, so a path one of them takes the other takes too:
-//! `/tmp` is the user's temporary folder (`%TMP%`, else `%TEMP%`), and a drive
-//! written `/c/…` is `C:\…`. Any other path is the system's own, `/usr` and
-//! `/etc` among them, which Git reads under its own folder.
+//! `/tmp` is the user's temporary folder (`%TMP%`, else `%TEMP%`), a drive
+//! written `/c/…` is `C:\…`, and `/dev/null` is the null device, `NUL`. Any
+//! other path is the system's own, `/usr` and `/etc` among them, which Git reads
+//! under its own folder.
 //!
 //! This is the one place the mapping is made: the shell asks it through
 //! `ExecutionHost::map_path`, for its words and its globs, and the utilities
@@ -14,6 +15,9 @@ use std::path::{Path, PathBuf};
 #[cfg(windows)]
 pub(crate) fn map(path: &Path, env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     let text = path.to_str()?;
+    if text == "/dev/null" {
+        return Some(PathBuf::from("NUL"));
+    }
     if let Some(rest) = text.strip_prefix("/tmp")
         && (rest.is_empty() || rest.starts_with('/'))
     {

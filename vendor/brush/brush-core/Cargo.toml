@@ -318,4 +318,5 @@ patches = [
     "A host may read a path of the script otherwise than the system does (ExecutionHost::map_path, Shell::mapped_path), such as `/tmp` and `/c/…` on Windows, as Git Bash does: Shell::absolute_path and the listing of a glob pattern below such a path ask it, and the matches keep the pattern's own prefix",
     "A host may run the program a bare name stands for itself (ExecutionHost::stands_in_for), so that command -v and type answer with the system's file of that name where there is one",
     "The text of a backquoted command has its backslashes read as bash reads them before it runs: `\\\\` is `\\`, `\\$` is `$`, and between double quotes `\\\"` is `\"` (autoconf's configure and libtool write their quoting so)",
+    "On Windows the test builtin and [[ ]] read the null device (the path the host maps /dev/null to) as an existing, readable, writable character device, where its metadata is an error",
 ]

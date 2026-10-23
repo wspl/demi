@@ -213,6 +213,12 @@ fn confstr(name: nix::libc::c_int) -> Result<Option<std::ffi::OsString>, std::io
 /// The path of the device that discards all I/O.
 pub const NULL_DEVICE: &str = "/dev/null";
 
+/// Whether `path` is a null device that needs the host's help to be one: only
+/// Windows', whose `NUL` is no file.
+pub(crate) fn is_null_device(_path: &std::path::Path) -> bool {
+    false
+}
+
 /// Opens a null file that will discard all I/O.
 pub fn open_null_file() -> Result<std::fs::File, error::Error> {
     let f = std::fs::File::options()

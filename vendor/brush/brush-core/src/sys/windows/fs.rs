@@ -74,13 +74,19 @@ pub fn resolve_executable(path: PathBuf) -> Option<PathBuf> {
     None
 }
 
+/// Whether `path` is Windows' null device (`/dev/null`, as the host maps it),
+/// which exists and is read and written though Windows gives it no metadata.
+pub(crate) fn is_null_device(path: &Path) -> bool {
+    path.as_os_str().eq_ignore_ascii_case(NULL_DEVICE)
+}
+
 impl crate::sys::fs::PathExt for Path {
     fn readable(&self) -> bool {
-        self.exists()
+        is_null_device(self) || self.exists()
     }
 
     fn writable(&self) -> bool {
-        self.metadata().is_ok_and(|m| !m.permissions().readonly())
+        is_null_device(self) || self.metadata().is_ok_and(|m| !m.permissions().readonly())
     }
 
     fn executable(&self) -> bool {
@@ -101,7 +107,7 @@ impl crate::sys::fs::PathExt for Path {
     }
 
     fn exists_and_is_char_device(&self) -> bool {
-        false
+        is_null_device(self)
     }
 
     fn exists_and_is_fifo(&self) -> bool {

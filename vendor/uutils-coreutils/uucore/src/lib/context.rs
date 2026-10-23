@@ -227,7 +227,7 @@ pub fn resolve(path: impl AsRef<Path>) -> PathBuf {
         use std::os::fd::AsRawFd;
         return PathBuf::from(format!("/dev/fd/{}", file.as_raw_fd()));
     }
-    if device(path).is_some() {
+    if zero_device(path) {
         return PathBuf::from("NUL");
     }
     if let Some(mapped) = control().and_then(|control| {
@@ -272,26 +272,24 @@ pub fn join(base: impl AsRef<Path>, name: impl AsRef<Path>) -> PathBuf {
     }
 }
 
-/// A device that Windows lacks and a utility's file operand may name, as in
-/// Git Bash: both are the null device, whose reads end at once and whose
-/// writes are discarded, and `/dev/zero`'s reads give zeros
-/// (`fs::File`). Nothing else under `/dev` is one.
-pub(crate) enum Device {
-    Null,
-    Zero,
+/// `/dev/zero`, which Windows lacks and a utility's file operand may name, as
+/// in Git Bash: the file opened for it is the null device, whose reads
+/// `fs::File` answers with zeros. `/dev/null` is the host's to map
+/// (`Control::map_path`), as it maps `/tmp`.
+pub(crate) fn zero_device(path: &Path) -> bool {
+    cfg!(windows) && path.to_str() == Some("/dev/zero")
 }
 
-/// The device `path` names on Windows; none on other systems, which have
-/// both.
-pub(crate) fn device(path: &Path) -> Option<Device> {
-    if !cfg!(windows) {
-        return None;
-    }
-    match path.to_str()? {
-        "/dev/null" => Some(Device::Null),
-        "/dev/zero" => Some(Device::Zero),
-        _ => None,
-    }
+/// Whether `path`, as resolved, is Windows' null device, which Windows can say
+/// nothing of (its metadata is an error) though a file is opened on it.
+pub(crate) fn null_device(path: &Path) -> bool {
+    cfg!(windows) && path.as_os_str().eq_ignore_ascii_case("NUL")
+}
+
+/// Whether `path`, as the invocation reads it, names Windows' null device,
+/// which a utility must not move or remove as it does a file.
+pub fn is_null_device(path: impl AsRef<Path>) -> bool {
+    null_device(&resolve(path))
 }
 
 /// Shell descriptor paths refer to this invocation's descriptor table.
@@ -588,16 +586,21 @@ pub trait PathExt {
 }
 impl<T: AsRef<Path> + ?Sized> PathExt for T {
     fn context_exists(&self) -> bool {
-        resolve(self).exists()
+        let path = resolve(self);
+        null_device(&path) || path.exists()
     }
     fn context_try_exists(&self) -> std::io::Result<bool> {
-        resolve(self).try_exists()
+        let path = resolve(self);
+        if null_device(&path) {
+            return Ok(true);
+        }
+        path.try_exists()
     }
     fn context_symlink_metadata(&self) -> std::io::Result<std::fs::Metadata> {
-        resolve(self).symlink_metadata()
+        fs::symlink_metadata(self)
     }
     fn context_canonicalize(&self) -> std::io::Result<PathBuf> {
-        resolve(self).canonicalize()
+        fs::canonicalize(self)
     }
     fn context_read_link(&self) -> std::io::Result<PathBuf> {
         resolve(self).read_link()
@@ -648,7 +651,8 @@ impl FileKindExt for Path {
         resolve(self).is_dir()
     }
     fn context_is_file(&self) -> bool {
-        resolve(self).is_file()
+        let path = resolve(self);
+        null_device(&path) || path.is_file()
     }
     fn context_is_symlink(&self) -> bool {
         resolve(self).is_symlink()
