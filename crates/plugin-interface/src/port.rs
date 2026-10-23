@@ -86,6 +86,16 @@ pub enum PortMessage {
         args: Map<String, Value>,
         kind: CallKind,
     },
+    /// What the plugin's package last reported of the request's conversation
+    /// on the conversation's primary Host.
+    ReadReport,
+    /// Keeps `value` as what the plugin's package on the Host `device`
+    /// reported of the request's conversation, at the package's `revision`.
+    WriteReport {
+        device: String,
+        revision: u64,
+        value: Value,
+    },
     /// The request's conversation's work panel, with only the tabs of the
     /// plugin's own panel kinds.
     PanelTabs,
@@ -218,6 +228,16 @@ pub enum PortAnswer {
     Called {
         result: Value,
     },
+    /// The report is kept; `primary` says whether the Host it came from is
+    /// the conversation's primary Host, the one its panel shows.
+    Kept {
+        primary: bool,
+    },
+    /// A report; none before the package made one.
+    Report {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report: Option<StoredReport>,
+    },
     Panel {
         panel: WorkPanel,
     },
@@ -276,6 +296,8 @@ impl PortAnswer {
             Self::HostFiles { .. } => "host_files",
             Self::Done => "done",
             Self::Called { .. } => "called",
+            Self::Kept { .. } => "kept",
+            Self::Report { .. } => "report",
             Self::Panel { .. } => "panel",
             Self::PanelRevision { .. } => "panel_revision",
             Self::Secret { .. } => "secret",
@@ -291,6 +313,15 @@ impl PortAnswer {
             Self::Refused { .. } => "refused",
         }
     }
+}
+
+/// What a plugin's package on a Host last reported of a conversation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StoredReport {
+    /// The package's own count of its changes.
+    pub revision: u64,
+    pub value: Value,
 }
 
 /// A stored value and the revision a write of it names.
@@ -699,6 +730,34 @@ impl PluginPort {
         match self.ask(message).await? {
             PortAnswer::Called { result } => Ok(result),
             answer => Err(unexpected("package_call", &answer)),
+        }
+    }
+
+    /// What the plugin's package last reported of the request's conversation
+    /// on its primary Host, which the backend keeps; none before it did. It
+    /// asks no Host.
+    pub async fn report(&self) -> Result<Option<StoredReport>, PortFailure> {
+        match self.ask(PortMessage::ReadReport).await? {
+            PortAnswer::Report { report } => Ok(report),
+            answer => Err(unexpected("read_report", &answer)),
+        }
+    }
+
+    /// Keeps what the plugin's package on the Host `device` reported of the
+    /// request's conversation, whole, at its `revision`; answers whether the
+    /// Host is the conversation's primary one. A report of another Host is kept
+    /// for when the conversation moves there, and changes nothing the panel
+    /// shows.
+    pub async fn keep_report(
+        &self,
+        device: impl Into<String>,
+        revision: u64,
+        value: Value,
+    ) -> Result<bool, PortFailure> {
+        let message = PortMessage::WriteReport { device: device.into(), revision, value };
+        match self.ask(message).await? {
+            PortAnswer::Kept { primary } => Ok(primary),
+            answer => Err(unexpected("write_report", &answer)),
         }
     }
 

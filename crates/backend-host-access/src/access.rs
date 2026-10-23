@@ -71,9 +71,10 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_backend_database::devices::DeviceRecord;
 use demi_agent_tools::duration;
-use demi_backend_remote_host::{Admission, RemoteHost};
+use demi_backend_database::workspaces::TypedDirectory;
+use demi_backend_remote_host::{Admission, Link, RemoteHost, WeakLink};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
-use demi_host_interface::{HostError, HostErrorKind, HostFs, MkdirOptions};
+use demi_host_interface::{HostError, HostErrorKind, HostFs};
 use demi_runner_protocol::files::FsFailure;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -125,6 +126,9 @@ pub struct ConversationSlot {
     /// The agent's jobs whose start waits for the conversation's primary
     /// device to come back (§ Host operations).
     waiting: RefCell<Vec<Rc<WaitingJob>>>,
+    /// The directories each device's current connection created and named
+    /// for the conversation, so a connection is asked once.
+    checked: RefCell<Vec<(DeviceId, String, WeakLink)>>,
 }
 
 /// A job whose start waits for its offline primary device, `device`, and
@@ -261,6 +265,24 @@ impl ConversationSlot {
         }
     }
 
+    /// Whether `root` on `device` was created and named over `link`.
+    fn directory_checked(&self, device: &DeviceId, root: &str, link: &Link) -> bool {
+        self.checked
+            .borrow()
+            .iter()
+            .any(|(checked, path, over)| checked == device && path == root && over.is(link))
+    }
+
+    /// Notes that `link` created and named each of `roots` on `device`, and
+    /// forgets what an earlier connection of the device did.
+    fn remember_directory(&self, device: &DeviceId, roots: [&str; 2], link: &Link) {
+        let mut checked = self.checked.borrow_mut();
+        checked.retain(|(other, _, over)| other != device || over.is(link));
+        for root in roots {
+            checked.push((device.clone(), root.to_owned(), link.downgrade()));
+        }
+    }
+
     /// The conversation's file gate, which a transition reserves, an idle
     /// watch reads, and work that holds the conversation without reaching
     /// its Host, such as a frame of its socket, enters. A lease of it names
@@ -285,6 +307,7 @@ impl Conversations {
                     jobs: RefCell::default(),
                     jobs_ended: Notify::new(),
                     waiting: RefCell::default(),
+                    checked: RefCell::default(),
                 })
             })
             .clone()
@@ -441,6 +464,11 @@ pub struct Waits<'a> {
     pub cancel: &'a CancellationToken,
     pub ended: Option<&'a CancellationToken>,
     pub device: Option<DeviceWait<'a>>,
+    /// Whether the admission may make the conversation's directory on its
+    /// Host, as its first use does (`first_use`). A turn's work, a transfer
+    /// and a `demi host` command do; a request the user makes to read does
+    /// not, and finds a directory that is not there missing.
+    pub creates: bool,
 }
 
 /// How an agent's job waits while the conversation's primary Host is a
@@ -464,6 +492,7 @@ impl<'a> Waits<'a> {
             cancel,
             ended: None,
             device: None,
+            creates: true,
         }
     }
 
@@ -474,6 +503,7 @@ impl<'a> Waits<'a> {
             cancel,
             ended: None,
             device: Some(device),
+            creates: true,
         }
     }
 
@@ -484,7 +514,14 @@ impl<'a> Waits<'a> {
             cancel,
             ended: Some(ended),
             device: None,
+            creates: true,
         }
+    }
+
+    /// These waits, for an admission that makes no directory: a read the
+    /// user asks for.
+    pub fn reading(self) -> Self {
+        Self { creates: false, ..self }
     }
 
     /// `work`'s outcome, unless the requester leaves or a transition ends
@@ -509,9 +546,11 @@ impl<'a> Waits<'a> {
 struct Selected {
     device: DeviceRecord,
     root: String,
-    /// Whether the directory is made before the operation, as a Cloud
-    /// session directory is.
-    prepare: bool,
+    /// The directory as the conversation's target stores it, which its Host
+    /// creates and names on its first use over a connection
+    /// (`first_use`); none for a Host's home, an attached Host's directory,
+    /// a stream and a read the user asks for, which create nothing.
+    typed: Option<TypedDirectory>,
     /// Whether it is the conversation's primary Host. An agent's job waits for
     /// it while its runner is away. Its other operations are admitted, as a
     /// command taken up again is, and the Host answers them offline. An
@@ -567,6 +606,44 @@ impl dyn HostShard + '_ {
         Ok(output)
     }
 
+    /// [`Self::with_host`] for a request the user makes of a Host that is not
+    /// a read of its files, such as starting a plugin's service: it makes no
+    /// directory.
+    pub async fn with_reading_host<T>(
+        &self,
+        id: &ConversationId,
+        device: Option<&DeviceId>,
+        cancel: &CancellationToken,
+        operation: impl AsyncFnOnce(&ConversationHost) -> T,
+    ) -> Result<T, HostAccessError> {
+        let admitted = self.admit_host(id, device, Waits::request(cancel).reading()).await?;
+        let output = operation(&admitted.host).await;
+        drop(admitted);
+        Ok(output)
+    }
+
+    /// Runs `operation` once on the conversation's Host as a request the user
+    /// makes of it, such as a read of its files in the work panel: the
+    /// conversation's file gate resolves the Host and its directory and is let
+    /// go before `operation` calls the Host, so what the Host is slow to answer
+    /// holds nothing a transition, a message or a deletion waits behind. A
+    /// Cloud stays admitted until the operation returns.
+    pub async fn with_unheld_host<T>(
+        &self,
+        id: &ConversationId,
+        device: Option<&DeviceId>,
+        cancel: &CancellationToken,
+        operation: impl AsyncFnOnce(&ConversationHost) -> T,
+    ) -> Result<T, HostAccessError> {
+        let Admitted { host, _files, _cloud } =
+            self.admit_host(id, device, Waits::request(cancel).reading()).await?;
+        drop(_files);
+        let output = operation(&host).await;
+        drop(host);
+        drop(_cloud);
+        Ok(output)
+    }
+
     /// Admits an operation on the conversation's Host (§ Host operations):
     /// each attempt takes the file gate and checks the conversation again,
     /// since while it waited the conversation may have been archived or
@@ -590,7 +667,10 @@ impl dyn HostShard + '_ {
             if let Some(reason) = waiting.as_ref().and_then(HeldWait::failed) {
                 return Err(HostError::new(HostErrorKind::Unavailable, reason).into());
             }
-            let selected = self.select_host(&record.id, device, true).await?;
+            let mut selected = self.select_host(&record.id, device, true).await?;
+            if !waits.creates {
+                selected.typed = None;
+            }
             let away = selected.device.kind == DeviceKind::User
                 && !self.devices().connected(&selected.device.id);
             if !waited_for_return && let Some(rest) = self.returning(&selected.device.id) {
@@ -710,7 +790,7 @@ impl dyn HostShard + '_ {
         }
         // A stream shows what the conversation's work left: it makes no
         // directory.
-        selected.prepare = false;
+        selected.typed = None;
         let host = self.open_host(&files, &selected, None).await?;
         self.track_idle(&record.id);
         let watching = match attention {
@@ -816,24 +896,30 @@ impl dyn HostShard + '_ {
         let device = found
             .filter(|device| device.is_host_of(&record.owner))
             .ok_or(Refusal::DeviceGone)?;
-        let (root, prepare, primary) = match named.filter(|host| host.role == HostRole::Attached) {
-            Some(attached) => (attached.path, false, false),
-            None => (
-                target.path().to_owned(),
-                matches!(target, ExecutionTarget::Cloud { .. }),
-                true,
-            ),
+        let (root, typed, primary) = match named.filter(|host| host.role == HostRole::Attached) {
+            Some(attached) => (attached.path, None, false),
+            None => {
+                let typed = match &target {
+                    ExecutionTarget::Cloud { path, .. } => Some(TypedDirectory::Cloud(path.clone())),
+                    ExecutionTarget::Workspace { workspace_id, .. } => {
+                        Some(TypedDirectory::Workspace(workspace_id.clone()))
+                    }
+                    ExecutionTarget::Device { .. } => None,
+                };
+                (target.path().to_owned(), typed, true)
+            }
         };
         Ok(Selected {
             device,
             root,
-            prepare,
+            typed,
             primary,
         })
     }
 
-    /// The admitted Host of the operation that holds `files`, its Cloud
-    /// session directory made first.
+    /// The admitted Host of the operation that holds `files`. The first
+    /// admission of a conversation's directory over a connection creates the
+    /// directory and has it named (`first_use`).
     async fn open_host(
         &self,
         files: &FileLease,
@@ -842,17 +928,63 @@ impl dyn HostShard + '_ {
     ) -> Result<ConversationHost, HostAccessError> {
         let device = &selected.device.id;
         let admission = cloud.map_or(Admission::Free, |cloud| cloud.per_operation.clone());
-        let host =
-            self.devices()
-                .conversation_host(device, files, selected.root.clone(), admission);
-        if selected.prepare {
-            HostFs::mkdir(&host, &selected.root, MkdirOptions { recursive: true }).await?;
+        let mut root = selected.root.clone();
+        let mut host = self
+            .devices()
+            .conversation_host(device, files, root.clone(), admission.clone());
+        if let Some(typed) = &selected.typed
+            && let Some(canonical) = self.first_use(files.conversation(), selected, typed, &host).await?
+        {
+            root = canonical;
+            host = self
+                .devices()
+                .conversation_host(device, files, root.clone(), admission);
         }
         Ok(ConversationHost {
             host,
-            root: selected.root.clone(),
+            root,
             home: self.devices().home(device),
         })
+    }
+
+    /// The first time a conversation's work reaches its directory over a
+    /// connection: its Host creates the directory with its parents and names
+    /// it as its file system keeps it, once per connection, and the name
+    /// replaces what the user typed (`ControlService::name_directory`).
+    /// Answers the name when it replaced the typed one.
+    ///
+    /// A directory the Host cannot make fails this use with the reason its
+    /// runner words. A Host whose runner is away is not asked: the operation
+    /// fails offline as it would.
+    async fn first_use(
+        &self,
+        conversation: &ConversationId,
+        selected: &Selected,
+        typed: &TypedDirectory,
+        host: &RemoteHost,
+    ) -> Result<Option<String>, HostAccessError> {
+        let device = &selected.device.id;
+        let Some(link) = self.devices().link(device) else {
+            return Ok(None);
+        };
+        let slot = self.conversations().slot(conversation);
+        if slot.directory_checked(device, &selected.root, &link) {
+            return Ok(None);
+        }
+        let canonical = host.directory(&selected.root, true).await?;
+        slot.remember_directory(device, [&selected.root, &canonical], &link);
+        if canonical == selected.root {
+            return Ok(None);
+        }
+        let named = self
+            .control()
+            .name_directory(conversation.clone(), typed.clone(), canonical.clone())
+            .await?;
+        if named.conversations.is_empty() {
+            return Ok(None);
+        }
+        self.directory_named(conversation, named);
+        Ok(Some(canonical))
     }
 
     /// The Hosts the user's conversation `id` reaches, which the web app's host
@@ -910,42 +1042,55 @@ impl dyn HostShard + '_ {
         Ok(hosts)
     }
 
-    /// Lifecycle access (§ Lifecycle access): sends the release of
-    /// `conversation`, by the name the runner knows it by, to `device` while
-    /// its runner is connected, a paired device's or a running Cloud's. `over`
-    /// says the conversation is archived or deleted, which the runner takes as
-    /// the time to remove its recordings.
+    /// Lifecycle access (§ Lifecycle access): tells each of `devices` whose
+    /// runner is connected to release what its services hold for
+    /// `conversation`, by the name the runner knows it by. `ended` says the
+    /// conversation is archived or deleted, which the runner takes as the
+    /// time to remove its recordings.
     ///
-    /// It takes no file gate and wakes nothing: a device whose runner is not
-    /// connected, a stopped Cloud among them, lost the conversation's services
-    /// with its connection, and holds no files of it. A release that fails is
-    /// logged with the Host and the reason, and fails nothing that sent it,
-    /// since nothing is left for it
-    /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
-    pub(crate) async fn release_on(&self, conversation: &str, device: &DeviceId, over: bool) {
-        let Some(link) = self.devices().link(device) else {
-            return;
-        };
-        if let Err(error) = link.release_conversation(conversation, over).await {
-            tracing::warn!(event = "host_release.conversation_failed", host_id = %device, conversation, %error, "the conversation release failed");
+    /// It waits for no Host, takes no file gate and stores nothing: a runner
+    /// that is away, or whose answer is lost, holds what the backend's records
+    /// say it should after its next `hello`
+    /// (`crates/backend-user-shard/src/shard/adoption.rs`).
+    pub fn tell_release(&self, conversation: &ConversationId, devices: &[DeviceId], ended: bool) {
+        for device in devices {
+            match self.devices().link(device) {
+                Some(link) => link.tell_conversation_release(conversation.as_str(), ended),
+                None => tracing::info!(event = "release.away", host_id = %device, %conversation, "a Host is away; its next hello names what it holds"),
+            }
         }
     }
 
-    /// Lifecycle access (§ Lifecycle access): stops the services of
-    /// `packages` on every device whose runner is connected, which ends what
-    /// they hold for each of the user's conversations, as turning their plugin
-    /// off asks (`crates/backend-plugins/src/lib.rs`).
-    ///
-    /// It wakes nothing, for the reason [`Self::release_on`] gives: a device
-    /// that is not connected holds no services. A release that fails is
-    /// logged with the Host and the reason, and fails nothing: the services
-    /// end with the runner's next connection at the latest.
+    /// Lifecycle access (§ Lifecycle access): tells every connected runner of
+    /// the user to stop the services of `packages`, which ends what they hold
+    /// for each of the user's conversations, as turning their plugin off asks
+    /// (`crates/backend-plugins/src/lib.rs`). It waits for no Host, for the
+    /// reason [`Self::tell_release`] gives.
     pub async fn release_packages(&self, packages: &[String]) {
-        let releases = self.devices().links().into_iter().map(|(device, link)| async move {
-            if let Err(error) = link.release_packages(packages.to_vec()).await {
-                tracing::warn!(event = "host_release.packages_failed", host_id = %device, packages = packages.len(), %error, "the package release failed");
+        let devices = match self.user_devices().await {
+            Ok(devices) => devices,
+            Err(error) => {
+                tracing::warn!(event = "release.unread", packages = packages.len(), %error, "the devices of a package release could not be read");
+                return;
             }
-        });
-        join_all(releases).await;
+        };
+        for device in &devices {
+            if let Some(link) = self.devices().link(device) {
+                link.tell_package_release(packages.to_vec());
+            }
+        }
+    }
+
+    /// Every device of the user, paired and managed.
+    async fn user_devices(&self) -> Result<Vec<DeviceId>, StorageError> {
+        let control = self.control();
+        let mut devices: Vec<DeviceId> = control
+            .paired_devices(self.user().clone())
+            .await?
+            .into_iter()
+            .map(|device| device.id)
+            .collect();
+        devices.extend(control.managed_device(self.user().clone()).await?.map(|device| device.id));
+        Ok(devices)
     }
 }

@@ -737,18 +737,26 @@ mod failure;
 mod operations;
 
 /// What the browser package tells `plugin-browser` about a conversation
-/// (`crates/command-protocol/src/messages.rs`): `{"tabs":"changed"}`, once
-/// for a burst of changes of what `browser.tabs` lists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// (`crates/command-protocol/src/messages.rs`): the whole of what
+/// `browser.tabs` lists, each time it changes and again after every hello of
+/// the runner, an empty list too.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserMessage {
     pub tabs: TabsChange,
 }
 
-/// What changed of the conversation's tabs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// The conversation's tabs on the Host.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TabsChange {
-    /// Something `browser.tabs` lists changed, or the browser ended.
-    Changed,
+    /// Every tab the conversation's browser has, at the package's own count
+    /// of changes, and the latest tabs closed on purpose, by a command or by
+    /// their own page, which the work panel removes and tells from the tabs
+    /// lost with the browser. An ended browser reports no tabs.
+    Tabs {
+        revision: u64,
+        tabs: Vec<BrowserTab>,
+        closed: Vec<TabId>,
+    },
 }

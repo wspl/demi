@@ -66,7 +66,7 @@ pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
 pub use port::{
     CallKind, DirectoryFile, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile,
     HostRead, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
-    StoredValue,
+    StoredReport, StoredValue,
 };
 pub use providers::{
     AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,

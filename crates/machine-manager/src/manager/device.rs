@@ -74,6 +74,9 @@ pub struct DeviceWorker {
     working: WorkingPair,
     runtime: Option<Sandbox>,
     deaths: mpsc::Sender<DeviceId>,
+    /// Told this device's id each time an operation ended, since it may
+    /// have changed the device's stored image.
+    changes: mpsc::Sender<DeviceId>,
 }
 
 /// A staging directory in the working directory, whose name starts with a
@@ -113,6 +116,7 @@ impl DeviceWorker {
         core: Rc<Core>,
         base: BaseVersion,
         deaths: mpsc::Sender<DeviceId>,
+        changes: mpsc::Sender<DeviceId>,
     ) -> Self {
         Self {
             working: WorkingPair::new(&core.config.working(), &device),
@@ -121,6 +125,7 @@ impl DeviceWorker {
             base,
             runtime: None,
             deaths,
+            changes,
         }
     }
 
@@ -143,6 +148,7 @@ impl DeviceWorker {
             match command {
                 DeviceCommand::Run { op, reply } => {
                     let outcome = self.operate(op).await;
+                    self.report_change().await;
                     // The requester may have gone; the operation completed anyway.
                     let _ = reply.send(outcome);
                 }
@@ -190,7 +196,13 @@ impl DeviceWorker {
         if let Err(error) = recovered {
             tracing::error!(event = "cloud_recovery.failed", host_id = %self.device, error = %chain(&error), "a Cloud's recovery after its sandbox exited failed");
         }
+        self.report_change().await;
         self.report_death().await;
+    }
+
+    async fn report_change(&self) {
+        // The server stops listening at shutdown, when no one is left to tell.
+        let _ = self.changes.send(self.device.clone()).await;
     }
 
     async fn report_death(&self) {

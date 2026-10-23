@@ -49,6 +49,7 @@
  *   never replaces content already shown.
  */
 import { errorMessage, requestIdOf } from '../infra/errors'
+import type { SentenceText } from '../ui/ui-text'
 import { reactive, shallowRef } from 'vue'
 import { t } from './locales/text'
 import { FileBrowserError, type FileBrowserFailure } from './types'
@@ -117,6 +118,12 @@ export interface ShownEntry<T> {
    *   refresh.
    */
   readonly failure: FileBrowserFailure | null
+  /**
+   * The Host's own words for the path being gone, when the last answer was
+   * `gone`: a view that shows the missing path as a failure, as the working
+   * directory's, says them where the others say the path is no longer there.
+   */
+  readonly goneReason?: SentenceText | null
   /** A read is on its way: the first, which a view shows as loading, or a check, which it does not. */
   readonly reading: boolean
   /**
@@ -283,7 +290,7 @@ class Entry<T> {
   readonly spec: Omit<KeptSpec<T>, 'read' | 'watch' | 'details'>
   /** The subscriptions it holds while kept; none until a view shows or reads it. */
   readonly subscriptions = shallowRef<readonly Subscription[]>([])
-  readonly state: { value: T | undefined; answer: KeptAnswer | null; failure: FileBrowserFailure | null; reading: boolean; outdated: boolean; readonly unwatched: string | null }
+  readonly state: { value: T | undefined; answer: KeptAnswer | null; failure: FileBrowserFailure | null; goneReason: SentenceText | null; reading: boolean; outdated: boolean; readonly unwatched: string | null }
   /** The views that hold it, the one that came on screen last at the end. */
   readonly holders = new Set<Holder<T>>()
   /** The last answer's version and number. */
@@ -308,6 +315,7 @@ class Entry<T> {
       value: undefined,
       answer: null,
       failure: null,
+      goneReason: null,
       reading: false,
       outdated: false,
       get unwatched() {
@@ -548,6 +556,7 @@ export class HostFiles implements WatchListener {
             this.subscribe(entry as Entry<unknown>, null)
         }
         entry.state.failure = null
+        entry.state.goneReason = null
         answered = true
       } catch (error) {
         const failure = failureOf(error)
@@ -559,6 +568,7 @@ export class HostFiles implements WatchListener {
           entry.state.value = undefined
           entry.state.answer = kind
           entry.state.failure = null
+          entry.state.goneReason = kind === 'gone' ? failure.message ?? null : null
           entry.version = error.version
           entry.readAt = error.readAt
           this.measure(entry, 0)

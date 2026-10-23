@@ -225,3 +225,31 @@ pub async fn route_deaths(
             .await;
     }
 }
+
+/// Marks the Cloud part of the owner's pages changed for each device the
+/// machine manager reports a new status of, until the backend closes.
+pub async fn route_statuses(
+    mut statuses: mpsc::Receiver<demi_machine_manager_protocol::DeviceId>,
+    services: Arc<Services>,
+    shards: Shards,
+) {
+    while let Some(device) = statuses.recv().await {
+        let Ok(id) = DeviceId::try_from(device.as_str()) else {
+            continue;
+        };
+        let owner = match services.control.device(id.clone()).await {
+            Ok(Some(record)) => record.user,
+            // A device the backend no longer has shows on no page.
+            Ok(None) => continue,
+            Err(error) => {
+                tracing::error!(event = "cloud.status_unrouted", host_id = %id, %error, "a Cloud's new status could not be routed");
+                continue;
+            }
+        };
+        // A shard that is closing has no page left to tell.
+        let _ = shards
+            .of(&owner)
+            .call(move |shard, _| async move { shard.cloud_shard().marks().mark(demi_backend_page_sync::Part::Cloud) })
+            .await;
+    }
+}

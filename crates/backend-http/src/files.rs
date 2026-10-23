@@ -644,7 +644,9 @@ pub(super) async fn committed(
 }
 
 /// Runs `operation` on the conversation's Host through its host access: the
-/// primary Host, or the bound device `device` names.
+/// primary Host, or the bound device `device` names. The conversation's file
+/// gate is let go once the Host is resolved, so the call holds nothing a
+/// transition waits behind.
 async fn on_host<T, F>(
     state: &AppState,
     user: &UserId,
@@ -669,7 +671,7 @@ where
         .call(move |shard, cancel| async move {
             shard
                 .host_shard()
-                .with_host(&conversation, device.as_ref(), &cancel, operation)
+                .with_unheld_host(&conversation, device.as_ref(), &cancel, operation)
                 .await?
         })
         .await?

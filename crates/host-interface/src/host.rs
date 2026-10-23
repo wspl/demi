@@ -351,8 +351,9 @@ pub trait HostFs {
     fn realpath<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<String, HostError>>;
 
     /// The directory at `path` as [`realpath`](Self::realpath) names it, in
-    /// one exchange; `ENOTDIR` when it is no directory.
-    fn directory<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<String, HostError>>;
+    /// one exchange; `ENOTDIR` when it is no directory. With `create`, one
+    /// that does not exist is made first, with its parents.
+    fn directory<'a>(&'a self, path: &'a str, create: bool) -> LocalBoxFuture<'a, Result<String, HostError>>;
 
     fn utimes<'a>(
         &'a self,

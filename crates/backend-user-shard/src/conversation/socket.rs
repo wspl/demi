@@ -298,7 +298,11 @@ impl Shard {
         let relay = async {
             'relay: loop {
                 let busy = handling.is_some();
+                // The page's own frames come first, in this order, so a
+                // burst of what the agent says never holds back what the page
+                // asked for.
                 tokio::select! {
+                    biased;
                     handled = async { handling.as_mut().expect("the branch runs only while a frame is handled").await },
                         if handling.is_some() =>
                     {
@@ -354,6 +358,19 @@ impl Shard {
                         Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
                         Some(Ok(Message::Close(_)) | Err(_)) | None => break Ending::Gone,
                     },
+                    // What changed in the conversation's metadata comes before
+                    // the agent's frames, which never go quiet while it says
+                    // something: the marks coalesce, so this takes the agent no
+                    // more than one pass each time.
+                    () = watch.marked() => {
+                        let marked = watch.take();
+                        if marked.session_ended {
+                            break Ending::SessionEnded;
+                        }
+                        if shown.follows_any() && !self.show_conversation(&id, &mut page, &mut shown, false).await {
+                            break Ending::Gone;
+                        }
+                    }
                     outgoing = frames.recv() => match outgoing {
                         Outgoing::Frames(step) => {
                                 // Every step the outbox holds goes in one
@@ -384,15 +401,6 @@ impl Shard {
                         Outgoing::Lagged => break Ending::Lagged,
                         Outgoing::Closed => break Ending::Detached,
                     },
-                    () = watch.marked() => {
-                        let marked = watch.take();
-                        if marked.session_ended {
-                            break Ending::SessionEnded;
-                        }
-                        if shown.follows_any() && !self.show_conversation(&id, &mut page, &mut shown, false).await {
-                            break Ending::Gone;
-                        }
-                    }
                     () = page.silent() => {
                         if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
                             break Ending::Gone;

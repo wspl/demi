@@ -2,9 +2,9 @@
 //! the agent's `demi browser` command runs, as a package call for the
 //! conversation's user, and holds no browser logic.
 //!
-//! The tab list is the plugin's conversation state, which the browser package's
-//! messages mark changed. Listing never wakes a stopped Cloud and is no
-//! activity. Closing, moving and stopping a tab operate the browser without
+//! The tab list is the plugin's conversation state: what the browser package
+//! last reported, which the backend keeps, so reading it asks no Host and
+//! works while the Host is away. Closing, moving and stopping a tab operate the browser without
 //! waking it; opening a tab is work the user starts. Opening and closing
 //! browser tabs for panel tabs is the panel's work ([`crate::panel`]), through
 //! the same operations.
@@ -27,13 +27,13 @@ use demi_command_package_browser_protocol::PACKAGE;
 use demi_command_package_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab, CloseInput,
     FailureDocument, ForwardInput, GotoInput, NavigationResult, OpenInput, OpenResult, PREFIX,
-    ReloadInput, StopInput, TabId, TabMoved, TabsInput, TabsResult,
+    ReloadInput, StopInput, TabId, TabMoved,
 };
 use demi_plugin_interface::{
     CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State,
 };
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -138,64 +138,41 @@ pub(crate) fn page() -> Page {
         .reasons::<PanelReason>()
 }
 
-/// The browser's tabs, and the latest ones closed on purpose; none while it
-/// does not run, a stopped Cloud's included, whose tabs it lost.
-pub(crate) async fn list(port: &PluginPort) -> Result<Listing, PluginError> {
-    let input = TabsInput {
-        offset: None,
-        limit: None,
-        timeout: None,
+/// The conversation state: the browser's tabs as its package last reported
+/// them, which the backend keeps; none while it never reported or its browser
+/// does not run. It asks no Host.
+pub(crate) async fn tabs(port: &PluginPort) -> Result<Value, PluginError> {
+    to_value(reported(port).await?.unwrap_or(BrowserTabs { tabs: Vec::new() }))
+}
+
+/// The conversation state as the package last reported it, and none while
+/// it never did.
+pub(crate) async fn held_tabs(port: &PluginPort) -> Result<Option<Value>, PluginError> {
+    reported(port).await?.map(to_value).transpose()
+}
+
+async fn reported(port: &PluginPort) -> Result<Option<BrowserTabs>, PluginError> {
+    let Some(report) = port.report().await? else {
+        return Ok(None);
     };
-    match run::<TabsResult, _>(port, BrowserOperation::Tabs, input, CallKind::Looks).await {
-        Ok(listed) => Ok(Listing {
-            tabs: listed.tabs,
-            closed: listed.closed.unwrap_or_default(),
-            running: true,
-        }),
-        // A stopped Cloud runs no browser.
-        Err(failure) if stopped(&failure) => Ok(Listing::default()),
-        Err(failure) => Err(refused(failure)),
-    }
+    serde_json::from_value(report.value).map(Some).map_err(|error| {
+        PluginError::failed(format!("the browser's kept tabs do not decode: {error}"))
+    })
 }
 
-/// The browser's tabs as the plugin reads them.
-#[derive(Debug, Default)]
-pub(crate) struct Listing {
-    pub tabs: Vec<BrowserTab>,
-    /// The latest tabs closed on purpose, by a command or by their own page.
-    pub closed: Vec<TabId>,
-    /// The Host answered, so the list is its word; a stopped Cloud's empty
-    /// list is not.
-    pub running: bool,
-}
-
-/// The conversation state: the browser's tabs, as the plugin holds them
-/// while it does, else as the Host lists them, which the plugin then holds.
-pub(crate) async fn tabs(
+/// Keeps `tabs` as what the package on `device` reported, at `revision`;
+/// answers whether `device` is the conversation's primary Host, whose tabs
+/// its panel shows.
+pub(crate) async fn keep(
     port: &PluginPort,
-    work: &Work,
-    conversation: &ConversationId,
-) -> Result<Value, PluginError> {
-    if let Some(tabs) = work.held(conversation) {
-        return to_value(BrowserTabs { tabs });
-    }
-    let epoch = work.epoch(conversation);
-    let listing = list(port).await?;
-    if listing.running {
-        work.hold(conversation, epoch, listing.tabs.clone());
-    }
-    to_value(BrowserTabs { tabs: listing.tabs })
-}
-
-/// The conversation state as the plugin holds it, and none while it holds
-/// none: it reads no Host.
-pub(crate) fn held_tabs(
-    work: &Work,
-    conversation: &ConversationId,
-) -> Result<Option<Value>, PluginError> {
-    work.held(conversation)
-        .map(|tabs| to_value(BrowserTabs { tabs }))
-        .transpose()
+    device: &DeviceId,
+    revision: u64,
+    tabs: Vec<BrowserTab>,
+) -> Result<bool, PluginError> {
+    let value = serde_json::to_value(BrowserTabs { tabs }).map_err(|error| {
+        PluginError::failed(format!("the browser's tabs do not encode: {error}"))
+    })?;
+    Ok(port.keep_report(device.as_str(), revision, value).await?)
 }
 
 /// A new tab on `url`, starting the environment when needed: work the

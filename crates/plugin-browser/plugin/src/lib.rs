@@ -160,42 +160,48 @@ impl Plugin for Instance {
                 }
                 Request::PackageMessage {
                     conversation,
+                    device,
                     message,
                     ..
                 } => {
                     let BrowserMessage {
-                        tabs: TabsChange::Changed,
+                        tabs:
+                            TabsChange::Tabs {
+                                revision,
+                                tabs,
+                                closed,
+                            },
                     } = serde_json::from_value(message).map_err(|error| {
                         PluginError::failed(format!("the browser's message does not decode: {error}"))
                     })?;
-                    self.work.sync(&conversation, &port).await?;
+                    self.work
+                        .sync(&conversation, &port, &device, revision, tabs, closed)
+                        .await?;
                     port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }
-                Request::PackageLost { conversation, .. } => {
-                    self.work.lost(&conversation, &port).await?;
+                Request::PackageLost {
+                    conversation,
+                    device,
+                    ..
+                } => {
+                    self.work.lost(&conversation, &port, &device).await?;
                     port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }
                 Request::PageState {
-                    conversation: Some(conversation),
+                    conversation: Some(_),
                     held: true,
                     ..
-                } => Ok(match page::held_tabs(&self.work, &conversation)? {
+                } => Ok(match page::held_tabs(&port).await? {
                     Some(state) => Reply::State { state },
-                    // The panel has browser tabs and the plugin was never
-                    // told their list: it reads the Host here, once, rather
-                    // than leave the page to.
-                    None if self.work.has_tabs(&port).await? => Reply::State {
-                        state: page::tabs(&port, &self.work, &conversation).await?,
-                    },
                     None => Reply::Done,
                 }),
                 Request::PageState {
-                    conversation: Some(conversation),
+                    conversation: Some(_),
                     ..
                 } => Ok(Reply::State {
-                    state: page::tabs(&port, &self.work, &conversation).await?,
+                    state: page::tabs(&port).await?,
                 }),
                 Request::PageState {
                     conversation: None, ..

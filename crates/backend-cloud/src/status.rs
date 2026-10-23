@@ -1,11 +1,12 @@
 //! The Cloud's status as the page reads it: the device, its lifecycle state,
 //! its latest reset, why it last failed, its filesystems' capacities, and
 //! whether its system is on another image than the configured one. Reading it
-//! never wakes the Cloud.
+//! never wakes the Cloud and asks no one: the machine manager pushes the
+//! sizes and the image, and the page shows what it last said.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::managed::ManagedOperation;
-use demi_machine_manager_protocol::{CurrentBaseVersionParams, ImageStateParams};
+use demi_machine_manager_protocol::DeviceId;
 use demi_web_api_protocol::cloud::{
     CloudDevice, CloudOperation, CloudState, CloudStatus, CloudVolumes,
 };
@@ -25,33 +26,16 @@ impl dyn CloudShard {
             });
         };
         let machine = self.cloud_machine(&device).await?;
-        let image = ImageStateParams {
-            device_id: device.id.to_string(),
-        };
-        let machines = &self.cloud_services().machines;
-        let image = match machines.call(image).await {
-            Ok(image) => image,
-            Err(error) => {
-                // The status answers without them; the manager answers them
-                // again when it can.
-                tracing::warn!(event = "cloud.disks_read_failed", host_id = %device.id, %error, "the Cloud's disks could not be read");
-                None
-            }
-        };
-        let volumes = image.as_ref().map(|image| CloudVolumes {
-            system_bytes: image.system_bytes.get(),
-            home_bytes: image.home_bytes.get(),
+        // What the manager last said, which it pushes: reading it calls no
+        // one, so an unreachable manager shows the last known sizes.
+        let image = DeviceId::parse(device.id.as_str())
+            .ok()
+            .and_then(|id| self.cloud_services().machines.status(&id));
+        let volumes = image.and_then(|image| image.volumes).map(|volumes| CloudVolumes {
+            system_bytes: volumes.system_bytes.get(),
+            home_bytes: volumes.home_bytes.get(),
         });
-        let newer_image = match &image {
-            Some(image) => match machines.call(CurrentBaseVersionParams {}).await {
-                Ok(configured) => configured != image.base_version,
-                Err(error) => {
-                    tracing::warn!(event = "cloud.image_read_failed", %error, "the configured Cloud image could not be read");
-                    false
-                }
-            },
-            None => false,
-        };
+        let newer_image = image.is_some_and(|image| image.newer_image);
         Ok(CloudStatus {
             device: Some(CloudDevice {
                 id: device.id.clone(),

@@ -11,7 +11,7 @@
  *   the folder is listed once for it.
  */
 import { reactive } from 'vue'
-import type { Answered, HostFiles, KeptSpec, Read, Showing } from './file-cache'
+import { goneMessage, type Answered, type HostFiles, type KeptSpec, type Read, type Showing } from './file-cache'
 import { baseName } from '@demicodes/utils'
 import { t } from './locales/text'
 import { parentPath } from './paths'
@@ -254,8 +254,13 @@ export function keptChangeSet(
       return entry().reading
     },
     get failure() {
-      const failure = entry().failure
-      return failure ? failure.message ?? t('changes.listFailed') : null
+      const kept = entry()
+      // The working directory itself is not there: that is the Host's refusal
+      // to list it, in its words, not a tree with nothing changed.
+      if (kept.answer === 'gone') {
+        return kept.goneReason ?? goneMessage()
+      }
+      return kept.failure ? kept.failure.message ?? t('changes.listFailed') : null
     },
     refresh() {
       files.retry(listSpec)

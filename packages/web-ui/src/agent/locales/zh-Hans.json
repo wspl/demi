@@ -402,6 +402,8 @@
     "cannotShow": "无法显示此标签页。",
     "nothingOpen": "没有打开的内容",
     "noFiles": "没有文件或更改",
-    "reading": "正在读取 {name}"
+    "reading": "正在读取 {name}",
+    "hostOffline": "{name} 已离线。",
+    "hostOfflineDetail": "它重新连接后，文件、更改和浏览器会再次显示。"
   }
 }

@@ -114,6 +114,7 @@ pub mod instructions;
 pub mod interrupted_turns;
 pub mod managed;
 pub mod panels;
+pub mod plugin_reports;
 pub mod passkeys;
 mod path;
 pub mod permissions;

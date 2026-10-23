@@ -9,6 +9,7 @@ import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Menu from '../ui/Menu.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import HostOfflinePage from './HostOfflinePage.vue'
 import PaneScope from './PaneScope.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
@@ -59,7 +60,14 @@ const props = withDefaults(defineProps<{
    * directory. The body says when files and changes appear.
    */
   beforeFirstMessage?: boolean
+  /**
+   * The name of the conversation's primary Host while its runner is not
+   * connected; the body then shows that, in place of the tabs' contents, which
+   * stay mounted behind it.
+   */
+  hostOffline?: string | null
 }>(), {
+  hostOffline: null,
   tabsRead: true,
 })
 const emit = defineEmits<{
@@ -296,7 +304,7 @@ function reorder(from: number, to: number): void {
           :key="item.tab.id"
           :title="item.title"
           :is-active="item.tab.id === selection"
-          :busy="item.kind?.busy?.(item.data, item.tab.id) ?? false"
+          :busy="hostOffline === null && (item.kind?.busy?.(item.data, item.tab.id) ?? false)"
           :icon="item.kind?.icon?.(item.data, item.tab.id) ?? null"
           @select="emit('select', item.tab.id)"
           v-context-menu="tabMenu(item.tab.id)"
@@ -334,7 +342,8 @@ function reorder(from: number, to: number): void {
         <IconButton :icon="PanelRightClose" variant="ghost" :aria-label="t('session.closePanel')" @click="emit('close')" />
       </Tooltip>
     </div>
-    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <HostOfflinePage v-if="hostOffline !== null" :name="hostOffline" />
+    <div v-show="hostOffline === null" class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <!--
         A host that shows only the strip, as a specimen of it does, fills the
         body itself.

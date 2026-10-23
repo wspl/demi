@@ -316,7 +316,8 @@ impl Shard {
     /// Every live tree takes the commands of the plugins now on, and its
     /// summary is marked, since whether a reload would change its system
     /// prompt may have changed. A plugin turned off has the services of its
-    /// packages stopped on every connected Host.
+    /// packages stopped on every connected Host now, and on the others when
+    /// they connect, as their `hello` names the packages that are off.
     pub async fn switch_plugin(
         &self,
         plugin: &str,
@@ -392,6 +393,6 @@ impl Shard {
                 }
             }
         }
-        self.plugins().package_lost(lost, &reaching).await;
+        self.plugins().package_lost(device, lost, &reaching).await;
     }
 }

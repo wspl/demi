@@ -3,7 +3,7 @@
 
 use demi_host_interface::{HostPaths, PortError, RpcError, RpcInvocation};
 use demi_shared_types::{NodeId, TurnId};
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::panel::PanelTab;
 use demi_web_api_protocol::workflows::WatchSubject;
 use serde::{Deserialize, Serialize};
@@ -66,9 +66,9 @@ pub enum Request {
     /// conversation's.
     ///
     /// With `held`, the state as it goes along with the conversation's work
-    /// panel ([`crate::State::held`]): what the plugin holds, or reads from
-    /// its Host once when the panel has tabs of its kind and it holds none;
-    /// `Reply::Done` when it has neither.
+    /// panel ([`crate::State::held`]): what its package last reported, which
+    /// the backend keeps; `Reply::Done` when it never did. No page state asks
+    /// a Host.
     PageState {
         user: UserId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,14 +97,15 @@ pub enum Request {
     /// The command package the plugin's commands bind said `message` about
     /// `conversation`, from a service on one of the conversation's Hosts.
     ///
-    /// The package says so the moment its state changes and the plugin never
-    /// asks whether it did: no job's end, reconnect or timer makes a plugin
-    /// read a Host again. What a message says is for the package and its plugin
-    /// to agree. The runner and the backend only carry it, and a plugin hears
-    /// only the package its commands bind.
+    /// The package says the whole of its state the moment it changes, and
+    /// again whenever a runner's connection starts: the plugin never asks a Host.
+    /// What a message says is for the package and its plugin to agree. The
+    /// runner and the backend only carry it, and a plugin hears only the
+    /// package its commands bind. `device` is the Host it came from.
     PackageMessage {
         user: UserId,
         conversation: ConversationId,
+        device: DeviceId,
         message: Value,
     },
     /// What the plugin's command package kept for `conversation` on a Host
@@ -113,6 +114,7 @@ pub enum Request {
     PackageLost {
         user: UserId,
         conversation: ConversationId,
+        device: DeviceId,
     },
 }
 

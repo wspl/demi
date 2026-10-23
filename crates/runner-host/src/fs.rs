@@ -197,10 +197,17 @@ pub async fn call(
         // The real path as `FsRealpath` names it, of a directory only: one
         // question where a move asked two.
         FsDirectory {
-            path: value, cwd, ..
+            path: value,
+            cwd,
+            create,
+            ..
         } => {
             let path = path(value, cwd)?;
+            let create = *create;
             let real = tokio::task::spawn_blocking(move || {
+                if create {
+                    make_directory(&path)?;
+                }
                 let real = dunce::canonicalize(path)?;
                 if std::fs::metadata(&real)?.is_dir() {
                     Ok(real)
@@ -424,6 +431,59 @@ async fn copy(
         }
     }
     copy_entry(source, destination, cancel).await
+}
+
+/// Makes the directory at `path` with its parents unless it exists. A path
+/// that cannot be one fails naming what is wrong with its existing part,
+/// since the system's own answer says "already exists" for a directory under
+/// a file on Windows and gives no reason for a drive that is not there.
+fn make_directory(path: &Path) -> io::Result<()> {
+    let mut existing = None;
+    for ancestor in path.ancestors() {
+        match std::fs::metadata(ancestor) {
+            Ok(metadata) => {
+                existing = Some((ancestor, metadata));
+                break;
+            }
+            // Under a file, a system answers "not a directory" rather than
+            // "not found"; the walk reaches the file itself next.
+            Err(error)
+                if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::NotADirectory) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    match existing {
+        Some((_, metadata)) if metadata.is_dir() && path.exists() => Ok(()),
+        Some((ancestor, metadata)) if !metadata.is_dir() => Err(io::Error::new(
+            io::ErrorKind::NotADirectory,
+            if ancestor == path {
+                format!("{} is a file", ancestor.display())
+            } else {
+                format!("{} is a file, so {} cannot be a directory", ancestor.display(), path.display())
+            },
+        )),
+        Some(_) => std::fs::create_dir_all(path),
+        None => {
+            // The drive's letter as a person writes it, whether the path
+            // spells it `Q:` or `\\?\Q:`.
+            let drive = match path.components().next() {
+                Some(std::path::Component::Prefix(prefix)) => match prefix.kind() {
+                    std::path::Prefix::Disk(letter) | std::path::Prefix::VerbatimDisk(letter) => {
+                        Some(format!("{}:", char::from(letter).to_ascii_uppercase()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                match drive {
+                    Some(drive) => format!("drive {drive} does not exist"),
+                    None => format!("{} does not exist and has no existing parent", path.display()),
+                },
+            ))
+        }
+    }
 }
 
 async fn canonical_destination(path: &Path) -> io::Result<PathBuf> {

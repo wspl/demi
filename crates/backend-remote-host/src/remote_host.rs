@@ -847,16 +847,6 @@ impl RemoteHost {
         Ok(answer)
     }
 
-    /// Asks the runner to release what its services hold for
-    /// `conversation`. It admits no work and wakes nothing: without a
-    /// connected runner there is nothing to release.
-    pub async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), HostError> {
-        match self.link() {
-            Ok(link) => link.release_conversation(conversation, over).await,
-            Err(_) => Ok(()),
-        }
-    }
-
     async fn fs(
         &self,
         op: &'static str,
@@ -1038,6 +1028,18 @@ impl RemoteJob {
     /// serves it.
     pub fn away(&self) -> Option<std::time::Duration> {
         self.jobs.away(&self.id)
+    }
+
+    /// Ends a job whose runner is away as lost, for `reason`, instead of
+    /// waiting for a stop only that runner could report: the runner stops it
+    /// when it is back. Answers whether it did; a job a connection serves is
+    /// not abandoned.
+    pub fn abandon_if_away(&self, reason: &str) -> bool {
+        if self.away().is_none() {
+            return false;
+        }
+        self.jobs.abandon(&self.id, reason);
+        true
     }
 
     /// The next message of the job's output views; none once the job ended
@@ -1655,12 +1657,13 @@ self.read_pipe(path, ByteRange::default()).await?.body,
         })
     }
 
-    fn directory<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<String, HostError>> {
+    fn directory<'a>(&'a self, path: &'a str, create: bool) -> LocalBoxFuture<'a, Result<String, HostError>> {
         Box::pin(async move {
             match self
                 .fs("directory", |id, cwd| Inbound::FsDirectory {
                     id,
                     path: path.into(),
+                    create,
                     cwd,
                 })
                 .await?

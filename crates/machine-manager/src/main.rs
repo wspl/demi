@@ -177,8 +177,8 @@ mod service {
         Ok(())
     }
 
-    /// Deaths waiting for the server's fan-out, which takes them at once; the
-    /// queue is bounded so that memory is.
+    /// Deaths and operations' ends waiting for the server's fan-out, which
+    /// takes them at once; each queue is bounded so that memory is.
     const DEATHS: usize = 64;
 
     pub async fn run(config: Config, lines: Receiver<LogLine>) -> Result<(), Failure> {
@@ -240,7 +240,8 @@ mod service {
         let socket_path = core.config.socket.clone();
         let socket = Socket::bind(&socket_path).await?;
         let (deaths, received) = tokio::sync::mpsc::channel(DEATHS);
-        let manager = Rc::new(Manager::new(core.clone(), base, deaths));
+        let (changes, changed) = tokio::sync::mpsc::channel(DEATHS);
+        let manager = Rc::new(Manager::new(core.clone(), base, deaths, changes));
         let mut terminate = signal(SignalKind::terminate())?;
         let mut interrupt = signal(SignalKind::interrupt())?;
         // Readiness for systemd's Type=notify; without a notify socket this
@@ -263,7 +264,7 @@ mod service {
                 _ = interrupt.recv() => {}
             }
         };
-        let in_flight = server::serve(socket, manager.clone(), received, lines, stopping).await;
+        let in_flight = server::serve(socket, manager.clone(), received, changed, lines, stopping).await;
         let drained = manager.close().await;
         in_flight.wait().await;
         drained?;

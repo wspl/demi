@@ -69,7 +69,7 @@ use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
 };
 use demi_backend_user_shard::shard::ShardPool;
-use demi_backend_user_shard::shard::cloud::route_deaths;
+use demi_backend_user_shard::shard::cloud::{route_deaths, route_statuses};
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::config::BackendConfig;
@@ -82,8 +82,13 @@ pub struct Backend {
     services: Arc<Services>,
     shards: ShardPool,
     edge: Edge,
+    /// Settles the Clouds an earlier backend left, once the machine manager
+    /// answers.
+    recovery: AbortOnDropHandle<()>,
     /// Routes the machine manager's death events to their owners' shards.
     deaths: AbortOnDropHandle<()>,
+    /// Marks each device's Cloud status changed for its owner's pages.
+    statuses: AbortOnDropHandle<()>,
     /// Has the users whose search index is reset index their conversations
     /// again (`crates/backend-database/src/search.rs`).
     resets: AbortOnDropHandle<()>,
@@ -133,10 +138,6 @@ pub enum StartError {
         path: std::path::PathBuf,
         source: io::Error,
     },
-    /// The machine manager did not reconcile, or an interrupted reset could
-    /// not be finished.
-    #[error("the Clouds cannot be recovered: {0}")]
-    Cloud(String),
     #[error(transparent)]
     WebBuild(#[from] WebBuildError),
 }
@@ -173,6 +174,44 @@ async fn start_step<T, E: fmt::Display>(step: &'static str, work: impl std::futu
         Ok(_) => tracing::info!(event = "startup.step_ended", step, ms, outcome = "ok", "a start step ended"),
         Err(error) => tracing::error!(event = "startup.step_failed", step, ms, %error, "a start step failed; the start goes on"),
     }
+}
+
+/// How long the recovery waits before it asks an unreachable machine manager
+/// again.
+const RECOVERY_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Settles the Clouds an earlier backend left, in the background so that the
+/// backend serves meanwhile: the machine manager keeps every running Cloud
+/// and finishes the resets it left unfinished, each running Cloud's shard
+/// takes it over, and the trees of a Cloud that does not run although commands
+/// ran on it, as after an upgrade, are restored with their commands as last
+/// recorded, which the Cloud's next hello settles. A
+/// manager that cannot be reached is asked again until it answers; any other
+/// failure ends the recovery and is logged, as a failed start step is.
+async fn recover_in_background(
+    services: Arc<demi_backend_user_shard::services::Services>,
+    shards: demi_backend_user_shard::shard::Shards,
+) {
+    let running = loop {
+        match recover_clouds(&services.control, &services.cloud).await {
+            Ok(running) => break running,
+            Err(demi_backend_cloud::reset::RecoveryError::Machines(
+                error @ demi_backend_cloud::client::MachinesError::Unavailable { .. },
+            )) => {
+                tracing::warn!(event = "startup.cloud_recovery_waiting", %error, "the machine manager is unreachable; the Clouds are recovered once it answers");
+                tokio::time::sleep(RECOVERY_RETRY).await;
+            }
+            Err(error) => {
+                tracing::error!(event = "startup.step_failed", step = "cloud_recovery", %error, "the Clouds cannot be recovered");
+                return;
+            }
+        }
+    };
+    start_step("cloud_take_over", take_over_clouds(running.clone(), &shards)).await;
+    // A Cloud the manager does not run has no runner to wait for.
+    start_step("stopped_clouds", forget_stopped_clouds(&running, &services)).await;
+    let taken: Vec<_> = running.iter().map(|device| device.id.clone()).collect();
+    start_step("cloud_commands", take_up_stopped_clouds(&taken, &services.control, &shards)).await;
 }
 
 /// Hands each running Cloud to its owner's shard, which takes it over
@@ -314,7 +353,7 @@ impl Backend {
             clock: config.clock,
             master_account: config.master_account,
         };
-        let (machines, deaths) = MachinesClient::new(config.machines_socket, config.log.clone());
+        let (machines, notices) = MachinesClient::new(config.machines_socket, config.log.clone());
         let keys = ServiceKeys {
             vault: secret.vault_key(),
             email_codes: secret.email_code_key(),
@@ -351,7 +390,12 @@ impl Backend {
             }
         };
         let deaths = AbortOnDropHandle::new(tokio::spawn(route_deaths(
-            deaths,
+            notices.deaths,
+            services.clone(),
+            shards.shards(),
+        )));
+        let statuses = AbortOnDropHandle::new(tokio::spawn(route_statuses(
+            notices.statuses,
             services.clone(),
             shards.shards(),
         )));
@@ -364,29 +408,6 @@ impl Backend {
             services.control.usage_written(),
             shards.shards(),
         )));
-        // Before the backend serves, the machine manager settles what an
-        // earlier backend left, which keeps every running Cloud, and resets
-        // it left unfinished commit their disks; each running Cloud's shard
-        // takes it over.
-        let running = match recover_clouds(&services.control, &services.cloud).await {
-            Ok(running) => running,
-            Err(error) => {
-                shards.close().await;
-                services.close_providers().await;
-                return Err(StartError::Cloud(error.to_string()));
-            }
-        };
-        if let Err(error) = take_over_clouds(running.clone(), &shards.shards()).await {
-            shards.close().await;
-            services.close_providers().await;
-            return Err(StartError::Cloud(error));
-        }
-        // A Cloud the manager does not run has no runner to wait for.
-        if let Err(error) = forget_stopped_clouds(&running, &services).await {
-            shards.close().await;
-            services.close_providers().await;
-            return Err(StartError::Storage(error));
-        }
         // Fork destinations whose root committed before their publication are
         // published before the backend serves.
         if let Err(error) = recover_forks(&services.control, &services.conversations).await {
@@ -504,10 +525,13 @@ impl Backend {
                 });
             }
         };
-        // A Cloud that does not run although commands ran on it, as after an
-        // upgrade, starts again once a runner can reach the backend.
-        let taken: Vec<_> = running.iter().map(|device| device.id.clone()).collect();
-        start_step("cloud_commands", take_up_stopped_clouds(&taken, &services.control, &shards.shards())).await;
+        // The machine manager settles what an earlier backend left in the
+        // background: no page waits for it, and a manager that starts late is
+        // tried until it answers.
+        let recovery = AbortOnDropHandle::new(tokio::spawn(recover_in_background(
+            services.clone(),
+            shards.shards(),
+        )));
         let sampling = AbortOnDropHandle::new(tokio::spawn(crate::sampling::sample(
             shards.shards(),
             services.log.clone(),
@@ -518,7 +542,9 @@ impl Backend {
             services,
             shards,
             edge,
+            recovery,
             deaths,
+            statuses,
             resets,
             usage,
             runners,
@@ -548,7 +574,9 @@ impl Backend {
         self.shards.close().await;
         self.services.claims.close();
         // No shard is left to route a death to.
+        drop(self.recovery);
         drop(self.deaths);
+        drop(self.statuses);
         drop(self.resets);
         drop(self.usage);
         // A runner or package executable still being sourced is no longer

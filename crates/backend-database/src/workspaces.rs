@@ -10,6 +10,7 @@
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_backend_remote_host::host_paths;
+use demi_host_interface::HostPaths;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use demi_web_api_protocol::workspaces::WorkspaceDto;
@@ -239,6 +240,122 @@ impl ControlService {
             transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id.as_str()])?;
             transaction.commit()?;
             Ok(WorkspaceDeletion::Deleted)
+        })
+        .await
+    }
+}
+
+/// What a Host's first naming of a directory changed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DirectoryNamed {
+    /// The conversations whose directory is now spelled otherwise, which
+    /// their pages and agents learn.
+    pub conversations: Vec<ConversationId>,
+    /// The projects changed: one renamed, or one that went into another.
+    pub projects: bool,
+}
+
+/// The directory a conversation's target stores as typed, which its Host
+/// names on its first use.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypedDirectory {
+    /// A project's, whose conversations all share it.
+    Workspace(WorkspaceId),
+    /// A directory of the Cloud that is the conversation's own selection.
+    Cloud(String),
+}
+
+impl ControlService {
+    /// Replaces the directory `typed` with `canonical`, as its Host names it.
+    ///
+    /// - A project whose directory is another's spelling takes that spelling:
+    ///   the project is renamed in place, with the conversations in it.
+    /// - A project whose canonical directory is another project's goes into
+    ///   that project, its conversations with it, since one directory is one
+    ///   project.
+    /// - A conversation of the Cloud takes the spelling for its directory.
+    ///
+    /// A directory that is the Host's home stays as typed, which is no
+    /// project's. Answers what changed.
+    pub async fn name_directory(
+        &self,
+        conversation: ConversationId,
+        typed: TypedDirectory,
+        canonical: String,
+    ) -> Result<DirectoryNamed, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let named = match typed {
+                TypedDirectory::Cloud(path) => {
+                    let Some(record) = super::conversation_index::conversation_by_id(&transaction, &conversation)? else {
+                        return Ok(DirectoryNamed::default());
+                    };
+                    let current = matches!(&record.target, super::Selection::Cloud { path: Some(current) } if *current == path);
+                    let canonical = HostPaths::Posix.trimmed(&canonical).to_owned();
+                    if !current || canonical == path {
+                        return Ok(DirectoryNamed::default());
+                    }
+                    super::devices::set_selection(
+                        &transaction,
+                        &conversation,
+                        &super::Selection::Cloud { path: Some(canonical) },
+                    )?;
+                    super::conversation_index::advance_context(&transaction, &conversation)?;
+                    DirectoryNamed { conversations: vec![conversation], projects: false }
+                }
+                TypedDirectory::Workspace(id) => {
+                    let Some(project) = workspace_by_id(&transaction, &id)? else {
+                        return Ok(DirectoryNamed::default());
+                    };
+                    let Some(device) = device_in(&transaction, &project.device)? else {
+                        return Ok(DirectoryNamed::default());
+                    };
+                    let paths = host_paths(device.platform);
+                    let canonical = paths.trimmed(&canonical).to_owned();
+                    let home = device.home.as_deref().map(|home| paths.trimmed(home));
+                    if canonical == project.path || home == Some(canonical.as_str()) {
+                        return Ok(DirectoryNamed::default());
+                    }
+                    let inside: Vec<ConversationId> = transaction
+                        .prepare_cached("SELECT id FROM conversations WHERE target_workspace_id = ?1")?
+                        .query_map([id.as_str()], |row| row.get::<_, String>(0))?
+                        .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
+                        .collect::<Result<_, _>>()?;
+                    match workspace_at(&transaction, &project.user, &project.device, &canonical)? {
+                        Some(other) if other.id != project.id => {
+                            for member in &inside {
+                                super::devices::set_selection(
+                                    &transaction,
+                                    member,
+                                    &super::Selection::Workspace {
+                                        workspace_id: other.id.clone(),
+                                        device_id: other.device.clone(),
+                                        path: other.path.clone(),
+                                    },
+                                )?;
+                                super::conversation_index::advance_context(&transaction, member)?;
+                            }
+                            transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id.as_str()])?;
+                        }
+                        _ => {
+                            transaction.execute(
+                                "UPDATE workspaces SET path = ?2 WHERE id = ?1",
+                                params![id.as_str(), canonical],
+                            )?;
+                            transaction.execute(
+                                "UPDATE conversations SET target_path = ?2 WHERE target_workspace_id = ?1",
+                                params![id.as_str(), canonical],
+                            )?;
+                            for member in &inside {
+                                super::conversation_index::advance_context(&transaction, member)?;
+                            }
+                        }
+                    }
+                    DirectoryNamed { conversations: inside, projects: true }
+                }
+            };
+            transaction.commit()?;
+            Ok(named)
         })
         .await
     }

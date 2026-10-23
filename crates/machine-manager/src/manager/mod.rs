@@ -18,7 +18,7 @@ mod linux {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use demi_machine_manager_protocol::{
-        BaseVersion, CheckpointParams, CurrentBaseVersionParams, DeviceId, HibernateParams, ImageStateParams, MachineCall, Operation, ReconcileParams, Reconciled,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DeviceId, HibernateParams, ImageStateParams, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
         ResetParams, RuntimeState, RuntimeStateParams, WakeParams,
     };
     use tokio::{
@@ -86,12 +86,19 @@ mod linux {
         devices: RefCell<HashMap<DeviceId, mpsc::Sender<DeviceCommand>>>,
         workers: RefCell<JoinSet<()>>,
         deaths: mpsc::Sender<DeviceId>,
+        changes: mpsc::Sender<DeviceId>,
     }
 
     impl Manager {
         /// A manager whose new devices start on `base` and whose workers
-        /// report sandbox deaths to `deaths`.
-        pub fn new(core: Rc<Core>, base: BaseVersion, deaths: mpsc::Sender<DeviceId>) -> Self {
+        /// report sandbox deaths to `deaths` and each operation's end to
+        /// `changes`.
+        pub fn new(
+            core: Rc<Core>,
+            base: BaseVersion,
+            deaths: mpsc::Sender<DeviceId>,
+            changes: mpsc::Sender<DeviceId>,
+        ) -> Self {
             Self {
                 core,
                 base,
@@ -99,6 +106,7 @@ mod linux {
                 devices: RefCell::default(),
                 workers: RefCell::default(),
                 deaths,
+                changes,
             }
         }
 
@@ -114,6 +122,7 @@ mod linux {
                 self.core.clone(),
                 self.base.clone(),
                 self.deaths.clone(),
+                self.changes.clone(),
             );
             self.workers.borrow_mut().spawn_local(worker.run(inbox));
             devices.insert(device.clone(), sender.clone());
@@ -230,6 +239,41 @@ mod linux {
 
     impl MachineService for Manager {
         type Error = OpError;
+
+        async fn status(&self, device: &DeviceId) -> Option<ManagerEvent> {
+            let (store, id) = (self.core.store.clone(), device.clone());
+            match blocking::run(move |off| store.read(off, &id)).await {
+                Ok(state) => Some(ManagerEvent::CloudStatus {
+                    device_id: device.to_string(),
+                    newer_image: state.as_ref().is_some_and(|state| state.base_version != self.base),
+                    volumes: state.map(|state| Capacity {
+                        system_bytes: state.system_bytes,
+                        home_bytes: state.home_bytes,
+                    }),
+                }),
+                Err(error) => {
+                    // The backend keeps the status it had.
+                    tracing::warn!(event = "manager_status.read_failed", host_id = %device, %error, "a device's stored image could not be read");
+                    None
+                }
+            }
+        }
+
+        async fn snapshot(&self) -> Vec<ManagerEvent> {
+            let store = self.core.store.clone();
+            let devices = match blocking::run(move |off| store.devices(off)).await {
+                Ok(devices) => devices,
+                Err(error) => {
+                    tracing::warn!(event = "manager_status.list_failed", %error, "the devices with stored images could not be listed");
+                    return Vec::new();
+                }
+            };
+            let mut events = Vec::new();
+            for device in devices {
+                events.extend(self.status(&device).await);
+            }
+            events
+        }
 
         async fn handle(&self, call: MachineCall) -> Result<serde_json::Value, OpError> {
             match call {

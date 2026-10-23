@@ -696,6 +696,22 @@ impl Devices {
         self.host(device, key, cwd, admission)
     }
 
+    /// The conversation's Host on the device for taking up the commands its
+    /// agents ran there, which holds no lease of the conversation's file gate
+    /// and waits for nothing: its key is the one [`Self::conversation_host`]
+    /// makes, so the commands taken up belong to the node's environment for
+    /// the conversation's Host.
+    pub fn adopting_host(
+        &self,
+        device: &DeviceId,
+        conversation: &demi_web_api_protocol::ids::ConversationId,
+        cwd: String,
+        admission: Admission,
+    ) -> RemoteHost {
+        let key = host_key(device, HostOwner::Conversation(conversation), &cwd);
+        self.host(device, key, cwd, admission)
+    }
+
     /// Machine access (`crates/backend-host-access/src/lib.rs`): the
     /// Cloud's Host starting in `home`, whose operations take `admission`,
     /// the Cloud's; it touches no conversation's files.

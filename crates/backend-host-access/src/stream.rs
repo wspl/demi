@@ -234,7 +234,7 @@ impl dyn HostShard + '_ {
             UserCallKind::Starts => {
                 let record = self.owned_conversation(id).await?;
                 return self
-                    .with_host(&record.id, None, cancel, async |host| {
+                    .with_reading_host(&record.id, None, cancel, async |host| {
                         let request = self
                             .service_request(&record.id, host, &call.binding, Some(&call.args))
                             .await?;

@@ -84,7 +84,9 @@ export function emptyChangeSetText(source: ChangeSetSource): string {
     return t('changes.notGit')
   }
   if (source.failure) {
-    return t('changes.listFailed')
+    // The Host's own reason follows the heading, as everywhere a list failed.
+    const heading = t('changes.listFailed')
+    return source.failure === heading ? heading : t('tree.withReason', { heading, reason: source.failure })
   }
   return t('changes.none')
 }

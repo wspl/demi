@@ -53,7 +53,9 @@ pub enum Inbound {
     /// user sees, and the user's conversations that still exist, archived
     /// ones included, whose scratch directories the runner keeps, and which of
     /// them are archived, whose recordings it removes
-    /// (`crates/runner-jobs/src/scratch.rs`).
+    /// (`crates/runner-jobs/src/scratch.rs`), which of them it is to hold
+    /// services for, and the packages whose services it is to hold none of
+    /// (`crates/runner/src/connection/owner.rs`).
     HelloOk {
         device_id: String,
         device_name: String,
@@ -61,6 +63,15 @@ pub enum Inbound {
         conversations: Vec<String>,
         #[garde(inner(custom(conversation_name)))]
         archived: Vec<String>,
+        /// The conversations the device is to hold services for: those that
+        /// are neither archived, nor detached from it, nor released after
+        /// idling. The runner releases every other it holds one for.
+        #[garde(inner(custom(conversation_name)))]
+        held: Vec<String>,
+        /// The packages whose plugin the user has turned off, whose services
+        /// the runner stops. Not a list of those to run, since the runner
+        /// also runs packages no plugin binds.
+        stopped: Vec<String>,
         /// The number of the session this connection carries, which the
         /// backend drew when it started the session and the runner's next hello
         /// names to resume it (`crates/runner-protocol/src/wire/session.rs`).
@@ -672,12 +683,17 @@ pub enum Inbound {
         )]
         cwd: Option<String>,
     },
-    /// The directory at `path` as its Host names it, which a move checks
-    /// in one exchange (`crates/backend-host-access/src/directories.rs`):
-    /// its real path, or `ENOTDIR` when it is no directory.
+    /// The directory at `path` as its Host names it, in one exchange
+    /// (`crates/backend-host-access/src/directories.rs`): its real path, or
+    /// `ENOTDIR` when it is no directory. With `create`, a directory that
+    /// does not exist is made first, with its parents, and a path that cannot
+    /// be one fails with a reason the runner words from the part of it that
+    /// exists: that part is a file, or the drive is missing.
     FsDirectory {
         id: String,
         path: String,
+        #[serde(default)]
+        create: bool,
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",

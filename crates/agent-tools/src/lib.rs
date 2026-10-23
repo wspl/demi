@@ -261,16 +261,28 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         handle: Handle<'_>,
         cwd: Option<&str>,
     ) -> Result<(Rc<environments::Slot>, Rc<dyn ShellEnvironment>), CallError> {
+        self.environment_on(handle, cwd, false).await
+    }
+
+    /// The environment for the conversation's current Host, which `adopting`
+    /// reaches without admitting it ([`HostResolver::adopted_host`]).
+    async fn environment_on(
+        &self,
+        handle: Handle<'_>,
+        cwd: Option<&str>,
+        adopting: bool,
+    ) -> Result<(Rc<environments::Slot>, Rc<dyn ShellEnvironment>), CallError> {
         let context = NodeContext {
             node: self.node,
             root: self.root,
             cwd,
         };
-        let host = self
-            .hosts
-            .host(context)
-            .await
-            .map_err(|error| CallError::Failed(error.to_string()))?;
+        let host = if adopting {
+            self.hosts.adopted_host(context).await
+        } else {
+            self.hosts.host(context).await
+        }
+        .map_err(|error| CallError::Failed(error.to_string()))?;
         let commands = self.commands.borrow().clone();
         let scope = EnvironmentScope {
             root: self.root,
@@ -475,7 +487,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
         let cwd = self.cwd().await?;
-        let (_, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
+        let (_, environment) = self.environment_on(Handle::None, cwd.as_deref(), true).await?;
         environment.adopt(TakenUp {
             command: running.command.clone(),
             job: running.job.clone(),

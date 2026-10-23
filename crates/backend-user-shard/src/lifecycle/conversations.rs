@@ -1,8 +1,7 @@
 //! The conversation idle clock.
 //!
-//! A conversation that has not been active for the idle window (`super`) hears
-//! the conversation release on every Host it reaches, primary or attached, whose
-//! runner is connected.
+//! A conversation that has not been active for the idle window (`super`) has
+//! every Host it reaches, primary or attached, told to let go of it.
 //!
 //! - Its watch starts with the conversation's first Host admission and ends once
 //!   it released.
@@ -12,11 +11,12 @@
 //!
 //! # The release
 //!
-//! The release is one generic runner message, sent through the conversation's
-//! host access in its lifecycle form, which takes no file gate and wakes
-//! nothing. It also goes to the Host a conversation stops using (a target
-//! switch, a detach) and to every Host when the conversation is archived or
-//! deleted.
+//! The release is one generic runner message, sent to each connected Host's
+//! runner (`crates/backend-host-access/src/access.rs`). Telling takes no file
+//! gate beyond the transition's own commit, wakes nothing, stores nothing and
+//! waits for no Host. It also goes to the Host a conversation stops using (a
+//! target switch, a detach) and to every Host when the conversation is
+//! archived or deleted.
 //!
 //! The runner forwards it to each resident service on the device, which ends
 //! whatever it holds for the conversation (the browser closes its Chrome and
@@ -29,41 +29,39 @@
 //! (`crates/runner-jobs/src/scratch.rs`).
 //!
 //! It can be sent without checking what runs there because no job of the
-//! conversation runs there when it arrives: an archive, a detach and the idle
-//! clock send it only while the backend holds the conversation's file gate,
-//! and every job runs in a lease of that gate; a move sends it once the jobs
-//! of the conversation on the device it left ended
+//! conversation runs there when it is sent: an archive, a detach and the
+//! idle clock send it only while the backend holds the conversation's file
+//! gate, and every job runs in a lease of that gate; a move sends it once
+//! the jobs of the conversation on the device it left ended
 //! (`crates/backend-host-access/src/transition.rs`). Repeating one is
 //! harmless, and it never starts a service.
 //!
-//! It is never sent to a stopped Cloud or an offline device, nor later: the stop
-//! or the connection loss already ended every service's state.
+//! # What a Host holds
 //!
-//! # A failed release
+//! The message is an effort, never a record: a runner that is away or loses it
+//! keeps what it holds until its next connection, whose hello names the
+//! conversations it is to hold (`crates/backend-user-shard/src/shard/adoption.rs`)
+//! and has it release every other. A Host is to hold a conversation that is not
+//! archived, deleted or detached from it, and that the idle clock did not
+//! release; a conversation used on a Host again is held there again, since its
+//! next admission starts the watch afresh and takes it off the idle-released
+//! ones. The idle-released conversations are kept in memory only: after a
+//! restart of the backend a runner told nothing meanwhile is named them again,
+//! which releases nothing it still holds for a conversation in use, as a
+//! release never starts a service and the next use starts them.
 //!
-//! A release that fails is logged with the Host and the reason, fails nothing
-//! that sent it and is not sent again, because nothing is left for it. A release
-//! fails when:
-//!
-//! - the connection is lost before the answer;
-//! - a service could not end what it held;
-//! - no answer comes within six minutes.
-//!
-//! The cases need no second attempt:
-//!
-//! - A runner that lost its connection has ended every service's state.
-//! - A service that failed is retired and so ends what it held.
-//! - One that answers too late finishes all the same.
+//! A release that does not end in an answer is logged with the Host and the
+//! reason, and changes nothing. A release has no time limit; the connection's
+//! own liveness ends it when the Host is gone.
 //!
 //! An archive, a move and a detach are the user's changes to their own
-//! conversation, and failing one because a Host's cleanup failed would leave a
-//! refusal to retry that changes nothing on the Host. So the watch ends after its
-//! release however a Host answered.
+//! conversation, and none waits for a Host's cleanup, so the watch ends as soon
+//! as its release is sent.
 //!
 //! Forking releases nothing.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
 use demi_backend_idle_watch::{Activity, IdlePolicy, Retirement};
@@ -78,6 +76,10 @@ use demi_backend_host_access::root_of;
 #[derive(Default)]
 pub(crate) struct ConversationWatches {
     watches: RefCell<HashMap<ConversationId, AbortOnDropHandle<()>>>,
+    /// The conversations whose idle watch released them and that no Host
+    /// admission has started again: what the Hosts' `hello` does not name as
+    /// held. Not stored; see the module's § What a Host holds.
+    released: RefCell<HashSet<ConversationId>>,
 }
 
 impl Shard {
@@ -108,6 +110,7 @@ impl Shard {
         if self.is_closing() || self.tracks_idle(id) {
             return;
         }
+        self.idle_watches().released.borrow_mut().remove(id);
         let policy = ConversationIdle {
             shard: Rc::downgrade(&self.this()),
             id: id.clone(),
@@ -132,6 +135,12 @@ impl Shard {
     pub(crate) fn restart_idle(&self, id: &ConversationId) {
         self.stop_idle(id);
         self.track_idle(id);
+    }
+
+    /// The conversations the idle clock released and nothing used on a Host
+    /// since.
+    pub(crate) fn idle_released(&self) -> HashSet<ConversationId> {
+        self.idle_watches().released.borrow().clone()
     }
 
     /// Ends the conversation's idle watch, as an archive does; a release
@@ -192,9 +201,11 @@ impl IdlePolicy for ConversationIdle {
                 .map_err(|error| error.to_string())?;
             shard
                 .host_shard()
-                .release_everywhere(&record, false)
+                .release_everywhere(&record)
                 .await
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            shard.idle_watches().released.borrow_mut().insert(id);
+            Ok(())
         })))
     }
 

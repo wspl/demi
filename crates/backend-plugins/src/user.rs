@@ -34,7 +34,7 @@ use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk, VideoStep,
     CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
-    PortRefusal, Reply, Request, Scope, StoredValue,
+    PortRefusal, Reply, Request, Scope, StoredReport, StoredValue,
 };
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
@@ -417,6 +417,20 @@ impl Shared {
         self.registry.plugins[plugin].id().as_str().to_owned()
     }
 
+    /// The Host the conversation works on, from the records: none for a
+    /// Cloud conversation whose Cloud was never made. It asks no Host.
+    async fn primary_device(&self, conversation: &ConversationId) -> Result<Option<DeviceId>, PortFailure> {
+        let Some(record) = self.control.conversation(conversation.clone()).await.map_err(storage)? else {
+            return Ok(None);
+        };
+        let target = self
+            .control
+            .execution_target(record.owner, record.id, record.target)
+            .await
+            .map_err(storage)?;
+        Ok(target.device().cloned())
+    }
+
     fn revision(&self, plugin: usize, conversation: &ConversationId) -> u64 {
         let key = (plugin, conversation.clone());
         self.revisions.borrow().get(&key).copied().unwrap_or(0)
@@ -670,17 +684,7 @@ impl UserPlugins {
                 live.ended.cancel();
             }
             self.close_tabs(index).await?;
-            // A package another plugin on binds stays; none does today.
-            released = registered
-                .packages
-                .iter()
-                .filter(|package| {
-                    !self.0.registry.plugins.iter().enumerate().any(|(other, registered)| {
-                        current[other] && registered.packages.contains(*package)
-                    })
-                })
-                .cloned()
-                .collect();
+            released = Self::unbound(&self.0.registry, &current, registered.packages.iter());
         }
         let switched = std::mem::take(&mut *self.0.switched.borrow_mut());
         switched.cancel();
@@ -689,6 +693,45 @@ impl UserPlugins {
             .marks
             .mark(Part::Plugin(registered.id().as_str().to_owned()));
         Ok(Some(Switched { released }))
+    }
+
+    /// The packages whose services a Host is to hold none of: those of every
+    /// plugin the user has off that no plugin on binds. The runner stops them
+    /// when it connects, as turning their plugin off stops them on a connected
+    /// one. A list of what is off, not of what is on, since a Host also runs
+    /// packages no plugin binds.
+    pub async fn stopped_packages(&self) -> Result<Vec<String>, StorageError> {
+        let current = self.enabled().await?;
+        let registry = &self.0.registry;
+        let off = registry
+            .plugins
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !current[*index])
+            .flat_map(|(_, registered)| registered.packages.iter());
+        Ok(Self::unbound(registry, &current, off))
+    }
+
+    /// Of `packages`, those that no plugin turned on in `current` binds. A
+    /// package two plugins bind stays while either is on.
+    fn unbound<'a>(
+        registry: &Registry,
+        current: &[bool],
+        packages: impl Iterator<Item = &'a String>,
+    ) -> Vec<String> {
+        let mut unbound: Vec<String> = packages
+            .filter(|package| {
+                !registry
+                    .plugins
+                    .iter()
+                    .enumerate()
+                    .any(|(other, registered)| current[other] && registered.packages.contains(*package))
+            })
+            .cloned()
+            .collect();
+        unbound.sort();
+        unbound.dedup();
+        unbound
     }
 
     /// Removes the tabs of plugin `plugin`'s kinds from every panel of the
@@ -940,12 +983,14 @@ impl UserPlugins {
         &self,
         package: &str,
         conversation: &ConversationId,
+        device: &DeviceId,
         message: serde_json::Value,
     ) {
         for plugin in self.receivers(package).await {
             let request = Request::PackageMessage {
                 user: self.0.user.clone(),
                 conversation: conversation.clone(),
+                device: device.clone(),
                 message: message.clone(),
             };
             self.0.spawn_request(plugin, request, conversation.clone());
@@ -959,7 +1004,7 @@ impl UserPlugins {
     /// panel tabs in one of the conversations, receives `package_lost` for it
     /// (`crates/command-protocol/src/messages.rs`). A plugin that shows nothing
     /// of a conversation has nothing to correct.
-    pub async fn package_lost(&self, lost: Lost<'_>, conversations: &[ConversationId]) {
+    pub async fn package_lost(&self, device: &DeviceId, lost: Lost<'_>, conversations: &[ConversationId]) {
         let plugins = match lost {
             Lost::Package(package) => self.receivers(package).await,
             Lost::Every => self.receivers_of(|registered| !registered.packages.is_empty()).await,
@@ -985,6 +1030,7 @@ impl UserPlugins {
                 let request = Request::PackageLost {
                     user: self.0.user.clone(),
                     conversation: conversation.clone(),
+                    device: device.clone(),
                 };
                 self.0.spawn_request(plugin, request, conversation.clone());
             }
@@ -1347,6 +1393,44 @@ impl RequestPort {
                     .package_call(conversation, &operation, args, kind, &self.cancel)
                     .await?;
                 PortAnswer::Called { result }
+            }
+            PortMessage::ReadReport => {
+                let conversation = self.conversation()?;
+                let report = match shared.primary_device(conversation).await? {
+                    Some(device) => shared
+                        .control
+                        .plugin_report(shared.plugin_id(self.plugin), conversation.clone(), device)
+                        .await
+                        .map_err(storage)?,
+                    None => None,
+                };
+                PortAnswer::Report {
+                    report: report.map(|report| StoredReport {
+                        revision: report.revision,
+                        value: report.value,
+                    }),
+                }
+            }
+            PortMessage::WriteReport { device, revision, value } => {
+                let device = DeviceId::try_from(device.as_str()).map_err(|error| {
+                    PortFailure::Refused(PortRefusal::Operation {
+                        stderr: format!("the report names no device: {error}"),
+                    })
+                })?;
+                let conversation = self.conversation()?;
+                shared
+                    .control
+                    .keep_plugin_report(
+                        shared.plugin_id(self.plugin),
+                        conversation.clone(),
+                        device.clone(),
+                        revision,
+                        value,
+                    )
+                    .await
+                    .map_err(storage)?;
+                let primary = shared.primary_device(conversation).await?.as_ref() == Some(&device);
+                PortAnswer::Kept { primary }
             }
             PortMessage::PanelTabs => {
                 let registered = &shared.registry.plugins[self.plugin];

@@ -119,6 +119,8 @@ impl ReadBlob for NoBlobs {
 ///   end.
 /// - 0.1.48's, which 0.1.46 and 0.1.47 shipped too, before a conversation's
 ///   ledger rows were found by their end.
+/// - 0.1.63's, which 0.1.49 to 0.1.62 shipped too, before a plugin kept what
+///   its package on a Host reported of a conversation.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -290,8 +292,30 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.48.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_48),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.63.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_63),
+        },
     ],
 };
+
+/// From 0.1.63's control schema, which 0.1.49 to 0.1.62 shipped too, to the
+/// current one.
+///
+/// - A plugin keeps what its package on a Host last reported of a
+///   conversation (`plugin_reports`), which its page reads at once; nothing
+///   was kept before, so the next report fills it.
+const CONTROL_FROM_0_1_63: &str = "
+CREATE TABLE plugin_reports (
+  plugin_id       TEXT NOT NULL,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  revision        INTEGER NOT NULL CHECK (revision >= 0),
+  value           TEXT NOT NULL,
+  reported_at     INTEGER NOT NULL,
+  PRIMARY KEY (plugin_id, conversation_id, device_id)
+) STRICT;
+";
 
 /// From 0.1.48's control schema, which 0.1.46 and 0.1.47 shipped too, to the
 /// current one.
@@ -4429,6 +4453,20 @@ CREATE TABLE conversation_panels (
   revision        INTEGER NOT NULL CHECK (revision >= 1),
   document        TEXT NOT NULL,
   updated_at      INTEGER NOT NULL
+) STRICT;
+
+-- What a plugin's package on a Host last reported of a conversation, whole,
+-- which the plugin's page reads at once and never asks the Host for: the
+-- browser's tabs of the conversation on that Host.
+-- value: the plugin's own JSON.
+CREATE TABLE plugin_reports (
+  plugin_id       TEXT NOT NULL,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  revision        INTEGER NOT NULL CHECK (revision >= 0),
+  value           TEXT NOT NULL,
+  reported_at     INTEGER NOT NULL,
+  PRIMARY KEY (plugin_id, conversation_id, device_id)
 ) STRICT;
 
 -- A conversation's draft: its text and files with the revision they were

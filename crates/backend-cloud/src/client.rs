@@ -12,6 +12,12 @@
 //!   retries.
 //! - A death event goes to the one receiver the backend routes to the device's
 //!   owner.
+//! - A device's status the manager pushes (`ManagerEvent::CloudStatus`) is
+//!   kept, the latest of each device, and its device goes to the receiver the
+//!   backend routes to the device's owner. A page reads it from here and
+//!   never calls the manager. The client connects without a call: it tries
+//!   again every [`RECONNECT`] while it has no connection, so the manager's
+//!   events arrive when it can.
 //! - A line of the manager's log is stored in the backend's log as it arrives.
 //!
 //! A supervisor task owns the connection, the calls in flight and the id
@@ -22,10 +28,11 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use demi_machine_manager_protocol::{
-    DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Operation,
-    WIRE_VERSION, decode_response, encode_line,
+    Capacity, DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse,
+    ManagerEvent, Operation, WIRE_VERSION, decode_response, encode_line,
 };
 use demi_backend_database::server_log::ServerLog;
 use futures_util::StreamExt as _;
@@ -46,6 +53,14 @@ const INCOMING: usize = 64;
 
 /// Death events waiting for the backend's router, bounded for the same reason.
 pub(crate) const DEATHS: usize = 256;
+
+/// Status changes waiting for the backend's router, bounded for the same
+/// reason.
+pub(crate) const STATUSES: usize = 256;
+
+/// The pause before the client tries the manager again while it has no
+/// connection: the manager may start after the backend.
+const RECONNECT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How long a new connection waits for the manager's `hello`, which it
 /// writes as it accepts.
@@ -72,11 +87,29 @@ pub enum MachinesError {
     },
 }
 
+/// A device's stored image as the manager last said it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageStatus {
+    /// The capacities of its filesystems; none before its first generation.
+    pub volumes: Option<Capacity>,
+    /// Its system is on another base than the manager's configured one.
+    pub newer_image: bool,
+}
+
+/// What the manager tells the backend unasked, for the backend's routers.
+pub struct Notices {
+    /// The device of each sandbox that exited without being asked to stop.
+    pub deaths: mpsc::Receiver<DeviceId>,
+    /// The device whose status changed.
+    pub statuses: mpsc::Receiver<DeviceId>,
+}
+
 /// A handle on the machine manager's socket.
 ///
 /// It is `Send + Sync`: a service every shard shares.
 pub struct MachinesClient {
     commands: mpsc::Sender<Command>,
+    statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
     /// Ends the supervisor with the client.
     _supervisor: AbortOnDropHandle<()>,
 }
@@ -93,28 +126,42 @@ enum Command {
 
 impl MachinesClient {
     /// A client of the socket at `socket`, on the runtime that calls this,
-    /// and the receiver of the manager's death events: the device of each
-    /// sandbox that exited without being asked to stop. The lines of the
+    /// and what the manager tells unasked ([`Notices`]). The lines of the
     /// manager's log that arrive on the connection are stored in `log`.
-    pub fn new(socket: PathBuf, log: ServerLog) -> (Self, mpsc::Receiver<DeviceId>) {
+    pub fn new(socket: PathBuf, log: ServerLog) -> (Self, Notices) {
         let (commands, received) = mpsc::channel(QUEUE);
         let (deaths, died) = mpsc::channel(DEATHS);
+        let (changed, statuses) = mpsc::channel(STATUSES);
+        let kept = Arc::new(Mutex::new(HashMap::new()));
         let supervisor = Supervisor {
             socket,
             connection: None,
             pending: HashMap::new(),
             next_id: 1,
             deaths,
+            changed,
+            statuses: kept.clone(),
             log,
         };
         let task = tokio::spawn(supervisor.run(received));
         (
             Self {
                 commands,
+                statuses: kept,
                 _supervisor: AbortOnDropHandle::new(task),
             },
-            died,
+            Notices { deaths: died, statuses },
         )
+    }
+
+    /// What the manager last said of `device`'s stored image; none before it
+    /// said anything of it. It calls no one.
+    pub fn status(&self, device: &DeviceId) -> Option<ImageStatus> {
+        self.statuses
+            .lock()
+            .expect("the statuses are never held across a panic")
+            .get(device)
+            .copied()
     }
 
     /// Runs `params` on the manager and answers its result.
@@ -162,6 +209,8 @@ struct Supervisor {
     pending: HashMap<String, Pending>,
     next_id: u64,
     deaths: mpsc::Sender<DeviceId>,
+    changed: mpsc::Sender<DeviceId>,
+    statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
     log: ServerLog,
 }
 
@@ -200,8 +249,18 @@ impl Pending {
 
 impl Supervisor {
     async fn run(mut self, mut commands: mpsc::Receiver<Command>) {
+        let mut reconnect = tokio::time::interval(RECONNECT);
+        reconnect.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tokio::select! {
+                _ = reconnect.tick(), if self.connection.is_none() => {
+                    match connect(&self.socket).await {
+                        Ok(connection) => self.connection = Some(connection),
+                        // The manager may not run yet; a call that needs it
+                        // fails on its own.
+                        Err(reason) => tracing::debug!(event = "machine_manager.connect_failed", reason, "the machine manager could not be reached"),
+                    }
+                }
                 command = commands.recv() => match command {
                     // The client is gone, and the connection goes with it.
                     None => return,
@@ -287,6 +346,10 @@ impl Supervisor {
                 self.log.store_manager(line);
                 return;
             }
+            MachineResponse::Event { event } => {
+                self.event(event).await;
+                return;
+            }
             MachineResponse::Ok { id, result } => (id, Ok(result)),
             MachineResponse::Error { id, message } => (id, Err(MachinesError::Failed(message))),
         };
@@ -302,6 +365,30 @@ impl Supervisor {
                 call_id = id,
                 "the machine manager answered a request this backend did not send"
             ),
+        }
+    }
+
+    /// Keeps what the manager said of a device, and tells the router.
+    async fn event(&mut self, event: ManagerEvent) {
+        let ManagerEvent::CloudStatus { device_id, volumes, newer_image } = event;
+        let device = match DeviceId::parse(device_id) {
+            Ok(device) => device,
+            Err(error) => {
+                tracing::warn!(event = "machine_manager.status_dropped", %error, "the machine manager reported the status of a device no id names");
+                return;
+            }
+        };
+        let status = ImageStatus { volumes, newer_image };
+        let changed = self
+            .statuses
+            .lock()
+            .expect("the statuses are never held across a panic")
+            .insert(device.clone(), status)
+            != Some(status);
+        if changed {
+            // The router only ends when the backend does, which ends this
+            // client first.
+            let _ = self.changed.send(device).await;
         }
     }
 

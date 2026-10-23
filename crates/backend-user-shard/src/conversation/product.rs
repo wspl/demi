@@ -285,6 +285,17 @@ impl HostResolver for ShardHosts {
             .await
     }
 
+    async fn adopted_host(&self, context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
+        let shard = self
+            .shard
+            .upgrade()
+            .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
+        shard
+            .host_shard()
+            .adopting_host(&conversation_of(context.root))
+            .await
+    }
+
     /// The conversation's target, read without reaching the Host.
     async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
         let shard = self

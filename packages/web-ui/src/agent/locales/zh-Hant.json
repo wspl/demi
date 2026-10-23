@@ -402,6 +402,8 @@
     "cannotShow": "無法顯示此分頁。",
     "nothingOpen": "沒有開啟的內容",
     "noFiles": "沒有檔案或變更",
-    "reading": "正在讀取 {name}"
+    "reading": "正在讀取 {name}",
+    "hostOffline": "{name} 已離線。",
+    "hostOfflineDetail": "重新連線後，檔案、變更和瀏覽器會再次顯示。"
   }
 }

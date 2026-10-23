@@ -76,9 +76,6 @@ const NO_LIVE_WORK: &str = "No matching live job or stream";
 /// answered (`crates/runner-protocol/src/wire/mod.rs`).
 pub const END_GRACE: Duration = Duration::from_secs(5);
 
-/// How long a conversation release may take on the runner.
-const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
-
 /// What the connection's owner decides for its jobs' calls: the product's
 /// policy on top of the generic plumbing.
 pub trait LinkPolicy {
@@ -342,6 +339,8 @@ pub(crate) struct Inner {
     /// Cancelled once the connection's end gave `tasks` their grace: what
     /// still runs is aborted.
     overdue: CancellationToken,
+    /// The conversations whose release this connection is delivering, so a
+    /// request made meanwhile is not sent twice.
     /// The package events waiting to be handed to the policy, in order.
     package_events: mpsc::UnboundedSender<PackageEvent>,
     /// Cancelled when the connection ends.
@@ -1046,31 +1045,69 @@ impl Link {
         answered.receive().await.map(|_| ())
     }
 
-    /// Asks the runner to release what its services hold for
-    /// `conversation`, and with `over`, since the conversation is archived or
-    /// deleted, what it keeps itself: its recordings. It admits no work and
-    /// waits at most six minutes.
-    pub async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), HostError> {
-        let release = self.call(Expected::Release, |id| Inbound::ConversationRelease {
-            id,
-            conversation_id: conversation.into(),
-            over,
+    /// Tells the runner, in the background, to release what its services
+    /// hold for `conversation`, and with `over` what it keeps itself: its
+    /// recordings. Nothing waits for it and nothing keeps it: a message the
+    /// runner never answers changes nothing, since its next `hello` names what
+    /// it is to hold (`crates/runner-protocol/src/wire/messages.rs`).
+    pub fn tell_conversation_release(&self, conversation: &str, over: bool) {
+        let link = self.clone();
+        let conversation = conversation.to_owned();
+        self.spawn("conversation release", async move {
+            let asked = std::time::Instant::now();
+            let result = link.release_conversation(&conversation, over).await;
+            link.told("conversation", &conversation, 0, asked, result);
         });
-        match tokio::time::timeout(RELEASE_TIMEOUT, release).await {
-            Ok(result) => result.map(|_| ()),
-            Err(_) => Err(HostError::interrupted("Conversation release timed out")),
+    }
+
+    /// Tells the runner, in the background, to stop the services of
+    /// `packages`, as [`Self::tell_conversation_release`] does.
+    pub fn tell_package_release(&self, packages: Vec<String>) {
+        let link = self.clone();
+        self.spawn("package release", async move {
+            let asked = std::time::Instant::now();
+            let count = packages.len();
+            let result = link.release_packages(packages).await;
+            link.told("packages", "", count, asked, result);
+        });
+    }
+
+    fn told(&self, what: &str, conversation: &str, packages: usize, asked: std::time::Instant, result: Result<(), HostError>) {
+        let ms = u64::try_from(asked.elapsed().as_millis()).unwrap_or(u64::MAX);
+        match result {
+            Ok(()) => tracing::info!(event = "release.told", host_id = %self.0.device, what, conversation, packages, ms, "a Host answered a release"),
+            Err(error) => tracing::warn!(
+                event = "release.lost",
+                host_id = %self.0.device,
+                what,
+                conversation,
+                packages,
+                ms,
+                %error,
+                "a Host did not answer a release; its next hello names what it holds"
+            ),
         }
     }
 
+    /// Asks the runner to release what its services hold for
+    /// `conversation`, and with `over`, since the conversation is archived or
+    /// deleted, what it keeps itself: its recordings.
+    async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), HostError> {
+        self.call(Expected::Release, |id| Inbound::ConversationRelease {
+            id,
+            conversation_id: conversation.into(),
+            over,
+        })
+        .await
+        .map(|_| ())
+    }
+
     /// Asks the runner to stop the services of `packages`, which ends what
-    /// they hold for every conversation. It waits at most as long as a
-    /// conversation release.
-    pub async fn release_packages(&self, packages: Vec<String>) -> Result<(), HostError> {
-        let release = self.call(Expected::PackageRelease, |id| Inbound::PackageRelease { id, packages });
-        match tokio::time::timeout(RELEASE_TIMEOUT, release).await {
-            Ok(result) => result.map(|_| ()),
-            Err(_) => Err(HostError::interrupted("Package release timed out")),
-        }
+    /// they hold for every conversation.
+    async fn release_packages(&self, packages: Vec<String>) -> Result<(), HostError> {
+        self.call(Expected::PackageRelease, |id| Inbound::PackageRelease { id, packages })
+            .await
+            .map(|_| ())
     }
 
     /// Introduces a page, or another runner, to the runner with its offer for peer `peer`,

@@ -12,6 +12,8 @@ use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationChange;
 use demi_backend_database::conversations::ConversationDb;
+use demi_backend_database::workspaces::DirectoryNamed;
+use demi_backend_host_access::root_of;
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::HostShard;
@@ -119,6 +121,25 @@ impl HostShard for Shard {
 
     fn summary_changed(&self, conversation: &ConversationId) {
         self.mark(Part::Conversation(conversation.clone()));
+    }
+
+    fn directory_named(&self, conversation: &ConversationId, named: DirectoryNamed) {
+        if named.projects {
+            self.mark(Part::Workspaces);
+        }
+        let shard = Shard::this(self);
+        let conversations = named.conversations;
+        let first = conversation.clone();
+        self.tasks().spawn_local(async move {
+            for conversation in std::iter::once(&first).chain(conversations.iter().filter(|other| **other != first)) {
+                shard.mark(Part::Conversation(conversation.clone()));
+                // What it kept of its project's files and instructions where
+                // its directory was spelled otherwise is let go, and its
+                // next request names the directory as it is now.
+                shard.project_files().release(conversation);
+                shard.agent().placement_changed(&root_of(conversation)).await;
+            }
+        });
     }
 
     fn move_conversation<'a>(

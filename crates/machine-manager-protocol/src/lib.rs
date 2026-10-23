@@ -28,6 +28,10 @@
 //! - A line of the manager's log (`MachineResponse::Log`) goes to every open
 //!   connection as a death event does, and the backend stores it in its log. A
 //!   line made while no connection is open stays in the manager's journal.
+//! - A device's status (`ManagerEvent::CloudStatus`) goes to every open
+//!   connection when the device's operation ends, and for every device with
+//!   stored images when a connection opens, so the backend holds the latest
+//!   and never asks for it.
 //!
 //! It holds no manager policy and no IO.
 
@@ -47,7 +51,7 @@ pub use state::{
 };
 pub use wire::{
     Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,
-    ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Message,
+    ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
     SandboxMachine, WakeParams, decode_request, decode_response, encode_line,
 };

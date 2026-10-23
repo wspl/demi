@@ -7,7 +7,7 @@
 //! nothing waits for room.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     io,
     path::PathBuf,
     sync::Arc,
@@ -374,6 +374,8 @@ impl Owner<'_> {
                 device_name,
                 conversations,
                 archived,
+                held,
+                stopped,
                 ..
             } => {
                 // The transport read the answer's session already; the calls
@@ -389,6 +391,7 @@ impl Owner<'_> {
                     // The next connection tries again.
                     tracing::warn!(event = "scratch_directories.list_failed", %error, "the scratch directories could not be listed");
                 }
+                self.release_unheld(&conversations, &held, stopped).await;
                 let state = registered.state.clone();
                 let config = RunnerConfig {
                     backend_url: registered.backend.url().clone(),
@@ -519,6 +522,49 @@ impl Owner<'_> {
         });
     }
 
+    /// Lets go of what the services hold that the backend's records say the
+    /// device is to hold none of: a conversation it lists that is not among
+    /// `held` and that the runner holds something for, and the packages in
+    /// `stopped`. A conversation the runner holds something for has a scratch
+    /// directory, since its first job made one, or told the backend something;
+    /// one the backend no longer lists is released too. This is what a release
+    /// the runner never heard, as it was away, comes to.
+    async fn release_unheld(&self, conversations: &[String], held: &[String], stopped: Vec<String>) {
+        let registered = self.registered;
+        let held: HashSet<&str> = held.iter().map(String::as_str).collect();
+        let told = self.kept.handle.told_conversations();
+        let directories = match registered.scratch.directories().await {
+            Ok(directories) => directories,
+            Err(error) => {
+                tracing::warn!(event = "release.reconcile_failed", %error, "the scratch directories could not be listed");
+                HashSet::new()
+            }
+        };
+        let listed: HashSet<&str> = conversations.iter().map(String::as_str).collect();
+        let mut release: Vec<String> = conversations
+            .iter()
+            .filter(|conversation| {
+                !held.contains(conversation.as_str())
+                    && (directories.contains(&demi_command_protocol::scratch_name(conversation)) || told.contains(*conversation))
+            })
+            .cloned()
+            .collect();
+        // What is told of a conversation the backend no longer lists.
+        release.extend(told.iter().filter(|conversation| !listed.contains(conversation.as_str())).cloned());
+        for conversation in &release {
+            self.kept.handle.release_told(conversation);
+            if let Err(error) = registered.services.release_conversation(conversation).await {
+                tracing::warn!(event = "release.reconcile_failed", %conversation, %error, "a service could not release a conversation the backend does not name as held");
+            }
+        }
+        if !stopped.is_empty() {
+            registered.services.stop_packages(stopped).await;
+        }
+        if !release.is_empty() {
+            tracing::info!(event = "release.reconciled", conversations = release.len(), "the services let go of conversations the backend does not name as held");
+        }
+    }
+
     async fn message(&mut self, message: Inbound) -> io::Result<()> {
         match message {
             Inbound::ConversationRelease {
@@ -526,6 +572,7 @@ impl Owner<'_> {
                 conversation_id,
                 over,
             } => {
+                self.kept.handle.release_told(&conversation_id);
                 let services = self.registered.services.clone();
                 let scratch = self.registered.scratch.clone();
                 let control = self.live.control.clone();

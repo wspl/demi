@@ -433,6 +433,37 @@ impl ControlService {
         .await
     }
 
+    /// The owner's conversations a Host is to hold services for: those not
+    /// archived whose target resolves to `device`, or that `device` is
+    /// attached to. A target that cannot be resolved holds nothing.
+    pub async fn conversations_on(
+        &self,
+        owner: UserId,
+        device: DeviceId,
+    ) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, _| {
+            let mut attached = connection.prepare("SELECT conversation_id FROM conversation_hosts WHERE device_id = ?1")?;
+            let attached: std::collections::HashSet<String> = attached
+                .query_map([device.as_str()], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+            let mut statement = connection.prepare(&format!(
+                "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE user_id = ?1 AND archived = 0"
+            ))?;
+            let mut rows = statement.query(params![owner.as_str()])?;
+            let mut held = Vec::new();
+            while let Some(row) = rows.next()? {
+                let record = conversation_row(row)?;
+                let primary = super::selection::execution_target(connection, &owner, &record.id, &record.target)
+                    .is_ok_and(|target| target.device() == Some(&device));
+                if primary || attached.contains(record.id.as_str()) {
+                    held.push(record.id);
+                }
+            }
+            Ok(held)
+        })
+        .await
+    }
+
     /// The ids of the owner's conversations in the order the product state
     /// lists them: the active ones in sidebar order, then the archived ones.
     pub async fn conversation_order(
@@ -1351,7 +1382,7 @@ pub fn raise_hosts_revision(
 
 /// Advances the conversation's execution-context revision, which every node
 /// observes before its next inference.
-fn advance_context(
+pub(crate) fn advance_context(
     connection: &Connection,
     conversation: &ConversationId,
 ) -> Result<(), StorageError> {

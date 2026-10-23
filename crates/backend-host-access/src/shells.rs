@@ -62,6 +62,43 @@ impl dyn HostShard + '_ {
         Ok(Rc::new(host))
     }
 
+    /// A node's Host for taking up the commands its agents ran there, which
+    /// admits nothing: the conversation's primary Host as its record says, with
+    /// no lease of its file gate, no wait for its device to return and no
+    /// wake of its Cloud. The commands taken up wait for the runner's hello
+    /// to say whether they went on, ended or were lost
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    pub async fn adopting_host(&self, id: &ConversationId) -> Result<Rc<RemoteHost>, HostError> {
+        let record = self.owned_conversation(id).await?;
+        let target = self.resolve_target(&record).await.map_err(|error| HostError::failed(None, error.to_string()))?;
+        let Some(device) = target.device() else {
+            return Err(HostError::new(
+                HostErrorKind::Unavailable,
+                "the conversation's Cloud was never made",
+            ));
+        };
+        let device_record = self
+            .control()
+            .device(device.clone())
+            .await
+            .map_err(|error| HostError::failed(None, error.to_string()))?
+            .ok_or_else(|| HostError::new(HostErrorKind::Unavailable, "the conversation's device is gone"))?;
+        let admission = match device_record.kind {
+            demi_web_api_protocol::devices::DeviceKind::Managed => self
+                .cloud_shard()
+                .operation_admission(&device_record)
+                .await
+                .map_err(|error| HostError::failed(None, error.to_string()))?,
+            demi_web_api_protocol::devices::DeviceKind::User => demi_backend_remote_host::Admission::Free,
+        };
+        Ok(Rc::new(self.devices().adopting_host(
+            device,
+            id,
+            target.path().to_owned(),
+            admission,
+        )))
+    }
+
     /// Runs `job`, a shell job of the conversation's agent started on `host`,
     /// inside the conversation's host access.
     ///

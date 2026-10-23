@@ -1228,6 +1228,14 @@ impl ShellEnvironment for RemoteShellEnvironment {
                 running.stop.cancel();
             }
             for running in &running {
+                // A command whose Host's runner is away ends as lost: its
+                // stop could only be reported by that runner, which stops the
+                // job when it is back, and nothing here waits for a Host that
+                // may never return.
+                let job = running.job.borrow().clone();
+                if let Some(job) = job {
+                    job.abandon_if_away(LEFT_AWAY);
+                }
                 self.settled_or_let_go(running).await;
             }
         })
@@ -1274,6 +1282,10 @@ fn ending_of(end: CommandEnd) -> Ending {
         CommandEnd::Unrecorded => Ending::Exited(127),
     }
 }
+
+/// Why a command ends that the environment was ended while its Host's runner
+/// was away.
+const LEFT_AWAY: &str = "its Host was away when the work ended";
 
 /// Why the backend does not have what a Host held when the connection to it
 /// was lost.

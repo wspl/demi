@@ -113,9 +113,15 @@ A shared mechanism goes where its use decides:
     (pairing, revocation, lifecycle). Anything that reaches a conversation's
     Host goes through the conversation's host access (`with_host` in
     `backend-host-access`, see `crates/backend-host-access/src/lib.rs`), which
-    resolves the target, wakes a stopped Cloud, and holds the file gate. There
-    is no other way to a conversation's Host, and every other way to a Host is
-    named in that comment; if the host access does not fit, change it first.
+    resolves the target and takes the file gate. What the agent and the user
+    start there (a turn's tool, an upload, a download) wakes a stopped Cloud
+    and holds the gate for the operation; what the user only reads (the work
+    panel's files) lets the gate go before it calls the Host, so a slow Host
+    holds no transition, message or deletion; and restoring a conversation
+    admits no Host and wakes no Cloud. Nothing a page asks for and no step of a
+    conversation waits for a Host. There is no other way to a conversation's
+    Host, and every other way to a Host is named in that comment; if the host
+    access does not fit, change it first.
 -   Every reusable UI behavior lives in `web-ui` as a component or primitive,
     and a plugin's feature UI lives in its plugin package, written only against
     `@demicodes/plugin-sdk` (`packages/plugin-sdk/src/index.ts`); `web-ui` knows

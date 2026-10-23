@@ -20,9 +20,12 @@
 //!
 //! - Resolves the target.
 //! - Refuses an archived conversation.
-//! - Wakes a stopped Cloud and holds it for the operation.
+//! - Wakes a stopped Cloud and holds it for the operation, unless the user
+//!   only reads (`with_unheld_host`, `with_reading_host`) or the operation is a
+//!   restore's, which wakes none.
 //! - Takes the conversation's file gate, so the operation excludes an archive
-//!   or a target switch.
+//!   or a target switch; `with_unheld_host` lets it go before it calls the
+//!   Host, so a Host slow to answer a read holds nothing behind it.
 //!
 //! A plugin never writes to a Host: the Host directories its user needs are
 //! installed by a job's own admission, and its reads of a conversation's files
@@ -45,9 +48,11 @@
 //!
 //! - Stream admission serves user streams, one-shot user calls that must not
 //!   wake the Host and a plugin's reads of a conversation's files.
-//! - Lifecycle access is the conversation release, which a stopped Cloud hears
-//!   after its next wake, and the release of a package's services for every
-//!   conversation, which a plugin turned off asks of each connected Host.
+//! - Lifecycle access is the conversation release, told to each connected
+//!   runner at once, and the release of a package's services for every
+//!   conversation, which a plugin turned off asks of each connected Host. It
+//!   stores nothing: a Host that is away, or loses the message, holds what the
+//!   records say after its next `hello`.
 //! - Device access is the owner's work on a device whose runner is connected,
 //!   once a returning device's runner is back (`crates/backend-runners/src/devices.rs`):
 //!   a direct channel, the device log, browsing directories to choose a target,
@@ -96,6 +101,7 @@ use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
+use demi_backend_database::workspaces::DirectoryNamed;
 use demi_backend_remote_host::Pipes;
 use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::devices::Devices;
@@ -177,6 +183,12 @@ pub trait HostShard {
         to: ConversationTarget,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Option<Switched>, ChangeRefusal>>;
+    /// Tells the user's pages and the agents that a directory a Host named
+    /// at its first use replaced the one typed, for `conversation` and each
+    /// conversation `named` lists (`ControlService::name_directory`).
+    /// Never waits: the operation that named it holds the conversation's
+    /// file gate.
+    fn directory_named(&self, conversation: &ConversationId, named: DirectoryNamed);
     /// Makes the detaches an agent asked for once the conversation's tree is
     /// next idle (`crates/backend-user-shard/src/conversation/pending.rs`).
     fn settle_when_idle(&self, conversation: &ConversationId);

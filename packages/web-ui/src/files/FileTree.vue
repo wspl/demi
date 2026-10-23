@@ -336,7 +336,12 @@ const selectedPath = computed(() => (props.selected ? normalizePath(props.select
 const rootListing = computed(() => listings.get(normalizePath(props.root)))
 // The tree is in once the root is listed and the followed row has come.
 usePaneReady(() => listed(normalizePath(props.root)) && !awaitingRow.value)
-const rootFailure = computed(() => failureShown(rootListing.value?.showing?.entry))
+const rootFailure = computed(() => {
+  const entry = rootListing.value?.showing?.entry
+  const shown = failureShown(entry)
+  // The workspace's own directory missing is the Host's refusal, in its words.
+  return shown && entry?.answer === 'gone' && entry.goneReason ? { ...shown, message: entry.goneReason } : shown
+})
 const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
 
 function failureOf(row: TreeRow): FileBrowserFailure | null {

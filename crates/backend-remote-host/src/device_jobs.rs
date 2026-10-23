@@ -404,6 +404,16 @@ impl DeviceJobs {
         }
     }
 
+    /// Ends the job `id` as lost for `reason`, and forgets it: its runner is
+    /// away, and the backend does not wait for it. The runner stops the job
+    /// when it is back and lists it, since nothing the backend knows names it.
+    pub(crate) fn abandon(&self, id: &str, reason: &str) {
+        let job = self.0.borrow_mut().jobs.remove(id);
+        if let Some(job) = job {
+            job.lose(id, reason);
+        }
+    }
+
     /// Forgets the job `id`, whose start failed.
     pub(crate) fn forget(&self, id: &str) {
         self.0.borrow_mut().jobs.remove(id);

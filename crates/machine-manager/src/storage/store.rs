@@ -135,6 +135,27 @@ impl ImageStore {
         read_state(off, &self.root.join(device).join("current.json"))
     }
 
+    /// The devices that have a directory in the store, in no order.
+    pub fn devices(&self, _: &OffLoop) -> Result<Vec<DeviceId>, StoreError> {
+        let entries = match fs_err::read_dir(&self.root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
+        };
+        let mut devices = Vec::new();
+        for entry in entries {
+            let entry = entry?;
+            if entry.file_name() == "bases" || !entry.file_type()?.is_dir() {
+                continue;
+            }
+            // A name that is no device's was not made by the manager.
+            if let Some(device) = entry.file_name().to_str().and_then(|name| DeviceId::parse(name).ok()) {
+                devices.push(device);
+            }
+        }
+        Ok(devices)
+    }
+
     /// The images of one of a device's generations.
     pub fn images(&self, device: &DeviceId, generation: &GenerationId) -> ImagePair<PathBuf> {
         ImagePair::in_directory(&self.root.join(device).join("generations").join(generation))

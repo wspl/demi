@@ -1,6 +1,5 @@
 //! The socket's messages: one JSON document per line, a request from the
-//! backend, the manager's reply to it, and the manager's unsolicited death
-//! event. Fields are declared in the order a message is written.
+//! backend, the manager's reply to it, and the manager's unsolicited events. Fields are declared in the order a message is written.
 
 use std::num::NonZeroU64;
 
@@ -18,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it.
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -220,12 +219,38 @@ pub enum MachineResponse {
         #[garde(length(min = 1))]
         device_id: String,
     },
+    /// What changed in the manager that the backend shows, sent on every open
+    /// connection as a death is, and for every device when a connection opens.
+    Event {
+        #[garde(skip)]
+        event: ManagerEvent,
+    },
     /// A line of the manager's log, sent on every open connection as a death
     /// is: the backend stores it in its log. A line made while no connection
     /// is open is not sent.
     Log {
         #[garde(skip)]
         line: LogLine,
+    },
+}
+
+/// What the manager tells the backend unasked, so the backend never asks it
+/// for what a page shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum ManagerEvent {
+    /// A device's stored image, or the base the manager is configured with,
+    /// is as this says: the capacities of its two filesystems, none before
+    /// its first generation, and whether its system is on another base than
+    /// the configured one.
+    CloudStatus {
+        device_id: String,
+        volumes: Option<Capacity>,
+        newer_image: bool,
     },
 }
 

@@ -463,6 +463,14 @@ impl dyn CloudShard {
         Ok(machine)
     }
 
+    /// What each operation of a Host on `device` takes while the Cloud runs,
+    /// without waking it or waiting for it: an operation while the Cloud is
+    /// not running is refused.
+    pub async fn operation_admission(&self, device: &DeviceRecord) -> Result<Admission, StorageError> {
+        let machine = self.cloud_machine(device).await?;
+        Ok(Admission::Leased(Rc::new(move || machine.admit())))
+    }
+
     /// Takes the Cloud's admission
     /// (`crates/backend-host-access/src/access.rs`).
     ///

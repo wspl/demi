@@ -402,6 +402,8 @@
     "cannotShow": "This tab cannot be shown.",
     "nothingOpen": "Nothing open",
     "noFiles": "No files or changes",
-    "reading": "Reading {name}"
+    "reading": "Reading {name}",
+    "hostOffline": "{name} is offline.",
+    "hostOfflineDetail": "Files, changes and the browser appear again when it reconnects."
   }
 }

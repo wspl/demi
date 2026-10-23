@@ -65,6 +65,7 @@ use demi_command_package_browser_chrome::tabs::{
     environment::{BrowserEnvironment, LaunchOptions, with_browser},
     registry::Closed,
 };
+use demi_command_package_browser_chrome::tabs::registry::Snapshot;
 use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
     ColorScheme, CommandError, CommandLocale, Completion, ConversationRequest, ConversationStatus,
@@ -201,12 +202,7 @@ impl ConversationBrowser {
         let owned = CancellationToken::new();
         // The owner's events name the conversation, which it does not hold.
         let span = tracing::info_span!("conversation_browser", conversation = %conversation);
-        tasks.spawn_traced(announce(
-            conversation,
-            numbers.watch_changes(),
-            messages,
-            owned.clone(),
-        ));
+        let announced = owned.clone();
         tasks.spawn_traced(
             async move {
                 owner.run(receiver).await;
@@ -214,7 +210,7 @@ impl ConversationBrowser {
             }
             .instrument(span),
         );
-        Arc::new(Self {
+        let browser = Arc::new(Self {
             requests,
             lifecycle,
             cancellation,
@@ -224,7 +220,20 @@ impl ConversationBrowser {
                 library,
                 running: tokio::sync::Mutex::default(),
             },
-        })
+        });
+        tasks.spawn_traced(announce(conversation, browser.clone(), messages, announced));
+        browser
+    }
+
+    /// The conversation's tabs as the user's `browser.tabs` lists them, all
+    /// of them, at the list's number, and the latest tabs closed on purpose;
+    /// no tab while no browser runs. It never starts a browser.
+    async fn report(&self, cancel: &CancellationToken) -> Result<(u64, Vec<protocol::BrowserTab>, Vec<protocol::TabId>)> {
+        let Some(environment) = self.environment(None, cancel).await? else {
+            return Ok((self.numbers.list_number(), Vec::new(), self.numbers.closed()));
+        };
+        let (list, listing) = environment.numbered_unbounded(cancel).await?;
+        Ok((list, tab_rows(&listing, 0, usize::MAX), self.numbers.closed()))
     }
 
     /// Admits an invocation, unless the conversation's release has begun.
@@ -766,46 +775,85 @@ enum Find {
     },
 }
 
-/// Tells `plugin-browser` that what `browser.tabs` lists of `conversation`
-/// changed, once for each burst of changes: changes made while a message is
-/// on its way are told by the next one.
+/// Tells `plugin-browser` the whole of what `browser.tabs` lists of
+/// `conversation` each time it changes, once for each burst of changes: a
+/// change made while a message is on its way is told by the next one. It
+/// tells the list once more whenever the service is given a sender again, and
+/// when it starts, so a plugin that missed a report has the latest.
 /// Ends once the conversation browser's owner ended at `owned`, after it
 /// told the change its end made.
 async fn announce(
     conversation: String,
-    mut changes: watch::Receiver<u64>,
-    messages: watch::Receiver<Option<Messages>>,
+    browser: Arc<ConversationBrowser>,
+    mut messages: watch::Receiver<Option<Messages>>,
     owned: CancellationToken,
 ) {
-    let message = serde_json::to_value(BrowserMessage {
-        tabs: TabsChange::Changed,
-    })
-    .expect("the browser's message is JSON");
+    let mut changes = browser.numbers.watch_changes();
     loop {
-        let ended = tokio::select! {
-            changed = changes.changed() => changed.is_err(),
-            () = owned.cancelled() => true,
-        };
-        // A change the owner's end made is told before this ends.
-        let unseen = changes.has_changed().unwrap_or(false);
-        if ended && !unseen {
-            return;
-        }
+        // The owner's end is told by one last report, of no tabs.
+        let last = owned.is_cancelled();
         changes.borrow_and_update();
         // The service is given its sender before its first call; one
         // driven without it, as a test's is, tells nobody.
-        let sender = messages.borrow().clone();
-        if let Some(sender) = sender
-            && let Err(error) = sender.send(&conversation, message.clone()).await
-        {
-            // The plugin then shows the tabs it read last until the next
-            // change reaches it.
-            tracing::warn!(event = "browser_tabs.announce_failed", %conversation, %error, "the plugin was not told of the tabs' change");
+        let sender = messages.borrow_and_update().clone();
+        if let Some(sender) = sender {
+            let report = match browser.report(&owned).await {
+                Ok(report) => Some(report),
+                // The owner ended while it listed: no browser, no tabs.
+                Err(BrowserError::Cancelled | BrowserError::Closed) => {
+                    Some((browser.numbers.list_number(), Vec::new(), browser.numbers.closed()))
+                }
+                Err(error) => {
+                    // The next change tells the list again.
+                    tracing::warn!(event = "browser_tabs.list_failed", %conversation, %error, "the conversation's tabs were not listed for the plugin");
+                    None
+                }
+            };
+            if let Some((revision, tabs, closed)) = report {
+                let message = serde_json::to_value(BrowserMessage {
+                    tabs: TabsChange::Tabs { revision, tabs, closed },
+                })
+                .expect("the browser's message is JSON");
+                if let Err(error) = sender.send(&conversation, message).await {
+                    // The next change, or the next sender, tells it again.
+                    tracing::warn!(event = "browser_tabs.announce_failed", %conversation, %error, "the plugin was not told of the tabs");
+                }
+            }
         }
-        if ended {
+        if last {
             return;
         }
+        tokio::select! {
+            changed = changes.changed() => if changed.is_err() { return },
+            sender = messages.changed() => if sender.is_err() { return },
+            () = owned.cancelled() => {},
+        }
     }
+}
+
+/// Each tab's record as `browser.tabs` lists it, not the tab itself: from
+/// `offset`, at most `limit` of them.
+fn tab_rows(listing: &Snapshot, offset: usize, limit: usize) -> Vec<protocol::BrowserTab> {
+    listing
+        .tabs
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|listed| {
+            let (title, url) = listed.shown();
+            protocol::BrowserTab {
+                id: listed.tab.id().clone(),
+                title,
+                url,
+                created_by: listed.tab.created_by().clone(),
+                loading: listed.tab.loading(),
+                can_go_back: listed.tab.history().back,
+                can_go_forward: listed.tab.history().forward,
+                shows: listed.tab.shows(),
+                favicon: listed.tab.favicon(),
+            }
+        })
+        .collect()
 }
 
 /// The service's browsers, one per conversation.
@@ -1270,27 +1318,7 @@ impl Conversations {
             let (list, listing) = environment.numbered(cancellation, command.timeout()).await?;
             let offset = input.offset.unwrap_or(0);
             let limit = input.limit.unwrap_or(DEFAULT_NODES);
-            // Each tab's record as the list shows it, not the tab itself.
-            let rows = listing
-                .tabs
-                .iter()
-                .skip(offset)
-                .take(limit)
-                .map(|listed| {
-                    let (title, url) = listed.shown();
-                    protocol::BrowserTab {
-                        id: listed.tab.id().clone(),
-                        title,
-                        url,
-                        created_by: listed.tab.created_by().clone(),
-                        loading: listed.tab.loading(),
-                        can_go_back: listed.tab.history().back,
-                        can_go_forward: listed.tab.history().forward,
-                        shows: listed.tab.shows(),
-                        favicon: listed.tab.favicon(),
-                    }
-                })
-                .collect();
+            let rows = tab_rows(&listing, offset, limit);
             return Ok(CommandOutput::Json(output::value(TabsResult {
                 list: user.then_some(list),
                 tabs: rows,

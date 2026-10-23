@@ -355,7 +355,7 @@ impl LinkPolicy for ShardPolicy {
                     Ok(conversation) => {
                         shard
                             .plugins()
-                            .package_message(&package, &conversation, message)
+                            .package_message(&package, &conversation, &device, message)
                             .await;
                     }
                     Err(error) => {

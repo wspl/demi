@@ -402,6 +402,8 @@
     "cannotShow": "このタブは表示できません。",
     "nothingOpen": "開いているものはありません",
     "noFiles": "ファイルも変更もありません",
-    "reading": "{name}を読み取っています"
+    "reading": "{name}を読み取っています",
+    "hostOffline": "{name} はオフラインです。",
+    "hostOfflineDetail": "再接続すると、ファイル、変更、ブラウザが再び表示されます。"
   }
 }

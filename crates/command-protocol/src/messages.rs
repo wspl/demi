@@ -10,6 +10,9 @@
 //! - The runner answers a message once its connection took it.
 //! - A service has a bounded number unanswered, so one that writes faster than
 //!   the backend reads waits in its send and nothing piles up between.
+//! - A message says the state whole, so the runner tells the backend the
+//!   latest message of each conversation again whenever a connection starts,
+//!   and the backend keeps the latest it was told.
 //! - A service that would say the same thing twice says it once: the browser
 //!   keeps the conversations whose tabs changed since its last message, so a
 //!   burst of title and favicon changes costs one.

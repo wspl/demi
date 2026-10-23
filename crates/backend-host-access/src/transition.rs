@@ -9,20 +9,21 @@
 //!   end.
 //! - The file gate is reserved.
 //!
-//! Each sends the conversation release to the devices it leaves, then commits,
-//! whether the devices took the release or not
-//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The shard's
-//! `transition` is the one entry every change of a conversation goes through.
+//! Each commits, then tells the connected Hosts it leaves to let go of the
+//! conversation and answers: nothing waits for them and nothing is stored, as
+//! the Hosts hold what the records say after their next `hello`
+//! (`crates/backend-host-access/src/access.rs`). The shard's `transition` is
+//! the one entry every change of a conversation goes through.
 //!
 //! A move stops and waits for nothing, in order:
 //!
 //! ```text
-//! 1. check the destination: one question to its Host for a directory
+//! 1. read the destination as typed, `~` expanded: no question to its Host
 //! 2. end transfers, streams and the one-shot calls like them; await them
 //! 3. commit the target and attachment changes against the expected selection
 //! 4. advance the execution-context revision; each agent's next request names
 //!    the new Host and directory
-//! 5. once the conversation's commands on the device it left ended, send the
+//! 5. once the conversation's commands on the device it left ended, tell it to
 //!    release there, unless the conversation is back on it
 //! ```
 //!
@@ -44,10 +45,6 @@
 //! conversation's directory there, and the incoming device leaves the
 //! attachment set. A move of directory on the same device adds no duplicate.
 //! Files do not move, and a path keeps referring to its original device.
-//!
-//! If the database commit of an archive fails after the release, the old
-//! selection stays and the conversation browser starts fresh at its next open:
-//! the state of its tabs cannot be rolled back.
 
 use demi_backend_database::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
@@ -355,48 +352,47 @@ impl dyn HostShard + '_ {
             }
         };
         if primary.as_ref() != Some(device) {
-            self.release_on(id.as_str(), device, false).await;
+            self.tell_release(id, std::slice::from_ref(device), false);
         }
     }
 
-    /// The held archive: the conversation release on every Host the
-    /// conversation reaches, then the commit.
+    /// The held archive: one commit, then the Hosts the conversation reaches
+    /// are told to let go of it.
     pub async fn archive(&self, record: &ConversationRecord) -> Result<(), ChangeRefusal> {
-        self.release_everywhere(record, true).await?;
-        self.commit(&record.id, RecordChange::Archived(true)).await
+        let devices = self.release_devices(record).await?;
+        self.commit(&record.id, RecordChange::Archived(true)).await?;
+        self.tell_release(&record.id, &devices, true);
+        Ok(())
     }
 
-    /// The held detach of `device`: the release on it while it is attached,
-    /// then the commit.
+    /// The held detach of `device`: the commit, then the Host is told while it
+    /// was attached.
     pub async fn detach(
         &self,
         record: &ConversationRecord,
         device: DeviceId,
     ) -> Result<(), ChangeRefusal> {
         let attached = self.control().attached_hosts(record.id.clone()).await?;
-        if attached.iter().any(|host| host.device == device) {
-            self.release_on(record.id.as_str(), &device, false).await;
+        let was_attached = attached.iter().any(|host| host.device == device);
+        self.commit(&record.id, RecordChange::Detach(device.clone())).await?;
+        if was_attached {
+            self.tell_release(&record.id, std::slice::from_ref(&device), false);
         }
-        self.commit(&record.id, RecordChange::Detach(device)).await
+        Ok(())
     }
 
-    /// The conversation release on every Host the conversation reaches, primary
-    /// and attached, for an archive (`over`) and for its idle watch. Only
-    /// reading the Hosts fails it: a Host that did not take the release is not
-    /// sent it again (`release_on`).
-    pub async fn release_everywhere(
-        &self,
-        record: &ConversationRecord,
-        over: bool,
-    ) -> Result<(), StorageError> {
+    /// Tells every Host the conversation reaches, primary and attached, to
+    /// let go of it: for its idle watch, which this ends. Only reading the
+    /// Hosts fails it.
+    pub async fn release_everywhere(&self, record: &ConversationRecord) -> Result<(), StorageError> {
         let devices = self.release_devices(record).await?;
-        self.release_on_each(&record.id, &devices, over).await;
+        self.tell_release(&record.id, &devices, false);
         Ok(())
     }
 
     /// The devices of every Host the conversation reaches, primary and
     /// attached: where its release goes. A deletion reads them before its
-    /// records go, and releases them after
+    /// records go, and tells them after
     /// (`crates/backend-database/src/deletions.rs`).
     pub async fn release_devices(
         &self,
@@ -405,13 +401,5 @@ impl dyn HostShard + '_ {
         let target = self.resolve_target(record).await?;
         let hosts = self.reachable_hosts(record, &target).await?;
         Ok(hosts.into_iter().map(|host| host.device).collect())
-    }
-
-    /// The conversation release on each of `devices`, as an archive sends it
-    /// (`release_on`).
-    pub async fn release_on_each(&self, conversation: &ConversationId, devices: &[DeviceId], over: bool) {
-        for device in devices {
-            self.release_on(conversation.as_str(), device, over).await;
-        }
     }
 }

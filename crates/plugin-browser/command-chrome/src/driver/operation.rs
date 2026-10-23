@@ -167,7 +167,9 @@ pub enum BrowserError {
 pub struct Operation<'a> {
     ended: &'a CancellationToken,
     cancelled: &'a CancellationToken,
-    deadline: Instant,
+    /// None for an operation with no time limit, which only its end or its
+    /// cancellation stops.
+    deadline: Option<Instant>,
     /// How far the action's input got. A std mutex: set and read in
     /// passing, never across an await.
     progress: std::sync::Mutex<ActionProgress>,
@@ -187,6 +189,20 @@ impl<'a> Operation<'a> {
         ended: &'a CancellationToken,
         cancelled: &'a CancellationToken,
         deadline: Instant,
+    ) -> Self {
+        Self::bounded(ended, cancelled, Some(deadline))
+    }
+
+    /// An operation that waits as long as the browser takes, until it ends or
+    /// is cancelled.
+    pub fn unbounded(ended: &'a CancellationToken, cancelled: &'a CancellationToken) -> Self {
+        Self::bounded(ended, cancelled, None)
+    }
+
+    fn bounded(
+        ended: &'a CancellationToken,
+        cancelled: &'a CancellationToken,
+        deadline: Option<Instant>,
     ) -> Self {
         Self {
             ended,
@@ -250,15 +266,20 @@ impl<'a> Operation<'a> {
                 .and_then(|failure| failure.borrow().clone())
                 .map(BrowserError::Connection)
                 .unwrap_or(BrowserError::Closed)),
-            _ = self.cancelled.cancelled() => Err(if Instant::now() >= self.deadline {
+            _ = self.cancelled.cancelled() => Err(if self.deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                 // The conversation controller cancels at this same shared deadline.
                 BrowserError::Timeout
             } else {
                 BrowserError::Cancelled
             }),
-            result = tokio::time::timeout_at(self.deadline, future) => {
-                result.map_err(|_| BrowserError::Timeout)?
-            }
+            result = async {
+                match self.deadline {
+                    Some(deadline) => tokio::time::timeout_at(deadline, future)
+                        .await
+                        .map_err(|_| BrowserError::Timeout)?,
+                    None => future.await,
+                }
+            } => result,
         }
     }
 }

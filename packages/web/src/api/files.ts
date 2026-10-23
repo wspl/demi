@@ -85,9 +85,11 @@ function failureKind(error: ApiError): FileBrowserFailure['kind'] {
 
 /**
  * What the file views say of a failure, after their own line such as
- * “Could not read this file.” (the gallery's Writing page): the page's
- * sentence for what happened, never the backend's message, which names its
- * internals, such as a Cloud runner's reconnect timeout.
+ * “Could not read this file.” (the gallery's Writing page): the Host's own
+ * reason when the Host refused or failed the operation, as the runner worded
+ * it; else the page's sentence for what happened, never the backend's
+ * message, which names its internals, such as a Cloud runner's reconnect
+ * timeout.
  */
 function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): SentenceText {
   switch (error.code) {
@@ -98,6 +100,15 @@ function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): Sen
     case 'cloud_unavailable':
     case 'conversation_archived':
       return errorMessage(error)
+    // The Host's refusal comes with its runner's own words.
+    case 'fs_error':
+    case 'fs_not_found':
+    case 'host_operation_failed':
+    case 'changes_failed':
+      if (error.message !== '') {
+        return error.message
+      }
+      break
     case 'conversation_busy':
       return t('files.conversationBusy')
   }

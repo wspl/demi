@@ -3,7 +3,7 @@ import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import type { GalleryWork } from '../fixtures/work-panel'
 
 /** The product's work panel over one specimen's state, every event acting on it as the product's store would. */
-defineProps<{ work: GalleryWork; beforeFirstMessage?: boolean }>()
+defineProps<{ work: GalleryWork; beforeFirstMessage?: boolean; hostOffline?: string | null }>()
 const emit = defineEmits<{ close: [] }>()
 </script>
 
@@ -13,6 +13,7 @@ const emit = defineEmits<{ close: [] }>()
     :pinned="work.pinned.value"
     :kinds="work.kinds.value"
     :before-first-message="beforeFirstMessage"
+    :host-offline="hostOffline"
     @select="work.select"
     @move-tab="work.move"
     @update-tab="work.update"

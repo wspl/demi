@@ -5,6 +5,7 @@ import { usePageHost, useBoundKinds } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { useProduct } from '../state/product'
+import { executionFor } from '../targets/execution'
 import { useConversations } from './store'
 import { useWorkPanel } from './work'
 
@@ -30,6 +31,20 @@ const recorded = computed(() => work.recorded(props.conversationId))
 const listed = computed(() => conversations.items.some((item) => item.id === props.conversationId))
 
 /**
+ * The name of the conversation's primary Host while it is a paired device whose runner is
+ * not connected, which the panel says in place of its tabs' contents. A Cloud that is stopped
+ * or starting is not offline: its tabs say what starts.
+ */
+const offlineHost = computed(() => {
+  const item = conversations.items.find((entry) => entry.id === props.conversationId)
+  if (!item) {
+    return null
+  }
+  const execution = executionFor(item)
+  return execution.kind === 'device' && execution.state === 'offline' ? execution.name : null
+})
+
+/**
  * The pages' kinds for this conversation (`packages/web-ui/src/plugins/page.ts`), while the panel
  * is open beside it, each page's while its plugin is on: turning one plugin on or off binds or lets
  * go of that page's alone. A closed panel, or one beside a conversation its first send has not
@@ -51,6 +66,7 @@ const kinds = useBoundKinds(
     :pinned="state.pinned"
     :kinds="kinds"
     :before-first-message="!recorded"
+    :host-offline="offlineHost"
     @select="work.select(conversationId, $event)"
     @move-tab="(id, index) => work.move(conversationId, id, index)"
     @update-tab="(id, data) => work.update(conversationId, id, data)"

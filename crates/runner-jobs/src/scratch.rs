@@ -123,6 +123,26 @@ impl Scratch {
         Ok(())
     }
 
+    /// The names of the conversations' directories under the root: a
+    /// conversation that ever ran a job here has one
+    /// ([`demi_command_protocol::scratch_name`]). Empty when there is none.
+    pub async fn directories(&self) -> io::Result<HashSet<String>> {
+        let mut names = HashSet::new();
+        let mut entries = match tokio::fs::read_dir(&self.root).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(names),
+            Err(error) => return Err(error),
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.file_type().await?.is_dir()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.insert(name.to_owned());
+            }
+        }
+        Ok(names)
+    }
+
     /// Removes `conversation`'s recordings: it was archived or deleted. One
     /// that cannot be removed stays until the next time the runner connects.
     pub async fn forget_recordings(&self, conversation: &str) {

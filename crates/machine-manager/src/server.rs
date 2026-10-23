@@ -4,7 +4,10 @@
 //!
 //! - Requests on a connection run concurrently and are answered in completion
 //!   order.
-//! - A death event and a line of the manager's log go to every connection.
+//! - A death event, a device's status and a line of the manager's log go to
+//!   every connection, and a new connection is told every device's status
+//!   first: the loop reads each from the service one at a time, so a
+//!   connection never holds an older status than one it was told after.
 //!
 //! The socket's owner and group are the boundary: there is no authentication
 //! and no TCP listener. The group includes only trusted backend infrastructure,
@@ -20,7 +23,7 @@ use std::{
 };
 
 use demi_machine_manager_protocol::{
-    DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, decode_request,
+    DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, decode_request,
     WIRE_VERSION, encode_line,
 };
 use demi_shared_types::LogLine;
@@ -58,6 +61,12 @@ pub trait MachineService {
         &self,
         call: MachineCall,
     ) -> impl Future<Output = Result<serde_json::Value, Self::Error>>;
+
+    /// `device`'s status as of now; none when it could not be read.
+    fn status(&self, device: &DeviceId) -> impl Future<Output = Option<ManagerEvent>>;
+
+    /// The status of every device that has stored images.
+    fn snapshot(&self) -> impl Future<Output = Vec<ManagerEvent>>;
 }
 
 /// The bound socket; [`serve`] removes its file when it stops.
@@ -124,6 +133,7 @@ pub async fn serve<S: MachineService + 'static>(
     socket: Socket,
     service: Rc<S>,
     mut deaths: mpsc::Receiver<DeviceId>,
+    mut changes: mpsc::Receiver<DeviceId>,
     mut lines: mpsc::Receiver<LogLine>,
     shutdown: impl Future<Output = ()>,
 ) -> InFlight {
@@ -132,6 +142,7 @@ pub async fn serve<S: MachineService + 'static>(
     let mut outboxes: HashMap<u64, mpsc::WeakSender<Vec<u8>>> = HashMap::new();
     let mut next_connection = 0_u64;
     let mut deaths_open = true;
+    let mut changes_open = true;
     let mut lines_open = true;
     tokio::pin!(shutdown);
     loop {
@@ -149,6 +160,23 @@ pub async fn serve<S: MachineService + 'static>(
                         version: WIRE_VERSION,
                     });
                     outbox.try_send(hello).expect("a new connection's queue has room");
+                    // Its first statuses follow the hello from a task of their
+                    // own: reading every device's status takes the disk, and
+                    // the loop accepts, forwards deaths and logs meanwhile. The
+                    // task waits for room in the queue, so no device's status
+                    // is dropped however many there are; a status that changes
+                    // meanwhile is sent by the loop and may come before the
+                    // snapshot's older one, which the device's next status
+                    // replaces.
+                    let first = outbox.clone();
+                    let snapshot = service.clone();
+                    requests.spawn_local(async move {
+                        for event in snapshot.snapshot().await {
+                            if first.send(encode_line(&MachineResponse::Event { event })).await.is_err() {
+                                break;
+                            }
+                        }
+                    });
                     outboxes.insert(id, outbox.downgrade());
                     let connection = connection(stream, service.clone(), outbox, queued, requests.clone());
                     connections.spawn_local(async move {
@@ -185,6 +213,20 @@ pub async fn serve<S: MachineService + 'static>(
                     }
                 }
                 None => deaths_open = false,
+            },
+            changed = changes.recv(), if changes_open => match changed {
+                Some(device) => {
+                    if let Some(event) = service.status(&device).await {
+                        let line = encode_line(&MachineResponse::Event { event });
+                        for outbox in outboxes.values().filter_map(mpsc::WeakSender::upgrade) {
+                            // A connection whose queue is full is told the
+                            // device's next status, and the next connection
+                            // all of them.
+                            let _ = outbox.try_send(line.clone());
+                        }
+                    }
+                }
+                None => changes_open = false,
             },
             line = lines.recv(), if lines_open => match line {
                 Some(line) => {

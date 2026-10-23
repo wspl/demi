@@ -7,8 +7,9 @@
 //! 1. One transaction of the control database removes its records and records
 //!    the deletion as pending.
 //! 2. Its tree closes.
-//! 3. Its Hosts hear the conversation release, which closes its tabs in the
-//!    conversation browser.
+//! 3. Its connected Hosts are told to let go of it, which closes its tabs in
+//!    the conversation browser; the others are told by their next `hello`,
+//!    which names the conversations they hold.
 //! 4. Its database goes.
 //! 5. The pending record goes last.
 //!
@@ -68,6 +69,18 @@ impl Shard {
         };
         let root = root_of(&record.id);
         let slot = self.conversations().slot(&record.id);
+        let host = self.host_shard();
+        let devices = host.release_devices(&record).await?;
+        // Commands running on a Host whose runner is away are left to it: a
+        // Host that may never return holds no file gate, and the deletion
+        // waits for no stop that only that runner could report. The runner
+        // stops them when it is back, as it lists jobs the backend has no
+        // record of.
+        for device in &devices {
+            if !self.devices().connected(device) {
+                slot.leave_jobs_on(device);
+            }
+        }
         // The work stops first: the tree takes no action, the root's stops as
         // Stop stops it, its children are aborted and its commands end, so
         // the file gate their jobs hold comes free.
@@ -85,8 +98,6 @@ impl Shard {
         {
             stopped = Some(tree.interrupt("the conversation is being deleted").await);
         }
-        let host = self.host_shard();
-        let devices = host.release_devices(&record).await?;
         // Step 1: from this commit on, no request finds the conversation.
         let Some(id) = services
             .control
@@ -104,9 +115,9 @@ impl Shard {
         drop(stopped);
         self.titles().abort(&id);
         self.stop_idle(&id);
-        // Step 2: its Hosts let go of what they hold for it, its Chrome with
-        // its tabs among them.
-        host.release_on_each(&id, &devices, true).await;
+        // Step 3: its Hosts let go of what they hold for it, its Chrome with
+        // its tabs among them; nothing waits for them.
+        host.tell_release(&id, &devices, true);
         // The conversation is gone for every request already, so a failure
         // of what is left refuses nothing: the deletion stays pending.
         if let Err(error) = self.finish_deletion(&id).await {
@@ -122,10 +133,9 @@ impl Shard {
     ///
     /// Its rows in the search index go with the summary mark step 1 raised,
     /// since the indexer drops the rows of a conversation it no longer finds
-    /// (`search.rs`). A start runs them for each deletion it finds pending; the
-    /// Hosts need no release then, since a runner that lost its connection to
-    /// the backend ended what it held for every conversation
-    /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+    /// (`search.rs`). A start runs them for each deletion it finds pending; a Host
+    /// that was not told of the deletion lets go of the conversation at its
+    /// next `hello`, which no longer lists it.
     pub async fn finish_deletion(&self, id: &ConversationId) -> Result<(), StorageError> {
         let services = self.services();
         services.conversations.remove(id).await?;

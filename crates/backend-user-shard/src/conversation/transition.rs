@@ -9,10 +9,9 @@
 //! - An archive, a restore and a detach are transitions. Each holds the
 //!   conversation, with its idle tree reserved, its file transfers, user
 //!   streams and the one-shot calls admitted like them ended, and its file gate
-//!   reserved. Each sends the conversation release to the devices it leaves,
-//!   and commits, whether the devices took the release or not
-//!   (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
-//! - A move stops and waits for nothing: it checks its destination, ends the
+//!   reserved. Each commits, then tells the connected devices it leaves to
+//!   release the conversation, and waits for none (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+//! - A move stops and waits for nothing: it reads its destination as typed, ends the
 //!   transfers and streams, and commits, advancing the execution-context
 //!   revision, so each agent's next request names the new place. The commands
 //!   running then finish where they started; the device it left hears the
@@ -272,7 +271,8 @@ impl Shard {
         }
         let host = self.host_shard();
         let slot = self.conversations().slot(&record.id);
-        // A destination's directory is the one its Host names.
+        // A destination's directory is stored as typed; its Host names it at
+        // the first use.
         let step = Instant::now();
         let to = tokio::select! {
             to = host.move_destination(to) => to,
@@ -372,6 +372,7 @@ impl Shard {
             .workspace_conversations(self.user().clone(), id.clone())
             .await?;
         let mut records = Vec::new();
+        let mut released = Vec::new();
         let mut holds = Vec::new();
         for conversation in &conversations {
             let record = control
@@ -383,7 +384,7 @@ impl Shard {
             records.push(record);
         }
         for record in &records {
-            host.release_everywhere(record, true).await?;
+            released.push((record.id.clone(), host.release_devices(record).await?));
         }
         let deleted = control
             .delete_workspace(self.user().clone(), id.clone(), conversations.clone())
@@ -394,9 +395,11 @@ impl Shard {
             WorkspaceDeletion::Missing => return Err(ChangeRefusal::WorkspaceNotFound),
             WorkspaceDeletion::Changed => return Err(ChangeRefusal::TurnInFlight),
         }
-        for conversation in &conversations {
+        for (conversation, devices) in &released {
             self.archived(conversation);
             self.mark(Part::Conversation(conversation.clone()));
+            // The connected Hosts are told now, the others by their `hello`.
+            host.tell_release(conversation, devices, true);
         }
         self.mark(Part::ConversationOrder);
         self.mark(Part::Workspaces);

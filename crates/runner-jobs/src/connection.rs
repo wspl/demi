@@ -19,7 +19,7 @@
 //! its exit, or with the reason the link's session ended for
 //! (`crates/runner/src/connection/link_state.rs`).
 
-use std::{collections::HashMap, io, sync::Arc, time::Duration};
+use std::{collections::{HashMap, HashSet}, io, sync::Arc, time::Duration};
 
 use demi_command_protocol::{ArtifactLocation, ServiceSequence, host_target};
 use demi_runner_command_packages::{ServiceBackend, RuntimeError};
@@ -76,6 +76,9 @@ pub struct ConnectionHandle {
     requests: mpsc::UnboundedSender<Request>,
     reach: watch::Receiver<Reach>,
     lane: wire::Lane,
+    /// The latest message each service told about a conversation, which the
+    /// next connection tells the backend again ([`Self::told`]).
+    told: Arc<std::sync::Mutex<HashMap<(String, String), serde_json::Value>>>,
 }
 
 /// What work asks of the registration's owner.
@@ -116,6 +119,7 @@ impl ConnectionHandle {
                 requests,
                 reach,
                 lane,
+                told: Arc::default(),
             },
             received,
         )
@@ -285,6 +289,10 @@ impl ServiceBackend for ConnectionHandle {
         conversation: String,
         message: serde_json::Value,
     ) -> BoxFuture<'_, Result<(), String>> {
+        self.told
+            .lock()
+            .expect("the told messages are never held across a panic")
+            .insert((package.clone(), conversation.clone()), message.clone());
         let message = wire::Outbound::PackageMessage {
             package,
             conversation_id: conversation,
@@ -294,6 +302,10 @@ impl ServiceBackend for ConnectionHandle {
     }
 
     fn lost(&self, package: String) -> BoxFuture<'_, ()> {
+        self.told
+            .lock()
+            .expect("the told messages are never held across a panic")
+            .retain(|(told, _), _| *told != package);
         Box::pin(async move {
             // A runner that ends stops its services anyway, and
             // its next start names another instance, which says the same.
@@ -305,6 +317,48 @@ impl ServiceBackend for ConnectionHandle {
 }
 
 impl ConnectionHandle {
+    /// The latest message each service told about each conversation, to tell
+    /// the backend again when a connection starts: a service says its state
+    /// whole, so the backend that missed a message, or dropped it, has the
+    /// latest after the hello. A service that ended without releasing a
+    /// conversation has its messages dropped by [`ServiceBackend::lost`].
+    pub fn told(&self) -> Vec<wire::Frame> {
+        let told = self
+            .told
+            .lock()
+            .expect("the told messages are never held across a panic");
+        told.iter()
+            .filter_map(|((package, conversation), message)| {
+                let message = wire::Outbound::PackageMessage {
+                    package: package.clone(),
+                    conversation_id: conversation.clone(),
+                    message: message.clone(),
+                };
+                wire::encode(&message).ok()
+            })
+            .collect()
+    }
+
+    /// The conversations some service has told the backend about, which they
+    /// hold state for.
+    pub fn told_conversations(&self) -> HashSet<String> {
+        self.told
+            .lock()
+            .expect("the told messages are never held across a panic")
+            .keys()
+            .map(|(_, conversation)| conversation.clone())
+            .collect()
+    }
+
+    /// The conversation is released: what its services told about it is no
+    /// longer told again, since a release ends what they hold for it.
+    pub fn release_told(&self, conversation: &str) {
+        self.told
+            .lock()
+            .expect("the told messages are never held across a panic")
+            .retain(|(_, told), _| told != conversation);
+    }
+
     /// Hands `message` to the connection that serves, and for the next
     /// connection while the runner is away or the one it waited on ended; an
     /// error once the runner ends, or for a message that breaks the wire's

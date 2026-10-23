@@ -980,6 +980,19 @@ impl BrowserEnvironment {
         Ok((number, self.listed(cancellation, timeout).await?))
     }
 
+    /// [`Self::numbered`] with no time limit, for the report of a conversation's
+    /// tabs, which waits for the browser as long as it takes.
+    pub async fn numbered_unbounded(
+        &self,
+        cancellation: &CancellationToken,
+    ) -> Result<(u64, Arc<Snapshot>)> {
+        let number = *self.changes.borrow();
+        let listing = Operation::unbounded(&self.ended, cancellation)
+            .run(self.tabs.listing())
+            .await?;
+        Ok((number, listing))
+    }
+
     /// The tabs in the order the browser created them, with their titles and
     /// URLs, as the registry lists them.
     pub async fn listed(

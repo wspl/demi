@@ -102,6 +102,29 @@ impl Shard {
                 return;
             }
         };
+        // What the device is to hold services for, and the packages it is to
+        // hold none of: it lets go of every other at once. Without them it
+        // would release what is in use, so a runner whose welcome cannot name
+        // them is dropped and connects again.
+        let idle = self.idle_released();
+        let held = match self.services().control.conversations_on(self.user().clone(), device.id.clone()).await {
+            Ok(held) => held
+                .into_iter()
+                .filter(|id| !idle.contains(id))
+                .map(|id| id.to_string())
+                .collect(),
+            Err(error) => {
+                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "held_conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the conversations the device holds could not be read");
+                return;
+            }
+        };
+        let stopped = match self.plugins().stopped_packages().await {
+            Ok(stopped) => stopped,
+            Err(error) => {
+                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "stopped_packages", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the packages of the plugins turned off could not be read");
+                return;
+            }
+        };
         let session = self.devices().session(&device.id);
         // A held connection that answers its ping keeps the device; one
         // that does not is the same runner's, lost without a close, and
@@ -171,6 +194,8 @@ impl Shard {
             device_name: device.name.clone(),
             conversations,
             archived,
+            held,
+            stopped,
             session: session.number(),
             received: beginning.received(),
         };
@@ -360,9 +385,10 @@ impl Shard {
     /// Cloud `device`, which does not run as the backend starts: an upgrade
     /// stopped it.
     ///
-    /// Each tree's agent takes its commands up, which starts the Cloud again,
-    /// whose runner's hello then says the commands were lost, to the upgrade when
-    /// the release changed (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// Each tree's agent takes its commands up as last recorded, without waking
+    /// the Cloud: they stay recorded running until its runner's next hello
+    /// says they were lost, to the upgrade when the release changed
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn take_up_stopped_cloud(self: Rc<Self>, device: DeviceId) {
         match self.services().control.running_jobs(device.clone()).await {
             Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),

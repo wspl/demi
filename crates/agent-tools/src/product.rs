@@ -438,6 +438,13 @@ pub trait HostResolver: 'static {
         ))
     }
 
+    /// The Host a node's commands are taken up on, which admits nothing:
+    /// what [`Self::host`] answers, without waiting for the Host to be
+    /// reachable or waking it. By default the Host itself.
+    async fn adopted_host(&self, context: NodeContext<'_>) -> Result<Rc<Self::Host>, HostError> {
+        self.host(context).await
+    }
+
     /// Where the conversation works now: its primary Host's device and its
     /// directory there, which a child's working directory is read against
     /// (`crates/agent-server/src/node/mod.rs`).

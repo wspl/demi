@@ -266,7 +266,8 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation, capacity: Capac
     }
 }
 
-/// Recovers before the backend serves (`crates/backend/src/backend.rs`).
+/// Recovers in the background, once the backend serves
+/// (`crates/backend/src/backend.rs`).
 ///
 /// The manager keeps the machines it runs and recovers its incomplete
 /// operations. Each reset this backend left unfinished finishes its disk step,
