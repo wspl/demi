@@ -3,7 +3,7 @@ import { GALLERY_MARKS } from '../fixtures/device-marks'
 import { refusal, simulatedRequestId } from '../fixtures/request-failures'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t as sidebarText } from '@demicodes/web-ui/sidebar/locales/text'
-import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watchEffect, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarProject, SidebarProjectHost, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
@@ -16,6 +16,13 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
+import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import GalleryComposer from '../components/GalleryComposer.vue'
+import { transcriptDemoBlocks } from '../fixtures/blocks'
+import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { useTurnFlow } from '../turn-flow'
+import { useAgentContext } from '../agent-context'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
@@ -24,6 +31,7 @@ import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived
 import { showRefused } from '@demicodes/web-ui/sidebar/refused-toast'
 import { dismissToast } from '@demicodes/web-ui/infra/toast'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
@@ -43,6 +51,7 @@ const collapsedProjects = ref<string[]>(['p-dotfiles'])
 /** The groups folded under their label, which the product keeps per browser. */
 const foldedGroups = ref<SidebarGroup[]>([])
 const sidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
+const sidebarCollapsed = ref(false)
 let nextId = 1
 
 // The live specimen's settings dialog, over the fixture the Settings view uses: an entry opens it
@@ -59,6 +68,13 @@ const pluginOn = (plugin: string) =>
 /** New's keys as the keyboard settings set them by default. */
 const newShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys
 const searchShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'search')?.keys
+const sidebarShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'sidebar')?.keys
+// The Expanded specimen's own sidebar shortcut, as the product's shortcut flips the frame.
+useAppShortcuts(() => true, () => APP_SHORTCUTS, {
+  sidebar: () => {
+    sidebarCollapsed.value = !sidebarCollapsed.value
+  },
+})
 const settingsSections = computed(() => withPluginSections(productSections(), PLUGIN_PAGES, pluginOn))
 const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
 const settingsOpen = ref(false)
@@ -461,6 +477,13 @@ function pinHover(ids: string[], pinned: boolean): void {
   hoverConversations.value = [...changed.filter((c) => c.pinned), ...changed.filter((c) => !c.pinned)]
 }
 
+// The open conversation is the product's ChatSession over the gallery's scripted runtime, so the header
+// the sidebar's top row stands beside is the product's own; its title follows the row that is open.
+const sessionFlow = useTurnFlow({ id: 'gallery-sidebar-frame', cwd: WORKSPACE_ROOT, blocks: transcriptDemoBlocks() })
+const session = sessionFlow.state
+const messageFiles = useMessageFiles()
+const agentContext = useAgentContext()
+
 const fixedConversations = computed(() => demoConversations())
 const fixedProjects = computed(() => demoProjects())
 const activeTitle = computed(() => {
@@ -471,6 +494,9 @@ const activeTitle = computed(() => {
   // An archived conversation stays open, read-only, as the product shows it.
   const archived = archivedRows.value.find((conversation) => conversation.id === activeId.value)
   return archived ? `${archived.title} · Archived` : 'No conversation selected'
+})
+watchEffect(() => {
+  session.title = activeTitle.value
 })
 
 const listRestore = new RestoreSweep()
@@ -531,12 +557,17 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Expanded"
-      note="The product frame: the sidebar on the base surface, the raised session beside it, and the divider between them. Drag the divider, use the arrows on it, or double-click it to return to the default. Archive acts as the product does: the rows leave and the toast says so at once, and the open conversation stays open, read-only. A moment later the specimen answers as the backend would, which refuses a running conversation: its row comes back where it was, a toast says why, and the archive’s toast then counts, and its Undo brings back, only the others."
+      note="The product frame: the sidebar on the base surface, the raised session beside it, and the divider between them. Drag the divider, use the arrows on it, or double-click it to return to the default. The button at the end of the sidebar’s top row, or ⌘\, collapses the sidebar: it slides out to the left over 200 ms while the main pane widens with it, and the same button, now left of the page’s title, brings it back. Archive acts as the product does: the rows leave and the toast says so at once, and the open conversation stays open, read-only. A moment later the specimen answers as the backend would, which refuses a running conversation: its row comes back where it was, a toast says why, and the archive’s toast then counts, and its Undo brings back, only the others."
     >
       <GallerySpecimen variant="expanded · live" wide>
         <GalleryOverlayWell size="tall" class="w-full">
         <div class="gallery-frame flex h-[40rem] w-full overflow-hidden">
-          <SidebarLayout v-model:width="sidebarWidth" class="w-full">
+          <SidebarLayout
+            v-model:width="sidebarWidth"
+            v-model:collapsed="sidebarCollapsed"
+            class="w-full"
+            :toggle-shortcut="sidebarShortcut"
+          >
           <template #sidebar>
           <AppSidebar
             v-model:collapsed-projects="collapsedProjects"
@@ -563,12 +594,40 @@ onBeforeUnmount(() => {
             @sign-out="productWould('Sign Out')"
           />
           </template>
-          <div
-            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 bg-surface text-[13px] text-fg-faint"
+          <ChatSession
+            :conversation="session"
+            :files="messageFiles()"
+            has-provider
+            @rename="(title) => activeId && patch(activeId, (c) => ({ ...c, title }))"
+            @abort-subagents="sessionFlow.abortSubagents"
+            @abort-subagent="sessionFlow.abortSubagent"
+            @abort-terminal="sessionFlow.abortTerminal"
+            @edit-submission="sessionFlow.editSubmission"
+            @delete-submission="sessionFlow.deleteSubmission"
+            @retry-undelivered="sessionFlow.retrySubmissions()"
+            @retry="sessionFlow.resume()"
+            @recall-queued="sessionFlow.recallQueued"
+            @send-queued="sessionFlow.sendQueued"
+            @recall-steer="sessionFlow.recallSteer"
+            @interrupt-pending-steer="sessionFlow.interruptPendingSteer"
+            :pending-submissions="sessionFlow.pendingSubmissions.value"
+            :removing="sessionFlow.removing.value"
+            v-bind="agentContext.session"
           >
-            <span>{{ activeTitle }}</span>
-            <span class="font-mono text-[11px]">sidebar {{ sidebarWidth }}px · {{ SIDEBAR_WIDTH.min }}–{{ SIDEBAR_WIDTH.max }}</span>
-          </div>
+            <template #composer>
+              <GalleryComposer
+                :running="session.phase === 'running' || sessionFlow.startingTurn.value"
+                :compacting="session.phase === 'compacting'"
+                :usage="session.contextUsage ?? undefined"
+                :flow="sessionFlow"
+                @send="sessionFlow.turn"
+                @steer="sessionFlow.steer"
+                @queue="sessionFlow.queue"
+                @stop="sessionFlow.stop"
+                @compact="sessionFlow.compact"
+              />
+            </template>
+          </ChatSession>
           <template #dialogs>
             <SettingsDialog
               v-slot="{ section }"

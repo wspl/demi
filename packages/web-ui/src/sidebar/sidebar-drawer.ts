@@ -1,17 +1,26 @@
 import { inject, onBeforeUnmount, onMounted, type InjectionKey } from 'vue'
 
 /**
- * The app frame's sidebar as a page inside it reaches it on a phone (SidebarLayout).
+ * The app frame's sidebar as a page inside it reaches it (SidebarLayout).
  *
- * There the frame shows one top bar, and a page with a bar of its own, such as the
- * conversation's, puts the sidebar's button in it. The frame's own bar, the button
- * and the frame's label, shows only while no page does.
+ * On a phone the frame shows one top bar, and a page with a bar of its own, such as
+ * the conversation's, puts the sidebar's button in it. The frame's own bar, the
+ * button and the frame's label, shows only while no page does.
+ *
+ * On a computer the sidebar collapses (`SidebarToggle.vue` is the button that does it,
+ * in the sidebar and, while it is collapsed, in the page's bar).
  */
 export interface SidebarDrawer {
   /** Opens the sidebar's drawer. */
   open(): void
   /** A page shows its own top bar: the frame hides its own until the returned release. */
   claimBar(): () => void
+  /** Whether a computer's sidebar is collapsed. */
+  collapsed(): boolean
+  /** Collapses a computer's sidebar, or brings it back. */
+  toggle(): void
+  /** The keys that do the same (the `sidebar` action), as the settings hold them. */
+  shortcut(): string | undefined
 }
 
 export const sidebarDrawerKey: InjectionKey<SidebarDrawer> = Symbol('sidebarDrawer')

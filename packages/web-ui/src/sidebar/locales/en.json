@@ -114,6 +114,8 @@
   "layout": {
     "sidebarWidth": "Sidebar width",
     "openSidebar": "Open sidebar",
+    "hideSidebar": "Hide Sidebar",
+    "showSidebar": "Show Sidebar",
     "workPanelWidth": "Work panel width"
   }
 }

@@ -9,6 +9,8 @@ const localStateSchema = z.object({
   foldedGroups: z.array(z.enum(SIDEBAR_GROUPS)).optional(),
   /** The sidebar's width in px; absent until the reader resizes it. */
   sidebarWidth: z.number().int().optional(),
+  /** Whether a computer's sidebar is collapsed; absent until the reader collapses it. */
+  sidebarCollapsed: z.boolean().optional(),
   /** The work panel's share of the width it splits with the conversation. */
   asideShare: z.number().min(0).max(1).optional(),
   /** The dock windows' (Agents, Running) height as a share of the session area's; one for both. */

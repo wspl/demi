@@ -114,6 +114,8 @@
   "layout": {
     "sidebarWidth": "側邊欄寬度",
     "openSidebar": "開啟側邊欄",
+    "hideSidebar": "隱藏側邊欄",
+    "showSidebar": "顯示側邊欄",
     "workPanelWidth": "工作面板寬度"
   }
 }

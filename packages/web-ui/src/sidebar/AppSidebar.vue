@@ -31,6 +31,7 @@ import { labelWaiting, listLines, type SidebarGroup } from './list-model'
 import { useSidebarList } from './useSidebarList'
 import SidebarAccountRow from './SidebarAccount.vue'
 import SidebarGroupLabel from './SidebarGroupLabel.vue'
+import SidebarToggle from './SidebarToggle.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
 import { projectHostName, projectsNamingTheirHost } from './project-hosts'
@@ -541,8 +542,9 @@ function selectProjectConversations(project: SidebarProject): void {
   >
     <div class="flex h-11 shrink-0 items-center px-2">
       <span
-        class="min-w-0 flex-1 truncate pl-2.5 text-chrome font-medium text-fg-emphasis phone:pl-3 phone:text-[17px] phone:font-semibold"
+        class="min-w-0 flex-1 truncate pl-2.5 text-chrome font-medium leading-5 text-fg-emphasis phone:pl-3 phone:text-[17px] phone:font-semibold phone:leading-normal"
       >demi</span>
+      <SidebarToggle placement="sidebar" />
     </div>
 
     <!-- Every block of the sidebar keeps 8px from both edges, so a row's background

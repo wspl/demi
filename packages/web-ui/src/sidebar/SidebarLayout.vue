@@ -35,6 +35,13 @@ import { KEEPS_WINDOWS } from '../ui/window-stack'
  * `ui/window-stack.ts`): only a press in the sidebar or the main pane closes one,
  * so a subagent's changes can be read in the panel beside its Agents window.
  *
+ * On a computer the sidebar collapses (`collapsed`, v-model, which the host keeps in
+ * the browser): it slides out to the left over 200 ms while the main pane widens with
+ * it, and back in the same way, at once with reduced motion. A collapsed sidebar is
+ * inert, and its divider is gone. The host's `sidebar` shortcut flips `collapsed`;
+ * the buttons that do are `SidebarToggle.vue`'s, reaching the frame through
+ * `sidebar-drawer.ts`.
+ *
  * On a phone (`ui/phone.ts`) one pane shows at a time:
  *
  * - The sidebar is a drawer from the left, 85% of the screen and at most 320 px,
@@ -56,12 +63,17 @@ import { KEEPS_WINDOWS } from '../ui/window-stack'
  * layers, such as the conversation's dock over its transcript, stay under the
  * drawer and its scrim, whatever their z-index.
  */
-withDefaults(defineProps<{ label?: string }>(), { label: 'demi' })
+const props = withDefaults(defineProps<{
+  label?: string
+  /** The keys of the `sidebar` action, shown in the collapse button's tip. */
+  toggleShortcut?: string
+}>(), { label: 'demi' })
 const emit = defineEmits<{
   resizeEnd: [width: number]
   asideResizeEnd: [share: number]
 }>()
 const open = defineModel<boolean>('open', { default: false })
+const collapsed = defineModel<boolean>('collapsed', { default: false })
 const width = defineModel<number>('width', { default: SIDEBAR_WIDTH.default })
 const asideOpen = defineModel<boolean>('asideOpen', { default: false })
 const asideShare = defineModel<number>('asideShare', { default: ASIDE_SHARE.default })
@@ -79,6 +91,8 @@ const asideDragBounds = computed(() => asideBounds(sharedWidth.value))
 
 const phone = usePhone()
 const slots = useSlots()
+/** Whether the sidebar is out of the way on a computer, which a phone never is: its drawer is `open`. */
+const hidden = computed(() => collapsed.value && !phone.value)
 
 // On a phone the two overlays never stack: the newly opened one wins.
 watch(open, (value) => {
@@ -104,6 +118,11 @@ provide(sidebarDrawerKey, {
       barOwners.value -= 1
     }
   },
+  collapsed: () => collapsed.value,
+  toggle: () => {
+    collapsed.value = !collapsed.value
+  },
+  shortcut: () => props.toggleShortcut,
 })
 
 // The drawer is a layer Back closes; the full-screen panel is a place of the host's address.
@@ -314,18 +333,24 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
         ref="sidebar"
         data-region
         class="h-full shrink-0"
-        :class="phone ? 'frame-drawer fixed inset-y-0 left-0 z-40 bg-surface-base pt-[var(--safe-top)] pb-[var(--safe-bottom)]' : ''"
+        :class="phone ? 'frame-drawer fixed inset-y-0 left-0 z-40 bg-surface-base pt-[var(--safe-top)] pb-[var(--safe-bottom)]' : 'frame-sidebar overflow-hidden'"
         :style="{
           '--sidebar-width': phone ? DRAWER_WIDTH : `${shownWidth}px`,
+          '--sidebar-shown': hidden ? 0 : 1,
           '--drawer-pull': drawerPull === null ? undefined : `${-drawerPull}px`,
         }"
         :data-pulled="pulling ? '' : undefined"
+        :inert="hidden"
         @touchstart.passive="drawerOut.start"
       >
-        <slot name="sidebar" />
+        <!-- On a computer the sidebar keeps its width and slides out of the wrapper, which narrows to nothing. -->
+        <div class="frame-sidebar-slide h-full">
+          <slot name="sidebar" />
+        </div>
       </div>
     </Transition>
     <ResizeHandle
+      v-show="!hidden"
       v-model="width"
       class="hidden md:block"
       :min="SIDEBAR_WIDTH.min"
@@ -389,6 +414,26 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
 </template>
 
 <style scoped>
+/* One number, 1 shown to 0 collapsed, eases the wrapper's width and the sidebar's slide together. */
+@property --sidebar-shown {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+
+.frame-sidebar {
+  width: calc(var(--sidebar-width) * var(--sidebar-shown));
+  transition: --sidebar-shown 200ms ease-out;
+}
+
+.frame-sidebar-slide {
+  width: var(--sidebar-width);
+}
+
+.frame-sidebar .frame-sidebar-slide {
+  translate: calc((1 - var(--sidebar-shown)) * -100%) 0;
+}
+
 .frame-drawer {
   translate: var(--drawer-pull, 0px) 0;
   transition: translate 300ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -441,6 +486,7 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .frame-sidebar,
   .frame-drawer,
   .frame-aside,
   .frame-aside-enter-active,

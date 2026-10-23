@@ -114,6 +114,8 @@
   "layout": {
     "sidebarWidth": "사이드바 너비",
     "openSidebar": "사이드바 열기",
+    "hideSidebar": "사이드바 가리기",
+    "showSidebar": "사이드바 보기",
     "workPanelWidth": "작업 패널 너비"
   }
 }

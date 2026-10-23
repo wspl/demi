@@ -69,6 +69,7 @@ import type { AutomationLink } from '../automations/types'
 import { usePhone } from '../ui/phone'
 import { tabCountIcon } from '../ui/tab-count-icon'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
+import SidebarToggle from '../sidebar/SidebarToggle.vue'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
@@ -827,6 +828,7 @@ watch(
       class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2"
     >
       <div ref="titleCell" class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
+        <SidebarToggle placement="bar" />
         <TitleInput
           v-if="renaming"
           :style="{ width: `${TITLE_MAX_PX}px` }"
@@ -837,7 +839,7 @@ watch(
         <template v-else>
           <h1
             ref="title"
-            class="min-w-0 select-none truncate text-chrome font-normal text-fg"
+            class="min-w-0 select-none truncate text-chrome font-normal leading-5 text-fg"
             :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
             @dblclick="beginRename"
           >

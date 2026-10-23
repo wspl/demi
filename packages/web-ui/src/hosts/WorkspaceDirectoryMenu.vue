@@ -114,7 +114,7 @@ defineExpose({ browse })
               <Folder :size="ICON_PX.in28" class="shrink-0" />
               <span
                 ref="directoryLabel"
-                class="max-w-32 truncate"
+                class="max-w-32 truncate leading-5"
                 :class="directoryCompact ? COMPACT_LABEL_CLASS : ''"
               >{{ directoryName }}</span>
             </Button>
