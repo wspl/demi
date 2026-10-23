@@ -8,6 +8,8 @@
 
 use std::io::Write;
 
+use demi_shared_h264::bitstream::units;
+
 use crate::Error;
 
 /// One coded picture, as the video holds it, and when it shows.
@@ -42,39 +44,13 @@ struct Prepared {
 /// The sample's slices, each after its length, as the movie holds them.
 fn slices(data: &[u8]) -> Vec<u8> {
     let mut slices = Vec::with_capacity(data.len());
-    for unit in nal_units(data) {
+    for unit in units(data) {
         if matches!(unit.first().map(|header| header & 0x1f), Some(1 | 5)) {
             slices.extend_from_slice(&(unit.len() as u32).to_be_bytes());
             slices.extend_from_slice(unit);
         }
     }
     slices
-}
-
-/// The NAL units of Annex B `data`, without their start codes.
-fn nal_units(data: &[u8]) -> Vec<&[u8]> {
-    let mut starts = Vec::new();
-    let mut at = 0;
-    while at + 3 <= data.len() {
-        if data[at..at + 3] == [0, 0, 1] {
-            starts.push(at + 3);
-            at += 3;
-        } else {
-            at += 1;
-        }
-    }
-    starts
-        .iter()
-        .enumerate()
-        .map(|(index, start)| {
-            let mut end = starts.get(index + 1).map_or(data.len(), |next| next - 3);
-            // A four-byte start code leaves a zero before the next unit.
-            while end > *start && data[end - 1] == 0 {
-                end -= 1;
-            }
-            &data[*start..end]
-        })
-        .collect()
 }
 
 fn boxed(kind: &[u8; 4], payload: &[u8]) -> Vec<u8> {
@@ -247,7 +223,7 @@ pub(crate) fn write(
     for index in 0..count {
         let sample = sample(index)?;
         let (mut sps, mut pps) = (None, None);
-        for unit in nal_units(&sample.data) {
+        for unit in units(&sample.data) {
             match unit.first().map(|header| header & 0x1f) {
                 Some(7) => sps = Some(unit.to_vec()),
                 Some(8) => pps = Some(unit.to_vec()),

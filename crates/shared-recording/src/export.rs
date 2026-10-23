@@ -7,11 +7,13 @@
 //! laid side by side.
 
 use std::{
+    borrow::Cow,
     fs,
     io::{Read as _, Seek as _, SeekFrom},
     path::{Path, PathBuf},
 };
 
+use demi_shared_h264::bitstream::{BitReader, BitWriter, SPS, annex_b, escape, kind, unescape, units};
 use demi_shared_openh264::Load;
 use demi_shared_recording_protocol::{Area, FrameSet, frame_label};
 use image::{ImageEncoder as _, codecs::png::PngEncoder};
@@ -116,7 +118,7 @@ impl Stored {
             let at = (kept.o - begin) as usize;
             let label = || format!("{} of {}", frame_label(index as u32 + 1), self.id);
             let decoded = decoder
-                .decode(&bytes[at..at + kept.l as usize])
+                .decode(&decodable(&bytes[at..at + kept.l as usize]))
                 .map_err(|error| Error::Corrupt(format!("{} did not decode: {error}", label())))?
                 .ok_or_else(|| Error::Corrupt(format!("{} decoded to no picture", label())))?;
             let number = index as u32 + 1;
@@ -182,6 +184,90 @@ impl Stored {
         std::io::Write::flush(&mut file).map_err(|error| Error::io(path, &error))?;
         Ok(std::time::Duration::from_micros(ran))
     }
+}
+
+/// The frame's Annex B bytes, with the SPS rewritten so that OpenH264 2.6.0
+/// predicts a frame from the picture it names.
+///
+/// A hardware encoder may mark pictures as long-term references (MMCO 6) and
+/// have the next frame name one by `long_term_pic_num`. OpenH264 orders the
+/// references of a CABAC stream that is not Baseline by a routine that
+/// compares that number with one it never sets for a picture marked so, finds
+/// none and keeps the default order, so the frame is predicted from the key
+/// frame, and everything drawn since is lost. Its routine for Baseline finds
+/// the picture, and the decoder picks the routine by `profile_idc` alone, so
+/// a High or Main SPS is named Baseline. A High SPS loses the fields Baseline
+/// has not, which are dropped when they hold the defaults (4:2:0, 8 bits, no
+/// scaling matrix); any other SPS is left as it is, and said.
+///
+/// Baseline also makes OpenH264 output in decoding order, not in display
+/// order. That holds while no source makes B frames, as none does.
+fn decodable(frame: &[u8]) -> Cow<'_, [u8]> {
+    let units = units(frame);
+    let mut changed = false;
+    let rewritten: Vec<Cow<'_, [u8]>> = units
+        .iter()
+        .map(|unit| {
+            // A stream that is Baseline already needs nothing.
+            if kind(unit) != Some(SPS) || unit.get(1) == Some(&BASELINE) {
+                return Cow::Borrowed(*unit);
+            }
+            match baseline(unit) {
+                Some(sps) => {
+                    changed = true;
+                    Cow::Owned(sps)
+                }
+                None => {
+                    tracing::warn!(
+                        profile = unit.get(1).copied(),
+                        "an SPS could not be named Baseline, so a frame that names a long-term reference may decode wrongly"
+                    );
+                    Cow::Borrowed(*unit)
+                }
+            }
+        })
+        .collect();
+    if changed { Cow::Owned(annex_b(&rewritten)) } else { Cow::Borrowed(frame) }
+}
+
+/// `profile_idc` of the Baseline profile, which OpenH264 orders long-term
+/// references right for.
+const BASELINE: u8 = 66;
+
+/// The SPS `unit` as a Baseline one, when it is a Main or High SPS this can
+/// be done to.
+fn baseline(unit: &[u8]) -> Option<Vec<u8>> {
+    // chroma_format_idc 1 (`010`), bit depths 8 (`1`, `1`), no lossless
+    // bypass (`0`), no scaling matrix (`0`).
+    const HIGH_DEFAULTS: u32 = 0b010_1_1_0_0;
+    let (&header, payload) = unit.split_first()?;
+    let mut rbsp = unescape(payload);
+    let mut reader = BitReader::new(&rbsp);
+    let profile = reader.bits(8)?;
+    reader.bits(16)?; // constraint flags, level_idc
+    reader.ue()?; // seq_parameter_set_id
+    match profile {
+        77 => {}
+        100 => {
+            let fields = reader.position();
+            if reader.bits(7)? != HIGH_DEFAULTS {
+                return None;
+            }
+            let mut writer = BitWriter::default();
+            writer.copy(&rbsp, 0..fields);
+            writer.copy(&rbsp, fields + 7..rbsp.len() * 8);
+            rbsp = writer.finish();
+            // Zero bytes after the stop bit are not part of the unit.
+            while rbsp.last() == Some(&0) {
+                rbsp.pop();
+            }
+        }
+        _ => return None,
+    }
+    *rbsp.first_mut()? = BASELINE;
+    let mut sps = vec![header];
+    escape(&rbsp, &mut sps);
+    Some(sps)
 }
 
 /// The PNG of `area` of `rgba` under a strip that says `label`.

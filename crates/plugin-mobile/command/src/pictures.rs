@@ -12,10 +12,9 @@
 //! workspace has writes an SPS, and the ones that read one do not tell where
 //! its VUI begins; this is the little of H.264 that takes.
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
+use demi_shared_h264::bitstream::{BitReader, BitWriter, SPS, annex_b, escape, kind, unescape, units};
 
-/// The NAL unit type of a sequence parameter set.
-const SPS: u8 = 7;
 /// The `profile_idc`s whose SPS carries the chroma and bit depth fields.
 const HIGH_PROFILES: [u32; 12] = [100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134];
 
@@ -24,45 +23,17 @@ const HIGH_PROFILES: [u32; 12] = [100, 110, 122, 244, 44, 83, 86, 118, 128, 138,
 /// that this does not read, comes back as it was.
 pub(crate) fn without_reordering(frame: Bytes) -> Bytes {
     let units = units(&frame);
-    if !units.iter().any(|unit| unit.first().is_some_and(|header| header & 0x1f == SPS)) {
+    if !units.iter().any(|unit| kind(unit) == Some(SPS)) {
         return frame;
     }
-    let mut rewritten = BytesMut::with_capacity(frame.len() + 8);
-    for unit in units {
-        rewritten.put_slice(&[0, 0, 0, 1]);
-        match unit.first() {
-            Some(header) if header & 0x1f == SPS => match sps_without_reordering(unit) {
-                Some(sps) => rewritten.put_slice(&sps),
-                None => rewritten.put_slice(unit),
-            },
-            _ => rewritten.put_slice(unit),
-        }
-    }
-    rewritten.freeze()
-}
-
-/// The NAL units of an Annex B stream, without their start codes.
-fn units(stream: &[u8]) -> Vec<&[u8]> {
-    let mut starts = Vec::new();
-    let mut at = 0;
-    while at + 3 <= stream.len() {
-        if stream[at] == 0 && stream[at + 1] == 0 && stream[at + 2] == 1 {
-            starts.push((at, at + 3));
-            at += 3;
-        } else {
-            at += 1;
-        }
-    }
-    let mut units = Vec::with_capacity(starts.len());
-    for (index, &(_, begin)) in starts.iter().enumerate() {
-        let mut end = starts.get(index + 1).map_or(stream.len(), |&(next, _)| next);
-        // A four-byte start code's leading zero, and trailing zeros, are no unit's.
-        while end > begin && stream[end - 1] == 0 {
-            end -= 1;
-        }
-        units.push(&stream[begin..end]);
-    }
-    units
+    let rewritten: Vec<Vec<u8>> = units
+        .iter()
+        .map(|unit| match kind(unit) {
+            Some(SPS) => sps_without_reordering(unit).unwrap_or_else(|| unit.to_vec()),
+            _ => unit.to_vec(),
+        })
+        .collect();
+    Bytes::from(annex_b(&rewritten))
 }
 
 /// The SPS `unit` with a VUI holding only `bitstream_restriction`: no
@@ -114,15 +85,13 @@ fn sps_without_reordering(unit: &[u8]) -> Option<Vec<u8>> {
             reader.ue()?; // frame_crop_*_offset
         }
     }
-    let vui = reader.position;
+    let vui = reader.position();
     if reader.bits(1)? == 1 {
         return None;
     }
 
     let mut writer = BitWriter::default();
-    for index in 0..vui {
-        writer.bit(BitReader::new(&rbsp).at(index)?);
-    }
+    writer.copy(&rbsp, 0..vui);
     writer.bit(1); // vui_parameters_present_flag
     // aspect_ratio_info, overscan_info, video_signal_type, chroma_loc_info,
     // timing_info, nal_hrd, vcl_hrd, pic_struct: none.
@@ -141,108 +110,4 @@ fn sps_without_reordering(unit: &[u8]) -> Option<Vec<u8>> {
     let mut sps = vec![header];
     escape(&writer.finish(), &mut sps);
     Some(sps)
-}
-
-/// A NAL unit's payload without its emulation prevention bytes.
-fn unescape(payload: &[u8]) -> Vec<u8> {
-    let mut rbsp = Vec::with_capacity(payload.len());
-    let mut zeros = 0;
-    for &byte in payload {
-        if zeros >= 2 && byte == 3 {
-            zeros = 0;
-            continue;
-        }
-        zeros = if byte == 0 { zeros + 1 } else { 0 };
-        rbsp.push(byte);
-    }
-    rbsp
-}
-
-/// `rbsp` with the emulation prevention bytes a NAL unit needs.
-fn escape(rbsp: &[u8], unit: &mut Vec<u8>) {
-    let mut zeros = 0;
-    for &byte in rbsp {
-        if zeros >= 2 && byte <= 3 {
-            unit.push(3);
-            zeros = 0;
-        }
-        zeros = if byte == 0 { zeros + 1 } else { 0 };
-        unit.push(byte);
-    }
-}
-
-struct BitReader<'a> {
-    bytes: &'a [u8],
-    position: usize,
-}
-
-impl<'a> BitReader<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, position: 0 }
-    }
-
-    fn at(&self, position: usize) -> Option<u8> {
-        let byte = self.bytes.get(position / 8)?;
-        Some((byte >> (7 - position % 8)) & 1)
-    }
-
-    fn bits(&mut self, count: u32) -> Option<u32> {
-        let mut value = 0;
-        for _ in 0..count {
-            value = value << 1 | u32::from(self.at(self.position)?);
-            self.position += 1;
-        }
-        Some(value)
-    }
-
-    /// An unsigned Exp-Golomb value.
-    fn ue(&mut self) -> Option<u32> {
-        let mut zeros = 0;
-        while self.bits(1)? == 0 {
-            zeros += 1;
-            if zeros > 31 {
-                return None;
-            }
-        }
-        Some((1u32 << zeros) - 1 + self.bits(zeros)?)
-    }
-
-    /// A signed Exp-Golomb value, whose value this never needs.
-    fn se(&mut self) -> Option<()> {
-        self.ue().map(drop)
-    }
-}
-
-#[derive(Default)]
-struct BitWriter {
-    bytes: Vec<u8>,
-    bits: usize,
-}
-
-impl BitWriter {
-    fn bit(&mut self, bit: u8) {
-        if self.bits % 8 == 0 {
-            self.bytes.push(0);
-        }
-        if bit == 1 {
-            *self.bytes.last_mut().expect("a byte was pushed") |= 1 << (7 - self.bits % 8);
-        }
-        self.bits += 1;
-    }
-
-    fn ue(&mut self, value: u32) {
-        let coded = u64::from(value) + 1;
-        let length = 64 - coded.leading_zeros();
-        for _ in 1..length {
-            self.bit(0);
-        }
-        for index in (0..length).rev() {
-            self.bit(((coded >> index) & 1) as u8);
-        }
-    }
-
-    /// The bytes, the last one padded with zeros.
-    fn finish(self) -> Vec<u8> {
-        self.bytes
-    }
 }
