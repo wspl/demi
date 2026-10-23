@@ -56,8 +56,8 @@ pub enum Supervision {
     /// The manager starts it at login and again after a crash, and starts
     /// it when asked.
     Restarts,
-    /// Windows starts it at logon from the `Run` value, and nothing starts
-    /// it again.
+    /// Windows starts it at logon from the `Run` value, which starts it
+    /// again after a crash from then on but cannot be asked to start it.
     #[cfg(windows)]
     AtLogon,
 }
@@ -129,7 +129,7 @@ impl Registration {
                 mechanism,
                 outcome = "degraded",
                 degraded_to = "run_value",
-                "the runner starts at logon only, and not again after a crash"
+                "the runner starts at logon, and this one is not supervised: the registration cannot be asked to start it"
             ),
             Err(reason) => tracing::warn!(
                 event = "autostart.ensured",
@@ -356,8 +356,10 @@ fn unit(launcher: &str, home: &str, directory: &str) -> String {
 /// The Windows task:
 ///
 /// - It starts at the user's logon, with the user's limited rights, hidden.
-/// - It starts again a minute after a failure, the shortest the Task Scheduler
-///   takes.
+/// - It has no `RestartOnFailure`: it did not restart a task whose action
+///   ended with a non-zero exit code, so a runner that was killed stayed down
+///   until someone started the task. The action's own loop restarts the
+///   runner (`Registration::arguments`).
 /// - A start while an instance runs waits for it to end, so the manager's
 ///   runner a successor hands over to starts once the task's earlier instance,
 ///   ending, let go.
@@ -399,10 +401,6 @@ fn task(user: &str, description: &str, arguments: &str, home: &str) -> String {
     <Hidden>true</Hidden>
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>5</Priority>
-    <RestartOnFailure>
-      <Interval>PT1M</Interval>
-      <Count>999</Count>
-    </RestartOnFailure>
   </Settings>
   <Actions Context="Author">
     <Exec>
@@ -675,11 +673,18 @@ mod windows {
         }
 
         /// PowerShell's arguments, which run the launcher with `run --log`,
-        /// hidden, as the manager's runner.
+        /// hidden, as the manager's runner, and run it again 10 s after it
+        /// ends with anything but 0: the Task Scheduler's `RestartOnFailure`
+        /// did not restart a task whose action ended with an exit code, so
+        /// this loop is the supervisor, as launchd's `KeepAlive` and systemd's
+        /// `Restart=on-failure` are on the other systems. A launcher that
+        /// throws counts as a failure.
         fn arguments(&self) -> String {
             let launcher = self.directory.join("run.ps1").to_string_lossy().replace('\'', "''");
             format!(
-                "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"$env:{SUPERVISED} = '1'; & '{launcher}' run --log; exit $LASTEXITCODE\""
+                "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"$env:{SUPERVISED} = '1'; \
+                 while ($true) {{ $code = 1; try {{ & '{launcher}' run --log; $code = $LASTEXITCODE }} catch {{ }}; \
+                 if ($code -eq 0) {{ exit 0 }}; Start-Sleep -Seconds 10 }}\""
             )
         }
 
