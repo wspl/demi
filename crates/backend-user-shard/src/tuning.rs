@@ -45,7 +45,7 @@ pub struct ConversationTuning {
     /// milliseconds (`crates/agent-tools/src/lib.rs`): the product's, which a
     /// test shortens to see a call return within its time.
     pub call_window_ms: u32,
-    /// How long a command that is not in the background prints nothing before
+    /// How long a command that is not a service prints nothing before
     /// it wakes its agent, once (`crates/agent-session/src/reports.rs`): the
     /// product's, which a test shortens to see the wake-up within its time.
     pub silence: Duration,

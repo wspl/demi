@@ -300,7 +300,7 @@ type Releases = Rc<RefCell<Vec<oneshot::Sender<()>>>>;
 
 /// A tool that tells the test it started, then waits until the test lets it
 /// finish; one whose input names a `commandId` tells its session it started
-/// that command, in the background when `background`.
+/// that command, as a service when `service`.
 fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>) {
     let (started, started_rx) = oneshot::channel();
     let started = Rc::new(RefCell::new(Some(started)));
@@ -310,7 +310,7 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
         if let Some(command) = call.input["commandId"].as_str() {
             call.command.started(StartedCommand {
                 command: CommandId::try_from(command).unwrap(),
-                background: call.input["background"].as_bool().unwrap_or(false),
+                service: call.input["service"].as_bool().unwrap_or(false),
             });
         }
         if let Some(started) = started.borrow_mut().take() {
@@ -327,16 +327,16 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
 }
 
 /// A tool `work` that starts the command its input's `commandId` names in
-/// `commands` and leaves it running, in the background when its input's
-/// `background` says so, titled by its input's `description`.
-fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
+/// `commands` and leaves it running, as a service when its input's
+/// `service` says so, titled by its input's `description`.
+fn service_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
     let commands = commands.clone();
     tool("work", move |call| {
         let command = commands.start(
             call.input["commandId"].as_str().unwrap(),
             call.input["description"].as_str().unwrap(),
         );
-        let background = call.input["background"].as_bool().unwrap_or(false);
+        let service = call.input["service"].as_bool().unwrap_or(false);
         let view = ToolView::Shell(ShellToolView {
             request_files: None,
             run_files: None,
@@ -355,7 +355,7 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
         Box::pin(async move {
             Ok(ToolOutcome {
                 view: Some(view),
-                effect: Some(ToolEffect::Background { command, background }),
+                effect: Some(ToolEffect::Running { command, service }),
                 ..output("status: running")
             })
         })
@@ -363,13 +363,13 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
 }
 
 /// A response that calls `work` for the command `command`, reporting every
-/// `background`, titled `description`.
-fn background_call(command: &str, background: bool, description: &str) -> Vec<ProviderEvent> {
+/// `service`, titled `description`.
+fn service_call(command: &str, service: bool, description: &str) -> Vec<ProviderEvent> {
     vec![
         event::tool_call(
             &format!("work-{command}"),
             "work",
-            json!({ "commandId": command, "background": background, "description": description }),
+            json!({ "commandId": command, "service": service, "description": description }),
         ),
         event::response(1, 1),
     ]

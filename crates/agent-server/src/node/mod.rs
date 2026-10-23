@@ -547,7 +547,7 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     numbers: Rc<dyn Numbers>,
     /// The node's agent number.
     agent: u64,
-    /// The longest a call watches a command that is not in the background,
+    /// The longest a call watches a command that is not a service,
     /// in milliseconds.
     call_window_ms: u32,
     /// Where the time a command taken up again has run comes from.
@@ -1234,7 +1234,7 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) config: SessionConfig,
-    /// The longest a call watches a command that is not in the background,
+    /// The longest a call watches a command that is not a service,
     /// in milliseconds.
     pub(crate) call_window_ms: u32,
     /// What the product says of the paths a complete text names.

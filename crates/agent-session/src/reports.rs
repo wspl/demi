@@ -2,7 +2,7 @@
 //! with how it wakes the node and the task that watches it.
 //!
 //! The task reports the command's end once it ends, and, for a command that is
-//! not in the background, once when it has printed nothing for the runtime's
+//! not a service, once when it has printed nothing for the runtime's
 //! silence limit, which says it still runs. What each report says is the node's
 //! to tell ([`SessionRuntime::report`]), and the session admits it as input
 //! waiting for a boundary.
@@ -27,11 +27,11 @@
 //! - A command whose Host's connection is away sends no silence report, since
 //!   the silence is the connection's and the node could do nothing with one.
 //!
-//! The loss of a background command opens no turn: it joins the running turn at
+//! The loss of a service opens no turn: it joins the running turn at
 //! its next boundary or waits for the next turn, so a conversation left idle
 //! with its dev server running is not woken, and charged a request, by every
-//! upgrade that replaces its runner. A lost command that is not in the
-//! background still wakes its node, which may be waiting for it.
+//! upgrade that replaces its runner. A lost command that is not a
+//! service still wakes its node, which may be waiting for it.
 //!
 //! Reports not yet in the transcript and how each command wakes the node are
 //! saved in the checkpoint, so both survive dispose and a restart.
@@ -130,7 +130,7 @@ impl Watched {
     pub(super) fn awaits(&self) -> bool {
         self.commands
             .iter()
-            .any(|watched| watched.watch != Watch::Background)
+            .any(|watched| watched.watch != Watch::Service)
     }
 
     /// Each command watched with how it wakes the node, as the checkpoint
@@ -167,7 +167,7 @@ pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId) {
             node = %core.id,
             turn = core.running_turn().map(tracing::field::display),
             command = %command,
-            wakes = if watch == Watch::Foreground { "end_and_silence" } else { "end" },
+            wakes = if watch == Watch::Unreported { "end_and_silence" } else { "end" },
             silence_ms = u64::try_from(silence.as_millis()).unwrap_or(u64::MAX),
             "a command was watched for its end"
         );
@@ -178,7 +178,7 @@ pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId) {
     s.update(|core| core.watched.set_task(command, AbortOnDropHandle::new(task)));
 }
 
-/// Reports `command`'s silence once, if it is not in the background and has
+/// Reports `command`'s silence once, if it is not a service and has
 /// not been reported, and its end once it ends; then the session no longer
 /// watches it. The task holds the session only while it hands it a report.
 async fn watch_command(session: Weak<SessionShared>, command: CommandId, watch: Watch, silence: Duration) {
@@ -190,7 +190,7 @@ async fn watch_command(session: Weak<SessionShared>, command: CommandId, watch: 
     let ended = runtime.command_ended(&command);
     tokio::pin!(ended);
     let mut over = false;
-    if watch == Watch::Foreground {
+    if watch == Watch::Unreported {
         // A silence the node has nothing to tell of, such as a command whose
         // Host is away, is looked at again after another silence.
         loop {
@@ -278,9 +278,9 @@ async fn report(session: &Weak<SessionShared>, command: &CommandId) -> bool {
     let Some(report) = runtime.report(command, &model, limits).await else {
         return false;
     };
-    // The loss of a background command opens no turn: nothing waits for it.
+    // The loss of a service opens no turn: nothing waits for it.
     let opens = match (&report.event, watch) {
-        (ReportEvent::Lost { .. }, Watch::Background) => Opens::Nothing,
+        (ReportEvent::Lost { .. }, Watch::Service) => Opens::Nothing,
         _ => Opens::Turn,
     };
     let Some(s) = session.upgrade() else {

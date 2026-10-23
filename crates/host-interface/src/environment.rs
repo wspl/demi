@@ -180,7 +180,7 @@ pub struct ExecRequest {
     /// Whether the command runs until stopped, so that it wakes the node only
     /// when it ends, which its record keeps from its start
     /// (`crates/agent-session/src/reports.rs`).
-    pub background: bool,
+    pub service: bool,
     /// The media types the call's model reads in a tool result, which the
     /// job may show it (`crates/plugin-file/command/src/files.rs`).
     pub viewable: Viewable,
@@ -223,7 +223,7 @@ pub struct TakenUp {
     pub title: String,
     pub script: String,
     /// Whether it runs until stopped, and wakes the node only when it ends.
-    pub background: bool,
+    pub service: bool,
     pub running: Duration,
     pub seen: Seen,
     /// What it was asked to start, while its start still waits for its

@@ -606,11 +606,13 @@ pub struct CommandReport {
 }
 
 /// What a report tells of its command.
-///
-/// It reads a stored report that names the interval the command reported at,
-/// which earlier releases wrote, without it; so its fields are not denied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum ReportEvent {
     /// It still runs and has printed nothing for a long time; its end is the
     /// next thing it reports.

@@ -53,7 +53,7 @@ impl Input {
 }
 
 /// Whether a waiting command report opens a turn of its own. Each joins a
-/// running turn at its next boundary; the loss of a background command opens
+/// running turn at its next boundary; the loss of a service opens
 /// none, and waits for the node's next turn (`crates/agent-session/src/reports.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Opens {

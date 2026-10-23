@@ -345,7 +345,7 @@ impl Keeper {
             turn: start.caller.turn.clone(),
             title: start.title.clone(),
             script: start.script.clone(),
-            background: start.background,
+            service: start.service,
             started: self.clock.now(),
             places: Default::default(),
             unsent: unsent.cloned(),

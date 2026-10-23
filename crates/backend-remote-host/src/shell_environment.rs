@@ -94,7 +94,7 @@ pub trait CommandKeeper {
     /// Records that `command` runs as the job `job` on the environment's Host,
     /// before the job starts, so that a backend that starts again takes it up,
     /// its reports name it by its title, and an interrupted call's command
-    /// keeps whether it runs in the background (`crates/backend-database/src/command_outputs.rs`). A
+    /// keeps whether it is a service (`crates/backend-database/src/command_outputs.rs`). A
     /// record of it as not yet sent becomes one of it as sent.
     ///
     /// A failure to record it is the keeper's to log: the command runs all the
@@ -145,14 +145,14 @@ pub trait CommandKeeper {
 }
 
 /// What a command's record keeps of the call that started it: the call
-/// `caller` names, titled `title`, started it `background` or not.
+/// `caller` names, titled `title`, started it as a service or not.
 pub struct KeptStart {
     pub caller: JobCaller,
     pub title: String,
     /// The call's script, which the record keeps with its title for the
     /// pages' view.
     pub script: String,
-    pub background: bool,
+    pub service: bool,
 }
 
 /// Builds each job's command context (`crates/command-protocol/src/invocation.rs`).
@@ -382,7 +382,7 @@ impl RemoteShellEnvironment {
             caller,
             title,
             script,
-            background,
+            service,
             running,
             seen,
             unsent,
@@ -406,7 +406,7 @@ impl RemoteShellEnvironment {
                     cwd,
                     caller,
                     title,
-                    background,
+                    service,
                     viewable,
                 },
                 job,
@@ -470,7 +470,7 @@ impl RemoteShellEnvironment {
                     caller: request.caller.clone(),
                     title: request.title.clone(),
                     script: request.script.clone(),
-                    background: request.background,
+                    service: request.service,
                 };
                 let unsent = UnsentStart {
                     script: request.script.clone(),

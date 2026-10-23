@@ -23,9 +23,7 @@ pub(super) struct ShellInput {
     pub(super) description: NonEmpty,
     #[schemars(description = "The script.")]
     pub(super) script: String,
-    /// Was `background` until 0.1.61; transcripts written before keep that
-    /// name, so a replayed call still reads.
-    #[serde(default, alias = "background")]
+    #[serde(default)]
     #[schemars(description = SERVICE)]
     pub(super) service: bool,
 }

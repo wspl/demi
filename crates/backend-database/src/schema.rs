@@ -1599,9 +1599,11 @@ CREATE TABLE plugin_oauth_clients (
 ///   0.1.36 the one before an attachment kept the file it was uploaded from,
 ///   0.1.37 the one before every block named its request, and 0.1.38 the one
 ///   before the messages a compaction kept named theirs, 0.1.48 the one
-///   before a path could start with another node's rows, and 0.1.58 the one
-///   before a running command kept whether it runs in the background in
-///   place of its interval.
+///   before a path could start with another node's rows, 0.1.58 the one
+///   before a running command kept whether it is a service in place of its
+///   interval, and 0.1.63, which 0.1.59 to 0.1.62 shipped too, the one before
+///   that column and every stored name of a service, an interval and a
+///   command's watch took their current names.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1717,16 +1719,206 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.58.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_0_1_58),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.63.sql"),
+            migration: Migration::Code(conversation_from_0_1_63),
+        },
     ],
 };
 
-/// From 0.1.58's conversation schema to the current one.
+/// From 0.1.63's conversation schema, of transcript block format 14 and
+/// checkpoint state format 7, to the current one, of block format 15 and state
+/// format 8, so that nothing reads a name the code no longer has.
 ///
-/// A running command's record keeps whether it runs in the background in place
-/// of the interval it reported at: a command with no interval is in the
-/// background. Nothing else is rewritten: a stored report or checkpoint state
-/// that holds an interval reads without it ([`demi_shared_types::ReportEvent`],
-/// [`demi_agent_store::CommandWatch`]).
+/// - A running command's record names the column of whether it is a service
+///   `service`, which 0.1.58 added as `background`.
+/// - A `shell` call's input names `service` the field that releases before 0.1.61
+///   called `background`, and has no `intervalMs`, which the tool no longer takes.
+/// - What [`current_names`] gives every state and report, which the steps before
+///   this one that read them with the current types run it for too.
+///
+/// Each block, share's copy and state it rewrites is decoded and checked as the
+/// current format before it is written back.
+fn conversation_from_0_1_63(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch("ALTER TABLE running_commands RENAME COLUMN background TO service;")?;
+    rewrite_stored(transaction, true)
+}
+
+/// Gives the stored checkpoint states and reports the names they have now,
+/// before a step decodes them with the current types, which no longer take
+/// the old ones. It reads a row of any format, and the step that renames a
+/// `shell` call's input runs after the migrations that read it.
+///
+/// - A checkpoint state lists a command's watch under `watches`, each by a
+///   status `service`, `unreported` or `silenced`: a state saved before kept the
+///   list as `intervals`, each command by the interval it reported at, none for a
+///   service, and kept a service's status as `background` and a command whose
+///   silence is not reported yet as `foreground`.
+/// - A stored report of a command's silence names no interval, as one saved
+///   before named the one the command reported at.
+fn current_names(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    rewrite_stored(transaction, false)
+}
+
+/// Rewrites the blocks, the shares' copies and the checkpoint states that name
+/// something [`current_names`] renames; with `inputs`, the blocks' `shell`
+/// calls' inputs as well, and each row it writes is decoded as the current
+/// format first, which only the last step can ask, as the rows are in no
+/// format before.
+fn rewrite_stored(transaction: &Transaction<'_>, inputs: bool) -> rusqlite::Result<()> {
+    for (table, column) in [("blocks", "block"), ("share_blocks", "block"), ("nodes", "state")] {
+        // A step of a release before the table's has none to rewrite.
+        let present: bool = transaction.query_row(
+            "SELECT EXISTS (SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+            [table, column],
+            |row| row.get(0),
+        )?;
+        if !present {
+            continue;
+        }
+        let rows = transaction
+            .prepare(&format!(
+                "SELECT rowid, {column} FROM {table}
+                 WHERE instr({column}, 'background') > 0 OR instr({column}, 'foreground') > 0
+                    OR instr({column}, 'intervals') > 0 OR instr({column}, 'intervalMs') > 0
+                 ORDER BY rowid"
+            ))?
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut update = transaction.prepare(&format!("UPDATE {table} SET {column} = ?2 WHERE rowid = ?1"))?;
+        for (row, text) in rows {
+            let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+            let mut changed = stored_names(&mut value, inputs);
+            if table == "nodes" {
+                let state = value.as_object_mut().ok_or_else(|| corrupt_text("a checkpoint state is no object"))?;
+                changed |= named_watches(state)?;
+            }
+            if !changed {
+                continue;
+            }
+            let written = match (inputs, table) {
+                (false, _) => value.to_string(),
+                (true, "nodes") => {
+                    to_json(&json::<CheckpointState>("nodes", "state", &value.to_string()).map_err(corrupt)?)
+                }
+                (true, _) => to_json(&demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)?),
+            };
+            update.execute(rusqlite::params![row, written])?;
+        }
+    }
+    Ok(())
+}
+
+/// Gives the names of [`current_names`], but its watches', to a stored block or
+/// checkpoint state `value`, and with `inputs` those of [`named_input`];
+/// answers whether it changed any.
+fn stored_names(value: &mut serde_json::Value, inputs: bool) -> bool {
+    use serde_json::Value;
+
+    let mut changed = false;
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                changed |= stored_names(item, inputs);
+            }
+        }
+        Value::Object(fields) => {
+            if inputs
+                && fields.get("type").and_then(Value::as_str) == Some("tool_call")
+                && fields.get("toolName").and_then(Value::as_str) == Some("shell")
+            {
+                changed |= named_input(fields);
+            }
+            // A report's event is the one object a report holds that names an interval.
+            if fields.get("kind").and_then(Value::as_str) == Some("running") && fields.remove("intervalMs").is_some() {
+                changed = true;
+            }
+            for field in fields.values_mut() {
+                changed |= stored_names(field, inputs);
+            }
+        }
+        _ => {}
+    }
+    changed
+}
+
+/// Gives the input of the `shell` call `call`, which keeps it as the JSON text
+/// its model wrote, the fields the tool has now: `background` is `service`, in
+/// the same place among the input's fields, and `intervalMs` is gone.
+fn named_input(call: &mut serde_json::Map<String, serde_json::Value>) -> bool {
+    use serde_json::Value;
+
+    let Some(text) = call.get("input").and_then(Value::as_str) else {
+        return false;
+    };
+    // Text that is not JSON, which a model may have written, names no field.
+    let Ok(Value::Object(input)) = serde_json::from_str::<Value>(text) else {
+        return false;
+    };
+    if !input.contains_key("background") && !input.contains_key("intervalMs") {
+        return false;
+    }
+    let renamed: serde_json::Map<String, Value> = input
+        .into_iter()
+        .filter(|(name, _)| name != "intervalMs")
+        .map(|(name, field)| (if name == "background" { "service".to_owned() } else { name }, field))
+        .collect();
+    call.insert("input".to_owned(), Value::String(Value::Object(renamed).to_string()));
+    true
+}
+
+/// Gives the watches of the checkpoint state `state`, if it has any, their
+/// current names; answers whether it changed any.
+fn named_watches(state: &mut serde_json::Map<String, serde_json::Value>) -> rusqlite::Result<bool> {
+    use serde_json::Value;
+
+    let mut changed = false;
+    if let Some(intervals) = state.remove("intervals") {
+        state.insert("watches".to_owned(), intervals);
+        changed = true;
+    }
+    // A state of a release before the commands' watches has none.
+    let Some(watches) = state.get_mut("watches") else {
+        return Ok(changed);
+    };
+    let Value::Array(watches) = watches else {
+        return Err(corrupt_text("a checkpoint state names its watches by no list"));
+    };
+    for watch in watches {
+        let Some(fields) = watch.as_object_mut() else {
+            return Err(corrupt_text("a watch of a checkpoint state is no object"));
+        };
+        let status = match fields.get("watch") {
+            Some(Value::String(status)) => match status.as_str() {
+                "background" => Some("service"),
+                "foreground" => Some("unreported"),
+                "service" | "unreported" | "silenced" => None,
+                _ => return Err(corrupt_text("a watch of a checkpoint state names an unknown status")),
+            },
+            // A watch before statuses: the command that reported at no
+            // interval is the one that ran until stopped.
+            _ => match fields.get("intervalMs") {
+                Some(Value::Null) => Some("service"),
+                Some(_) => Some("unreported"),
+                None => return Err(corrupt_text("a watch of a checkpoint state names no status")),
+            },
+        };
+        changed |= fields.remove("intervalMs").is_some();
+        if let Some(status) = status {
+            fields.insert("watch".to_owned(), Value::String(status.to_owned()));
+            changed = true;
+        }
+    }
+    Ok(changed)
+}
+
+/// From 0.1.58's conversation schema to the next.
+///
+/// A running command's record keeps whether it is a service, as the column
+/// `background` of that release, in place of the interval it reported at: a
+/// command with no interval is a service. Nothing else is rewritten: the
+/// next step renames the column and the stored names that hold an interval
+/// ([`conversation_from_0_1_63`]).
 const CONVERSATION_FROM_0_1_58: &str = "
 ALTER TABLE running_commands ADD COLUMN background INTEGER NOT NULL DEFAULT 0 CHECK (background IN (0, 1));
 UPDATE running_commands SET background = interval_ms IS NULL;
@@ -1858,6 +2050,7 @@ fn conversation_from_0_1_38(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
 ///   it is complete. One stored before was never read, and names none.
 fn conversation_from_0_1_37(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`named_kept_messages`).
+    current_names(transaction)?;
     named_kept_messages(transaction)?;
     with_requests(transaction)
 }
@@ -2773,6 +2966,7 @@ fn shares_as_lists(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`number_attachments`,
     // `named_kept_messages`).
     number_attachments(transaction)?;
+    current_names(transaction)?;
     named_kept_messages(transaction)?;
     let mut blocks = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
     let mut rows = blocks.query([])?;
@@ -2995,6 +3189,7 @@ const CONVERSATION_FROM_CHILD_DIRECTORIES: &str =
 fn nodes_with_their_directories(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`number_attachments`).
     number_attachments(transaction)?;
+    current_names(transaction)?;
     transaction.execute_batch(
         "ALTER TABLE nodes ADD COLUMN cwd TEXT CHECK (cwd <> '');
          ALTER TABLE nodes ADD COLUMN cwd_device TEXT;
@@ -3045,6 +3240,7 @@ const CONVERSATION_FROM_BLOCK_FORMAT_5: &str = "";
 fn boundaries_with_kept_messages(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`number_attachments`).
     number_attachments(transaction)?;
+    current_names(transaction)?;
     let rows = transaction
         .prepare("SELECT node_id, idx, block FROM blocks WHERE json_extract(block, '$.type') = 'compaction_boundary'")?
         .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
@@ -3586,6 +3782,7 @@ fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlit
     // It reads blocks with the current types (`number_attachments`,
     // `named_kept_messages`).
     number_attachments(transaction)?;
+    current_names(transaction)?;
     named_kept_messages(transaction)?;
     let nodes = transaction
         .prepare("SELECT DISTINCT node_id FROM blocks")?
@@ -4843,7 +5040,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 7
+  -- nodes.state: checkpoint state format 8
   state            TEXT NOT NULL,
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that
@@ -4880,7 +5077,7 @@ CREATE TABLE nodes (
   -- the root, whose model the conversation's record holds, and for a side
   -- question, which keeps its checkpoint's. Its reader refuses a row that
   -- is a child without one, since a migration adds no table CHECK.
-  -- nodes.model: model selection, as in checkpoint state format 7
+  -- nodes.model: model selection, as in checkpoint state format 8
   model            TEXT,
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (failure IS NULL OR closed_phase = 'error')
@@ -4920,14 +5117,14 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 14.
+-- blocks.block: transcript block format 15.
 -- A node's transcript is a tree of rows (message-editing.md § Versions):
 -- `idx` is a row's number, its place in the order the node's rows were
 -- written, which no other row is ever given. A row is never deleted.
 CREATE TABLE blocks (
   node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx      INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 14
+  -- blocks.block: transcript block format 15
   block    TEXT NOT NULL,
   -- The row before it on its path; null for a path's first row.
   follows  INTEGER CHECK (follows < idx),
@@ -5014,7 +5211,7 @@ CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 14
+  -- share_blocks.block: transcript block format 15
   block TEXT NOT NULL,
   PRIMARY KEY (token, idx)
 ) STRICT;
@@ -5066,7 +5263,7 @@ CREATE TABLE command_outputs (
 -- that device, the call that started it, when it started, how far each
 -- node that looked at it has seen its output, a JSON object of each node's
 -- bytes of stdout and stderr by the node's id, the title of the call that
--- started it, whether that call started it in the background, and the call's
+-- started it, whether that call started it as a service, and the call's
 -- script, which the pages' view of it carries with its title (rendering.md
 -- § Frame protocol).
 CREATE TABLE running_commands (
@@ -5087,7 +5284,7 @@ CREATE TABLE running_commands (
   -- format 1.
   unsent      TEXT,
   script      TEXT NOT NULL DEFAULT '',
-  background  INTEGER NOT NULL DEFAULT 0 CHECK (background IN (0, 1))
+  service     INTEGER NOT NULL DEFAULT 0 CHECK (service IN (0, 1))
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
