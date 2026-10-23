@@ -5,7 +5,7 @@
 use bytes::Bytes;
 
 use demi_command_package_browser_protocol::live::{FILE_FRAME, FileHeader, LiveViewerMessage};
-use demi_command_sdk::{Input, ServiceError};
+use demi_command_sdk::{Input, ResidentError};
 use demi_live_view::frames::{Frame, Reader as FrameReader};
 use demi_live_view_protocol::{ACK_FRAME, CONTROL_FRAME, ChunkAck};
 use demi_shared_types::DecodeError;
@@ -46,7 +46,7 @@ impl Reader {
     }
 
     /// The next frame, or none once the page ended its side.
-    pub async fn next(&mut self) -> Result<Option<Inbound>, ServiceError> {
+    pub async fn next(&mut self) -> Result<Option<Inbound>, ResidentError> {
         match self.0.next().await? {
             Some(frame) => decode(frame).map(Some),
             None => Ok(None),
@@ -54,23 +54,23 @@ impl Reader {
     }
 }
 
-fn decode(Frame { kind, payload }: Frame) -> Result<Inbound, ServiceError> {
+fn decode(Frame { kind, payload }: Frame) -> Result<Inbound, ResidentError> {
     match kind {
         CONTROL_FRAME => LiveViewerMessage::decode(&payload)
             .map(Inbound::Control)
-            .map_err(|error| ServiceError::failed(FrameError::Message(error))),
+            .map_err(|error| ResidentError::failed(FrameError::Message(error))),
         ACK_FRAME => ChunkAck::split(&payload)
             .map(Inbound::Acks)
-            .map_err(|error| ServiceError::failed(FrameError::Acks(error))),
+            .map_err(|error| ResidentError::failed(FrameError::Acks(error))),
         FILE_FRAME => {
             let (header, data) = FileHeader::split(&payload)
-                .map_err(|error| ServiceError::failed(FrameError::File(error)))?;
+                .map_err(|error| ResidentError::failed(FrameError::File(error)))?;
             Ok(Inbound::File {
                 upload: header.upload,
                 file: header.file,
                 data: payload.slice_ref(data),
             })
         }
-        kind => Err(ServiceError::failed(FrameError::Kind(kind))),
+        kind => Err(ResidentError::failed(FrameError::Kind(kind))),
     }
 }

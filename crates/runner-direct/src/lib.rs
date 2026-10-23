@@ -98,7 +98,7 @@
 //! # Boundaries
 //!
 //! The crate knows no backend connection, jobs or commands, and carries out no
-//! operation in a way of its own: only through the Host operations and service
+//! operation in a way of its own: only through the Host operations and resident
 //! streams the runner supplies.
 
 mod addresses;

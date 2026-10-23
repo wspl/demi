@@ -1,4 +1,4 @@
-//! What the service keeps across its own ends
+//! What the resident keeps across its own ends
 //! (`crates/plugin-mobile/command/src/devices.rs`), in
 //! `<installation>/mobile/kept.json`:
 //!
@@ -7,7 +7,7 @@
 //!   (`driver::Simulator::boot`), so a simulator the user shut down and
 //!   booted again is the user's.
 //! - the devices open, which conversation has each and under which handle,
-//!   so a service that starts again takes each back under the same handle.
+//!   so a resident that starts again takes each back under the same handle.
 //!
 //! A `demi-mobile` that stops, updates or is killed shuts nothing down and
 //! forgets nothing; a device leaves the record when it closes or is lost.
@@ -39,7 +39,7 @@ pub struct Entry {
 }
 
 /// A device a conversation has open. Unknown fields are not refused: a file
-/// an earlier version wrote names a service that held the device (`owner`),
+/// an earlier version wrote names a resident that held the device (`owner`),
 /// which nothing reads now.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase")]

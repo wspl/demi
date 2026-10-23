@@ -1,4 +1,4 @@
-//! HTTP/2 command services over caller-owned duplex transports: the SDK of the
+//! HTTP/2 command residents over caller-owned duplex transports: the SDK of the
 //! command wire that `demi_command_protocol` defines.
 //!
 //! The SDK handles framing, HTTP/2, byte IO and cancellation over a transport
@@ -6,7 +6,7 @@
 //! (the runner does), and a command's algorithm belongs to its package, never
 //! to the SDK or the runner.
 //!
-//! A service's `tracing` events leave as JSON lines of the one log on its
+//! A resident's `tracing` events leave as JSON lines of the one log on its
 //! standard error (`log_to_stderr`), which the runner keeps as they are.
 //!
 //! The runner and every command program use this one SDK. A command program
@@ -20,7 +20,7 @@
 //! - A handler stops and releases its resources when its token fires. A reset
 //!   stream or an aborted task is not a release, since native work may ignore
 //!   both.
-//! - A handler that outlasts the grace makes the service return a fault, and
+//! - A handler that outlasts the grace makes the resident return a fault, and
 //!   the runner retires the process and fails every call it held, rather than
 //!   claim that the cancellation was isolated.
 //! - Blocking or CPU-bound work must leave the connection's worker free, or
@@ -29,7 +29,7 @@
 //! # Shutdown
 //!
 //! Once a shutdown is answered, either side may close while the other still has
-//! frames queued: the service exits when its connection has drained, and the
+//! frames queued: the resident exits when its connection has drained, and the
 //! caller's connection may still send its own GOAWAY. So a write into the
 //! closed transport, a reset or an end of input after an answered shutdown ends
 //! the connection and is not a failure.
@@ -56,7 +56,7 @@ pub use artifacts::{ArtifactPending, Artifacts, ArtifactsAsk};
 pub use asking::{Answered, Asked, Pending, Reporter, RequestStream};
 pub use client::{Client, CommandInput, CommandOutput};
 pub use exchange::{Exchange, ExchangeError, InputSource, OutputSink};
-pub use launch::{COMMAND_SERVICE, Launch};
+pub use launch::{COMMAND_RESIDENT, Launch};
 pub use log::log_to_stderr;
 pub use messages::{Messages, MessagesAsk, Told};
 pub use numbers::{Draw, Numbers, NumbersAsk};
@@ -64,4 +64,4 @@ pub use server::{
     ConversationContext, Handler, InvocationContext, MediumRefused, Output, serve,
     serve_cancellable,
 };
-pub use stream::{Input, ServiceError};
+pub use stream::{Input, ResidentError};

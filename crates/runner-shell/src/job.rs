@@ -1,4 +1,4 @@
-//! A resident shell job with bounded input and output and an owned completion
+//! A shell job with bounded input and output and an owned completion
 //! task.
 //!
 //! # When a job ends

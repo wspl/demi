@@ -18,7 +18,7 @@
 //! target switch, a detach) and to every Host when the conversation is
 //! archived or deleted.
 //!
-//! The runner forwards it to each resident service on the device, which ends
+//! The runner forwards it to each resident on the device, which ends
 //! whatever it holds for the conversation (the browser closes its Chrome and
 //! removes its profile).
 //!
@@ -34,7 +34,7 @@
 //! gate, and every job runs in a lease of that gate; a move sends it once
 //! the jobs of the conversation on the device it left ended
 //! (`crates/backend-host-access/src/transition.rs`). Repeating one is
-//! harmless, and it never starts a service.
+//! harmless, and it never starts a resident.
 //!
 //! # What a Host holds
 //!
@@ -48,7 +48,7 @@
 //! ones. The idle-released conversations are kept in memory only: after a
 //! restart of the backend a runner told nothing meanwhile is named them again,
 //! which releases nothing it still holds for a conversation in use, as a
-//! release never starts a service and the next use starts them.
+//! release never starts a resident and the next use starts them.
 //!
 //! A release that does not end in an answer is logged with the Host and the
 //! reason, and changes nothing. A release has no time limit; the connection's

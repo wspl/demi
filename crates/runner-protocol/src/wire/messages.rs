@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor,
-    ServiceSequence, Viewable, conversation_name, digest, without_nul,
+    ResidentSequence, Viewable, conversation_name, digest, without_nul,
 };
 use demi_shared_types::{BlobRef, HostLogLine};
 use schemars::JsonSchema;
@@ -15,7 +15,7 @@ use serde_with::rust::unwrap_or_skip;
 
 use super::{
     Carriage, FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES,
-    SERVICE_STDERR_CHARS, Timestamp, WireBytes,
+    RESIDENT_STDERR_CHARS, Timestamp, WireBytes,
 };
 use crate::values::DeviceToken;
 
@@ -29,11 +29,11 @@ use crate::values::DeviceToken;
 )]
 #[garde(allow_unvalidated)]
 pub enum Inbound {
-    /// Ends what the runner's services hold for the conversation
+    /// Ends what the runner's residents hold for the conversation
     /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
     ///
     /// `over` says the conversation is archived or deleted, which also ends
-    /// what the runner itself keeps for it besides its services' state: its
+    /// what the runner itself keeps for it besides its residents' state: its
     /// recordings.
     ConversationRelease {
         id: String,
@@ -41,7 +41,7 @@ pub enum Inbound {
         conversation_id: String,
         over: bool,
     },
-    /// Stops the services of `packages`, by their ids, which ends what they
+    /// Stops the residents of `packages`, by their ids, which ends what they
     /// hold for every conversation: their plugin was turned off
     /// (`crates/backend-plugins/src/lib.rs`).
     PackageRelease {
@@ -54,7 +54,7 @@ pub enum Inbound {
     /// ones included, whose scratch directories the runner keeps, and which of
     /// them are archived, whose recordings it removes
     /// (`crates/runner-jobs/src/scratch.rs`), which of them it is to hold
-    /// services for, and the packages whose services it is to hold none of
+    /// residents for, and the packages whose residents it is to hold none of
     /// (`crates/runner/src/connection/owner.rs`).
     HelloOk {
         device_id: String,
@@ -63,12 +63,12 @@ pub enum Inbound {
         conversations: Vec<String>,
         #[garde(inner(custom(conversation_name)))]
         archived: Vec<String>,
-        /// The conversations the device is to hold services for: those that
+        /// The conversations the device is to hold residents for: those that
         /// are neither archived, nor detached from it, nor released after
         /// idling. The runner releases every other it holds one for.
         #[garde(inner(custom(conversation_name)))]
         held: Vec<String>,
-        /// The packages whose plugin the user has turned off, whose services
+        /// The packages whose plugin the user has turned off, whose residents
         /// the runner stops. Not a list of those to run, since the runner
         /// also runs packages no plugin binds.
         stopped: Vec<String>,
@@ -295,8 +295,8 @@ pub enum Inbound {
         exit_code: u8,
     },
     /// Open a user stream: invoke `operation` of `package` in its resident
-    /// service.
-    ServiceOpen {
+    /// resident.
+    ResidentOpen {
         stream_id: String,
         #[garde(dive)]
         context: CommandContext,
@@ -966,7 +966,7 @@ impl Inbound {
             | Self::JobStart { .. }
             | Self::JobRead { .. }
             | Self::JobMediaRead { .. }
-            | Self::ServiceOpen { .. }
+            | Self::ResidentOpen { .. }
             | Self::LogFollow { .. }
             | Self::ArtifactLocation { .. }
             | Self::NumbersReserved { .. }
@@ -1088,21 +1088,21 @@ pub enum Outbound {
         )]
         error: Option<String>,
     },
-    /// The services of a `package_release` ended.
+    /// The residents of a `package_release` ended.
     PackageReleased {
         id: String,
     },
     /// Reserves `count` numbers of the conversation's `sequence` for a
-    /// native service (`crates/command-protocol/src/numbers.rs`).
+    /// resident (`crates/command-protocol/src/numbers.rs`).
     NumbersReserve {
         id: String,
         #[garde(custom(conversation_name))]
         conversation_id: String,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         #[garde(range(min = 1))]
         count: u32,
     },
-    /// A message of the service of `package` to its plugin about the
+    /// A message of the resident of `package` to its plugin about the
     /// conversation (`crates/command-protocol/src/messages.rs`).
     PackageMessage {
         #[garde(length(min = 1))]
@@ -1111,7 +1111,7 @@ pub enum Outbound {
         conversation_id: String,
         message: serde_json::Value,
     },
-    /// The service of `package` ended without releasing its conversations,
+    /// The resident of `package` ended without releasing its conversations,
     /// so what it kept for them is lost.
     PackageLost {
         #[garde(length(min = 1))]
@@ -1419,20 +1419,20 @@ pub enum Outbound {
         id: String,
         reason: String,
     },
-    ServiceOpened {
+    ResidentOpened {
         stream_id: String,
     },
-    ServiceError {
+    ResidentError {
         stream_id: String,
-        code: ServiceErrorCode,
+        code: ResidentErrorCode,
         message: String,
     },
     /// A user stream's invocation completed: its exit code and the bounded
     /// tail of its standard error.
-    ServiceDone {
+    ResidentDone {
         stream_id: String,
         exit_code: u8,
-        #[garde(length(chars, max = SERVICE_STDERR_CHARS))]
+        #[garde(length(chars, max = RESIDENT_STDERR_CHARS))]
         stderr: String,
     },
     /// Lines of the Host's log in `seq` order, on the lowest-priority queue.
@@ -1609,13 +1609,13 @@ pub enum OutputStream {
     Stderr,
 }
 
-/// Why a `service_open` stream never opened: the package lacks the operation,
-/// its service could not start, or the runner turned the stream away.
+/// Why a `resident_open` stream never opened: the package lacks the operation,
+/// its resident could not start, or the runner turned the stream away.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ServiceErrorCode {
+pub enum ResidentErrorCode {
     UnknownOperation,
-    ServiceFailed,
+    ResidentFailed,
     Refused,
 }
 
@@ -2440,7 +2440,7 @@ pub enum JobPathChange {
 serde_plain::derive_display_from_serialize!(HelloErrorCode);
 serde_plain::derive_display_from_serialize!(Signal);
 serde_plain::derive_display_from_serialize!(OutputStream);
-serde_plain::derive_display_from_serialize!(ServiceErrorCode);
+serde_plain::derive_display_from_serialize!(ResidentErrorCode);
 serde_plain::derive_display_from_serialize!(ChangeKind);
 serde_plain::derive_display_from_serialize!(SpawnErrorKind);
 serde_plain::derive_display_from_serialize!(RunnerPlatform);
@@ -2492,9 +2492,9 @@ impl Outbound {
             | Self::FsLive { .. }
             | Self::FsChanged { .. }
             | Self::FsFailed { .. }
-            | Self::ServiceOpened { .. }
-            | Self::ServiceError { .. }
-            | Self::ServiceDone { .. }
+            | Self::ResidentOpened { .. }
+            | Self::ResidentError { .. }
+            | Self::ResidentDone { .. }
             | Self::LogLines { .. }
             | Self::DirectAnswer { .. }
             | Self::DirectCandidate { .. }

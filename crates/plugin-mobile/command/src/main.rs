@@ -9,9 +9,9 @@ async fn main() {
     // Events go to standard error as lines of the log, which the runner keeps
     // as they are.
     demi_command_sdk::log_to_stderr("mobile");
-    let service = Arc::new(demi_mobile::DemiMobile::new());
-    if let Err(error) = demi_command_sdk::serve_stdio(service).await {
-        tracing::error!(event = "mobile_service.exited", %error, "the service ended with an error");
+    let resident = Arc::new(demi_mobile::DemiMobile::new());
+    if let Err(error) = demi_command_sdk::serve_stdio(resident).await {
+        tracing::error!(event = "mobile_resident.exited", %error, "the resident ended with an error");
         std::process::exit(1);
     }
     std::process::exit(0);

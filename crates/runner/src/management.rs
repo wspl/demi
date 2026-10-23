@@ -2,7 +2,7 @@
 //! runner's local endpoint answers beside the declared commands.
 
 use demi_command_protocol::{Completion, LocalInvocation};
-use demi_command_sdk::{Handler, InvocationContext, ServiceError};
+use demi_command_sdk::{Handler, InvocationContext, ResidentError};
 use demi_runner_jobs::commands::dispatch::{Dispatcher, RUNNER, completed, reported};
 use demi_runner_protocol::console::{NO_AUTOSTART, PAIRED, PAIRING_CODE, REMOVAL};
 use serde::{Deserialize, Serialize};
@@ -250,10 +250,10 @@ impl Management {
     async fn answer(
         &self,
         context: InvocationContext<LocalInvocation>,
-    ) -> Result<Completion, ServiceError> {
+    ) -> Result<Completion, ResidentError> {
         let request: Request = serde_json::from_value(context.request.args)?;
         if !self.authorize(&request) {
-            return Err(ServiceError::failed(InvalidSecret));
+            return Err(ResidentError::failed(InvalidSecret));
         }
         let answer = match request.action {
             Action::Status => serde_json::to_vec(&self.status())?,
@@ -272,7 +272,7 @@ impl Management {
                 let revocation = settled
                     .wait_for(Option::is_some)
                     .await
-                    .map_err(ServiceError::failed)?
+                    .map_err(ResidentError::failed)?
                     .clone();
                 serde_json::to_vec(&revocation)?
             }
@@ -305,7 +305,7 @@ impl Handler for Endpoint {
     fn invoke(
         &self,
         context: InvocationContext<LocalInvocation>,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         if context.request.operation != MANAGE {
             return self.dispatcher.invoke(context);
         }

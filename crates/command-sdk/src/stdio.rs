@@ -1,12 +1,12 @@
-//! Inherited pipe transport for a parent-owned native service executable.
+//! Inherited pipe transport for a parent-owned resident executable.
 
-use crate::{Handler, ServiceError};
+use crate::{Handler, ResidentError};
 use std::{io, sync::Arc};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 /// The executable owns the process lifetime. On Windows it must exit after this
 /// returns to release a synchronous input worker still waiting on the parent.
-pub async fn serve_stdio<H: Handler + ?Sized>(handler: Arc<H>) -> Result<(), ServiceError> {
+pub async fn serve_stdio<H: Handler + ?Sized>(handler: Arc<H>) -> Result<(), ResidentError> {
     crate::serve(transport()?, handler).await
 }
 

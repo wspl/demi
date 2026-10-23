@@ -158,7 +158,7 @@ where
     let completion = tokio::select! {
         _ = cancel.cancelled() => return Err(cancelled()),
         result = exchange => result.map_err(|error| match error {
-            ExchangeError::Service(error) => io::Error::other(error),
+            ExchangeError::Resident(error) => io::Error::other(error),
             ExchangeError::Input(error) | ExchangeError::Output(error) => error,
         })?,
     };

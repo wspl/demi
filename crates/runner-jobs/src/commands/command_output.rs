@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_command_declarations::Schema;
 use demi_command_protocol::{MAX_MEDIUM_BYTES, MediumFacts, sniff_media_type};
-use demi_command_sdk::{Output, OutputSink, ServiceError};
+use demi_command_sdk::{Output, OutputSink, ResidentError};
 
 use crate::job_media::JobMedia;
 
@@ -48,10 +48,10 @@ impl<'a> CommandOutput<'a> {
         }
     }
 
-    pub async fn stdout(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+    pub async fn stdout(&mut self, bytes: Bytes) -> Result<(), ResidentError> {
         if let Some(capture) = &mut self.json {
             if capture.bytes.len() + bytes.len() > JSON_BYTES {
-                return Err(ServiceError::failed(OutputError::TooLarge));
+                return Err(ResidentError::failed(OutputError::TooLarge));
             }
             capture.bytes.extend_from_slice(&bytes);
             return Ok(());
@@ -62,7 +62,7 @@ impl<'a> CommandOutput<'a> {
         self.output.stdout(bytes).await
     }
 
-    pub async fn stderr(&self, bytes: Bytes) -> Result<(), ServiceError> {
+    pub async fn stderr(&self, bytes: Bytes) -> Result<(), ResidentError> {
         self.output.stderr(bytes).await
     }
 
@@ -73,24 +73,24 @@ impl<'a> CommandOutput<'a> {
 
     /// A medium the command returned, which `facts` describe: checked, then
     /// handed to the job.
-    pub async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ServiceError> {
+    pub async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ResidentError> {
         let Some(job) = &self.media else {
-            return Err(ServiceError::failed(MediaFailure::Undeclared));
+            return Err(ResidentError::failed(MediaFailure::Undeclared));
         };
         if bytes.len() as u64 > MAX_MEDIUM_BYTES {
-            return Err(ServiceError::failed(MediaFailure::TooLarge(bytes.len())));
+            return Err(ResidentError::failed(MediaFailure::TooLarge(bytes.len())));
         }
         if sniff_media_type(&bytes) != Some(facts.media_type.as_str()) {
-            return Err(ServiceError::failed(MediaFailure::NotMedia(facts.media_type)));
+            return Err(ResidentError::failed(MediaFailure::NotMedia(facts.media_type)));
         }
         self.returned = true;
-        job.keep(facts, bytes).await.map_err(ServiceError::failed)
+        job.keep(facts, bytes).await.map_err(ResidentError::failed)
     }
 
     /// Releases captured output once the command has succeeded; a command
     /// that failed releases none. A command that returned media may print
     /// no value.
-    pub async fn finish(mut self, exit_code: u8) -> Result<(), ServiceError> {
+    pub async fn finish(mut self, exit_code: u8) -> Result<(), ResidentError> {
         let Some(capture) = self.json.take() else {
             return Ok(());
         };
@@ -98,27 +98,27 @@ impl<'a> CommandOutput<'a> {
             return Ok(());
         }
         let value: serde_json::Value = serde_json::from_slice(&capture.bytes)
-            .map_err(|error| ServiceError::failed(OutputError::NotJson(error)))?;
+            .map_err(|error| ResidentError::failed(OutputError::NotJson(error)))?;
         capture
             .schema
             .check(&value)
-            .map_err(|error| ServiceError::failed(OutputError::Invalid(error)))?;
+            .map_err(|error| ResidentError::failed(OutputError::Invalid(error)))?;
         self.output.stdout(capture.bytes.into()).await
     }
 }
 
 impl OutputSink for CommandOutput<'_> {
-    type Error = ServiceError;
+    type Error = ResidentError;
 
-    async fn stdout(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+    async fn stdout(&mut self, bytes: Bytes) -> Result<(), ResidentError> {
         CommandOutput::stdout(self, bytes).await
     }
 
-    async fn stderr(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+    async fn stderr(&mut self, bytes: Bytes) -> Result<(), ResidentError> {
         CommandOutput::stderr(self, bytes).await
     }
 
-    async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ServiceError> {
+    async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ResidentError> {
         CommandOutput::medium(self, facts, bytes).await
     }
 }

@@ -101,7 +101,7 @@ impl Kept {
                 dispatcher: registered.dispatcher.clone(),
                 connection: handle.clone(),
                 paths: registered.paths.clone(),
-                services: registered.services.clone(),
+                residents: registered.residents.clone(),
                 endpoint: registered.endpoint.clone(),
                 home: registered.state.root.to_string_lossy().into_owned(),
             }),
@@ -130,7 +130,7 @@ impl Kept {
     /// A connection serves from now on: the jobs' messages and their
     /// commands' requests go to it. Answers what the connection sends again
     /// of the jobs not released: their media's announcements and the exits
-    /// of those that ended, and the services' latest messages.
+    /// of those that ended, and the residents' latest messages.
     pub fn connected(&mut self, live: Live, output: mpsc::UnboundedSender<wire::Frame>) -> Vec<wire::Frame> {
         self.output.send_replace(Some(output));
         self.reach.send_replace(Reach::Connected(live));

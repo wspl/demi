@@ -51,7 +51,7 @@ impl ArtifactResolver for JobArtifacts {
     }
 }
 
-/// For a user stream's service (`crates/runner-jobs/src/commands/streams.rs`): the open
+/// For a user stream's resident (`crates/runner-jobs/src/commands/streams.rs`): the open
 /// stream authorizes its artifact.
 pub struct StreamArtifacts {
     connection: ConnectionHandle,

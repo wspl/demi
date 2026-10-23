@@ -375,7 +375,7 @@ fn browser_failure(failure: &PortFailure) -> Option<FailureDocument> {
 }
 
 /// A failed call as the page sees it: the browser's refusal under its own
-/// code; a browser whose service did not start on the Host as
+/// code; a browser whose resident did not start on the Host as
 /// `browser_unavailable`, with the runner's words; or the host access's
 /// refusal, which passes on.
 fn refused(failure: PortFailure) -> PluginError {
@@ -383,7 +383,7 @@ fn refused(failure: PortFailure) -> PluginError {
         return refusal(document.error.code.into(), document.error.message);
     }
     match failure {
-        PortFailure::Refused(PortRefusal::Service { message }) => {
+        PortFailure::Refused(PortRefusal::Resident { message }) => {
             refusal(PanelReason::BrowserUnavailable, message)
         }
         failure => failure.into(),

@@ -117,7 +117,7 @@ pub use messages::{
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
     HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget,
     LookPath, Looked, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
-    Resume, RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
+    Resume, RunnerInfo, RunnerPlatform, ResidentErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, WriteExists,
 };
 pub use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
@@ -207,10 +207,10 @@ pub const CHANGES_PER_MESSAGE: usize = 16 * 1024;
 /// the messages behind it wait for it, so a frame of the Host's log is small
 /// (`crates/runner/src/host_log.rs`).
 pub const LOG_FRAME_BYTES: usize = 32 * 1024;
-/// The most of an invocation's standard error a `service_done` carries, in
+/// The most of an invocation's standard error a `resident_done` carries, in
 /// Unicode scalar values (`crates/shared-types/src/lib.rs`). The runner keeps the
 /// last this many bytes, which are never more characters.
-pub const SERVICE_STDERR_CHARS: usize = 16 * 1024;
+pub const RESIDENT_STDERR_CHARS: usize = 16 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WireError {

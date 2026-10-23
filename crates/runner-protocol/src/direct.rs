@@ -165,7 +165,7 @@ impl JsonSchema for StunUrl {
 /// The user stream a stream name opens: an operation of a published package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ServiceBinding {
+pub struct ResidentBinding {
     #[garde(dive)]
     pub package: PackageDescriptor,
     #[garde(length(min = 1))]
@@ -180,7 +180,7 @@ pub struct ServiceBinding {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Introduction {
     #[garde(dive)]
-    pub streams: BTreeMap<String, ServiceBinding>,
+    pub streams: BTreeMap<String, ResidentBinding>,
     #[garde(dive)]
     pub locale: CommandLocale,
     #[garde(skip)]

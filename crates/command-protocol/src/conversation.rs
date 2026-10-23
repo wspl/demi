@@ -1,4 +1,4 @@
-//! Conversation lifecycle requests a trusted parent sends a resident service,
+//! Conversation lifecycle requests a trusted parent sends a resident,
 //! with invocation framing.
 //!
 //! This is the one port through which state that outlives a shell job (the
@@ -19,13 +19,13 @@
 //!
 //! # Requests
 //!
-//! - `Status` answers at once from what the service holds, never waiting for a
+//! - `Status` answers at once from what the resident holds, never waiting for a
 //!   release or other work in progress.
 //! - `Release` ends everything held for the conversation, awaits the package's
 //!   cleanup and acknowledges. Releasing an unknown conversation is harmless.
-//! - A service's shutdown releases every conversation it holds all at once, so
+//! - A resident's shutdown releases every conversation it holds all at once, so
 //!   the whole fits the shutdown deadline.
-//! - A cleanup that fails retires the service as faulty and says so, never
+//! - A cleanup that fails retires the resident as faulty and says so, never
 //!   claiming a successful release.
 //!
 //! Only the runner sends these requests; the local command client cannot.
@@ -47,7 +47,7 @@ pub enum ConversationRequest {
     Status {},
 }
 
-/// The conversations that hold resources in a service.
+/// The conversations that hold resources in a resident.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationStatus {

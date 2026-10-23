@@ -1,4 +1,4 @@
-// Whether the service is `Send`, which serving it needs, is decided through
+// Whether the resident is `Send`, which serving it needs, is decided through
 // a conversation's browser and the channels that answer with it, deeper than
 // the default 128 steps of the trait solver; the library sets the same limit.
 #![recursion_limit = "256"]
@@ -16,18 +16,18 @@ async fn main() {
     demi_command_sdk::log_to_stderr("browser");
     let browser = Arc::new(demi_browser::DemiBrowser::new());
     let chrome = browser.chrome().clone();
-    let service = demi_command_sdk::serve_stdio(browser);
-    // Profiles a service that ended without retiring its browsers left are
+    let resident = demi_command_sdk::serve_stdio(browser);
+    // Profiles a resident that ended without retiring its browsers left are
     // removed beside serving; a sweep still
     // under way when serving ends is given up.
     let sweep = demi_command_package_browser_chrome::tabs::environment::sweep_orphans(&chrome);
-    tokio::pin!(service, sweep);
+    tokio::pin!(resident, sweep);
     let result = tokio::select! {
-        result = &mut service => result,
-        () = &mut sweep => service.await,
+        result = &mut resident => result,
+        () = &mut sweep => resident.await,
     };
     if let Err(error) = result {
-        tracing::error!(event = "browser_service.exited", %error, "the service ended with an error");
+        tracing::error!(event = "browser_resident.exited", %error, "the resident ended with an error");
         std::process::exit(1);
     }
     // The executable owns synchronous Windows stdio workers; HTTP/2 has drained.

@@ -12,7 +12,7 @@ async fn main() {
     if let Err(error) =
         demi_command_sdk::serve_stdio(Arc::new(demi_file::DemiFile::default())).await
     {
-        tracing::error!(event = "file_service.exited", %error, "the service ended with an error");
+        tracing::error!(event = "file_resident.exited", %error, "the resident ended with an error");
         std::process::exit(1);
     }
     // The executable owns synchronous Windows stdio workers; HTTP/2 has drained.

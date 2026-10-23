@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use demi_runner_command_packages::ServiceHandle;
+use demi_runner_command_packages::ResidentHandle;
 use demi_runner_direct::{Addresses, Direct};
 use demi_runner_host::{
     files,
@@ -24,7 +24,7 @@ use demi_runner_jobs::{
     commands::{
         contexts::{ContextIndex, ContextPaths, Installed, Manifests},
         dispatch::Dispatcher,
-        streams::ServiceStreams,
+        streams::ResidentStreams,
     },
     connection::Live,
     kept_output::KeptReader,
@@ -77,7 +77,7 @@ pub struct Registered {
     pub state: Arc<RunnerState>,
     pub token: watch::Sender<Option<DeviceToken>>,
     pub management: Arc<Management>,
-    pub services: ServiceHandle,
+    pub residents: ResidentHandle,
     /// What the artifact cache holds, which each connection reports
     /// (`crates/runner-command-packages/src/cache.rs`).
     pub cached: watch::Receiver<Vec<wire::HostArtifact>>,
@@ -149,7 +149,7 @@ struct Owner<'r> {
     following: Option<tokio::task::AbortHandle>,
     work: JoinSet<Work>,
     host: HostServer,
-    streams: ServiceStreams,
+    streams: ResidentStreams,
     volumes: Volumes,
     /// What the artifact cache holds.
     cached: watch::Receiver<Vec<wire::HostArtifact>>,
@@ -183,11 +183,11 @@ pub async fn serve(
         registered.cwd.clone(),
         registered.pipes.clone(),
     );
-    let streams = ServiceStreams::new(
+    let streams = ResidentStreams::new(
         kept.handle.clone(),
         transport.control.clone(),
         registered.pipes.clone(),
-        registered.services.clone(),
+        registered.residents.clone(),
         registered.management.draining.clone(),
         transport.cancellation().child_token(),
     );
@@ -522,7 +522,7 @@ impl Owner<'_> {
         });
     }
 
-    /// Lets go of what the services hold that the backend's records say the
+    /// Lets go of what the residents hold that the backend's records say the
     /// device is to hold none of: a conversation it lists that is not among
     /// `held` and that the runner holds something for, and the packages in
     /// `stopped`. A conversation the runner holds something for has a scratch
@@ -553,15 +553,15 @@ impl Owner<'_> {
         release.extend(told.iter().filter(|conversation| !listed.contains(conversation.as_str())).cloned());
         for conversation in &release {
             self.kept.handle.release_told(conversation);
-            if let Err(error) = registered.services.release_conversation(conversation).await {
-                tracing::warn!(event = "release.reconcile_failed", %conversation, %error, "a service could not release a conversation the backend does not name as held");
+            if let Err(error) = registered.residents.release_conversation(conversation).await {
+                tracing::warn!(event = "release.reconcile_failed", %conversation, %error, "a resident could not release a conversation the backend does not name as held");
             }
         }
         if !stopped.is_empty() {
-            registered.services.stop_packages(stopped).await;
+            registered.residents.stop_packages(stopped).await;
         }
         if !release.is_empty() {
-            tracing::info!(event = "release.reconciled", conversations = release.len(), "the services let go of conversations the backend does not name as held");
+            tracing::info!(event = "release.reconciled", conversations = release.len(), "the residents let go of conversations the backend does not name as held");
         }
     }
 
@@ -573,19 +573,19 @@ impl Owner<'_> {
                 over,
             } => {
                 self.kept.handle.release_told(&conversation_id);
-                let services = self.registered.services.clone();
+                let residents = self.registered.residents.clone();
                 let scratch = self.registered.scratch.clone();
                 let control = self.live.control.clone();
                 let closed = self.live.closed.clone();
                 self.work.spawn(async move {
-                    // The services end what they hold; the runner holds no
+                    // The residents end what they hold; the runner holds no
                     // files of the conversation (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
                     let result = tokio::select! {
                         _ = closed.cancelled() => return Work::Done,
-                        result = services.release_conversation(&conversation_id) => result,
+                        result = residents.release_conversation(&conversation_id) => result,
                     };
                     // Its recordings end with their devices and tabs, complete,
-                    // as the services release; an archived or deleted
+                    // as the residents release; an archived or deleted
                     // conversation then loses them.
                     if over {
                         scratch.forget_recordings(&conversation_id).await;
@@ -604,13 +604,13 @@ impl Owner<'_> {
                 });
             }
             Inbound::PackageRelease { id, packages } => {
-                let services = self.registered.services.clone();
+                let residents = self.registered.residents.clone();
                 let control = self.live.control.clone();
                 let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     tokio::select! {
                         _ = closed.cancelled() => return Work::Done,
-                        () = services.stop_packages(packages) => {}
+                        () = residents.stop_packages(packages) => {}
                     }
                     match wire::encode(&wire::Outbound::PackageReleased { id }) {
                         Ok(reply) => {
@@ -631,7 +631,7 @@ impl Owner<'_> {
                 let installing = self.manifests.install(
                     manifest,
                     self.registered.paths.clone(),
-                    self.registered.services.clone(),
+                    self.registered.residents.clone(),
                     self.registered.reserved.clone(),
                 );
                 self.work.spawn(async move {
@@ -683,7 +683,7 @@ impl Owner<'_> {
             Inbound::FsSubscribe { .. } | Inbound::FsUnsubscribe { .. } | Inbound::FsRenew { .. } => {
                 self.host.handle_watch(message)?
             }
-            Inbound::ServiceOpen { .. } => self.streams.handle_open(message)?,
+            Inbound::ResidentOpen { .. } => self.streams.handle_open(message)?,
             Inbound::DirectOffer {
                 id,
                 peer,
@@ -961,7 +961,7 @@ impl Owner<'_> {
     }
 
     /// Ends everything the connection owns: requests, raw processes and
-    /// streams stop; the jobs and the services run on (`crates/runner/src/connection/kept.rs`).
+    /// streams stop; the jobs and the residents run on (`crates/runner/src/connection/kept.rs`).
     async fn close(&mut self) {
         self.live.closed.cancel();
         self.kept.disconnected();

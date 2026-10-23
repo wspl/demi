@@ -534,7 +534,7 @@ fn wrapped(
 }
 
 /// Starts a process with `attempt`, which tries to spawn it once. Every process
-/// the runner starts, a service, a raw process, a job's external command or a
+/// the runner starts, a resident, a raw process, a job's external command or a
 /// utility's child program, starts this way, so none fails for a condition
 /// that passes (`crates/command-sdk/src/descriptors.rs`; `StartRetry` says which).
 pub async fn start<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
@@ -581,7 +581,7 @@ const BUSY_WAIT: Duration = Duration::from_secs(1);
 ///
 /// Linux refuses to run a file that any process holds open for writing, and the
 /// runner causes that itself. It writes files that it then runs, such as a
-/// service executable it has just copied into its cache or a script a job has
+/// resident executable it has just copied into its cache or a script a job has
 /// just written, while other threads start processes.
 ///
 /// Starting a process forks the runner, and the child holds a copy of every
@@ -785,7 +785,7 @@ pub fn handle_time(handle: std::os::windows::io::BorrowedHandle<'_>) -> io::Resu
 }
 
 /// Waits for the process itself to end. `ChildWrapper::wait` of a Windows job
-/// object waits for every process in it, which a service's helpers or a
+/// object waits for every process in it, which a resident's helpers or a
 /// program's background children outlive it by design; Unix's waits for the
 /// process alone, as this does.
 pub fn wait_leader(

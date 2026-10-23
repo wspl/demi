@@ -208,7 +208,7 @@ pub enum Sequence {
     Command,
     /// Subagents, from 1; the root is agent 0.
     Agent,
-    /// Conversation browser tabs, from 1: `t7`. The `demi.browser` service
+    /// Conversation browser tabs, from 1: `t7`. The `demi.browser` resident
     /// reserves them a few at a time (`crates/command-protocol/src/numbers.rs`).
     Tab,
     /// Simulators `demi mobile` opens, from 1: `m2`. The `demi.mobile`

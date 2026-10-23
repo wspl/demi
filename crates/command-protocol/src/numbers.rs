@@ -1,17 +1,17 @@
-//! The numbers stream: a service's requests for numbers of a conversation's
+//! The numbers stream: a resident's requests for numbers of a conversation's
 //! sequence, which the runner forwards to the backend, and their answers.
 //!
 //! A number the model reads, such as the browser's tab `t7`, is never given
-//! twice in a conversation. The service cannot keep the count: its state ends
+//! twice in a conversation. The resident cannot keep the count: its state ends
 //! with each browser restart, conversation release and Cloud stop.
 //!
 //! The backend keeps the count. It advances the sequence by `count` in its own
 //! transaction before it answers, so a number it gave out is never given again
-//! whether or not the service uses it. A service that reserves ahead leaves
+//! whether or not the resident uses it. A resident that reserves ahead leaves
 //! gaps, never repeats.
 //!
 //! ```text
-//! Service                        Runner                          Backend
+//! Resident                        Runner                          Backend
 //!   |<-- POST /v1/numbers ----------|  opened after GET /v1/info     |
 //!   |--- {id 3, c1, tab, count 4} ->|--- numbers_reserve ----------->|
 //!   |<-- {id 3, first 9} -----------|<-- numbers_reserved -----------|  9..12
@@ -23,24 +23,24 @@ use serde_with::rust::unwrap_or_skip;
 use super::ProtocolError;
 use super::invocation::conversation_name;
 
-/// A sequence of the conversation that a native service draws numbers from.
+/// A sequence of the conversation that a resident draws numbers from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ServiceSequence {
+pub enum ResidentSequence {
     /// The conversation browser's tabs.
     Tab,
     /// The simulators `demi mobile` opens (`crates/plugin-mobile/command/src/operations.rs`).
     Device,
 }
 
-/// The metadata that opens a stream the runner answers a service's requests
+/// The metadata that opens a stream the runner answers a resident's requests
 /// on, the numbers stream or the artifacts stream, which carries nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct StreamOpen {}
 
 /// One request for `count` numbers of the conversation's `sequence`; the
-/// service writes each as one standard output record. `id` is the service's
+/// resident writes each as one standard output record. `id` is the resident's
 /// own, unique among its requests in flight.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -50,7 +50,7 @@ pub struct NumbersRequest {
     #[garde(custom(conversation_name))]
     pub conversation: String,
     #[garde(skip)]
-    pub sequence: ServiceSequence,
+    pub sequence: ResidentSequence,
     #[garde(range(min = 1))]
     pub count: u32,
 }

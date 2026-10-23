@@ -1,7 +1,7 @@
 //! One backend connection (the wire is `demi_runner_protocol::wire`).
 //!
 //! Its owner routes each message to the work it belongs to and owns what lasts
-//! as long as the connection: the volumes, the Host requests, the service
+//! as long as the connection: the volumes, the Host requests, the resident
 //! streams and the raw processes. The owner never waits for that work, so it
 //! reads each message as it arrives; closing the connection ends all of it.
 //!

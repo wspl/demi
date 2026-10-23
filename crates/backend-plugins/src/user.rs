@@ -260,7 +260,7 @@ pub enum SwitchError {
 /// What follows from a plugin turned on or off that the product does.
 #[derive(Debug)]
 pub struct Switched {
-    /// The packages whose services every connected Host stops, which ends
+    /// The packages whose residents every connected Host stops, which ends
     /// what they hold for every conversation: those of a plugin turned off
     /// that no plugin still on binds.
     pub released: Vec<String>,
@@ -592,7 +592,7 @@ pub struct UserPlugins(Rc<Shared>);
 /// What a package lost on a Host (`crates/command-protocol/src/messages.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lost<'a> {
-    /// The state of one package, whose service ended unsaid.
+    /// The state of one package, whose resident ended unsaid.
     Package(&'a str),
     /// The state of every package, which a runner that started anew or a
     /// Cloud that stopped took with it.
@@ -695,7 +695,7 @@ impl UserPlugins {
         Ok(Some(Switched { released }))
     }
 
-    /// The packages whose services a Host is to hold none of: those of every
+    /// The packages whose residents a Host is to hold none of: those of every
     /// plugin the user has off that no plugin on binds. The runner stops them
     /// when it connects, as turning their plugin off stops them on a connected
     /// one. A list of what is off, not of what is on, since a Host also runs
@@ -976,7 +976,7 @@ impl UserPlugins {
     }
 
     /// The command package `package` said `message` about `conversation`
-    /// from a service on one of its Hosts: each plugin that binds it and
+    /// from a resident on one of its Hosts: each plugin that binds it and
     /// that the user has on receives it, in the order the messages came
     /// (`crates/plugin-interface/src/request.rs`).
     pub async fn package_message(

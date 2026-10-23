@@ -1,10 +1,10 @@
-//! The artifacts a service's program asks for
+//! The artifacts a resident's program asks for
 //! (`crates/command-protocol/src/artifacts.rs`).
 //!
 //! Each install names the invocation it serves, which the runner started for
 //! one job or one stream and registered here with that work's resolver, so the
 //! backend locates the artifact for that work. An install held by a running
-//! service is not removed with its line's older artifacts while the service
+//! resident is not removed with its line's older artifacts while the resident
 //! lives.
 
 use std::collections::HashMap;
@@ -87,16 +87,16 @@ impl Drop for Invoking {
     }
 }
 
-/// Answers one service's artifacts stream.
-pub(crate) struct ServiceArtifacts {
+/// Answers one resident's artifacts stream.
+pub(crate) struct ResidentArtifacts {
     pub(crate) cache: Arc<ArtifactCache>,
     pub(crate) package: String,
     pub(crate) invocations: Invocations,
-    /// What the service was given, held while it lives.
+    /// What the resident was given, held while it lives.
     pub(crate) held: Mutex<Vec<Hold>>,
 }
 
-impl ServiceArtifacts {
+impl ResidentArtifacts {
     /// Answers `ask`; an install reports how its download goes to
     /// `progress` before it is answered.
     pub(crate) async fn answer(

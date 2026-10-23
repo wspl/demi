@@ -5,7 +5,7 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::Serialize;
 
-use demi_command_sdk::{Input, ServiceError};
+use demi_command_sdk::{Input, ResidentError};
 use demi_live_view_protocol::{CONTROL_FRAME, FrameSplitter, SourceId, VIDEO_FRAME, VideoHeader};
 
 use crate::stream::EncodedFrame;
@@ -35,15 +35,15 @@ impl Reader {
     }
 
     /// The next frame, or none once the page ended its side.
-    pub async fn next(&mut self) -> Result<Option<Frame>, ServiceError> {
+    pub async fn next(&mut self) -> Result<Option<Frame>, ResidentError> {
         loop {
-            if let Some(frame) = self.frames.next().map_err(ServiceError::failed)? {
+            if let Some(frame) = self.frames.next().map_err(ResidentError::failed)? {
                 return Ok(Some(frame));
             }
             match self.input.next().await? {
                 Some(chunk) => self.frames.push(&chunk),
                 None if self.frames.is_empty() => return Ok(None),
-                None => return Err(ServiceError::failed(FrameError::Unfinished)),
+                None => return Err(ResidentError::failed(FrameError::Unfinished)),
             }
         }
     }

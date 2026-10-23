@@ -62,7 +62,7 @@ When a runner or embedded command package changes:
    new programs, with no reset.
 4. Check the running runner's executable hash and command package identity
    after that wake, again after hibernate and wake, and after a reset. After
-   each, the first native command starts its service from the image's embedded
+   each, the first native command starts its resident from the image's embedded
    executable, without a download.
 5. Exercise the paired device in the same checkpoint.
 

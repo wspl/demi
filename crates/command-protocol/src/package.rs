@@ -17,7 +17,7 @@
 //! take no part in it.
 //!
 //! A package declares its operations once, as the operation list its contract
-//! crate exports, so the descriptor, the service's own `GET /v1/info` and the
+//! crate exports, so the descriptor, the resident's own `GET /v1/info` and the
 //! handler's routing cannot list different sets.
 //!
 //! The runner validates descriptors and references itself and never repairs
@@ -112,9 +112,9 @@ impl PackageDescriptor {
             .cloned()
     }
 
-    /// Whether a service's catalog is the one this descriptor declares: the
+    /// Whether a resident's catalog is the one this descriptor declares: the
     /// same protocol and the same operations, in any order.
-    pub fn serves(&self, info: &ServiceInfo) -> bool {
+    pub fn serves(&self, info: &ResidentInfo) -> bool {
         let declared: HashSet<&String> = self.operations.iter().collect();
         let served: HashSet<&String> = info.operations.iter().collect();
         info.protocol_version == self.protocol_version && declared == served
@@ -160,19 +160,19 @@ pub enum ArtifactLocation {
     Path(#[garde(dive)] ArtifactPath),
 }
 
-/// What a resident service answers on its info path: the protocol it speaks
+/// What a resident answers on its info path: the protocol it speaks
 /// and the operations it serves, each once.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ServiceInfo {
+pub struct ResidentInfo {
     #[garde(range(equal = VERSION))]
     pub protocol_version: u64,
     #[garde(length(min = 1), inner(length(min = 1)), custom(unique))]
     pub operations: Vec<String>,
 }
 
-impl ServiceInfo {
-    /// Checks a catalog a service offers or a runner received.
+impl ResidentInfo {
+    /// Checks a catalog a resident offers or a runner received.
     pub fn validate(&self) -> Result<(), ProtocolError> {
         garde::Validate::validate(self)?;
         Ok(())

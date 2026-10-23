@@ -44,7 +44,7 @@ use demi_command_package_mobile_protocol::{
     mobile::Orientation,
 };
 use demi_command_protocol::{CommandError, Completion};
-use demi_command_sdk::{InvocationContext, ServiceError};
+use demi_command_sdk::{InvocationContext, ResidentError};
 use demi_live_view::{
     delivery::Delivery,
     frames::Reader,
@@ -488,7 +488,7 @@ pub async fn serve(
     devices: Arc<Devices>,
     hub: Arc<Hub>,
     context: InvocationContext,
-) -> Result<Completion, ServiceError> {
+) -> Result<Completion, ResidentError> {
     let conversation = context.request.context.conversation.clone();
     let (writer, writing) = Writer::<LiveModuleMessage>::start(context.output.clone());
     // Nothing is sent before the stream is looked at.
@@ -502,7 +502,7 @@ pub async fn serve(
             exit_code: 0,
             error: None,
         }),
-        Err(None) => Err(ServiceError::Cancelled),
+        Err(None) => Err(ResidentError::Cancelled),
         Err(Some(message)) => Ok(Completion {
             exit_code: 2,
             error: Some(CommandError {
@@ -731,7 +731,7 @@ async fn view(
                     }
                 }
                 // The device's capture ended with the device, whose close
-                // ends the view, or with the service.
+                // ends the view, or with the resident.
                 FromDevice::Event(None) => {
                     unlook(hub, &open, &mut watched, viewer, &input, &mut delivery, writer).await;
                 }

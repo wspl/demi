@@ -26,7 +26,7 @@
  *   asked only for a frame the cache lacks.
  * - A stream that ended opens again, and its view says it reconnects until
  *   it does, over the picture it last showed; the device's tab stays, as
- *   the Host keeps the device across its service's restarts.
+ *   the Host keeps the device across its resident's restarts.
  * - A view shown again asks its stream to answer, which the Host does with
  *   the device's state: a stream that does not answer in time, as one whose
  *   connection was lost silently while nobody looked, opens again.

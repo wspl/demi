@@ -57,7 +57,7 @@
 //!
 //! # Boundaries
 //!
-//! The crate knows no jobs, execution contexts, services or connection: a
+//! The crate knows no jobs, execution contexts, residents or connection: a
 //! declared command reaches the dispatcher only through the `command-sdk`
 //! `Handler` the job gives it. It is the only crate that links brush and the
 //! standard utilities, and nothing below the executable depends on it, so a

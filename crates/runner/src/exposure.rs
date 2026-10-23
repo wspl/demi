@@ -12,7 +12,7 @@
 //! any other.
 //!
 //! The answer pipe opens before the request goes out, so the pipe is never
-//! waiting for its source while a slow service thinks. Its end is the
+//! waiting for its source while a slow resident thinks. Its end is the
 //! request's: when the backend ends the pipe, its caller stopped waiting, and
 //! the runner abandons the request and closes its connection to the port,
 //! before the answer's head or after.

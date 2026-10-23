@@ -3,10 +3,10 @@
 //! puts what the runner reads. Both ends link this crate, so each is defined
 //! once.
 //!
-//! - A job's and a service stream's messages carry the command context.
+//! - A job's and a resident stream's messages carry the command context.
 //! - `conversation_release` is the one generic release of a conversation, which
 //!   says whether the conversation is over, archived or deleted,
-//!   `package_release` the one of a package's services for every
+//!   `package_release` the one of a package's residents for every
 //!   conversation, and `numbers_reserve` the one generic request for a
 //!   conversation's numbers.
 //! - `package_message` and `package_lost` carry a package's word to its plugin

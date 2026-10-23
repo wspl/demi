@@ -5,11 +5,11 @@
 //! - `claude-code.status` lists the installations.
 //!
 //! Each writes one JSON document to stdout, a failure included, because a
-//! service stream carries only stdout.
+//! resident stream carries only stdout.
 //!
 //! A failed invocation's nonzero exit does not discard its document: the
 //! backend validates it and reports its code, message and requested version. An
-//! output with no document is a service that failed.
+//! output with no document is a resident that failed.
 
 use std::{collections::BTreeMap, path::PathBuf};
 

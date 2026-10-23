@@ -3,7 +3,7 @@ use bytes::Bytes;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
-use demi_command_sdk::{Client, Handler, InvocationContext, ServiceError, serve_stdio};
+use demi_command_sdk::{Client, Handler, InvocationContext, ResidentError, serve_stdio};
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -30,7 +30,7 @@ impl Handler for Fixture {
     fn invoke(
         &self,
         mut ctx: InvocationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         Box::pin(async move {
             if ctx.request.operation == "flood" {
                 let chunk = Bytes::from(vec![0xa5; 64 * 1024]);
@@ -114,13 +114,13 @@ fn rss(pid: u32) -> Option<usize> {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<(), Error> {
-    if std::env::args().nth(1).as_deref() == Some("--service") {
+    if std::env::args().nth(1).as_deref() == Some("--resident") {
         serve_stdio(Arc::new(Fixture)).await?;
         return Ok(());
     }
     let start = Instant::now();
     let mut child = Command::new(std::env::current_exe()?)
-        .arg("--service")
+        .arg("--resident")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -191,7 +191,7 @@ async fn main() -> Result<(), Error> {
         input.cancel();
         drop(input);
         drop(output);
-        // Reap the service after shutdown so the measurement includes handler
+        // Reap the resident after shutdown so the measurement includes handler
         // and process release, not just sending RST_STREAM or a shutdown reply.
         client.shutdown().await?;
         assert!(child.wait().await?.success());

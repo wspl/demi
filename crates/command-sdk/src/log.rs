@@ -1,4 +1,4 @@
-//! A service's log: each `tracing` event the service writes leaves as one JSON
+//! A resident's log: each `tracing` event the resident writes leaves as one JSON
 //! [`LogLine`] on its standard error, which the runner reads line by line and
 //! keeps in the Host's log as the line it is
 //! (`crates/runner-command-packages/src/process.rs`). What is not a line, a
@@ -14,12 +14,12 @@ use demi_shared_types::{LogLine, LogOrigin, log_layer::LineLayer};
 use serde_json::Value;
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _, Layer as _};
 
-/// Installs the service's `tracing` subscriber: events of `info` and above
-/// become lines on standard error, each naming `service` in its fields. Every
-/// service's `main` calls it once, before it serves.
-pub fn log_to_stderr(service: &'static str) {
+/// Installs the resident's `tracing` subscriber: events of `info` and above
+/// become lines on standard error, each naming `resident` in its fields. Every
+/// resident's `main` calls it once, before it serves.
+pub fn log_to_stderr(resident: &'static str) {
     let layer = LineLayer::new(LogOrigin::Runner, move |mut line| {
-        line.fields.insert("service".into(), service.into());
+        line.fields.insert("resident".into(), resident.into());
         // A line that cannot be encoded or written has nowhere to say so: the
         // standard error is the log's only way out.
         let Some(bytes) = encode(&mut line) else {

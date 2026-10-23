@@ -287,14 +287,14 @@ fn mobile_failure(failure: &PortFailure) -> Option<FailureDocument> {
 }
 
 /// A failed call as the page sees it: the package's refusal under its own
-/// code; a package whose service did not start as `mobile_unavailable`,
+/// code; a package whose resident did not start as `mobile_unavailable`,
 /// with the runner's words; or the host access's refusal, which passes on.
 pub(crate) fn refused(failure: PortFailure) -> PluginError {
     if let Some(document) = mobile_failure(&failure) {
         return refusal(document.error.code.into(), document.error.message);
     }
     match failure {
-        PortFailure::Refused(PortRefusal::Service { message }) => {
+        PortFailure::Refused(PortRefusal::Resident { message }) => {
             refusal(PanelReason::MobileUnavailable, message)
         }
         failure => failure.into(),

@@ -5,7 +5,7 @@
 
 use crate::{connection::ConnectionHandle, job_media::JobMedia};
 use demi_command_protocol::{CommandContext, EditContext, Viewable, host_target};
-use demi_runner_command_packages::{ServiceHandle, ServiceLease};
+use demi_runner_command_packages::{ResidentHandle, ResidentLease};
 use demi_runner_process::{
     command_client::{CONTEXT_ENV, ENDPOINT_ENV},
     private_files::{chmod, write_private},
@@ -211,7 +211,7 @@ impl Contexts {
 }
 
 /// A connection's contexts. The connection owns the table and publishes each
-/// change as a new snapshot; a context's service leases end when it leaves.
+/// change as a new snapshot; a context's resident leases end when it leaves.
 pub struct ContextTable {
     index: watch::Sender<Arc<ContextIndex>>,
     leases: HashMap<String, PackageLeases>,
@@ -298,9 +298,9 @@ impl Drop for ContextTable {
     }
 }
 
-/// The service leases of a manifest's packages for this host, by package
+/// The resident leases of a manifest's packages for this host, by package
 /// id.
-pub type PackageLeases = BTreeMap<String, ServiceLease>;
+pub type PackageLeases = BTreeMap<String, ResidentLease>;
 
 /// The manifests one connection installed, by hash, and those it is still
 /// installing; they end with the connection (`crates/runner-jobs/src/commands/mod.rs`).
@@ -314,8 +314,8 @@ pub struct Manifests {
     /// For each package, the lease on the release that the latest manifest
     /// naming the package names, with that manifest's install number
     /// (`crates/runner-command-packages/src/registry.rs`): an older release's
-    /// service ends with the last job pinned to it.
-    leases: HashMap<String, (u64, ServiceLease)>,
+    /// resident ends with the last job pinned to it.
+    leases: HashMap<String, (u64, ResidentLease)>,
 }
 
 impl Manifests {
@@ -326,7 +326,7 @@ impl Manifests {
         &mut self,
         value: serde_json::Value,
         paths: ContextPaths,
-        services: ServiceHandle,
+        residents: ResidentHandle,
         reserved: BTreeSet<String>,
     ) -> impl Future<Output = (u64, io::Result<Installed>)> + Send + use<> {
         self.installs += 1;
@@ -334,7 +334,7 @@ impl Manifests {
         let (announce, installing) = watch::channel(None);
         self.installing.insert(number, installing);
         async move {
-            let result = install(value, &paths, &services, &reserved).await;
+            let result = install(value, &paths, &residents, &reserved).await;
             if let Ok(installed) = &result {
                 announce.send_replace(Some(installed.manifest.clone()));
             }
@@ -421,7 +421,7 @@ impl PinnedManifest {
 }
 
 /// A manifest the connection installed, with the leases that keep its
-/// packages' services resident (`crates/runner-command-packages/src/registry.rs`).
+/// packages' residents alive (`crates/runner-command-packages/src/registry.rs`).
 pub struct Installed {
     pub manifest: Arc<Manifest>,
     pub leases: PackageLeases,
@@ -433,7 +433,7 @@ pub struct Installed {
 pub async fn install(
     value: serde_json::Value,
     paths: &ContextPaths,
-    services: &ServiceHandle,
+    residents: &ResidentHandle,
     reserved: &BTreeSet<String>,
 ) -> io::Result<Installed> {
     let manifest = tokio::task::spawn_blocking(move || Manifest::parse(value))
@@ -464,19 +464,19 @@ pub async fn install(
         }
         Err(error) => return Err(error),
     }
-    let leases = leases(&manifest, services).await;
+    let leases = leases(&manifest, residents).await;
     Ok(Installed {
         manifest: Arc::new(manifest),
         leases,
     })
 }
 
-/// Leases on the services of `manifest`'s packages for this host.
-pub async fn leases(manifest: &Manifest, services: &ServiceHandle) -> PackageLeases {
+/// Leases on the residents of `manifest`'s packages for this host.
+pub async fn leases(manifest: &Manifest, residents: &ResidentHandle) -> PackageLeases {
     let mut leases = PackageLeases::new();
     for package in manifest.packages.values() {
         if let Some(artifact) = package.targets.get(host_target()) {
-            let lease = services.lease(artifact.sha256.clone()).await;
+            let lease = residents.lease(artifact.sha256.clone()).await;
             leases.insert(package.id.clone(), lease);
         }
     }

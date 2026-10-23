@@ -10,9 +10,9 @@
 //! A failed launch, an owner's cancellation and a failed graceful close use the
 //! same termination path.
 //!
-//! On Linux the kernel also ends Chrome when the service ends, which follows
+//! On Linux the kernel also ends Chrome when the resident ends, which follows
 //! the thread that started it. Chrome therefore starts from a thread that lives
-//! as long as the service.
+//! as long as the resident.
 
 use std::{io, path::Path};
 
@@ -75,7 +75,7 @@ impl ChromeProcess {
 
     /// The processes marked with the environment whose runtime directory is
     /// `runtime`, whose executable lies under one of `installations`: a
-    /// browser's own, or those an orphaned browser left when its service
+    /// browser's own, or those an orphaned browser left when its resident
     /// ended without retiring it.
     pub fn marked(runtime: &Path, installations: Vec<std::path::PathBuf>) -> Self {
         #[cfg(unix)]
@@ -125,8 +125,8 @@ impl ChromeProcess {
         #[cfg(target_os = "linux")]
         {
             // The kernel ends Chrome's leader when the thread that started it
-            // ends: a runtime worker, which lives as long as the service.
-            let service = std::process::id();
+            // ends: a runtime worker, which lives as long as the resident.
+            let resident = std::process::id();
             // SAFETY: the hook runs in the child between fork and exec and
             // calls only async-signal-safe functions.
             unsafe {
@@ -134,9 +134,9 @@ impl ChromeProcess {
                     if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) == -1 {
                         return Err(io::Error::last_os_error());
                     }
-                    // The service may have ended before the signal was set.
-                    if libc::getppid() as u32 != service {
-                        return Err(io::Error::other("the service ended before Chrome started"));
+                    // The resident may have ended before the signal was set.
+                    if libc::getppid() as u32 != resident {
+                        return Err(io::Error::other("the resident ended before Chrome started"));
                     }
                     Ok(())
                 });

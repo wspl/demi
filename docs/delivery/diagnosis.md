@@ -114,9 +114,9 @@ on a million lines.
   its commands' exits. A Host that is offline keeps its lines in its files
   until it connects again. The backend stores them as the Host's owner's: a
   request, page or turn ID a runner names is not taken.
-- **A command package's service** writes each `tracing` event as one JSON line
+- **A command package's resident** writes each `tracing` event as one JSON line
   of the log on its standard error (`demi_command_sdk::log_to_stderr`), and its
-  runner keeps the line as it is among its own, so a service's line names its
+  runner keeps the line as it is among its own, so a resident's line names its
   conversation and invocation as any other. A line of its standard error that is
   not one, as a panic's report, is kept with the event `stderr` and its text in
   `fields.text`.

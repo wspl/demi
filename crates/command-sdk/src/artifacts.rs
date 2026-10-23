@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use tokio::sync::mpsc;
 
-use crate::ServiceError;
+use crate::ResidentError;
 use crate::asking::{Answered, Asked, Asker, Pending};
 use demi_command_protocol::{
     ArtifactAnswer, ArtifactAnswered, ArtifactAsk, ArtifactInstall, ArtifactProgress,
@@ -69,7 +69,7 @@ pub struct Artifacts {
 
 impl Artifacts {
     /// A source whose requests arrive at the returned receiver, where the
-    /// service's artifacts stream, or a test, answers them.
+    /// resident's artifacts stream, or a test, answers them.
     pub fn channel() -> (Self, mpsc::Receiver<ArtifactPending>) {
         let (asker, requests) = Asker::channel();
         (Self { asker }, requests)
@@ -82,7 +82,7 @@ impl Artifacts {
         &self,
         install: ArtifactInstall,
         progress: Option<mpsc::Sender<ArtifactProgress>>,
-    ) -> Result<PathBuf, ServiceError> {
+    ) -> Result<PathBuf, ResidentError> {
         match self.ask(ArtifactAsk::Install(install), progress).await? {
             ArtifactReply::Path(path) => Ok(PathBuf::from(path)),
             ArtifactReply::Installed(_) => Err(unexpected()),
@@ -91,7 +91,7 @@ impl Artifacts {
 
     /// The artifacts of the line `name` the Host has, the newest install
     /// first.
-    pub async fn installed(&self, name: &str) -> Result<Vec<InstalledArtifact>, ServiceError> {
+    pub async fn installed(&self, name: &str) -> Result<Vec<InstalledArtifact>, ResidentError> {
         let question = ArtifactsInstalled {
             name: name.to_owned(),
         };
@@ -113,7 +113,7 @@ impl Artifacts {
         &self,
         ask: ArtifactAsk,
         progress: Option<mpsc::Sender<ArtifactProgress>>,
-    ) -> Result<ArtifactReply, ServiceError> {
+    ) -> Result<ArtifactReply, ResidentError> {
         // Checked here, where the caller learns why, rather than where the
         // runner reads it and breaks the stream.
         let request = ArtifactRequest::new(0, ask);
@@ -121,11 +121,11 @@ impl Artifacts {
         self.asker
             .ask(request, progress)
             .await
-            .ok_or_else(|| ServiceError::Artifacts("the artifacts stream has ended".into()))?
-            .map_err(ServiceError::Artifacts)
+            .ok_or_else(|| ResidentError::Artifacts("the artifacts stream has ended".into()))?
+            .map_err(ResidentError::Artifacts)
     }
 }
 
-fn unexpected() -> ServiceError {
-    ServiceError::Artifacts("the runner answered another kind of request".into())
+fn unexpected() -> ResidentError {
+    ResidentError::Artifacts("the runner answered another kind of request".into())
 }

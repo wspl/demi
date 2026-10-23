@@ -9,7 +9,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_runner_protocol::direct::{
     ChannelError, ChannelErrorCode, ChannelHeader, ChannelRefusal, Introduction, Listed,
-    MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ServiceBinding, StreamWatched, TextOpened,
+    MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ResidentBinding, StreamWatched, TextOpened,
     WATCH_HEARTBEAT, WriteEnd,
 };
 use demi_live_view_protocol::{FrameSplitter, VIDEO_FRAME, raw_kind};
@@ -74,7 +74,7 @@ pub struct Listing {
 pub struct StreamRequest {
     /// The id the runner gave the stream with its activity.
     pub stream: String,
-    pub binding: ServiceBinding,
+    pub binding: ResidentBinding,
     pub args: Option<serde_json::Map<String, serde_json::Value>>,
     pub introduction: Arc<Introduction>,
     /// The page's bytes, the invocation's input; they end when the channel

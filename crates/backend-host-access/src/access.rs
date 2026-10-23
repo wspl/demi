@@ -607,7 +607,7 @@ impl dyn HostShard + '_ {
     }
 
     /// [`Self::with_host`] for a request the user makes of a Host that is not
-    /// a read of its files, such as starting a plugin's service: it makes no
+    /// a read of its files, such as starting a plugin's resident: it makes no
     /// directory.
     pub async fn with_reading_host<T>(
         &self,
@@ -1043,7 +1043,7 @@ impl dyn HostShard + '_ {
     }
 
     /// Lifecycle access (§ Lifecycle access): tells each of `devices` whose
-    /// runner is connected to release what its services hold for
+    /// runner is connected to release what its residents hold for
     /// `conversation`, by the name the runner knows it by. `ended` says the
     /// conversation is archived or deleted, which the runner takes as the
     /// time to remove its recordings.
@@ -1062,7 +1062,7 @@ impl dyn HostShard + '_ {
     }
 
     /// Lifecycle access (§ Lifecycle access): tells every connected runner of
-    /// the user to stop the services of `packages`, which ends what they hold
+    /// the user to stop the residents of `packages`, which ends what they hold
     /// for each of the user's conversations, as turning their plugin off asks
     /// (`crates/backend-plugins/src/lib.rs`). It waits for no Host, for the
     /// reason [`Self::tell_release`] gives.

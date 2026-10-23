@@ -1,8 +1,8 @@
 //! The `demi.file` package: reading, editing and patching files beside them, as
-//! a resident command service.
+//! a resident.
 //!
 //! It holds no conversation state, so the SDK's empty conversation status,
-//! release and close stand, and the service ends with its last lease.
+//! release and close stand, and the resident ends with its last lease.
 //!
 //! It is a program of its own: it hosts no runner connection, defines no part
 //! of the agent's command tree, stores no conversation, and is never linked
@@ -18,10 +18,10 @@ use std::{future::Future, pin::Pin};
 
 use demi_command_package_file_protocol::{OPERATIONS, Operation, OperationError};
 use demi_command_protocol::{Completion, Invocation};
-use demi_command_sdk::{Handler, InvocationContext, ServiceError};
+use demi_command_sdk::{Handler, InvocationContext, ResidentError};
 use demi_shared_gates::SerialGate;
 
-/// The service.
+/// The resident.
 #[derive(Default)]
 pub struct DemiFile {
     /// File mutations run one at a time.
@@ -38,7 +38,7 @@ impl Handler for DemiFile {
     fn invoke(
         &self,
         context: InvocationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         match Operation::parse(&context.request.operation, context.request.args.clone()) {
             Ok(operation) => Box::pin(files::invoke(context, operation, self.mutations.clone())),
             Err(OperationError::Invalid(error)) => {
@@ -49,7 +49,7 @@ impl Handler for DemiFile {
                 Box::pin(async move { Ok(files::failure(&error)) })
             }
             Err(OperationError::Unknown(operation)) => {
-                Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
+                Box::pin(async move { Err(ResidentError::UnknownOperation(operation)) })
             }
         }
     }

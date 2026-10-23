@@ -4,9 +4,9 @@
 
 use tokio::sync::mpsc;
 
-use crate::ServiceError;
+use crate::ResidentError;
 use crate::asking::{Answered, Asked, Asker, Pending};
-use demi_command_protocol::{NumbersAnswer, NumbersRequest, ProtocolError, ServiceSequence};
+use demi_command_protocol::{NumbersAnswer, NumbersRequest, ProtocolError, ResidentSequence};
 
 /// The numbers stream's kind of request.
 pub struct NumbersAsk;
@@ -60,7 +60,7 @@ pub struct Numbers {
 
 impl Numbers {
     /// A source whose draws arrive at the returned receiver, where the
-    /// service's numbers stream, or a test, answers them.
+    /// resident's numbers stream, or a test, answers them.
     pub fn channel() -> (Self, mpsc::Receiver<Draw>) {
         let (asker, draws) = Asker::channel();
         (Self { asker }, draws)
@@ -72,9 +72,9 @@ impl Numbers {
     pub async fn draw(
         &self,
         conversation: &str,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         count: u32,
-    ) -> Result<u64, ServiceError> {
+    ) -> Result<u64, ResidentError> {
         // Checked here, where the caller learns why, rather than where the
         // runner reads it and breaks the stream.
         let request = NumbersRequest {
@@ -87,7 +87,7 @@ impl Numbers {
         self.asker
             .ask(request, None)
             .await
-            .ok_or_else(|| ServiceError::Numbers("the numbers stream has ended".into()))?
-            .map_err(ServiceError::Numbers)
+            .ok_or_else(|| ResidentError::Numbers("the numbers stream has ended".into()))?
+            .map_err(ResidentError::Numbers)
     }
 }

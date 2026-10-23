@@ -39,7 +39,7 @@
 //! 2. It deletes the runtime.
 //! 3. It kills whatever remains in the sandbox's cgroup.
 //! 4. It waits for every Sentry and Gofer process to exit before it releases
-//!    the storage, so orphaned Chrome, native services and helpers cannot
+//!    the storage, so orphaned Chrome, residents and helpers cannot
 //!    survive a stop.
 //!
 //! With the limits off the sandbox has no cgroup and deleting the runtime is

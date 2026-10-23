@@ -32,7 +32,7 @@
 //! deleted. The release the backend sends then says so
 //! ([`Scratch::forget_recordings`]), and the hello's answer names the
 //! conversations that are archived, so a Host that was offline then removes
-//! them as it connects. Neither depends on a service running: a recording
+//! them as it connects. Neither depends on a resident running: a recording
 //! outlives every device and tab it recorded, and the conversation's idleness,
 //! its move to another Host and the detaching of a device end none.
 //!

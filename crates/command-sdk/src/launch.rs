@@ -1,19 +1,19 @@
 //! How a runner starts a command program, and how the program reads it
 //! (`crates/runner-command-packages/src/lib.rs`): with
-//! `--command-service` alone.
+//! `--command-resident` alone.
 
 use clap::Parser;
 
 /// The one argument a runner starts a command program with.
-pub const COMMAND_SERVICE: &str = "--command-service";
+pub const COMMAND_RESIDENT: &str = "--command-resident";
 
 /// What a command program was started with.
 #[derive(Debug, Parser)]
 #[command(disable_help_flag = true, disable_version_flag = true)]
 pub struct Launch {
     /// Serves the command protocol over standard input and output.
-    #[arg(long = "command-service", required = true)]
-    _command_service: bool,
+    #[arg(long = "command-resident", required = true)]
+    _command_resident: bool,
 }
 
 impl Launch {

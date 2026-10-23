@@ -7,7 +7,7 @@
 //! state without waiting for either.
 //!
 //! ```text
-//! Service
+//! Resident
 //!   conversations ............. finds each invocation's conversation browser
 //!    `-- conversation browser . one per conversation: absent | starting |
 //!          |                    ready | closing; admits commands, runs release
@@ -37,8 +37,8 @@
 //! - A failed cleanup keeps another environment from starting over the
 //!   unresolved owner. After a completed one the next `open` may start a fresh
 //!   browser.
-//! - A service shutdown retires all its browsers at once, so it takes as long
-//!   as the slowest. A service that ends first leaves them to the sweep in
+//! - A resident shutdown retires all its browsers at once, so it takes as long
+//!   as the slowest. A resident that ends first leaves them to the sweep in
 //!   `tabs::environment`.
 
 use std::{collections::HashMap, sync::Arc};
@@ -70,7 +70,7 @@ use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
     ColorScheme, CommandError, CommandLocale, Completion, ConversationRequest, ConversationStatus,
 };
-use demi_command_sdk::{ConversationContext, InvocationContext, Messages, Numbers, ServiceError};
+use demi_command_sdk::{ConversationContext, InvocationContext, Messages, Numbers, ResidentError};
 use demi_command_package_browser_protocol::browser::{BrowserMessage, TabsChange};
 
 use demi_shared_openh264::Codec;
@@ -769,7 +769,7 @@ enum Find {
         conversation: String,
         browser: Arc<ConversationBrowser>,
     },
-    /// The service shuts down: every browser, and no more.
+    /// The resident shuts down: every browser, and no more.
     Close {
         reply: oneshot::Sender<Vec<Arc<ConversationBrowser>>>,
     },
@@ -778,7 +778,7 @@ enum Find {
 /// Tells `plugin-browser` the whole of what `browser.tabs` lists of
 /// `conversation` each time it changes, once for each burst of changes: a
 /// change made while a message is on its way is told by the next one. It
-/// tells the list once more whenever the service is given a sender again, and
+/// tells the list once more whenever the resident is given a sender again, and
 /// when it starts, so a plugin that missed a report has the latest.
 /// Ends once the conversation browser's owner ended at `owned`, after it
 /// told the change its end made.
@@ -793,7 +793,7 @@ async fn announce(
         // The owner's end is told by one last report, of no tabs.
         let last = owned.is_cancelled();
         changes.borrow_and_update();
-        // The service is given its sender before its first call; one
+        // The resident is given its sender before its first call; one
         // driven without it, as a test's is, tells nobody.
         let sender = messages.borrow_and_update().clone();
         if let Some(sender) = sender {
@@ -856,15 +856,15 @@ fn tab_rows(listing: &Snapshot, offset: usize, limit: usize) -> Vec<protocol::Br
         .collect()
 }
 
-/// The service's browsers, one per conversation.
+/// The resident's browsers, one per conversation.
 pub(crate) struct Conversations {
     requests: mpsc::Sender<Find>,
     /// The owner, every conversation browser's owner and their Chromes.
     tasks: TaskTracker,
-    /// Where the conversations' tab numbers come from, once the service has
+    /// Where the conversations' tab numbers come from, once the resident has
     /// its numbers source.
     numbers: watch::Sender<Option<Numbers>>,
-    /// Where the service tells the plugin of the conversations' tab changes,
+    /// Where the resident tells the plugin of the conversations' tab changes,
     /// once it has its message sender.
     messages: watch::Sender<Option<Messages>>,
     /// The Host's Chrome, which `install` installs for every conversation.
@@ -970,19 +970,19 @@ impl Conversations {
         }
     }
 
-    /// Takes the service's message sender: the conversations' tab changes
+    /// Takes the resident's message sender: the conversations' tab changes
     /// go to the plugin through it.
     pub(crate) fn attach_messages(&self, messages: Messages) {
         self.messages.send_replace(Some(messages));
     }
 
-    /// Takes the service's numbers source: browsers made from now on number
+    /// Takes the resident's numbers source: browsers made from now on number
     /// their tabs from it.
     pub(crate) fn attach_numbers(&self, numbers: Numbers) {
         self.numbers.send_replace(Some(numbers));
     }
 
-    /// Asks the owner; none once the service has shut down.
+    /// Asks the owner; none once the resident has shut down.
     async fn ask<T>(&self, request: impl FnOnce(oneshot::Sender<T>) -> Find) -> Option<T> {
         let (reply, answer) = oneshot::channel();
         self.requests.send(request(reply)).await.ok()?;
@@ -994,7 +994,7 @@ impl Conversations {
         &self,
         context: InvocationContext,
         operation: std::result::Result<BrowserOperation, OperationError>,
-    ) -> std::result::Result<Completion, ServiceError> {
+    ) -> std::result::Result<Completion, ResidentError> {
         let (browser, _command) = self.admit(&context).await?;
         let cancellation = context.cancellation.clone();
         let work = self.invoke_admitted(&browser, context, operation);
@@ -1016,7 +1016,7 @@ impl Conversations {
     pub async fn live(
         &self,
         context: InvocationContext,
-    ) -> std::result::Result<Completion, ServiceError> {
+    ) -> std::result::Result<Completion, ResidentError> {
         let (browser, _command) = self.admit(&context).await?;
         demi_command_package_browser_chrome::live::viewer::serve(browser, context).await
     }
@@ -1027,7 +1027,7 @@ impl Conversations {
     async fn admit(
         &self,
         context: &InvocationContext,
-    ) -> std::result::Result<(Arc<ConversationBrowser>, TaskTrackerToken), ServiceError> {
+    ) -> std::result::Result<(Arc<ConversationBrowser>, TaskTrackerToken), ResidentError> {
         let conversation = context.request.context.conversation.clone();
         let browser = self
             .ask(|reply| Find::Admit {
@@ -1035,8 +1035,8 @@ impl Conversations {
                 reply,
             })
             .await
-            .ok_or(ServiceError::Cancelled)?;
-        let command = browser.admit().ok_or(ServiceError::Cancelled)?;
+            .ok_or(ResidentError::Cancelled)?;
+        let command = browser.admit().ok_or(ResidentError::Cancelled)?;
         Ok((browser, command))
     }
 
@@ -1045,7 +1045,7 @@ impl Conversations {
         browser: &ConversationBrowser,
         mut context: InvocationContext,
         operation: std::result::Result<BrowserOperation, OperationError>,
-    ) -> std::result::Result<Completion, ServiceError> {
+    ) -> std::result::Result<Completion, ResidentError> {
         let json = context.request.json == Some(true);
         let result = async {
             let command =
@@ -1109,7 +1109,7 @@ impl Conversations {
                     error: None,
                 })
             }
-            Err(BrowserError::Cancelled) => Err(ServiceError::Cancelled),
+            Err(BrowserError::Cancelled) => Err(ResidentError::Cancelled),
             Err(error) => {
                 let code = error.code();
                 let message = error.to_string();
@@ -1600,11 +1600,11 @@ impl Conversations {
         Ok(CommandOutput::Json(output::value(result)?))
     }
 
-    /// Release only the trusted conversation selected by the parent service port.
+    /// Release only the trusted conversation selected by the parent resident port.
     pub async fn conversation(
         &self,
         context: ConversationContext,
-    ) -> std::result::Result<Completion, ServiceError> {
+    ) -> std::result::Result<Completion, ResidentError> {
         let output = match &context.request {
             ConversationRequest::Status {} => {
                 let conversations = self
@@ -1630,9 +1630,9 @@ impl Conversations {
                         conversation: conversation.clone(),
                         browser,
                     };
-                    // A service that shut down forgets everything anyway.
+                    // A resident that shut down forgets everything anyway.
                     let _closed = self.requests.send(forget).await;
-                    released.map_err(ServiceError::failed)?;
+                    released.map_err(ResidentError::failed)?;
                 }
                 serde_json::json!({})
             }
@@ -1649,7 +1649,7 @@ impl Conversations {
 
     /// Releases every conversation. Their browsers retire at the same time,
     /// so shutting down takes as long as the slowest.
-    pub async fn close(&self) -> std::result::Result<(), ServiceError> {
+    pub async fn close(&self) -> std::result::Result<(), ResidentError> {
         let browsers = self
             .ask(|reply| Find::Close { reply })
             .await
@@ -1661,7 +1661,7 @@ impl Conversations {
         self.tasks.close();
         self.tasks.wait().await;
         match released.into_iter().find_map(std::result::Result::err) {
-            Some(error) => Err(ServiceError::failed(error)),
+            Some(error) => Err(ResidentError::failed(error)),
             None => Ok(()),
         }
     }

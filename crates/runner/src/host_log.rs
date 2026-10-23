@@ -8,15 +8,15 @@
 //!   backend <-- log_lines (lowest-priority queue) <-- follower <-- log_follow
 //! ```
 //!
-//! Without it a resident service that fails on a Cloud and writes why to its
+//! Without it a resident that fails on a Cloud and writes why to its
 //! standard error leaves nothing once the Cloud is gone.
 //!
 //! # How lines get in
 //!
 //! Every part of the runner writes `tracing` events. The log is a layer that
 //! writes them as lines, so no module holds a handle to the files, and a
-//! resident service's standard error enters the same way, as `stderr` lines,
-//! except a line the service wrote as a `LogLine` itself
+//! resident's standard error enters the same way, as `stderr` lines,
+//! except a line the resident wrote as a `LogLine` itself
 //! (`demi_command_sdk::log_to_stderr`), which is kept as it is.
 //! An event names what happened in its `event` field, `noun.verb` in the past
 //! tense, and its IDs (`conversation`, `turn`, `request_id`) go to the line's
@@ -256,14 +256,14 @@ impl HostLogFollower {
 /// lines [`kept`] adapts to what the runner's files hold.
 pub type HostLogLayer = LineLayer<Box<dyn Fn(LogLine) + Send + Sync>>;
 
-/// A line as the files keep it. A line a service wrote as a [`LogLine`]
-/// arrives whole in the `service_line` field
+/// A line as the files keep it. A line a resident wrote as a [`LogLine`]
+/// arrives whole in the `resident_line` field
 /// (`crates/runner-command-packages/src/process.rs`) and is kept as it is. A
-/// line of a service's standard error (it has a `source`) is a `stderr` line
+/// line of a resident's standard error (it has a `source`) is a `stderr` line
 /// with its text in `text`; the text of any other line is cut, since a line
 /// must fit a frame.
 fn kept(mut line: LogLine) -> LogLine {
-    if let Some(Value::String(written)) = line.fields.remove("service_line")
+    if let Some(Value::String(written)) = line.fields.remove("resident_line")
         && let Ok(mut whole) = serde_json::from_str::<LogLine>(&written)
     {
         whole.origin = LogOrigin::Runner;

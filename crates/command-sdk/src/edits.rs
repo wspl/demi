@@ -1,4 +1,4 @@
-//! Bounded edit snapshots shared by a runner and its native command services:
+//! Bounded edit snapshots shared by a runner and its native command residents:
 //! the recorder behind the list of files a shell job created or modified, which
 //! the conversation shows under the call and as diffs on request.
 //!
@@ -14,7 +14,7 @@
 //!   blurs concurrent calls.
 //! - External programs (git, python, node) stay outside. Their edits still show
 //!   in the working tree view, unattributed.
-//! - The recorder lives here because the runner and the native services both
+//! - The recorder lives here because the runner and the residents both
 //!   link this crate, so both record through the same file interface. Its
 //!   context and journal are types of the command wire, never another message
 //!   stream or a byte on a command's stdout.
@@ -714,7 +714,7 @@ fn normalize(path: &Path) -> PathBuf {
         .collect()
 }
 
-/// Inside the runner the event reaches the Host log; inside a command service
+/// Inside the runner the event reaches the Host log; inside a command resident
 /// it reaches standard error, which the runner drains into the same log.
 fn diagnostic(error: &io::Error) {
     tracing::warn!(event = "edit_record.failed", %error, "an edit could not be recorded");

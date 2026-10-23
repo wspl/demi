@@ -6,11 +6,11 @@
 //! the conversation of the Host that started it, and it reaches that job's agent
 //! node's commands.
 //!
-//! - A native service's conversation numbers come only from a conversation of
+//! - A resident's conversation numbers come only from a conversation of
 //!   the user that reaches the device
 //!   (`crates/command-protocol/src/numbers.rs`).
 //! - A direct stream counts as the activity of such a conversation only.
-//! - A service's message reaches its plugin only about such a conversation
+//! - A resident's message reaches its plugin only about such a conversation
 //!   (`crates/command-protocol/src/messages.rs`).
 //!
 //! # Registering a job
@@ -50,7 +50,7 @@ use demi_runner_protocol::wire::HostLogLine;
 use demi_backend_runners::host_key::conversation_of;
 use demi_backend_database::permissions::AskedHost;
 use demi_backend_permissions::Need;
-use demi_command_protocol::ServiceSequence;
+use demi_command_protocol::ResidentSequence;
 use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};
 use demi_shared_gates::{GateLease, Purpose};
 use demi_shared_types::{BlobRef, Sequence};
@@ -273,7 +273,7 @@ impl LinkPolicy for ShardPolicy {
     fn reserve_numbers(
         &self,
         conversation: String,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         count: u32,
     ) -> LocalBoxFuture<'static, Result<u64, String>> {
         let shard = self.shard();
@@ -282,8 +282,8 @@ impl LinkPolicy for ShardPolicy {
             let shard = shard?;
             let conversation = reaching(&shard, &conversation, &device).await?;
             let sequence = match sequence {
-                ServiceSequence::Tab => Sequence::Tab,
-                ServiceSequence::Device => Sequence::Device,
+                ResidentSequence::Tab => Sequence::Tab,
+                ResidentSequence::Device => Sequence::Device,
             };
             shard
                 .services()

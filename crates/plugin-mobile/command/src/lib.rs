@@ -1,5 +1,5 @@
 //! The `demi.mobile` package: the Host's simulators for the conversations that
-//! open them, as a resident command service, with a driver per platform behind
+//! open them, as a resident, with a driver per platform behind
 //! one interface (`crates/plugin-mobile/command/src/driver.rs`).
 //!
 //! The agent runs the user's iOS or Android app in a simulator on a paired
@@ -65,7 +65,7 @@ use demi_command_package_mobile_protocol::{
     mobile::{FailureDocument, MobileFailure},
 };
 use demi_command_protocol::{CommandError, Completion, ConversationRequest, ConversationStatus, Invocation};
-use demi_command_sdk::{ConversationContext, Handler, InvocationContext, Messages, Numbers, ServiceError};
+use demi_command_sdk::{ConversationContext, Handler, InvocationContext, Messages, Numbers, ResidentError};
 
 pub use error::MobileError;
 pub use operations::{QUIET, SETTLE_LIMIT};
@@ -75,12 +75,12 @@ use demi_shared_recording::Library;
 
 use crate::{devices::Devices, driver::Driver, live::Hub, operations::Produced};
 
-/// The service.
+/// The resident.
 pub struct DemiMobile {
     devices: Arc<Devices>,
     hub: Arc<Hub>,
     /// The installation, `DEMI_HOME`, whose `scratch/<12 digits of the conversation's id>` is each
-    /// conversation's scratch directory; none for a service without one.
+    /// conversation's scratch directory; none for a resident without one.
     home: Option<std::path::PathBuf>,
     codec: Arc<dyn Codec>,
     /// Each conversation's recordings, in the conversation's scratch directory.
@@ -88,7 +88,7 @@ pub struct DemiMobile {
 }
 
 impl DemiMobile {
-    /// The service with this Host's drivers.
+    /// The resident with this Host's drivers.
     pub fn new() -> Self {
         // The installation's `mobile/`, where the simulators Demi booted
         // and the open devices are kept across the program's ends (`crates/plugin-mobile/command/src/devices.rs`).
@@ -97,7 +97,7 @@ impl DemiMobile {
         Self::with_drivers(host_drivers(home.as_deref(), codec.clone()), home.as_deref(), codec)
     }
 
-    /// The service with `drivers`, such as a test's, in the installation
+    /// The resident with `drivers`, such as a test's, in the installation
     /// `home`: it keeps the simulators it boots in `home/mobile`, and each
     /// conversation's files in `home/scratch/<12 digits of the conversation's id>`.
     pub fn with_drivers(drivers: Vec<Arc<dyn Driver>>, home: Option<&std::path::Path>, codec: Arc<dyn Codec>) -> Self {
@@ -122,7 +122,7 @@ impl DemiMobile {
     }
 
     /// `conversation`'s scratch directory on this Host, or the system's
-    /// temporary directory's for a service without an installation.
+    /// temporary directory's for a resident without an installation.
     fn scratch(&self, conversation: &str) -> std::path::PathBuf {
         self.home
             .clone()
@@ -191,7 +191,7 @@ impl Handler for DemiMobile {
     fn conversation(
         &self,
         context: ConversationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         let devices = self.devices.clone();
         Box::pin(async move {
             let body = match &context.request {
@@ -214,7 +214,7 @@ impl Handler for DemiMobile {
         })
     }
 
-    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
+    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ResidentError>> + Send>> {
         let devices = self.devices.clone();
         let hub = self.hub.clone();
         Box::pin(async move {
@@ -227,7 +227,7 @@ impl Handler for DemiMobile {
     fn invoke(
         &self,
         context: InvocationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         let devices = self.devices.clone();
         let hub = self.hub.clone();
         let installed = self.home.is_some();
@@ -239,7 +239,7 @@ impl Handler for DemiMobile {
                 Ok(Operation::Live) => return live::serve(devices, hub, context).await,
                 Ok(Operation::Mobile(operation)) => Ok(*operation),
                 Err(OperationError::Unknown(operation)) => {
-                    return Err(ServiceError::UnknownOperation(operation));
+                    return Err(ResidentError::UnknownOperation(operation));
                 }
                 Err(OperationError::Invalid(error)) => Err(MobileError::Usage(error.to_string())),
             };
@@ -294,7 +294,7 @@ impl Handler for DemiMobile {
                         error: None,
                     })
                 }
-                Err(MobileError::Cancelled) => Err(ServiceError::Cancelled),
+                Err(MobileError::Cancelled) => Err(ResidentError::Cancelled),
                 Err(error) => {
                     let code = error.code();
                     let exit_code = error.exit_code();
@@ -324,7 +324,7 @@ impl Handler for DemiMobile {
 
 /// Writes `file` to standard output a piece at a time, `about` first on
 /// standard error.
-async fn stream_file(context: &InvocationContext, file: &std::path::Path, about: &str) -> Result<(), ServiceError> {
+async fn stream_file(context: &InvocationContext, file: &std::path::Path, about: &str) -> Result<(), ResidentError> {
     use tokio::io::AsyncReadExt;
     context.output.stderr(Bytes::from(format!("{about}\n"))).await?;
     let mut opened = tokio::fs::File::open(file).await?;

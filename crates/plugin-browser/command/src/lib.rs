@@ -1,5 +1,5 @@
 //! The `demi.browser` package: the browsers of the conversations, as a resident
-//! command service that carries out the `demi browser` catalog.
+//! that carries out the `demi browser` catalog.
 //!
 //! The browser is a plugin (`plugin-browser`) whose commands bind this package
 //! through the conversation-scoped state port. Nothing in the agent, the
@@ -11,7 +11,7 @@
 //! ```text
 //! Agent shell call
 //!    -> Brush on the Host -> declared-command dispatcher (runner)
-//!         -> this service: one conversation browser per conversation
+//!         -> this resident: one conversation browser per conversation
 //!              -> Chrome for Testing over CDP
 //!    <- stdout, stderr, exit status -> shell result and media handling
 //! ```
@@ -23,7 +23,7 @@
 //!   `--session`, `--profile` or `--cdp-url`.
 //! - A conversation has one environment per Host where its shell runs, and a
 //!   command never reaches the one on another Host (its handle is
-//!   `tab_not_found` there). The service does not know which role its Host
+//!   `tab_not_found` there). The resident does not know which role its Host
 //!   plays; the conversation release reaches every device the conversation
 //!   used.
 //! - Isolation between conversations is a product rule, not a security boundary
@@ -49,7 +49,7 @@
 //! would add only a hop and pin a conversation's commands, live view frames and
 //! DevTools decoding to one thread.
 
-// Whether the service is `Send` and `Sync` is decided through a conversation's
+// Whether the resident is `Send` and `Sync` is decided through a conversation's
 // browser and the channels that answer with it, deeper than the default 128
 // steps of the trait solver.
 #![recursion_limit = "256"]
@@ -63,10 +63,10 @@ use demi_command_package_browser_protocol::{Operation, OperationError, browser a
 use demi_command_protocol::{Completion, Invocation};
 use demi_shared_openh264::{Cisco, Codec};
 use demi_command_sdk::{
-    Artifacts, ConversationContext, Handler, InvocationContext, Messages, Numbers, ServiceError,
+    Artifacts, ConversationContext, Handler, InvocationContext, Messages, Numbers, ResidentError,
 };
 
-/// The service.
+/// The resident.
 pub struct DemiBrowser {
     browsers: Arc<conversations::Conversations>,
     chrome: Chrome,
@@ -79,20 +79,20 @@ impl Default for DemiBrowser {
 }
 
 impl DemiBrowser {
-    /// The service, whose browsers start the pinned Chrome, which the
+    /// The resident, whose browsers start the pinned Chrome, which the
     /// runner installs.
     pub fn new() -> Self {
         Self::with_chrome(Chrome::default())
     }
 
-    /// The service, whose browsers start `chrome`.
+    /// The resident, whose browsers start `chrome`.
     pub fn with_chrome(chrome: Chrome) -> Self {
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
         let codec = Arc::new(Cisco::in_installation(home.as_deref()));
         Self::with_recording(chrome, home, codec)
     }
 
-    /// The service, whose browsers start `chrome`, and whose recordings are
+    /// The resident, whose browsers start `chrome`, and whose recordings are
     /// kept in the installation `home`, coded and decoded with `codec`.
     pub fn with_recording(chrome: Chrome, home: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
         Self {
@@ -113,12 +113,12 @@ impl Handler for DemiBrowser {
     fn conversation(
         &self,
         context: ConversationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         let browsers = self.browsers.clone();
         Box::pin(async move { browsers.conversation(context).await })
     }
 
-    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
+    fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ResidentError>> + Send>> {
         let browsers = self.browsers.clone();
         Box::pin(async move { browsers.close().await })
     }
@@ -145,7 +145,7 @@ impl Handler for DemiBrowser {
     fn invoke(
         &self,
         context: InvocationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         let browsers = self.browsers.clone();
         match Operation::parse(&context.request.operation, context.request.args.clone()) {
             Ok(Operation::Browser(operation)) => {
@@ -153,7 +153,7 @@ impl Handler for DemiBrowser {
             }
             Ok(Operation::Live) => Box::pin(async move { browsers.live(context).await }),
             Err(OperationError::Unknown(operation)) => {
-                Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
+                Box::pin(async move { Err(ResidentError::UnknownOperation(operation)) })
             }
             Err(error) => Box::pin(async move { browsers.invoke(context, Err(error)).await }),
         }

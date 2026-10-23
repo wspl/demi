@@ -16,12 +16,12 @@ use bytes::Bytes;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::plugin_files::ReadFilesError;
-use demi_backend_host_access::stream::{ServiceBinding, ServiceCall, UserCallError, UserCallKind};
+use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
 use demi_backend_plugins::{Lost, ProductPort, ReadOn, VideoJob};
 use demi_backend_providers::vault::seal::Row;
-use demi_backend_remote_host::ServiceCallError;
+use demi_backend_remote_host::ResidentCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, JobCaller, PortError};
 use demi_plugin_interface::{
@@ -77,8 +77,8 @@ impl ProductPort for ShardPort {
                 .package(&operation.package)
                 .ok_or_else(|| failed("the catalog serves no such package"))?
                 .clone();
-            let call = ServiceCall {
-                binding: ServiceBinding {
+            let call = ResidentCall {
+                binding: ResidentBinding {
                     package,
                     operation: operation.operation.clone(),
                 },
@@ -267,7 +267,7 @@ fn access_refusal(error: HostAccessError) -> PortFailure {
 ///
 /// - the host access's refusal when the Host cannot be reached or takes no
 ///   operations, as its routes answer it;
-/// - a service that did not start, which the plugin names in its own words;
+/// - a resident that did not start, which the plugin names in its own words;
 /// - a call whose connection to the Host broke partway, 409
 ///   `host_operation_failed`;
 /// - otherwise the call's own failure, such as an answer over its bound, which a
@@ -275,18 +275,18 @@ fn access_refusal(error: HostAccessError) -> PortFailure {
 fn call_failure(error: UserCallError) -> PortFailure {
     match error {
         UserCallError::Access(error) => access_refusal(error),
-        UserCallError::Call(ServiceCallError::Exited { stderr, .. }) => {
+        UserCallError::Call(ResidentCallError::Exited { stderr, .. }) => {
             PortFailure::Refused(PortRefusal::Operation { stderr })
         }
-        UserCallError::Call(ServiceCallError::NotOpened(message)) => {
-            PortFailure::Refused(PortRefusal::Service { message })
+        UserCallError::Call(ResidentCallError::NotOpened(message)) => {
+            PortFailure::Refused(PortRefusal::Resident { message })
         }
-        UserCallError::Call(ServiceCallError::Host(error))
+        UserCallError::Call(ResidentCallError::Host(error))
             if matches!(error.kind, HostErrorKind::Offline | HostErrorKind::Unavailable) =>
         {
             access_refusal(HostAccessError::Host(error))
         }
-        UserCallError::Call(ServiceCallError::Host(error))
+        UserCallError::Call(ResidentCallError::Host(error))
             if matches!(error.kind, HostErrorKind::Interrupted | HostErrorKind::Protocol) =>
         {
             PortFailure::Refused(PortRefusal::Host {

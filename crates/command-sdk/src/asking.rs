@@ -1,11 +1,11 @@
-//! A stream the runner opens into a service and answers the service's requests
+//! A stream the runner opens into a resident and answers the resident's requests
 //! on, at both ends (`crates/command-protocol/src/numbers.rs`,
 //! `crates/command-protocol/src/artifacts.rs`). The numbers stream and the
 //! artifacts stream are two kinds of it.
 //!
-//! - The service writes each request as one standard output record with an id
+//! - The resident writes each request as one standard output record with an id
 //!   of its own, unique among its requests in flight.
-//! - The runner sends each answer back as one input chunk when the service
+//! - The runner sends each answer back as one input chunk when the resident
 //!   pulls.
 //! - Before its outcome, a request may be answered with how far it has come, as
 //!   an install's download is.
@@ -21,7 +21,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use crate::{CommandInput, CommandOutput, Input, Output, ServiceError};
+use crate::{CommandInput, CommandOutput, Input, Output, ResidentError};
 use demi_command_protocol::{Completion, ProtocolError, Record};
 
 /// Requests waiting for the stream; a full queue holds back their callers,
@@ -41,7 +41,7 @@ pub trait Asked: Send + Sync + 'static {
     type Progress: Send + 'static;
     /// The stream's name, for the log and for errors.
     const NAME: &'static str;
-    /// `request` with the service's id `id`.
+    /// `request` with the resident's id `id`.
     fn with_id(request: Self::Request, id: u64) -> Self::Request;
     fn request_id(request: &Self::Request) -> u64;
     /// Checks a request where it is made and where it is read.
@@ -68,7 +68,7 @@ pub struct Pending<A: Asked> {
     pub progress: Option<mpsc::Sender<A::Progress>>,
 }
 
-/// Where a service's requests of one kind go. Cloning shares the one stream.
+/// Where a resident's requests of one kind go. Cloning shares the one stream.
 pub struct Asker<A: Asked> {
     asks: mpsc::Sender<Pending<A>>,
 }
@@ -83,7 +83,7 @@ impl<A: Asked> Clone for Asker<A> {
 
 impl<A: Asked> Asker<A> {
     /// An asker whose requests arrive at the returned receiver, where the
-    /// service's stream, or a test, answers them.
+    /// resident's stream, or a test, answers them.
     pub fn channel() -> (Self, mpsc::Receiver<Pending<A>>) {
         let (asks, received) = mpsc::channel(ASKS);
         (Self { asks }, received)
@@ -115,16 +115,16 @@ impl<A: Asked> Asker<A> {
     }
 }
 
-/// Serves the stream in the service: writes each request as one record and
+/// Serves the stream in the resident: writes each request as one record and
 /// hands each answer, one input chunk, to the request it answers. It
-/// completes at `finish`, as the service shuts down, when the runner ends
+/// completes at `finish`, as the resident shuts down, when the runner ends
 /// the input, or when no asker is left; a request still waiting then fails.
 pub(crate) async fn relay<A: Asked>(
     mut asks: mpsc::Receiver<Pending<A>>,
     mut input: Input,
     output: Output,
     finish: CancellationToken,
-) -> Result<Completion, ServiceError> {
+) -> Result<Completion, ResidentError> {
     // Both halves run in this one task, and neither holds the lock across a
     // wait.
     let waiting = std::sync::Mutex::new(HashMap::new());
@@ -141,7 +141,7 @@ pub(crate) async fn relay<A: Asked>(
                 .insert(id, (pending.answer, pending.progress));
             output.stdout(bytes).await?;
         }
-        Ok::<_, ServiceError>(())
+        Ok::<_, ResidentError>(())
     };
     let reader = async {
         while let Some(chunk) = input.next().await? {
@@ -167,7 +167,7 @@ pub(crate) async fn relay<A: Asked>(
                 }
             }
         }
-        Ok::<_, ServiceError>(())
+        Ok::<_, ResidentError>(())
     };
     tokio::select! {
         written = writer => written?,
@@ -180,7 +180,7 @@ pub(crate) async fn relay<A: Asked>(
     })
 }
 
-/// A service's open stream, which the runner answers.
+/// A resident's open stream, which the runner answers.
 pub struct RequestStream {
     pub(crate) input: CommandInput,
     pub(crate) output: CommandOutput,
@@ -193,7 +193,7 @@ pub struct Reporter<A: Asked> {
 }
 
 impl<A: Asked> Reporter<A> {
-    /// Tells the service how far the request has come; it goes before the
+    /// Tells the resident how far the request has come; it goes before the
     /// request's outcome.
     pub fn report(&self, progress: A::Progress) {
         // The stream's loop holds the receiver until it returns, and then
@@ -203,14 +203,14 @@ impl<A: Asked> Reporter<A> {
 }
 
 impl RequestStream {
-    /// Answers the service's requests until it ends the stream: each goes
+    /// Answers the resident's requests until it ends the stream: each goes
     /// to `answer`, with where it reports how far it
     /// has come, and each answer goes back as one input chunk when the
-    /// service pulls.
+    /// resident pulls.
     pub async fn answer<A: Asked, F>(
         mut self,
         answer: impl Fn(A::Request, Reporter<A>) -> F,
-    ) -> Result<(), ServiceError>
+    ) -> Result<(), ResidentError>
     where
         F: Future<Output = Result<A::Reply, String>>,
     {
@@ -246,13 +246,13 @@ impl RequestStream {
                         event = "command_stream.stderr_received",
                         stream = A::NAME,
                         bytes = bytes.len(),
-                        "a command stream's service wrote to its standard error"
+                        "a command stream's resident wrote to its standard error"
                     ),
                     // A stream's writer refuses media.
                     Some(Record::Medium { .. } | Record::MediumBytes(_)) => {
                         return Err(ProtocolError::Invalid(format!("a medium on the {} stream", A::NAME)).into());
                     }
-                    // The service ended the stream, as its shutdown does.
+                    // The resident ended the stream, as its shutdown does.
                     Some(Record::Completion(_)) | None => return Ok(()),
                 },
                 Some((id, progress)) = reports.recv() => answers.push_back(A::progress(id, progress)),
@@ -268,6 +268,6 @@ impl RequestStream {
     }
 }
 
-fn encode<A: Asked>(answer: &A::Answer) -> Result<Bytes, ServiceError> {
+fn encode<A: Asked>(answer: &A::Answer) -> Result<Bytes, ResidentError> {
     Ok(Bytes::from(serde_json::to_vec(answer)?))
 }

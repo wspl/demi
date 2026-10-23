@@ -5,7 +5,7 @@
 //! Brush builtin -------- direct call ------> Dispatcher
 //! External client ------ local forwarding -> Dispatcher
 //!
-//! Dispatcher ---- native operation --> command service on the same Host
+//! Dispatcher ---- native operation --> command resident on the same Host
 //! Dispatcher ---- rpc_call ----------> backend: the node's command set
 //! ```
 //!

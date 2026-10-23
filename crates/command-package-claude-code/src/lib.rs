@@ -30,7 +30,7 @@ use std::{future::Future, pin::Pin};
 use bytes::Bytes;
 use demi_command_package_claude_code_protocol::{Failure, Installed, Operation, Reply};
 use demi_command_protocol::{CommandError, Completion, Invocation};
-use demi_command_sdk::{Artifacts, Handler, Input, InvocationContext, ServiceError};
+use demi_command_sdk::{Artifacts, Handler, Input, InvocationContext, ResidentError};
 use serde::Serialize;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -41,10 +41,10 @@ use install::EnsureError;
 /// release record is only a few hundred bytes for each platform.
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
-/// The service holds no conversation state, so the trait's empty conversation
+/// The resident holds no conversation state, so the trait's empty conversation
 /// status and its `close` stand.
 pub struct DemiClaude {
-    /// The service's artifacts source, which it takes before it admits a
+    /// The resident's artifacts source, which it takes before it admits a
     /// call.
     artifacts: watch::Sender<Option<Artifacts>>,
 }
@@ -74,7 +74,7 @@ impl Handler for DemiClaude {
     fn invoke(
         &self,
         context: InvocationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         let artifacts = self.artifacts.borrow().clone();
         Box::pin(async move {
             let InvocationContext {
@@ -84,7 +84,7 @@ impl Handler for DemiClaude {
                 cancellation,
             } = context;
             let Some(operation) = Operation::parse(&request.operation) else {
-                return Err(ServiceError::UnknownOperation(request.operation));
+                return Err(ResidentError::UnknownOperation(request.operation));
             };
             let result = match artifacts {
                 None => Err(EnsureError::InstallFailed(
@@ -110,7 +110,7 @@ impl Handler for DemiClaude {
                 Err(error) => {
                     // Only a cancellation has no code; it writes no document.
                     let Some(code) = error.code() else {
-                        return Err(ServiceError::Cancelled);
+                        return Err(ResidentError::Cancelled);
                     };
                     let message = error.to_string();
                     let body = serde_json::to_vec(&Reply::<()>::Failed(Failure {
@@ -167,7 +167,7 @@ async fn read_input(mut input: Input, cancel: &CancellationToken) -> Result<Vec<
                 )));
             }
             Ok(None) => return Ok(bytes),
-            Err(ServiceError::Cancelled) => return Err(EnsureError::Cancelled),
+            Err(ResidentError::Cancelled) => return Err(EnsureError::Cancelled),
             Err(error) => return Err(EnsureError::InvalidRelease(error.to_string())),
         }
     }

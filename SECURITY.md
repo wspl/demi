@@ -42,7 +42,7 @@ Operators handling sensitive prompts should know where data rests:
 - **Hosts.**
   - A job's full output stays in files on its Host, and the backend receives
     bounded views (pipes and output: `crates/runner-jobs/src/tasks.rs`).
-  - Each runner keeps its own and its services' diagnostics in files in its
+  - Each runner keeps its own and its residents' diagnostics in files in its
     data directory until the backend has them, and the backend keeps them in
     its log, which holds IDs, counts and states, never content
     (`crates/runner/src/host_log.rs`, `docs/delivery/diagnosis.md`).

@@ -17,7 +17,7 @@
 //! | a file the backend chose at run time | the program, during the call that named it | the record the backend gave the call |
 //!
 //! ```text
-//! Service                        Runner                          Backend
+//! Resident                        Runner                          Backend
 //!   |<-- POST /v1/artifacts --------|  opened after GET /v1/info     |
 //!   |--- {id 4, install: {...}} --->|  cache? image? no              |
 //!   |                               |--- artifact_resolve ---------->|
@@ -89,7 +89,7 @@ pub struct ArtifactsInstalled {
     pub name: String,
 }
 
-/// One request a service writes as a standard output record: `id`, its own,
+/// One request a resident writes as a standard output record: `id`, its own,
 /// unique among its requests in flight, and either an install or a question.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -4,7 +4,7 @@
 //!
 //! It keeps the pages it read on disk for 15 minutes and holds no conversation
 //! state, so the SDK's empty conversation status, release and close stand, and
-//! the service ends with its last lease.
+//! the resident ends with its last lease.
 //!
 //! It runs no JavaScript, sends no credential or cookie, and is never linked
 //! into the runner.
@@ -19,9 +19,9 @@ use std::{future::Future, pin::Pin};
 
 use demi_command_package_fetch_protocol::{OPERATIONS, Operation, OperationError};
 use demi_command_protocol::{Completion, Invocation};
-use demi_command_sdk::{Handler, InvocationContext, ServiceError};
+use demi_command_sdk::{Handler, InvocationContext, ResidentError};
 
-/// The service.
+/// The resident.
 pub struct DemiFetch;
 
 impl Handler for DemiFetch {
@@ -34,14 +34,14 @@ impl Handler for DemiFetch {
     fn invoke(
         &self,
         context: InvocationContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         match Operation::parse(&context.request.operation, context.request.args.clone()) {
             Ok(Operation::Get(args)) => Box::pin(get::get(context, args)),
             Err(OperationError::Invalid(error)) => {
                 Box::pin(async move { Ok(get::failure(error.to_string())) })
             }
             Err(OperationError::Unknown(operation)) => {
-                Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
+                Box::pin(async move { Err(ResidentError::UnknownOperation(operation)) })
             }
         }
     }

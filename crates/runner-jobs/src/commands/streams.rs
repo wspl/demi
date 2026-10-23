@@ -1,6 +1,6 @@
-//! User streams the backend opens on a resident native service.
+//! User streams the backend opens on a resident.
 //!
-//! A `service_open` names:
+//! A `resident_open` names:
 //!
 //! - the stream and its command context;
 //! - the declared operation;
@@ -8,9 +8,9 @@
 //!   asks for them, and `output`, its standard output. Its standard error goes
 //!   to the Host log.
 //!
-//! The runner starts the invocation in the resident service that holds the
-//! conversation's state, starting the service when needed, and answers
-//! `service_opened` or `service_error`. No bytes move before that answer. The
+//! The runner starts the invocation in the resident that holds the
+//! conversation's state, starting the resident when needed, and answers
+//! `resident_opened` or `resident_error`. No bytes move before that answer. The
 //! runner does not parse what flows through.
 //!
 //! How a stream ends:
@@ -19,15 +19,15 @@
 //! - The invocation's completion ends the output pipe, which is how the backend
 //!   learns the stream is over.
 //! - A failing pipe or a closed connection cancels it.
-//! - `service_done` carries the exit code and the bounded tail of standard
+//! - `resident_done` carries the exit code and the bounded tail of standard
 //!   error. A one-shot call has no page to tell, so its caller learns a failure
 //!   and its words from this message, not from a stream that merely ended.
 //!
 //! # Binding
 //!
 //! A stream invokes its operation with the same package binding as the
-//! conversation's jobs, so it reaches the service that already holds the
-//! conversation's state, and while it is open it leases that service. Its
+//! conversation's jobs, so it reaches the resident that already holds the
+//! conversation's state, and while it is open it leases that resident. Its
 //! context names the conversation and a `user` caller with the user's locale.
 //! Its cwd is the conversation's directory and its environment is empty.
 //!
@@ -53,13 +53,13 @@ use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use demi_command_protocol::host_target;
-use demi_runner_command_packages::{Invoking, ServiceHandle, ServiceLease};
+use demi_runner_command_packages::{Invoking, ResidentHandle, ResidentLease};
 use demi_runner_process::{
     lines::LineSplitter,
     pipes::{PipeClient, report_pipe},
     tail::TailBuffer,
 };
-use demi_runner_protocol::wire::{self, ServiceErrorCode};
+use demi_runner_protocol::wire::{self, ResidentErrorCode};
 
 use crate::{commands::artifacts::StreamArtifacts, connection::ConnectionHandle};
 
@@ -67,12 +67,12 @@ use crate::{commands::artifacts::StreamArtifacts, connection::ConnectionHandle};
 /// behind the output pipe rather than buffering without limit.
 const OUTPUT_QUEUE: usize = 4;
 
-pub struct ServiceStreams {
+pub struct ResidentStreams {
     connection: ConnectionHandle,
     /// The connection's messages to the backend, which answer its streams.
     control: mpsc::UnboundedSender<wire::Frame>,
     pipes: PipeClient,
-    services: ServiceHandle,
+    residents: ResidentHandle,
     bindings: Bindings,
     draining: CancellationToken,
     streams: TaskTracker,
@@ -81,12 +81,12 @@ pub struct ServiceStreams {
     cancel: CancellationToken,
 }
 
-impl ServiceStreams {
+impl ResidentStreams {
     pub fn new(
         connection: ConnectionHandle,
         control: mpsc::UnboundedSender<wire::Frame>,
         pipes: PipeClient,
-        services: ServiceHandle,
+        residents: ResidentHandle,
         draining: CancellationToken,
         cancel: CancellationToken,
     ) -> Self {
@@ -94,7 +94,7 @@ impl ServiceStreams {
             connection,
             control,
             pipes,
-            services,
+            residents,
             bindings: Bindings::default(),
             draining,
             streams: TaskTracker::new(),
@@ -108,7 +108,7 @@ impl ServiceStreams {
     pub fn opener(&self) -> StreamOpener {
         StreamOpener {
             connection: self.connection.clone(),
-            services: self.services.clone(),
+            residents: self.residents.clone(),
             bindings: self.bindings.clone(),
             draining: self.draining.clone(),
         }
@@ -117,7 +117,7 @@ impl ServiceStreams {
     /// Starts one stream; connection cancellation (or `close`) ends every
     /// open stream.
     pub fn handle_open(&self, message: wire::Inbound) -> io::Result<()> {
-        let wire::Inbound::ServiceOpen {
+        let wire::Inbound::ResidentOpen {
             stream_id,
             context,
             package,
@@ -129,7 +129,7 @@ impl ServiceStreams {
             output,
         } = message
         else {
-            return Err(io::Error::other("not a service_open request"));
+            return Err(io::Error::other("not a resident_open request"));
         };
         if self.cancel.is_cancelled() {
             return Err(io::Error::other("host connection closed"));
@@ -157,14 +157,14 @@ impl ServiceStreams {
                 }
             };
             // No bytes move before the answer.
-            match wire::encode(&wire::Outbound::ServiceOpened { stream_id: stream_id.clone() }) {
+            match wire::encode(&wire::Outbound::ResidentOpened { stream_id: stream_id.clone() }) {
                 Ok(message) => {
                     if reply.send(message).is_err() {
                         return;
                     }
                 }
                 Err(error) => {
-                    tracing::warn!(event = "reply.encode_failed", what = "service_opened", %error, "a service stream's opening was not encoded");
+                    tracing::warn!(event = "reply.encode_failed", what = "resident_opened", %error, "a resident stream's opening was not encoded");
                     return;
                 }
             }
@@ -193,13 +193,13 @@ impl ServiceStreams {
             // A one-shot call has no page to tell: its caller learns the
             // exit code and the operation's own words from this message.
             if let Some(Outcome { exit_code, stderr }) = ended.done {
-                match wire::encode(&wire::Outbound::ServiceDone { stream_id, exit_code, stderr }) {
+                match wire::encode(&wire::Outbound::ResidentDone { stream_id, exit_code, stderr }) {
                     Ok(message) => {
                         // A disconnected backend no longer waits for the call.
                         let _ = reply.send(message);
                     }
                     Err(error) => {
-                        tracing::warn!(event = "reply.encode_failed", what = "service_done", %error, "a service stream's end was not encoded");
+                        tracing::warn!(event = "reply.encode_failed", what = "resident_done", %error, "a resident stream's end was not encoded");
                     }
                 }
             }
@@ -233,19 +233,19 @@ pub enum StreamRefusal {
     /// What ends the stream ended it first.
     Cancelled,
     /// The runner turned it away, the package lacks the operation, or its
-    /// service failed to start.
+    /// resident failed to start.
     Refused {
-        code: ServiceErrorCode,
+        code: ResidentErrorCode,
         message: String,
     },
 }
 
-/// Opens streams' invocations on the connection's resident services, the
-/// backend's `service_open` and a direct channel's `stream` alike.
+/// Opens streams' invocations on the connection's residents, the
+/// backend's `resident_open` and a direct channel's `stream` alike.
 #[derive(Clone)]
 pub struct StreamOpener {
     connection: ConnectionHandle,
-    services: ServiceHandle,
+    residents: ResidentHandle,
     bindings: Bindings,
     draining: CancellationToken,
 }
@@ -286,8 +286,8 @@ impl StreamOpener {
 }
 
 impl Opening {
-    /// Starts the invocation in the resident service that holds the
-    /// conversation's state, starting the service when needed; no bytes
+    /// Starts the invocation in the resident that holds the
+    /// conversation's state, starting the resident when needed; no bytes
     /// move before it opened.
     pub async fn open(
         self,
@@ -308,31 +308,31 @@ impl Opening {
             source: format!("stream:{operation}"),
             conversation: context.conversation.clone(),
         };
-        let refused = |code: ServiceErrorCode, message: String| {
-            log.event("service_stream.refused", Some(&code.to_string()), Some(&message));
+        let refused = |code: ResidentErrorCode, message: String| {
+            log.event("resident_stream.refused", Some(&code.to_string()), Some(&message));
             StreamRefusal::Refused { code, message }
         };
-        let services = &opener.services;
+        let residents = &opener.residents;
         if let Some(digest) = &moved {
-            let lease = services.lease(digest.clone()).await;
+            let lease = residents.lease(digest.clone()).await;
             opener.bindings.hold(&package.id, digest, lease);
         }
         if opener.draining.is_cancelled() {
             let message = "the runner is draining for an upgrade".to_owned();
-            return Err(refused(ServiceErrorCode::Refused, message));
+            return Err(refused(ResidentErrorCode::Refused, message));
         }
         if !package.operations.contains(&operation) {
             let message = format!("{} has no operation {operation}", package.id);
-            return Err(refused(ServiceErrorCode::UnknownOperation, message));
+            return Err(refused(ResidentErrorCode::UnknownOperation, message));
         }
         let digest = package
             .targets
             .get(host_target())
             .map(|artifact| artifact.sha256.clone());
-        // The stream holds its service from the start
+        // The stream holds its resident from the start
         // (`crates/runner-command-packages/src/registry.rs`).
         let lease = match digest {
-            Some(digest) => Some(services.lease(digest).await),
+            Some(digest) => Some(residents.lease(digest).await),
             None => None,
         };
         // What the program asks for during the invocation is located for
@@ -342,9 +342,9 @@ impl Opening {
             stream_id.clone(),
         ));
         let numbers = Arc::new(opener.connection.clone());
-        let invoking = services.invoking(&stream_id, &package.id, resolver.clone());
+        let invoking = residents.invoking(&stream_id, &package.id, resolver.clone());
         let opened = async {
-            let mut resident = services
+            let mut resident = residents
                 .acquire(&package, resolver, numbers, stream)
                 .await
                 .map_err(|error| error.to_string())?;
@@ -372,10 +372,10 @@ impl Opening {
             _ = stream.cancelled() => return Err(StreamRefusal::Cancelled),
             result = opened => match result {
                 Ok(exchange) => exchange,
-                Err(message) => return Err(refused(ServiceErrorCode::ServiceFailed, message)),
+                Err(message) => return Err(refused(ResidentErrorCode::ResidentFailed, message)),
             },
         };
-        log.event("service_stream.opened", None, None);
+        log.event("resident_stream.opened", None, None);
         Ok(OpenedStream {
             exchange: Exchange::new(input, output),
             log,
@@ -385,11 +385,11 @@ impl Opening {
     }
 }
 
-/// An opened stream's invocation, which holds its service until it ends.
+/// An opened stream's invocation, which holds its resident until it ends.
 pub struct OpenedStream {
     exchange: Exchange,
     log: StreamLog,
-    _lease: Option<ServiceLease>,
+    _lease: Option<ResidentLease>,
     _invoking: Invoking,
 }
 
@@ -415,8 +415,8 @@ impl OpenedStream {
             uploads,
             log: self.log.clone(),
             lines: LineSplitter::default(),
-            // A byte is at most one UTF-16 unit of the text `service_done` carries.
-            tail: TailBuffer::new(wire::SERVICE_STDERR_CHARS),
+            // A byte is at most one UTF-16 unit of the text `resident_done` carries.
+            tail: TailBuffer::new(wire::RESIDENT_STDERR_CHARS),
         };
         let result = tokio::select! {
             // Dropping the exchange resets its invocation.
@@ -425,7 +425,7 @@ impl OpenedStream {
         };
         if result.is_err() {
             // The upload must not end as if the invocation completed.
-            let ended = io::Error::other("service stream ended before its completion");
+            let ended = io::Error::other("resident stream ended before its completion");
             let _closed = sink.uploads.send(Err(ended)).await;
         }
         let stderr = sink.finish();
@@ -433,7 +433,7 @@ impl OpenedStream {
         let ended = match result {
             Ok(completion) => {
                 if let Some(error) = &completion.error {
-                    log.event("service_stream.failed", Some(&error.code.to_string()), Some(&error.message));
+                    log.event("resident_stream.failed", Some(&error.code.to_string()), Some(&error.message));
                 }
                 let outcome = Outcome {
                     exit_code: completion.exit_code,
@@ -448,27 +448,27 @@ impl OpenedStream {
                 done: None,
                 input: Err(error),
             },
-            Err(Some(ExchangeError::Service(error))) => {
-                log.event("service_stream.failed", None, Some(&error.to_string()));
+            Err(Some(ExchangeError::Resident(error))) => {
+                log.event("resident_stream.failed", None, Some(&error.to_string()));
                 StreamEnded {
                     done: None,
-                    input: Err(io::Error::other("the service stream's invocation failed")),
+                    input: Err(io::Error::other("the resident stream's invocation failed")),
                 }
             }
             Err(Some(ExchangeError::Output(_)) | None) => StreamEnded {
                 done: None,
-                input: Err(io::Error::new(io::ErrorKind::Interrupted, "service stream cancelled")),
+                input: Err(io::Error::new(io::ErrorKind::Interrupted, "resident stream cancelled")),
             },
         };
-        log.event("service_stream.ended", None, None);
+        log.event("resident_stream.ended", None, None);
         ended
     }
 }
 
 /// The package releases the connection's streams bound last, one per
-/// package, each with the lease that keeps its service resident until the
+/// package, each with the lease that keeps its resident alive until the
 /// connection ends (`crates/runner-command-packages/src/registry.rs`), so
-/// consecutive user calls reuse the service as consecutive jobs do.
+/// consecutive user calls reuse the resident as consecutive jobs do.
 #[derive(Clone, Default)]
 struct Bindings(Arc<Mutex<HashMap<String, Bound>>>);
 
@@ -476,7 +476,7 @@ struct Bindings(Arc<Mutex<HashMap<String, Bound>>>);
 struct Bound {
     digest: String,
     /// Empty until the stream that bound the release has taken its lease.
-    lease: Option<ServiceLease>,
+    lease: Option<ResidentLease>,
 }
 
 impl Bindings {
@@ -510,7 +510,7 @@ impl Bindings {
     /// - another release was bound meanwhile;
     /// - the same release was bound again and holds one already; or
     /// - the connection has ended.
-    fn hold(&self, package: &str, digest: &str, lease: ServiceLease) {
+    fn hold(&self, package: &str, digest: &str, lease: ResidentLease) {
         let mut bound = self.0.lock().expect("the bindings are intact");
         if let Some(bound) = bound.get_mut(package)
             && bound.digest == digest
@@ -536,8 +536,8 @@ struct StreamLog {
 }
 
 impl StreamLog {
-    /// A stream's state change, `event` as `service_stream.opened` is; a
-    /// failure says its `code` and what the service said of it.
+    /// A stream's state change, `event` as `resident_stream.opened` is; a
+    /// failure says its `code` and what the resident said of it.
     fn event(&self, event: &str, code: Option<&str>, error: Option<&str>) {
         tracing::info!(
             event,
@@ -545,7 +545,7 @@ impl StreamLog {
             stream = self.source.as_str(),
             code,
             error,
-            "a service stream changed"
+            "a resident stream changed"
         );
     }
 
@@ -598,7 +598,7 @@ pub struct Outcome {
 }
 
 /// Standard output goes up the output pipe; standard error goes to the log
-/// line by line, and its end is kept for `service_done`.
+/// line by line, and its end is kept for `resident_done`.
 struct StreamSink {
     uploads: mpsc::Sender<io::Result<Bytes>>,
     log: StreamLog,
@@ -645,15 +645,15 @@ impl OutputSink for StreamSink {
 fn send_error(
     output: &mpsc::UnboundedSender<wire::Frame>,
     stream_id: String,
-    code: ServiceErrorCode,
+    code: ResidentErrorCode,
     message: String,
 ) {
-    match wire::encode(&wire::Outbound::ServiceError {
+    match wire::encode(&wire::Outbound::ResidentError {
         stream_id,
         code,
         message,
     }) {
         Ok(message) => drop(output.send(message)),
-        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "service_error", %error, "a service stream's error was not encoded"),
+        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "resident_error", %error, "a resident stream's error was not encoded"),
     }
 }

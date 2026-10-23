@@ -66,7 +66,7 @@
 //! shipped executable keeps neither debug information nor a symbol table.
 //!
 //! **Panics.** Panics unwind in every profile: the runner contains a utility's
-//! panic to its job, and a resident command service fails one invocation, not
+//! panic to its job, and a resident command fails one invocation, not
 //! every conversation it holds, where `panic = "abort"` would end the whole
 //! process. `shared-cli`'s hook records a panic that ends a program anyway.
 //!

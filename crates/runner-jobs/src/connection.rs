@@ -4,7 +4,7 @@
 //!
 //! - a callback call registers where its events go;
 //! - an artifact download asks where its artifact is;
-//! - a service asks for its conversation numbers;
+//! - a resident asks for its conversation numbers;
 //! - a job makes its execution context live, and says when nothing it left
 //!   running holds the context any more.
 //!
@@ -21,8 +21,8 @@
 
 use std::{collections::{HashMap, HashSet}, io, sync::Arc, time::Duration};
 
-use demi_command_protocol::{ArtifactLocation, ServiceSequence, host_target};
-use demi_runner_command_packages::{ServiceBackend, RuntimeError};
+use demi_command_protocol::{ArtifactLocation, ResidentSequence, host_target};
+use demi_runner_command_packages::{ResidentBackend, RuntimeError};
 use demi_runner_protocol::wire::{self, Inbound};
 use futures_util::future::BoxFuture;
 use tokio::{
@@ -36,7 +36,7 @@ use crate::commands::{
     rpc::CallEvent,
 };
 
-/// How long the backend has to answer which numbers a service may use. Where
+/// How long the backend has to answer which numbers a resident may use. Where
 /// an artifact is has no deadline of its own: the backend may fetch it first,
 /// which takes as long as the server's disk or link does
 /// (`crates/backend-runners/src/publication.rs`).
@@ -76,7 +76,7 @@ pub struct ConnectionHandle {
     requests: mpsc::UnboundedSender<Request>,
     reach: watch::Receiver<Reach>,
     lane: wire::Lane,
-    /// The latest message each service told about a conversation, which the
+    /// The latest message each resident told about a conversation, which the
     /// next connection tells the backend again ([`Self::told`]).
     told: Arc<std::sync::Mutex<HashMap<(String, String), serde_json::Value>>>,
 }
@@ -234,8 +234,8 @@ impl ConnectionHandle {
         let _ended = self.request(Request::ContextReleased { job_id });
     }
 
-    /// Makes `context` live, with the leases that keep its services
-    /// resident.
+    /// Makes `context` live, with the leases that keep its residents
+    /// alive.
     pub async fn register_context(
         &self,
         context: Arc<ExecutionContext>,
@@ -258,14 +258,14 @@ impl ConnectionHandle {
 #[error("the backend is unreachable")]
 pub struct Unreachable;
 
-/// A service's conversation numbers come from the connection it started
+/// A resident's conversation numbers come from the connection it started
 /// under (`crates/command-protocol/src/numbers.rs`), and its messages to
 /// its plugin go there (§ Messages to the plugin).
-impl ServiceBackend for ConnectionHandle {
+impl ResidentBackend for ConnectionHandle {
     fn reserve(
         &self,
         conversation: String,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         count: u32,
     ) -> BoxFuture<'_, Result<u64, String>> {
         Box::pin(async move {
@@ -307,21 +307,21 @@ impl ServiceBackend for ConnectionHandle {
             .expect("the told messages are never held across a panic")
             .retain(|(told, _), _| *told != package);
         Box::pin(async move {
-            // A runner that ends stops its services anyway, and
+            // A runner that ends stops its residents anyway, and
             // its next start names another instance, which says the same.
             if let Err(error) = self.send(&wire::Outbound::PackageLost { package }).await {
-                tracing::warn!(event = "lost_service.report_failed", %error, "a lost service was not reported");
+                tracing::warn!(event = "lost_resident.report_failed", %error, "a lost resident was not reported");
             }
         })
     }
 }
 
 impl ConnectionHandle {
-    /// The latest message each service told about each conversation, to tell
-    /// the backend again when a connection starts: a service says its state
+    /// The latest message each resident told about each conversation, to tell
+    /// the backend again when a connection starts: a resident says its state
     /// whole, so the backend that missed a message, or dropped it, has the
-    /// latest after the hello. A service that ended without releasing a
-    /// conversation has its messages dropped by [`ServiceBackend::lost`].
+    /// latest after the hello. A resident that ended without releasing a
+    /// conversation has its messages dropped by [`ResidentBackend::lost`].
     pub fn told(&self) -> Vec<wire::Frame> {
         let told = self
             .told
@@ -339,7 +339,7 @@ impl ConnectionHandle {
             .collect()
     }
 
-    /// The conversations some service has told the backend about, which they
+    /// The conversations some resident has told the backend about, which they
     /// hold state for.
     pub fn told_conversations(&self) -> HashSet<String> {
         self.told
@@ -350,7 +350,7 @@ impl ConnectionHandle {
             .collect()
     }
 
-    /// The conversation is released: what its services told about it is no
+    /// The conversation is released: what its residents told about it is no
     /// longer told again, since a release ends what they hold for it.
     pub fn release_told(&self, conversation: &str) {
         self.told
@@ -382,10 +382,10 @@ pub enum Question {
         sha256: String,
         reply: oneshot::Sender<Result<ArtifactLocation, String>>,
     },
-    /// Numbers of a conversation's sequence for a service.
+    /// Numbers of a conversation's sequence for a resident.
     Reserve {
         conversation: String,
-        sequence: ServiceSequence,
+        sequence: ResidentSequence,
         count: u32,
         reply: oneshot::Sender<Result<u64, String>>,
     },

@@ -327,7 +327,7 @@ impl dyn HostShard + '_ {
 
     /// The release of `device`, which a move of the conversation `id` left
     /// (§ step 5): sent once the conversation's commands there ended, so the
-    /// services they use end after them, and not sent when the conversation is
+    /// residents they use end after them, and not sent when the conversation is
     /// back on it or where it runs cannot be known. A release that fails is
     /// logged and fails nothing.
     pub async fn release_departed(&self, id: &ConversationId, device: &DeviceId) {
@@ -345,7 +345,7 @@ impl dyn HostShard + '_ {
             // A conversation deleted meanwhile was released by its deletion.
             Ok(None) => return,
             // Releasing a device the conversation runs on again would only end
-            // its services early; one that is never released keeps them.
+            // its residents early; one that is never released keeps them.
             Err(error) => {
                 tracing::warn!(event = "conversation_move.record_unread", conversation = %id, %error, "a moved conversation's record cannot be read");
                 return;

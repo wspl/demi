@@ -37,7 +37,7 @@ pub async fn helper() -> Result<PathBuf> {
     #[cfg(demi_ios_helper)]
     {
         let home = std::env::var_os("DEMI_HOME").ok_or_else(|| {
-            DriverError::Failed("the service was started without DEMI_HOME, where the iOS helper goes".into())
+            DriverError::Failed("the resident was started without DEMI_HOME, where the iOS helper goes".into())
         })?;
         let root = PathBuf::from(home).join("mobile");
         let archive = demi_shared_artifacts::Archive {

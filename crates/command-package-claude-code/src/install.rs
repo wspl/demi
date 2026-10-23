@@ -7,7 +7,7 @@
 
 use demi_command_package_claude_code_protocol::{ErrorCode, Installed, Release, Status};
 use demi_command_protocol::{ArtifactForm, ArtifactInstall};
-use demi_command_sdk::{Artifacts, ServiceError};
+use demi_command_sdk::{Artifacts, ResidentError};
 
 use crate::{platform, release};
 
@@ -41,11 +41,11 @@ impl EnsureError {
     }
 }
 
-impl From<ServiceError> for EnsureError {
-    fn from(error: ServiceError) -> Self {
+impl From<ResidentError> for EnsureError {
+    fn from(error: ResidentError) -> Self {
         match error {
-            ServiceError::Cancelled => Self::Cancelled,
-            ServiceError::Artifacts(reason) => Self::InstallFailed(reason),
+            ResidentError::Cancelled => Self::Cancelled,
+            ResidentError::Artifacts(reason) => Self::InstallFailed(reason),
             error => Self::InstallFailed(error.to_string()),
         }
     }

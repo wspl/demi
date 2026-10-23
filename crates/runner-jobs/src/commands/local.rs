@@ -2,7 +2,7 @@
 //! reach.
 
 use demi_command_protocol::LocalInvocation;
-use demi_command_sdk::{Handler, ServiceError};
+use demi_command_sdk::{Handler, ResidentError};
 use demi_runner_process::command_client::Stream;
 #[cfg(unix)]
 use demi_runner_process::{command_client::ALIVE, private_files::chmod};
@@ -69,7 +69,7 @@ impl Server {
                     }
                     result = connections.join_next(), if !connections.is_empty() => {
                         match result {
-                            Some(Ok(Err(ServiceError::CancellationDeadline))) => break Err(io::Error::other(ServiceError::CancellationDeadline)),
+                            Some(Ok(Err(ResidentError::CancellationDeadline))) => break Err(io::Error::other(ResidentError::CancellationDeadline)),
                             Some(Err(error)) => break Err(io::Error::other(error)),
                             // A failed client connection affects only its calls.
                             _ => {},
@@ -81,8 +81,8 @@ impl Server {
             let closed = listener.close();
             while let Some(result) = connections.join_next().await {
                 match result {
-                    Ok(Err(ServiceError::CancellationDeadline)) => {
-                        outcome = Err(io::Error::other(ServiceError::CancellationDeadline))
+                    Ok(Err(ResidentError::CancellationDeadline)) => {
+                        outcome = Err(io::Error::other(ResidentError::CancellationDeadline))
                     }
                     Err(error) => outcome = Err(io::Error::other(error)),
                     // Disconnect and cancellation errors have already reset the calls.

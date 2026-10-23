@@ -1,5 +1,5 @@
 //! The `tracing` layer that writes each event as a [`LogLine`], for a process
-//! that is neither the backend nor a runner: a command package's service and
+//! that is neither the backend nor a runner: a command package's resident and
 //! the machine manager.
 //!
 //! A line holds the event's spans' fields, outermost first, then its own, the

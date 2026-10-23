@@ -211,7 +211,7 @@ export interface GalleryMobile {
   /**
    * The Host's runner restarts: every device's stream ends and cannot open
    * again for a few seconds, while the devices and their tabs stay, as the
-   * Host's service keeps them.
+   * Host's resident keeps them.
    */
   runnerRestarts(): void
 }
@@ -479,7 +479,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
 }
 
 /**
- * One device's stream of a page, as a `demi-mobile` service serves it: the
+ * One device's stream of a page, as a `demi-mobile` resident serves it: the
  * device its hello names, and whether it is looked at, while which alone it
  * speaks.
  */
