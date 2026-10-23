@@ -25,7 +25,8 @@ import type { FieldWay } from './selection-field'
  *   dimmed.
  * - ✕ and Escape in the field close it (`close`); its owner also closes it for
  *   a press elsewhere or a new selection. On a phone the ✕ stands at the end
- *   of the sheet's quote (`SelectionFieldQuote.vue`), and the field has none.
+ *   of the sheet's quote (`SelectionFieldQuote.vue`), and the field has none;
+ *   the sheet is its surface, so it draws no shell of its own there.
  *
  * The owner takes the focus into it (`focus`) and keeps the page's selection
  * for it, so a key typed after the selection, an input method's composition
@@ -129,8 +130,8 @@ function keep(event: Event): void {
 <template>
   <div
     data-selection-field
-    class="overlay-shell flex max-w-[calc(100vw-1rem)] flex-col gap-1.5 rounded-[14px] p-2"
-    :class="[phone ? 'w-full' : 'w-[340px]', { 'selection-field-shake': shaking }]"
+    class="flex max-w-[calc(100vw-1rem)] flex-col gap-1.5"
+    :class="[phone ? 'w-full' : 'overlay-shell w-[340px] rounded-[14px] p-2', { 'selection-field-shake': shaking }]"
     @animationend="shaking = false"
   >
     <div class="flex items-start gap-1">
