@@ -760,6 +760,16 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
+    /// The provider's id of the `shell` call that started the running
+    /// `command`.
+    pub fn call_of(&self, command: &CommandId) -> Option<String> {
+        self.environment_of(command)?
+            .page_views()
+            .into_iter()
+            .find(|view| &view.command_id == command)
+            .map(|view| view.tool_use_id)
+    }
+
     /// The node whose shells hold `command`, the root, a live child or a
     /// live side question.
     pub(crate) fn holder(&self, command: &CommandId) -> Option<Rc<Node<H>>> {

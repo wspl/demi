@@ -54,15 +54,23 @@
 //! included. It lasts the conversation's life and survives an archive. A Fork
 //! copies no grant, since the user decides for a new conversation again.
 //!
-//! The waiting command is an ordinary running command: its window, the turn,
-//! Stop and the Host's idle rules are those of any command.
+//! The call holds while the user decides: it does not return and its window
+//! does not run, so the agent gets nothing back until the user has answered. The
+//! window starts from the allow.
 //!
-//! - It sends no silence report, since nothing about it changes until the user
-//!   answers and the report would wake the agent for nothing. Its silence
-//!   counts again from the end of the wait.
-//! - A call that ends before the decision, stopped or lost with a restart,
-//!   leaves its request as it is. An Allow still grants the category for the
-//!   commands that come later.
+//! - Anything but Allow denies the request of a waiting call ([`deny`]): Deny,
+//!   and the user's actions on the agent that asked, a message to it, queued,
+//!   sent now or as a steer, its Edit and Send, Regenerate and Retry, its
+//!   Stop, and the stop of the waiting command. The shard names the requests
+//!   such an action stops ([`held_requests`]) and denies them once the agent
+//!   has taken it, but for a Stop's, denied before it so that the agent reads
+//!   them in the turn the stop ends.
+//! - The command sends no silence report, since nothing about it changes until
+//!   the user answers and the report would wake the agent for nothing. Its
+//!   silence counts again from the end of the wait.
+//! - A call that ends before the decision, stopped by its parent or lost with a
+//!   restart, leaves its request as it is. An Allow still grants the category
+//!   for the commands that come later.
 //!
 //! The crate decides whether a call is dispatched, and the shard dispatches it.
 //! The crate runs no handler, knows no plugin, reaches no Host and sees no
@@ -210,7 +218,27 @@ struct Waiting {
 /// What a waiting call is told.
 enum Answering {
     Credential(oneshot::Sender<Answer>),
-    Permission(oneshot::Sender<Decided>),
+    Permission {
+        /// The agent that ran the call and the provider's id of its `shell`
+        /// call, which tell what a user's action on either stops.
+        holder: Holder,
+        answer: oneshot::Sender<Decided>,
+    },
+}
+
+/// Whose call a permission request holds.
+struct Holder {
+    agent: NodeId,
+    call: String,
+}
+
+/// Which held calls an action of the user stops.
+pub enum Stops<'a> {
+    /// The calls of these agents: a message to one of them, or its Stop.
+    Agents(&'a [NodeId]),
+    /// The one `shell` call, by the provider's id, whose command the user
+    /// stopped.
+    Call(&'a str),
 }
 
 impl Waits {
@@ -226,11 +254,27 @@ impl Waits {
         }
     }
 
+    /// The permission requests of `conversation` that hold a call `stops`
+    /// names.
+    fn held_by(&self, conversation: &ConversationId, stops: &Stops<'_>) -> Vec<PermissionRequestId> {
+        self.0
+            .borrow()
+            .iter()
+            .filter(|(_, waiting)| &waiting.conversation == conversation)
+            .filter(|(_, waiting)| match (&waiting.answer, stops) {
+                (Answering::Permission { holder, .. }, Stops::Agents(agents)) => agents.contains(&holder.agent),
+                (Answering::Permission { holder, .. }, Stops::Call(call)) => holder.call == *call,
+                (Answering::Credential(_), _) => false,
+            })
+            .map(|(request, _)| request.clone())
+            .collect()
+    }
+
     /// Ends the wait of the call held for the permission request `request`.
     fn decided(&self, request: &PermissionRequestId, decided: Decided) {
-        if let Some(Answering::Permission(sender)) = self.take(request) {
+        if let Some(Answering::Permission { answer, .. }) = self.take(request) {
             // A call that stopped waiting leaves its request as it is.
-            let _ = sender.send(decided);
+            let _ = answer.send(decided);
         }
     }
 
@@ -313,8 +357,8 @@ pub enum Need<'a> {
 ///
 /// The call passes when the conversation has the grant of the category or may
 /// reach the host, whichever agent of its tree runs it. Otherwise the check
-/// records the request and holds the call until the user decides, with the
-/// waiting line on its job. No handler runs meanwhile.
+/// records the request and holds the call until the user decides, the call's
+/// job telling that it waits. No handler runs meanwhile.
 ///
 /// - An allow passes the call.
 /// - A deny, or a newer request of the same agent and need, fails the call with
@@ -331,6 +375,7 @@ pub async fn check(
     let Asking {
         conversation,
         agent,
+        call,
         command,
     } = asking(shard, invocation)?;
     let (needed, action, ask) = match need {
@@ -374,7 +419,14 @@ pub async fn check(
     let (answer, decided) = oneshot::channel();
     shard
         .waits()
-        .wait(request.clone(), conversation.clone(), Answering::Permission(answer));
+        .wait(
+            request.clone(),
+            conversation.clone(),
+            Answering::Permission {
+                holder: Holder { agent: agent.node.clone(), call },
+                answer,
+            },
+        );
     let _wait = Wait {
         shard: shard.this(),
         conversation: conversation.clone(),
@@ -394,10 +446,7 @@ pub async fn check(
     changed(shard, &conversation);
     shard.asked(&conversation, request, ask);
     shard.raised().await;
-    port.awaits_user(Some(&format!(
-        "waiting for the user's permission to {action}; its end will report to you"
-    )))
-    .await?;
+    port.awaits_user(true).await?;
     let passed = async {
         if let Some(code) = pairing {
             shard
@@ -421,10 +470,10 @@ pub async fn check(
 
 /// Holds a call until `decided` ends its wait.
 ///
-/// Once allowed, the call has its waiting line taken off its job, and `passed`
-/// runs, what passing it uses up. A call stopped meanwhile is never passed on,
-/// even when the allow is ready at the same moment: the stop is looked at last,
-/// after every wait, right before the dispatch would run the handler.
+/// Once allowed, the call no longer waits for the user, and `passed` runs, what
+/// passing it uses up. A call stopped meanwhile is never passed on, even when
+/// the allow is ready at the same moment: the stop is looked at last, after
+/// every wait, right before the dispatch would run the handler.
 async fn held(
     decided: oneshot::Receiver<Decided>,
     port: &RpcPort,
@@ -439,7 +488,7 @@ async fn held(
         decided = decided => decided.map_err(|_| RpcError::Failed("the backend stopped while the call waited for the user's answer".into()))?,
     };
     if decided == Decided::Allowed {
-        port.awaits_user(None).await?;
+        port.awaits_user(false).await?;
         passed.await?;
     }
     if port.is_cancelled() {
@@ -466,23 +515,25 @@ async fn host_action(shard: &dyn PermissionShard, host: &AskedHost) -> String {
 struct Asking {
     conversation: ConversationId,
     agent: AskingAgent,
+    /// The provider's id of the agent's `shell` call.
+    call: String,
     command: String,
 }
 
 fn asking(shard: &dyn PermissionShard, invocation: &RpcInvocation) -> Result<Asking, RpcError> {
     let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
         .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-    let node = invocation
+    let caller = invocation
         .caller
         .as_ref()
-        .map(|caller| caller.node.clone())
         .ok_or_else(|| RpcError::Failed("a command that asks the user runs for an agent".into()))?;
     let agent = shard
-        .asking_agent(&conversation, &node)
+        .asking_agent(&conversation, &caller.node)
         .map_err(RpcError::Failed)?;
     Ok(Asking {
         conversation,
         agent,
+        call: caller.tool_use_id.clone(),
         command: command_line(invocation)?,
     })
 }
@@ -502,6 +553,7 @@ pub async fn ask_credential(
         conversation,
         agent,
         command,
+        ..
     } = asking(shard, invocation)?;
     let request = new_request_id();
     // Waiting before the request is stored, so an answer that comes at
@@ -570,6 +622,7 @@ pub async fn read_credential(
         conversation,
         agent,
         command,
+        ..
     } = asking(shard, invocation)?;
     let asks_since = shard.url_message_since(&conversation).await;
     let read = shard
@@ -774,6 +827,32 @@ pub async fn decide(
             Ok(())
         }
     }
+}
+
+/// The permission requests of `conversation` that hold a call `stops` names,
+/// before the user's action stops it.
+pub fn held_requests(shard: &dyn PermissionShard, conversation: &ConversationId, stops: &Stops<'_>) -> Vec<PermissionRequestId> {
+    shard.waits().held_by(conversation, stops)
+}
+
+/// Denies the held requests `requests`, as Deny does: the card shows each
+/// denied and its call returns as any call does, with the command's end.
+///
+/// A request whose call is gone, stopped by its parent or lost with a
+/// restart, is not among the held ones and stays on its card.
+pub async fn deny(
+    shard: &dyn PermissionShard,
+    conversation: &ConversationId,
+    requests: Vec<PermissionRequestId>,
+) -> Result<(), PermissionError> {
+    for request in requests {
+        match decide(shard, conversation, request, PermissionDecision::Deny, None).await {
+            // Another decision took it first.
+            Ok(()) | Err(PermissionError::NotFound) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }
 
 /// The conversation's requests changed, as an archive that

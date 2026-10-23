@@ -972,8 +972,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     /// One no environment holds is taken up when the conversation records it
     /// running. Otherwise it has ended, with the node's shells or before the
     /// node was restored.
-    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
-        self.environments.owning(command)?.awaits_user(command)
+    fn awaits_user<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Option<tokio::sync::watch::Receiver<bool>>> {
+        Box::pin(async move { self.environments.owning(command)?.awaits_user(command).await })
     }
 
     fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {

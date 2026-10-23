@@ -1751,9 +1751,9 @@ impl SessionCore {
     /// A wait for the model that runs starts again from now: the request it
     /// waited for is stopped, and the next one carries the steer. A wait that
     /// does not run, as while a call runs, starts before that next request.
-    pub(super) fn steer_now(&mut self, id: &BlockId) {
+    pub(super) fn steer_now(&mut self, id: &BlockId) -> bool {
         if !self.inputs.has_steer(id) {
-            return;
+            return false;
         }
         self.cut_round(SendNow::Steer);
         session_log!(
@@ -1771,6 +1771,7 @@ impl SessionCore {
             self.stop_waiting(WaitEnd::SteerNow);
             self.start_waiting(WaitStart::InputArrived);
         }
+        true
     }
 
     /// Asks the running turn to cut its round short for what the user sent

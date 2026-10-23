@@ -34,7 +34,9 @@
 //!
 //! - A call returns when its command ends, or after [`CALL_WINDOW_MS`] with
 //!   the command still running, which then goes on in the background. The
-//!   tool's text says so. A response's other calls and a user's steer wait at
+//!   tool's text says so. While the command waits for the user's permission,
+//!   the call holds and its window does not run: the user's allow, or a denial,
+//!   ends the wait. A response's other calls and a user's steer wait at
 //!   most the window to be read. A human steer ends no window, since steering
 //!   rather than sending now means the user chose to wait.
 //! - A command in the background wakes the node when it ends, and once when it
@@ -76,7 +78,7 @@ use std::{
     cell::RefCell,
     rc::Rc,
     sync::{Arc, LazyLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use bytes::Bytes;
@@ -559,27 +561,47 @@ impl Drop for CallStop {
 ///   for 2 seconds or 30 seconds have passed;
 /// - `until` resolves.
 ///
+/// While the command waits for the user's answer, the window does not run: it
+/// starts again from the moment the command goes on. What arrives meanwhile
+/// does not end the watch before the user has answered:
+///
+/// - A message the user sends now denies the request, and the call returns as
+///   any call does, with its command or when its window has passed.
+/// - Anything else that ends a window ends it once the command goes on.
+///
 /// Then returns its status, with what `until` gave when it ended the watch.
 /// Ending the watch never stops the command.
-async fn watch<T>(
+async fn watch(
     environment: &dyn ShellEnvironment,
     command: &CommandId,
     window_ms: Option<u32>,
-    until: impl Future<Output = T>,
-) -> Result<(CommandStatus, Option<T>), ShellError> {
-    let window = async {
-        match window_ms {
-            Some(window) => {
-                tokio::time::sleep(Duration::from_millis(window.into())).await;
-                Ok(())
-            }
-            None => {
-                tokio::select! {
-                    quiet = quiet(environment, command) => quiet,
-                    () = tokio::time::sleep(SERVICE_WINDOW) => Ok(()),
+    until: impl Future<Output = WindowEnd>,
+) -> Result<(CommandStatus, Option<WindowEnd>), ShellError> {
+    // Whether the command waits for the user, which its job tells once it has
+    // started; until then it does not.
+    let (told, awaits) = tokio::sync::watch::channel(false);
+    let telling = async {
+        if let Some(mut waits) = environment.awaits_user(command).await {
+            while told.send(*waits.borrow_and_update()).is_ok() && waits.changed().await.is_ok() {}
+        }
+        std::future::pending::<std::convert::Infallible>().await
+    };
+    let window = window(environment, command, window_ms, awaits.clone());
+    let until = async {
+        let reason = until.await;
+        let mut awaits = awaits;
+        if *awaits.borrow() {
+            match reason {
+                // The message denies the request it arrives beside, and the
+                // command's end follows; it is read after the result.
+                WindowEnd::SentNow => return std::future::pending().await,
+                // The sender lives in the watch, which holds this future.
+                WindowEnd::Input => {
+                    awaits.wait_for(|awaits| !*awaits).await.ok();
                 }
             }
         }
+        reason
     };
     let mut ended_by = None;
     tokio::select! {
@@ -588,15 +610,61 @@ async fn watch<T>(
         }
         watched = window => watched?,
         reason = until => ended_by = Some(reason),
+        never = telling => match never {},
     }
     Ok((environment.status(command)?, ended_by))
 }
 
-/// Resolves once `command`'s output has been quiet for [`QUIET`]; it waits
-/// for the moment the quiet would be reached, and looks again then.
-async fn quiet(environment: &dyn ShellEnvironment, command: &CommandId) -> Result<(), ShellError> {
+/// Resolves when the watch's time has passed (`watch`), which stands still
+/// while the command waits for the user's answer, `awaits`.
+async fn window(
+    environment: &dyn ShellEnvironment,
+    command: &CommandId,
+    window_ms: Option<u32>,
+    mut awaits: tokio::sync::watch::Receiver<bool>,
+) -> Result<(), ShellError> {
+    let time = window_ms.map_or(SERVICE_WINDOW, |window| Duration::from_millis(window.into()));
+    // When the command last went on after waiting for the user.
+    let mut resumed: Option<Instant> = None;
+    loop {
+        if *awaits.borrow_and_update() {
+            // The sender lives in the watch, which holds this window.
+            awaits.wait_for(|awaits| !*awaits).await.ok();
+            resumed = Some(Instant::now());
+        }
+        let passes = async {
+            match window_ms {
+                Some(_) => {
+                    tokio::time::sleep(time).await;
+                    Ok(())
+                }
+                None => {
+                    tokio::select! {
+                        quiet = quiet(environment, command, resumed) => quiet,
+                        () = tokio::time::sleep(time) => Ok(()),
+                    }
+                }
+            }
+        };
+        tokio::select! {
+            passed = passes => return passed,
+            // The time starts again once the command goes on.
+            _ = awaits.wait_for(|awaits| *awaits) => {}
+        }
+    }
+}
+
+/// Resolves once `command`'s output has been quiet for [`QUIET`], counted from
+/// `resumed` when the command went on after waiting for the user; it waits for
+/// the moment the quiet would be reached, and looks again then.
+async fn quiet(
+    environment: &dyn ShellEnvironment,
+    command: &CommandId,
+    resumed: Option<Instant>,
+) -> Result<(), ShellError> {
     loop {
         let quiet = environment.quiet(command)?;
+        let quiet = resumed.map_or(quiet, |at| quiet.min(at.elapsed()));
         if quiet >= QUIET {
             return Ok(());
         }

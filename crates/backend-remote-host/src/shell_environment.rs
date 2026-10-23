@@ -1097,8 +1097,11 @@ impl ShellEnvironment for RemoteShellEnvironment {
             .unwrap_or_default()
     }
 
-    fn awaits_user(&self, command: &CommandId) -> Option<watch::Receiver<bool>> {
-        Some(self.running_job(command).ok().flatten()?.awaits_user())
+    fn awaits_user<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Option<watch::Receiver<bool>>> {
+        Box::pin(async move {
+            let running = self.0.state.borrow().running.get(command).cloned()?;
+            Some(running.started().await?.awaits_user())
+        })
     }
 
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {

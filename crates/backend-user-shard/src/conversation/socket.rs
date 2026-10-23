@@ -74,6 +74,7 @@ use demi_agent_store::media::HeldMedia;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
+use demi_backend_permissions::Stops;
 use demi_backend_database::conversation_attachments::uploaded_after;
 use demi_conversation_socket_protocol::{
     SteerOutcome, Follow, Followed,
@@ -81,12 +82,13 @@ use demi_conversation_socket_protocol::{
     RemoveOutcome, SavedDelivery, SendMessage, ServerFrame, TranscriptPatch, Version, decode_client_frame,
 };
 use demi_shared_gates::Purpose;
-use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
+use demi_shared_types::{Block, BlockId, NodeId, TurnId, UserContentBlock};
 use demi_web_api_protocol::conversations::{ConversationFrame, FirstMessageAnswer};
 use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
 use demi_web_api_protocol::saved::SavedMessage;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
+use demi_web_api_protocol::permissions::PermissionRequestId;
 use futures_util::future::LocalBoxFuture;
 
 use super::attachment_facts::StreamedText;
@@ -711,7 +713,21 @@ impl Shard {
                     drop((files, settings));
                     return Handled::Opened { replies: Vec::new() };
                 }
+                let held = self.held_by(conversation, &frame);
+                // A stop is carried out whenever it names an agent that is
+                // there, and the agent reads the denial in the turn the stop
+                // ends: one that came after would open a turn.
+                let stops = matches!(
+                    frame,
+                    ClientFrame::Abort {} | ClientFrame::AbortSubagent { .. } | ClientFrame::AbortSubagents {}
+                );
+                if stops {
+                    self.deny(conversation, held.clone()).await;
+                }
                 let taken = connection.handle_as(frame, command).await;
+                if taken && !stops {
+                    self.deny(conversation, held).await;
+                }
                 if let (true, Some((message, attachments))) = (taken, sent) {
                     tracing::info!(
                         event = "message.accepted",
@@ -828,6 +844,65 @@ impl Shard {
             _ => {}
         }
         Ok(Prepared::Deliver)
+    }
+
+    /// The permission requests that hold a call `frame` stops: any action of
+    /// the user on the agent whose call waits but Allow denies it, so a
+    /// message to the agent, its edit or retry, its Stop, and the stop of
+    /// the waiting command itself do.
+    fn held_by(&self, conversation: &ConversationId, frame: &ClientFrame) -> Vec<PermissionRequestId> {
+        let root = root_of(conversation);
+        let Some(tree) = self.agent().tree(&root) else {
+            return Vec::new();
+        };
+        let held = |stops| demi_backend_permissions::held_requests(self.permission_shard(), conversation, &stops);
+        // The agents below `top`, itself included, which a stop closes with it.
+        let below = |top: &NodeId| {
+            let parents: Vec<_> = tree.nodes().iter().map(|node| (node.id().clone(), node.record().parent)).collect();
+            let mut agents = vec![top.clone()];
+            while let Some((id, _)) = parents
+                .iter()
+                .find(|(id, parent)| !agents.contains(id) && parent.as_ref().is_some_and(|parent| agents.contains(parent)))
+            {
+                agents.push(id.clone());
+            }
+            agents
+        };
+        match frame {
+            ClientFrame::Send(_)
+            | ClientFrame::Steer { .. }
+            | ClientFrame::SteerNow { .. }
+            | ClientFrame::SendQueuedMessage { .. }
+            | ClientFrame::EditAndSend { .. }
+            | ClientFrame::Regenerate { .. }
+            | ClientFrame::Retry {}
+            | ClientFrame::Abort {} => held(Stops::Agents(&[root])),
+            // The server stops only a direct child of the root.
+            ClientFrame::AbortSubagent { subagent_id } => {
+                let child = tree
+                    .node(subagent_id)
+                    .is_some_and(|node| node.record().parent.as_ref() == Some(&root));
+                if child { held(Stops::Agents(&below(subagent_id))) } else { Vec::new() }
+            }
+            ClientFrame::AbortSubagents {} => held(Stops::Agents(&below(&root)[1..])),
+            ClientFrame::ShellAbort { command_id } => match tree.call_of(command_id) {
+                Some(call) => held(Stops::Call(&call)),
+                None => Vec::new(),
+            },
+            _ => Vec::new(),
+        }
+    }
+
+    /// Denies the held requests `requests`: each call returns as any call
+    /// does, with its command's end, and the user's own action is read after
+    /// it.
+    async fn deny(&self, conversation: &ConversationId, requests: Vec<PermissionRequestId>) {
+        if requests.is_empty() {
+            return;
+        }
+        if let Err(error) = demi_backend_permissions::deny(self.permission_shard(), conversation, requests).await {
+            tracing::warn!(event = "permission_requests.deny_failed", %conversation, %error, "the requests that hold an agent's calls were not denied");
+        }
     }
 
     /// Takes the saved message `id`, which the session took, off the

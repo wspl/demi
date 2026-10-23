@@ -205,11 +205,14 @@ pub trait SessionRuntime {
     /// Whether `command`, which a `shell` call left running, waits for the
     /// user's answer, as it changes: it reports no progress meanwhile.
     ///
-    /// None for a command that the node's shells do not hold or whose job has
-    /// not started, and by default.
-    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
+    /// Resolves once its job has started; none for a command that the node's
+    /// shells do not hold or that ended without a job, and by default.
+    fn awaits_user<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Option<tokio::sync::watch::Receiver<bool>>> {
         let _ = command;
-        None
+        Box::pin(std::future::ready(None))
     }
 
     /// How long `command` has printed nothing, while its node's shells hold

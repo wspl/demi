@@ -76,10 +76,11 @@ pub trait ShellEnvironment {
     fn outliving(&self, command: &CommandId) -> Vec<String>;
 
     /// Whether a call of `command` waits for the user's answer, as it
-    /// changes: such a command reports no progress meanwhile. None for a
-    /// command whose job has not started, that ended, or that the
+    /// changes: the shell call that runs it does not return meanwhile, and
+    /// such a command reports no progress. Resolves once its job has
+    /// started; none for a command that ended without one, or that the
     /// environment does not hold.
-    fn awaits_user(&self, command: &CommandId) -> Option<watch::Receiver<bool>>;
+    fn awaits_user<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Option<watch::Receiver<bool>>>;
 
     /// How long the Host of `command`, which runs, has been unreachable as
     /// far as the environment knows, and how long its runner keeps it so
