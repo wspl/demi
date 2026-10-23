@@ -8,6 +8,8 @@
 //!   hold a request's body until it ends
 //!   (`crates/runner-protocol/src/wire/pipe_frames.rs`).
 
+mod resumed;
+
 use bytes::Bytes;
 use crate::backend::Backend;
 use demi_runner_protocol::{values::DeviceToken, wire};

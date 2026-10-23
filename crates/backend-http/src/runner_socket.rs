@@ -156,18 +156,31 @@ async fn hello(socket: &mut WebSocket) -> Option<Hello> {
             }
             Ok(Message::Close(_)) | Err(_) => return None,
         };
-        return match wire::decode::<Outbound>(&frame) {
+        // The hello belongs to the connection: no number covers it.
+        let own = match wire::Session::new().read(&frame) {
+            Ok(wire::Read::Own(own)) => own,
+            _ => {
+                tracing::info!(event = "runner_connection.closed", reason = "first_not_hello", "closing a runner connection whose first message is not a hello");
+                return None;
+            }
+        };
+        return match wire::decode::<Outbound>(own) {
             Ok(Outbound::Hello {
                 protocol,
                 device_token,
                 runner,
                 instance,
                 jobs,
+                resume,
             }) => Some(Hello {
                 protocol,
                 token: device_token,
                 runner,
-                kept: KeptJobs { instance, jobs },
+                kept: KeptJobs {
+                    instance,
+                    jobs,
+                    resume,
+                },
             }),
             Ok(_) => {
                 tracing::info!(event = "runner_connection.closed", reason = "first_not_hello", "closing a runner connection whose first message is not a hello");
@@ -264,12 +277,12 @@ async fn await_claim(
     }
 }
 
-/// Gives the claimed runner its token and moves its socket into the shard
-/// of the user who claimed it. A runner lost on the way leaves the grant
+/// Moves the claimed runner's socket into the shard of the user who claimed it,
+/// which gives the runner its token. A runner lost on the way leaves the grant
 /// unanswered, and the claim then deletes the device it made.
 async fn hand_over(
     shards: &Shards,
-    mut socket: RunnerSocket,
+    socket: RunnerSocket,
     runner: RunnerInfo,
     instance: u64,
     grant: ClaimGrant,
@@ -279,18 +292,11 @@ async fn hand_over(
         token,
         bound,
     } = grant;
-    let claimed = Inbound::Claimed {
-        device_token: token,
-        device_name: device.name.clone(),
-    };
-    if send(&mut socket, &claimed).await.is_err() {
-        return;
-    }
     let owner = device.user.clone();
     let adopted = shards
         .of(&owner)
         .adopt(move |shard| async move {
-            shard.adopt_claimed(device, runner, instance, socket, bound).await
+            shard.adopt_claimed(device, runner, instance, token, socket, bound).await
         })
         .await;
     if adopted.is_err() {

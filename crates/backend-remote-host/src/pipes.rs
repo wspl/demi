@@ -10,6 +10,13 @@
 //! ends are `Send`, so the edge that serves a device's request copies the
 //! bytes.
 //!
+//! The pipes of an rpc call outlive the connection their device is on: a call
+//! goes on across a drop, and its standard output, which the runner reads over a
+//! WebSocket of its own, resumes where the runner got to ([`SinkSession`]).
+//! Such a pipe has no arrival window, since its call bounds it, and the loss of
+//! the device's connection fails it only as the loss of its own: the input the
+//! runner was sending is cut with its connection.
+//!
 //! An end may be named after the pipe is minted: an rpc call's pipes are minted
 //! before its handler decides whether it reads and writes them or hands them to
 //! a job elsewhere. A pipe whose ends have not both arrived within the arrival
@@ -22,7 +29,7 @@ use std::{
     future::{Future, pending},
     io,
     rc::{Rc, Weak},
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex, OnceLock, PoisonError},
     time::Duration,
 };
 
@@ -55,6 +62,10 @@ struct Inner {
     closed: Cell<bool>,
 }
 
+/// The resumable sinks of a device's session
+/// ([`crate::session::DeviceSession`]), which holds them.
+pub(crate) type Sinks = Arc<Mutex<HashMap<Arc<str>, Arc<SinkSession>>>>;
+
 struct Slot {
     source: End,
     sink: End,
@@ -62,9 +73,14 @@ struct Slot {
     sink_arrived: bool,
     /// The byte channel's ends, until the ends that use them arrive.
     sender: Option<mpsc::Sender<Bytes>>,
-    /// How long its ends have to arrive.
-    arrival: Duration,
+    /// How long its ends have to arrive; none for a pipe of a call, which
+    /// the call bounds.
+    arrival: Option<Duration>,
     receiver: Option<mpsc::Receiver<Bytes>>,
+    /// Whether the pipe outlives its device's connection, as a call's does.
+    survives: bool,
+    /// Whether its device reads it over a WebSocket that resumes.
+    resumable: bool,
     core: Arc<Core>,
     deadline: watch::Sender<Option<Instant>>,
 }
@@ -238,12 +254,36 @@ impl Pipes {
     /// [`Pipes::mint`], whose ends have `arrival` to arrive rather than the
     /// pipes' own window, as a forwarded connection's do.
     pub fn mint_within(&self, source: Option<&str>, sink: Option<&str>, arrival: Duration) -> Pipe {
+        self.mint_pipe(source, sink, Some(arrival), false, false)
+    }
+
+    /// The standard output of an rpc call `device`'s runner reads: it
+    /// outlives the device's connection and resumes where the runner got to.
+    pub fn call_stdout(&self, device: &str) -> Pipe {
+        self.mint_pipe(None, Some(device), None, true, true)
+    }
+
+    /// The finite standard input of an rpc call `device`'s runner sends: it
+    /// outlives the device's connection, and the loss of the connection it
+    /// goes over fails it.
+    pub fn call_stdin(&self, device: &str) -> Pipe {
+        self.mint_pipe(Some(device), None, None, true, false)
+    }
+
+    fn mint_pipe(
+        &self,
+        source: Option<&str>,
+        sink: Option<&str>,
+        arrival: Option<Duration>,
+        survives: bool,
+        resumable: bool,
+    ) -> Pipe {
         let id: Arc<str> = uuid::Uuid::new_v4().simple().to_string().into();
         let core = Core::new();
         // One chunk at a time: a pipe carries bulk bytes, so its writer waits for
         // its reader rather than the backend holding them without end.
         let (sender, receiver) = mpsc::channel(1);
-        let deadline = watch::Sender::new(Some(Instant::now() + arrival));
+        let deadline = watch::Sender::new(arrival.map(|arrival| Instant::now() + arrival));
         let end =
             |device: Option<&str>| device.map_or(End::Open, |device| End::Device(device.into()));
         let watching = deadline.subscribe();
@@ -259,6 +299,8 @@ impl Pipes {
                 core: core.clone(),
                 deadline,
                 arrival,
+                survives,
+                resumable,
             },
         );
         self.0.tasks.spawn_local(watch_arrival(
@@ -381,10 +423,45 @@ impl Pipes {
         let party = End::Device(device.into());
         let reason = format!("device {device} disconnected");
         for slot in self.0.slots.borrow().values() {
-            if slot.source == party || slot.sink == party {
+            // A call's pipes outlive the connection; its session's end and its
+            // own failures end them.
+            if (slot.source == party || slot.sink == party) && !slot.survives {
                 slot.core.fail(&reason);
             }
         }
+    }
+
+    /// The device's standard output of a call that resumes, for the runner's
+    /// WebSocket: the session it reads through, taking the pipe's sink end.
+    /// Another pipe is refused as not found, whatever its device.
+    pub(crate) fn claim_call_sink(
+        &self,
+        id: &str,
+        device: &str,
+        registry: &Sinks,
+    ) -> Result<Arc<SinkSession>, PipeRefusal> {
+        let mut slots = self.0.slots.borrow_mut();
+        let slot = slots
+            .get_mut(id)
+            .filter(|slot| slot.resumable)
+            .ok_or(PipeRefusal::NotFound)?;
+        if slot.sink != End::Device(device.into()) || !slot.core.is_open() {
+            return Err(PipeRefusal::NotFound);
+        }
+        let receiver = slot.receiver.take().ok_or(PipeRefusal::AlreadyConnected)?;
+        slot.sink_arrived = true;
+        slot.update_deadline();
+        let reader = PipeReader {
+            receiver,
+            core: slot.core.clone(),
+            ended: false,
+            abandoned: Abandoned::Fail("the call's output connection ended"),
+        };
+        Ok(Arc::new(SinkSession::new(
+            id.into(),
+            reader,
+            Arc::downgrade(registry),
+        )))
     }
 
     /// Fails every pipe, and every pipe minted from now on, and waits until
@@ -426,7 +503,8 @@ impl Slot {
         if self.source_arrived && self.sink_arrived {
             self.deadline.send_replace(None);
         } else if self.deadline.borrow().is_none() {
-            self.deadline.send_replace(Some(Instant::now() + self.arrival));
+            self.deadline
+                .send_replace(self.arrival.map(|arrival| Instant::now() + arrival));
         }
     }
 }
@@ -483,6 +561,15 @@ impl Pipe {
         PipeRef {
             id: self.id.to_string(),
             url: format!("/api/pipes/{}", self.id),
+        }
+    }
+
+    /// A call's standard output (`Pipes::call_stdout`) as the runner wire names
+    /// it: the route its WebSocket that resumes opens on.
+    pub fn call_output_ref(&self) -> PipeRef {
+        PipeRef {
+            id: self.id.to_string(),
+            url: format!("{}/{}", wire::CALL_OUTPUT_ROUTE, self.id),
         }
     }
 
@@ -724,6 +811,125 @@ impl Drop for PipeWriter {
     fn drop(&mut self) {
         if self.sender.take().is_some() {
             self.core.fail(self.abandoned);
+        }
+    }
+}
+
+/// A call's standard output as its runner reads it, which outlives each
+/// WebSocket the runner reads it on: the pipe's sink end, and the numbers of
+/// the messages written to the runner, whose unconfirmed ones the runner's
+/// next connection receives again (`crates/runner-protocol/src/wire/session.rs`).
+/// It goes once the runner confirmed the pipe's end, or with the device's
+/// session.
+pub struct SinkSession {
+    pub(crate) id: Arc<str>,
+    registry: std::sync::Weak<Mutex<HashMap<Arc<str>, Arc<SinkSession>>>>,
+    /// Held by the connection that serves, which a newer one waits for.
+    pub(crate) state: tokio::sync::Mutex<SinkState>,
+    /// Ends the connection that serves, as a newer one takes over.
+    attached: Mutex<Option<CancellationToken>>,
+}
+
+/// What a [`SinkSession`] keeps between connections.
+pub(crate) struct SinkState {
+    reader: PipeReader,
+    pub(crate) numbers: wire::Session,
+    /// Whether the end frame was written: the session is over once the
+    /// runner confirmed everything.
+    pub(crate) ended: bool,
+}
+
+impl SinkSession {
+    fn new(
+        id: Arc<str>,
+        reader: PipeReader,
+        registry: std::sync::Weak<Mutex<HashMap<Arc<str>, Arc<SinkSession>>>>,
+    ) -> Self {
+        Self {
+            id,
+            registry,
+            state: tokio::sync::Mutex::new(SinkState {
+                reader,
+                numbers: wire::Session::new(),
+                ended: false,
+            }),
+            attached: Mutex::new(None),
+        }
+    }
+
+    /// A new connection takes the session over: the one that served ends.
+    /// The token ends the new one when another takes over in its turn.
+    pub(crate) fn attach(&self) -> CancellationToken {
+        let token = CancellationToken::new();
+        let previous = self
+            .attached
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replace(token.clone());
+        if let Some(previous) = previous {
+            previous.cancel();
+        }
+        token
+    }
+
+    pub(crate) fn cancel(&self) {
+        if let Some(token) = self
+            .attached
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
+            token.cancel();
+        }
+    }
+
+    /// The runner confirmed the pipe's end: nothing more to resume.
+    pub(crate) fn finish(&self) {
+        if let Some(registry) = self.registry.upgrade() {
+            registry
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&self.id);
+        }
+    }
+}
+
+impl SinkState {
+    /// The frames of the pipe's next bytes, or of its end, which come last;
+    /// none ever once the end went. The pipe's own end, a failure or a sink
+    /// the device reported done, is its end frame at once.
+    pub(crate) async fn next_frames(&mut self) -> Vec<Bytes> {
+        if self.ended {
+            return pending().await;
+        }
+        let over = self.reader.core.done();
+        let next = tokio::select! {
+            biased;
+            chunk = self.reader.next() => chunk,
+            outcome = over => {
+                self.reader.ended = true;
+                self.ended = true;
+                let end = outcome.map_err(|failure| failure.reason().to_owned());
+                return vec![wire::end_frame(&end)];
+            }
+        };
+        match next {
+            Some(Ok(bytes)) => bytes
+                .chunks(wire::PIPE_DATA_BYTES)
+                .map(|part| {
+                    let mut frames = bytes::BytesMut::new();
+                    wire::encode_data(part, &mut frames);
+                    frames.freeze()
+                })
+                .collect(),
+            Some(Err(failure)) => {
+                self.ended = true;
+                vec![wire::end_frame(&Err(failure.reason().to_owned()))]
+            }
+            None => {
+                self.ended = true;
+                vec![wire::end_frame(&Ok(()))]
+            }
         }
     }
 }

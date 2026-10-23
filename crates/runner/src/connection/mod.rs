@@ -9,6 +9,10 @@
 //! connection serves it while it lasts: the jobs with their execution contexts,
 //! the installed manifest and their commands' calls.
 //!
+//! The link's numbers outlive each connection ([`LinkState`]): a connection
+//! that replaces another carries on from the message the backend got to, and
+//! the calls the jobs' commands make go on across the drop.
+//!
 //! The hello names the Host: system and release, architecture, kernel (read
 //! once at start without a shell), `SHELL`, installation directory, and why
 //! autostart is unavailable. The backend keeps it on the device record and the
@@ -19,9 +23,11 @@
 //! connection that serves, or the registration between connections, serve.
 
 mod kept;
+mod link_state;
 mod owner;
 mod transport;
 
 pub use kept::Kept;
+pub use link_state::LinkState;
 pub use owner::{End, Registered, serve};
 pub use transport::{Connected, Transport};

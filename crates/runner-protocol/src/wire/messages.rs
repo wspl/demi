@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use super::{
-    FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES,
+    Carriage, FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES,
     SERVICE_STDERR_CHARS, Timestamp, WireBytes,
 };
 use crate::values::DeviceToken;
@@ -61,15 +61,27 @@ pub enum Inbound {
         conversations: Vec<String>,
         #[garde(inner(custom(conversation_name)))]
         archived: Vec<String>,
+        /// The number of the session this connection carries, which the
+        /// backend drew when it started the session and the runner's next hello
+        /// names to resume it (`crates/runner-protocol/src/wire/session.rs`).
+        /// A number other than the one the runner holds is a new session.
+        session: u64,
+        /// How many of the runner's numbered messages the backend received
+        /// in the session this connection carries on; none when the session
+        /// is a new one.
+        received: u64,
     },
     ClaimPending {
         claim_token: String,
     },
-    /// The runner was paired: its device token, and the name the user sees.
+    /// The runner was paired: its device token, the name the user sees, and
+    /// the number of the session it begins, which the runner's next hello
+    /// resumes, as it does for a `hello_ok`'s.
     Claimed {
         #[garde(skip)]
         device_token: DeviceToken,
         device_name: String,
+        session: u64,
     },
     HelloError {
         code: HelloErrorCode,
@@ -900,6 +912,94 @@ impl Inbound {
         )
     }
 
+    /// How the message travels the link's session
+    /// (`crates/runner-protocol/src/wire/session.rs`): a message of the
+    /// connection's own, one that goes on across a drop, such as a command's
+    /// stdin, a stop or a call's reply, or one that asks something of the
+    /// connection it was written to, such as a Host request, which a new
+    /// connection must not run late. A job's start is the connection's too:
+    /// the backend sends it again itself when the runner's hello does not list
+    /// the job, and a second start would run the command twice.
+    pub fn carriage(&self) -> Carriage {
+        // Every message is named, so a new one is classified when it is added.
+        match self {
+            Self::HelloOk { .. }
+            | Self::HelloError { .. }
+            | Self::ClaimPending { .. }
+            | Self::Claimed { .. }
+            | Self::Revoked { .. }
+            | Self::Ping { .. } => Carriage::Connection,
+            Self::JobStdin { .. }
+            | Self::JobStdinEnd { .. }
+            | Self::JobKill { .. }
+            | Self::JobFollow { .. }
+            | Self::JobRelease { .. }
+            | Self::Manifest { .. }
+            | Self::RpcStdinPull { .. }
+            | Self::RpcPipes { .. }
+            | Self::RpcOutput { .. }
+            | Self::RpcExit { .. } => Carriage::Outlasting,
+            Self::ConversationRelease { .. }
+            | Self::PackageRelease { .. }
+            | Self::Prefetch { .. }
+            | Self::Sync { .. }
+            | Self::Spawn { .. }
+            | Self::SpawnStdin { .. }
+            | Self::SpawnStdinEnd { .. }
+            | Self::SpawnKill { .. }
+            | Self::JobStart { .. }
+            | Self::JobRead { .. }
+            | Self::JobMediaRead { .. }
+            | Self::ServiceOpen { .. }
+            | Self::LogFollow { .. }
+            | Self::ArtifactLocation { .. }
+            | Self::NumbersReserved { .. }
+            | Self::FsReadFile { .. }
+            | Self::FsHashFile { .. }
+            | Self::FsWriteFile { .. }
+            | Self::FsDownloadFile { .. }
+            | Self::FsWriteDirectory { .. }
+            | Self::FsRemoveAll { .. }
+            | Self::FsReadFiles { .. }
+            | Self::FsLook { .. }
+            | Self::FsExists { .. }
+            | Self::FsStat { .. }
+            | Self::FsLstat { .. }
+            | Self::FsReaddir { .. }
+            | Self::FsMkdir { .. }
+            | Self::FsRm { .. }
+            | Self::FsCp { .. }
+            | Self::FsMv { .. }
+            | Self::FsChmod { .. }
+            | Self::FsSymlink { .. }
+            | Self::FsLink { .. }
+            | Self::FsReadlink { .. }
+            | Self::FsRealpath { .. }
+            | Self::FsDirectory { .. }
+            | Self::FsUtimes { .. }
+            | Self::GitChanges { .. }
+            | Self::GitShow { .. }
+            | Self::GitBranches { .. }
+            | Self::GitLog { .. }
+            | Self::GitCommit { .. }
+            | Self::FsSubscribe { .. }
+            | Self::FsUnsubscribe { .. }
+            | Self::FsRenew { .. }
+            | Self::DirectOffer { .. }
+            | Self::DirectCandidate { .. }
+            | Self::DirectPing { .. }
+            | Self::DirectClose { .. }
+            | Self::DirectDialed { .. }
+            | Self::DirectDialRefused { .. }
+            | Self::Forwards { .. }
+            | Self::ForwardRetry { .. }
+            | Self::ForwardConnect { .. }
+            | Self::ForwardOpened { .. }
+            | Self::ForwardRefused { .. }
+            | Self::HttpRequest { .. } => Carriage::Scoped,
+        }
+    }
+
     /// The id of an fs call, which its reply carries.
     pub fn fs_request_id(&self) -> Option<&str> {
         match self {
@@ -941,6 +1041,16 @@ impl Inbound {
             _ => None,
         }
     }
+}
+
+/// What a runner's hello says of the session it carries on: the number of the
+/// session the backend's last answer named, and how many of the backend's
+/// numbered messages it received in it (`crates/runner-protocol/src/wire/session.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Resume {
+    pub session: u64,
+    pub received: u64,
 }
 
 /// A message from the runner to the backend.
@@ -1024,6 +1134,15 @@ pub enum Outbound {
         /// released.
         #[garde(dive)]
         jobs: Vec<KeptJob>,
+        /// Where the session the runner had carries on from; absent when it
+        /// had none.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[garde(skip)]
+        resume: Option<Resume>,
     },
     /// Liveness, with the count of running jobs the idle rule reads.
     Pong {
@@ -2311,3 +2430,68 @@ serde_plain::derive_display_from_serialize!(SpawnErrorKind);
 serde_plain::derive_display_from_serialize!(RunnerPlatform);
 // A device's platform is stored as its name.
 serde_plain::derive_fromstr_from_deserialize!(RunnerPlatform);
+
+impl Outbound {
+    /// How the message travels the link's session
+    /// (`crates/runner-protocol/src/wire/session.rs`): a message of the
+    /// connection's own, one that goes on across a drop, such as a job's output
+    /// and exit or a call's, or an answer or event of the connection it was
+    /// written on, such as a Host request's reply, which the backend no longer
+    /// waits for.
+    pub fn carriage(&self) -> Carriage {
+        // Every message is named, so a new one is classified when it is added.
+        match self {
+            Self::Hello { .. }
+            | Self::Pong { .. } => Carriage::Connection,
+            Self::Revoke { .. }
+            | Self::Installed { .. }
+            | Self::PackageMessage { .. }
+            | Self::PackageLost { .. }
+            | Self::JobOutput { .. }
+            | Self::JobRunningHint { .. }
+            | Self::JobOutliving { .. }
+            | Self::JobContextEnded { .. }
+            | Self::JobExit { .. }
+            | Self::JobMedium { .. }
+            | Self::RpcCall { .. }
+            | Self::RpcStdin { .. }
+            | Self::RpcStdinEnd { .. }
+            | Self::RpcCancel { .. }
+            | Self::PipeDone { .. } => Carriage::Outlasting,
+            Self::ConversationReleased { .. }
+            | Self::PackageReleased { .. }
+            | Self::NumbersReserve { .. }
+            | Self::ArtifactResolve { .. }
+            | Self::Prefetched { .. }
+            | Self::PrefetchFailed { .. }
+            | Self::SyncDone { .. }
+            | Self::FsOk { .. }
+            | Self::FsError { .. }
+            | Self::GitOk { .. }
+            | Self::GitError { .. }
+            | Self::SpawnOutput { .. }
+            | Self::SpawnExit { .. }
+            | Self::JobMediaRead { .. }
+            | Self::JobRead { .. }
+            | Self::FsLive { .. }
+            | Self::FsChanged { .. }
+            | Self::FsFailed { .. }
+            | Self::ServiceOpened { .. }
+            | Self::ServiceError { .. }
+            | Self::ServiceDone { .. }
+            | Self::LogLines { .. }
+            | Self::DirectAnswer { .. }
+            | Self::DirectCandidate { .. }
+            | Self::DirectPong { .. }
+            | Self::DirectRefused { .. }
+            | Self::DirectStream { .. }
+            | Self::DirectStreamWatched { .. }
+            | Self::DirectDial { .. }
+            | Self::DirectClosed { .. }
+            | Self::ForwardState { .. }
+            | Self::ForwardOpen { .. }
+            | Self::HttpAnswered { .. }
+            | Self::HttpFailed { .. } => Carriage::Scoped,
+        }
+    }
+}

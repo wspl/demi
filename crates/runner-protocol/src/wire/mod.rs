@@ -31,6 +31,36 @@
 //! A laptop whose Wi-Fi blinked reconnects within about 5 seconds instead of
 //! being refused until the heartbeat gives the old socket up.
 //!
+//! A hello that carries the runner's session on ([`Resume`]) is the same runner
+//! coming back to the same start of the backend, so the held connection gives
+//! way at once without the ping: the runner already counts it lost.
+//!
+//! # The session
+//!
+//! The link is a session that outlives its connections ([`Session`]). Each
+//! direction numbers the messages it writes, where it writes them to the
+//! connection, and keeps each until the other end confirms it. The runner's
+//! hello says which session and how many of its messages the runner
+//! received (`resume`), and the backend's answer names the session it carries
+//! (`session`) and says how many of the runner's it received; a name other than
+//! the one the runner holds is a new session. Each end then writes again what
+//! follows.
+//!
+//! - The hello, its answer, the ping and the pong belong to the connection and
+//!   carry no number.
+//! - A message counts as received once its end handled it, so one read and then
+//!   dropped as the connection ended is written again.
+//! - What waits while the other end is gone depends on the message. A call's
+//!   messages wait in a lane for the next connection. A command's output,
+//!   previews, file changes and the Host's log lines are not queued, as the next
+//!   connection reads what it needs from the Host's kept output
+//!   (`crates/runner/src/connection/kept.rs`); sent again, a message of output
+//!   is harmless, since the backend takes output by its offset.
+//! - A Host request in flight fails as offline when the connection drops, as
+//!   it does without a session.
+//! - A different runner start or backend start begins a new session: what the
+//!   old one kept is dropped, and its calls end with the reason.
+//!
 //! # Two classes of message
 //!
 //! Every message the backend sends is control or input ([`Inbound::is_input`]):
@@ -46,14 +76,15 @@
 //!
 //! # A connection's end
 //!
-//! A connection's end ends everything it carries. The backend's work for it,
-//! such as an `rpc` handler committing its change, gets [`END_GRACE`] to finish
-//! and the rest is aborted. Only then is the device offline and a new hello for
-//! it answered.
+//! A connection's end ends what it carries but the device's session: a Host
+//! request fails as offline, a process ends as lost, and an `rpc` call goes on,
+//! since it belongs to the session. The backend's work for the connection, such
+//! as a conversation's release, gets [`END_GRACE`] to finish and the rest is
+//! aborted. Only then is the device offline and a new hello for it answered.
 //!
-//! Otherwise a `demi browser` call whose handler waits for the very device its
-//! connection served would keep that connection from ending, and every new
-//! connection of the device would wait behind it until the backend restarted.
+//! The calls of a session end with its end, with their job, or with the device.
+//! A call that was stopped has [`END_GRACE`] too, for a handler committing its
+//! change.
 //!
 //! # Message size
 //!
@@ -73,6 +104,7 @@ mod kept;
 mod messages;
 mod pipe_frames;
 mod replies;
+mod session;
 mod write_watch;
 
 pub use encoding::{Timestamp, WireBytes};
@@ -85,15 +117,18 @@ pub use messages::{
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
     HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget,
     LookPath, Looked, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
-    RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
+    Resume, RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, WriteExists,
 };
 pub use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
 pub use pipe_frames::{
-    PIPE_DATA_BYTES, PIPE_IDLE, PipeEnd, PipeFrame, PipeFrameDecoder, PipeFrameError,
-    encode_data, end_frame, idle_frame,
+    CALL_OUTPUT_ROUTE, PIPE_DATA_BYTES, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeEnd, PipeFrame, PipeFrameDecoder,
+    PipeFrameError, decode_message, encode_data, end_frame, idle_frame,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
+pub use session::{
+    ACK_DELAY, Carriage, Lane, NUMBERED_HEAD_BYTES, Read, Session, SessionError, own_frame,
+};
 pub use write_watch::{Watched, WriteProgress};
 
 use std::time::Duration;
@@ -103,7 +138,7 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 59;
+pub const VERSION: u32 = 60;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
@@ -126,6 +161,9 @@ pub const JOB_OUTLIVING_TASKS: usize = 32;
 pub const JOB_TASK_LINE_BYTES: usize = 256;
 /// The largest frame either end sends: each frame is held whole in memory.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
+/// The largest WebSocket message of the runner's link: the largest frame
+/// with the head a numbered one carries ([`Session`]).
+pub const LINK_FRAME_BYTES: usize = MAX_MESSAGE_BYTES + NUMBERED_HEAD_BYTES;
 /// How much of the start of each stream a job always sends, and how much of
 /// its newest bytes beyond them it sends while nobody follows it: the model's
 /// view of a running command (`crates/runner-jobs/src/tasks.rs`), which a
@@ -188,7 +226,11 @@ pub enum WireError {
 
 /// An encoded message.
 #[derive(Clone)]
-pub struct Frame(Vec<u8>, Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>);
+pub struct Frame(
+    Vec<u8>,
+    Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+    Carriage,
+);
 
 impl Frame {
     /// The bytes to write. Whatever the frame was [held by](Self::held_by)
@@ -206,6 +248,11 @@ impl Frame {
         self
     }
 
+    /// How the frame travels the link's session.
+    pub fn carriage(&self) -> Carriage {
+        self.2
+    }
+
     /// The encoded size, which [`MAX_MESSAGE_BYTES`] bounds.
     pub fn encoded_len(&self) -> usize {
         self.0.len()
@@ -214,13 +261,32 @@ impl Frame {
 
 /// Validates and encodes a message. The size limit is the sender's to apply
 /// ([`within_limit`]), because an oversized reply fails its own request.
-pub fn encode<M: Serialize + garde::Validate<Context = ()>>(
-    message: &M,
-) -> Result<Frame, WireError> {
+pub fn encode<M: Message>(message: &M) -> Result<Frame, WireError> {
     message
         .validate()
         .map_err(|report| WireError::Invalid(report.to_string()))?;
-    Ok(Frame(rmp_serde::to_vec_named(message)?, None))
+    Ok(Frame(
+        rmp_serde::to_vec_named(message)?,
+        None,
+        message.carriage(),
+    ))
+}
+
+/// A message of the runner wire, which says how it travels the link's session.
+pub trait Message: Serialize + garde::Validate<Context = ()> {
+    fn carriage(&self) -> Carriage;
+}
+
+impl Message for Inbound {
+    fn carriage(&self) -> Carriage {
+        Inbound::carriage(self)
+    }
+}
+
+impl Message for Outbound {
+    fn carriage(&self) -> Carriage {
+        Outbound::carriage(self)
+    }
 }
 
 /// Decodes and validates one message; bytes after it are refused.

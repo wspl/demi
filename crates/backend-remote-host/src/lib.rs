@@ -29,6 +29,7 @@ mod pipes;
 mod relay;
 mod remote_host;
 mod offers;
+mod session;
 mod shell_environment;
 #[cfg(feature = "edge")]
 mod runner_socket;
@@ -49,8 +50,9 @@ pub use offers::offer_response;
 pub use output_records::{decode_output, encode_output};
 pub use pipes::{
     ARRIVAL, DeviceSink, DeviceSource, Pipe, PipeError, PipeFailure, PipeReader, PipeRefusal,
-    PipeWriter, Pipes,
+    PipeWriter, Pipes, SinkSession,
 };
+pub use session::{Beginning, DeviceSession};
 pub use remote_host::{
     Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
     ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity, host_paths,
@@ -58,7 +60,7 @@ pub use remote_host::{
 #[cfg(feature = "edge")]
 pub use runner_socket::{close_frame, socket_frame};
 #[cfg(feature = "edge")]
-pub use stream_pipe::accept_stream_pipe;
+pub use stream_pipe::{accept_call_sink, accept_stream_pipe};
 pub use shell_environment::{
     CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteShellEnvironment,
     RemoteShellEnvironmentFactory, edited_file,

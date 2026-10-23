@@ -257,6 +257,7 @@ impl Owner<'_> {
             runner: self.registered.runner.clone(),
             instance: self.registered.instance,
             jobs: self.kept.hello_jobs(),
+            resume: self.kept.link.resume(),
         })
         .map_err(io::Error::other)?;
         self.send(hello)?;
@@ -290,9 +291,18 @@ impl Owner<'_> {
                 Ok(()) = self.cached.changed(), if management.phase() == Phase::Online => {
                     self.report_installed().await?;
                 }
-                message = transport.input.recv() => match message {
-                    Some(message) => {
-                        if let Some(end) = self.route(message).await? {
+                arrival = transport.input.recv() => match arrival {
+                    Some(arrival) => {
+                        let end = match arrival.message {
+                            Some(message) => self.route(message).await?,
+                            None => None,
+                        };
+                        // Counted once handled: a message this connection
+                        // read and its end dropped is written again.
+                        if arrival.numbered {
+                            self.kept.link.handled();
+                        }
+                        if let Some(end) = end {
                             return Ok(end);
                         }
                     }
@@ -364,7 +374,13 @@ impl Owner<'_> {
                 device_name,
                 conversations,
                 archived,
+                ..
             } => {
+                // The transport read the answer's session already; the calls
+                // a session that ended carried end with its reason.
+                if let Some(reason) = self.kept.link.take_ended() {
+                    self.kept.session_ended(&reason);
+                }
                 // Before any job of this connection starts, so a
                 // conversation made since the backend listed them keeps the
                 // directory its first job makes.
@@ -396,6 +412,7 @@ impl Owner<'_> {
             Inbound::Claimed {
                 device_token,
                 device_name,
+                ..
             } if management.phase() != Phase::Online => {
                 registered.token.send_replace(Some(device_token.clone()));
                 let state = registered.state.clone();

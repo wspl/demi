@@ -40,7 +40,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::{DeviceRecord, FirstHome};
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{
-    Admission, DeviceJobs, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
+    Admission, DeviceJobs, DeviceLink, DeviceSession, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
     socket_frame,
 };
 use demi_host_interface::{HostIdentity, HostKey};
@@ -177,6 +177,8 @@ impl Return {
 struct DeviceSlot {
     link: watch::Sender<DeviceLink>,
     jobs: DeviceJobs,
+    /// The link's session and the calls that go on across the connections.
+    session: DeviceSession,
     /// Set once the device is revoked: the projects that went with it,
     /// which its runner hears of as its connection ends.
     revoked: RefCell<Option<Vec<String>>>,
@@ -282,10 +284,11 @@ impl Download {
 }
 
 impl DeviceSlot {
-    fn new(returning: Option<Return>) -> Rc<Self> {
+    fn new(device: &DeviceId, returning: Option<Return>) -> Rc<Self> {
         Rc::new(Self {
             link: watch::Sender::new(DeviceLink::Offline { last: None }),
             jobs: DeviceJobs::default(),
+            session: DeviceSession::new(device.as_str()),
             revoked: RefCell::new(None),
             ended_by_backend: Cell::new(false),
             returning: RefCell::new(returning),
@@ -418,7 +421,7 @@ impl Devices {
                     .until(device)
                     .filter(|until| Instant::now() < *until)
                     .map(|until| Return::new(until, self.marks.clone()));
-                DeviceSlot::new(returning)
+                DeviceSlot::new(device, returning)
             })
             .clone()
     }
@@ -426,6 +429,11 @@ impl Devices {
     /// The device's jobs, which each connection of its runner takes up.
     pub fn jobs(&self, device: &DeviceId) -> DeviceJobs {
         self.slot(device).jobs.clone()
+    }
+
+    /// The device's session, which each connection of its runner carries on.
+    pub fn session(&self, device: &DeviceId) -> DeviceSession {
+        self.slot(device).session.clone()
     }
 
     /// The device's connection, while its runner is connected.
@@ -838,8 +846,9 @@ impl Devices {
         let slot = self.slot(device);
         slot.revoked.replace(Some(projects));
         self.disconnect(device, REVOKED);
-        // The device's commands go with it.
+        // The device's commands go with it, and the calls they made.
         slot.jobs.lose_all(REVOKED_LOST);
+        slot.session.end(REVOKED_LOST);
     }
 
     /// Ends every connection as the backend shuts down, and records the
@@ -861,6 +870,10 @@ impl Devices {
         for (_, link) in &links {
             link.disconnect(SHUTTING_DOWN);
         }
+        // The calls of every device stop, with the same grace the connections'
+        // own work has: a handler committing its change finishes.
+        let sessions: Vec<_> = self.slots.borrow().values().map(|slot| slot.session.clone()).collect();
+        futures_util::future::join_all(sessions.iter().map(|session| session.drain(SHUTTING_DOWN))).await;
         let ended = links.into_iter().map(|(device, _)| device).collect();
         if let Err(error) = control.set_devices_ended_by_shutdown(ended).await {
             // The next start then answers for these devices at once, as for
@@ -1004,7 +1017,7 @@ impl Serving {
                 .into_bytes();
             // A runner that went away has nothing left to remove; it learns
             // of the revocation when its token is refused.
-            let _ = outgoing.send(Message::Binary(frame.into())).await;
+            let _ = outgoing.send(Message::Binary(wire::own_frame(frame).into())).await;
         }
         // The connection is over whether or not the close reaches the runner.
         let _ = outgoing.send(Message::Close(close_frame(&end))).await;
@@ -1031,7 +1044,7 @@ pub async fn send(socket: &mut WebSocket, message: &Inbound) -> Result<(), axum:
     let frame = wire::encode(message)
         .expect("the backend's own runner messages encode")
         .into_bytes();
-    socket.send(Message::Binary(frame.into())).await
+    socket.send(Message::Binary(wire::own_frame(frame).into())).await
 }
 
 /// Where a connection records what it learns of its device, which its

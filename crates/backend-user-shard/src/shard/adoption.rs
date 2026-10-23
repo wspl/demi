@@ -15,11 +15,12 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
-use demi_backend_remote_host::{Hello, Link, LinkOptions, RemoteHost, host_identity};
+use demi_backend_remote_host::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
 use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
 use demi_backend_runners::native::system_targets;
-use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, RunnerInfo};
+use demi_runner_protocol::values::DeviceToken;
+use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, Resume, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::devices::DeviceDto;
@@ -47,6 +48,8 @@ pub struct KeptJobs {
     /// The number this start of the runner drew.
     pub instance: u64,
     pub jobs: Vec<KeptJob>,
+    /// The session the runner carries on, if it had one.
+    pub resume: Option<Resume>,
 }
 
 impl Shard {
@@ -99,9 +102,12 @@ impl Shard {
                 return;
             }
         };
+        let session = self.devices().session(&device.id);
         // A held connection that answers its ping keeps the device; one
         // that does not is the same runner's, lost without a close, and
-        // gives way.
+        // gives way. A runner that carries its session on is the same one,
+        // which lost the connection a network left held, so the held one
+        // gives way without a ping.
         loop {
             self.devices().settled(&device.id).await;
             // From this check until the link is published nothing awaits, so
@@ -109,6 +115,18 @@ impl Shard {
             let Some(held) = self.devices().link(&device.id) else {
                 break;
             };
+            if session.resumes(kept.instance, kept.resume) {
+                tracing::info!(
+                    event = "link.replaced",
+                    host_id = %device.id,
+                    cause = "resumed",
+                    runner_name = %runner.name,
+                    platform = %runner.platform,
+                    "the device's runner carries its session on over a new connection, which replaces the held one"
+                );
+                held.disconnect(REPLACED);
+                continue;
+            }
             if held.answers(self.services().runners.probe).await {
                 tracing::warn!(
                     event = "link.refused",
@@ -138,11 +156,23 @@ impl Shard {
             );
             held.disconnect(REPLACED);
         }
+        // Nothing awaits from the last check of the held connection until the
+        // link is published, so the session carries on, or begins, for the
+        // connection that is published.
+        let beginning = session.begin(kept.instance, kept.resume);
+        tracing::info!(
+            event = if matches!(beginning, Beginning::Resumed { .. }) { "link.resumed" } else { "link.session_started" },
+            host_id = %device.id,
+            received = beginning.received(),
+            "a runner's connection took the link's session"
+        );
         let welcome = Inbound::HelloOk {
             device_id: device.id.to_string(),
             device_name: device.name.clone(),
             conversations,
             archived,
+            session: session.number(),
+            received: beginning.received(),
         };
         // A runner that started anew kept nothing of its packages' state
         // (`crates/command-protocol/src/messages.rs`).
@@ -199,9 +229,24 @@ impl Shard {
         device: DeviceRecord,
         runner: RunnerInfo,
         instance: u64,
-        socket: RunnerSocket,
+        token: DeviceToken,
+        mut socket: RunnerSocket,
         bound: oneshot::Sender<DeviceDto>,
     ) {
+        // A device just paired has no session before this connection; the
+        // runner's next hello resumes the one it begins now.
+        let session = self.devices().session(&device.id);
+        session.begin(instance, None);
+        let claimed = Inbound::Claimed {
+            device_token: token,
+            device_name: device.name.clone(),
+            session: session.number(),
+        };
+        // A runner lost on the way leaves the grant unanswered, and the claim
+        // then deletes the device it made.
+        if send(&mut socket, &claimed).await.is_err() {
+            return;
+        }
         // A closing shard takes no runner, and the claim that waits for the
         // answer deletes the device it made. A device just paired has no
         // jobs.
@@ -271,6 +316,7 @@ impl Shard {
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
             ping: self.services().runners.ping,
             jobs: self.devices().jobs(device),
+            session: self.devices().session(device),
             hello,
         });
         let seen = DeviceRecorder::new(

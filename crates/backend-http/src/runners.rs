@@ -28,12 +28,12 @@ use axum_extra::headers::{Authorization, Range};
 use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
-use demi_backend_remote_host::{DeviceSource, PipeRefusal, accept_stream_pipe, offer_response};
+use demi_backend_remote_host::{DeviceSource, PipeRefusal, accept_call_sink, accept_stream_pipe, offer_response};
 use demi_runner_protocol::release::{
     RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER, UpdateExecutable,
 };
 use demi_runner_protocol::values::DeviceToken;
-use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
+use demi_runner_protocol::wire::LINK_FRAME_BYTES;
 use demi_web_api_protocol::devices::DeviceKind;
 use futures_util::StreamExt as _;
 use tracing::Instrument as _;
@@ -69,8 +69,8 @@ pub(super) async fn socket(
     // The runner's socket logs under the request ID of its upgrade.
     let span = tracing::Span::current();
     Ok(upgrade
-        .max_message_size(MAX_MESSAGE_BYTES)
-        .max_frame_size(MAX_MESSAGE_BYTES)
+        .max_message_size(LINK_FRAME_BYTES)
+        .max_frame_size(LINK_FRAME_BYTES)
         .on_upgrade(move |socket| {
             accept(state.services, state.shards, RunnerSocket::new(socket, peer.control.write_progress()))
                 .instrument(span)
@@ -218,6 +218,35 @@ pub(super) async fn get(
         Body::from_stream(frames),
     )
         .into_response()
+}
+
+/// `WS /api/call-outputs/:id`: a call's standard output, which the runner
+/// reads over a WebSocket that resumes where it got to after a drop
+/// (`crates/runner-protocol/src/wire/session.rs`). A refusal is an HTTP answer
+/// before the upgrade.
+pub(super) async fn call_output(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    authorization: Option<TypedHeader<Authorization<Bearer>>>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    let device = match device_of(&state, authorization).await {
+        Ok(device) => device,
+        Err(refusal) => return *refusal,
+    };
+    let owner = device.user.clone();
+    let sink = state
+        .shards
+        .of(&owner)
+        .call_while_closing(move |shard, _| async move {
+            shard.devices().session(&device.id).call_output(shard.pipes(), &id)
+        })
+        .await;
+    match sink {
+        Ok(Ok(sink)) => accept_call_sink(upgrade, sink),
+        Ok(Err(refusal)) => refused(refusal),
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
 }
 
 /// `GET /api/offers/:id`: a file the backend offers the requesting device's

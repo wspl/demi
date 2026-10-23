@@ -13,6 +13,12 @@
 //!   for the backend's. The backend sees the runner leave rather than lose it.
 //! - The runner pings the backend and counts a connection it hears nothing on
 //!   as lost, as one the network dropped without closing it is.
+//! - The link's session outlives the connection ([`LinkState`]): the writer
+//!   numbers each message where it writes it and keeps it until the backend
+//!   confirms it, and after the hello is answered it writes again what the
+//!   backend did not receive. The messages of calls wait in a lane that
+//!   outlives the transport, the rest in the transport's queues, which end
+//!   with it.
 
 use std::{io, sync::Arc, time::Duration};
 
@@ -21,12 +27,12 @@ use demi_runner_process::backend::Backend;
 use demi_runner_protocol::{
     release::{RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER},
     values::DeviceToken,
-    wire::{self, Frame, Inbound},
+    wire::{self, Frame, Inbound, Read},
 };
 use futures_util::{SinkExt, StreamExt};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::mpsc,
+    sync::{mpsc, watch},
     task::JoinHandle,
 };
 use tokio_tungstenite::{
@@ -40,6 +46,8 @@ use tokio_tungstenite::{
 };
 use tokio_util::sync::CancellationToken;
 
+use super::LinkState;
+
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long an ending the runner chose may take to send what is queued, its
 /// close frame and to hear the backend's; a backend that takes longer sees
@@ -50,6 +58,24 @@ const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 /// a frame waits only for room here (`crates/runner/src/host_log.rs`).
 const LOG_QUEUE: usize = 8;
 
+/// What the reader hands the owner for one frame of the connection.
+pub struct Arrival {
+    /// The message, none for a numbered one that was not written again.
+    pub message: Option<Inbound>,
+    /// Whether the session numbered it: the owner counts it as received once
+    /// it handled it ([`LinkState::handled`]), not before.
+    pub numbered: bool,
+}
+
+/// What the writer may write: the hello alone, then nothing until the backend
+/// answers it, then everything.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    Greeting,
+    Waiting,
+    Open,
+}
+
 pub struct Transport {
     /// Job and process output, behind the control replies.
     pub output: mpsc::UnboundedSender<Frame>,
@@ -58,7 +84,7 @@ pub struct Transport {
     /// The Host's log lines, written last: a command's exit or an answer
     /// leaves before a log frame (`crates/runner/src/host_log.rs`).
     pub log: mpsc::Sender<Frame>,
-    pub input: mpsc::UnboundedReceiver<Inbound>,
+    pub input: mpsc::UnboundedReceiver<Arrival>,
     cancel: CancellationToken,
     owner: Option<JoinHandle<io::Result<()>>>,
 }
@@ -94,6 +120,7 @@ impl Transport {
         backend: &Backend,
         release: &str,
         token: Option<&DeviceToken>,
+        link: LinkState,
         cancel: CancellationToken,
     ) -> io::Result<Connected> {
         let url = socket_url(backend)?;
@@ -113,8 +140,8 @@ impl Transport {
             headers.insert(TOKEN_HEADER, value);
         }
         let config = WebSocketConfig::default()
-            .max_message_size(Some(wire::MAX_MESSAGE_BYTES))
-            .max_frame_size(Some(wire::MAX_MESSAGE_BYTES));
+            .max_message_size(Some(wire::LINK_FRAME_BYTES))
+            .max_frame_size(Some(wire::LINK_FRAME_BYTES));
         let connected = tokio::select! {
             _ = cancel.cancelled() => return Err(io::Error::new(io::ErrorKind::Interrupted, "connection cancelled")),
             result = tokio::time::timeout(HANDSHAKE_TIMEOUT, backend.watched_websocket(request, config)) => {
@@ -122,7 +149,7 @@ impl Transport {
             }
         };
         match connected {
-            Ok((socket, _, writes)) => Ok(Connected::Open(Self::from_socket(socket, writes, cancel))),
+            Ok((socket, _, writes)) => Ok(Connected::Open(Self::from_socket(socket, writes, link, cancel))),
             Err(Error::Http(response)) if response.status() == StatusCode::CONFLICT => {
                 let body = response.body().as_deref().unwrap_or_default();
                 let update = RunnerUpdate::decode(body)
@@ -133,10 +160,12 @@ impl Transport {
         }
     }
 
-    /// Serves `socket`, whose writes `writes` notes.
+    /// Serves `socket`, whose writes `writes` notes, as a connection of
+    /// `link`'s session.
     pub fn from_socket<S>(
         socket: WebSocketStream<S>,
         writes: Arc<wire::WriteProgress>,
+        link: LinkState,
         cancel: CancellationToken,
     ) -> Self
     where
@@ -147,6 +176,8 @@ impl Transport {
         let (control, mut controls) = mpsc::unbounded_channel::<Frame>();
         let (log, mut logs) = mpsc::channel::<Frame>(LOG_QUEUE);
         let (incoming, input) = mpsc::unbounded_channel();
+        let lane = link.lane().clone();
+        let (opened, _) = watch::channel(false);
         let stopped = cancel.clone();
         let owner = tokio::spawn(async move {
             let (mut writer, mut reader) = socket.split();
@@ -177,10 +208,27 @@ impl Transport {
                     };
                     match message.map_err(io::Error::other)? {
                         Message::Binary(bytes) => {
-                            let message = match wire::decode(&bytes) {
+                            let read = link.session().read(&bytes);
+                            let (payload, numbered) = match read.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))? {
+                                Read::Own(payload) => (payload, false),
+                                Read::Message(payload) => (payload, true),
+                                // Nothing to hand on, but a skipped message
+                                // counts in its turn, behind the ones before.
+                                Read::Skipped => {
+                                    if incoming.send(Arrival { message: None, numbered: true }).is_err() {
+                                        return Ok(None);
+                                    }
+                                    continue;
+                                }
+                                Read::Duplicate | Read::Ack => {
+                                    link.owe();
+                                    continue;
+                                }
+                            };
+                            let message = match wire::decode::<Inbound>(payload) {
                                 Ok(message) => message,
                                 Err(error) => {
-                                    let refusal = wire::refusal(&bytes, &error);
+                                    let refusal = wire::refusal(payload, &error);
                                     tracing::warn!(
                                         event = "message.refused",
                                         direction = "from_backend",
@@ -190,7 +238,21 @@ impl Transport {
                                     return Ok(Some(refusal));
                                 }
                             };
-                            if incoming.send(message).is_err() {
+                            // The answer to the hello decides, before any
+                            // message after it is read, whether the session
+                            // goes on and what the writer writes again.
+                            match &message {
+                                Inbound::HelloOk { session, received, .. } => {
+                                    link.hello_ok(*session, *received);
+                                    opened.send_replace(true);
+                                }
+                                Inbound::Claimed { session, .. } => {
+                                    link.claimed(*session);
+                                    opened.send_replace(true);
+                                }
+                                _ => {}
+                            }
+                            if incoming.send(Arrival { message: Some(message), numbered }).is_err() {
                                 return Ok(None);
                             }
                         }
@@ -225,19 +287,55 @@ impl Transport {
                     tokio::time::Instant::now() + wire::RUNNER_PING_INTERVAL,
                     wire::RUNNER_PING_INTERVAL,
                 );
+                // Only the hello goes before the backend answers it, since
+                // the answer says what the session carries on from.
+                let mut phase = Phase::Greeting;
+                let mut gate = opened.subscribe();
                 loop {
+                    let ack_due = link.session().ack_due();
                     let message = tokio::select! {
                         biased;
                         _ = pings.tick() => {
                             watched(&writes, writer.send(Message::Ping(Vec::new().into()))).await?;
                             continue;
                         }
-                        Some(message) = controls.recv() => message,
-                        Some(message) = outgoing.recv() => message,
-                        Some(message) = logs.recv() => message,
+                        changed = gate.changed(), if phase != Phase::Open => {
+                            if changed.is_ok() && *gate.borrow() {
+                                phase = Phase::Open;
+                                // What the backend did not receive goes
+                                // again, before anything new.
+                                loop {
+                                    let Some(frame) = link.session().next_resend() else { break };
+                                    watched(&writes, writer.send(Message::Binary(frame.into()))).await?;
+                                }
+                            }
+                            continue;
+                        }
+                        () = async {
+                            match ack_due {
+                                Some(due) => tokio::time::sleep_until(due).await,
+                                None => std::future::pending().await,
+                            }
+                        } => {
+                            let frame = link.session().ack_frame();
+                            if let Some(frame) = frame {
+                                watched(&writes, writer.send(Message::Binary(frame.into()))).await?;
+                            }
+                            continue;
+                        }
+                        () = link.owed(), if ack_due.is_none() => continue,
+                        Some(message) = controls.recv(), if phase != Phase::Waiting => {
+                            if phase == Phase::Greeting {
+                                phase = Phase::Waiting;
+                            }
+                            message
+                        }
+                        message = lane.next(), if phase == Phase::Open => message,
+                        Some(message) = outgoing.recv(), if phase == Phase::Open => message,
+                        Some(message) = logs.recv(), if phase == Phase::Open => message,
                         else => break,
                     };
-                    write(&mut writer, &writes, message).await?;
+                    write(&mut writer, &writes, &link, message).await?;
                 }
                 Ok::<_, io::Error>(())
             };
@@ -273,7 +371,7 @@ impl Transport {
             // rather than lose it (`crates/runner/src/connection/mod.rs`).
             let close = async {
                 while let Ok(message) = controls.try_recv().or_else(|_| outgoing.try_recv()) {
-                    write(&mut writer, &writes, message).await?;
+                    write(&mut writer, &writes, &link, message).await?;
                 }
                 let frame = CloseFrame {
                     code: CloseCode::Away,
@@ -318,12 +416,19 @@ impl Transport {
     }
 }
 
-/// Writes one queued frame. Replies over the limit already failed their
-/// requests; anything else this large breaks the protocol.
-async fn write<S>(writer: &mut S, writes: &wire::WriteProgress, message: Frame) -> io::Result<()>
+/// Writes one queued frame, numbered and kept by the session unless it belongs
+/// to the connection. Replies over the limit already failed their requests;
+/// anything else this large breaks the protocol.
+async fn write<S>(
+    writer: &mut S,
+    writes: &wire::WriteProgress,
+    link: &LinkState,
+    message: Frame,
+) -> io::Result<()>
 where
     S: futures_util::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
 {
+    let carriage = message.carriage();
     let bytes = message.into_bytes();
     if bytes.len() > wire::MAX_MESSAGE_BYTES {
         return Err(io::Error::new(
@@ -334,7 +439,14 @@ where
             ),
         ));
     }
-    watched(writes, writer.send(Message::Binary(bytes.into()))).await
+    // Numbered before the write, so a write that fails halfway leaves the
+    // message kept for the next connection.
+    let frame = match carriage {
+        wire::Carriage::Connection => wire::own_frame(bytes),
+        wire::Carriage::Outlasting => link.session().stamp(bytes, true),
+        wire::Carriage::Scoped => link.session().stamp(bytes, false),
+    };
+    watched(writes, writer.send(Message::Binary(frame.into()))).await
 }
 
 /// Runs a write, ending it once the socket's writes stall

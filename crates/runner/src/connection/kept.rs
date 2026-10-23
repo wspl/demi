@@ -5,7 +5,10 @@
 //! A connection serves them while it lasts. Without one:
 //!
 //! - the jobs run on however long it takes;
-//! - their commands' requests wait for the next connection;
+//! - their commands' requests wait for the next connection, and their calls
+//!   go on: a call's messages wait for it in the link's lane, and its events
+//!   come back over the next connection, which carries on the link's session
+//!   from the message the backend got to;
 //! - the messages the runner would have sent about them are not queued, since
 //!   the next connection reads what it needs from the kept output.
 //!
@@ -45,7 +48,7 @@ use tokio::{
 };
 use tokio_util::task::AbortOnDropHandle;
 
-use super::Registered;
+use super::{LinkState, Registered};
 
 /// What the registration keeps from one connection to the next.
 pub struct Kept {
@@ -54,6 +57,8 @@ pub struct Kept {
     pub contexts: ContextTable,
     pub relay: Relay,
     pub watches: JoinSet<Ended>,
+    /// The link's numbers, which each connection carries on.
+    pub link: LinkState,
     /// How the jobs' commands reach the backend.
     pub handle: ConnectionHandle,
     requests: mpsc::UnboundedReceiver<Request>,
@@ -80,7 +85,8 @@ impl Kept {
     pub async fn open(registered: &Registered) -> Self {
         let directories = JobDirectories::open(registered.jobs.clone()).await;
         let (reach, reaching) = watch::channel(Reach::Away);
-        let (handle, requests) = ConnectionHandle::new(reaching);
+        let link = LinkState::default();
+        let (handle, requests) = ConnectionHandle::new(reaching, link.lane().clone());
         let (jobs_output, forwarded) = mpsc::unbounded_channel();
         let output = watch::Sender::new(None);
         let forwarder = tokio::spawn(forward(forwarded, output.subscribe()));
@@ -106,6 +112,7 @@ impl Kept {
             contexts: ContextTable::new(registered.index.clone()),
             relay: Relay::default(),
             watches: JoinSet::new(),
+            link,
             handle,
             requests,
             reach,
@@ -130,12 +137,10 @@ impl Kept {
         self.directories.announcements()
     }
 
-    /// The connection ended: the jobs run on, and their commands' calls in
-    /// flight end with it.
+    /// The connection ended: the jobs run on, and so do their commands'
+    /// calls, whose events come over the next connection.
     pub fn disconnected(&mut self) {
         self.output.send_replace(None);
-        // Calls in flight end: their events go nowhere any more.
-        self.relay = Relay::default();
         self.reach.send_if_modified(|reach| {
             if matches!(reach, Reach::Connected(_)) {
                 *reach = Reach::Away;
@@ -143,6 +148,12 @@ impl Kept {
             }
             false
         });
+    }
+
+    /// The link's session ended, as a backend that started again ends it:
+    /// the calls in flight end with `reason`.
+    pub fn session_ended(&mut self, reason: &str) {
+        self.relay.lose_calls(reason);
     }
 
     /// The next thing that happened; cancel-safe.

@@ -11,6 +11,11 @@
 //!
 //! The call exits after its standard output drained, with the handler's code,
 //! 130 when the runner cancelled it, or 1 with the first cause that stopped it.
+//!
+//! A call belongs to its device's session, not to the connection it started
+//! on ([`crate::session::DeviceSession`]): its handler goes on when the
+//! connection drops, the messages it sends wait for the next one, and only the
+//! end of the session, of its job or of the device stops it.
 
 use std::{
     cell::RefCell,
@@ -32,10 +37,45 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Link,
+    DeviceJobs, Link, LinkPolicy,
     link::JobOrigin,
-    pipes::{Pipe, PipeError, PipeReader, PipeWriter},
+    pipes::{Pipe, PipeError, PipeReader, PipeWriter, Pipes},
+    session::DeviceSession,
 };
+
+/// What a call needs of its device: the connection it started on is not it,
+/// since the call outlives the connection.
+#[derive(Clone)]
+pub(crate) struct CallEnv {
+    pub(crate) device: String,
+    pub(crate) policy: Rc<dyn LinkPolicy>,
+    pub(crate) pipes: Pipes,
+    pub(crate) jobs: DeviceJobs,
+    pub(crate) session: DeviceSession,
+}
+
+impl CallEnv {
+    fn device(&self) -> &str {
+        &self.device
+    }
+
+    fn policy(&self) -> &Rc<dyn LinkPolicy> {
+        &self.policy
+    }
+
+    fn pipes(&self) -> &Pipes {
+        &self.pipes
+    }
+
+    fn device_jobs(&self) -> &DeviceJobs {
+        &self.jobs
+    }
+
+    /// Queues `message` for the runner, behind the call messages before it.
+    fn send(&self, message: &Inbound) -> Result<(), demi_host_interface::HostError> {
+        self.session.send(message)
+    }
+}
 
 /// An `rpc_call` as the runner sent it.
 pub(crate) struct RpcCall {
@@ -55,7 +95,7 @@ pub(crate) struct RpcCall {
 pub(crate) enum Stop {
     /// The runner cancelled it.
     Cancelled,
-    /// Something else ended it: its job, a pipe, the connection.
+    /// Something else ended it: its job, a pipe, its session.
     Ended(String),
 }
 
@@ -68,7 +108,7 @@ impl Stop {
     }
 }
 
-/// One call in flight on a connection.
+/// One call in flight on a device.
 pub(crate) struct CallEntry {
     pub(crate) job_id: String,
     stopped: CancellationToken,
@@ -193,7 +233,7 @@ impl CallEntry {
     /// Asks the runner for the next chunk of live input.
     async fn next_live_input(
         &self,
-        link: &Link,
+        link: &CallEnv,
         call_id: &str,
     ) -> Result<Option<Bytes>, PortError> {
         let received = {
@@ -220,15 +260,22 @@ impl CallEntry {
 
 /// Starts relaying a call. A second call under one id breaks the protocol
 /// and ends the connection.
+///
+/// The call's task belongs to the device: the connection that started it may
+/// end, and the task goes on. Once the call stops it has `END_GRACE` to
+/// finish, such as a handler committing its change, and what still runs then
+/// is aborted.
 pub(crate) fn start(link: &Link, call: RpcCall) {
     let entry = CallEntry::new(call.job_id.clone());
-    if !link.with_state(|state| state.add_call(call.call_id.clone(), entry.clone())) {
+    let relaying = link.call_env();
+    if !relaying.session.add_call(call.call_id.clone(), entry.clone()) {
         link.disconnect(&format!("duplicate rpc call {}", call.call_id));
         return;
     }
-    let relaying = link.clone();
     let command = call.path.join(" ");
-    link.spawn(command.clone(), async move {
+    let name = command.clone();
+    let (session, stopped) = (relaying.session.clone(), entry.stopped.clone());
+    let task = async move {
         let call_id = call.call_id.clone();
         let job_id = call.job_id.clone();
         let began = tokio::time::Instant::now();
@@ -292,7 +339,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
                 code
             }
         };
-        relaying.with_state(|state| state.remove_call(&call_id));
+        relaying.session.remove_call(&call_id);
         entry.finish_input();
         entry.stop(Stop::Ended("rpc call ended".into()));
         let exit = Inbound::RpcExit {
@@ -302,7 +349,8 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
         if let Err(error) = relaying.send(&exit) {
             tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "exit", call = %call_id, %error, "a message to a runner was not sent");
         }
-    });
+    };
+    session.spawn_call(name, stopped, task);
 }
 
 /// Why a call ended without its handler's exit code.
@@ -327,7 +375,7 @@ impl From<&str> for Ended {
 
 /// Whose job `job` is: a job no agent took up yet, as a restarted backend
 /// parks one, is taken up first (`crates/agent-session/src/reports.rs`).
-async fn origin_of(link: &Link, job: &str) -> Result<Rc<JobOrigin>, String> {
+async fn origin_of(link: &CallEnv, job: &str) -> Result<Rc<JobOrigin>, String> {
     let unknown = || "rpc requires a live job dispatched to this device".to_owned();
     // What a job left running after its end calls the job's commands as the
     // job did, while the runner keeps its execution context.
@@ -346,15 +394,15 @@ async fn origin_of(link: &Link, job: &str) -> Result<Rc<JobOrigin>, String> {
 
 /// Runs the call to its exit code, or what stopped it.
 async fn run(
-    link: &Link,
+    link: &CallEnv,
     call: RpcCall,
     origin: Rc<JobOrigin>,
     entry: &Rc<CallEntry>,
 ) -> Result<u8, Ended> {
     link.policy().admit_call(&origin)?;
-    let stdout = link.pipes().to_device(link.device());
+    let stdout = link.pipes().call_stdout(link.device());
     stdout.hold_source().map_err(|error| error.to_string())?;
-    let stdin = call.stdin.then(|| link.pipes().from_device(link.device()));
+    let stdin = call.stdin.then(|| link.pipes().call_stdin(link.device()));
     *entry.pipes.borrow_mut() = Some(CallPipes {
         stdout: stdout.clone(),
         stdin: stdin.clone(),
@@ -365,7 +413,7 @@ async fn run(
     let pipes = Inbound::RpcPipes {
         call_id: call.call_id.clone(),
         stdin: stdin.as_ref().map(Pipe::wire_ref),
-        stdout: stdout.wire_ref(),
+        stdout: stdout.call_output_ref(),
     };
     link.send(&pipes).map_err(|error| error.to_string())?;
     let invocation = RpcInvocation {
@@ -459,7 +507,7 @@ async fn run(
 
 /// The handler's port over the relay.
 struct RelayPort {
-    link: Link,
+    link: CallEnv,
     call_id: String,
     entry: Rc<CallEntry>,
     stdout: RefCell<Stdout>,

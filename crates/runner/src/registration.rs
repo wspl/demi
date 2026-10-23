@@ -499,6 +499,7 @@ async fn connection(registered: &Registered, kept: &mut Kept) -> io::Result<Atte
         &registered.backend,
         &registered.runner.version,
         token.as_ref(),
+        kept.link.clone(),
         management.stop.clone(),
     );
     tokio::pin!(connecting);

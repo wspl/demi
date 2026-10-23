@@ -32,6 +32,17 @@
 //! - Idle frames keep the response alive and never reach the reader.
 //! - A stream pipe's WebSocket pings after the same idle time.
 //!
+//! # A pipe that resumes
+//!
+//! A call's standard output goes over a WebSocket of its own, whose messages
+//! are the frames of a session (`crates/runner-protocol/src/wire/session.rs`):
+//! each carries one data or end frame, and a connection that replaces another
+//! opens with the count of messages the runner received, which the backend
+//! writes again from. A drop of the connection ends nothing: the runner
+//! connects again and the pipe goes on from where it got to. The runner closes
+//! the WebSocket itself once it reads no more, at the pipe's end or when its
+//! reader let go; a connection that closed without that was lost.
+//!
 //! The runner's HTTP client speaks HTTP/2 where the edge offers it, so a
 //! concurrent pipe costs no new connection, which through a proxy and a TLS
 //! edge costs two or three round trips.
@@ -50,6 +61,14 @@ pub const PIPE_DATA_BYTES: usize = 64 * 1024;
 /// The most bytes of an end frame's map, its cause's words included: a reader
 /// holds the frame whole.
 const PIPE_END_BYTES: usize = 64 * 1024;
+
+/// The route of a call's standard output, which the runner reads over a
+/// WebSocket that resumes (`/api/pipes/{id}` serves every other pipe).
+pub const CALL_OUTPUT_ROUTE: &str = "/api/call-outputs";
+
+/// The most bytes of one message of a pipe's session: a data or an end frame
+/// and the session's head.
+pub const PIPE_SESSION_MESSAGE_BYTES: usize = PIPE_DATA_BYTES + 64;
 
 const DATA: u8 = 0x01;
 const IDLE: u8 = 0x02;
@@ -125,6 +144,18 @@ pub fn end_frame(end: &PipeEnd) -> Bytes {
     frame.put_u32(map.len() as u32);
     frame.put_slice(&map);
     frame.freeze()
+}
+
+/// The frame a message of a pipe's session carries: one whole frame.
+pub fn decode_message(message: &[u8]) -> Result<PipeFrame, PipeFrameError> {
+    let mut decoder = PipeFrameDecoder::new();
+    decoder.extend(message);
+    match decoder.next_frame()? {
+        Some(frame) if !decoder.is_partial() => Ok(frame),
+        _ => Err(PipeFrameError::InvalidEnd(
+            "a session message is not one whole frame".into(),
+        )),
+    }
 }
 
 /// Reads frames from a pipe's bytes as they arrive, in whatever pieces.

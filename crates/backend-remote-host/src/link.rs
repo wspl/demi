@@ -13,6 +13,16 @@
 //! progress for [`wire::LINK_WRITE_TIMEOUT`], and a connection that has said
 //! nothing for [`wire::LINK_SILENCE`], end the connection.
 //!
+//! # The session
+//!
+//! The connection is one of many a device's session carries
+//! ([`DeviceSession`]). The driver numbers each message where it writes it,
+//! keeps it until the runner confirms it, and a connection that replaces
+//! another begins by writing again what the runner did not receive. The
+//! messages of the device's calls wait in the session's lane, which the
+//! driver writes between control and input; the calls themselves belong to
+//! the session, so the end of a connection stops none of them.
+//!
 //! The engine does no network IO. Its owner accepts the socket, reads the
 //! runner's `hello`, and hands the driver the socket's frames
 //! ([`LinkDriver::serve`]); the driver routes each message synchronously, so
@@ -36,7 +46,7 @@ use demi_runner_protocol::direct::{DialRefusal, Introduced, OfferRefusal, StunUr
 use demi_runner_protocol::forward::{Forward, ForwardRunState};
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, HostLogLine, Inbound, Outbound,
-    ReadAt,
+    Read, ReadAt,
 };
 use demi_shared_gates::GateLease;
 use demi_shared_types::{BlobRef, StreamKind};
@@ -50,7 +60,8 @@ use crate::{
     manifest::CommandSelection,
     output_records::{decode_output, stream_kind},
     pipes::Pipes,
-    relay::{CallEntry, Stop},
+    relay::{CallEnv, Stop},
+    session::DeviceSession,
 };
 
 /// How often the backend asks a runner whether it is there.
@@ -231,6 +242,9 @@ pub struct LinkOptions {
     pub ping: Option<Duration>,
     /// The device's jobs, which outlive the connection.
     pub jobs: DeviceJobs,
+    /// The device's session, which its calls belong to and each connection
+    /// carries on.
+    pub session: DeviceSession,
     /// What the runner's hello says of its jobs, which the connection takes
     /// up (`crates/runner/src/connection/kept.rs`).
     pub hello: Hello,
@@ -311,10 +325,12 @@ pub(crate) struct Inner {
     shell: Option<String>,
     /// The device's jobs, which outlive the connection.
     device_jobs: DeviceJobs,
+    /// The device's session, which this connection carries on.
+    session: DeviceSession,
     /// Where the messages the driver writes first wait.
-    control: mpsc::UnboundedSender<Vec<u8>>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     /// Where a command's input waits behind them.
-    input: mpsc::UnboundedSender<Vec<u8>>,
+    input: mpsc::UnboundedSender<wire::Frame>,
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
     /// Where the runner's log lines are stored, when the policy keeps them.
@@ -351,7 +367,6 @@ struct State {
     waiting: HashMap<String, Waiting>,
     spawns: HashMap<String, SpawnEntry>,
     services: HashMap<String, ServiceEntry>,
-    calls: HashMap<String, Rc<CallEntry>>,
     artifact_requests: HashSet<String>,
     numbers_requests: HashSet<String>,
     /// The manifest this connection last carried, which later jobs share.
@@ -723,6 +738,7 @@ impl Link {
             kernel: options.kernel,
             shell: options.shell,
             device_jobs: options.jobs.clone(),
+            session: options.session.clone(),
             control,
             input,
             pipes: options.pipes,
@@ -774,6 +790,17 @@ impl Link {
                 lost = adoption.lost,
                 "the jobs of a runner's hello were matched with the backend's"
             );
+        }
+        // A call whose job the device no longer holds has ended with it.
+        for call in options.session.calls() {
+            if options.jobs.with(&call.job_id, |_| ()).is_none()
+                && options.jobs.detached(&call.job_id).is_none()
+            {
+                call.stop(Stop::Ended(format!(
+                    "calling job {} ended before its RPC completed",
+                    call.job_id
+                )));
+            }
         }
         for job in adoption.stop {
             link.stop_unknown(job);
@@ -1208,10 +1235,6 @@ impl Link {
         }
     }
 
-    pub(crate) fn policy(&self) -> &Rc<dyn LinkPolicy> {
-        &self.0.policy
-    }
-
     /// Runs `task` as the connection's work, which its end waits for up to
     /// [`END_GRACE`]; a task still running then is aborted and logged as
     /// `name`.
@@ -1236,6 +1259,18 @@ impl Link {
                 ),
             }
         });
+    }
+
+    /// What the calls this connection starts need of their device, which is
+    /// not this connection.
+    pub(crate) fn call_env(&self) -> CallEnv {
+        CallEnv {
+            device: self.0.device.clone(),
+            policy: self.0.policy.clone(),
+            pipes: self.0.pipes.clone(),
+            jobs: self.0.device_jobs.clone(),
+            session: self.0.session.clone(),
+        }
     }
 
     /// The instance of the runner at the connection's other end.
@@ -1270,11 +1305,6 @@ impl Link {
         sent
     }
 
-    /// The device's jobs, which outlive the connection.
-    pub(crate) fn device_jobs(&self) -> &DeviceJobs {
-        &self.0.device_jobs
-    }
-
     /// Why the connection ended, for what it fails.
     pub(crate) fn end_reason(&self) -> String {
         let ended = self.0.end.borrow().clone();
@@ -1303,7 +1333,7 @@ impl Link {
         let _ = self.send(message);
     }
 
-    fn queue(&self, input: bool, frame: Vec<u8>) -> Result<(), HostError> {
+    fn queue(&self, input: bool, frame: wire::Frame) -> Result<(), HostError> {
         let queue = if input { &self.0.input } else { &self.0.control };
         queue.send(frame).map_err(|_| self.offline())
     }
@@ -1354,7 +1384,7 @@ impl Link {
         };
         let answered = self.wait_for(id.clone(), expected).inspect_err(|error| ending.fail(error))?;
         let message = message(id);
-        ending.bytes = frame(&message).map(|frame| frame.len()).ok();
+        ending.bytes = frame(&message).map(|frame| frame.encoded_len()).ok();
         self.send(&message).inspect_err(|error| ending.fail(error))?;
         ending.send_ms = Some(ending.began.elapsed().as_millis() as u64);
         let answer = answered.receive().await.inspect_err(|error| ending.fail(error))?;
@@ -1666,16 +1696,7 @@ impl Link {
                         self.set_sent_manifest(None);
                     }
                 }
-                let calls: Vec<_> = self
-                    .0
-                    .state
-                    .borrow()
-                    .calls
-                    .values()
-                    .filter(|call| call.job_id == job_id)
-                    .cloned()
-                    .collect();
-                for call in calls {
+                for call in self.0.session.calls_of(&job_id) {
                     call.stop(Stop::Ended(format!(
                         "calling job {job_id} exited before its RPC completed"
                     )));
@@ -1721,19 +1742,19 @@ impl Link {
                 },
             ),
             Outbound::RpcStdin { call_id, bytes } => {
-                let call = self.0.state.borrow().calls.get(&call_id).cloned();
+                let call = self.0.session.call(&call_id);
                 if let Some(call) = call {
                     call.live_input(Bytes::from(bytes.0));
                 }
             }
             Outbound::RpcStdinEnd { call_id } => {
-                let call = self.0.state.borrow().calls.get(&call_id).cloned();
+                let call = self.0.session.call(&call_id);
                 if let Some(call) = call {
                     call.end_live_input();
                 }
             }
             Outbound::RpcCancel { call_id } => {
-                let call = self.0.state.borrow().calls.get(&call_id).cloned();
+                let call = self.0.session.call(&call_id);
                 if let Some(call) = call {
                     call.stop(Stop::Cancelled);
                 }
@@ -2141,8 +2162,8 @@ impl Link {
     /// - Processes end as lost.
     /// - Service and direct streams close (a direct stream's token is a child
     ///   of `closed`).
-    /// - Calls stop.
-    /// - The device's pipes fail.
+    /// - The device's pipes fail, but a call's: its calls go on with their
+    ///   session.
     ///
     /// The device's jobs wait for its next connection
     /// (`crates/runner/src/connection/kept.rs`).
@@ -2158,7 +2179,6 @@ impl Link {
             host_calls: state.waiting.len(),
             spawns: state.spawns.len(),
             services: state.services.len(),
-            rpc_calls: state.calls.len(),
             tasks: 0,
         };
         for (_, waiting) in state.waiting {
@@ -2175,9 +2195,6 @@ impl Link {
                 // An owner that stopped waiting has closed its stream.
                 let _ = done.send(Err(HostError::offline(reason)));
             }
-        }
-        for (_, call) in state.calls {
-            call.stop(Stop::Ended(reason.into()));
         }
         self.0.pipes.device_gone(&self.0.device);
         self.0.tasks.close();
@@ -2231,8 +2248,6 @@ pub(crate) struct Aborted {
     host_calls: usize,
     spawns: usize,
     services: usize,
-    /// The runner's `demi` calls that ran.
-    rpc_calls: usize,
     /// The tasks of the backend's that outlasted [`END_GRACE`].
     tasks: usize,
 }
@@ -2256,18 +2271,6 @@ impl StateView<'_> {
 
     pub(crate) fn remove_service(&mut self, id: &str) -> Option<ServiceEntry> {
         self.0.services.remove(id)
-    }
-
-    pub(crate) fn add_call(&mut self, id: String, call: Rc<CallEntry>) -> bool {
-        if self.0.calls.contains_key(&id) {
-            return false;
-        }
-        self.0.calls.insert(id, call);
-        true
-    }
-
-    pub(crate) fn remove_call(&mut self, id: &str) -> Option<Rc<CallEntry>> {
-        self.0.calls.remove(id)
     }
 }
 
@@ -2317,8 +2320,8 @@ impl Drop for Registration {
 /// The connection's driver: serves the socket its owner hands over.
 pub struct LinkDriver {
     link: Link,
-    controls: mpsc::UnboundedReceiver<Vec<u8>>,
-    inputs: mpsc::UnboundedReceiver<Vec<u8>>,
+    controls: mpsc::UnboundedReceiver<wire::Frame>,
+    inputs: mpsc::UnboundedReceiver<wire::Frame>,
     ping: Option<Duration>,
     /// Whether the socket's writes move; without it a write has no deadline.
     writes: Option<std::sync::Arc<wire::WriteProgress>>,
@@ -2353,6 +2356,10 @@ impl LinkDriver {
         let began = tokio::time::Instant::now();
         let frames_in = std::cell::Cell::new(0u64);
         let frames_out = std::cell::Cell::new(0u64);
+        let session = link.0.session.clone();
+        // Wakes the writer when messages arrived that wait for an
+        // acknowledgement.
+        let owed = tokio::sync::Notify::new();
         let reading = async {
             tokio::pin!(incoming);
             loop {
@@ -2368,52 +2375,115 @@ impl LinkDriver {
                 };
                 link.heard();
                 frames_in.set(frames_in.get() + 1);
-                match wire::decode::<Outbound>(&frame) {
+                let read = session.numbers().borrow_mut().read(&frame);
+                let (payload, numbered) = match read {
+                    Ok(Read::Own(payload)) => (payload, false),
+                    Ok(Read::Message(payload)) => (payload, true),
+                    // A message that was not written again says nothing, and
+                    // counts in its turn.
+                    Ok(Read::Skipped) => {
+                        session.numbers().borrow_mut().handled();
+                        owed.notify_one();
+                        continue;
+                    }
+                    Ok(Read::Duplicate | Read::Ack) => {
+                        owed.notify_one();
+                        continue;
+                    }
+                    Err(error) => {
+                        return LinkEnd::Closed(format!("runner disconnected: its session broke: {error}"));
+                    }
+                };
+                match wire::decode::<Outbound>(payload) {
                     Ok(message) => link.receive(message),
-                    Err(error) => return LinkEnd::Refused(wire::refusal(&frame, &error)),
+                    Err(error) => return LinkEnd::Refused(wire::refusal(payload, &error)),
                 }
+                // Counted once routed, which nothing awaits.
+                if numbered {
+                    session.numbers().borrow_mut().handled();
+                }
+                owed.notify_one();
             }
         };
         let writing = async {
             tokio::pin!(outgoing);
+            macro_rules! transmit {
+                ($bytes:expr) => {{
+                    let sending = outgoing.send($bytes);
+                    tokio::pin!(sending);
+                    let sent = match &writes {
+                        Some(writes) => tokio::select! {
+                            sent = &mut sending => Some(sent),
+                            () = writes.stalled() => None,
+                        },
+                        None => Some(sending.await),
+                    };
+                    match sent {
+                        Some(Ok(())) => frames_out.set(frames_out.get() + 1),
+                        Some(Err(error)) => {
+                            return LinkEnd::Closed(format!("runner disconnected: {error}"));
+                        }
+                        None => {
+                            tracing::warn!(
+                                event = "link.lost",
+                                host_id = %link.0.device,
+                                cause = "write",
+                                stalled_ms = wire::LINK_WRITE_TIMEOUT.as_millis() as u64,
+                                queued_control = controls.len(),
+                                queued_input = inputs.len(),
+                                "a write to the runner made no progress"
+                            );
+                            return LinkEnd::Disconnected(format!(
+                                "a write made no progress for {} seconds",
+                                wire::LINK_WRITE_TIMEOUT.as_secs()
+                            ));
+                        }
+                    }
+                }};
+            }
+            // What the runner did not receive goes again, before anything
+            // new.
             loop {
+                let frame = session.numbers().borrow_mut().next_resend();
+                let Some(frame) = frame else { break };
+                transmit!(frame);
+            }
+            loop {
+                let ack_due = session.numbers().borrow().ack_due();
                 // Control first: it waits only for the frame being written.
                 let frame = tokio::select! {
                     biased;
+                    () = async {
+                        match ack_due {
+                            Some(due) => tokio::time::sleep_until(due).await,
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        let ack = session.numbers().borrow_mut().ack_frame();
+                        if let Some(ack) = ack {
+                            transmit!(ack);
+                        }
+                        continue;
+                    }
+                    () = owed.notified(), if ack_due.is_none() => continue,
                     Some(frame) = controls.recv() => frame,
+                    frame = session.next_message() => frame,
                     Some(frame) = inputs.recv() => frame,
                     else => return LinkEnd::Closed("runner disconnected".into()),
                 };
-                let sending = outgoing.send(frame);
-                tokio::pin!(sending);
-                let sent = match &writes {
-                    Some(writes) => tokio::select! {
-                        sent = &mut sending => Some(sent),
-                        () = writes.stalled() => None,
-                    },
-                    None => Some(sending.await),
+                // Numbered where it is written, so the numbers are the order
+                // on the wire, and kept until the runner confirms it.
+                let carriage = frame.carriage();
+                let bytes = match carriage {
+                    wire::Carriage::Connection => wire::own_frame(frame.into_bytes()),
+                    wire::Carriage::Outlasting => {
+                        session.numbers().borrow_mut().stamp(frame.into_bytes(), true)
+                    }
+                    wire::Carriage::Scoped => {
+                        session.numbers().borrow_mut().stamp(frame.into_bytes(), false)
+                    }
                 };
-                match sent {
-                    Some(Ok(())) => frames_out.set(frames_out.get() + 1),
-                    Some(Err(error)) => {
-                        return LinkEnd::Closed(format!("runner disconnected: {error}"));
-                    }
-                    None => {
-                        tracing::warn!(
-                            event = "link.lost",
-                            host_id = %link.0.device,
-                            cause = "write",
-                            stalled_ms = wire::LINK_WRITE_TIMEOUT.as_millis() as u64,
-                            queued_control = controls.len(),
-                            queued_input = inputs.len(),
-                            "a write to the runner made no progress"
-                        );
-                        return LinkEnd::Disconnected(format!(
-                            "a write made no progress for {} seconds",
-                            wire::LINK_WRITE_TIMEOUT.as_secs()
-                        ));
-                    }
-                }
+                transmit!(bytes);
             }
         };
         let liveness = async {
@@ -2487,7 +2557,6 @@ impl LinkDriver {
             host_calls_aborted = aborted.host_calls,
             spawns_aborted = aborted.spawns,
             services_aborted = aborted.services,
-            rpc_calls_aborted = aborted.rpc_calls,
             tasks_aborted = aborted.tasks,
             "a runner connection's life ended"
         );
@@ -2497,7 +2566,7 @@ impl LinkDriver {
 
 /// `message` as the frame the connection sends; a message over the wire's
 /// limit cannot be one.
-fn frame(message: &Inbound) -> Result<Vec<u8>, HostError> {
+fn frame(message: &Inbound) -> Result<wire::Frame, HostError> {
     let frame = wire::encode(message)
         .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
     if frame.encoded_len() > wire::MAX_MESSAGE_BYTES {
@@ -2510,7 +2579,7 @@ fn frame(message: &Inbound) -> Result<Vec<u8>, HostError> {
             ),
         ));
     }
-    Ok(frame.into_bytes())
+    Ok(frame)
 }
 
 /// A process's end as the runner reports it.

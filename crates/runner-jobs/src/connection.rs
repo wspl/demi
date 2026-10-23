@@ -12,6 +12,12 @@
 //! backend waits for the next connection while the runner is away, however long
 //! it takes, and fails only once the runner ends. The registration's owner
 //! serves the requests and routes the backend's answers through a [`Relay`].
+//!
+//! A call outlives a connection too: its messages go into the link's lane
+//! ([`ConnectionHandle::lane`]), which each connection writes, and its events
+//! come back through the relay over whichever connection serves. It ends with
+//! its exit, or with the reason the link's session ended for
+//! (`crates/runner/src/connection/link_state.rs`).
 
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
@@ -69,6 +75,7 @@ pub struct Live {
 pub struct ConnectionHandle {
     requests: mpsc::UnboundedSender<Request>,
     reach: watch::Receiver<Reach>,
+    lane: wire::Lane,
 }
 
 /// What work asks of the registration's owner.
@@ -96,11 +103,27 @@ pub enum Request {
 }
 
 impl ConnectionHandle {
-    /// A handle whose requests arrive at the returned receiver and that
-    /// reaches the backend as `reach` says.
-    pub fn new(reach: watch::Receiver<Reach>) -> (Self, mpsc::UnboundedReceiver<Request>) {
+    /// A handle whose requests arrive at the returned receiver, that
+    /// reaches the backend as `reach` says, and whose calls' messages wait in
+    /// `lane`.
+    pub fn new(
+        reach: watch::Receiver<Reach>,
+        lane: wire::Lane,
+    ) -> (Self, mpsc::UnboundedReceiver<Request>) {
         let (requests, received) = mpsc::unbounded_channel();
-        (Self { requests, reach }, received)
+        (
+            Self {
+                requests,
+                reach,
+                lane,
+            },
+            received,
+        )
+    }
+
+    /// Where a call's messages wait for a connection to write them.
+    pub fn lane(&self) -> &wire::Lane {
+        &self.lane
     }
 
     /// The connection that serves now, if one does.
@@ -135,8 +158,8 @@ impl ConnectionHandle {
     }
 
     /// Sends the call's inbound events to `events` until `ended` is
-    /// cancelled, or until the connection that serves now ends; false when
-    /// the registration ended.
+    /// cancelled, whichever connection they come over; false when the
+    /// registration ended.
     pub fn register_call(
         &self,
         id: String,
@@ -401,6 +424,15 @@ impl Relay {
         });
         self.asks.insert(id, reply);
         Ok(frame)
+    }
+
+    /// Ends every call that waits for the backend, with `reason`: the link's
+    /// session they ran in ended.
+    pub fn lose_calls(&mut self, reason: &str) {
+        for (_, call) in self.calls.drain() {
+            // A call that ended takes no more events.
+            let _ended = call.events.send(CallEvent::Lost(reason.to_owned()));
+        }
     }
 
     pub fn ended(&mut self, ended: Ended) {
