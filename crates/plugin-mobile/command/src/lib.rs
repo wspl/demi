@@ -22,10 +22,13 @@
 //! one operation behind both the panel's control and its command, so the agent
 //! can do what the user can and the other way round.
 //!
+//! Demi also runs the app under test, as a person does with Xcode or Android
+//! Studio: it installs a build, launches it, follows the device's log from its
+//! open to its close (`log.rs`), and erases the device to its factory state.
+//!
 //! Everything else is left to the tools the agent already knows (`xcodebuild`,
-//! `xcrun simctl`, `avdmanager`, `emulator`, `adb`): building, installing,
-//! launching an app, logs, locale, permissions, and creating or deleting
-//! simulators.
+//! `xcrun simctl`, `avdmanager`, `emulator`, `adb`): building, locale,
+//! permissions, and creating or deleting simulators.
 //!
 //! # What is supported
 //!
@@ -49,6 +52,7 @@ pub mod ios;
 mod kept;
 mod keys;
 mod live;
+pub mod log;
 mod operations;
 mod pictures;
 mod refs;

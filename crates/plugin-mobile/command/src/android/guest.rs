@@ -24,7 +24,8 @@ use crate::driver::{DriverError, RawElement, Rect, Result};
 /// is about 40 MB, and the copy is written to this computer's disk.
 const APK_LIMIT: u64 = 256 * 1024 * 1024;
 /// The largest file read from an APK, uncompressed: a corner's drawable is
-/// under a kilobyte, and a compressed file can declare any size.
+/// under a kilobyte, an app's manifest a few hundred, and a compressed file
+/// can declare any size.
 const APK_FILE_LIMIT: u64 = 1024 * 1024;
 
 /// A resource as the device resolves it.
@@ -110,8 +111,35 @@ pub trait Guest: Send + Sync + 'static {
     /// not hold; the APK is copied from the device once for all of them.
     /// An APK, or a file in it, larger than its limit does not read.
     fn apk_files<'a>(&'a self, apk: &'a str, paths: &'a [String]) -> BoxFuture<'a, Result<Vec<Option<Vec<u8>>>>>;
+    /// Installs the APK `file` of this computer as `adb install -r -t`
+    /// does: streamed to the package manager, replacing an installed
+    /// version and keeping its data, a build marked for tests too.
+    fn install<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>>;
+    /// Starts `package`'s launcher activity as the launcher does, which
+    /// brings a running app's task in front, after stopping the app when
+    /// `restart`; answers once its first screen shows, whether its process
+    /// started anew.
+    fn launch<'a>(&'a self, package: &'a str, restart: bool) -> BoxFuture<'a, Result<bool>>;
+    /// The user id of the installed `package`, which all its processes run
+    /// as.
+    fn uid<'a>(&'a self, package: &'a str) -> BoxFuture<'a, Result<u32>>;
+    /// The log's lines from `since`, in seconds since the epoch, as
+    /// `logcat -v epoch,uid,usec` prints them, every level, until the
+    /// stream is dropped or the emulator ends.
+    fn log(&self, since: f64) -> BoxFuture<'_, Result<BoxStream<'static, String>>>;
     /// Stops what Demi runs inside the emulator.
     fn close(&self) -> BoxFuture<'_, ()>;
+}
+
+/// `package` when it is a package name, which goes into a shell command as
+/// it is.
+fn package_name(package: &str) -> Result<&str> {
+    let named = !package.is_empty() && package.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_');
+    if named {
+        Ok(package)
+    } else {
+        Err(DriverError::Failed(format!("{package:?} is not an Android package name, such as com.example.app")))
+    }
 }
 
 /// The helper's process inside the emulator, while its shell connection
@@ -406,7 +434,7 @@ impl Guest for U2 {
                 .map_err(|error| DriverError::Failed(format!("no temporary file for an APK: {error}")))?;
             self.adb.pull_at_most(&self.serial, apk, copy.path(), APK_LIMIT).await?;
             let paths = paths.to_vec();
-            tokio::task::spawn_blocking(move || read_apk(copy, &paths))
+            tokio::task::spawn_blocking(move || read_apk(copy.as_file(), &paths))
                 .await
                 .map_err(|error| DriverError::Failed(format!("reading an APK stopped: {error}")))?
         })
@@ -475,6 +503,104 @@ impl Guest for U2 {
             // KEYCODE_POWER, 26: the emulator's own Power key, sent over its
             // gRPC interface, reaches an Android 16 guest as nothing.
             self.adb.shell(&self.serial, "input keyevent KEYCODE_POWER").await.map(drop)
+        })
+    }
+
+    fn install<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            use tokio::io::AsyncReadExt as _;
+            let unread = |error: std::io::Error| DriverError::Failed(format!("{} does not read: {error}", file.display()));
+            let mut apk = tokio::fs::File::open(file).await.map_err(unread)?;
+            let size = apk.metadata().await.map_err(unread)?.len();
+            // The package manager reads the APK's bytes from its standard
+            // input, as many as -S says.
+            let mut installer = self
+                .adb
+                .open(&self.serial, &format!("exec:cmd package install -S {size} -r -t"))
+                .await?;
+            tokio::io::copy(&mut apk, &mut installer)
+                .await
+                .map_err(|error| DriverError::Failed(format!("the APK did not reach the emulator: {error}")))?;
+            let mut said = String::new();
+            installer
+                .read_to_string(&mut said)
+                .await
+                .map_err(|error| DriverError::Failed(format!("the package manager did not answer: {error}")))?;
+            match said.lines().map(str::trim).find(|line| line.starts_with("Success") || line.starts_with("Failure")) {
+                Some(line) if line.starts_with("Success") => Ok(()),
+                Some(failure) => Err(DriverError::Failed(format!("the package manager refused the APK: {failure}"))),
+                None => Err(DriverError::Failed(format!("the package manager answered {:?}", said.trim()))),
+            }
+        })
+    }
+
+    fn launch<'a>(&'a self, package: &'a str, restart: bool) -> BoxFuture<'a, Result<bool>> {
+        Box::pin(async move {
+            let package = package_name(package)?;
+            let resolved = self
+                .adb
+                .shell(
+                    &self.serial,
+                    &format!("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER {package}"),
+                )
+                .await?;
+            let component = resolved
+                .lines()
+                .map(str::trim)
+                .rfind(|line| line.starts_with(&format!("{package}/")))
+                .filter(|component| !component.contains('\''))
+                .ok_or_else(|| {
+                    DriverError::Failed(format!("{package} is not installed, or has no activity the launcher starts"))
+                })?;
+            // The launcher's own flags, NEW_TASK and RESET_TASK_IF_NEEDED,
+            // bring a running app's task in front as it was left.
+            let started = self
+                .adb
+                .shell(
+                    &self.serial,
+                    &format!(
+                        "am start -W {}-a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n '{component}'",
+                        if restart { "-S " } else { "" }
+                    ),
+                )
+                .await?;
+            if let Some(error) = started.lines().map(str::trim).find(|line| line.starts_with("Error")) {
+                return Err(DriverError::Failed(format!("{package} did not start: {error}")));
+            }
+            Ok(started.lines().any(|line| line.trim() == "LaunchState: COLD"))
+        })
+    }
+
+    fn uid<'a>(&'a self, package: &'a str) -> BoxFuture<'a, Result<u32>> {
+        Box::pin(async move {
+            let package = package_name(package)?;
+            let listed = self.adb.shell(&self.serial, &format!("cmd package list packages -U {package}")).await?;
+            listed
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix("package:"))
+                .filter_map(|line| line.split_once(" uid:"))
+                .find(|(name, _)| *name == package)
+                .and_then(|(_, uid)| uid.trim().split(',').next()?.parse().ok())
+                .ok_or_else(|| DriverError::Failed(format!("{package} is not installed")))
+        })
+    }
+
+    fn log(&self, since: f64) -> BoxFuture<'_, Result<BoxStream<'static, String>>> {
+        Box::pin(async move {
+            let followed = self
+                .adb
+                .open(&self.serial, &format!("shell:exec logcat -v epoch,uid,usec -T {since:.6}"))
+                .await?;
+            // A line of a message that is not UTF-8 reads with its bytes
+            // replaced, never ends the log.
+            let lines = futures_util::stream::unfold(BufReader::new(followed), |mut reader| async move {
+                let mut line = Vec::new();
+                match reader.read_until(b'\n', &mut line).await {
+                    Ok(0) | Err(_) => None,
+                    Ok(_) => Some((String::from_utf8_lossy(&line).trim_end_matches(['\r', '\n']).to_owned(), reader)),
+                }
+            });
+            Ok(lines.boxed())
         })
     }
 
@@ -655,13 +781,13 @@ pub fn resolved(said: &str) -> Option<Resolved> {
     Some(Resolved { value: value.to_owned(), apk })
 }
 
-/// The files `paths` of the APK `copy`, none for one it does not hold,
+/// The files `paths` of the APK `apk`, none for one it does not hold,
 /// each read where the archive's central directory places it and no more
-/// than [`APK_FILE_LIMIT`] of it; the copy is removed as it drops.
-pub fn read_apk(copy: tempfile::NamedTempFile, paths: &[String]) -> Result<Vec<Option<Vec<u8>>>> {
+/// than [`APK_FILE_LIMIT`] of it.
+pub fn read_apk(apk: &std::fs::File, paths: &[String]) -> Result<Vec<Option<Vec<u8>>>> {
     use std::io::Read as _;
     let unreadable = |error: &dyn std::fmt::Display| DriverError::Failed(format!("an APK does not read: {error}"));
-    let mut archive = zip::ZipArchive::new(copy.as_file()).map_err(|error| unreadable(&error))?;
+    let mut archive = zip::ZipArchive::new(apk).map_err(|error| unreadable(&error))?;
     paths
         .iter()
         .map(|path| {

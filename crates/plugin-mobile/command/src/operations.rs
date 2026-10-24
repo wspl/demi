@@ -13,7 +13,8 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::mobile::{
-    Appearance, AppearanceChoice, ElementSummary, AppearanceResult, CloseResult, Direction, ElementRef,
+    Appearance, AppearanceChoice, ElementSummary, AppearanceResult, CloseResult, Direction, ElementRef, EraseResult,
+    InstallResult, LaunchResult,
     InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
     MobilePlatform, RecordAction, RecordInput, RecordTarget, Rotation, RotateResult,
     FIND_SECONDS, ScreenshotResult, SwipeResult, TapResult, TypeResult, TypedField, WAIT_SECONDS, WaitResult,
@@ -405,6 +406,61 @@ pub async fn run(
             }
             (MobileOperation::Wait(input), Some(open)) => wait(&open, input).await,
             (MobileOperation::Record(input), open) => record(call, open, input).await,
+            (MobileOperation::Install(input), Some(open)) => {
+                let file = std::path::Path::new(call.cwd).join(&input.file);
+                if !file.exists() {
+                    return Err(MobileError::Usage(format!("{} does not exist", file.display())));
+                }
+                let installed = open.device.install(&file).await?;
+                let text = text::installed(&open.handle, &installed.app, installed.version.as_deref());
+                Outcome::result(
+                    InstallResult {
+                        device: open.handle.clone(),
+                        app: installed.app,
+                        version: installed.version,
+                    },
+                    text,
+                )
+            }
+            (MobileOperation::Launch(input), Some(open)) => {
+                let launched = open.device.launch(&input.app, input.restart == Some(true)).await?;
+                // Its first screen, as a person sees it once it shows.
+                let settled = settle(&open).await.settled;
+                let result = LaunchResult {
+                    device: open.handle.clone(),
+                    app: input.app,
+                    started: launched.started,
+                    console: launched.console,
+                    shown: launched.shown,
+                };
+                let text = text::launched(&result);
+                let mut outcome = Outcome::result(result, text)?;
+                if !settled {
+                    outcome.notes.push(unsettled(call));
+                }
+                Ok(outcome)
+            }
+            (MobileOperation::Logs(input), Some(open)) => {
+                let app = match &input.app {
+                    Some(app) => Some(open.device.app_entries(app).await?),
+                    None => None,
+                };
+                let result = open.log.read(&open.handle, &input, app.as_ref())?;
+                let text = text::logs(&result);
+                Outcome::result(result, text)
+            }
+            (MobileOperation::Erase(_), Some(open)) => {
+                devices.erase(&open).await?;
+                Outcome::result(
+                    EraseResult {
+                        device: open.handle.clone(),
+                    },
+                    format!(
+                        "Erased {} to its factory state and started it again; nothing of before is on it, the apps installed included.\n",
+                        open.handle
+                    ),
+                )
+            }
             (_, None) => unreachable!("an operation on a device found it open"),
         }
     };
@@ -425,6 +481,8 @@ enum Lane {
     Read,
     /// It ends the device: it waits for both.
     Both,
+    /// It reads what Demi keeps of the device, and waits for neither.
+    Free,
 }
 
 fn lane(operation: &MobileOperation) -> Lane {
@@ -434,12 +492,17 @@ fn lane(operation: &MobileOperation) -> Lane {
         | MobileOperation::Type(_)
         | MobileOperation::Key(_)
         | MobileOperation::Rotate(_)
-        | MobileOperation::Appearance(_) => Lane::Input,
+        | MobileOperation::Appearance(_)
+        | MobileOperation::Install(_)
+        | MobileOperation::Launch(_) => Lane::Input,
         MobileOperation::Screenshot(_)
         | MobileOperation::Inspect(_)
         | MobileOperation::Wait(_)
         | MobileOperation::Record(_) => Lane::Read,
-        MobileOperation::Close(_) | MobileOperation::List(_) | MobileOperation::Open(_) => Lane::Both,
+        MobileOperation::Close(_) | MobileOperation::List(_) | MobileOperation::Open(_) | MobileOperation::Erase(_) => {
+            Lane::Both
+        }
+        MobileOperation::Logs(_) => Lane::Free,
     }
 }
 
@@ -450,6 +513,7 @@ async fn turn(open: &OpenDevice, lane: Lane) -> Vec<tokio::sync::MutexGuard<'_, 
         Lane::Read => vec![open.reads.lock().await],
         // Always the input first, so two that take both never hold one each.
         Lane::Both => vec![open.inputs.lock().await, open.reads.lock().await],
+        Lane::Free => Vec::new(),
     }
 }
 

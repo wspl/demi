@@ -8,10 +8,9 @@ use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::driver::{
-    history::Buffer,
-    operation::{BrowserError, Result},
-};
+use demi_shared_types::buffer::Buffer;
+
+use crate::driver::operation::{BrowserError, Result};
 
 use crate::tabs::protocol::{
     CONSOLE_BYTES, CONSOLE_ENTRIES, DEFAULT_NODES, LogEntry, LogLevel, LogsInput, LogsResult,
@@ -46,7 +45,7 @@ struct History {
 impl History {
     fn new() -> Result<Self> {
         Ok(Self {
-            buffer: Buffer::new("logs", CONSOLE_ENTRIES, CONSOLE_BYTES)?,
+            buffer: Buffer::new(crate::driver::handles::fresh("logs")?, CONSOLE_ENTRIES, CONSOLE_BYTES),
         })
     }
 
@@ -78,13 +77,13 @@ impl History {
             .as_ref()
             .and_then(|stack| stack.call_frames.first())
             .map(|frame| frame.url.clone());
-        self.buffer.push(LogEntry {
+        Ok(self.buffer.push(LogEntry {
             sequence: 0,
             level,
             text,
             url,
             timestamp: *event.timestamp.inner(),
-        })
+        })?)
     }
 
     pub fn read(&self, input: &LogsInput) -> Result<LogsResult> {
@@ -164,7 +163,7 @@ pub(crate) async fn observe(
                     let recorded = match event {
                         Some(Ok(event)) => history.push(&event),
                         // A lost message is a visible gap.
-                        Some(Err(_)) => history.buffer.mark_gap(),
+                        Some(Err(_)) => history.buffer.mark_gap().map_err(BrowserError::from),
                         None => break,
                     };
                     // An unrepresentable entry is a visible gap, never a collector crash.
