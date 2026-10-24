@@ -457,7 +457,8 @@ const ringColor = computed(() => {
                       <Tooltip tag="div" :content="row.path ?? undefined">
                         <button
                           type="button"
-                          class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover phone:min-h-row phone:py-0"
+                          data-drawn-target
+                          class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover phone:min-h-hit-sm phone:py-0"
                           @click="openEntry(row.entry, close)"
                         >
                           <UserRound v-if="row.entry.kind === 'personal'" :size="icons.chip" class="shrink-0 text-fg-subtle" />
