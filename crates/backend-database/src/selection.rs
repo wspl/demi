@@ -32,9 +32,10 @@
 //!
 //! # Workspaces
 //!
-//! A workspace is a named `(user, device, path)` record, one per device and
-//! directory. It groups conversations and owns no sandbox: it restricts no
-//! filesystem access.
+//! A workspace is a `(user, device, path)` record, one per device and
+//! directory, named by the directory. It groups conversations and owns no
+//! sandbox: it restricts no filesystem access. A selection of a deleted one's
+//! directory, or of a worktree it lists, brings it back.
 //!
 //! # Worktrees
 //!
@@ -200,7 +201,7 @@ pub(crate) fn select(
         ConversationTarget::Workspace { workspace_id } => {
             let workspace = super::workspaces::workspace_in(connection, workspace_id)?;
             Ok(match workspace {
-                Some(workspace) if workspace.user == *owner => Selected::kept(Selection::Workspace {
+                Some(workspace) if workspace.user == *owner && !workspace.deleted => Selected::kept(Selection::Workspace {
                     workspace_id: workspace.id,
                     device_id: workspace.device,
                     path: workspace.path,
@@ -247,7 +248,13 @@ pub(crate) fn select_directory(
     if workspace_at(connection, &device.user, &device.id, &path)?.is_none()
         && let Some(selection) = worktree_at(connection, device, &path)?
     {
-        return Ok(Selected::kept(selection));
+        let made = match &selection {
+            Selection::Workspace { workspace_id, .. } if super::workspaces::revive(connection, workspace_id)? => {
+                super::workspaces::workspace_in(connection, workspace_id)?
+            }
+            _ => None,
+        };
+        return Ok(Ok(Selected { selection, made }));
     }
     Ok(Ok(project_of(connection, device, &path, now)?))
 }
@@ -282,9 +289,8 @@ pub(crate) fn worktree_at(
         .transpose()?)
 }
 
-/// The workspace of `path` on `device`, made now when its user has none: named
-/// after the directory's last component, with *(2)*, *(3)* after it when another
-/// of the device's projects has that name.
+/// The workspace of `path` on `device`, made now when its user has none, and
+/// brought back when the user deleted it.
 ///
 /// A restore of a conversation whose project was deleted selects it alone, since a
 /// project's directory is never a home.
@@ -297,6 +303,11 @@ pub(crate) fn project_of(
     let paths = host_paths(device.platform);
     let path = directory(paths, path);
     if let Some(workspace) = workspace_at(connection, &device.user, &device.id, &path)? {
+        let made = if super::workspaces::revive(connection, &workspace.id)? {
+            super::workspaces::workspace_in(connection, &workspace.id)?
+        } else {
+            None
+        };
         return Ok(Selected {
             selection: Selection::Workspace {
                 workspace_id: workspace.id,
@@ -304,36 +315,10 @@ pub(crate) fn project_of(
                 path: workspace.path,
                 worktree: None,
             },
-            made: None,
+            made,
         });
     }
-    let base = match paths.file_name(&path) {
-        "" => path.clone(),
-        name => name.to_owned(),
-    };
-    let mut name = base.clone();
-    let mut number = 1;
-    while connection
-        .query_row(
-            "SELECT 1 FROM workspaces WHERE device_id = ?1 AND name = ?2",
-            params![device.id.as_str(), name],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some()
-    {
-        number += 1;
-        name = format!("{base} ({number})");
-    }
-    let workspace = super::workspaces::insert_workspace(
-        connection,
-        new_workspace_id(),
-        &device.user,
-        &device.id,
-        &path,
-        &name,
-        now,
-    )?;
+    let workspace = super::workspaces::insert_workspace(connection, new_workspace_id(), &device.user, &device.id, &path, now)?;
     Ok(Selected {
         selection: Selection::Workspace {
             workspace_id: workspace.id.clone(),

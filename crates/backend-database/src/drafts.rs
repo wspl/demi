@@ -195,8 +195,9 @@ pub(super) fn staged_version(
     }))
 }
 
-/// The blobs the drafts of `owner`'s conversations name, and the messages they
-/// keep saved for later: each upload's bytes.
+/// The blobs the drafts of `owner`'s conversations name, and the messages saved
+/// for later of their lists and of their projects' lists, deleted projects'
+/// included: each upload's bytes.
 pub(crate) fn draft_blobs(
     connection: &Connection,
     owner: &UserId,
@@ -216,7 +217,10 @@ pub(crate) fn draft_blobs(
     }
     let mut statement = connection.prepare(
         "SELECT s.document FROM saved_messages s JOIN conversations c ON c.id = s.conversation_id
-         WHERE c.user_id = ?1",
+         WHERE c.user_id = ?1
+         UNION ALL
+         SELECT s.document FROM saved_messages s JOIN workspaces w ON w.id = s.workspace_id
+         WHERE w.user_id = ?1",
     )?;
     let mut rows = statement.query([owner.as_str()])?;
     while let Some(row) = rows.next()? {

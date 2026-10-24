@@ -14,6 +14,7 @@
 mod announcement;
 pub mod claude_cli;
 mod cloud_workspace;
+pub use cloud_workspace::CloudProject;
 mod connection_test;
 pub mod cost;
 mod creation;

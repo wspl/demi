@@ -329,6 +329,17 @@ pub enum ErrorCode {
     /// The directory is the device's home, which holds the conversations
     /// outside projects and is never a project.
     WorkspaceIsHome,
+    /// A new Cloud project's name is a folder's in `~/projects` already.
+    WorkspaceNameTaken,
+    /// A new Cloud project's name cannot name a folder: it holds a `/`, or
+    /// is `.` or `..`.
+    WorkspaceNameInvalid,
+    /// A project switched to keep its saved messages per conversation has
+    /// messages, and the switch named no conversation to take them.
+    SavedDestinationNeeded,
+    /// The conversation named to take a project's saved messages is not one
+    /// of the project's that is not archived.
+    SavedDestinationInvalid,
     /// A move names a directory on a device whose runner never reported its
     /// home, so whether the directory is a project's is unknown
     /// (`crates/backend-database/src/selection.rs`).

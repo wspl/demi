@@ -511,6 +511,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/workspaces/{id}",
             patch(workspaces::change).delete(workspaces::delete),
         )
+        .route("/workspaces/{id}/saved-scope", put(workspaces::switch_saved_scope))
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
         .route("/devices", get(devices::list))

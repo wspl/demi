@@ -11,6 +11,8 @@ import {
   type ConversationTarget,
   type CreateWorkspace,
   type DeviceDto,
+  type SavedScope,
+  type SavedScopeSwitch,
   type SidebarReorder,
 } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
@@ -163,6 +165,8 @@ export const useResources = defineStore('resources', () => {
         name: workspace.name,
         deviceId: workspace.deviceId,
         path: workspace.path,
+        savedScope: workspace.savedScope,
+        savedCount: workspace.savedCount,
       }
       if (hostKindOf(device) === 'cloud') {
         return { ...checkout, hostKind: 'cloud' }
@@ -359,6 +363,24 @@ export const useResources = defineStore('resources', () => {
       })
   }
 
+  /**
+   * Switches how the project `id`'s conversations keep their saved messages; to per conversation,
+   * `to` names the conversation that takes the project's list. Done once the channel brings the
+   * project's new way, so the menu's check never shows the old one after the switch.
+   */
+  async function switchSavedScope(id: string, scope: SavedScope, to: string | null): Promise<void> {
+    const current = controller
+    await apiRequest(`/workspaces/${encodeURIComponent(id)}/saved-scope`, {
+      method: 'PUT',
+      signal: current.signal,
+      ...jsonBody({ scope, ...(to ? { to } : {}) } satisfies SavedScopeSwitch),
+    })
+    await product.until(
+      (state) => state.workspaces?.some((item) => item.id === id && item.savedScope === scope) ?? true,
+      current.signal,
+    )
+  }
+
   async function removeProject(id: string): Promise<void> {
     await apiRequest(`/workspaces/${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -399,6 +421,7 @@ export const useResources = defineStore('resources', () => {
     reorderProject,
     createProject,
     removeProject,
+    switchSavedScope,
     rememberInProject,
   }
 })

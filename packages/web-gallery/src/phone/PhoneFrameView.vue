@@ -37,7 +37,7 @@ import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { productWould } from '../product-would'
-import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
+import { demoAccount, demoConversations, demoProjects, savedScopeSwitched } from '../sidebar/sidebar-data'
 import { useTurnFlow } from '../turn-flow'
 import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
@@ -302,6 +302,7 @@ onMounted(async () => {
           @rename="(id, title) => (conversations = conversations.map((conversation) => conversation.id === id ? { ...conversation, title } : conversation))"
           @add-project="productWould('Add a Project')"
           @remove-project="deleteProject"
+          @switch-saved-scope="(id, scope, to) => (projects = savedScopeSwitched(projects, id, scope, to))"
           @open-settings="settingsOpen = true"
           @hand-off-to-phone="productWould('Open Hand Off to Your Phone')"
           @sign-out="productWould('Sign Out')"

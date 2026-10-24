@@ -1,5 +1,6 @@
 import { GALLERY_MARKS } from '../fixtures/device-marks'
-import type { SidebarAccount, SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
+import type { SavedScope, SidebarAccount, SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
+import { productWould } from '../product-would'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { ago } from '../fixtures/time'
 
@@ -34,14 +35,38 @@ export function demoProjects(): SidebarProject[] {
       name: 'demi',
       hostKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
-      path: '/Users/alex/Projects/shop'
+      path: '/Users/alex/Projects/demi',
+      // Its conversations share one list of saved messages, of three.
+      savedScope: 'project',
+      savedCount: 3,
     },
     {
       id: 'p-demi-mini',
       name: 'demi',
       hostKind: 'device',
       device: { kind: 'paired', name: 'mac-mini', state: 'online', mark: GALLERY_MARKS.macMini },
-      path: '/Users/alex/Projects/shop'
+      path: '/Users/alex/Projects/demi',
+      savedScope: 'conversation',
+      savedCount: 0,
+    },
+    {
+      id: 'p-api-work',
+      // Two of one name on one device: each row ends its name with the folder it is in.
+      name: 'api',
+      hostKind: 'device',
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
+      path: '/Users/alex/work/api',
+      savedScope: 'conversation',
+      savedCount: 0,
+    },
+    {
+      id: 'p-api-old',
+      name: 'api',
+      hostKind: 'device',
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
+      path: '/Users/alex/old/api',
+      savedScope: 'conversation',
+      savedCount: 0,
     },
     {
       id: 'p-photo-album',
@@ -49,7 +74,9 @@ export function demoProjects(): SidebarProject[] {
       name: 'photo-album',
       hostKind: 'device',
       device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online', mark: GALLERY_MARKS.macPro },
-      path: '/Users/alex/Projects/photo-album'
+      path: '/Users/alex/Projects/photo-album',
+      savedScope: 'conversation',
+      savedCount: 0,
     },
     {
       id: 'p-assets',
@@ -57,7 +84,9 @@ export function demoProjects(): SidebarProject[] {
       name: 'renderfarm-render-pipeline',
       hostKind: 'device',
       device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
-      path: '/srv/renderfarm-render-pipeline'
+      path: '/srv/renderfarm-render-pipeline',
+      savedScope: 'conversation',
+      savedCount: 0,
     },
     {
       id: 'p-dotfiles',
@@ -67,14 +96,18 @@ export function demoProjects(): SidebarProject[] {
       hostKind: 'device',
       // Its runner replaces itself with the server's release, a quarter downloaded.
       device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', downloadPercent: 26, mark: GALLERY_MARKS.macPro },
-      path: '/Users/alex/dotfiles-and-machine-setup-scripts'
+      path: '/Users/alex/dotfiles-and-machine-setup-scripts',
+      savedScope: 'conversation',
+      savedCount: 0,
     },
     {
       id: 'p-dotfiles-build',
       name: 'dotfiles-and-machine-setup-scripts',
       hostKind: 'device',
       device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
-      path: '/home/build/dotfiles-and-machine-setup-scripts'
+      path: '/home/build/dotfiles-and-machine-setup-scripts',
+      savedScope: 'conversation',
+      savedCount: 0,
     },
     {
       id: 'p-old',
@@ -82,13 +115,17 @@ export function demoProjects(): SidebarProject[] {
       name: 'old-experiments',
       hostKind: 'device',
       device: { kind: 'removed' },
-      path: '/Users/alex/old-experiments'
+      path: '/Users/alex/old-experiments',
+      savedScope: 'conversation',
+      savedCount: 0,
     },
     {
       id: 'p-notebooks',
       name: 'notebooks',
       hostKind: 'cloud',
-      path: '/home/demi/notebooks'
+      path: '/home/demi/notebooks',
+      savedScope: 'conversation',
+      savedCount: 0,
     },
   ]
 }
@@ -251,4 +288,21 @@ export function demoConversations(): SidebarConversation[] {
       unread: false
     },
   ]
+}
+
+/**
+ * `projects` after Saved Messages' switch on the project `id`, as the product's leaves the project:
+ * to per project, the conversations' lists join its own, which the gallery keeps no count of; to
+ * per conversation, its list goes to the conversation `to`. A toast says what moved.
+ */
+export function savedScopeSwitched(
+  projects: readonly SidebarProject[],
+  id: string,
+  scope: SavedScope,
+  to: string | null,
+): SidebarProject[] {
+  productWould(scope === 'project'
+    ? 'Merge the Conversations’ Saved Messages into the Project'
+    : to ? 'Move the Project’s Saved Messages to the Conversation' : 'Keep Saved Messages per Conversation')
+  return projects.map((project) => (project.id === id ? { ...project, savedScope: scope, savedCount: 0 } : project))
 }

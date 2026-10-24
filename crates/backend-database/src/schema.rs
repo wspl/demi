@@ -347,12 +347,16 @@ pub(crate) const CONTROL: Schema = Schema {
 /// - A conversation in a linked worktree of its project keeps the worktree
 ///   with its selection, and each project the worktrees its Host reports
 ///   ([`CONTROL_WORKTREES_FROM_0_1_65`]).
+/// - A project is named by its directory, keeps its saved messages per
+///   conversation until the user picks otherwise, and is kept when deleted
+///   ([`CONTROL_PROJECTS_FROM_0_1_65`]).
 ///
 /// The automations are read one row at a time: the table is small, but a
 /// migration collects no table into memory.
 fn control_from_0_1_65(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_SHORTCUTS_FROM_0_1_65)?;
     transaction.execute_batch(CONTROL_WORKTREES_FROM_0_1_65)?;
+    transaction.execute_batch(CONTROL_PROJECTS_FROM_0_1_65)?;
     transaction.execute_batch(CONTROL_SCHEDULES_FROM_0_1_65)?;
     {
         let mut read = transaction.prepare(
@@ -575,6 +579,31 @@ CREATE TABLE workspace_worktrees (
   PRIMARY KEY (workspace_id, name)
 ) STRICT;
 CREATE INDEX workspace_worktrees_path ON workspace_worktrees (path);
+";
+
+/// The projects' part of [`control_from_0_1_65`]: a project's stored name
+/// goes, since its directory names it; every project keeps its saved messages
+/// per conversation, as all did; and a saved message may be a project's, so
+/// the table is rebuilt with every message still its conversation's.
+const CONTROL_PROJECTS_FROM_0_1_65: &str = "
+ALTER TABLE workspaces DROP COLUMN name;
+ALTER TABLE workspaces ADD COLUMN saved_scope TEXT NOT NULL DEFAULT 'conversation'
+  CHECK (saved_scope IN ('conversation', 'project'));
+ALTER TABLE workspaces ADD COLUMN deleted_at INTEGER;
+CREATE TABLE saved_messages_next (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  workspace_id    TEXT REFERENCES workspaces (id) ON DELETE CASCADE,
+  saved_at        INTEGER NOT NULL,
+  document        TEXT NOT NULL,
+  CHECK ((conversation_id IS NULL) != (workspace_id IS NULL))
+) STRICT;
+INSERT INTO saved_messages_next (id, conversation_id, workspace_id, saved_at, document)
+  SELECT id, conversation_id, NULL, saved_at, document FROM saved_messages;
+DROP TABLE saved_messages;
+ALTER TABLE saved_messages_next RENAME TO saved_messages;
+CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
+CREATE INDEX saved_messages_of_workspace ON saved_messages (workspace_id, saved_at);
 ";
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
@@ -4801,12 +4830,14 @@ CREATE TABLE devices (
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_machine ON devices (user_id, machine) WHERE kind = 'managed';
 
+-- A project: a directory on a device, named by its last component. A
+-- deleted one keeps its row, with what it kept, until its directory is a
+-- project again.
 CREATE TABLE workspaces (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users (id),
   device_id  TEXT NOT NULL REFERENCES devices (id),
   path       TEXT NOT NULL,
-  name       TEXT NOT NULL,
   sort_order INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   -- What the project's next conversation starts with (web-api.md § User
@@ -4817,7 +4848,12 @@ CREATE TABLE workspaces (
   last_workflow_kind TEXT
     CHECK (last_workflow_kind IN ('default', 'none', 'workflow')),
   last_workflow_id TEXT
-    CHECK ((last_workflow_kind IS 'workflow') = (last_workflow_id IS NOT NULL))
+    CHECK ((last_workflow_kind IS 'workflow') = (last_workflow_id IS NOT NULL)),
+  -- Whose list a message saved for later in one of its conversations joins:
+  -- the conversation's own, or the project's, which all of them share.
+  saved_scope TEXT NOT NULL DEFAULT 'conversation' CHECK (saved_scope IN ('conversation', 'project')),
+  -- When the user deleted it; null for a project in the sidebar.
+  deleted_at INTEGER
 ) STRICT;
 CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
 CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path);
@@ -5160,15 +5196,20 @@ CREATE TABLE conversation_drafts (
   updated_at      INTEGER NOT NULL
 ) STRICT;
 
--- A conversation's messages saved for later: each one's text and files as
--- one JSON document, as a draft holds them.
+-- The messages saved for later, each in one list: a conversation's own, or
+-- its project's, which the project's conversations share while the project
+-- keeps them per project. Each one's text and files are one JSON document,
+-- as a draft holds them.
 CREATE TABLE saved_messages (
   id              TEXT PRIMARY KEY,
-  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  conversation_id TEXT COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  workspace_id    TEXT REFERENCES workspaces (id) ON DELETE CASCADE,
   saved_at        INTEGER NOT NULL,
-  document        TEXT NOT NULL
+  document        TEXT NOT NULL,
+  CHECK ((conversation_id IS NULL) != (workspace_id IS NULL))
 ) STRICT;
 CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
+CREATE INDEX saved_messages_of_workspace ON saved_messages (workspace_id, saved_at);
 
 -- A message saved for later that a send took, with the turn the send became,
 -- kept a day so the same send, or a save of it, sent again is known.

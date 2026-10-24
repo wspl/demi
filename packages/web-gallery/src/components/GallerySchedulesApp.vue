@@ -8,7 +8,7 @@ import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
 import { GALLERY_MARKS } from '../fixtures/device-marks'
 import { schedulesOfConversations, switched, wokenConversations } from '../fixtures/schedules'
 import { productWould } from '../product-would'
-import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
+import { demoAccount, demoConversations, demoProjects, savedScopeSwitched } from '../sidebar/sidebar-data'
 import GalleryWokenConversation from './GalleryWokenConversation.vue'
 
 /**
@@ -68,6 +68,7 @@ function remove(id: string): void {
         <AppSidebar
           :account="demoAccount"
           :projects="projects"
+          @switch-saved-scope="(id, scope, to) => (projects = savedScopeSwitched(projects, id, scope, to))"
           :conversations="listed"
           :active-id="activeId"
           :new-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys"

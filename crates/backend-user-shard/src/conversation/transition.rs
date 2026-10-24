@@ -182,14 +182,14 @@ impl Shard {
             }
             ConversationChange::Record(RecordChange::Archived(false)) => {
                 // A conversation whose project was deleted while it was
-                // archived makes it again (`crates/backend-database/src/selection.rs`).
+                // archived brings it back (`crates/backend-database/src/workspaces.rs`).
                 let remakes = match &record.target {
                     Selection::Workspace { workspace_id, .. } => self
                         .services()
                         .control
                         .workspace(workspace_id.clone())
                         .await?
-                        .is_none(),
+                        .is_none_or(|workspace| workspace.deleted),
                     _ => false,
                 };
                 let restored = host.commit(&record.id, RecordChange::Archived(false)).await;
@@ -322,8 +322,14 @@ impl Shard {
         let Some(switched) = switched? else {
             return Ok(None);
         };
-        if switched.made.is_some() {
-            self.mark(Part::Workspaces);
+        // A move may make or bring back a project, and changes the count of
+        // a project's saved messages it joins with its own; the pages of the
+        // conversations that share the list it shows now read it again.
+        self.mark(Part::Workspaces);
+        if let Ok(sharers) = self.services().control.saved_sharers(record.id.clone()).await {
+            for sharer in sharers.conversations {
+                self.mark(Part::Metadata(sharer));
+            }
         }
         if let Some(device) = &leaving {
             self.fail_waiting_for(record, device).await?;

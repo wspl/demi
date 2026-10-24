@@ -1,11 +1,17 @@
-//! Workspace records: a named directory on one of the user's devices, which
-//! conversations can target.
+//! Workspace records: a directory on one of the user's devices, which
+//! conversations can target, named by the directory's last component.
 //!
 //! - A workspace is a pointer: it owns no files, and the user has one per device
 //!   and directory.
-//! - A new workspace joins the user's others at the end of their order.
+//! - A new workspace, and one that comes back, goes before the user's others.
 //! - It keeps the model settings and the workflow the project's next conversation
-//!   starts with.
+//!   starts with, and how its conversations keep their saved messages
+//!   (`saved.rs`).
+//! - A deleted workspace keeps its row and all it kept, out of every list, until
+//!   its directory is selected again, by a move, a new conversation or the
+//!   restore of one of its conversations, which brings it back whole. A workspace
+//!   that goes into another, as a second spelling of its directory or a worktree
+//!   of its repository, is removed for good, its conversations with the other.
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
@@ -13,7 +19,8 @@ use demi_backend_remote_host::host_paths;
 use demi_host_interface::HostPaths;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
-use demi_web_api_protocol::workspaces::WorkspaceDto;
+use demi_runner_protocol::wire::RunnerPlatform;
+use demi_web_api_protocol::workspaces::{SavedScope, WorkspaceDto};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
@@ -23,8 +30,10 @@ use super::conversation_index::archive_in;
 use super::devices::device_in;
 use super::selection::{CLOUD_HOME, directory};
 
-const WORKSPACE_COLUMNS: &str =
-    "id, user_id, device_id, path, name, created_at, last_model, last_workflow_kind, last_workflow_id";
+const WORKSPACE_COLUMNS: &str = "id, user_id, device_id, path, created_at, last_model, last_workflow_kind,
+    last_workflow_id, saved_scope, deleted_at,
+    (SELECT platform FROM devices WHERE devices.id = workspaces.device_id) AS platform,
+    (SELECT count(*) FROM saved_messages WHERE saved_messages.workspace_id = workspaces.id) AS saved_count";
 
 /// A new workspace's id, which the backend assigns.
 pub fn new_workspace_id() -> WorkspaceId {
@@ -38,6 +47,7 @@ pub struct WorkspaceRecord {
     pub user: UserId,
     pub device: DeviceId,
     pub path: String,
+    /// The directory's last component, or the directory when it is a root.
     pub name: String,
     pub created_at: Timestamp,
     /// The model settings last chosen in the project; none before the first
@@ -46,12 +56,18 @@ pub struct WorkspaceRecord {
     /// The Workflow menu choice last made in the project; none before the
     /// first.
     pub last_workflow: Option<WorkflowChoice>,
+    /// How its conversations keep their saved messages.
+    pub saved_scope: SavedScope,
+    /// How many messages its own list keeps, which only a project that keeps
+    /// them per project has.
+    pub saved_count: u64,
+    /// Whether the user deleted it: it is in no list until it comes back.
+    pub deleted: bool,
 }
 
 /// A change of a workspace: each field it holds replaces the stored one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceChange {
-    pub name: Option<String>,
     pub last_model: Option<ModelSettings>,
     pub last_workflow: Option<WorkflowChoice>,
 }
@@ -67,7 +83,21 @@ impl WorkspaceRecord {
             created_at: self.created_at,
             last_model: self.last_model,
             last_workflow: self.last_workflow,
+            saved_scope: self.saved_scope,
+            saved_count: self.saved_count,
         }
+    }
+}
+
+/// What a project of `path` is called: the directory's last component, or
+/// the directory itself when it is a root, which has none.
+pub fn project_name(platform: RunnerPlatform, path: &str) -> String {
+    let paths = host_paths(platform);
+    match paths.parent(path) {
+        // A root, `/`, `C:\` or `\\server\share\`, has no last component of
+        // its own.
+        None => path.to_owned(),
+        Some(_) => paths.file_name(path).to_owned(),
     }
 }
 
@@ -85,6 +115,7 @@ pub enum WorkspaceDeletion {
 /// What a workspace's creation did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceCreation {
+    /// Made, or brought back: the user had deleted the directory's project.
     Created(WorkspaceRecord),
     /// The user has a workspace of the device and directory already.
     Exists(WorkspaceRecord),
@@ -104,11 +135,23 @@ impl ControlService {
             .await
     }
 
-    /// The user's workspaces, in their order.
+    /// The user's workspace of `path` on `device`, deleted or not.
+    pub async fn workspace_at(
+        &self,
+        user: UserId,
+        device: DeviceId,
+        path: String,
+    ) -> Result<Option<WorkspaceRecord>, StorageError> {
+        self.call(move |connection, _| workspace_at(connection, &user, &device, &path))
+            .await
+    }
+
+    /// The user's workspaces, in their order, but the deleted ones.
     pub async fn workspaces(&self, user: UserId) -> Result<Vec<WorkspaceRecord>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE user_id = ?1 ORDER BY sort_order, id"
+                "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE user_id = ?1 AND deleted_at IS NULL
+                 ORDER BY sort_order, id"
             ))?;
             let mut rows = statement.query([user.as_str()])?;
             let mut workspaces = Vec::new();
@@ -124,15 +167,15 @@ impl ControlService {
     /// others.
     ///
     /// It is made unless the device is not the user's, the directory is its home,
-    /// or the user has a workspace of it already, which it answers. The checks and
-    /// the write are one transaction, so a revocation cannot slip between them.
+    /// or the user has a workspace of it already, which it answers; a deleted one
+    /// comes back instead. The checks and the write are one transaction, so a
+    /// revocation cannot slip between them.
     pub async fn create_workspace(
         &self,
         id: WorkspaceId,
         user: UserId,
         device: DeviceId,
         path: String,
-        name: String,
     ) -> Result<WorkspaceCreation, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -149,9 +192,15 @@ impl ControlService {
                 return Ok(WorkspaceCreation::Home);
             }
             if let Some(existing) = workspace_at(&transaction, &user, &device, &path)? {
-                return Ok(WorkspaceCreation::Exists(existing));
+                if !existing.deleted {
+                    return Ok(WorkspaceCreation::Exists(existing));
+                }
+                revive(&transaction, &existing.id)?;
+                let revived = workspace_by_id(&transaction, &existing.id)?.expect("the workspace was just read");
+                transaction.commit()?;
+                return Ok(WorkspaceCreation::Created(revived));
             }
-            let workspace = insert_workspace(&transaction, id, &user, &device, &path, &name, now)?;
+            let workspace = insert_workspace(&transaction, id, &user, &device, &path, now)?;
             transaction.commit()?;
             Ok(WorkspaceCreation::Created(workspace))
         })
@@ -159,7 +208,8 @@ impl ControlService {
     }
 
     /// Applies `change` to the user's workspace `id` and answers it as it
-    /// now is; `None` when the user has no workspace of the id.
+    /// now is; `None` when the user has no workspace of the id in the
+    /// sidebar.
     pub async fn change_workspace(
         &self,
         user: UserId,
@@ -176,23 +226,24 @@ impl ControlService {
                 }
                 None => (None, None),
             };
-            let mut statement = connection.prepare_cached(&format!(
+            let changed = connection.prepare_cached(
                 "UPDATE workspaces SET
-                   name = COALESCE(?1, name),
-                   last_model = COALESCE(?2, last_model),
-                   last_workflow_kind = COALESCE(?3, last_workflow_kind),
-                   last_workflow_id = CASE WHEN ?3 IS NULL THEN last_workflow_id ELSE ?4 END
-                 WHERE id = ?5 AND user_id = ?6 RETURNING {WORKSPACE_COLUMNS}"
-            ))?;
-            let mut rows = statement.query(params![
-                change.name,
+                   last_model = COALESCE(?1, last_model),
+                   last_workflow_kind = COALESCE(?2, last_workflow_kind),
+                   last_workflow_id = CASE WHEN ?2 IS NULL THEN last_workflow_id ELSE ?3 END
+                 WHERE id = ?4 AND user_id = ?5 AND deleted_at IS NULL",
+            )?
+            .execute(params![
                 change.last_model.as_ref().map(to_json),
                 kind,
                 workflow,
                 id.as_str(),
                 user.as_str()
             ])?;
-            rows.next()?.map(workspace_row).transpose()
+            if changed == 0 {
+                return Ok(None);
+            }
+            workspace_by_id(connection, &id)
         })
         .await
     }
@@ -209,19 +260,20 @@ impl ControlService {
 
     /// Deletes the user's workspace `id` and archives `conversations`, the
     /// ones in it, as one transaction; when they are no longer all the
-    /// unarchived ones in it, nothing changes. An archived conversation in it
-    /// keeps its directory, which its restore selects again.
+    /// unarchived ones in it, nothing changes. The workspace keeps its row,
+    /// marked deleted, and its conversations their selection of it, so the
+    /// restore of one brings it back.
     pub async fn delete_workspace(
         &self,
         user: UserId,
         id: WorkspaceId,
         conversations: Vec<ConversationId>,
     ) -> Result<WorkspaceDeletion, StorageError> {
-        self.call(move |connection, _| {
+        self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let found = transaction
                 .query_row(
-                    "SELECT 1 FROM workspaces WHERE id = ?1 AND user_id = ?2",
+                    "SELECT 1 FROM workspaces WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
                     params![id.as_str(), user.as_str()],
                     |_| Ok(()),
                 )
@@ -239,7 +291,10 @@ impl ControlService {
             for conversation in &held {
                 archive_in(&transaction, conversation)?;
             }
-            transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id.as_str()])?;
+            transaction.execute(
+                "UPDATE workspaces SET deleted_at = ?2 WHERE id = ?1",
+                params![id.as_str(), now.as_millisecond()],
+            )?;
             transaction.commit()?;
             Ok(WorkspaceDeletion::Deleted)
         })
@@ -255,6 +310,9 @@ pub struct DirectoryNamed {
     pub conversations: Vec<ConversationId>,
     /// The projects changed: one renamed, or one that went into another.
     pub projects: bool,
+    /// The conversations whose list of saved messages changed, as the ones
+    /// of a project another went into, whose pages read it again.
+    pub saved: Vec<ConversationId>,
 }
 
 /// The directory a conversation's target stores as typed, which its Host
@@ -285,7 +343,7 @@ impl ControlService {
         typed: TypedDirectory,
         canonical: String,
     ) -> Result<DirectoryNamed, StorageError> {
-        self.call(move |connection, _| {
+        self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let named = match typed {
                 TypedDirectory::Cloud(path) => {
@@ -303,7 +361,7 @@ impl ControlService {
                         &super::Selection::Cloud { path: Some(canonical) },
                     )?;
                     super::conversation_index::advance_context(&transaction, &conversation)?;
-                    DirectoryNamed { conversations: vec![conversation], projects: false }
+                    DirectoryNamed { conversations: vec![conversation], projects: false, saved: Vec::new() }
                 }
                 TypedDirectory::Workspace(id) => {
                     let Some(project) = workspace_by_id(&transaction, &id)? else {
@@ -318,6 +376,7 @@ impl ControlService {
                     if canonical == project.path || home == Some(canonical.as_str()) {
                         return Ok(DirectoryNamed::default());
                     }
+                    let mut saved = Vec::new();
                     let inside: Vec<ConversationId> = transaction
                         .prepare_cached("SELECT id FROM conversations WHERE target_workspace_id = ?1")?
                         .query_map([id.as_str()], |row| row.get::<_, String>(0))?
@@ -325,6 +384,9 @@ impl ControlService {
                         .collect::<Result<_, _>>()?;
                     match workspace_at(&transaction, &project.user, &project.device, &canonical)? {
                         Some(other) if other.id != project.id => {
+                            // A project the user deleted comes back with the directory.
+                            revive(&transaction, &other.id)?;
+                            saved = super::saved::project_ends(&transaction, &id, Some(&other.id), now)?;
                             // Each keeps the worktree it works in.
                             transaction.execute(
                                 "UPDATE conversations SET target_workspace_id = ?2, target_path = ?3 WHERE target_workspace_id = ?1",
@@ -349,15 +411,17 @@ impl ControlService {
                             }
                         }
                     }
-                    let mut named = DirectoryNamed { conversations: inside, projects: true };
+                    let mut named = DirectoryNamed { conversations: inside, projects: true, saved };
                     // A directory that is a project's worktree is no project
                     // of its own (`crates/backend-database/src/selection.rs` § Worktrees).
                     if let Some(device) = device_in(&transaction, &project.device)?
                         && let Some(super::Selection::Workspace { workspace_id, worktree: Some(worktree), .. }) =
                             super::selection::worktree_at(&transaction, &device, &canonical)?
                     {
-                        let folded = fold_into_worktree(&transaction, &device, &workspace_id, &worktree)?;
-                        for id in folded.into_iter().flatten() {
+                        let folded = fold_into_worktree(&transaction, &device, &workspace_id, &worktree, now)?;
+                        let (moved, saved) = folded.unwrap_or_default();
+                        named.saved.extend(saved);
+                        for id in moved {
                             if !named.conversations.contains(&id) {
                                 named.conversations.push(id);
                             }
@@ -382,6 +446,9 @@ pub struct WorktreesStored {
     pub conversations: Vec<ConversationId>,
     /// The projects changed: a worktree's project went into the project.
     pub projects: bool,
+    /// The conversations whose list of saved messages changed, whose pages
+    /// read it again.
+    pub saved: Vec<ConversationId>,
 }
 
 impl ControlService {
@@ -397,7 +464,7 @@ impl ControlService {
         directory: String,
         worktrees: Vec<super::Worktree>,
     ) -> Result<WorktreesStored, StorageError> {
-        self.call(move |connection, _| {
+        self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let Some(device) = device_in(&transaction, &device)? else {
                 return Ok(WorktreesStored::default());
@@ -417,9 +484,10 @@ impl ControlService {
                 )?;
             }
             for worktree in &worktrees {
-                if let Some(folded) = fold_into_worktree(&transaction, &device, &project.id, worktree)? {
+                if let Some((moved, saved)) = fold_into_worktree(&transaction, &device, &project.id, worktree, now)? {
                     stored.projects = true;
-                    stored.conversations.extend(folded);
+                    stored.conversations.extend(moved);
+                    stored.saved.extend(saved);
                 }
             }
             transaction.commit()?;
@@ -431,14 +499,15 @@ impl ControlService {
 
 /// Takes the conversations of the project of `worktree`'s directory on
 /// `device`, if one is, into the project `into`, working in `worktree`, and
-/// deletes that project; answers the conversations it took, none when no
-/// project was deleted.
+/// deletes that project; answers the conversations it took and those whose
+/// list of saved messages changed, none when no project was deleted.
 fn fold_into_worktree(
     connection: &Connection,
     device: &super::devices::DeviceRecord,
     into: &WorkspaceId,
     worktree: &super::Worktree,
-) -> Result<Option<Vec<ConversationId>>, StorageError> {
+    now: Timestamp,
+) -> Result<Option<(Vec<ConversationId>, Vec<ConversationId>)>, StorageError> {
     let Some(own) = workspace_at(connection, &device.user, &device.id, &worktree.path)? else {
         return Ok(None);
     };
@@ -448,6 +517,7 @@ fn fold_into_worktree(
     if own.id == project.id {
         return Ok(None);
     }
+    let saved = super::saved::project_ends(connection, &own.id, Some(&project.id), now)?;
     let members: Vec<ConversationId> = connection
         .prepare_cached("SELECT id FROM conversations WHERE target_workspace_id = ?1")?
         .query_map([own.id.as_str()], |row| row.get::<_, String>(0))?
@@ -467,7 +537,7 @@ fn fold_into_worktree(
         super::conversation_index::advance_context(connection, member)?;
     }
     connection.execute("DELETE FROM workspaces WHERE id = ?1", [own.id.as_str()])?;
-    Ok(Some(members))
+    Ok(Some((members, saved)))
 }
 
 fn workspace_conversations(
@@ -484,7 +554,7 @@ fn workspace_conversations(
         .collect()
 }
 
-/// The workspace of `id`, in the caller's transaction.
+/// The workspace of `id`, deleted or not, in the caller's transaction.
 pub(crate) fn workspace_in(
     connection: &Connection,
     id: &WorkspaceId,
@@ -492,8 +562,8 @@ pub(crate) fn workspace_in(
     workspace_by_id(connection, id)
 }
 
-/// The user's workspace of `path` on `device`, of which there is one at
-/// most.
+/// The user's workspace of `path` on `device`, deleted or not, of which
+/// there is one at most.
 pub(crate) fn workspace_at(
     connection: &Connection,
     user: &UserId,
@@ -515,25 +585,27 @@ pub(crate) fn insert_workspace(
     user: &UserId,
     device: &DeviceId,
     path: &str,
-    name: &str,
     now: Timestamp,
 ) -> Result<WorkspaceRecord, StorageError> {
     connection.execute(
-        "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5,
-           (SELECT COALESCE(MIN(sort_order), 1) - 1 FROM workspaces WHERE user_id = ?2), ?6)",
-        params![id.as_str(), user.as_str(), device.as_str(), path, name, now.as_millisecond()],
+        "INSERT INTO workspaces (id, user_id, device_id, path, sort_order, created_at)
+         VALUES (?1, ?2, ?3, ?4,
+           (SELECT COALESCE(MIN(sort_order), 1) - 1 FROM workspaces WHERE user_id = ?2), ?5)",
+        params![id.as_str(), user.as_str(), device.as_str(), path, now.as_millisecond()],
     )?;
-    Ok(WorkspaceRecord {
-        id,
-        user: user.clone(),
-        device: device.clone(),
-        path: path.to_owned(),
-        name: name.to_owned(),
-        created_at: now,
-        last_model: None,
-        last_workflow: None,
-    })
+    Ok(workspace_by_id(connection, &id)?.expect("the workspace was just inserted"))
+}
+
+/// Brings the deleted workspace `id` back, before the user's others, as a
+/// new one goes; one not deleted stays as it is. True when it came back.
+pub(crate) fn revive(connection: &Connection, id: &WorkspaceId) -> Result<bool, StorageError> {
+    Ok(connection.execute(
+        "UPDATE workspaces SET deleted_at = NULL,
+           sort_order = (SELECT COALESCE(MIN(sort_order), 1) - 1 FROM workspaces peer
+                         WHERE peer.user_id = workspaces.user_id)
+         WHERE id = ?1 AND deleted_at IS NOT NULL",
+        [id.as_str()],
+    )? > 0)
 }
 
 fn workspace_by_id(
@@ -565,8 +637,11 @@ fn workspace_row(row: &Row<'_>) -> Result<WorkspaceRecord, StorageError> {
             "device_id",
             DeviceId::try_from(row.get::<_, String>("device_id")?),
         )?,
+        name: project_name(
+            decode(TABLE, "platform", row.get::<_, String>("platform")?.parse::<RunnerPlatform>())?,
+            &row.get::<_, String>("path")?,
+        ),
         path: row.get("path")?,
-        name: row.get("name")?,
         created_at: instant(row, TABLE, "created_at")?,
         last_model: row
             .get::<_, Option<String>>("last_model")?
@@ -576,5 +651,12 @@ fn workspace_row(row: &Row<'_>) -> Result<WorkspaceRecord, StorageError> {
             .get::<_, Option<String>>("last_workflow_kind")?
             .map(|kind| workflow_choice(TABLE, "last_workflow_kind", &kind, row.get("last_workflow_id")?, false))
             .transpose()?,
+        saved_scope: match row.get::<_, String>("saved_scope")?.as_str() {
+            "project" => SavedScope::Project,
+            _ => SavedScope::Conversation,
+        },
+        saved_count: decode(TABLE, "saved_count", u64::try_from(row.get::<_, i64>("saved_count")?))?,
+        deleted: row.get::<_, Option<i64>>("deleted_at")?.is_some(),
     })
 }
+

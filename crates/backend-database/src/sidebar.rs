@@ -68,7 +68,8 @@ impl ControlService {
     }
 
     /// Moves the user's workspace `moved` before `before`, or to the end;
-    /// `Missing` when either is not one of the user's workspaces.
+    /// `Missing` when either is not one of the user's workspaces in the
+    /// sidebar.
     pub async fn reorder_workspaces(
         &self,
         user: UserId,
@@ -79,7 +80,7 @@ impl ControlService {
             let transaction = connection.transaction()?;
             let peers = {
                 let mut statement = transaction.prepare_cached(
-                    "SELECT id FROM workspaces WHERE user_id = ?1 ORDER BY sort_order, id",
+                    "SELECT id FROM workspaces WHERE user_id = ?1 AND deleted_at IS NULL ORDER BY sort_order, id",
                 )?;
                 let rows = statement.query_map([user.as_str()], |row| row.get::<_, String>(0))?;
                 rows.collect::<Result<Vec<String>, _>>()?

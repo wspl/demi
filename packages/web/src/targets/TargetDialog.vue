@@ -8,7 +8,6 @@ import { useResources } from '../state/resources'
 import { useConversationNavigation } from '../conversation/navigation'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import { baseName } from '@demicodes/utils'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { fileSourceFor, placesFor } from '../devices/files'
 
@@ -39,7 +38,6 @@ async function create(draft: WorkspaceDraft): Promise<void> {
             kind: 'device',
             deviceId: draft.deviceId,
             path: draft.path,
-            name: baseName(draft.path) || shared('common.workspace'),
           },
     )
     if (resources.targetOpen) {

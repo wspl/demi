@@ -99,6 +99,9 @@ impl Shard {
             if stored.projects {
                 shard.mark(Part::Workspaces);
             }
+            for conversation in &stored.saved {
+                shard.mark(Part::Metadata(conversation.clone()));
+            }
             for conversation in &stored.conversations {
                 shard.mark(Part::Conversation(conversation.clone()));
                 // It works in the worktree now, so what it kept of its

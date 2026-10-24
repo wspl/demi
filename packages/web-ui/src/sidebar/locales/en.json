@@ -60,6 +60,10 @@
     "fold": "Fold",
     "unfold": "Unfold",
     "select": "Select Conversations",
+    "saved": "Saved Messages",
+    "savedPerConversation": "Per Conversation",
+    "savedPerProject": "Per Project",
+    "savedNoConversation": "The project has no conversation to keep its saved messages.",
     "delete": "Delete Project…"
   },
   "delete": {
@@ -75,6 +79,12 @@
     "archived": "Its conversation will be archived. | Its {count} conversations will be archived.",
     "files": "Files on {host} are not deleted."
   },
+  "savedScope": {
+    "title": "Keep Saved Messages per Conversation?",
+    "body": "The project’s saved message moves to one conversation. | The project’s {count} saved messages move to one conversation.",
+    "to": "Move To",
+    "action": "Move"
+  },
   "archivedToast": {
     "title": "Conversation Archived | {count} Conversations Archived",
     "undo": "Undo"
@@ -83,6 +93,7 @@
     "quote": "“{name}”",
     "line": "{name}: {reasons}",
     "deleteProject": "Could Not Delete the Project",
+    "savedScope": "Could Not Change How Saved Messages Are Kept",
     "reorderProjects": "Could Not Reorder Projects",
     "archive": {
       "one": "Could Not Archive {name}",
