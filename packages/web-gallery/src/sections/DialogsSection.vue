@@ -49,7 +49,7 @@ import { productWould } from '../product-would'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
 import type { SearchRow, SearchSource } from '@demicodes/web-ui/search/search'
-import { fixtureSearch, searchConversations } from '../fixtures/search'
+import { fixtureMessageSearch, fixtureSearch, retryingConversationMessages, searchableConversation, searchConversations, shownConversationMessages } from '../fixtures/search'
 
 /**
  * Every dialog the product opens, pinned on each of its phases, in flow and
@@ -94,8 +94,19 @@ async function addSkillSource(draft: { origin: string }): Promise<AddSourceAnswe
   return { kind: 'added' }
 }
 
+/**
+ * The messages of the conversations Find opens the window in: one, and one
+ * with more matches than a search lists. Every conversation's search finds
+ * them too, as the product's does.
+ */
+const shownMessages = shownConversationMessages()
+const retryingMessages = retryingConversationMessages()
 /** The search window's conversations, and their rows before the user types, most recently active first. */
-const searchable = searchConversations()
+const searchable = [
+  ...searchConversations(),
+  searchableConversation('search-port', 'Dev server port', shownMessages),
+  searchableConversation('search-retry', 'Flaky upload test', retryingMessages),
+]
 const recentRows: SearchRow[] = searchable
   .map(({ messages: _messages, ...row }) => ({ ...row, titleRanges: [], match: null }))
   .toSorted((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))
@@ -110,6 +121,12 @@ const failingSearch: SearchSource = (query, signal) => {
 }
 function openFound(close: () => void, row: SearchRow): void {
   finish(close, row.match ? `Open “${row.title}” at the Matching Message` : `Open “${row.title}”`)
+}
+/** The search of the conversation Find opens the window in, and of one with more matches than a search lists. */
+const shownConversationSearch = fixtureMessageSearch(() => shownMessages)
+const retryingConversationSearch = fixtureMessageSearch(() => retryingMessages)
+function openFoundMessage(close: () => void): void {
+  finish(close, 'Open the Conversation at the Message')
 }
 
 /**
@@ -803,7 +820,7 @@ const resetPhases: {
     <template v-if="view === 'search'">
       <GallerySection
         title="Search"
-        note="⌘K or Search in the sidebar opens it. The recent conversations until the user types; then, once typing pauses, title matches first and then message matches, each most recently active first, the matches marked in the title and the line. The window fits its list up to a limit and keeps its field in place. ↑ and ↓ move, Return or a click opens, Escape closes. Try TS2307, login or 路径."
+        note="⌘K or Search in the sidebar opens it. The recent conversations until the user types; then, once typing pauses, title matches first and then message matches, each most recently active first, the matches marked in the title and the line. The window fits its list up to a limit and keeps its field in place. ↑ and ↓ move, Return or a click opens, Escape closes. Try TS2307, login or 路径. Find in a conversation opens it with This conversation, listing that conversation's matching messages newest first; try port."
       >
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen wide variant="live">
@@ -815,6 +832,34 @@ const resetPhases: {
                 :search="searchFixtures"
                 @close="close"
                 @open="(row) => openFound(close, row)"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+          <GallerySpecimen wide variant="in a conversation · as Find opens it; ✕ or Backspace searches every conversation">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <SearchDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :recent="recentRows"
+                :search="searchFixtures"
+                :search-in="shownConversationSearch"
+                @close="close"
+                @open="(row) => openFound(close, row)"
+                @open-message="openFoundMessage(close)"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+          <GallerySpecimen wide variant="in a conversation · more matches than it lists; try retry">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <SearchDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :recent="recentRows"
+                :search="searchFixtures"
+                :search-in="retryingConversationSearch"
+                @close="close"
+                @open="(row) => openFound(close, row)"
+                @open-message="openFoundMessage(close)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>

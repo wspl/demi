@@ -28,9 +28,9 @@ import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.v
 import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
-import type { SearchRow } from '@demicodes/web-ui/search/search'
+import type { MessageRow, MessageSource, SearchRow } from '@demicodes/web-ui/search/search'
 import { provideSendTargets } from '@demicodes/web-ui/agent/send-to-conversation'
-import { searchConversations } from './api/search'
+import { searchConversation, searchConversations } from './api/search'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import { pageUnderSettings, useSettingsAddress } from './settings/address'
@@ -127,6 +127,16 @@ const pageRoute = computed(() =>
 const { open, openAt, create } = useConversationNavigation()
 /** The search window. */
 const searchOpen = ref(false)
+/** The conversation the search window opens in, as Find opens it in one; none to search every conversation. */
+const searchScope = ref<string | null>(null)
+function openSearch(inConversation: string | null): void {
+  searchScope.value = inConversation
+  searchOpen.value = true
+}
+const searchIn = computed<MessageSource | null>(() => {
+  const id = searchScope.value
+  return id === null ? null : (query, signal) => searchConversation(id, query, signal)
+})
 /** Hand Off to Your Phone: its code opens the page the window shows. */
 const handoffOpen = ref(false)
 const sessions = useSessions()
@@ -172,6 +182,11 @@ function openSearchResult(row: SearchRow): void {
   searchOpen.value = false
   openAt(row.conversationId, null, row.match?.blockId ?? null)
 }
+function openFoundMessage(row: MessageRow): void {
+  searchOpen.value = false
+  if (searchScope.value !== null)
+    openAt(searchScope.value, null, row.blockId)
+}
 const folded = computed({
   get: () => resources.local.foldedProjects,
   set: (value) => {
@@ -201,6 +216,11 @@ watch(
 const activeId = computed(() =>
   typeof pageRoute.value.params.id === 'string' ? pageRoute.value.params.id : null,
 )
+/** The conversation Find searches in: the one shown, once the backend holds it and so its messages. */
+const findable = computed(() => {
+  const id = activeId.value
+  return conversations.items.find((item) => item.id === id)?.persistence === 'synced' ? id : null
+})
 // The panel opens per conversation; the frame shows the open conversation's.
 const work = useWorkPanel()
 // Before its panel arrives: what the panel held when the conversation came on screen decides what opens it on a phone.
@@ -310,23 +330,24 @@ async function signOut(): Promise<void> {
 const phone = usePhone()
 /**
  * Where the user last pressed or moved the focus, which Find finds in: Files,
- * another view of the work panel, or the conversations.
+ * another view of the work panel, the sidebar, or the conversation shown.
  */
-const findArea = ref<'files' | 'panel' | 'conversations'>('conversations')
+const findArea = ref<'files' | 'panel' | 'sidebar' | 'conversation'>('conversation')
 function noteFindArea(event: Event): void {
   const target = event.target instanceof Element ? event.target : null
-  findArea.value = target?.closest('[data-file-view]')
-    ? 'files'
-    : target?.closest('[data-work-panel]') ? 'panel' : 'conversations'
+  if (target?.closest('[data-file-view]'))
+    findArea.value = 'files'
+  else if (target?.closest('[data-work-panel]'))
+    findArea.value = 'panel'
+  else
+    findArea.value = target?.closest('[data-sidebar]') ? 'sidebar' : 'conversation'
 }
 useEventListener(window, 'pointerdown', noteFindArea, { capture: true })
 useEventListener(window, 'focusin', noteFindArea, { capture: true })
 /** The bindings from the keyboard settings, by the action each one names. */
 const actions: Record<string, () => void> = {
   new: () => create(null),
-  search: () => {
-    searchOpen.value = true
-  },
+  search: () => openSearch(null),
   // A phone's sidebar is the drawer; a computer's collapses.
   sidebar: () => {
     if (phone.value)
@@ -344,7 +365,7 @@ const actions: Record<string, () => void> = {
     if (findArea.value === 'files')
       searchFiles()
     else
-      searchOpen.value = true
+      openSearch(findArea.value === 'conversation' ? findable.value : null)
   },
 }
 function searchFiles(): void {
@@ -394,7 +415,7 @@ useAppShortcuts(
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
           :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"
           :settings-shortcut="resources.keys.find((binding) => binding.id === 'settings')?.keys"
-          @search="searchOpen = true"
+          @search="openSearch(null)"
           @retry-list="conversations.reloadList"
           @reorder="reorder"
           @select="open"
@@ -412,7 +433,7 @@ useAppShortcuts(
         />
       </template>
       <!-- Signed in, every address shows the chat: its own, or the one settings opened over. -->
-      <ChatPage :id="activeId ?? undefined" />
+      <ChatPage :id="activeId ?? undefined" @find="openSearch(findable)" />
       <template #aside>
         <!-- The panel belongs to the open conversation; the frame shows it only while one is open. -->
         <WorkPane
@@ -445,8 +466,10 @@ useAppShortcuts(
           :overlay-store="appOverlayStore"
           :recent="recentConversations"
           :search="searchConversations"
+          :search-in="searchIn"
           @close="searchOpen = false"
           @open="openSearchResult"
+          @open-message="openFoundMessage"
         />
         <DevicePairingDialog
           v-if="installCommands"

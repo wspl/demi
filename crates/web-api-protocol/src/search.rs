@@ -1,4 +1,5 @@
-//! Finding a conversation: `GET /search?q=` and the conversations it answers.
+//! Finding a conversation, `GET /search?q=`, and finding in one,
+//! `GET /conversations/{id}/search?q=`, and what each answers.
 
 use demi_shared_types::{BlockId, Nullable, Timestamp, trim};
 use schemars::JsonSchema;
@@ -6,10 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::ConversationId;
 
-/// The most conversations one search answers.
+/// The most conversations, or messages of one conversation, one search
+/// answers.
 ///
-/// Bounded because a search over every conversation answers whole, and the
-/// conversations have no end.
+/// Bounded because a search answers whole, and the conversations, as the
+/// messages of one, have no end.
 pub const RESULTS_MAX: usize = 50;
 
 /// The most characters (Unicode scalar values) of a match's line.
@@ -100,3 +102,33 @@ pub struct SearchMatch {
     pub ranges: Vec<[u32; 2]>,
 }
 
+/// What `GET /conversations/{id}/search` answers: the messages of the
+/// conversation's main agent, the user's and the agent's answers, that hold
+/// every word of the query, newest first, at most [`RESULTS_MAX`] of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MessageResults {
+    pub messages: Vec<MessageResult>,
+    /// More messages hold the words than the answer lists.
+    pub limited: bool,
+}
+
+/// A message of the conversation the query found: its block, who wrote it
+/// and when, and its line around the first match with where the words are,
+/// as `SearchMatch` gives them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageResult {
+    pub block_id: BlockId,
+    pub author: MessageAuthor,
+    pub time: Timestamp,
+    pub text: String,
+    pub ranges: Vec<[u32; 2]>,
+}
+
+/// Who wrote a message: the user, or the agent, whose answer it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum MessageAuthor {
+    User,
+    Agent,
+}

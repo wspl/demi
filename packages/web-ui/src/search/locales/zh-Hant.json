@@ -6,5 +6,13 @@
   "list": "對話",
   "archived": "已封存",
   "noConversations": "沒有對話",
-  "noResults": "沒有結果"
+  "noResults": "沒有結果",
+  "placeholderIn": "搜尋訊息",
+  "scope": "此對話",
+  "scopeRemove": "搜尋所有對話",
+  "typeToSearch": "輸入以搜尋此對話",
+  "messages": "訊息",
+  "you": "你",
+  "agent": "智慧體",
+  "limited": "顯示最近的 {count} 則相符項目"
 }

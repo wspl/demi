@@ -217,7 +217,8 @@
     "backToConversation": "Back to Conversation",
     "archived": "This conversation is archived.",
     "restore": "Restore Conversation",
-    "shareConversation": "Share Conversation…"
+    "shareConversation": "Share Conversation…",
+    "findInConversation": "Find in Conversation"
   },
   "share": {
     "titleConversation": "Share Conversation",

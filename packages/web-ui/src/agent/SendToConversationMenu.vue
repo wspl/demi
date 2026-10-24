@@ -5,7 +5,7 @@ import Menu from '../ui/Menu.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import { noResults } from '../ui/ui-text'
-import { useConversationSearch, type SearchRow } from '../search/search'
+import { conversationRows, useConversationSearch, type SearchRow } from '../search/search'
 import { t as searchText } from '../search/locales/text'
 import ConversationDot from '../sidebar/ConversationDot.vue'
 import { conversationTitle } from './conversation-title'
@@ -37,7 +37,7 @@ const props = defineProps<{
 
 const { query, view, retry } = useConversationSearch(() => props.targets.search, () => restingTargets(props.targets))
 // The words come from the conversation shown: it is never where they go.
-const rows = computed(() => (view.value.kind === 'failed' ? [] : view.value.rows.filter((row) => row.conversationId !== props.targets.shown())))
+const rows = computed(() => conversationRows(view.value).filter((row) => row.conversationId !== props.targets.shown()))
 
 /** A row's look: its dot, as the row's icon, and its project, as its detail. */
 const looks = computed(() => new Map(rows.value.map((row) => {

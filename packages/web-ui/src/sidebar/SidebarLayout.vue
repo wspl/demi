@@ -332,6 +332,7 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
         v-show="open || drawingIn || !phone"
         ref="sidebar"
         data-region
+        data-sidebar
         class="h-full shrink-0"
         :class="phone ? 'frame-drawer fixed inset-y-0 left-0 z-40 bg-surface-base pt-[var(--safe-top)] pb-[var(--safe-bottom)]' : 'frame-sidebar overflow-hidden'"
         :style="{

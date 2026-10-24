@@ -76,6 +76,10 @@ const sideQuestions = useSideQuestions()
  * settings, that is the address they opened over, not the settings' own.
  */
 const props = defineProps<{ id?: string }>()
+const emit = defineEmits<{
+  /** Find in Conversation: the search window, searching the conversation shown. */
+  find: []
+}>()
 const router = useRouter()
 const navigation = useConversationNavigation()
 const conversation = computed(() =>
@@ -351,6 +355,9 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     :fork="fork"
     :share="share"
+    :searchable="conversation.persistence === 'synced'"
+    :find-shortcut="resources.keys.find((binding) => binding.id === 'find')?.keys"
+    @find="emit('find')"
     :select-edit="selectEdit"
     :file-pills="conversation.projectId !== null"
     :commenting="conversation.archived ? undefined : commenting"

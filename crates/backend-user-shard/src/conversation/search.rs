@@ -44,12 +44,14 @@ use std::rc::Rc;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
-use demi_backend_database::search::{IndexedConversation, TranscriptChange, title_ranges};
+use demi_backend_database::search::{HistoryQuery, IndexedConversation, SearchKind, TranscriptChange, match_line, title_ranges};
 use demi_backend_database::tree;
 use demi_backend_page_sync::{Part, Registration};
 use demi_shared_gates::KeyedSerialGate;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::search::{RESULTS_MAX, SearchMatch, SearchResult, SearchText};
+use demi_web_api_protocol::search::{
+    MessageAuthor, MessageResult, MessageResults, RESULTS_MAX, SearchMatch, SearchResult, SearchText,
+};
 use tokio::sync::broadcast::{self, error::RecvError};
 
 use crate::services::Services;
@@ -424,4 +426,50 @@ pub async fn search(
             })
         })
         .collect())
+}
+
+/// The messages of `conversation`'s main agent, the user's and the agent's
+/// answers, that hold every word of `query`, newest first, each cut to its
+/// line around the first match as [`search`] cuts it.
+pub async fn search_in(
+    services: &Services,
+    user: &UserId,
+    conversation: &ConversationId,
+    query: &SearchText,
+) -> Result<MessageResults, StorageError> {
+    let words = query.words();
+    let mut found = services
+        .search
+        .find_in(
+            user,
+            conversation,
+            0,
+            HistoryQuery {
+                words: words.clone(),
+                any: false,
+                kinds: vec![SearchKind::Message, SearchKind::Answer],
+                after: None,
+                before: None,
+                oldest: false,
+                // One past the bound tells that there are more.
+                limit: Some(RESULTS_MAX + 1),
+            },
+        )
+        .await?;
+    let limited = found.len() > RESULTS_MAX;
+    found.truncate(RESULTS_MAX);
+    let messages = found
+        .into_iter()
+        .map(|found| {
+            let (text, ranges) = match_line(&found.text, &words);
+            MessageResult {
+                block_id: found.block,
+                author: if found.kind == SearchKind::Message { MessageAuthor::User } else { MessageAuthor::Agent },
+                time: found.time,
+                text,
+                ranges,
+            }
+        })
+        .collect();
+    Ok(MessageResults { messages, limited })
 }

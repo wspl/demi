@@ -217,7 +217,8 @@
     "backToConversation": "대화로 돌아가기",
     "archived": "이 대화는 보관되었습니다.",
     "restore": "대화 보관 해제",
-    "shareConversation": "대화 공유…"
+    "shareConversation": "대화 공유…",
+    "findInConversation": "대화에서 찾기"
   },
   "share": {
     "titleConversation": "대화 공유",

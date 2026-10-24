@@ -217,7 +217,8 @@
     "backToConversation": "チャットに戻る",
     "archived": "このチャットはアーカイブされています。",
     "restore": "チャットを復元",
-    "shareConversation": "チャットを共有…"
+    "shareConversation": "チャットを共有…",
+    "findInConversation": "チャット内を検索"
   },
   "share": {
     "titleConversation": "チャットを共有",

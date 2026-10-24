@@ -6,5 +6,13 @@
   "list": "チャット",
   "archived": "アーカイブ済み",
   "noConversations": "チャットはありません",
-  "noResults": "結果がありません"
+  "noResults": "結果がありません",
+  "placeholderIn": "メッセージを検索",
+  "scope": "このチャット",
+  "scopeRemove": "すべてのチャットを検索",
+  "typeToSearch": "入力してこのチャットを検索",
+  "messages": "メッセージ",
+  "you": "あなた",
+  "agent": "エージェント",
+  "limited": "最新の {count} 件を表示しています"
 }

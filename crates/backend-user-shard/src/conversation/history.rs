@@ -394,6 +394,7 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         after: after.map(|(_, bound)| bound),
         before: before.map(|(_, bound)| bound),
         oldest,
+        limit: None,
     };
     let node = reader.node.clone();
     let agent = shard
@@ -404,12 +405,15 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         .map_err(failed)?
         .flatten()
         .ok_or_else(|| failed("the transcript has no blocks yet"))?;
-    let hits = shard
+    let hits: Vec<usize> = shard
         .services()
         .search
         .find_in(shard.user(), &reader.conversation, agent, query)
         .await
-        .map_err(failed)?;
+        .map_err(failed)?
+        .into_iter()
+        .map(|found| found.position)
+        .collect();
     let command = call.invocation.path.join(" ");
     let pages = hits.len().div_ceil(HITS_PER_PAGE).max(1);
     let page = usize::try_from(call.args.page.unwrap_or(1)).unwrap_or(usize::MAX);

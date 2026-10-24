@@ -9,7 +9,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, PanelRight, Play, EthernetPort, Settings2, Share, TextCursorInput } from '@lucide/vue'
+import { ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, PanelRight, Play, EthernetPort, Search, Settings2, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, Version } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -105,6 +105,10 @@ const props = withDefaults(defineProps<{
    * saved, and neither control is offered.
    */
   share?: ShareService
+  /** Find in Conversation in the conversation's menu, which `find` asks for: the search window in the conversation. */
+  searchable?: boolean
+  /** The keys Find has in the keyboard settings, which Find in Conversation shows; none when it has none. */
+  findShortcut?: string
   /**
    * Whether the app frame's work panel is open; absent when the host has none.
    */
@@ -251,6 +255,8 @@ const sharing = useShare(() => props.share)
 const shareConversation = { kind: 'conversation' } as const
 
 const emit = defineEmits<{
+  /** Find in Conversation: the search window, searching the conversation. */
+  find: []
   /** Turn a schedule that wakes the conversation off, or with `false` on, from the Schedules menu. */
   pauseSchedule: [id: string, paused: boolean]
   /** Delete a schedule that wakes the conversation, from the Schedules menu. */
@@ -798,7 +804,14 @@ watch(
         sheet repeats no heading.
       -->
       <Sheet :open="titleSheetOpen" :label="shownTitle" :overlay-store="appOverlayStore" @close="titleSheetOpen = false">
-        <Menu v-if="listed || share">
+        <Menu v-if="listed || share || searchable">
+          <MenuItem
+            v-if="searchable"
+            :icon="Search"
+            :label="t('session.findInConversation')"
+            @select="fromTitleSheet(() => emit('find'))"
+          />
+          <MenuDivider v-if="searchable && (share || listed)" />
           <template v-if="share">
             <MenuItem
               :icon="Share"
@@ -898,7 +911,7 @@ watch(
         <div class="min-w-0 flex-1">
           <slot name="workspace" />
         </div>
-        <Dropdown v-if="share" :overlay-store="appOverlayStore">
+        <Dropdown v-if="share || searchable" :overlay-store="appOverlayStore">
           <template #trigger="{ isOpen }">
             <Tooltip :content="t('panel.more')" class="shrink-0">
               <IconButton
@@ -912,6 +925,14 @@ watch(
           <template #content="{ close }">
             <Menu @click="close">
               <MenuItem
+                v-if="searchable"
+                :icon="Search"
+                :label="t('session.findInConversation')"
+                :shortcut="findShortcut"
+                @select="emit('find')"
+              />
+              <MenuItem
+                v-if="share"
                 :icon="Share"
                 :label="t('session.shareConversation')"
                 @select="sharing.start(shareConversation)"

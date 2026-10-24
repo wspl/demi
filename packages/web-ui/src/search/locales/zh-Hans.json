@@ -6,5 +6,13 @@
   "list": "对话",
   "archived": "已归档",
   "noConversations": "没有对话",
-  "noResults": "无结果"
+  "noResults": "无结果",
+  "placeholderIn": "搜索消息",
+  "scope": "此对话",
+  "scopeRemove": "搜索所有对话",
+  "typeToSearch": "输入以搜索此对话",
+  "messages": "消息",
+  "you": "你",
+  "agent": "智能体",
+  "limited": "显示最近的 {count} 条匹配"
 }

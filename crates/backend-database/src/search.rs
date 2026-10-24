@@ -185,6 +185,10 @@ impl SearchKind {
             Self::Command => "command",
         }
     }
+
+    fn parse(text: &str) -> Option<Self> {
+        [Self::Message, Self::Answer, Self::Command].into_iter().find(|kind| kind.as_str() == text)
+    }
 }
 
 /// What `demi conversation history search` looks for in an agent's
@@ -202,6 +206,19 @@ pub struct HistoryQuery {
     pub before: Option<HistoryBound>,
     /// The oldest first, rather than the newest.
     pub oldest: bool,
+    /// The most texts answered, the first in its order; every one when none.
+    pub limit: Option<usize>,
+}
+
+/// A text a history search found: its block's index and id, its kind, the
+/// block's time, and the text whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoundText {
+    pub position: usize,
+    pub block: BlockId,
+    pub kind: SearchKind,
+    pub time: Timestamp,
+    pub text: String,
 }
 
 /// One end of a history search: a block's index, which the texts lie
@@ -517,8 +534,9 @@ impl SearchIndexes {
         .await
     }
 
-    /// The block indices of the texts of the conversation's agent `agent` that
-    /// `query` finds: what `demi conversation history search` finds.
+    /// The texts of the conversation's agent `agent` that `query` finds: what
+    /// `demi conversation history search` finds, and the search of one
+    /// conversation in the search window.
     ///
     /// They are those of its kinds and between its bounds that hold every one of
     /// its words, or any, case ignored, newest first or oldest first as it says. A
@@ -530,7 +548,7 @@ impl SearchIndexes {
         conversation: &ConversationId,
         agent: u64,
         query: HistoryQuery,
-    ) -> Result<Vec<usize>, StorageError> {
+    ) -> Result<Vec<FoundText>, StorageError> {
         let conversation = conversation.clone();
         self.with(user, move |connection| {
             let mut matches = Vec::new();
@@ -571,16 +589,24 @@ impl SearchIndexes {
                 }
             }
             let order = if query.oldest { "ASC" } else { "DESC" };
+            let limit = query.limit.map_or_else(String::new, |limit| format!(" LIMIT {limit}"));
             let mut statement = connection.prepare(&format!(
-                "SELECT t.position FROM texts t
+                "SELECT t.position, t.block, t.kind, t.time, t.text FROM texts t
                  WHERE t.conversation = ?1 AND t.agent = ?2 AND {}
-                 ORDER BY t.position {order}",
+                 ORDER BY t.position {order}{limit}",
                 conditions.join(" AND ")
             ))?;
             let mut rows = statement.query(params_from_iter(values))?;
             let mut found = Vec::new();
             while let Some(row) = rows.next()? {
-                found.push(decode("texts", "position", usize::try_from(row.get::<_, i64>(0)?))?);
+                let kind: String = row.get(2)?;
+                found.push(FoundText {
+                    position: decode("texts", "position", usize::try_from(row.get::<_, i64>(0)?))?,
+                    block: decode("texts", "block", BlockId::try_from(row.get::<_, String>(1)?))?,
+                    kind: decode("texts", "kind", SearchKind::parse(&kind).ok_or("not a kind of text"))?,
+                    time: decode("texts", "time", Timestamp::from_millisecond(row.get(3)?))?,
+                    text: row.get(4)?,
+                });
             }
             Ok(found)
         })
@@ -911,7 +937,7 @@ const LEAD: usize = 40;
 /// every character; neither gives UTF-16 offsets. So the line is cut and
 /// the words found here, on the text the index matched, case ignored as the
 /// index ignores it.
-fn match_line(text: &str, words: &[String]) -> (String, Vec<[u32; 2]>) {
+pub fn match_line(text: &str, words: &[String]) -> (String, Vec<[u32; 2]>) {
     let characters: Vec<char> = text.chars().collect();
     let found = occurrences(&characters, words);
     let first = found.first().map_or(0, |&(start, _)| start);

@@ -104,8 +104,8 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
-import type { SearchRow } from '@demicodes/web-ui/search/search'
-import { fixtureSearch, searchableMessages } from '../fixtures/search'
+import type { MessageRow, SearchRow } from '@demicodes/web-ui/search/search'
+import { fixtureMessageSearch, fixtureSearch, searchableMessages } from '../fixtures/search'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { demoAccount, demoConversations, demoProjects, savedScopeSwitched } from '../sidebar/sidebar-data'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
@@ -547,6 +547,19 @@ const frameRecent = computed<SearchRow[]>(() =>
     .toSorted((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)),
 )
 const frameSearch = fixtureSearch(() => frameSearchable.value)
+/** Whether the frame's search window opens in the session's conversation, as Find in Conversation opens it. */
+const frameSearchScoped = ref(false)
+const frameSearchIn = fixtureMessageSearch(() => searchableMessages(session.blocks))
+function openFrameSearch(scoped: boolean): void {
+  frameSearchScoped.value = scoped
+  frameSearchOpen.value = true
+}
+/** Opens the session at the message its search found, as the product does. */
+function openFrameMessage(row: MessageRow): void {
+  frameSearchOpen.value = false
+  panelActiveConversationId.value = 'c-login'
+  frameReveal.value = { node: null, blockId: row.blockId }
+}
 /** Opens what the search found, as the product does: the conversation, at the message that matched. */
 function openFrameResult(row: SearchRow): void {
   frameSearchOpen.value = false
@@ -3802,7 +3815,7 @@ onBeforeUnmount(() => {
                   :new-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys"
                   :search-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'search')?.keys"
                   :settings-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'settings')?.keys"
-                  @search="frameSearchOpen = true"
+                  @search="openFrameSearch(false)"
                   :account="demoAccount"
                   :projects="panelProjects"
                   @switch-saved-scope="(id, scope, to) => (panelProjects = savedScopeSwitched(panelProjects, id, scope, to))"
@@ -3826,6 +3839,9 @@ onBeforeUnmount(() => {
                 :aside-open="panelAsideOpen"
                 :panel-tabs="panelWork.panel.value.tabs.length"
                 :share="shareService"
+                searchable
+                :find-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'find')?.keys"
+                @find="openFrameSearch(true)"
                 :select-edit="panelWork.selectEdit"
                 :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
@@ -3869,8 +3885,10 @@ onBeforeUnmount(() => {
                   :overlay-store="appOverlayStore"
                   :recent="frameRecent"
                   :search="frameSearch"
+                  :search-in="frameSearchScoped ? frameSearchIn : null"
                   @close="frameSearchOpen = false"
                   @open="openFrameResult"
+                  @open-message="openFrameMessage"
                 />
               </template>
             </SidebarLayout>

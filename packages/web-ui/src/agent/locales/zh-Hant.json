@@ -217,7 +217,8 @@
     "backToConversation": "返回對話",
     "archived": "此對話已封存。",
     "restore": "取消封存對話",
-    "shareConversation": "分享對話…"
+    "shareConversation": "分享對話…",
+    "findInConversation": "在對話中尋找"
   },
   "share": {
     "titleConversation": "分享對話",
