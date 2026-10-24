@@ -7,7 +7,7 @@
 //! meanwhile). Held keys and buttons are tracked per source, and a source's end
 //! releases only what it holds.
 //!
-//! For a `user` caller `open`, `goto`, `back`, `forward` and `reload` answer
+//! For a `user` caller `tab.new`, `open`, `back`, `forward` and `reload` answer
 //! without waiting for the page to load: a user waits in the panel, not in a
 //! script.
 

@@ -1,8 +1,8 @@
 //! The `browser.*` operations: their limits, the values they share, their
 //! failures, and each operation's input and result.
 //!
-//! Every tab operation names its tab; only `open`, `tabs`, `content fetch` and
-//! help work without one, and no action depends on a global selected tab. Each
+//! Every tab operation names its tab; only `tab new`, `tab list`,
+//! `content fetch` and help work without one, and no action depends on a global selected tab. Each
 //! input has one source (`eval` takes a positional expression or stdin, not
 //! both), and help is resolved before any stdin is read. A result field never
 //! changes meaning or type, and `find`'s `count` is the total match count even
@@ -33,7 +33,7 @@ pub const PREFIX: &str = prefix!();
 
 /// The deadline of an operation whose input names none, in milliseconds.
 pub const TIMEOUT_MS: u64 = 30_000;
-/// The longest deadline an input may name, and `open`'s default: a cold start
+/// The longest deadline an input may name, and `tab.new`'s default: a cold start
 /// installs and launches Chrome first.
 pub const MAX_TIMEOUT_MS: u64 = 300_000;
 /// The most nodes a `read --all` reads and an asset export lists, whatever the
@@ -76,7 +76,7 @@ pub fn handle(prefix: &str, random: [u8; 16]) -> String {
 }
 
 numbered!(
-    /// A tab's public identity, which `open` and `tabs` return: `t` and the
+    /// A tab's public identity, which `tab.new` and `tab.list` return: `t` and the
     /// tab's number in the conversation.
     TabId,
     "t",
@@ -676,7 +676,7 @@ pub enum BrowserCreatedBy {
     User {},
 }
 
-/// A tab as `tabs` lists it and the conversation browser's tab methods return it.
+/// A tab as `tab.list` lists it and the conversation browser's tab methods return it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserTab {
@@ -738,7 +738,7 @@ mod operations;
 
 /// What the browser package tells `plugin-browser` about a conversation
 /// (`crates/command-protocol/src/messages.rs`): the whole of what
-/// `browser.tabs` lists, each time it changes and again after every hello of
+/// `browser.tab.list` lists, each time it changes and again after every hello of
 /// the runner, an empty list too.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

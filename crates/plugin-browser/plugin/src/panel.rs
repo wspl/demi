@@ -203,7 +203,8 @@ impl Work {
     ///   beside its opener's (`after_opened`) and the agent's after the others.
     /// - Each bound tab gets the count of the times the agent showed its
     ///   browser tab, when the count rose.
-    /// - Each bound tab gets its address and title as the list says them.
+    /// - Each bound tab gets its address and title as the list says them,
+    ///   but one whose opening failed keeps the address its Retry opens.
     /// - Every bound tab whose browser tab was closed on purpose is removed.
     /// - Every bound tab whose browser tab was lost with the browser is marked
     ///   closed, to open again when shown.
@@ -273,14 +274,18 @@ impl Work {
                         .await?;
                 }
                 // The tab follows its page: its address and title as the list
-                // says them, and the count of its showings when it rose.
+                // says them, and the count of its showings when it rose. A tab
+                // whose page failed to open keeps its own address: its browser
+                // tab may still show the blank page it was made with.
                 Some(tab) => {
                     let mut follows = Map::new();
-                    if data.url != tab.url {
-                        follows.insert("url".into(), Value::from(tab.url.clone()));
-                    }
-                    if data.title.as_deref() != Some(tab.title.as_str()) {
-                        follows.insert("title".into(), Value::from(tab.title.clone()));
+                    if data.failure.is_none() {
+                        if data.url != tab.url {
+                            follows.insert("url".into(), Value::from(tab.url.clone()));
+                        }
+                        if data.title.as_deref() != Some(tab.title.as_str()) {
+                            follows.insert("title".into(), Value::from(tab.title.clone()));
+                        }
                     }
                     if tab.shows > data.shows.unwrap_or(0) {
                         follows.insert("shows".into(), Value::from(tab.shows));
@@ -352,12 +357,11 @@ async fn open_for(
     id: &str,
     data: TabData,
 ) -> Result<Option<String>, PluginError> {
-    let (tab, at) = match data.live() {
-        Some(tab) => (tab.to_owned(), None),
-        None => {
-            let opened = page::open(port, &data.url).await?;
-            (opened.id.to_string(), Some(data.url))
-        }
+    // A new tab is bound before its page opens, so the list that names it
+    // finds it bound and adds no panel tab of its own.
+    let (tab, made) = match data.live() {
+        Some(tab) => (tab.to_owned(), false),
+        None => (page::new_tab(port).await?.id.to_string(), true),
     };
     let bound = fields([
         ("tab", Value::String(tab.clone())),
@@ -367,10 +371,11 @@ async fn open_for(
     port.update_panel_tab(id, bound).await?;
     match data_of(port, id).await? {
         None => page::close(port, &tab).await.map(|()| None),
-        Some(now) if at.as_ref() != Some(&now.url) => page::navigate(port, &tab, now.url)
+        // A new tab is blank already.
+        Some(now) if made && now.url == "about:blank" => Ok(Some(tab)),
+        Some(now) => page::navigate(port, &tab, now.url)
             .await
             .map(|_| Some(tab)),
-        Some(_) => Ok(Some(tab)),
     }
 }
 

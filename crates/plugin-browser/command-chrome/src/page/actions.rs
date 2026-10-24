@@ -82,11 +82,11 @@ pub async fn execute(
     }
     if matches!(
         command,
-        BrowserOperation::Open(_)
+        BrowserOperation::TabNew(_)
             | BrowserOperation::Show(_)
-            | BrowserOperation::Tabs(_)
+            | BrowserOperation::TabList(_)
             | BrowserOperation::Stop(_)
-            | BrowserOperation::Close(_)
+            | BrowserOperation::TabClose(_)
             | BrowserOperation::Screenshot(_)
             | BrowserOperation::Record(_)
             | BrowserOperation::Capabilities(_)
@@ -243,7 +243,7 @@ pub async fn command_admitted(
                     metadata(tab, cancel, command.timeout()).await?,
                 ))
             }),
-            BrowserOperation::Goto(input) => Box::pin(async {
+            BrowserOperation::Open(input) => Box::pin(async {
                 let url = tab
                     .navigate(
                         Navigation::Url(input.url.clone()),
@@ -888,11 +888,11 @@ pub async fn command_admitted(
                     content,
                 }))
             }),
-            BrowserOperation::Open(_)
+            BrowserOperation::TabNew(_)
             | BrowserOperation::Show(_)
-            | BrowserOperation::Tabs(_)
+            | BrowserOperation::TabList(_)
             | BrowserOperation::Stop(_)
-            | BrowserOperation::Close(_)
+            | BrowserOperation::TabClose(_)
             | BrowserOperation::Screenshot(_)
             | BrowserOperation::Record(_)
             | BrowserOperation::Capabilities(_)
@@ -927,7 +927,7 @@ pub async fn command_admitted(
             | BrowserOperation::Key(_)
             | BrowserOperation::Check(_)
             | BrowserOperation::Select(_)
-            | BrowserOperation::Goto(_)
+            | BrowserOperation::Open(_)
             | BrowserOperation::Reload(_)
             | BrowserOperation::Back(_)
             | BrowserOperation::Forward(_)
@@ -953,7 +953,7 @@ pub async fn command_admitted(
         (Ok(TabResult::Action(mut action)), Some(before)) => {
             // A tab the action opened is registered, and can be operated,
             // before the result names it. One the registry could not
-            // register in time appears in a later `tabs`.
+            // register in time appears in a later `tab.list`.
             let registered = operation.run(tab.popups());
             if let Ok(Ok(after)) =
                 tokio::time::timeout(crate::driver::operation::CONTROL_TIMEOUT, registered).await

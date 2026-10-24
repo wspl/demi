@@ -12,7 +12,7 @@
 //!   names a new tab. Creation metadata is diagnostic, never authorization.
 //! - When a buffer of target events overflows, the owner reconciles from
 //!   Chrome's target list before the next command: a lost event costs one
-//!   reconciliation, never a failed `tabs` call. Closed tabs stay known so a
+//!   reconciliation, never a failed `tab.list` call. Closed tabs stay known so a
 //!   popup can still name its opener.
 //! - The environment retires only when no tab remains and no tab creation or
 //!   `content fetch` batch is in flight, and admits no new tab once retirement
@@ -20,7 +20,7 @@
 //!   never waits for the page.
 //! - A number that cannot be drawn (the backend has 15 seconds) fails only the
 //!   step that needs it; the environment and its other tabs stay.
-//! - Every change of what `browser.tabs` lists also tells `plugin-browser` with
+//! - Every change of what `browser.tab.list` lists also tells `plugin-browser` with
 //!   `{"tabs":"changed"}`; the resident keeps the conversations that changed
 //!   since it last wrote, so a burst costs one message.
 

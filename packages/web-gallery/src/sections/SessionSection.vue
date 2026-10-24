@@ -719,7 +719,7 @@ const unchosenTree = ref(true)
 const panelWork = useWorkTabs('change', { browser: galleryBrowser([]) })
 /** Whether the frame's panel is open: the user closes it, and a tab the agent shows opens it. */
 const panelAsideOpen = panelWork.open
-/** The agent opens a page, showing it to the user or checking it itself, as `demi browser open [--show]` does. */
+/** The agent opens a page, showing it to the user or checking it itself, as `demi browser tab new` and `open [--show]` do. */
 function agentOpens(show: boolean) {
   productWould(show ? 'The Agent Opens a Page and Shows It' : 'The Agent Opens a Page to Check It')
   void panelWork.agentOpens(show ? 'https://example.test/orders' : 'https://example.test/docs', show)
@@ -758,7 +758,7 @@ provideMediaViewer({
 })
 // The tabs specimen starts on an empty strip, which only the agent's tabs fill.
 const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })
-/** The agent opens a page and shows it in the tabs specimen, as `demi browser open --show` does. */
+/** The agent opens a page and shows it in the tabs specimen, as `demi browser tab new` and `open --show` do. */
 function exhibitAgentOpens() {
   productWould('The Agent Opens a Page and Shows It')
   void exhibitWork.agentOpens('https://example.test/orders', true)
@@ -883,7 +883,7 @@ function agentShows() {
   productWould(`The Agent Shows ${tab.title || tab.id}`)
   void browserWork.agentShows(tab.id)
 }
-/** Closes the page behind the panel's back, as the agent's `close` would; the view finds it gone and the plugin removes its tab. */
+/** Closes the page behind the panel's back, as the agent's `tab close` would; the view finds it gone and the plugin removes its tab. */
 function closeOnDevice() {
   const tab = shownBrowserTab.value
   if (tab !== null) {
@@ -3864,7 +3864,7 @@ onBeforeUnmount(() => {
         </GallerySpecimen>
         <div class="flex gap-2">
           <Button size="sm" @click="panelWork.reset">Reset Panel</Button>
-          <!-- What the agent's `demi browser open` does, with `--show` or without: the browser tells the plugin of the new tab. -->
+          <!-- What the agent's `demi browser tab new` and `open` do, with `--show` or without: the browser tells the plugin of the new tab. -->
           <Button size="sm" @click="agentOpens(true)">Open and Show a Page as the Agent</Button>
           <Button size="sm" @click="agentOpens(false)">Open a Page to Check as the Agent</Button>
           <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ Math.round(panelAsideShare * 100) }}% of the width it splits with the session · at least {{ ASIDE_SHARE.minWidth }}px, leaving the session {{ ASIDE_SHARE.mainMinWidth }}px</span>

@@ -173,10 +173,22 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
       if (shown !== undefined && !data.failure) {
         return shown
       }
-      const asked = data.url
-      let opened
       try {
-        opened = await browser.open(asked)
+        // The tab whose page failed to open loads it again; any other gets a
+        // new tab, bound before its page opens, as the backend's plugin does.
+        const made = shown === undefined
+        const tab = shown ?? (await browser.newTab()).id
+        panel.apply({ type: 'update', id: panelTab, data: { tab, closed: null, failure: null } })
+        const now = browserData(panel.tab(panelTab))
+        if (!now) {
+          await browser.close(tab)
+          return null
+        }
+        // A new tab is blank already.
+        if (!made || now.url !== 'about:blank') {
+          await browser.navigate(tab, now.url)
+        }
+        return tab
       } catch (error) {
         // The browser's or the Host's own reason, as the backend's plugin keeps
         // it, or the status a call would answer a failure without one with.
@@ -186,16 +198,6 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
         panel.apply({ type: 'update', id: panelTab, data: { failure } })
         return null
       }
-      panel.apply({ type: 'update', id: panelTab, data: { tab: opened.id, closed: null, failure: null } })
-      const now = browserData(panel.tab(panelTab))
-      if (!now) {
-        await browser.close(opened.id)
-        return null
-      }
-      if (now.url !== asked) {
-        await browser.navigate(opened.id, now.url)
-      }
-      return opened.id
     }),
     removed: (tab) => inTurn(async () => {
       const data = browserData(tab)
@@ -238,12 +240,13 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
           panel.apply({ type: 'update', id, data: { closed: true } })
         } else {
           // The tab follows its page's address and title, and the agent's
-          // showings, which each page selects once.
+          // showings, which each page selects once. One whose page failed to
+          // open keeps its own address, as the backend's plugin keeps it.
           const follows: Partial<BrowserTabData> = {}
-          if (present.url !== data?.url) {
+          if (!data?.failure && present.url !== data?.url) {
             follows.url = present.url
           }
-          if (present.title !== data?.title) {
+          if (!data?.failure && present.title !== data?.title) {
             follows.title = present.title
           }
           if (present.shows > (data?.shows ?? 0)) {

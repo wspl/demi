@@ -34,16 +34,16 @@ macro_rules! operations {
 }
 
 operations! {
-    "open" => OpenInput, OpenResult, "Open a URL in a new tab on this Host; starts the conversation’s browser when needed. The tab joins the user’s work panel without taking the user’s view; --show also shows it, as show does.";
+    "tab.new" => TabNewInput, TabNewResult, "Make an empty tab on this Host and print its ID; starts the conversation’s browser when needed. The tab joins the user’s work panel without taking the user’s view.";
+    "tab.list" => TabListInput, TabListResult, "List the conversation’s live browser tabs without starting a browser.";
+    "tab.close" => TabCloseInput, TabCloseResult, "Close a tab. Closing the last tab ends this browser; the next tab new starts it again.";
+    "open" => OpenInput, NavigationResult, "Open a URL in a tab, in place of its page; --show also shows the tab, as show does.";
     "show" => ShowInput, ShowResult, SHOW;
-    "tabs" => TabsInput, TabsResult, "List the conversation’s live browser tabs without starting a browser.";
     "info" => InfoInput, InfoResult, "Read a tab’s URL, title and viewport.";
-    "goto" => GotoInput, NavigationResult, "Navigate a tab to a URL.";
     "back" => BackInput, NavigationResult, "Navigate to the previous history entry.";
     "forward" => ForwardInput, NavigationResult, "Navigate to the next history entry.";
     "reload" => ReloadInput, NavigationResult, "Reload a tab.";
     "history" => HistoryInput, HistoryResult, "Read the tab’s navigation history.";
-    "close" => CloseInput, CloseResult, "Close a tab. Closing the last tab ends this browser; the next open starts fresh.";
     "inspect" => InspectInput, InspectResult, "Read accessibility names, roles, values, states and references.";
     "find" => FindInput, FindResult, "Find nodes by reference, role/name, associated label, visible text, test ID or CSS.";
     "read" => ReadInput, ReadResult, "Read a matched element’s text, HTML, value, attribute or visible/enabled/checked state.";
@@ -176,11 +176,12 @@ fn targeted<I: schemars::JsonSchema>() -> bool {
         .is_some()
 }
 
-/// The operands a command line gives in order: every operation but `open`,
-/// `tabs`, `content.fetch` and `install` acts on a tab, named first; a
-/// target's reference follows it, and `key`'s key comes last, after an
-/// optional reference: `key t1 Enter`, `key t1 e1 Enter`; `eval`'s
-/// expression, which stdin may give instead, comes last too.
+/// The operands a command line gives in order: every operation but
+/// `tab.new`, `tab.list`, `content.fetch` and `install` acts on a tab, named
+/// first, and `open`'s URL follows it; a target's reference follows the tab,
+/// and `key`'s key comes last, after an optional reference: `key t1 Enter`,
+/// `key t1 e1 Enter`; `eval`'s expression, which stdin may give instead,
+/// comes last too.
 fn positionals<I: schemars::JsonSchema>(name: &str) -> Vec<&'static str> {
     let mut fields = operands(name).to_vec();
     if targeted::<I>() {
@@ -198,13 +199,12 @@ fn positionals<I: schemars::JsonSchema>(name: &str) -> Vec<&'static str> {
 /// The operands before a target's reference.
 fn operands(name: &str) -> &'static [&'static str] {
     match name {
-        "open" => &["url"],
-        "goto" => &["tab", "url"],
+        "open" => &["tab", "url"],
         "cdp.send" => &["tab", "method"],
         "webmcp.call" => &["tab", "tool"],
         // The first operand is a tab for start, a recording for the others.
         "record" => &["target", "action"],
-        "tabs" | "content.fetch" | "install" => &[],
+        "tab.new" | "tab.list" | "content.fetch" | "install" => &[],
         _ => &["tab"],
     }
 }

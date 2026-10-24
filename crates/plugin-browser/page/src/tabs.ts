@@ -15,7 +15,7 @@ import {
 
 /**
  * Opening a tab may start the conversation browser, on a Cloud that was
- * stopped: the operation allows itself five minutes (`browser.open`), and the
+ * stopped: the operation allows itself five minutes (`browser.tab.new`), and the
  * call waits a little longer than that, so the operation's own answer is what
  * ends the wait.
  */

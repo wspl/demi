@@ -108,7 +108,7 @@ Claude Code나 Codex를 감싸지 않고, 자체 런타임이 모든 모델을 �
 대부분의 에이전트는 모델에 긴 도구 목록을 주지만, Demi는 셸 하나만 줍니다. 브라우저, 다른 컴퓨터, 하위 에이전트 등 나머지는 모두 그 셸 안의 `demi` 명령입니다:
 
 ```sh
-demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
+T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```

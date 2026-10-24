@@ -60,7 +60,7 @@ pub enum Body {
 #[derive(Debug, thiserror::Error)]
 pub enum DownloadError {
     #[error(
-        "{url} answered with a Cloudflare challenge, which only a browser passes; open the page with demi browser open {url}"
+        "{url} answered with a Cloudflare challenge, which only a browser passes; open the page in a browser tab: demi browser tab new, then demi browser open <tab> {url}"
     )]
     Challenge { url: Url },
     #[error("{url} redirected more than {MAX_REDIRECTS} times")]
