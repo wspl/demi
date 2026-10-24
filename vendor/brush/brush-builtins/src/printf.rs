@@ -2,7 +2,9 @@ use clap::Parser;
 use std::{ffi::OsString, io::Write, ops::ControlFlow};
 use uucore::format;
 
-use brush_core::{Error, ErrorKind, ExecutionResult, builtins, escape, expansion};
+use brush_core::{
+    Error, ErrorKind, ExecutionExitCode, ExecutionResult, builtins, escape, expansion,
+};
 
 /// Format a string.
 #[derive(Parser)]
@@ -25,14 +27,17 @@ impl builtins::Command for PrintfCommand {
         context: brush_core::ExecutionContext<'_, SE>,
     ) -> Result<ExecutionResult, Self::Error> {
         let invocation = invocation(&context)?;
+        let utf8 = utf8_locale(context.shell);
+        let status;
         if let Some(variable_name) = &self.output_variable {
             // Format to a u8 vector.
             let mut result: Vec<u8> = vec![];
-            if let Some(ended) = run_in(invocation, &context, || {
-                format(self.format_and_args.as_slice(), &mut result)
+            status = match run_in(invocation, &context, || {
+                format(self.format_and_args.as_slice(), utf8, &mut result)
             })? {
-                return Ok(ended);
-            }
+                ControlFlow::Continue(status) => status,
+                ControlFlow::Break(ended) => return Ok(ended.into()),
+            };
 
             // Convert to a string.
             let result_str = String::from_utf8(result).map_err(|_| {
@@ -49,15 +54,16 @@ impl builtins::Command for PrintfCommand {
             .await?;
         } else {
             let mut stdout = context.stdout();
-            if let Some(ended) = run_in(invocation, &context, || {
-                format(self.format_and_args.as_slice(), &mut stdout)
+            status = match run_in(invocation, &context, || {
+                format(self.format_and_args.as_slice(), utf8, &mut stdout)
             })? {
-                return Ok(ended);
-            }
+                ControlFlow::Continue(status) => status,
+                ControlFlow::Break(ended) => return Ok(ended.into()),
+            };
             stdout.flush()?;
         }
 
-        Ok(ExecutionResult::success())
+        Ok(status.into())
     }
 }
 
@@ -105,23 +111,31 @@ fn invocation<SE: brush_core::ShellExtensions>(
     })
 }
 
-/// Runs `work` in `invocation`, or gives the result printf ends with when
-/// uucore ends it as it ends a utility: 141 when a diagnostic meets a pipe
-/// whose reader has gone, as SIGPIPE ends a program, and the shell's
-/// cancellation once its job is cancelled.
+/// Runs `work` in `invocation` and gives printf's status, 1 when an argument
+/// was no number, as bash's: printf prints what it can of the rest. Breaks
+/// with the status uucore ends printf with as it ends a utility: 141 when a
+/// diagnostic meets a pipe whose reader has gone, as SIGPIPE ends a program;
+/// and fails with the shell's cancellation once its job is cancelled.
 fn run_in<SE: brush_core::ShellExtensions>(
     invocation: uucore::context::Context,
     context: &brush_core::ExecutionContext<'_, SE>,
     work: impl FnOnce() -> Result<(), brush_core::Error>,
-) -> Result<Option<ExecutionResult>, brush_core::Error> {
+) -> Result<ControlFlow<ExecutionExitCode, ExecutionExitCode>, brush_core::Error> {
     let ended = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        uucore::context::with(invocation, work)
+        uucore::context::with(invocation, || {
+            // uucore keeps the status on the thread, which ran others before.
+            uucore::error::set_exit_code(0);
+            work()?;
+            Ok(uucore::error::get_exit_code())
+        })
     })) {
-        Ok(result) => return result.map(|()| None),
+        Ok(result) => {
+            return result.map(|status: i32| ControlFlow::Continue((status as u8).into()));
+        }
         Err(ended) => ended,
     };
     if let Some(request) = ended.downcast_ref::<uucore::context::ExitRequest>() {
-        return Ok(Some(brush_core::ExecutionExitCode::from(request.0 as u8).into()));
+        return Ok(ControlFlow::Break((request.0 as u8).into()));
     }
     if ended.is::<uucore::context::Cancelled>() {
         context.shell.check_execution()?;
@@ -130,39 +144,35 @@ fn run_in<SE: brush_core::ShellExtensions>(
     std::panic::resume_unwind(ended)
 }
 
-fn format(format_and_args: &[String], writer: impl Write) -> Result<(), brush_core::Error> {
+/// Whether the shell's locale is UTF-8, as the first of `LC_ALL`, `LC_CTYPE` and `LANG` that is
+/// set and not empty names it; with none, the locale is `C`, one byte a character.
+fn utf8_locale<SE: brush_core::ShellExtensions>(shell: &brush_core::Shell<SE>) -> bool {
+    ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .find_map(|name| shell.env().get_str(name, shell).filter(|value| !value.is_empty()))
+        .is_some_and(|locale| {
+            let locale = locale.to_ascii_lowercase();
+            locale.contains("utf-8") || locale.contains("utf8")
+        })
+}
+
+fn format(
+    format_and_args: &[String],
+    utf8: bool,
+    writer: impl Write,
+) -> Result<(), brush_core::Error> {
     match format_and_args {
-        // Special-case invocation of printf with %q-based format string from bash-completion.
-        // It has hard-coded expectation of backslash-style escaping instead of quoting.
-        [fmt, arg] if fmt == "%q" => format_special_case_for_percent_q(None, arg, writer),
-        [fmt, arg] if fmt == "~%q" => format_special_case_for_percent_q(Some("~"), arg, writer),
-        // Handle format string with arguments using uucore
-        [fmt, args @ ..] => format_via_uucore(fmt, args.iter(), writer),
+        [fmt, args @ ..] => format_via_uucore(fmt, args.iter(), utf8, writer),
         // Handle case with no format string (we shouldn't be able to get here since clap will
         // fail parsing when the format string is missing)
         [] => Err(ErrorKind::PrintfInvalidUsage("missing operand".into()).into()),
     }
 }
 
-fn format_special_case_for_percent_q(
-    prefix: Option<&str>,
-    arg: &str,
-    mut writer: impl Write,
-) -> Result<(), brush_core::Error> {
-    let mut result = escape::quote_if_needed(arg, escape::QuoteMode::BackslashEscape).to_string();
-
-    if let Some(prefix) = prefix {
-        result.insert_str(0, prefix);
-    }
-
-    write!(writer, "{result}")?;
-
-    Ok(())
-}
-
 fn format_via_uucore(
     format_string: &str,
     args: impl Iterator<Item = impl Into<OsString>>,
+    utf8: bool,
     mut writer: impl Write,
 ) -> Result<(), brush_core::Error> {
     // Convert string arguments to FormatArgument::Unparsed
@@ -174,13 +184,22 @@ fn format_via_uucore(
     let format_items = parse_format_string(format_string)?;
 
     // Wrap the format arguments.
-    let mut format_args_wrapper = format::FormatArguments::new(&format_args);
+    let mut format_args_wrapper = format::FormatArguments::as_bash_reads(&format_args);
 
     // Keep going until we've exhausted all format arguments. Also make sure to run at least once
     // even if there's no format arguments.
     while format_args.is_empty() || !format_args_wrapper.is_exhausted() {
         // Process all format items, in order. We'll bail when we're told to stop.
         for item in &format_items {
+            // %q quotes as bash's does, with backslashes in the shell's locale
+            // (bash-completion reads them), where uucore quotes as GNU's printf does.
+            if let format::FormatItem::Spec(format::Spec::QuotedString { position }) = item {
+                let word = format_args_wrapper.next_string(*position).to_string_lossy();
+                let quoted =
+                    escape::quote_if_needed_in(&word, escape::QuoteMode::BackslashEscape, utf8);
+                write!(writer, "{quoted}")?;
+                continue;
+            }
             let control_flow = item
                 .write(&mut writer, &mut format_args_wrapper)
                 .map_err(|e| match e {
@@ -234,7 +253,7 @@ mod tests {
         args: impl Iterator<Item = impl Into<OsString>>,
     ) -> Result<String> {
         let mut result = vec![];
-        format_via_uucore(format_string, args, &mut result)?;
+        format_via_uucore(format_string, args, true, &mut result)?;
 
         Ok(String::from_utf8(result)?)
     }

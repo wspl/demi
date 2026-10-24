@@ -290,19 +290,23 @@ pub(crate) struct QuoteOptions {
     /// Default is for newline characters to require upgrading the string's quoting to
     /// ANSI C quoting.
     pub avoid_ansi_c_quoting_newline: bool,
+    /// Whether the shell's locale is one byte a character, as `C` is, where a
+    /// character beyond ASCII is no printable one and takes ANSI C quoting.
+    pub ascii_only: bool,
 }
 
 pub(crate) fn quote<'a>(s: &'a str, options: &QuoteOptions) -> Cow<'a, str> {
     let use_ansi_c_quotes = s.contains(|c| {
-        needs_ansi_c_quoting(c) && (!options.avoid_ansi_c_quoting_newline || c != '\n')
+        needs_ansi_c_quoting(c, options.ascii_only)
+            && (!options.avoid_ansi_c_quoting_newline || c != '\n')
     });
 
     if use_ansi_c_quotes {
-        return ansi_c_quote(s).into();
+        return ansi_c_quote(s, options.ascii_only).into();
     }
 
     let use_default_quotes =
-        !use_ansi_c_quotes && (options.always_quote || s.is_empty() || s.contains(needs_escaping));
+        !use_ansi_c_quotes && (options.always_quote || s.is_empty() || needs_quoting(s));
 
     if !use_default_quotes {
         return s.into();
@@ -347,19 +351,41 @@ pub fn quote_if_needed(s: &str, mode: QuoteMode) -> Cow<'_, str> {
     quote(s, &options)
 }
 
+/// Applies the given quoting mode to the provided string, only changing it if required, as a
+/// shell whose locale is `utf8` or one byte a character, as `C` is, reads it: in the latter, a
+/// character beyond ASCII is no printable one, and takes ANSI C quoting.
+///
+/// # Arguments
+///
+/// * `s` - The string to escape.
+/// * `mode` - The quoting mode to use.
+/// * `utf8` - Whether the shell's locale is UTF-8.
+pub fn quote_if_needed_in(s: &str, mode: QuoteMode, utf8: bool) -> Cow<'_, str> {
+    let options = QuoteOptions {
+        always_quote: false,
+        preferred_mode: mode,
+        ascii_only: !utf8,
+        ..Default::default()
+    };
+
+    quote(s, &options)
+}
+
 fn backslash_escape(s: &str) -> Cow<'_, str> {
     if s.is_empty() {
         // An empty string must be represented as '' to be a valid shell word.
         Cow::Owned("''".to_string())
-    } else if !s.chars().any(needs_escaping) {
+    } else if !needs_quoting(s) {
         Cow::Borrowed(s)
     } else {
         let mut output = String::with_capacity(s.len());
+        let mut before = None;
         for c in s.chars() {
-            if needs_escaping(c) {
+            if needs_escaping(c) || expands_at(c, before) {
                 output.push('\\');
             }
             output.push(c);
+            before = Some(c);
         }
         Cow::Owned(output)
     }
@@ -413,7 +439,7 @@ fn double_quote(s: &str) -> String {
     result
 }
 
-fn ansi_c_quote(s: &str) -> String {
+fn ansi_c_quote(s: &str, ascii_only: bool) -> String {
     let mut result = String::with_capacity(s.len());
     result.push_str("$'");
 
@@ -429,8 +455,11 @@ fn ansi_c_quote(s: &str) -> String {
             '\x0b' => result.push_str("\\v"),
             '\\' => result.push_str("\\\\"),
             '\'' => result.push_str("\\'"),
-            c if needs_ansi_c_quoting(c) => {
-                result.push_str(std::format!("\\{:03o}", c as u8).as_str());
+            // Each byte of the character, as the shell reads `\ooo` in `$'…'`.
+            c if needs_ansi_c_quoting(c, ascii_only) => {
+                for byte in c.encode_utf8(&mut [0; 4]).bytes() {
+                    result.push_str(std::format!("\\{byte:03o}").as_str());
+                }
             }
             _ => result.push(c),
         }
@@ -470,8 +499,31 @@ const fn needs_escaping(c: char) -> bool {
     )
 }
 
-const fn needs_ansi_c_quoting(c: char) -> bool {
-    c.is_ascii_control()
+/// Whether `c` is no printable character, which only ANSI C quoting writes visibly: a control
+/// character, and in a locale of one byte a character any beyond ASCII.
+fn needs_ansi_c_quoting(c: char, ascii_only: bool) -> bool {
+    c.is_control() || (ascii_only && !c.is_ascii())
+}
+
+/// Whether `c`, after `before` (none at the start of the word), starts an expansion or a
+/// comment outside quotes: `#` at the start of a word, and `~` at its start or after `=` or `:`,
+/// as in an assignment's value or a `PATH`.
+fn expands_at(c: char, before: Option<char>) -> bool {
+    match c {
+        '#' => before.is_none(),
+        '~' => matches!(before, None | Some('=' | ':')),
+        _ => false,
+    }
+}
+
+/// Whether `s` reads otherwise outside quotes than as its own characters.
+fn needs_quoting(s: &str) -> bool {
+    let mut before = None;
+    s.chars().any(|c| {
+        let needs = needs_escaping(c) || expands_at(c, before);
+        before = Some(c);
+        needs
+    })
 }
 
 #[cfg(test)]
