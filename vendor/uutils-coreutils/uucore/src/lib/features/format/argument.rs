@@ -40,6 +40,8 @@ pub struct FormatArguments<'a> {
     next_arg_position: usize,
     highest_arg_position: Option<usize>,
     current_offset: usize,
+    /// Whether a number is read as bash's printf reads it ([`Self::as_bash_reads`]).
+    bash: bool,
 }
 
 impl<'a> FormatArguments<'a> {
@@ -50,6 +52,20 @@ impl<'a> FormatArguments<'a> {
             next_arg_position: 0,
             highest_arg_position: None,
             current_offset: 0,
+            bash: false,
+        }
+    }
+
+    /// Format arguments whose numbers are read as bash's printf builtin reads them, where GNU's
+    /// printf reads them otherwise: an empty one is 0, with no message; one out of range warns,
+    /// `printf: warning: 99999999999999999999: Numerical result out of range`, and leaves the
+    /// status 0; one that is no number, or not wholly one, is `printf: 12abc: invalid number`,
+    /// and the status 1; a character constant with more after it, `'ab`, is its first
+    /// character's code, with no message.
+    pub fn as_bash_reads(args: &'a [FormatArgument]) -> Self {
+        Self {
+            bash: true,
+            ..Self::new(args)
         }
     }
 
@@ -91,7 +107,7 @@ impl<'a> FormatArguments<'a> {
     pub fn next_i64(&mut self, position: ArgumentLocation) -> i64 {
         match self.next_arg(position) {
             Some(FormatArgument::SignedInt(n)) => *n,
-            Some(FormatArgument::Unparsed(os)) => Self::get_num::<i64>(os),
+            Some(FormatArgument::Unparsed(os)) => self.get_num::<i64>(os),
             _ => 0,
         }
     }
@@ -99,7 +115,7 @@ impl<'a> FormatArguments<'a> {
     pub fn next_u64(&mut self, position: ArgumentLocation) -> u64 {
         match self.next_arg(position) {
             Some(FormatArgument::UnsignedInt(n)) => *n,
-            Some(FormatArgument::Unparsed(os)) => Self::get_num::<u64>(os),
+            Some(FormatArgument::Unparsed(os)) => self.get_num::<u64>(os),
             _ => 0,
         }
     }
@@ -107,7 +123,7 @@ impl<'a> FormatArguments<'a> {
     pub fn next_extended_big_decimal(&mut self, position: ArgumentLocation) -> ExtendedBigDecimal {
         match self.next_arg(position) {
             Some(FormatArgument::Float(n)) => n.clone(),
-            Some(FormatArgument::Unparsed(os)) => Self::get_num::<ExtendedBigDecimal>(os),
+            Some(FormatArgument::Unparsed(os)) => self.get_num::<ExtendedBigDecimal>(os),
             _ => ExtendedBigDecimal::zero(),
         }
     }
@@ -159,7 +175,7 @@ impl<'a> FormatArguments<'a> {
         Ok(val)
     }
 
-    fn get_num<T>(os: &OsStr) -> T
+    fn get_num<T>(&self, os: &OsStr) -> T
     where
         T: ExtendedParser + From<u8> + From<u32> + Default,
     {
@@ -175,7 +191,11 @@ impl<'a> FormatArguments<'a> {
         };
 
         // Get the best possible value, even if parsed was an error.
-        extract_value(parsed, &s, quote_start)
+        if self.bash {
+            bash_value(parsed, &s, quote_start)
+        } else {
+            extract_value(parsed, &s, quote_start)
+        }
     }
 
     fn get_at_relative_position(&mut self, pos: NonZero<usize>) -> Option<&'a FormatArgument> {
@@ -193,6 +213,34 @@ impl<'a> FormatArguments<'a> {
                 arg
             }
             ArgumentLocation::Position(pos) => self.get_at_relative_position(pos),
+        }
+    }
+}
+
+/// The value bash's printf takes of `input`, parsed as `p`, with its message and status
+/// ([`FormatArguments::as_bash_reads`]).
+fn bash_value<T: Default>(
+    p: Result<T, ExtendedParserError<T>>,
+    input: &str,
+    quote_start: bool,
+) -> T {
+    match p {
+        Ok(v) => v,
+        Err(_) if input.is_empty() => T::default(),
+        Err(ExtendedParserError::Overflow(v) | ExtendedParserError::Underflow(v)) => {
+            show_warning!("{input}: Numerical result out of range");
+            v
+        }
+        Err(ExtendedParserError::PartialMatch(v, _)) if quote_start => v,
+        Err(ExtendedParserError::PartialMatch(v, _)) => {
+            set_exit_code(1);
+            show_error!("{input}: invalid number");
+            v
+        }
+        Err(ExtendedParserError::NotNumeric) => {
+            set_exit_code(1);
+            show_error!("{input}: invalid number");
+            T::default()
         }
     }
 }
