@@ -38,9 +38,11 @@
 //! - A send is never refused for being busy: it waits in the queue, and its
 //!   message id makes a repeated send harmless.
 //! - `retry`, `resume` and `compact` need an idle session.
-//! - While an edit is prepared, the session refuses sends, steers, agent
-//!   messages and command reports, and a model switch waits for it, so the edit
-//!   never discards one.
+//! - While an edit is prepared, the session refuses sends, agent messages and
+//!   command reports, and a model switch waits for it, so the edit never
+//!   discards one. A steer waits for the edit's turn, as it waits for any.
+//! - A steer is never refused while the session is open: one no model's turn
+//!   takes opens the next turn.
 //!
 //! # Cancellation
 //!
@@ -301,24 +303,15 @@ impl AdmissionError {
 /// Why a steer was refused.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SteerError {
-    #[error("No turn is running to steer")]
-    NotRunning,
-    #[error("The running turn is being stopped")]
-    Stopped,
-    #[error("The running turn is finishing")]
-    Finishing,
-    #[error("A message edit is being prepared")]
-    Editing,
+    #[error("The session is closed")]
+    Closed,
 }
 
 impl SteerError {
     /// The refusal as the page words it.
     pub fn refusal(&self) -> Refusal {
         let code = match self {
-            Self::NotRunning => AgentCode::NothingToSteer,
-            Self::Stopped => AgentCode::TurnStopping,
-            Self::Finishing => AgentCode::TurnFinishing,
-            Self::Editing => AgentCode::EditInProgress,
+            Self::Closed => AgentCode::SessionClosed,
         };
         Refusal::new(code, self.to_string())
     }
@@ -1175,7 +1168,8 @@ impl AgentSession {
         self.shared.update(SessionCore::clear_queue)
     }
 
-    /// Adds input to the running turn at its next boundary.
+    /// Adds input to the running turn at its next boundary, or starts a turn
+    /// with it when no turn takes it.
     pub fn steer(&self, content: Vec<UserContentBlock>, id: BlockId) -> Result<(), SteerError> {
         self.steer_with_comments(content, Vec::new(), id)
     }

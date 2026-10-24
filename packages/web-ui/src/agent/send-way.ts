@@ -109,9 +109,9 @@ export function offersRetry(sent: readonly (MessageOnItsWay & { retryable?: fals
  * confirmation, since the backend starts the turn before it writes the message.
  *
  * While nothing runs, it is the first message on its way, whichever way it was
- * sent: the session answers any message next then, a steer it refuses because
- * its turn ended included, which goes as a message, and a queued message whose
- * turn ended. A message whose delivery failed starts nothing.
+ * sent: the session answers any message next then, a steer that no turn takes
+ * included, and a queued message whose turn ended. A message whose delivery
+ * failed starts nothing.
  */
 export function turnStartingMessage<T extends MessageOnItsWay>(phase: SessionPhase, sent: readonly T[]): T | undefined {
   return sent.find((message) => message.error === null && (message.way === 'send' || phase === 'idle'))

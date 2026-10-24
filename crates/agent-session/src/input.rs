@@ -19,9 +19,13 @@
 //! compaction keeps it outside the compacted prefix and takes it before
 //! inference resumes.
 //!
-//! The human steers are not part of the checkpoint: a steer that never reached
-//! the transcript is lost with a restart, and nothing else keeps a copy of it
-//! for a client that reconnects, which reads the list from the live session.
+//! A human steer that no model's turn takes opens the next turn: the session's
+//! scheduler, never the action that ran, decides it (`SessionCore::start_next`).
+//! So what the user sends is answered, or given back by the user's Recall.
+//!
+//! The human steers are not part of the checkpoint: a shutdown moves them into
+//! the queue, which is, and a process that dies loses them. A client that
+//! reconnects reads the list from the live session.
 
 use std::collections::HashMap;
 
@@ -64,10 +68,8 @@ pub(super) enum Opens {
 /// Which inputs a boundary writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Take {
-    /// The user's Stop and a failure write all of it.
+    /// A model's turn writes all of it before its request.
     Everything,
-    /// A shutdown writes the human steers; the rest stays in the checkpoint.
-    Steers,
     /// The boundary after a response's stream writes only the agent messages.
     ///
     /// The command reports wait until the response's tools have run, so a look
@@ -76,7 +78,9 @@ pub(super) enum Take {
     /// request that carries them.
     AgentMessages,
     /// The boundary after a step of tool calls writes all but the human
-    /// steers, which stay pending until the request that carries them.
+    /// steers, which stay pending until the request that carries them. The
+    /// user's Stop, a failure and a queued message sent now write the same,
+    /// and the steers join the next turn.
     AllButSteers,
 }
 
@@ -84,7 +88,6 @@ impl Take {
     fn takes(self, input: &Input) -> bool {
         match self {
             Self::Everything => true,
-            Self::Steers => matches!(input, Input::Steer(_)),
             Self::AgentMessages => matches!(input, Input::Agent(_)),
             Self::AllButSteers => !matches!(input, Input::Steer(_)),
         }
@@ -263,12 +266,13 @@ impl InputQueue {
             .collect()
     }
 
-    /// Drops the human steers still pending when their action ended
-    /// normally.
-    pub(super) fn discard_steers(&mut self) {
-        self.entries
-            .retain(|input| !matches!(input, Input::Steer(_)));
-        let waiting: Vec<String> = self.entries.iter().filter_map(|input| input.id().map(str::to_owned)).collect();
-        self.admitted.retain(|id, _| waiting.contains(id));
+    /// Takes the first human steer that waits, which opens the next turn
+    /// when no model's turn took it.
+    pub(super) fn take_first_steer(&mut self) -> Option<PendingSteer> {
+        let at = self.entries.iter().position(|input| matches!(input, Input::Steer(_)))?;
+        match self.entries.remove(at) {
+            Input::Steer(steer) => Some(steer),
+            _ => unreachable!("the position is a steer's"),
+        }
     }
 }

@@ -154,10 +154,12 @@ pub struct PendingCall {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingSteer {
-    /// The steer's id, which its `steer` block will have.
+    /// The steer's id, which its `steer` block will have, or, when it opens a
+    /// turn of its own, that turn's id.
     #[garde(skip)]
     pub id: BlockId,
-    /// The running turn that receives the steer.
+    /// The turn that is to read the steer: the running turn, or the one it
+    /// opens when no turn runs that will.
     #[garde(skip)]
     pub turn_id: TurnId,
     /// The model selection when the steer was accepted.

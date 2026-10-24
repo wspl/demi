@@ -953,14 +953,38 @@ impl SessionCore {
             || self.transcript.has_user_turn(id)
     }
 
-    /// Starts the first waiting action, or a continuation for input that waits,
-    /// or settles: idle, or closed once dispose began.
+    /// Starts the next turn with the first human steer that waits, which no
+    /// model's turn took, unless a queued message is next; else the first
+    /// waiting action, or a continuation for input that waits; else settles:
+    /// idle, or closed once dispose began, with the steers kept in the queue.
+    /// The steers that wait join the turn that starts at its first boundary.
     ///
     /// A root whose last turn failed writes the input that waits into that turn
     /// instead.
     pub(super) fn start_next(&mut self) {
         if self.disposing {
+            self.queue_steers(0);
             self.activity = Activity::Closed { interrupted: false };
+            return;
+        }
+        // A message that waits next opens the turn, and the steers join it.
+        let message_next = self.pending.front().is_some_and(PendingAction::is_send);
+        if let Some(steer) = (!message_next).then(|| self.inputs.take_first_steer()).flatten() {
+            let pending_ms = self.inputs.take_admitted(steer.id.as_str()).map(|at| self.ms_since(at));
+            let turn = TurnId::try_from(steer.id.into_string()).expect("a block id is not empty");
+            session_log!(
+                self,
+                info,
+                event = "input.opens_turn",
+                node = %self.id,
+                turn = %turn,
+                input = %turn,
+                kind = "steer",
+                pending_ms,
+                "a steer no turn took opens the next turn"
+            );
+            let kind = ActionKind::Send { content: steer.content, comments: steer.comments, schedule: None };
+            self.start_action(kind, turn, None, pending_ms.unwrap_or(0));
             return;
         }
         let (kind, turn, reply, queued_ms) = match self.pending.pop_front() {
@@ -1254,7 +1278,7 @@ impl SessionCore {
     }
 
     /// The action ended; its checkpoint is saved next. The human steers
-    /// still pending are dropped.
+    /// still pending open the next turn (`start_next`).
     pub(super) fn end_action(&mut self) {
         self.activity = Activity::Finishing;
         self.state_cause = "action_ended";
@@ -1267,7 +1291,6 @@ impl SessionCore {
         self.stop_waiting(WaitEnd::ActionEnd);
         self.end_turn_output();
         self.editing = None;
-        self.inputs.discard_steers();
         self.release_media();
     }
 
@@ -1287,11 +1310,14 @@ impl SessionCore {
     /// - A message whose turn wrote nothing yet goes back to the front of the
     ///   queue instead.
     /// - Another action that wrote nothing ends with the session.
+    /// - The human steers that wait go into the queue as messages, ahead of
+    ///   what waited there, so the checkpoint keeps them.
     ///
     /// Returns whether a turn was interrupted.
     pub(super) fn shut_down(&mut self, kind: ActionKind, turn: &TurnId) -> bool {
         let began = self.action_began();
         self.reject_edit(EditError::Closed);
+        let mut ahead = 0;
         if began {
             self.record_stop(CancelReason::Shutdown);
             self.log_turn_ended("interrupted", None);
@@ -1302,11 +1328,28 @@ impl SessionCore {
                 reply: None,
                 admitted_at: self.clock.now(),
             });
+            ahead = 1;
         }
+        self.queue_steers(ahead);
         self.stop_waiting(WaitEnd::Shutdown);
         self.state_cause = "closed";
         self.activity = Activity::Closed { interrupted: began };
         began
+    }
+
+    /// Moves the human steers that wait into the queue as messages, after its
+    /// first `ahead` entries: a session that closes keeps them in its
+    /// checkpoint.
+    fn queue_steers(&mut self, mut ahead: usize) {
+        while let Some(steer) = self.inputs.take_first_steer() {
+            self.pending.insert(ahead, PendingAction {
+                kind: ActionKind::Send { content: steer.content, comments: steer.comments, schedule: None },
+                turn: TurnId::try_from(steer.id.into_string()).expect("a block id is not empty"),
+                reply: None,
+                admitted_at: self.clock.now(),
+            });
+            ahead += 1;
+        }
     }
 
     // Stop and dispose.
@@ -1399,8 +1442,13 @@ impl SessionCore {
 
     /// A stopped action records the stop.
     ///
-    /// - For the user's Stop, it writes all the input waiting for its next
-    ///   boundary; for a shutdown, the human steers alone.
+    /// - A message its turn had not written yet is written for the user's
+    ///   Stop, which then stops it as it would a moment later, and waits at
+    ///   the front of the queue for a hold.
+    /// - For the user's Stop, it writes the agent messages and the command
+    ///   reports waiting for its next boundary; the human steers join the
+    ///   next turn. A shutdown writes none, which the checkpoint keeps
+    ///   (`shut_down`).
     /// - Then it completes running calls as aborted and appends the stopped
     ///   marker, or the interruption record when the session is shutting down.
     /// - A Stop of an action that wrote nothing, with what the stop wrote
@@ -1408,11 +1456,26 @@ impl SessionCore {
     ///
     /// The Stop holds nothing afterwards.
     pub(super) fn record_stop(&mut self, reason: CancelReason) {
-        let take = match reason {
-            CancelReason::Stop | CancelReason::Hold(_) => Take::Everything,
-            CancelReason::Shutdown => Take::Steers,
+        let unwritten = match &mut self.activity {
+            Activity::Running(run) => run.unwritten.take().map(|message| (run.turn.clone(), message)),
+            _ => None,
         };
-        self.write_inputs(take, if matches!(reason, CancelReason::Shutdown) { "shutdown" } else { "stop" });
+        if let Some((turn, message)) = unwritten {
+            let QueuedMessage { content, comments, schedule, .. } = message;
+            match reason {
+                CancelReason::Stop => self.push_user(turn, content, comments, None, schedule),
+                CancelReason::Hold(_) => self.pending.push_front(PendingAction {
+                    kind: ActionKind::Send { content, comments, schedule },
+                    turn,
+                    reply: None,
+                    admitted_at: self.clock.now(),
+                }),
+                CancelReason::Shutdown => {}
+            }
+        }
+        if !matches!(reason, CancelReason::Shutdown) {
+            self.write_inputs(Take::AllButSteers, "stop");
+        }
         let end = match &reason {
             CancelReason::Stop => CallEnd::Stopped,
             CancelReason::Hold(hold) => CallEnd::Held(hold),
@@ -1454,10 +1517,12 @@ impl SessionCore {
         );
     }
 
-    /// A failed action writes all waiting input and completes the calls it
-    /// did not run, then reports the failure.
+    /// A failed action writes the agent messages and the command reports
+    /// that wait, and completes the calls it did not run, then reports the
+    /// failure. The human steers open the next turn: the user's own act ends
+    /// the failure's hold, as a message sent then does.
     pub(super) fn fail(&mut self, report: &ErrorReport) {
-        self.write_inputs(Take::Everything, "failure");
+        self.write_inputs(Take::AllButSteers, "failure");
         self.abort_executing_calls(&CallEnd::Failed(&report.message));
         self.commit();
         self.outbox.push(SessionEvent::Error {
@@ -1686,19 +1751,53 @@ impl SessionCore {
 
     // Steers and agent messages.
 
-    /// Accepts a human steer for the running action's next boundary. A steer
-    /// whose id the session holds, pending or written, was taken already, as
-    /// a page that lost the answer sends it again: it is accepted once.
+    /// Accepts a human steer, whatever runs, while the session is open.
+    ///
+    /// - With nothing running, it is the message that starts the turn.
+    /// - Otherwise it waits for the running model's turn to take it at its
+    ///   next boundary; when the action ends with no turn that did, the
+    ///   scheduler opens the next turn with it (`start_next`).
+    ///
+    /// A steer whose id the session holds, pending, written or as the turn
+    /// it opened, was taken already, as a page that lost the answer sends it
+    /// again: it is accepted once.
     pub(super) fn steer(
         &mut self,
         id: BlockId,
         content: Vec<UserContentBlock>,
         comments: Vec<MessageComment>,
     ) -> Result<(), SteerError> {
-        if self.inputs.pending_steers().iter().any(|steer| steer.id == id) || self.transcript.find(&id).is_some() {
+        let own_turn = TurnId::try_from(id.as_str().to_owned()).expect("a block id is not empty");
+        if self.inputs.pending_steers().iter().any(|steer| steer.id == id)
+            || self.transcript.find(&id).is_some()
+            || self.knows_turn(&own_turn)
+        {
             return Ok(());
         }
-        let turn = self.steerable_turn()?;
+        if self.disposing || matches!(self.activity, Activity::Closed { .. }) {
+            return Err(SteerError::Closed);
+        }
+        if matches!(self.activity, Activity::Idle) {
+            session_log!(
+                self,
+                info,
+                event = "input.admitted",
+                node = %self.id,
+                turn = %own_turn,
+                input = %id,
+                kind = "steer",
+                path = "starts_turn",
+                "a steer was admitted while nothing ran, and starts the turn"
+            );
+            drop(self.push_action(ActionKind::Send { content, comments, schedule: None }, own_turn));
+            return Ok(());
+        }
+        // A steer no running turn will take, as one sent after a Stop, names
+        // the turn it is to open.
+        let turn = match &self.activity {
+            Activity::Running(run) if !run.cancel.is_cancelled() => run.turn.clone(),
+            _ => own_turn,
+        };
         session_log!(
             self,
             info,
@@ -1720,20 +1819,6 @@ impl SessionCore {
             comments,
         }));
         Ok(())
-    }
-
-    /// The turn a steer joins now: the running action's, unless it was
-    /// stopped or nothing runs.
-    fn steerable_turn(&self) -> Result<TurnId, SteerError> {
-        if self.preparing_edit() {
-            return Err(SteerError::Editing);
-        }
-        match &self.activity {
-            Activity::Running(run) if run.cancel.is_cancelled() => Err(SteerError::Stopped),
-            Activity::Running(run) => Ok(run.turn.clone()),
-            Activity::Finishing => Err(SteerError::Finishing),
-            Activity::Idle | Activity::Closed { .. } => Err(SteerError::NotRunning),
-        }
     }
 
     pub(super) fn cancel_steer(&mut self, id: &BlockId) -> bool {

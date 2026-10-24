@@ -437,12 +437,6 @@ pub enum AgentCode {
     SessionClosed,
     /// A message edit is being prepared.
     EditInProgress,
-    /// A steer while no turn runs.
-    NothingToSteer,
-    /// A steer while the running turn is being stopped.
-    TurnStopping,
-    /// A steer while the running turn is finishing.
-    TurnFinishing,
     /// An edit whose operation id was used for another request.
     EditConflict,
     /// An edit while the session has work pending.
