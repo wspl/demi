@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { logStorageFailed } from '@demicodes/web-ui/infra/log'
 import { TAB_HISTORY } from '@demicodes/web-ui/agent/tab-close'
 import { SIDEBAR_GROUPS } from '@demicodes/web-ui/sidebar/list-model'
+import { holds } from './account-owner'
 
 const localStateSchema = z.object({
   foldedProjects: z.array(z.string()),
@@ -53,6 +54,10 @@ export function readLocalState(userId: string): LocalState {
 }
 
 export function writeLocalState(userId: string, value: LocalState): void {
+  // A page whose account no longer holds the browser's data writes none of it.
+  if (!holds(userId)) {
+    return
+  }
   try {
     localStorage.setItem(`demi.preferences.${userId}`, JSON.stringify(value))
   } catch (error) {

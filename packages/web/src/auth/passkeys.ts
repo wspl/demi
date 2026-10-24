@@ -159,7 +159,7 @@ export function usePasskeySignals(): void {
   watch(
     () => {
       const state = product.snapshot
-      return state && state.passkeyRpId && state.passkeys
+      return state && state.passkeyRpId && state.passkeys && state.user
         ? {
             rpId: state.passkeyRpId,
             userHandle: state.passkeys.userHandle,

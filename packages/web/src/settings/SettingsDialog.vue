@@ -36,7 +36,7 @@ import { useSession } from '../auth/session'
 import { usePasskeys } from '../auth/passkeys'
 import { useSessions } from '../auth/handoff'
 import { useResources } from '../state/resources'
-import { useProduct } from '../state/product'
+import { known, useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useNotifications } from '../state/notifications'
 import { useConversations } from '../conversation/store'
@@ -72,7 +72,7 @@ const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
 /** The rail lists Users for the master and admins only. */
-const withUsers = computed(() => withUsersSection(settingsSections(), product.snapshot?.user.role ?? 'user'))
+const withUsers = computed(() => withUsersSection(settingsSections(), product.snapshot?.user?.role ?? 'user'))
 const sections = computed(() =>
   withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>
     pluginEnabled(product.snapshot, plugin),
@@ -83,6 +83,8 @@ const sections = computed(() =>
     ),
   })),
 )
+/** The parts of the state the rail's sections follow: the role, the instance's mode and the plugins. */
+const SECTION_PARTS = ['user', 'mode', 'plugins'] as const
 const address = useSettingsAddress()
 /** Settings are open while the address is theirs (`address.ts`). */
 const open = computed(() => address.section.value !== undefined)
@@ -91,10 +93,11 @@ const tab = computed({
   get: () => address.section.value ?? null,
   set: (section) => void address.show(section),
 })
-// An address naming a section the rail does not offer, once the product
-// state says which it offers, shows settings with no section chosen.
+// An address naming a section the rail does not offer, once the parts of the
+// state that say which it offers are there, shows settings with no section
+// chosen; the offline copy holds some of them only.
 watch(
-  [tab, sections, () => product.snapshot !== null],
+  [tab, sections, () => SECTION_PARTS.every((part) => product.partLoad(part) === 'ready')],
   ([section, , known]) => {
     if (section === null || !known) {
       return
@@ -128,7 +131,7 @@ function rename(nickname: string): Promise<void> {
   if (!next) {
     return Promise.resolve()
   }
-  const shown = product.change('user', (state) => ({ ...state, user: { ...state.user, nickname: next } }))
+  const shown = product.change('user', (state) => ({ ...state, user: { ...known(state.user, 'user'), nickname: next } }))
   return nameWrites
     .run('nickname', async () => {
       shown.send()
@@ -453,7 +456,7 @@ function resetShortcuts(): void {
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />
     <PortForwardsPanel v-else-if="section === 'portForwards'" />
-    <UsersPanel v-else-if="section === 'users' && product.snapshot?.user.role !== 'user'" />
+    <UsersPanel v-else-if="section === 'users' && product.snapshot?.user?.role !== 'user'" />
     <CredentialsPanel v-else-if="section === 'credentials'" />
     <InstructionsPanel v-else-if="section === 'instructions'" />
     <SubagentsPanel v-else-if="section === 'subagents'" />
@@ -470,7 +473,7 @@ function resetShortcuts(): void {
     <SettingsArchived
       v-else-if="section === 'archived'"
       :conversations="archived"
-      :load="product.load"
+      :load="product.partLoad('conversations')"
       :overlay-store="appOverlayStore"
       @retry="conversations.reloadList"
       @open="openConversation"

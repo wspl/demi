@@ -20,7 +20,7 @@ import {
   type SyncFollowed,
   type VendorCatalog,
 } from '../api/generated/web-api'
-import { LIST_ROUTES, isListPart, pageStateSchema, type ListPart, type PageState, type Untagged } from './lists'
+import { LIST_ROUTES, isListPart, readStateSchema, type ListPart, type PageState, type ReadState, type Untagged } from './lists'
 
 /** The state as the page holds it, which a message or a write's answer replaces by part. */
 type ProductState = PageState
@@ -107,17 +107,24 @@ function inOrder(conversations: ConversationSummary[], ids: string[]): Conversat
  * leave the pages at once; a plugin turned on sends its state afresh.
  */
 function withoutOff(
-  states: ProductState['pluginStates'],
-  plugins: ProductState['plugins'],
-): ProductState['pluginStates'] {
+  states: ReadState['pluginStates'] | undefined,
+  plugins: ReadState['plugins'],
+): ReadState['pluginStates'] | undefined {
+  if (!states) {
+    return undefined
+  }
   const off = new Set(plugins.filter((plugin) => !plugin.enabled).map((plugin) => plugin.id))
   return Object.fromEntries(Object.entries(states).filter(([id]) => !off.has(id)))
 }
 
-/** A list the page holds, which a change of it presupposes: the view that changes it holds it. */
-function heldList<T>(value: T | undefined, part: Part): T {
+/**
+ * A part the page holds, which what reads it presupposes: a change of it
+ * comes from a view that shows it, and a message of one item of it from the
+ * channel, which opens only once the state is read.
+ */
+export function known<T>(value: T | undefined, part: string): T {
   if (value === undefined) {
-    throw new Error(`The page changes the ${part} before it read them`)
+    throw new Error(`The page reads the ${part} before it knows them`)
   }
   return value
 }
@@ -126,48 +133,48 @@ function heldList<T>(value: T | undefined, part: Part): T {
 function partEvent(state: ProductState, part: Part): PartEvent {
   switch (part) {
     case 'conversation_order':
-      return { type: 'conversation_order', ids: state.conversations.map((conversation) => conversation.id) }
+      return { type: 'conversation_order', ids: known(state.conversations, part).map((conversation) => conversation.id) }
     case 'preferences':
-      return { type: 'preferences', preferences: state.preferences }
+      return { type: 'preferences', preferences: known(state.preferences, part) }
     case 'user':
-      return { type: 'user', user: state.user }
+      return { type: 'user', user: known(state.user, part) }
     case 'workspaces':
-      return { type: 'workspaces', workspaces: state.workspaces }
+      return { type: 'workspaces', workspaces: known(state.workspaces, part) }
     case 'devices':
-      return { type: 'devices', devices: state.devices }
+      return { type: 'devices', devices: known(state.devices, part) }
     case 'plugins':
-      return { type: 'plugins', plugins: state.plugins }
+      return { type: 'plugins', plugins: known(state.plugins, part) }
     case 'providers':
-      return { type: 'providers', providers: state.providers }
+      return { type: 'providers', providers: known(state.providers, part) }
     case 'cloud':
-      return { type: 'cloud', cloud: state.cloud }
+      return { type: 'cloud', cloud: known(state.cloud, part) }
     case 'logins':
-      return { type: 'logins', logins: state.logins }
+      return { type: 'logins', logins: known(state.logins, part) }
     case 'subagents':
-      return { type: 'subagents', subagents: heldList(state.subagents, part) }
+      return { type: 'subagents', subagents: known(state.subagents, part) }
     case 'instructions':
-      return { type: 'instructions', instructions: heldList(state.instructions, part) }
+      return { type: 'instructions', instructions: known(state.instructions, part) }
     case 'credentials':
-      return { type: 'credentials', credentials: heldList(state.credentials, part) }
+      return { type: 'credentials', credentials: known(state.credentials, part) }
     case 'passkeys':
-      return { type: 'passkeys', ...heldList(state.passkeys, part) }
+      return { type: 'passkeys', ...known(state.passkeys, part) }
     case 'sessions':
-      return { type: 'sessions', sessions: heldList(state.sessions, part) }
+      return { type: 'sessions', sessions: known(state.sessions, part) }
     case 'users':
-      return { type: 'users', users: heldList(state.users, part) }
+      return { type: 'users', users: known(state.users, part) }
     case 'port_forwards':
-      return { type: 'port_forwards', portForwards: heldList(state.portForwards, part) }
+      return { type: 'port_forwards', portForwards: known(state.portForwards, part) }
     case 'exposed_ports':
-      return { type: 'exposed_ports', exposedPorts: heldList(state.exposedPorts, part) }
+      return { type: 'exposed_ports', exposedPorts: known(state.exposedPorts, part) }
     case 'models':
-      return { type: 'models', models: state.models }
+      return { type: 'models', models: known(state.models, part) }
   }
   if (part.startsWith('plugin:')) {
     const plugin = part.slice('plugin:'.length)
-    return { type: 'plugin', plugin, state: state.pluginStates[plugin] ?? null }
+    return { type: 'plugin', plugin, state: known(state.pluginStates, part)[plugin] ?? null }
   }
   const id = part.slice('conversation:'.length)
-  const conversation = state.conversations.find((candidate) => candidate.id === id)
+  const conversation = known(state.conversations, part).find((candidate) => candidate.id === id)
   return conversation ? { type: 'conversation', conversation } : { type: 'conversation_deleted', id }
 }
 
@@ -175,11 +182,11 @@ function partEvent(state: ProductState, part: Part): PartEvent {
 export function withPart(state: ProductState, event: PartEvent): ProductState {
   switch (event.type) {
     case 'conversation':
-      return { ...state, conversations: withSummary(state.conversations, event.conversation) }
+      return { ...state, conversations: withSummary(known(state.conversations, 'conversations'), event.conversation) }
     case 'conversation_deleted':
-      return { ...state, conversations: state.conversations.filter((conversation) => conversation.id !== event.id) }
+      return { ...state, conversations: known(state.conversations, 'conversations').filter((conversation) => conversation.id !== event.id) }
     case 'conversation_order':
-      return { ...state, conversations: inOrder(state.conversations, event.ids) }
+      return { ...state, conversations: inOrder(known(state.conversations, 'conversations'), event.ids) }
     case 'preferences':
       return { ...state, preferences: event.preferences }
     case 'user':
@@ -191,7 +198,7 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
     case 'plugins':
       return { ...state, plugins: event.plugins, pluginStates: withoutOff(state.pluginStates, event.plugins) }
     case 'plugin':
-      return { ...state, pluginStates: { ...state.pluginStates, [event.plugin]: event.state } }
+      return { ...state, pluginStates: { ...known(state.pluginStates, 'plugin states'), [event.plugin]: event.state } }
     case 'providers':
       return { ...state, providers: event.providers }
     case 'cloud':
@@ -357,6 +364,10 @@ export const useProduct = defineStore('product', () => {
   const firstUser = ref<ProductState['user'] | null>(null)
   /** What the page shows: the state it last read with its own changes not landed yet applied on top. */
   const snapshot = slot.shown
+  /**
+   * Where the state's read stands: a view of the whole state waits for it,
+   * and a view of one part for that part (`partLoad`).
+   */
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
   /**
    * What the page can add, read once in the background as the page starts
@@ -369,10 +380,18 @@ export const useProduct = defineStore('product', () => {
     vendors.value !== null ? 'ready' : vendorError.value ? 'failed' : 'loading',
   )
   /**
+   * Where the part `part` of the state stands for the view that shows it:
+   * there, from the offline copy or a read; still to come; or not coming,
+   * when the backend refused the state's read and the page holds none of it.
+   */
+  function partLoad(part: keyof PageState): 'loading' | 'ready' | 'failed' {
+    return snapshot.value?.[part] !== undefined ? 'ready' : load.value === 'failed' ? 'failed' : 'loading'
+  }
+  /**
    * Whether the page holds the catalog of the entries' models, which comes
    * with the product state and its owner announces anew.
    */
-  const catalogLoad = computed(() => snapshot.value === null ? 'loading' : 'ready')
+  const catalogLoad = computed(() => (partLoad('models') === 'ready' ? 'ready' : 'loading'))
   const activeConversationId = ref<string | null>(null)
   /**
    * The backend closed the channel because it shuts down, and the state has
@@ -419,14 +438,14 @@ export const useProduct = defineStore('product', () => {
     const served = servedBuild.value
     return page !== null && served !== null && served !== page ? served : null
   })
-  const catalog = computed(() => snapshot.value?.models.providers ?? [])
+  const catalog = computed(() => snapshot.value?.models?.providers ?? [])
   /**
    * The selection the small model's Automatic resolves to, which Settings ›
    * Agent shows beside it (`crates/backend-providers/src/llm/small_model.rs`);
    * null when the backend resolves none for the page, or before the state
    * is read.
    */
-  const automaticSmallModel = computed(() => snapshot.value?.models.smallModel ?? null)
+  const automaticSmallModel = computed(() => snapshot.value?.models?.smallModel ?? null)
   let vendorRequest: Promise<void> | null = null
   /** Set while the page is signed in and follows the state. */
   let controller: AbortController | null = null
@@ -757,7 +776,7 @@ export const useProduct = defineStore('product', () => {
         // The backend's own failure, which it answered, fails the regions
         // until the page has a state; a read that could not reach it keeps
         // them loading.
-        if (error instanceof ApiError && !backendNotReached(error) && !snapshot.value) {
+        if (error instanceof ApiError && !backendNotReached(error) && !loaded) {
           load.value = 'failed'
         }
         await new Promise<void>((resolve) => {
@@ -777,7 +796,7 @@ export const useProduct = defineStore('product', () => {
     if (named.success) {
       servedBuild.value = named.data.webBuild ?? null
     }
-    const parsed = pageStateSchema.safeParse(body)
+    const parsed = readStateSchema.safeParse(body)
     if (!parsed.success) {
       // A state of another build, whose contract may say what this page
       // cannot read, only names the build to load.
@@ -949,7 +968,11 @@ export const useProduct = defineStore('product', () => {
     }
   }
 
-  /** Whether the state was read since the page started, which a copy of the offline cache does not count. */
+  /**
+   * Whether the state was read since the page started, which the offline
+   * copy's parts do not count: the channel opens and the lists are read only
+   * after it.
+   */
   let loaded = false
 
   /** `state` with the lists the page holds, which the state does not carry. */
@@ -1031,10 +1054,13 @@ export const useProduct = defineStore('product', () => {
     }
   }
 
-  /** Reads each list a view holds that the page holds none of yet, as after the state was read. */
+  /**
+   * Reads each list a view holds that was not read on this page yet, as after
+   * the state was read; what the offline copy held of one shows until then.
+   */
   function readHeldLists(): void {
     for (const part of holders.keys()) {
-      if (listValue(part) === undefined && !listReads.has(part)) {
+      if (!listTags.has(part) && !listReads.has(part)) {
         readList(part, false)
       }
     }
@@ -1048,7 +1074,7 @@ export const useProduct = defineStore('product', () => {
    */
   function readList(part: ListPart, stale: boolean): void {
     listReads.get(part)?.abort()
-    if (read.value === null || !controller) {
+    if (!loaded || !controller) {
       // The state's read starts every held list's.
       return
     }
@@ -1121,32 +1147,23 @@ export const useProduct = defineStore('product', () => {
     // cannot reach it, until the page stops following the state.
     stopWaiting = waitForBackendWith((attempt, signal) => reachable(attempt, AbortSignal.any([signal, lifetime.signal])))
     // The state is read first, and the channel opens after it, to follow
-    // what it read. A copy that shows meanwhile and holds a version is
-    // followed from instead (`showCopy`).
+    // what it read, whether the offline copy shows meanwhile or not.
     readState(false)
     // Its failure is the Add Provider dialog's region state, with its own Retry.
     void loadVendors().catch(() => {})
   }
 
   /**
-   * Shows `state`, the account's copy kept for opening offline, which the page
-   * follows from the version it holds with no read, as after a break: what
-   * changed since comes on the channel, or is read again when the backend no
-   * longer keeps that version. A page that holds a state already keeps it.
+   * Shows `parts`, what the account's offline copy holds of the state, until
+   * the state is read, which replaces them whole: the copy's parts show at
+   * once, every other part stays missing and its view loading. A page that
+   * holds a state already keeps it.
    */
-  function showCopy(state: ProductState): void {
+  function showCopy(parts: PageState): void {
     if (read.value !== null) {
       return
     }
-    slot.replace(state)
-    load.value = 'ready'
-    if (controller && !loaded && !choosing) {
-      stateRead?.abort()
-      stateWait?.cancel()
-      stateRead = null
-      loaded = true
-      connect()
-    }
+    slot.replace(parts)
   }
 
   /** The user's Retry: connects at once when the channel is not open. */
@@ -1154,9 +1171,9 @@ export const useProduct = defineStore('product', () => {
     if (!controller) {
       return
     }
-    // The regions waiting for the first snapshot show it loading at once, a
+    // The regions waiting for the state's read show it loading at once, a
     // channel already on its way included (`RegionStatus`).
-    if (!snapshot.value) {
+    if (!loaded) {
       load.value = 'loading'
     }
     if (!loaded && !choosing) {
@@ -1217,6 +1234,7 @@ export const useProduct = defineStore('product', () => {
     vendors,
     vendorLoad,
     catalogLoad,
+    partLoad,
     activeConversationId,
     show,
     hold,

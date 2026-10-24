@@ -25,7 +25,7 @@ const { revoke, rename, setRoute, resetCloud } = settings
 const devices = computed<SettingsDevice[]>(() =>
   resources.devices.map((device) => ({
     ...device,
-    pairedAt: product.snapshot?.devices.find((candidate) => candidate.id === device.id)?.claimedAt ?? '',
+    pairedAt: product.snapshot?.devices?.find((candidate) => candidate.id === device.id)?.claimedAt ?? '',
     direct: directStatus(device.id),
   })),
 )
@@ -44,7 +44,7 @@ const shown = computed(() => (address.section.value === 'devices' ? address.deta
 watch(
   [shown, () => product.snapshot],
   ([id, snapshot]) => {
-    if (id && snapshot && !snapshot.devices.some((device) => device.id === id))
+    if (id && snapshot?.devices && !snapshot.devices.some((device) => device.id === id))
       void address.show('devices')
   },
 )

@@ -58,6 +58,7 @@ import { DeviceLive } from './live'
 import { DeviceMeter, meterState, pageClock, type MeterState } from './meter'
 import { connectPeer } from './peer'
 import { DeviceSignaling, isBusy } from './signaling'
+import { holdsAny } from '../state/account-owner'
 
 /** A device in use, with its signaling socket, its peer for live views and the measuring of its paths. */
 interface UsedDevice {
@@ -110,7 +111,7 @@ export function directRoute(conversationId: string): DirectRoute | null {
  * before a conversation used it.
  */
 export function watchDirect(deviceId: string): void {
-  const device = useProduct().snapshot?.devices.find((candidate) => candidate.id === deviceId)
+  const device = useProduct().snapshot?.devices?.find((candidate) => candidate.id === deviceId)
   if (device?.kind === 'user' && device.state === 'online')
     use(deviceId)
 }
@@ -118,12 +119,12 @@ export function watchDirect(deviceId: string): void {
 /** What Settings → Devices shows of the path to paired device `deviceId` (`packages/web-ui/src/devices/direct.ts`). */
 export function directStatus(deviceId: string): DirectStatus {
   const product = useProduct()
-  const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
+  const device = product.snapshot?.devices?.find((candidate) => candidate.id === deviceId)
   const state = states.get(deviceId) ?? directState()
   const measured = meters.get(deviceId) ?? keptMeasurement(deviceId)
   return {
     route: device?.route ?? 'automatic',
-    crossing: (product.snapshot?.stunUrls.length ?? 0) > 0,
+    crossing: (product.snapshot?.stunUrls?.length ?? 0) > 0,
     permission: permission.value,
     ...pathStatus(state),
     trying: state.trying,
@@ -160,6 +161,10 @@ function keptMeasurement(deviceId: string): MeterState {
 
 /** Keeps device `deviceId`'s last measurement for this browser's next pages. */
 function keepMeasurement(deviceId: string, measured: MeterState): void {
+  // The browser that holds no account's data keeps none of its devices'.
+  if (!holdsAny()) {
+    return
+  }
   try {
     localStorage.setItem(measuredKey(deviceId), JSON.stringify({ figures: measured.figures, measuredAt: measured.measuredAt }))
   } catch (error) {
@@ -216,6 +221,9 @@ export function lastDirectPath(deviceId: string): DevicePath | null {
 
 /** Keeps `path` as the one this browser found to device `deviceId` last. */
 function keepLastPath(deviceId: string, path: DevicePath): void {
+  if (!holdsAny()) {
+    return
+  }
   try {
     localStorage.setItem(lastPathKey(deviceId), path)
   } catch (error) {
@@ -301,7 +309,7 @@ function use(deviceId: string): UsedDevice {
     if (choice !== 'direct')
       live.close()
   })
-  const route = (): DeviceRoute => product.snapshot?.devices.find((device) => device.id === deviceId)?.route ?? 'automatic'
+  const route = (): DeviceRoute => product.snapshot?.devices?.find((device) => device.id === deviceId)?.route ?? 'automatic'
   const measured = meters.get(deviceId) ?? reactive(keptMeasurement(deviceId))
   meters.set(deviceId, measured)
   const meter = new DeviceMeter(direct, signaling, route, measured, pageClock, (state) => keepMeasurement(deviceId, state))

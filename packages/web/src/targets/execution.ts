@@ -11,7 +11,7 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
   const target = conversation.target
   const workspace =
     target.kind === 'workspace'
-      ? snapshot?.workspaces.find((workspace) => workspace.id === target.workspaceId)
+      ? snapshot?.workspaces?.find((workspace) => workspace.id === target.workspaceId)
       : null
   const deviceId =
     target.kind === 'device'
@@ -19,7 +19,7 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
       : (workspace?.deviceId
         ?? cloudDeviceIn(snapshot?.devices)?.id
         ?? null)
-  const device = snapshot?.devices.find((device) => device.id === deviceId)
+  const device = snapshot?.devices?.find((device) => device.id === deviceId)
   const kind = target.kind === 'cloud' ? ('cloud' as const) : hostKindOf(device)
   return {
     deviceId,

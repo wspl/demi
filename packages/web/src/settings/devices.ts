@@ -6,7 +6,7 @@ import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { errorCode, errorFields, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
-import { useProduct } from '../state/product'
+import { known, useProduct } from '../state/product'
 import { cloudDeviceIn } from '../state/hosts'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -80,7 +80,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   ): Promise<void> {
     const shown = product.change('devices', (state) => ({
       ...state,
-      devices: state.devices.map((device) => device.id === id ? { ...device, ...body } : device),
+      devices: known(state.devices, 'devices').map((device) => device.id === id ? { ...device, ...body } : device),
     }))
     const current = lifetime
     return writes
@@ -95,7 +95,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         const { device } = await readResponse(response, deviceAnswerSchema)
         shown.land((read) => ({
           type: 'devices',
-          devices: read.devices.map((candidate) => candidate.id === device.id ? device : candidate),
+          devices: known(read.devices, 'devices').map((candidate) => candidate.id === device.id ? device : candidate),
         }))
       })
       .catch((error) => {

@@ -53,7 +53,7 @@ const useExposedPortStore = defineStore('exposed-port-settings', () => {
       return null
     }
     const host = new URL(endpoint).hostname
-    return product.snapshot.devices.find((device) => device.id === host)?.name ?? null
+    return product.snapshot.devices?.find((device) => device.id === host)?.name ?? null
   }
 
   /**

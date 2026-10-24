@@ -68,7 +68,7 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
     if (deviceId === null) {
       return null
     }
-    const recorded = product.snapshot?.conversations.some((item) => item.id === shown.id) ?? false
+    const recorded = product.snapshot?.conversations?.some((item) => item.id === shown.id) ?? false
     if (recorded) {
       return { deviceId, directory: path, conversationId: shown.id }
     }

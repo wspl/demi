@@ -37,6 +37,14 @@ const entrySchema = z.object({
 })
 type Entry = z.infer<typeof entrySchema>
 
+/**
+ * Empties every plugin's cache, which holds what the signed-in account's Hosts
+ * showed: the browser forgets it with the account.
+ */
+export async function clearPluginCaches(): Promise<void> {
+  await database.transaction(STORE, 'readwrite', (entries) => entries.clear())
+}
+
 /** The cache of `plugin`, of at most `limit` bytes. */
 export function pluginCache(plugin: string, limit = PLUGIN_CACHE_BYTES, now: () => number = Date.now): PluginCache {
   return {

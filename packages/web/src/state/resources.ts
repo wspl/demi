@@ -14,7 +14,7 @@ import {
   type SidebarReorder,
 } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
-import { useProduct } from './product'
+import { known, useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, setupOf, wireApi } from './catalog'
 import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
@@ -116,16 +116,14 @@ export const useResources = defineStore('resources', () => {
   const signedIn = computed(() => session.signedIn)
   const userId = computed(() => session.user?.id ?? '')
   const username = computed(
-    () => product.snapshot?.user.nickname ?? session.user?.nickname ?? '',
+    () => product.snapshot?.user?.nickname ?? session.user?.nickname ?? '',
   )
   const email = computed(
-    () => product.snapshot?.user.email ?? session.user?.email ?? '',
+    () => product.snapshot?.user?.email ?? session.user?.email ?? '',
   )
   const canConfigure = computed(
     () =>
-      !!product.snapshot &&
-      (product.snapshot.mode === 'isolated' ||
-        product.snapshot.user.role === 'master'),
+      product.snapshot?.mode === 'isolated' || product.snapshot?.user?.role === 'master',
   )
   const appearance = computed(() => preferences.appearance)
   const keys = computed(() => preferences.keys)
@@ -136,8 +134,8 @@ export const useResources = defineStore('resources', () => {
   )
   /** Any device of the snapshot by id, the user's Cloud included; null when unknown. */
   function deviceById(id: string | null): Device | null {
-    const device = product.snapshot?.devices.find((candidate) => candidate.id === id)
-    return device && product.snapshot ? productDevice(device, product.snapshot.devices) : null
+    const device = product.snapshot?.devices?.find((candidate) => candidate.id === id)
+    return device && product.snapshot?.devices ? productDevice(device, product.snapshot.devices) : null
   }
   /** A device as a row's mark shows it: by name and state, or as one the account no longer lists. */
   function sidebarDevice(deviceId: string): SidebarDevice {
@@ -157,7 +155,7 @@ export const useResources = defineStore('resources', () => {
   }
   const projects = computed<Project[]>(() =>
     (product.snapshot?.workspaces ?? []).map((workspace): Project => {
-      const device = product.snapshot?.devices.find(
+      const device = product.snapshot?.devices?.find(
         (candidate) => candidate.id === workspace.deviceId,
       )
       const checkout = {
@@ -272,10 +270,11 @@ export const useResources = defineStore('resources', () => {
    */
   function reorderProject(id: string, beforeId: string | null): Promise<void> {
     const change = product.change('workspaces', (state) => {
-      const moved = state.workspaces.find((workspace) => workspace.id === id)
-      const before = state.workspaces.find((workspace) => workspace.id === beforeId) ?? null
+      const workspaces = known(state.workspaces, 'workspaces')
+      const moved = workspaces.find((workspace) => workspace.id === id)
+      const before = workspaces.find((workspace) => workspace.id === beforeId) ?? null
       return moved && (beforeId === null || before)
-        ? { ...state, workspaces: moveBefore(state.workspaces, moved, before) }
+        ? { ...state, workspaces: moveBefore(workspaces, moved, before) }
         : state
     })
     const { signal } = controller
@@ -322,7 +321,7 @@ export const useResources = defineStore('resources', () => {
     }
     // The caller opens the project, which the channel brings moments after
     // it was made.
-    await product.until((state) => state.workspaces.some((item) => item.id === id), current.signal)
+    await product.until((state) => state.workspaces?.some((item) => item.id === id) ?? false, current.signal)
     return id
   }
 
@@ -335,7 +334,7 @@ export const useResources = defineStore('resources', () => {
   function rememberInProject(id: string, choice: RememberedChoices): void {
     const change = product.change('workspaces', (state) => ({
       ...state,
-      workspaces: state.workspaces.map((workspace) => workspace.id === id ? { ...workspace, ...choice } : workspace),
+      workspaces: known(state.workspaces, 'workspaces').map((workspace) => workspace.id === id ? { ...workspace, ...choice } : workspace),
     }))
     const { signal } = controller
     void choices
@@ -349,7 +348,7 @@ export const useResources = defineStore('resources', () => {
         const { workspace } = await readResponse(response, workspaceAnswerSchema)
         change.land((read) => ({
           type: 'workspaces',
-          workspaces: read.workspaces.map((candidate) => candidate.id === workspace.id ? workspace : candidate),
+          workspaces: known(read.workspaces, 'workspaces').map((candidate) => candidate.id === workspace.id ? workspace : candidate),
         }))
       })
       .catch((error) => {

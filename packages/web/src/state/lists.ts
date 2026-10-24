@@ -36,9 +36,15 @@ export const heldListsShape = {
   exposedPorts: z.array(exposedPortDtoSchema).optional(),
 }
 
-/** The state the page shows: the product state with the lists it holds. */
-export const pageStateSchema = productStateSchema.extend(heldListsShape)
-export type PageState = z.infer<typeof pageStateSchema>
+/** The state a read of `GET /state` gives: the whole product state, with the lists the page holds. */
+export const readStateSchema = productStateSchema.extend(heldListsShape)
+export type ReadState = z.infer<typeof readStateSchema>
+
+/**
+ * The state the page holds: each part is missing until it is known, from
+ * the state's read, the offline copy's or a list's own read.
+ */
+export type PageState = Partial<ReadState>
 
 /** A list the page holds only while a view shows it, named as the message that carries it. */
 export type ListPart = 'subagents' | 'instructions' | 'credentials' | 'passkeys' | 'sessions' | 'users' | 'port_forwards' | 'exposed_ports'

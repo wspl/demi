@@ -60,8 +60,6 @@ function finish(): void {
 async function signOut(): Promise<void> {
   try {
     await session.signOut()
-    // A new document releases account-scoped stores, sockets and draft data.
-    window.location.replace('/login')
   } catch (error) {
     reportError(t('login.signOutFailed'), error, { site: 'login.signOutFailed', userVisible: true })
   }

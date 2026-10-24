@@ -82,7 +82,7 @@ export function productPageHost(): PageHost {
     if (!state || !listed) {
       return null
     }
-    const packages = state.plugins.find((entry) => entry.id === plugin)?.packages ?? []
+    const packages = state.plugins?.find((entry) => entry.id === plugin)?.packages ?? []
     return { deviceId: executionFor(listed).deviceId, packages }
   }
   // Each plugin is watched on its own, so a switch of one leaves the others' stores alone.
@@ -97,7 +97,7 @@ export function productPageHost(): PageHost {
     )
   }
   return {
-    userState: (plugin) => product.snapshot?.pluginStates[plugin],
+    userState: (plugin) => product.snapshot?.pluginStates?.[plugin],
     followState: states.follow,
     async call(plugin, method, params, conversation, options) {
       const scope = conversation === null ? '' : `/conversations/${encodeURIComponent(conversation)}`
@@ -130,7 +130,7 @@ export function productPageHost(): PageHost {
     hostStarting(conversation) {
       const state = product.snapshot
       const listed = conversations.items.find((entry) => entry.id === conversation)
-      return !!state && !!listed && executionFor(listed).kind === 'cloud' && state.cloud.state !== 'running'
+      return !!state && !!listed && executionFor(listed).kind === 'cloud' && state.cloud !== undefined && state.cloud.state !== 'running'
     },
     files: conversationFiles,
     intents: {
