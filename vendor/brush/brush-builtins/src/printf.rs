@@ -24,10 +24,15 @@ impl builtins::Command for PrintfCommand {
         &self,
         context: brush_core::ExecutionContext<'_, SE>,
     ) -> Result<ExecutionResult, Self::Error> {
+        let invocation = invocation(&context)?;
         if let Some(variable_name) = &self.output_variable {
             // Format to a u8 vector.
             let mut result: Vec<u8> = vec![];
-            format(self.format_and_args.as_slice(), &mut result)?;
+            if let Some(ended) = run_in(invocation, &context, || {
+                format(self.format_and_args.as_slice(), &mut result)
+            })? {
+                return Ok(ended);
+            }
 
             // Convert to a string.
             let result_str = String::from_utf8(result).map_err(|_| {
@@ -43,12 +48,86 @@ impl builtins::Command for PrintfCommand {
             )
             .await?;
         } else {
-            format(self.format_and_args.as_slice(), context.stdout())?;
-            context.stdout().flush()?;
+            let mut stdout = context.stdout();
+            if let Some(ended) = run_in(invocation, &context, || {
+                format(self.format_and_args.as_slice(), &mut stdout)
+            })? {
+                return Ok(ended);
+            }
+            stdout.flush()?;
         }
 
         Ok(ExecutionResult::success())
     }
+}
+
+/// The invocation uucore's formatting runs in, as an embedded utility's does:
+/// it reads the locale from the shell's exported variables (`%q`) and writes
+/// its warnings (`printf %d abc`) to printf's standard error through the
+/// host's control, which records a write to a file, and has nothing to read
+/// or write them through outside one.
+fn invocation<SE: brush_core::ShellExtensions>(
+    context: &brush_core::ExecutionContext<'_, SE>,
+) -> Result<uucore::context::Context, brush_core::Error> {
+    // A stream the command closed (`printf x 2>&-`) is the null device, which
+    // takes what is written and gives nothing to read.
+    let stream = |descriptor| -> Result<std::sync::Arc<std::fs::File>, brush_core::Error> {
+        let file = match context.try_fd(descriptor) {
+            Some(file) => file.into_file()?,
+            None => std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(if cfg!(windows) { "NUL" } else { "/dev/null" })?,
+        };
+        Ok(std::sync::Arc::new(file))
+    };
+    let shell = &*context.shell;
+    Ok(uucore::context::Context {
+        name: "printf",
+        control: shell
+            .execution_host()
+            .and_then(|host| host.utility_control(shell.child_attributes())),
+        live_input: false,
+        // printf creates no file: the mask is the shell's, or none beyond the
+        // process's own.
+        umask: shell.child_attributes().umask.unwrap_or(0),
+        cwd: shell.working_dir().to_owned(),
+        env: shell
+            .env()
+            .iter_exported()
+            .filter(|(_, variable)| variable.value().is_set())
+            .map(|(name, variable)| (name.clone(), variable.value().to_cow_str(shell).into_owned()))
+            .collect(),
+        descriptors: std::collections::BTreeMap::new(),
+        stdin: stream(0)?,
+        stdout: stream(1)?,
+        stderr: stream(2)?,
+    })
+}
+
+/// Runs `work` in `invocation`, or gives the result printf ends with when
+/// uucore ends it as it ends a utility: 141 when a diagnostic meets a pipe
+/// whose reader has gone, as SIGPIPE ends a program, and the shell's
+/// cancellation once its job is cancelled.
+fn run_in<SE: brush_core::ShellExtensions>(
+    invocation: uucore::context::Context,
+    context: &brush_core::ExecutionContext<'_, SE>,
+    work: impl FnOnce() -> Result<(), brush_core::Error>,
+) -> Result<Option<ExecutionResult>, brush_core::Error> {
+    let ended = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        uucore::context::with(invocation, work)
+    })) {
+        Ok(result) => return result.map(|()| None),
+        Err(ended) => ended,
+    };
+    if let Some(request) = ended.downcast_ref::<uucore::context::ExitRequest>() {
+        return Ok(Some(brush_core::ExecutionExitCode::from(request.0 as u8).into()));
+    }
+    if ended.is::<uucore::context::Cancelled>() {
+        context.shell.check_execution()?;
+        return Err(std::io::Error::other("shell job cancelled").into());
+    }
+    std::panic::resume_unwind(ended)
 }
 
 fn format(format_and_args: &[String], writer: impl Write) -> Result<(), brush_core::Error> {
