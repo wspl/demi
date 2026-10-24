@@ -332,6 +332,11 @@ pub(crate) const CONTROL: Schema = Schema {
 ///   it, and only a conversation of the automation's user.
 /// - The permission to manage automations is the permission to manage
 ///   schedules.
+/// - The permission to organize conversations goes, with its grants and every
+///   request for it still stored: one that waits for an answer, and one whose
+///   answer a restart kept from its agent, which would reach the agent with
+///   the category's id for its words. An agent renames its conversation
+///   without asking.
 /// - The saved shortcuts are the Mac's set, and the PC's starts at its
 ///   defaults ([`CONTROL_SHORTCUTS_FROM_0_1_65`]).
 ///
@@ -422,7 +427,11 @@ fn control_from_0_1_65(transaction: &Transaction<'_>, seals: &dyn ResealSealed) 
          DROP TABLE automations;
          UPDATE permission_grants SET category = 'schedule.manage' WHERE category = 'automation.manage';
          UPDATE permission_requests SET categories = replace(categories, 'automation.manage', 'schedule.manage')
-           WHERE instr(categories, 'automation.manage') > 0;",
+           WHERE instr(categories, 'automation.manage') > 0;
+         DELETE FROM permission_grants WHERE category = 'conversation.organize';
+         DELETE FROM permission_requests
+           WHERE kind = 'permission'
+             AND EXISTS (SELECT 1 FROM json_each(categories) WHERE value = 'conversation.organize');",
     )
 }
 
