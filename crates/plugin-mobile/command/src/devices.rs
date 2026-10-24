@@ -20,6 +20,8 @@
 //! - A device whose helper or picture stream ends while its simulator runs
 //!   is resuming again, under the same handle: the connection ended, not the
 //!   device.
+//! - A device being erased is resuming too, from its shutdown until it is
+//!   attached again after its boot.
 //! - A conversation whose devices the record holds but which is no longer on
 //!   this Host, as one deleted while the Host was offline, is released as
 //!   the resident starts.
@@ -54,6 +56,7 @@ use crate::{
     driver::{Device, Driver, DriverError},
     error::MobileError,
     kept::{Entry, Kept, Opened},
+    log::Log,
     refs::Refs,
 };
 
@@ -90,6 +93,8 @@ pub struct OpenDevice {
     /// Whether Demi booted it, so it shuts down when it closes.
     pub booted: bool,
     pub device: Arc<dyn Device>,
+    /// The device's log since it opened, which outlasts its connections.
+    pub log: Arc<Log>,
     /// The elements the device's inspects listed.
     pub refs: Mutex<Refs>,
     /// Whether the agent uses the device, and where it last tapped.
@@ -134,6 +139,7 @@ impl OpenDevice {
         simulator: crate::driver::Simulator,
         booted: bool,
         device: Arc<dyn Device>,
+        log: Arc<Log>,
     ) -> Self {
         Self {
             handle,
@@ -145,6 +151,7 @@ impl OpenDevice {
             os: simulator.os,
             booted,
             device,
+            log,
             refs: Mutex::default(),
             activity: watch::Sender::new(LiveActivity {
                 active: false,
@@ -309,6 +316,9 @@ struct Resuming {
     /// The files the device's panel saved and its unfinished recording,
     /// which go to the connection that replaces the lost one.
     carried: Vec<std::path::PathBuf>,
+    /// The device's log, which the new connection follows on; a new one for
+    /// a device the record held, whose log went with the program before.
+    log: Arc<Log>,
 }
 
 #[derive(Default)]
@@ -320,6 +330,9 @@ struct State {
     /// The conversations that reached this resident, whose recorded devices
     /// it took back then.
     served: HashSet<String>,
+    /// The simulators being erased, by native id, which no open takes
+    /// until the erase is over, even once their device was closed.
+    erasing: HashSet<String>,
 }
 
 /// What the Host says of a device's simulator.
@@ -447,6 +460,7 @@ impl Devices {
                 Resuming {
                     entry: entry.clone(),
                     carried: Vec::new(),
+                    log: Arc::new(Log::new()),
                 },
             );
         }
@@ -508,7 +522,8 @@ impl Devices {
                     retry_after(failures)
                 }
                 Probe::Booted(simulator) => {
-                    match self.driver(entry.platform).attach(&entry.conversation, &entry.native_id).await {
+                    let Some(log) = self.resuming_log(&entry) else { return };
+                    match self.driver(entry.platform).attach(&entry.conversation, &entry.native_id, log).await {
                         Ok(device) => {
                             self.install(&entry, simulator, device).await;
                             return;
@@ -535,6 +550,17 @@ impl Devices {
         }
     }
 
+    /// The log of `entry`'s device while it is still to be taken back.
+    fn resuming_log(&self, entry: &Opened) -> Option<Arc<Log>> {
+        self.state
+            .lock()
+            .expect("the registry is intact")
+            .resuming
+            .get(&entry.native_id)
+            .filter(|resuming| resuming.entry.handle == entry.handle)
+            .map(|resuming| resuming.log.clone())
+    }
+
     /// Whether `entry`'s device is still to be taken back: it was not
     /// closed or released meanwhile.
     fn pending(&self, entry: &Opened) -> bool {
@@ -549,7 +575,7 @@ impl Devices {
     /// Puts the attached `device` of `entry` among the open ones, unless
     /// the device is no longer to be taken back, when it is detached, which
     /// leaves the simulator and the record as they are.
-    async fn install(self: &Arc<Self>, entry: &Opened, simulator: crate::driver::Simulator, device: Arc<dyn Device>) {
+    async fn install(self: &Arc<Self>, entry: &Opened, simulator: crate::driver::Simulator, device: Arc<dyn Device>) -> bool {
         let booted = self.kept.holds(entry.platform, &entry.native_id, simulator.boot);
         let installed = {
             let mut state = self.state.lock().expect("the registry is intact");
@@ -566,6 +592,7 @@ impl Devices {
                     simulator,
                     booted,
                     device.clone(),
+                    resuming.log,
                 ));
                 *open.saved.lock().expect("the saved files are intact") = resuming.carried;
                 state.open.insert(entry.native_id.clone(), open.clone());
@@ -578,11 +605,13 @@ impl Devices {
             Some(open) => {
                 self.tasks.spawn(self.clone().lifetime(open));
                 self.changed(&entry.conversation);
+                true
             }
             None => {
                 if let Err(error) = device.detach().await {
                     tracing::warn!(event = "mobile_device.detach_failed", native_id = %entry.native_id, %error, "a device did not detach cleanly");
                 }
+                false
             }
         }
     }
@@ -590,16 +619,17 @@ impl Devices {
     /// `entry`'s device is lost: the Host lists its devices without its
     /// simulator, or the simulator is shut down.
     fn lose(&self, entry: &Opened, why: &str) {
-        let removed = self
-            .state
-            .lock()
-            .expect("the registry is intact")
-            .resuming
-            .remove(&entry.native_id)
-            .is_some_and(|resuming| resuming.entry.handle == entry.handle);
-        if !removed {
+        let removed = {
+            let mut state = self.state.lock().expect("the registry is intact");
+            match state.resuming.get(&entry.native_id) {
+                Some(resuming) if resuming.entry.handle == entry.handle => state.resuming.remove(&entry.native_id),
+                _ => None,
+            }
+        };
+        let Some(removed) = removed else {
             return;
-        }
+        };
+        removed.log.closed().cancel();
         tracing::info!(
             event = "mobile_device.closed",
             handle = %entry.handle,
@@ -631,6 +661,7 @@ impl Devices {
             };
         };
         self.kept.closed(&entry.native_id);
+        removed.log.closed().cancel();
         for path in removed.carried {
             if let Err(error) = tokio::fs::remove_file(&path).await
                 && error.kind() != std::io::ErrorKind::NotFound
@@ -828,6 +859,12 @@ impl Devices {
                 }
                 return Err(MobileError::Busy(simulator.name));
             }
+            if state.erasing.contains(&simulator.native_id) {
+                return Err(MobileError::Unavailable(format!(
+                    "{} is being erased; try again in a moment",
+                    simulator.name
+                )));
+            }
             if let Some(resuming) = state.resuming.get(&simulator.native_id) {
                 if resuming.entry.conversation == conversation {
                     return Err(MobileError::Unavailable(format!(
@@ -854,7 +891,8 @@ impl Devices {
                 .await
                 .map_err(MobileError::Driver)?;
         }
-        let attached = driver.attach(conversation, &simulator.native_id).await;
+        let log = Arc::new(Log::new());
+        let attached = driver.attach(conversation, &simulator.native_id, log.clone()).await;
         let device = match attached {
             Ok(device) => device,
             Err(error) => {
@@ -893,6 +931,7 @@ impl Devices {
             simulator,
             booted,
             device,
+            log,
         ));
         {
             let mut state = self.state.lock().expect("the registry is intact");
@@ -929,6 +968,117 @@ impl Devices {
             .find(|open| &open.handle == handle)
             .ok_or_else(|| MobileError::NotOpen(handle.clone()))?;
         Ok(self.end(&open, Closing::Asked).await)
+    }
+
+    /// Erases `open` to its factory state and starts it again under its
+    /// handle, as Simulator's Erase All Content and Settings does: it is
+    /// resuming meanwhile, its recording ended and its connection let go,
+    /// and whoever booted it still has it booted. A close meanwhile closes
+    /// it as any resuming device, and the erase then leaves it shut down
+    /// when Demi booted it.
+    pub async fn erase(self: &Arc<Self>, open: &Arc<OpenDevice>) -> Result<(), MobileError> {
+        let devices = self.clone();
+        let open = open.clone();
+        // A task of the resident's, so the caller's cancel never leaves the
+        // device halfway.
+        self.tasks
+            .spawn(async move {
+                let erased = devices.erasing(&open).await;
+                devices.state.lock().expect("the registry is intact").erasing.remove(&open.native_id);
+                erased
+            })
+            .await
+            .map_err(|error| MobileError::Failed(format!("the erase did not finish: {error}")))?
+    }
+
+    async fn erasing(self: &Arc<Self>, open: &Arc<OpenDevice>) -> Result<(), MobileError> {
+        let entry = Opened {
+            handle: open.handle.clone(),
+            conversation: open.conversation.clone(),
+            platform: open.platform,
+            native_id: open.native_id.clone(),
+        };
+        {
+            let _turn = self.turns.lock().await;
+            let mut state = self.state.lock().expect("the registry is intact");
+            match state.open.get(&open.native_id) {
+                Some(current) if Arc::ptr_eq(current, open) => {
+                    state.open.remove(&open.native_id);
+                    state.erasing.insert(open.native_id.clone());
+                    let carried = std::mem::take(&mut *open.saved.lock().expect("the saved files are intact"));
+                    state.resuming.insert(
+                        open.native_id.clone(),
+                        Resuming {
+                            entry: entry.clone(),
+                            carried,
+                            log: open.log.clone(),
+                        },
+                    );
+                }
+                _ => return Err(MobileError::NotOpen(open.handle.clone())),
+            }
+        }
+        tracing::info!(
+            event = "mobile_device.erasing",
+            handle = %open.handle,
+            name = %open.name,
+            native_id = %open.native_id,
+            conversation = %open.conversation,
+            from = "open",
+            to = "resuming",
+            "a device is erased"
+        );
+        open.closed.cancel();
+        open.finish_recording(EndReason::Closed).await;
+        if let Err(error) = open.device.detach().await {
+            tracing::warn!(event = "mobile_device.detach_failed", native_id = %open.native_id, %error, "a device did not detach cleanly");
+        }
+        self.changed(&open.conversation);
+        let driver = self.driver(open.platform);
+        let erased = async {
+            driver.shutdown(&open.native_id).await?;
+            if open.booted {
+                self.kept.unbooted(open.platform, &open.native_id);
+            }
+            // The boot is Demi's only where the one before was.
+            let recorded = Recorded {
+                kept: &self.kept,
+                platform: open.platform,
+                native_id: &open.native_id,
+            };
+            let booting: &dyn crate::driver::Booting = if open.booted { &recorded } else { &Unrecorded };
+            driver.erase(&open.native_id, booting).await?;
+            let Some(log) = self.resuming_log(&entry) else {
+                return Ok(None);
+            };
+            let Probe::Booted(simulator) = self.probe(open.platform, &open.native_id).await else {
+                return Err(DriverError::Failed("it did not come back booted".into()));
+            };
+            let device = driver.attach(&open.conversation, &open.native_id, log).await?;
+            Ok(Some((simulator, device)))
+        };
+        match erased.await {
+            Ok(Some((simulator, device))) => {
+                if self.install(&entry, simulator, device).await {
+                    return Ok(());
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                // Taken back as any device whose connection ended, or lost
+                // when it stays shut down.
+                self.tasks.spawn(self.clone().resume(entry, Duration::ZERO));
+                return Err(MobileError::Driver(error));
+            }
+        }
+        // Closed while it was erased: the boot was for nothing.
+        if open.booted {
+            self.shut_down_if_demis(open.platform, &open.native_id).await;
+        }
+        Err(MobileError::Failed(format!(
+            "{} was closed while it was erased; the simulator is erased, and shut down when demi mobile booted it",
+            open.handle
+        )))
     }
 
     /// Closes every device of `conversation`: its release. The conversation
@@ -1039,6 +1189,7 @@ impl Devices {
         // they reconnect to.
         if why != Closing::Ending {
             open.gone.cancel();
+            open.log.closed().cancel();
         }
         open.closed.cancel();
         // The recording ends with every frame it holds kept, before the device
@@ -1158,6 +1309,7 @@ impl Devices {
                         Resuming {
                             entry: entry.clone(),
                             carried,
+                            log: open.log.clone(),
                         },
                     );
                     true
@@ -1302,6 +1454,16 @@ struct Recorded<'a> {
     kept: &'a Kept,
     platform: MobilePlatform,
     native_id: &'a str,
+}
+
+/// A boot that is not Demi's, as the erase of a device the user booted
+/// starts.
+struct Unrecorded;
+
+impl crate::driver::Booting for Unrecorded {
+    fn began(&self, _boot: u64) {}
+
+    fn undone(&self) {}
 }
 
 impl crate::driver::Booting for Recorded<'_> {

@@ -34,6 +34,13 @@ pub const MAX_WAIT_SECONDS: u64 = 300;
 /// The longest output path, in characters: the longest path the systems the
 /// Host runs on take.
 pub const PATH_LENGTH: usize = 4096;
+/// The most bytes of a device's log Demi keeps, as its entries' JSON: the
+/// log is followed into memory, never to the disk, for as long as the
+/// device is open; about half an hour of an app that logs heavily.
+pub const LOG_BYTES: usize = 16 * 1024 * 1024;
+/// How many entries `logs` lists when the input names no limit, as
+/// `demi browser logs` does.
+pub const LOG_ENTRIES: usize = 100;
 
 numbered!(
     /// A device's handle in the conversation, which `open` answers: `m` and
@@ -133,6 +140,22 @@ closed_set! {
         Light = "light",
         Dark = "dark",
         Toggle = "toggle",
+    }
+}
+
+closed_set! {
+    /// How much an entry of a device's log matters, the least first: Android's
+    /// verbose to fatal (`F` and `A` are fault), and the unified log's debug
+    /// to fault, whose default level is notice, as Swift's `Logger` names it.
+    #[derive(PartialOrd, Ord)]
+    pub enum LogLevel {
+        Verbose = "verbose",
+        Debug = "debug",
+        Info = "info",
+        Notice = "notice",
+        Warning = "warning",
+        Error = "error",
+        Fault = "fault",
     }
 }
 
@@ -331,6 +354,10 @@ operations! {
     "appearance" => Appearance(AppearanceInput) -> AppearanceResult;
     "wait" => Wait(WaitInput) -> WaitResult;
     "record" => Record(RecordInput) -> RecordResult;
+    "install" => Install(InstallInput) -> InstallResult;
+    "launch" => Launch(LaunchInput) -> LaunchResult;
+    "logs" => Logs(LogsInput) -> LogsResult;
+    "erase" => Erase(EraseInput) -> EraseResult;
 }
 
 /// What every input says of the device it acts on.
@@ -674,6 +701,149 @@ pub struct WaitResult {
     pub element: Option<ElementSummary>,
     #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub waited_ms: u64,
+}
+
+device_input! {
+    /// `install`: an app's build onto the device.
+    pub struct InstallInput {
+        /// The build on this Host: an .apk for an Android emulator, an .app for an iOS simulator
+        #[garde(length(chars, min = 1, max = PATH_LENGTH))]
+        pub file: String,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct InstallResult {
+    pub device: DeviceId,
+    /// The app's id, its Android package or iOS bundle identifier, which
+    /// `launch` and `logs` take.
+    pub app: String,
+    /// The version the build names, such as 2.3.0.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub version: Option<String>,
+}
+
+device_input! {
+    /// `launch`: an installed app in front, as a tap on its icon brings it.
+    pub struct LaunchInput {
+        /// The app's id, such as com.example.app, as install prints it
+        #[garde(length(chars, min = 1))]
+        pub app: String,
+        /// Stop the app first, so it starts from the beginning
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
+        #[garde(skip)]
+        pub restart: Option<bool>,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LaunchResult {
+    pub device: DeviceId,
+    pub app: String,
+    /// Whether the app started anew, rather than coming back in front.
+    pub started: bool,
+    /// Whether `logs` holds what the app prints to its standard output and
+    /// error, which an iOS app shows only when Demi started it.
+    pub console: bool,
+    /// Whether the app's first screen showed before the launch returned.
+    pub shown: bool,
+}
+
+device_input! {
+    /// `logs`: the device's log entries after a cursor.
+    pub struct LogsInput {
+        /// Only the entries of this app, such as com.example.app, across its restarts
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        #[garde(length(chars, min = 1))]
+        pub app: Option<String>,
+        /// Only the entries whose text or tag holds this text
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        #[garde(length(chars, min = 1))]
+        pub filter: Option<String>,
+        /// Only the entries at this level or above: verbose, debug, info, notice, warning, error or fault
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "LogLevel")]
+        #[garde(skip)]
+        pub level: Option<LogLevel>,
+        /// Cursor a previous read printed; without it, the last entries
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        #[garde(length(chars, min = 1))]
+        pub after: Option<String>,
+        /// The most entries to list; default 100
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
+        #[garde(range(min = 1))]
+        pub limit: Option<usize>,
+    }
+}
+
+/// One entry of a device's log, numbered in the device's order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LogEntry {
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+    pub sequence: u64,
+    /// Milliseconds since the Unix epoch.
+    pub timestamp: f64,
+    pub level: LogLevel,
+    pub pid: u32,
+    /// The Android user id of the process, which each app has its own of.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "u32")]
+    pub uid: Option<u32>,
+    /// The iOS process's executable, such as SpringBoard.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub process: Option<String>,
+    /// Android's tag, the unified log's category, or console for what an
+    /// iOS app prints.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub tag: Option<String>,
+    pub text: String,
+}
+
+impl demi_shared_types::buffer::Entry for LogEntry {
+    fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    fn set_sequence(&mut self, sequence: u64) {
+        self.sequence = sequence;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LogsResult {
+    pub device: DeviceId,
+    pub entries: Vec<LogEntry>,
+    /// What the next read takes as --after.
+    pub cursor: String,
+    /// More entries match than the limit listed.
+    pub has_more: bool,
+    /// How many entries after the cursor are gone: the log kept the last
+    /// [`LOG_BYTES`] of them.
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+    pub dropped: u64,
+}
+
+device_input! {
+    /// `erase`: the device back to its factory state, started again.
+    pub struct EraseInput {}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EraseResult {
+    pub device: DeviceId,
 }
 
 recording_target! {

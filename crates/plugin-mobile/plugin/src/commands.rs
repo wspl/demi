@@ -11,7 +11,7 @@ use demi_host_interface::{GroupBuilder, LeafBuilder};
 /// The group's summary.
 const SUMMARY: &str = "Operate the simulators of the Host running this shell, as a person would, while the user watches and operates them in the work panel. Every coordinate is a pixel of the device's screenshot. Element references come from inspect.";
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "iOS simulators and Android emulators: open, screenshot, UI tree, tap, swipe, type, rotate, record.";
+const ENTRY: &str = "iOS simulators and Android emulators: open, screenshot, UI tree, tap, swipe, type, rotate, record, install and launch apps, logs, erase.";
 
 const SUCCESS: &str = "a short readable result; one validated JSON value with --json";
 const FAILURE: &str = "a mobile error on stderr with nonzero exit status; an input is never replayed automatically";
@@ -46,6 +46,10 @@ operations! {
     "appearance" => AppearanceInput, AppearanceResult, ["device", "appearance"], "Switch the system to light or dark, or toggle it.";
     "wait" => WaitInput, WaitResult, ["device"], "Wait until an element shows --text, an element appears (--element) or is gone (--gone), such as --gone text=Loading, re-reading the tree; 30 s by default.";
     "record" => RecordInput, RecordResult, ["target", "action"], record_about("device", "m1");
+    "install" => InstallInput, InstallResult, ["device", "file"], "Install an app's build, an .apk on an Android emulator or an .app on an iOS simulator, replacing an installed version and keeping its data; prints the app's id, which launch and logs take.";
+    "launch" => LaunchInput, LaunchResult, ["device", "app"], "Bring an installed app in front by its id, starting it when it is not running, as a tap on its icon does; --restart stops it first, so it starts from the beginning.";
+    "logs" => LogsInput, LogsResult, ["device"], format!("Read the device's log, followed since it opened, without clearing it: the last entries, or those after --after <cursor>, the cursor the last read printed; --app keeps one app's entries across its restarts, --filter those holding a text, --level those at a level or above. An iOS app's own debug messages and what it prints are there when launch started it. The last {} MB are kept.", LOG_BYTES / (1024 * 1024));
+    "erase" => EraseInput, EraseResult, ["device"], "Erase the device to its factory state, every app and its data, the settings and the device's identifiers, and start it again under the same handle; takes about a minute.";
 }
 
 fn operation(name: &str) -> NativeOperation {

@@ -40,8 +40,9 @@ use tokio_util::{
     task::{AbortOnDropHandle, TaskTracker},
 };
 
+use demi_shared_types::buffer::Buffer;
+
 use crate::driver::{
-    history::Buffer,
     operation::{BrowserError, CONTROL_TIMEOUT, Result, after_cleanup},
 };
 use crate::tabs::{
@@ -176,7 +177,7 @@ impl SessionsOwner {
             return Ok(connection.handle.clone());
         }
         if self.buffer.is_none() {
-            self.buffer = Some(Buffer::new("cdp", CDP_EVENTS, CDP_BYTES)?);
+            self.buffer = Some(Buffer::new(crate::driver::handles::fresh("cdp")?, CDP_EVENTS, CDP_BYTES));
         }
         let started = tokio::time::timeout(
             CONTROL_TIMEOUT,

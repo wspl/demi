@@ -309,7 +309,7 @@ impl Sdk for Installed {
         })
     }
 
-    fn launch<'a>(&'a self, avd: &'a str) -> BoxFuture<'a, Result<Process>> {
+    fn launch<'a>(&'a self, avd: &'a str, wipe: bool) -> BoxFuture<'a, Result<Process>> {
         Box::pin(async move {
             let emulator = self
                 .emulator()
@@ -337,6 +337,9 @@ impl Sdk for Installed {
             // authentication, which keeps the gRPC interface on localhost.
             command
                 .args(["-avd", avd, "-no-window", "-gpu", "host", "-no-boot-anim", "-grpc-use-jwt"])
+                // Android Studio's Wipe Data: the AVD's user data from its
+                // system image, a factory reset.
+                .args(wipe.then_some("-wipe-data"))
                 .stdin(std::process::Stdio::null())
                 .stdout(stdout)
                 .stderr(stderr);

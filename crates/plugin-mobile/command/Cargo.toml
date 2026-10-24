@@ -63,9 +63,17 @@ tempfile = "3"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 tonic = { version = "0.14", default-features = false, features = ["codegen", "channel"] }
 tonic-prost = "0.14"
+# The times of an iOS simulator's log entries, and their local time as
+# `logs` prints them.
+jiff = { workspace = true, features = ["tz-system", "tzdb-bundle-platform"] }
 # The macOS version the iOS helper needs (`crates/plugin-mobile/command/src/ios/mod.rs`), and the
 # emulators' processes: whether one runs, and since when.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+# The end asked of an iOS simulator's log stream
+# (`crates/plugin-mobile/command/src/ios/simctl.rs`).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # The end of an emulator's process, which is not this program's child, as
 # the system announces it (`crates/plugin-mobile/command/src/android/mod.rs`).

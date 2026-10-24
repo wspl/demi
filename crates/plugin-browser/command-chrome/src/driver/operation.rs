@@ -429,6 +429,17 @@ impl BrowserError {
     }
 }
 
+impl From<demi_shared_types::buffer::BufferError> for BrowserError {
+    fn from(error: demi_shared_types::buffer::BufferError) -> Self {
+        use demi_shared_types::buffer::BufferError;
+        match error {
+            BufferError::StaleCursor => Self::StaleCursor,
+            BufferError::Unserializable(reason) => Self::InvalidResult(reason),
+            BufferError::Exhausted => Self::ResultTooLarge,
+        }
+    }
+}
+
 impl From<demi_shared_recording::Error> for BrowserError {
     fn from(error: demi_shared_recording::Error) -> Self {
         use demi_shared_recording::Error;

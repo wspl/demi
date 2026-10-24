@@ -7,8 +7,8 @@ use std::fmt::Write;
 use demi_shared_types::output::{Cell, Table};
 
 use demi_command_package_mobile_protocol::mobile::{
-    Element, ElementSummary, Frame, InspectResult, ListResult, Orientation, MobilePlatform, PowerState,
-    Simulator,
+    DeviceId, Element, ElementSummary, Frame, InspectResult, LOG_BYTES, LaunchResult, ListResult, LogEntry, LogLevel,
+    LogsResult, Orientation, MobilePlatform, PowerState, Simulator,
 };
 
 
@@ -128,4 +128,92 @@ fn tree(text: &mut String, element: &Element, depth: usize) {
     for child in &element.children {
         tree(text, child, depth + 1);
     }
+}
+
+pub fn installed(device: &DeviceId, app: &str, version: Option<&str>) -> String {
+    match version {
+        Some(version) => format!("Installed {} {} on {device}.\n", plain(app), plain(version)),
+        None => format!("Installed {} on {device}.\n", plain(app)),
+    }
+}
+
+pub fn launched(result: &LaunchResult) -> String {
+    let app = plain(&result.app);
+    let mut text = if result.started {
+        format!("Launched {app} on {}, in front.\n", result.device)
+    } else {
+        format!("Brought {app} in front on {}; it was running.\n", result.device)
+    };
+    if !result.shown {
+        text.push_str(
+            "Its first screen has not shown yet, as no element is on it; wait --element waits for one, screenshot shows what is there.\n",
+        );
+    }
+    if !result.console {
+        text.push_str(
+            "What it prints is not in logs, as Demi did not start it; launch --restart starts it again with its console.\n",
+        );
+    }
+    text
+}
+
+/// `logs`: a line per entry, its local time, its level's letter, where it
+/// comes from and its text, as `logcat` prints a line; then the cursor.
+pub fn logs(result: &LogsResult) -> String {
+    let mut text = String::new();
+    if result.dropped > 0 {
+        let _ = writeln!(
+            text,
+            "{} entries after the cursor are gone: the log keeps its last {} MB.",
+            result.dropped,
+            LOG_BYTES / (1024 * 1024)
+        );
+    }
+    let zone = jiff::tz::TimeZone::system();
+    for entry in &result.entries {
+        let _ = writeln!(text, "{} {} {}: {}", time(entry, &zone), letter(entry.level), source(entry), plain(&entry.text));
+    }
+    if result.entries.is_empty() {
+        text.push_str("No log entries.\n");
+    }
+    let _ = writeln!(text, "Cursor: {}", plain(&result.cursor));
+    if result.has_more {
+        text.push_str("Has more: true\n");
+    }
+    text
+}
+
+fn time(entry: &LogEntry, zone: &jiff::tz::TimeZone) -> String {
+    jiff::Timestamp::from_millisecond(entry.timestamp as i64)
+        .map(|timestamp| timestamp.to_zoned(zone.clone()).strftime("%H:%M:%S%.3f").to_string())
+        .unwrap_or_else(|_| "--:--:--.---".into())
+}
+
+/// Each level's letter, as `logcat` writes Android's, with N for notice.
+fn letter(level: LogLevel) -> char {
+    match level {
+        LogLevel::Verbose => 'V',
+        LogLevel::Debug => 'D',
+        LogLevel::Info => 'I',
+        LogLevel::Notice => 'N',
+        LogLevel::Warning => 'W',
+        LogLevel::Error => 'E',
+        LogLevel::Fault => 'F',
+    }
+}
+
+/// Where an entry comes from: its iOS process and its tag.
+fn source(entry: &LogEntry) -> String {
+    let words: Vec<String> = [entry.process.as_deref(), entry.tag.as_deref()].into_iter().flatten().map(plain).collect();
+    if words.is_empty() { format!("[{}]", entry.pid) } else { words.join(" ") }
+}
+
+/// `text` on one line: its control characters escaped, so an entry cannot
+/// forge another, nor the cursor.
+fn plain(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| -> Box<dyn Iterator<Item = char>> {
+            if c.is_control() { Box::new(c.escape_default()) } else { Box::new(std::iter::once(c)) }
+        })
+        .collect()
 }

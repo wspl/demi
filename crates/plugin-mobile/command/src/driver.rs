@@ -1,8 +1,10 @@
 //! One driver per platform, behind one interface.
 //!
-//! The interface covers the Host's simulators, boot and shutdown, and for an
-//! open device its frames as H.264, its input, its UI tree, and its screen's
-//! size and orientation.
+//! The interface covers the Host's simulators, boot, shutdown and erase, and
+//! for an open device its frames as H.264, its input, its UI tree, its
+//! screen's size and orientation, the apps installed and launched on it, and
+//! its log, which each driver follows into the device's [`Log`] while it is
+//! attached.
 //!
 //! Every coordinate here is a point of the screen turned upright, as the
 //! picture shows it. The commands map them to screenshot pixels.
@@ -20,6 +22,8 @@ use demi_command_package_mobile_protocol::{
 };
 use demi_live_view::stream::CaptureEvent;
 use demi_shared_recording::Sink;
+
+use crate::log::{AppEntries, Log};
 
 /// Why a driver could not do what it was asked.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -156,6 +160,25 @@ pub struct KeyPress {
     pub down: bool,
 }
 
+/// An app's build `install` put on the device.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstalledApp {
+    /// The Android package or iOS bundle identifier.
+    pub app: String,
+    pub version: Option<String>,
+}
+
+/// What `launch` did.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Launched {
+    /// The app started anew, rather than coming back in front.
+    pub started: bool,
+    /// The log holds what the app prints.
+    pub console: bool,
+    /// Its first screen showed before the launch returned.
+    pub shown: bool,
+}
+
 /// A PNG of the upright screen.
 #[derive(Debug, Clone)]
 pub struct Png {
@@ -247,13 +270,17 @@ pub trait Driver: Send + Sync + 'static {
     /// hears that it was.
     fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>>;
     fn shutdown<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>>;
+    /// Erases a shut-down simulator to its factory state and boots it, as
+    /// [`Self::boot`] does.
+    fn erase<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>>;
     /// Attaches a booted simulator for `conversation`: an iPhone turned
     /// portrait, its screen as its display then shows; an emulator as it
-    /// is held.
+    /// is held. The device follows its log into `log` until it is let go.
     fn attach<'a>(
         &'a self,
         conversation: &'a str,
         native_id: &'a str,
+        log: Arc<Log>,
     ) -> BoxFuture<'a, Result<Arc<dyn Device>>>;
 }
 
@@ -328,7 +355,16 @@ pub trait Device: Send + Sync + 'static {
         fps: u32,
         bitrate: u32,
     ) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>>;
-    /// Lets go of the device, restoring what attaching changed.
+    /// Installs the build `file`, an .apk or an .app, replacing the app's
+    /// installed version and keeping its data.
+    fn install<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<InstalledApp>>;
+    /// Brings the installed `app` in front, starting it when it does not
+    /// run, or anew when `restart`; returns once it started.
+    fn launch<'a>(&'a self, app: &'a str, restart: bool) -> BoxFuture<'a, Result<Launched>>;
+    /// Which entries of the log are the installed `app`'s.
+    fn app_entries<'a>(&'a self, app: &'a str) -> BoxFuture<'a, Result<AppEntries>>;
+    /// Lets go of the device, restoring what attaching changed, and stops
+    /// following its log.
     fn detach(&self) -> BoxFuture<'_, Result<()>>;
     /// The `adb` serial of an open Android emulator, which the agent's own
     /// `adb` commands take; none for a platform without one.
@@ -364,10 +400,15 @@ impl Driver for Absent {
         Box::pin(async { Err(DriverError::Failed(self.reason.clone())) })
     }
 
+    fn erase<'a>(&'a self, _native_id: &'a str, _booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async { Err(DriverError::Failed(self.reason.clone())) })
+    }
+
     fn attach<'a>(
         &'a self,
         _conversation: &'a str,
         _native_id: &'a str,
+        _log: Arc<Log>,
     ) -> BoxFuture<'a, Result<Arc<dyn Device>>> {
         Box::pin(async { Err(DriverError::Failed(self.reason.clone())) })
     }

@@ -24,7 +24,6 @@ pub mod capture;
 pub mod frames;
 pub mod glibc;
 pub mod handles;
-pub mod history;
 pub mod installation;
 pub mod launch;
 pub mod numbers;

@@ -8,6 +8,9 @@
 //!   Android's own input injection over adb instead; its configuration is
 //!   the user's and stays as it is.
 //! - Its UI tree and a field's text come through `u2.jar` inside it, over adb.
+//! - Apps are installed, launched and their log followed over adb, as
+//!   `adb install`, `am start` and `logcat` do; an erase boots the AVD
+//!   with its data wiped, as Android Studio's Wipe Data.
 //!
 //! # Three pixel spaces
 //!
@@ -31,6 +34,7 @@ pub mod capture;
 pub mod corners;
 pub mod emulator;
 pub mod guest;
+mod logcat;
 pub mod process;
 pub mod record;
 pub mod screen;
@@ -48,7 +52,7 @@ use std::{
     time::Duration,
 };
 
-use futures_util::future::BoxFuture;
+use futures_util::{StreamExt as _, future::BoxFuture};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -60,10 +64,11 @@ use demi_command_package_mobile_protocol::{
 
 use crate::{
     driver::{
-        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, Png, Points,
-        RawElement, Rect, Result, Screen, Simulator, TouchPhase,
+        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, InstalledApp, KeyPress,
+        Launched, Png, Points, RawElement, Rect, Result, Screen, Simulator, TouchPhase,
     },
     keys,
+    log::{AppEntries, Log},
 };
 
 pub use adb::Adb;
@@ -150,9 +155,10 @@ pub trait Sdk: Send + Sync + 'static {
     /// Each emulator process with the AVD it runs, whether or not it said
     /// where it listens, as one whose boot hangs has not.
     fn processes(&self) -> BoxFuture<'_, Vec<(String, Process)>>;
-    /// Starts the AVD's emulator without a window; answers its process as
-    /// soon as it runs, whose start marks the boot.
-    fn launch<'a>(&'a self, avd: &'a str) -> BoxFuture<'a, Result<Process>>;
+    /// Starts the AVD's emulator without a window, its data wiped first
+    /// when `wipe`; answers its process as soon as it runs, whose start
+    /// marks the boot.
+    fn launch<'a>(&'a self, avd: &'a str, wipe: bool) -> BoxFuture<'a, Result<Process>>;
     /// Waits until the emulator `process` says where it listens.
     fn advertised<'a>(&'a self, avd: &'a str, process: Process) -> BoxFuture<'a, Result<Running>>;
     /// Ends once the process has ended.
@@ -192,6 +198,30 @@ impl Android {
     /// listens.
     async fn process(&self, avd: &str) -> Option<Process> {
         self.sdk.processes().await.into_iter().find(|(each, _)| each == avd).map(|(_, process)| process)
+    }
+
+    /// Boots the AVD, its data wiped first when `wipe`, telling `booting`
+    /// as the boot begins, and ends an emulator whose boot failed.
+    async fn start(&self, native_id: &str, booting: &dyn Booting, wipe: bool) -> Result<()> {
+        let process = self.sdk.launch(native_id, wipe).await?;
+        // Demi's from its first moment, by the process it started.
+        booting.began(process.started);
+        let waited = async {
+            let running = self.sdk.advertised(native_id, process).await?;
+            let connected = emulator::Emulator::connect(&running.discovery).await?;
+            let mut client = connected.client.clone();
+            tokio::time::timeout(BOOTING, booted(&mut client)).await.map_err(|_| {
+                DriverError::Failed(format!("{native_id} did not finish booting in {} s", BOOTING.as_secs()))
+            })?
+        };
+        let Err(error) = waited.await else { return Ok(()) };
+        // The emulator this started for nothing ends again: the process
+        // it started, whether or not it ever said where it listens.
+        match self.sdk.terminate(process).await {
+            Ok(()) => booting.undone(),
+            Err(failure) => tracing::warn!(event = "emulator.boot_cleanup_failed", native_id, %failure, "an emulator stayed up after its boot failed"),
+        }
+        Err(error)
     }
 
     /// Asks the emulator `running` to shut down and waits until it ended.
@@ -283,27 +313,11 @@ impl Driver for Android {
     }
 
     fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move {
-            let process = self.sdk.launch(native_id).await?;
-            // Demi's from its first moment, by the process it started.
-            booting.began(process.started);
-            let waited = async {
-                let running = self.sdk.advertised(native_id, process).await?;
-                let connected = emulator::Emulator::connect(&running.discovery).await?;
-                let mut client = connected.client.clone();
-                tokio::time::timeout(BOOTING, booted(&mut client)).await.map_err(|_| {
-                    DriverError::Failed(format!("{native_id} did not finish booting in {} s", BOOTING.as_secs()))
-                })?
-            };
-            let Err(error) = waited.await else { return Ok(()) };
-            // The emulator this started for nothing ends again: the process
-            // it started, whether or not it ever said where it listens.
-            match self.sdk.terminate(process).await {
-                Ok(()) => booting.undone(),
-                Err(failure) => tracing::warn!(event = "emulator.boot_cleanup_failed", native_id, %failure, "an emulator stayed up after its boot failed"),
-            }
-            Err(error)
-        })
+        Box::pin(self.start(native_id, booting, false))
+    }
+
+    fn erase<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
+        Box::pin(self.start(native_id, booting, true))
     }
 
     fn shutdown<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>> {
@@ -324,7 +338,7 @@ impl Driver for Android {
         })
     }
 
-    fn attach<'a>(&'a self, _conversation: &'a str, native_id: &'a str) -> BoxFuture<'a, Result<Arc<dyn Device>>> {
+    fn attach<'a>(&'a self, _conversation: &'a str, native_id: &'a str, log: Arc<Log>) -> BoxFuture<'a, Result<Arc<dyn Device>>> {
         Box::pin(async move {
             let running = self
                 .running(native_id)
@@ -394,9 +408,73 @@ impl Driver for Android {
                 device.detach().await?;
                 return Err(error);
             }
+            tokio::spawn(follow_log(device.guest.clone(), log, device.watching.clone()));
             Ok(device as Arc<dyn Device>)
         })
     }
+}
+
+/// How long the log waits to be followed again once logcat ended, as when
+/// the emulator restarts its log daemon.
+const LOG_AGAIN: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Follows the emulator's log into `log` until `stop`, from where the log
+/// left off: logcat starts again after it ended, at the last entry's time,
+/// whose entries the log holds already.
+async fn follow_log(guest: Arc<dyn Guest>, log: Arc<Log>, stop: CancellationToken) {
+    let mut since = log.resume_at();
+    loop {
+        let lines = tokio::select! {
+            () = stop.cancelled() => return,
+            lines = guest.log(since / 1000.0) => lines,
+        };
+        match lines {
+            Ok(mut lines) => loop {
+                let line = tokio::select! {
+                    () = stop.cancelled() => return,
+                    line = lines.next() => line,
+                };
+                let Some(line) = line else { break };
+                if let Some(entry) = logcat::entry(&line)
+                    && entry.timestamp > since
+                {
+                    log.push(entry);
+                }
+            },
+            Err(error) => tracing::info!(event = "android_log.follow_failed", %error, "the emulator's log was not followed"),
+        }
+        tokio::select! {
+            () = stop.cancelled() => return,
+            () = tokio::time::sleep(LOG_AGAIN) => {}
+        }
+        since = log.resume_at();
+    }
+}
+
+/// The package and version the APK `file` names in its manifest.
+fn manifest(file: &std::path::Path) -> Result<InstalledApp> {
+    let unread = |error: &dyn std::fmt::Display| DriverError::Failed(format!("{} is not an APK that reads: {error}", file.display()));
+    let apk = std::fs::File::open(file).map_err(|error| unread(&error))?;
+    let read = guest::read_apk(&apk, &["AndroidManifest.xml".to_owned()])?;
+    let bytes = read.into_iter().next().flatten().ok_or_else(|| unread(&"it has no AndroidManifest.xml"))?;
+    let events = axml::events(&bytes).map_err(|error| unread(&error))?;
+    let attributes = events
+        .into_iter()
+        .find_map(|event| match event {
+            axml::Event::Start { name, attributes } if &*name == "manifest" => Some(attributes),
+            _ => None,
+        })
+        .ok_or_else(|| unread(&"its manifest has no manifest element"))?;
+    let text = |wanted: &str| {
+        attributes.iter().find(|attribute| &*attribute.name == wanted).and_then(|attribute| match &attribute.value {
+            axml::Value::Text(text) => Some(text.to_string()),
+            _ => None,
+        })
+    };
+    Ok(InstalledApp {
+        app: text("package").ok_or_else(|| unread(&"its manifest names no package"))?,
+        version: text("versionName"),
+    })
 }
 
 /// The number the emulator's hardware configuration gives `key`, from the
@@ -553,7 +631,7 @@ struct AndroidDevice {
     /// Whether the display is on, as Android announces it.
     awake: watch::Sender<bool>,
     ended: CancellationToken,
-    /// Stops following the pictures as the device is let go.
+    /// Stops following the pictures and the log as the device is let go.
     watching: CancellationToken,
     /// Android Studio's device art for the device, where the Host has it.
     art_folder: Option<PathBuf>,
@@ -1336,6 +1414,40 @@ impl Device for AndroidDevice {
             let load = self.codec.library().await.map_err(|error| DriverError::Failed(error.to_string()))?;
             Ok(Box::new(capture::AndroidCapture::start(&self.pictures, load, size, fps, bitrate)) as Box<dyn DeviceCapture>)
         })
+    }
+
+    fn install<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<InstalledApp>> {
+        Box::pin(async move {
+            if !file.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("apk")) {
+                return Err(DriverError::Failed(format!(
+                    "an Android emulator installs an .apk, and {} is not one",
+                    file.display()
+                )));
+            }
+            let path = file.to_owned();
+            let installed = tokio::task::spawn_blocking(move || manifest(&path))
+                .await
+                .map_err(|error| DriverError::Failed(format!("reading the APK stopped: {error}")))??;
+            self.guest.install(file).await?;
+            Ok(installed)
+        })
+    }
+
+    fn launch<'a>(&'a self, app: &'a str, restart: bool) -> BoxFuture<'a, Result<Launched>> {
+        Box::pin(async move {
+            let started = self.guest.launch(app, restart).await?;
+            // What an app prints goes to its log, as System.out.
+            // `am start -W` returns once the first screen is drawn.
+            Ok(Launched {
+                started,
+                console: true,
+                shown: true,
+            })
+        })
+    }
+
+    fn app_entries<'a>(&'a self, app: &'a str) -> BoxFuture<'a, Result<AppEntries>> {
+        Box::pin(async move { Ok(AppEntries::Uid(self.guest.uid(app).await?)) })
     }
 
     fn detach(&self) -> BoxFuture<'_, Result<()>> {

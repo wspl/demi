@@ -3,9 +3,11 @@
 //!
 //! A one-shot helper lists, boots and shuts down simulators. Each conversation
 //! that opens an iOS device gets a helper of its own, which its devices share
-//! and which ends with the last of them.
+//! and which ends with the last of them. Erasing a simulator, its apps and
+//! its log are simctl's (`simctl.rs`).
 
 mod helper;
+mod simctl;
 #[cfg(target_os = "macos")]
 mod install;
 
@@ -29,10 +31,11 @@ use demi_shared_recording::Sink;
 
 use crate::{
     driver::{
-        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, PixelRect, Png, Points,
-        RawElement, Rect, Result, Screen, Simulator, TouchPhase,
+        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, InstalledApp, KeyPress, Launched,
+        PixelRect, Png, Points, RawElement, Rect, Result, Screen, Simulator, TouchPhase,
     },
     keys,
+    log::{AppEntries, Log},
 };
 
 pub use helper::{BLOB, CONTROL, Connection, HEADER_BYTES, PICTURE, PICTURE_HEADER_BYTES, VIDEO};
@@ -56,6 +59,9 @@ pub trait Launch: Send + Sync + 'static {
 pub struct Ios {
     launch: Arc<dyn Launch>,
     sessions: Mutex<HashMap<String, Weak<Session>>>,
+    /// The apps Demi launched on each simulator, by its simctl id, which
+    /// outlast the device's connections.
+    launches: Mutex<HashMap<String, Arc<simctl::Launches>>>,
 }
 
 impl Ios {
@@ -70,6 +76,7 @@ impl Ios {
         Self {
             launch,
             sessions: Mutex::default(),
+            launches: Mutex::default(),
         }
     }
 
@@ -286,7 +293,14 @@ impl Driver for Ios {
         Box::pin(async move { self.once::<Value>(&["shutdown", native_id]).await.map(drop) })
     }
 
-    fn attach<'a>(&'a self, conversation: &'a str, native_id: &'a str) -> BoxFuture<'a, Result<Arc<dyn Device>>> {
+    fn erase<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            simctl::erase(native_id).await?;
+            self.boot(native_id, booting).await
+        })
+    }
+
+    fn attach<'a>(&'a self, conversation: &'a str, native_id: &'a str, log: Arc<Log>) -> BoxFuture<'a, Result<Arc<dyn Device>>> {
         Box::pin(async move {
             let session = self.session(conversation).await?;
             let screen: Turned = session.helper.call("attach", json!({ "udid": native_id })).await?;
@@ -302,10 +316,22 @@ impl Driver for Ios {
                 .lock()
                 .expect("the devices are intact")
                 .insert(native_id.to_owned(), state.clone());
+            let following = CancellationToken::new();
+            tokio::spawn(simctl::follow(native_id.to_owned(), log.clone(), following.clone()));
+            let launches = self
+                .launches
+                .lock()
+                .expect("the launches are intact")
+                .entry(native_id.to_owned())
+                .or_default()
+                .clone();
             Ok(Arc::new(IosDevice {
                 session,
                 udid: native_id.to_owned(),
                 state,
+                log,
+                following,
+                launches,
             }) as Arc<dyn Device>)
         })
     }
@@ -480,9 +506,47 @@ struct IosDevice {
     session: Arc<Session>,
     udid: String,
     state: Arc<DeviceState>,
+    log: Arc<Log>,
+    /// Stops following the log as the device is let go.
+    following: CancellationToken,
+    launches: Arc<simctl::Launches>,
 }
 
+/// How long a launch waits for the app's first screen once its process
+/// runs: as long as a command waits for an element.
+const FIRST_SCREEN: std::time::Duration =
+    std::time::Duration::from_secs(demi_command_package_mobile_protocol::mobile::FIND_SECONDS);
+/// How often a launch reads the tree for the first screen.
+const FIRST_SCREEN_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+
 impl IosDevice {
+    /// Waits until the app `id` named `name` is in front with an element on
+    /// its screen, which its launch screen, a picture SpringBoard shows, has
+    /// none of; answers whether it was within [`FIRST_SCREEN`], and fails
+    /// once the app ended. An app whose screen has no accessible element,
+    /// as a game's, is waited for to the end.
+    async fn first_screen(&self, id: &str, name: Option<&str>) -> Result<bool> {
+        let deadline = tokio::time::Instant::now() + FIRST_SCREEN;
+        loop {
+            if !self.launches.following(id) {
+                return Err(DriverError::Failed(format!(
+                    "{id} ended as it started; logs --app {id} holds what it printed"
+                )));
+            }
+            if let Ok(tree) = self.tree().await
+                && tree.iter().any(|root| {
+                    !root.children.is_empty() && name.is_none_or(|name| root.label.as_deref() == Some(name))
+                })
+            {
+                return Ok(true);
+            }
+            if tokio::time::Instant::now() + FIRST_SCREEN_POLL > deadline {
+                return Ok(false);
+            }
+            tokio::time::sleep(FIRST_SCREEN_POLL).await;
+        }
+    }
+
     async fn call(&self, method: &str, mut params: Value) -> Result<helper::Answer> {
         params["udid"] = Value::String(self.udid.clone());
         self.session.helper.ask(method, params).await
@@ -815,8 +879,27 @@ impl Device for IosDevice {
         })
     }
 
+    fn install<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<InstalledApp>> {
+        Box::pin(simctl::install(&self.udid, file))
+    }
+
+    fn launch<'a>(&'a self, app: &'a str, restart: bool) -> BoxFuture<'a, Result<Launched>> {
+        Box::pin(async move {
+            let (mut launched, info) = self.launches.launch(&self.udid, app, restart, &self.log).await?;
+            if launched.started {
+                launched.shown = self.first_screen(app, info.name.as_deref()).await?;
+            }
+            Ok(launched)
+        })
+    }
+
+    fn app_entries<'a>(&'a self, app: &'a str) -> BoxFuture<'a, Result<AppEntries>> {
+        Box::pin(async move { Ok(AppEntries::Process(simctl::app_info(&self.udid, app).await?.executable)) })
+    }
+
     fn detach(&self) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
+            self.following.cancel();
             let detached = self.done("detach", json!({})).await;
             self.session
                 .devices

@@ -1629,3 +1629,23 @@ impl BrowserOperation {
         }
     }
 }
+
+impl demi_shared_types::buffer::Entry for LogEntry {
+    fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    fn set_sequence(&mut self, sequence: u64) {
+        self.sequence = sequence;
+    }
+}
+
+impl demi_shared_types::buffer::Entry for CdpEvent {
+    fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    fn set_sequence(&mut self, sequence: u64) {
+        self.sequence = sequence;
+    }
+}

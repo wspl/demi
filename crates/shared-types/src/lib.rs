@@ -10,7 +10,8 @@
 //!   (its model catalog, wire format, authentication and runtime states,
 //!   accounts and quota snapshots);
 //! - the file-type table, and model media sniffing;
-//! - the JSON forms of bytes and times, and the wall clock.
+//! - the JSON forms of bytes and times, and the wall clock;
+//! - a stream's last entries, read after a cursor.
 //!
 //! It holds no concrete provider name, catalog source name (the catalog carries
 //! portable facts only, never a label such as `codex-backend`, `models.dev` or
@@ -68,6 +69,7 @@ mod account;
 mod agent_message;
 pub mod audio;
 mod block;
+pub mod buffer;
 mod comment;
 mod bytes;
 mod catalog;
