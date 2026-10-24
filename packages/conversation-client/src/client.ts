@@ -628,8 +628,8 @@ export class ConversationClient {
         if (at !== undefined && this.holdsVersion(at)) {
           return { resolve: undefined }
         }
-        // A turn that fails once the steer was accepted writes it into the
-        // transcript: the failure is the turn's, not the steer's.
+        // A turn that fails once the steer was accepted fails the turn, not
+        // the steer, which opens the next turn.
         if (at !== undefined && event.type === 'error') {
           return undefined
         }

@@ -1307,8 +1307,7 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
 }
 
 #[tokio::test(flavor = "local")]
-async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_only_for_agent_messages()
- {
+async fn a_message_that_came_during_the_compact_action_opens_the_next_turn() {
     let (summary, release) = gated_turn(vec![event::text("the summary"), event::response(0, 0)]);
     let (second_summary, second_release) =
         gated_turn(vec![event::text("another summary"), event::response(0, 0)]);
@@ -1316,6 +1315,7 @@ async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_o
         answer("first"),
         answer("second"),
         summary,
+        answer("read the steer"),
         answer("third"),
         second_summary,
         answer("read the message"),
@@ -1345,15 +1345,23 @@ async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_o
     let _ = release.send(());
     compacting.await.unwrap();
 
-    // The steer waits in the transcript; no turn ran for it.
+    // The steer opens the turn after the pass, as its message.
+    session.settled().await;
     let blocks = session.history().await.unwrap().blocks;
-    assert_eq!(kinds(&blocks).last().map(String::as_str), Some("steer"));
-    assert!(
-        blocks
-            .iter()
-            .any(|block| matches!(block, Block::CompactionBoundary(_)))
-    );
-    assert_eq!(provider.requests().len(), 3);
+    let boundary = blocks
+        .iter()
+        .position(|block| matches!(block, Block::CompactionBoundary(_)))
+        .unwrap();
+    let opened = blocks
+        .iter()
+        .position(|block| matches!(block, Block::User(user) if user.turn_id.as_str() == "s1"))
+        .unwrap();
+    assert!(boundary < opened);
+    assert_eq!(kinds(&blocks).last().map(String::as_str), Some("response"));
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 4);
+    assert!(!is_copy(&requests[3]));
+    assert!(format!("{:?}", requests[3]).contains("mind the tests"));
 
     session
         .send(long_message(), turn("t3"))
@@ -1361,18 +1369,19 @@ async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_o
         .await
         .unwrap();
     let again = session.compact().unwrap();
-    until(|| provider.requests().len() == 5).await;
+    until(|| provider.requests().len() == 6).await;
     session
         .accept_agent_message(agent_message("m1"))
         .await
         .unwrap();
     let _ = second_release.send(());
     again.await.unwrap();
+    session.settled().await;
 
     // The waiting message reached the model after the pass.
     let requests = provider.requests();
-    assert_eq!(requests.len(), 6);
-    assert!(!is_copy(&requests[5]));
+    assert_eq!(requests.len(), 7);
+    assert!(!is_copy(&requests[6]));
     assert_eq!(
         kinds(&session.history().await.unwrap().blocks)
             .last()

@@ -33,7 +33,7 @@
 //!   |   input arrived during the round: loop
 //!   +-- tools ran and none asked to end the turn: loop
 //!   |
-//! action ends: discard the human steers still pending, save, start the next
+//! action ends: save, start the next, which a human steer still pending opens
 //! ```
 //!
 //! Input reaches the model at three boundaries:
@@ -263,13 +263,14 @@ async fn write_taken(s: &SessionShared, take: Take, boundary: &'static str) -> R
 }
 
 /// Takes what the user sent now at this boundary: a queued message ends the
-/// turn here, once all waiting input is written, and true says so; a steer
-/// goes on as any input that arrived.
+/// turn here, once the waiting input but the human steers is written, and
+/// true says so; the steers join the message's turn. A steer goes on as any
+/// input that arrived.
 async fn ends_for_message(s: &SessionShared) -> Result<bool, TurnError> {
     match s.update(SessionCore::take_send_now) {
         Some(SendNow::Message) => {
             s.update(SessionCore::yield_turn);
-            write_inputs(s, "yield").await?;
+            write_taken(s, Take::AllButSteers, "yield").await?;
             Ok(true)
         }
         Some(SendNow::Steer) | None => Ok(false),

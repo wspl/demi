@@ -5,7 +5,6 @@ import {
   SavedGoneError,
   RefusedError,
   SessionError,
-  SteerRejectedError,
   applyTranscriptPatches,
   heldEdge,
   resetTranscript,
@@ -247,11 +246,9 @@ export class ConversationRuntime {
   }
 
   /**
-   * Steers the running turn with a message; resolves once the session holds it
-   * as a pending steer.
-   *
-   * A steer the session refuses, because its turn is ending or nothing runs, is
-   * sent as a message instead, with the same id and no error.
+   * Steers the running turn with a message; resolves once the session holds
+   * it. The session takes a steer whatever runs: one no turn takes opens the
+   * next turn.
    *
    * A connection lost before the session answered fails nothing. Once the
    * conversation is open again and has listed its pending steers, a steer it
@@ -265,12 +262,11 @@ export class ConversationRuntime {
       await client.steer(content, id, comments)
       return
     } catch (error) {
-      if (error instanceof ConversationSocketError) {
-        if (await this.holdsSteer(id)) {
-          return
-        }
-      } else if (!(error instanceof SteerRejectedError)) {
+      if (!(error instanceof ConversationSocketError)) {
         throw error
+      }
+      if (await this.holdsSteer(id)) {
+        return
       }
     }
     await this.submit(content, id, comments)
@@ -284,31 +280,26 @@ export class ConversationRuntime {
    *
    * A connection lost before the session answered fails nothing. Once the
    * conversation is open again, a send the session holds already is not sent
-   * again, and one it does not hold goes again as the same turn. A steer the
-   * session refuses, as its turn ended meanwhile, goes as a message, as the
-   * composer's steer would.
+   * again, and one it does not hold goes again as the same turn.
    *
    * Answers false when the list no longer held it, as another page sent or
    * deleted it first, and nothing was sent; an edited one goes as edited.
    */
   async sendSaved(id: string, turnId: string, delivery: SavedDelivery, content?: ClientContent[]): Promise<boolean> {
     this.options.state.lastError = null
-    let way = delivery
     for (;;) {
       const client = await this.ensureOpen()
       if (hasAcceptedSubmission(this.options.state, turnId)) {
         return true
       }
       try {
-        await client.sendSaved(id, turnId, way, content)
+        await client.sendSaved(id, turnId, delivery, content)
         return true
       } catch (error) {
         if (error instanceof SavedGoneError) {
           return false
         }
-        if (error instanceof SteerRejectedError) {
-          way = 'message'
-        } else if (!(error instanceof ConversationSocketError)) {
+        if (!(error instanceof ConversationSocketError)) {
           throw error
         }
       }

@@ -901,8 +901,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * holds this one, a steer in the running turn's steers and a queued message
    * in the queue, under the id it was sent with.
    *
-   * - With nothing running, it is refused and goes as a message, which starts a
-   *   turn, as the product sends it.
+   * - With nothing running, it goes as a message, which starts a turn, as the
+   *   product's session takes it.
    * - Recall or Steer pressed meanwhile is carried out then.
    */
   function deliverWaiting(
@@ -1106,8 +1106,29 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /**
+   * The next turn, opened with the pending steers no turn took, as the
+   * product's session opens it: the first is the turn's message, and the
+   * others are read with it. Returns whether there were any.
+   */
+  function openTurnWithSteers(): boolean {
+    const [first, ...others] = state.pendingSteers
+    if (!first) {
+      return false
+    }
+    state.pendingSteers = []
+    append(userBlock(first.content, first.id, first.comments))
+    for (const pending of others) {
+      append(steerBlock(pending.content, pending.comments))
+    }
+    runTurn(token)
+    return true
+  }
+
+  /**
    * Abort a running turn: the transcript ends with an abort record to resume
-   * from. A compaction stops with nothing to resume.
+   * from. A compaction stops with nothing to resume. The steers that waited
+   * open the next turn, as the product's session does: Stop stops the work,
+   * not what the user sent.
    */
   function stop(): void {
     if (state.phase === 'idle') {
@@ -1118,16 +1139,16 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     confirmMessage()
     const stopped = state.phase
     state.phase = 'idle'
-    if (stopped === 'compacting') {
-      return
+    if (stopped !== 'compacting') {
+      append({
+        type: 'abort',
+        id: nextId('abort'),
+        createdAt: now(),
+        model: demoModel,
+        isResumed: false,
+      })
     }
-    append({
-      type: 'abort',
-      id: nextId('abort'),
-      createdAt: now(),
-      model: demoModel,
-      isResumed: false,
-    })
+    openTurnWithSteers()
   }
 
   /**
@@ -1166,11 +1187,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         },
       ]
       state.contextUsage = usageAt(0.06, { summary: 2_400 })
-      // Steers that came during the pass are read once it ends.
-      if (writeSteers()) {
-        thinkThenReply(run, WAIT_MS, THINK_2)
-        state.phase = 'running'
-        waitForModel()
+      // Steers that came during the pass open the next turn once it ends.
+      if (openTurnWithSteers()) {
         return
       }
       state.phase = 'idle'
@@ -1180,9 +1198,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /**
    * A message sent as a steer: it shows as one from the send, and once held
    * it waits as a pending steer until the turn's next boundary. With nothing
-   * running, the steer is refused and the message goes as a message, as the
-   * product sends it; a message on its way that starts a turn counts as
-   * running.
+   * running, the steer starts the turn, as the product's session does; a
+   * message on its way that starts a turn counts as running.
    */
   function steer(content: UserContentBlock[], message: SentMessage, comments: readonly MessageComment[] = []): void {
     if (!agentWorks(state.phase, pendingSubmissions.value)) {
@@ -1262,9 +1279,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /**
    * Send now on a queued message, as the product's: while a turn runs, the
-   * turn ends at once without stopping anything, with its pending steers
-   * written, and the message starts the next turn; otherwise the message
-   * moves to the front of the queue.
+   * turn ends at once without stopping anything, and the message starts the
+   * next turn, which its pending steers join; otherwise the message moves to
+   * the front of the queue.
    */
   function sendQueued(id: string): void {
     if (keepWish(id, 'sendNow')) {
@@ -1280,11 +1297,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       return
     }
     cutRound()
+    // The steers that wait join the message's turn, as the product's do.
+    append(userBlock(item.content, item.id, item.comments))
     for (const pending of state.pendingSteers) {
       append(steerBlock(pending.content, pending.comments))
     }
     state.pendingSteers = []
-    append(userBlock(item.content, item.id, item.comments))
     runTurn(token)
   }
 

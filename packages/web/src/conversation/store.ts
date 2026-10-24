@@ -3854,9 +3854,9 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Carries out the wish kept for the message `id`, which the session now
    * holds: on the steer or the queued message it became, as the controls on
-   * those do. A steer the session refused went as a message, which may have
-   * joined the queue; one already in the transcript is past both, which a
-   * removal tells.
+   * those do. A steer sent again as a message after a lost connection may
+   * have joined the queue; one already in the transcript is past both, which
+   * a removal tells.
    */
   function carryOut(conversation: Conversation, id: string, wish: 'recall' | 'sendNow'): void {
     if (wish === 'recall') {

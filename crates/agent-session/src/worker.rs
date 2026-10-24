@@ -21,7 +21,6 @@ use super::{
     compaction,
     core::{ActionKind, SessionCore, StartedAction},
     editing::{self, EditError},
-    input::Take,
     persist, turn, window,
 };
 
@@ -233,17 +232,9 @@ async fn execute(
                 estimate: usage.as_ref().map(|usage| usage.tokens),
                 compact_from: usage.and_then(|usage| usage.compact_from),
             };
+            // What arrives during the pass waits for the scheduler, which
+            // opens the next turn with it once the pass ends.
             compaction::compacting(s, compaction::run_pass(s, cancel, &trigger)).await?;
-            // Agent messages that were waiting reach the model; steers that
-            // arrived during the pass wait in the transcript for the next
-            // turn.
-            let agent_input = s.read(|core| core.inputs.has_agent_input());
-            if s.update(|core| core.write_inputs(Take::Everything, "after_compaction")) {
-                persist::flush(s).await?;
-            }
-            if agent_input {
-                return turn::run(s, cancel).await;
-            }
             Ok(())
         }
     }
