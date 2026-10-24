@@ -745,6 +745,15 @@ export class ConversationClient {
     return subscription
   }
 
+  /**
+   * Whether the client holds the node `node`'s transcript current with the
+   * backend's: read or brought current by the socket, and not being read
+   * again.
+   */
+  holdsCurrent(node: string): boolean {
+    return this.subscriptions.get(node)?.state.status === 'current'
+  }
+
   /** Stops following the node `node`'s messages; a frame of it still on its way is dropped. */
   unfollowNode(node: string): void {
     const subscription = this.subscriptions.get(node)

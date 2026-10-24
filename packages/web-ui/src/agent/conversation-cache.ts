@@ -5,6 +5,8 @@ export interface CachedConversation {
   readonly controller: AbortController
   runtime: ConversationRuntime | null
   opening: Promise<void>
+  /** Whether its opening has ended; a failed one ends with the entry. */
+  settled: boolean
 }
 
 /**
@@ -30,11 +32,14 @@ export class ConversationCache {
       controller: new AbortController(),
       runtime: null,
       opening: Promise.resolve(),
+      settled: false,
     })
     this.entries.set(id, entry)
     entry.opening = Promise.resolve().then(() => {
       entry.controller.signal.throwIfAborted()
       return initialize(entry)
+    }).then(() => {
+      entry.settled = true
     }).catch((error: unknown) => {
       if (this.entries.get(id) === entry) {
         this.delete(id)
