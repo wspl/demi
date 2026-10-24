@@ -305,7 +305,7 @@ pub enum CommandState {
     Aborted,
     /// Its Host lost it, for `reason` (`crates/agent-session/src/reports.rs`), with
     /// the media its declared commands returned to the job, which went with
-    /// it.
+    /// it but for those the conversation owner's namespace holds.
     Lost {
         reason: String,
         media: Vec<CommandMedium>,

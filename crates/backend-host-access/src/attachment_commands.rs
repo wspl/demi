@@ -16,7 +16,9 @@
 //!    pipe (`crates/runner-host/src/files.rs`), and the backend stores the blob
 //!    in that namespace.
 //! 4. The backend reads the media type from the bytes as it does for the user's
-//!    uploads, and stores the record under the next number of the
+//!    uploads. An attachment of the conversation with the same bytes answers
+//!    with its number, as a medium a tool showed does, so one file is one
+//!    attachment. Otherwise it stores the record under the next number of the
 //!    conversation's `attachment` sequence, with the file it came from: the
 //!    invocation's device and the file's full path as that Host writes it,
 //!    which a card of a file that is no image or video opens in the Files
@@ -440,8 +442,9 @@ pub async fn copy_picture(
 }
 
 /// Copies the file at `path`, beside `cwd`, from the conversation's Host on
-/// `device`, and stores it as the conversation's next attachment, the upload of
-/// the agent of `node`: its blob first, then its record.
+/// `device`, and stores it as the upload of the agent of `node`: its blob
+/// first, then its record, unless an attachment of the conversation has its
+/// bytes, which it answers then.
 ///
 /// The Host hashes the file first, and sends its bytes only when the namespace
 /// does not hold them already. Answers why when it cannot.
@@ -526,7 +529,7 @@ async fn store(
         move || shard.summary_changed(&conversation)
     };
     let node_id = attachment.node.clone();
-    let stored = commit(shard.tasks(), shard.conversation_db(conversation), attachment, announce)
+    let stored = commit(shard.tasks(), shard.conversation_db(conversation), attachment, Numbering::SameBytes, announce)
         .await
         .map_err(CopyError::Unreadable)?;
     tracing::info!(
@@ -556,10 +559,23 @@ pub(crate) struct Unnumbered {
     pub(crate) source: Option<AttachmentSource>,
 }
 
+/// How [`commit`] numbers an attachment.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Numbering {
+    /// The conversation's next number, as a file the user sends takes.
+    Next,
+    /// The number of the attachment that has its blob already, or the next
+    /// one when none has: the agent's file keeps one number however often
+    /// a tool shows it or the agent uploads it.
+    SameBytes,
+}
+
 /// Stores `attachment` as the conversation's next one in `db`, its number and
 /// its record in one transaction, so a summary that names the number names a
 /// record the page can read (`conversation_attachments::last`). Then calls
-/// `announce`, which sends the summary to the user's pages.
+/// `announce`, which sends the summary to the user's pages. With
+/// [`Numbering::SameBytes`] an attachment that has its blob already is
+/// answered instead, and nothing is written or announced.
 ///
 /// The write and the announcement run in a task of `tasks`, which the shard's
 /// close waits for. A call stopped once the write is on its way, whose future
@@ -570,12 +586,18 @@ pub(crate) fn commit(
     tasks: &TaskTracker,
     db: ConversationDb,
     attachment: Unnumbered,
+    numbering: Numbering,
     announce: impl FnOnce() + 'static,
 ) -> impl Future<Output = Result<AttachmentRow, String>> {
     let committed = tasks.spawn_local(async move {
-        let row = db
+        let (row, written) = db
             .call(move |connection| {
                 let transaction = connection.transaction()?;
+                if numbering == Numbering::SameBytes
+                    && let Some(row) = conversation_attachments::with_blob(&transaction, &attachment.blob)?
+                {
+                    return Ok((row, false));
+                }
                 let row = AttachmentRow {
                     number: AttachmentNumber(sequences::next(&transaction, Sequence::Attachment)?),
                     name: attachment.name,
@@ -591,10 +613,12 @@ pub(crate) fn commit(
                 };
                 conversation_attachments::insert(&transaction, std::slice::from_ref(&stored))?;
                 transaction.commit()?;
-                Ok(stored.row)
+                Ok((stored.row, true))
             })
             .await?;
-        announce();
+        if written {
+            announce();
+        }
         Ok::<_, StorageError>(row)
     });
     async move {

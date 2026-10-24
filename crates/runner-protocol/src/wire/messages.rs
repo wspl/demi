@@ -1326,7 +1326,8 @@ pub enum Outbound {
         size: u64,
         #[garde(custom(digest))]
         sha256: String,
-        /// A document's name, as its medium record gave it.
+        /// Its file's name, as its medium record gave it; a runner of an
+        /// earlier release gives only a document's.
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",

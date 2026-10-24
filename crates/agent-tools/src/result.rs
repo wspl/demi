@@ -30,8 +30,9 @@
 //! - A medium that does not fit is skipped while a later, smaller one may still
 //!   be attached.
 //!
-//! A line about a medium says it was shown to the model, never attached, which
-//! the model would read as delivered to the user.
+//! A line about a medium says it was shown to the model, not to the user,
+//! which the model would otherwise take it for, and names the attachment the
+//! backend keeps it as, which a reply shows by its `attachment_id`.
 //!
 //! The runner keeps media apart from the output, so no cut of the output
 //! touches them. When the job ends the backend stores each medium the result
@@ -672,8 +673,9 @@ async fn attached_media(
 }
 
 /// What one medium the job viewed becomes: attached, as it came or fitted,
-/// and its line when it was not attached or was fitted. The original is the
-/// file the model viewed, so a line needs no way to read it.
+/// and its line: that it was shown, fitted or not shown, and its
+/// `attachment_id` or why it has none. The original is the file the model
+/// viewed, so a line needs no way to read it.
 async fn viewed_medium(
     medium: &CommandMedium,
     model: &Model,
@@ -684,9 +686,24 @@ async fn viewed_medium(
     let media_type = medium.media_type.as_str();
     let entry = model_media_type_for(media_type);
     let kind = entry.map_or("medium", |entry| entry.kind.name());
-    // A line says the medium was shown to the model, never attached, which
-    // the model reads as given to the user (`crates/plugin-file/command/src/files.rs`).
-    let not_attached = |reason: &str| Some(format!("[{kind} {number}: not shown: {reason}]"));
+    // The line says the medium was shown to the model and not to the user,
+    // which the model would otherwise take it for, and names its attachment,
+    // which a reply shows (`crates/plugin-file/command/src/files.rs`).
+    let line = |viewing: Viewing| -> Option<String> {
+        let told = match (viewing, &medium.attachment) {
+            (Viewing::Whole, None) => return None,
+            (Viewing::Whole, Some(_)) => "shown to you, not to the user".to_owned(),
+            (Viewing::Fitted(how), None) => format!("shown to you as {how}"),
+            (Viewing::Fitted(how), Some(_)) => format!("shown to you as {how}, not to the user"),
+            (Viewing::Not(reason), _) => format!("not shown: {reason}"),
+        };
+        Some(match &medium.attachment {
+            Some(Ok(id)) => format!("[{kind} {number}: {told}; attachment_id: {id}]"),
+            Some(Err(reason)) => format!("[{kind} {number}: {told}; not an attachment: {reason}]"),
+            None => format!("[{kind} {number}: {told}]"),
+        })
+    };
+    let not_attached = |reason: &str| line(Viewing::Not(reason.to_owned()));
     let bytes = match &medium.bytes {
         Ok(bytes) => bytes,
         Err(reason) => return (None, not_attached(reason)),
@@ -724,7 +741,7 @@ async fn viewed_medium(
                     file_name: medium.name.clone().unwrap_or_else(|| document_name(number)),
                 }
             };
-            (Some(part), None)
+            (Some(part), line(Viewing::Whole))
         }
         ModelMediaKind::Image => {
             let fitted = match images::fit(data, media_type).await {
@@ -734,23 +751,33 @@ async fn viewed_medium(
             if let Err(reason) = budget.take(fitted.data.base64_len()) {
                 return (None, not_attached(&reason));
             }
-            let line = fitted.reencoded.then(|| {
-                format!(
-                    "[image {number}: shown to you as {} of {} × {} px, fitted from {media_type} of {} × {} px]",
+            let viewing = if fitted.reencoded {
+                Viewing::Fitted(format!(
+                    "{} of {} × {} px, fitted from {media_type} of {} × {} px",
                     fitted.media_type,
                     fitted.entered.0,
                     fitted.entered.1,
                     fitted.came.0,
                     fitted.came.1
-                )
-            });
+                ))
+            } else {
+                Viewing::Whole
+            };
             let image = ResultPart::Image(MediaBytes {
                 data: fitted.data,
                 media_type: fitted.media_type.to_owned(),
             });
-            (Some(image), line)
+            (Some(image), line(viewing))
         }
     }
+}
+
+/// How the model saw a medium: as it came, in the fitted form the text
+/// says, or not, for the reason the text says.
+enum Viewing {
+    Whole,
+    Fitted(String),
+    Not(String),
 }
 
 /// The name a document viewed from stdin goes by: its kind and number, as

@@ -36,12 +36,13 @@ pub(crate) fn decode_whole(bytes: &[u8], media_type: &str) -> Result<(), Undecod
     }
 }
 
-/// The facts of `bytes`, a medium of `media_type` named `name` when it is a
-/// document; only the header is read, and one that does not read says
+/// The facts of `bytes`, a medium of `media_type` whose file is named
+/// `name`; only the header is read, and one that does not read says
 /// nothing of the size.
 pub(crate) fn facts(bytes: &Bytes, media_type: &str, name: Option<String>) -> MediumFacts {
     let mut facts = MediumFacts {
         media_type: media_type.to_owned(),
+        name,
         ..MediumFacts::default()
     };
     match media_type.split_once('/').map(|(kind, _)| kind) {
@@ -49,7 +50,7 @@ pub(crate) fn facts(bytes: &Bytes, media_type: &str, name: Option<String>) -> Me
             (facts.width, facts.height) = image_size(bytes, media_type).unzip();
         }
         Some("video") => video_header(bytes.clone(), &mut facts),
-        _ => facts.name = name,
+        _ => {}
     }
     facts
 }

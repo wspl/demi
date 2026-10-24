@@ -2041,14 +2041,23 @@ pub(crate) const LEGACY_CONVERSATION: Schema = Schema {
 /// rows and the contents they name, its paths, commands, attachments and
 /// shares.
 ///
-/// Its history starts with it. A database of [`LEGACY_CONVERSATION`], whose
+/// No release has shipped it yet. Its history holds the form development
+/// databases keep of it: the one each content was kept once in, before a
+/// command's row kept its media. A database of [`LEGACY_CONVERSATION`], whose
 /// rows held whole blocks, is not migrated into it but converted into a new
 /// file (`convert.rs`).
 pub(crate) const CONVERSATION: Schema = Schema {
     initial: "PRAGMA auto_vacuum = INCREMENTAL;",
     sql: CONVERSATION_V2,
-    history: &[],
+    history: &[Shipped {
+        sql: include_str!("schema/conversation-0.1.65-dev.contents-once.sql"),
+        migration: Migration::Sql(CONVERSATION_FROM_CONTENTS_ONCE),
+    }],
 };
+
+/// From the form each content was kept once in, before a command's row kept
+/// what its result told of its media.
+const CONVERSATION_FROM_CONTENTS_ONCE: &str = "ALTER TABLE command_outputs ADD COLUMN media TEXT;";
 
 /// 0.1.65's conversation schema, which 0.1.64 shipped too.
 const CONVERSATION_0_1_65: &str = include_str!("schema/conversation-0.1.65.sql");
@@ -6117,6 +6126,11 @@ CREATE TABLE command_outputs (
   missing_reason TEXT,
   not_stored     TEXT,
   title          TEXT NOT NULL DEFAULT '',
+  -- What its result tells of each medium its job viewed, a JSON array of
+  -- their facts, attachments and why the backend lacked their bytes; null
+  -- when it viewed none, and for a row written before rows kept them.
+  -- command_outputs.media: command media format 1
+  media          TEXT,
   CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
   CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
   CHECK (missing_bytes IS NULL OR blob IS NOT NULL)

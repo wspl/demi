@@ -765,6 +765,7 @@ impl AgentTreeStore for SqliteTreeStore {
                         title: row.title,
                         end: row.end,
                         output: StoredOutput::NotStored(reason),
+                        media: row.media,
                     }));
                 }
             };
@@ -786,6 +787,7 @@ impl AgentTreeStore for SqliteTreeStore {
                 title: row.title,
                 end: row.end,
                 output: StoredOutput::Stored { output },
+                media: row.media,
             }))
         })
     }

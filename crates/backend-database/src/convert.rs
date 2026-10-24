@@ -131,7 +131,10 @@ fn convert(path: &FilePath, form: LegacyForm) -> Result<u64, StorageError> {
     {
         let transaction = new.transaction()?;
         for table in COPIED {
-            transaction.execute(&format!("INSERT INTO main.{table} SELECT * FROM legacy.{table}"), [])?;
+            // By the legacy table's columns: a column the new one added
+            // since takes its default.
+            let columns = legacy_columns(&transaction, table)?.join(", ");
+            transaction.execute(&format!("INSERT INTO main.{table} ({columns}) SELECT {columns} FROM legacy.{table}"), [])?;
         }
         if form == LegacyForm::AutomationNames {
             schema::name_schedules(&transaction, "nodes", "state")?;
@@ -278,4 +281,10 @@ pub(crate) fn remove_with_logs(path: &FilePath) -> Result<(), StorageError> {
         remove_file(&with_suffix(path, suffix))?;
     }
     Ok(())
+}
+
+/// The columns of the legacy database's `table`, in order.
+fn legacy_columns(connection: &Connection, table: &str) -> rusqlite::Result<Vec<String>> {
+    let mut statement = connection.prepare(&format!("SELECT name FROM pragma_table_info('{table}', 'legacy')"))?;
+    statement.query_map([], |row| row.get(0))?.collect()
 }

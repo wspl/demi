@@ -22,7 +22,7 @@ use demi_shared_types::{B64Bytes, UserContentBlock};
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId};
 
 use crate::HostShard;
-use crate::attachment_commands::{Unnumbered, commit};
+use crate::attachment_commands::{Numbering, Unnumbered, commit};
 
 impl dyn HostShard + '_ {
     /// The blocks the upload `reference` becomes in a message of the user's
@@ -69,7 +69,7 @@ impl dyn HostShard + '_ {
             node: None,
             source: None,
         };
-        let row = commit(self.tasks(), self.conversation_db(id), numbered, || {}).await?;
+        let row = commit(self.tasks(), self.conversation_db(id), numbered, Numbering::Next, || {}).await?;
         let number = row.number.to_string();
         tracing::info!(
             event = "attachment.stored",

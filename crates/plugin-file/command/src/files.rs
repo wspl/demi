@@ -325,9 +325,9 @@ fn oversized(named: &str, opening: &[u8], size: u64) -> FileError {
     }
 }
 
-/// Returns `bytes`, named `named` in a line and `name` to the model when it
-/// is a document's file name, as a medium of the job when they are a medium
-/// the job's model reads in a tool result, with the facts its header gives.
+/// Returns `bytes`, named `named` in a line and with its file's name `name`,
+/// as a medium of the job when they are a medium the job's model reads in a
+/// tool result, with the facts its header gives.
 async fn show(
     context: &InvocationContext,
     named: &str,

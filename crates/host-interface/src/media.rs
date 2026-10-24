@@ -13,7 +13,7 @@ pub struct CommandMedium {
     pub number: u32,
     pub media_type: String,
     pub size: u64,
-    /// A document's file name; none for one viewed from stdin.
+    /// Its file's name; none for one viewed from stdin.
     pub name: Option<String>,
     /// An image's or a video's size in pixels, from its header.
     pub width: Option<u32>,
@@ -21,4 +21,8 @@ pub struct CommandMedium {
     /// A video's length, from its container's header.
     pub duration_ms: Option<u64>,
     pub bytes: Result<Bytes, String>,
+    /// The attachment of the conversation the backend keeps it as, by its
+    /// id as a reply writes it (`a12`), or why it could not store it; none
+    /// for a medium whose bytes it does not have, which `bytes` says why.
+    pub attachment: Option<Result<String, String>>,
 }
