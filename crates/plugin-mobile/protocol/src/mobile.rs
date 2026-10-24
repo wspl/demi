@@ -543,9 +543,26 @@ pub struct TypeResult {
     #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub characters: usize,
     pub replaced: bool,
+    /// The fields the text went into, in order: one, or each of a row of
+    /// fields that take a character each, as a verification code's boxes.
+    pub fields: Vec<TypedField>,
+    /// The keys left something else than the text in the field, so the
+    /// field's text was set directly.
+    pub set: bool,
+}
+
+/// A field `type` typed into, and what it holds afterwards.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TypedField {
+    pub element: ElementSummary,
+    /// The field's text once the text went in; for a field of a row, the
+    /// characters it took, which the app may have acted on since, as by
+    /// clearing a code it submitted. None for a password field, whose text
+    /// cannot be read.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "ElementSummary")]
-    pub element: Option<ElementSummary>,
+    #[schemars(with = "String")]
+    pub holds: Option<String>,
 }
 
 device_input! {

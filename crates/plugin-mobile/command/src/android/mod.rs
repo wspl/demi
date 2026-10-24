@@ -3,6 +3,10 @@
 //!
 //! - Each open emulator's pictures, touches and keys go over its own gRPC
 //!   interface, with no adb in that path.
+//! - The emulator's keys reach Android through its hardware keyboard. An AVD
+//!   made without one (`hw.keyboard=no`) drops them, so its keys go through
+//!   Android's own input injection over adb instead; its configuration is
+//!   the user's and stays as it is.
 //! - Its UI tree and a field's text come through `u2.jar` inside it, over adb.
 //!
 //! # Three pixel spaces
@@ -349,6 +353,13 @@ impl Driver for Android {
                 .and_then(|avd| self.sdk.device_art(&avd.device));
             let serial = running.discovery.serial();
             let guest = self.sdk.guest(&serial).await?;
+            let hardware_keyboard = guest.hardware_keyboard().await.unwrap_or_else(|error| {
+                tracing::info!(event = "android_keyboard.read_failed", %error, "whether the emulator has a hardware keyboard was not read");
+                true
+            });
+            if let Err(error) = guest.skip_keyboard_tutorials().await {
+                tracing::info!(event = "android_tutorials.skip_failed", %error, "the keyboard's tutorials stay on");
+            }
             let geometry = Geometry { panel, density };
             let ended = CancellationToken::new();
             let first = geometry.screen(0);
@@ -363,6 +374,8 @@ impl Driver for Android {
                 client,
                 guest,
                 serial,
+                hardware_keyboard,
+                injected_modifiers: std::sync::Mutex::default(),
                 codec: self.codec.clone(),
                 geometry,
                 screen: watch::Sender::new(geometry.screen(0)),
@@ -525,6 +538,12 @@ struct AndroidDevice {
     guest: Arc<dyn Guest>,
     /// adb's name of the emulator.
     serial: String,
+    /// Whether the emulator has a hardware keyboard to take its keys; one
+    /// without has its keys injected through the guest.
+    hardware_keyboard: bool,
+    /// The modifiers held down while keys are injected, which an injected
+    /// key is pressed together with.
+    injected_modifiers: std::sync::Mutex<Vec<&'static str>>,
     codec: Arc<dyn Codec>,
     /// The emulator's pictures, which the live view and a recording share.
     pictures: Arc<screen::Screen>,
@@ -769,9 +788,14 @@ impl AndroidDevice {
         let before = self.focused_text().await?;
         let mut drawn = self.drawn.subscribe();
         drawn.borrow_and_update();
-        let control = self.key_down(CONTROL).await?;
-        self.key_down(V).await?.release().await?;
-        control.release().await?;
+        if self.hardware_keyboard {
+            let control = self.key_down(CONTROL).await?;
+            self.key_down(V).await?.release().await?;
+            control.release().await?;
+        } else {
+            let press = [CONTROL, V].map(|usage| keycode(usage).expect("Control and V have Android's codes"));
+            self.guest.inject_keys(&[press.to_vec()]).await?;
+        }
         let taken = async {
             while drawn.changed().await.is_ok() {
                 if pasted(before.as_deref(), self.focused_text().await?.as_deref(), text) {
@@ -805,6 +829,34 @@ impl AndroidDevice {
         Ok(pressed)
     }
 
+    /// The key `key` through the guest's injection, on an emulator without a
+    /// hardware keyboard: a modifier is held until let go, and another key is
+    /// pressed as it goes down, together with the modifiers held.
+    async fn inject_key(&self, key: KeyPress) -> Result<()> {
+        // A key Android has no code for does nothing, as the emulator's
+        // own keyboard ignores it.
+        let Some(code) = keycode(key.usage) else {
+            return Ok(());
+        };
+        let press = {
+            let mut held = self.injected_modifiers.lock().expect("the held modifiers are intact");
+            if (0xe0..=0xe7).contains(&key.usage) {
+                held.retain(|modifier| *modifier != code);
+                if key.down {
+                    held.push(code);
+                }
+                return Ok(());
+            }
+            if !key.down {
+                return Ok(());
+            }
+            let mut press = held.clone();
+            press.push(code);
+            press
+        };
+        self.guest.inject_keys(&[press]).await
+    }
+
     /// Holds the key `usage` down, as [`Self::finger_down`] holds a finger.
     async fn key_down(&self, usage: u32) -> Result<Pressed> {
         let pressed = Pressed {
@@ -834,6 +886,60 @@ async fn send_touch(mut client: emulator::Client, at: (i32, i32), down: bool) ->
 
 async fn send_key(mut client: emulator::Client, event: KeyboardEvent) -> Result<()> {
     client.send_key(event).await.map(drop).map_err(failed("the key"))
+}
+
+/// Android's name of the key of USB HID usage `usage`; none for a key
+/// Android has none for.
+fn keycode(usage: u32) -> Option<&'static str> {
+    const LETTERS: [&str; 26] = [
+        "KEYCODE_A", "KEYCODE_B", "KEYCODE_C", "KEYCODE_D", "KEYCODE_E", "KEYCODE_F", "KEYCODE_G", "KEYCODE_H",
+        "KEYCODE_I", "KEYCODE_J", "KEYCODE_K", "KEYCODE_L", "KEYCODE_M", "KEYCODE_N", "KEYCODE_O", "KEYCODE_P",
+        "KEYCODE_Q", "KEYCODE_R", "KEYCODE_S", "KEYCODE_T", "KEYCODE_U", "KEYCODE_V", "KEYCODE_W", "KEYCODE_X",
+        "KEYCODE_Y", "KEYCODE_Z",
+    ];
+    const DIGITS: [&str; 10] = [
+        "KEYCODE_1", "KEYCODE_2", "KEYCODE_3", "KEYCODE_4", "KEYCODE_5", "KEYCODE_6", "KEYCODE_7", "KEYCODE_8",
+        "KEYCODE_9", "KEYCODE_0",
+    ];
+    Some(match usage {
+        0x04..=0x1d => LETTERS[(usage - 0x04) as usize],
+        0x1e..=0x27 => DIGITS[(usage - 0x1e) as usize],
+        0x28 => "KEYCODE_ENTER",
+        0x29 => "KEYCODE_ESCAPE",
+        0x2a => "KEYCODE_DEL",
+        0x2b => "KEYCODE_TAB",
+        0x2c => "KEYCODE_SPACE",
+        0x2d => "KEYCODE_MINUS",
+        0x2e => "KEYCODE_EQUALS",
+        0x2f => "KEYCODE_LEFT_BRACKET",
+        0x30 => "KEYCODE_RIGHT_BRACKET",
+        0x31 => "KEYCODE_BACKSLASH",
+        0x33 => "KEYCODE_SEMICOLON",
+        0x34 => "KEYCODE_APOSTROPHE",
+        0x35 => "KEYCODE_GRAVE",
+        0x36 => "KEYCODE_COMMA",
+        0x37 => "KEYCODE_PERIOD",
+        0x38 => "KEYCODE_SLASH",
+        0x39 => "KEYCODE_CAPS_LOCK",
+        0x4a => "KEYCODE_MOVE_HOME",
+        0x4b => "KEYCODE_PAGE_UP",
+        0x4c => "KEYCODE_FORWARD_DEL",
+        0x4d => "KEYCODE_MOVE_END",
+        0x4e => "KEYCODE_PAGE_DOWN",
+        0x4f => "KEYCODE_DPAD_RIGHT",
+        0x50 => "KEYCODE_DPAD_LEFT",
+        0x51 => "KEYCODE_DPAD_DOWN",
+        0x52 => "KEYCODE_DPAD_UP",
+        0xe0 => "KEYCODE_CTRL_LEFT",
+        0xe1 => "KEYCODE_SHIFT_LEFT",
+        0xe2 => "KEYCODE_ALT_LEFT",
+        0xe3 => "KEYCODE_META_LEFT",
+        0xe4 => "KEYCODE_CTRL_RIGHT",
+        0xe5 => "KEYCODE_SHIFT_RIGHT",
+        0xe6 => "KEYCODE_ALT_RIGHT",
+        0xe7 => "KEYCODE_META_RIGHT",
+        _ => return None,
+    })
 }
 
 /// A hardware keyboard's key `usage`, by its USB HID usage.
@@ -1071,6 +1177,9 @@ impl Device for AndroidDevice {
     }
 
     fn key(&self, key: KeyPress) -> BoxFuture<'_, Result<()>> {
+        if !self.hardware_keyboard {
+            return Box::pin(self.inject_key(key));
+        }
         let kind = if key.down {
             keyboard_event::KeyEventType::Keydown
         } else {
@@ -1081,6 +1190,16 @@ impl Device for AndroidDevice {
 
     fn type_keys<'a>(&'a self, typed: &'a [keys::Typed]) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
+            if !self.hardware_keyboard {
+                let presses: Vec<Vec<&'static str>> = typed
+                    .iter()
+                    .filter_map(|&(usage, shift)| {
+                        let key = keycode(usage)?;
+                        Some(if shift { vec!["KEYCODE_SHIFT_LEFT", key] } else { vec![key] })
+                    })
+                    .collect();
+                return self.guest.inject_keys(&presses).await;
+            }
             // Each key down, then up: the emulator keeps these in order with
             // Shift's and Control's, which a key press of its own is not.
             for &(usage, shift) in typed {

@@ -40,7 +40,7 @@ operations! {
     "inspect" => InspectInput, InspectResult, ["device"], "Read the settled screen's UI tree, alerts and the keyboard included: each element's ref, role, label, value, identifier, frame in screenshot pixels and state.";
     "tap" => TapInput, TapResult, ["device", "at"], "Tap an element ref from the last inspect, or x y in screenshot pixels: tap m1 e7, tap m1 540 1210. Returns once the device took the tap, not once the screen changed.";
     "swipe" => SwipeInput, SwipeResult, ["device", "at"], "Swipe from x1 y1 to x2 y2 in screenshot pixels, or across an element so its content moves up, down, left or right: swipe m1 e4 up.";
-    "type" => TypeInput, TypeResult, ["device", "text"], "Type text into the focused field, or tap --into <ref> first; --replace sets the field's text at once instead of adding to it.";
+    "type" => TypeInput, TypeResult, ["device", "text"], "Type text into the focused field, or tap --into <ref> first, checking that it landed and saying what the field holds; --replace sets the field's text at once instead of adding to it.";
     "key" => KeyInput, KeyResult, ["device", "key"], "Press home, lock, volume-up or volume-down, or the keyboard's enter, delete, tab or escape.";
     "rotate" => RotateInput, RotateResult, ["device", "orientation"], "Turn the device portrait or landscape, or a quarter turn left or right; screenshots and coordinates follow it.";
     "appearance" => AppearanceInput, AppearanceResult, ["device", "appearance"], "Switch the system to light or dark, or toggle it.";

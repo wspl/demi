@@ -4,7 +4,8 @@
 //! - the UI tree with its display rotation, a field's text and the clipboard,
 //!   through openatx's `u2.jar`, which `demi-mobile` carries and runs with
 //!   `app_process` as a shell process, not an installed app;
-//! - appearance, through the shell.
+//! - appearance, the keyboard's tutorials, and keys where the emulator has
+//!   no hardware keyboard to take its own, through the shell.
 
 use std::{sync::Arc, time::Duration};
 
@@ -84,6 +85,17 @@ pub trait Guest: Send + Sync + 'static {
     /// Presses the power key, as the side button: a display that is on
     /// turns off, one that is off turns on.
     fn power(&self) -> BoxFuture<'_, Result<()>>;
+    /// Whether the emulator has a hardware keyboard, which the keys the
+    /// emulator sends need: without one they reach nothing.
+    fn hardware_keyboard(&self) -> BoxFuture<'_, Result<bool>>;
+    /// Presses each of `presses` in order through Android's own input
+    /// injection, which needs no hardware keyboard: the keys of each, by
+    /// their `KEYCODE_` names, pressed together.
+    fn inject_keys<'a>(&'a self, presses: &'a [Vec<&'static str>]) -> BoxFuture<'a, Result<()>>;
+    /// Turns off the keyboard's first-run tutorials that cover the screen,
+    /// as a person does with a tap the first time: Gboard's stylus
+    /// handwriting tutorial.
+    fn skip_keyboard_tutorials(&self) -> BoxFuture<'_, Result<()>>;
     /// The text on the clipboard, empty when it holds none.
     fn clipboard(&self) -> BoxFuture<'_, Result<String>>;
     fn set_clipboard<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
@@ -308,6 +320,52 @@ impl Guest for U2 {
         })
     }
 
+    fn hardware_keyboard(&self) -> BoxFuture<'_, Result<bool>> {
+        Box::pin(async move { Ok(hardware_keyboard(&self.adb.shell(&self.serial, "dumpsys input").await?)) })
+    }
+
+    fn inject_keys<'a>(&'a self, presses: &'a [Vec<&'static str>]) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            // One shell for all of them: each `input` waits until Android
+            // dispatched its keys, so they arrive in order.
+            let mut commands = Vec::new();
+            let mut alone: Vec<&str> = Vec::new();
+            for press in presses {
+                match press.as_slice() {
+                    [key] => alone.push(key),
+                    keys => {
+                        if !alone.is_empty() {
+                            commands.push(format!("input keyevent {}", alone.join(" ")));
+                            alone.clear();
+                        }
+                        commands.push(format!("input keycombination {}", keys.join(" ")));
+                    }
+                }
+            }
+            if !alone.is_empty() {
+                commands.push(format!("input keyevent {}", alone.join(" ")));
+            }
+            if commands.is_empty() {
+                return Ok(());
+            }
+            // `input` says nothing unless it failed.
+            let said = self.adb.shell(&self.serial, &commands.join(" && ")).await?;
+            match said.trim() {
+                "" => Ok(()),
+                said => Err(DriverError::Failed(format!("Android did not take the keys: {said}"))),
+            }
+        })
+    }
+
+    fn skip_keyboard_tutorials(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            self.adb
+                .shell(&self.serial, "settings put secure stylus_handwriting_enabled 0")
+                .await
+                .map(drop)
+        })
+    }
+
     fn clipboard(&self) -> BoxFuture<'_, Result<String>> {
         Box::pin(async move {
             let text = self.call("getClipboard", json!([])).await?;
@@ -455,7 +513,34 @@ pub fn focused_text(xml: &str) -> Result<Option<String>> {
     Ok(document
         .descendants()
         .find(|node| node.has_tag_name("node") && node.attribute("focused") == Some("true"))
-        .map(|node| node.attribute("text").unwrap_or_default().to_owned()))
+        .map(|node| text(node).unwrap_or_default().to_owned()))
+}
+
+/// The text `node` holds; none when its text is its hint, which an empty
+/// field says as its text (`RawElement::hint`).
+fn text<'a>(node: roxmltree::Node<'a, '_>) -> Option<&'a str> {
+    node.attribute("text")
+        .filter(|text| !text.is_empty() && node.attribute("hint") != Some(text))
+}
+
+/// Whether `dumpsys input` says the emulator has a hardware keyboard: an
+/// alphabetic keyboard (KeyboardType 2) other than the `Virtual` one Android
+/// always has, which only injected keys reach.
+pub fn hardware_keyboard(dumped: &str) -> bool {
+    let mut device = "";
+    for line in dumped.lines().map(str::trim) {
+        if let Some((number, name)) = line.strip_prefix("Device ").and_then(|rest| rest.split_once(": "))
+            && number.parse::<i64>().is_ok()
+        {
+            device = name.trim();
+        } else if let Some(kind) = line.strip_prefix("KeyboardType: ")
+            && (kind == "2" || kind.eq_ignore_ascii_case("alphabetic"))
+            && device != "Virtual"
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// `node` as the elements it holds: itself with its children when it says
@@ -474,7 +559,7 @@ fn element(node: roxmltree::Node<'_, '_>, keyboard: Option<&str>) -> Vec<RawElem
     let class = node.attribute("class").unwrap_or_default();
     let simple = class.rsplit('.').next().unwrap_or(class);
     let editable = simple.contains("EditText");
-    let text = attribute("text");
+    let text = text(node);
     let description = attribute("content-desc");
     let identifier = attribute("resource-id").map(|id| id.split_once(":id/").map_or(id, |(_, name)| name).to_owned());
     let acts = flag("clickable") || flag("long-clickable") || flag("scrollable") || flag("checkable") || editable;
@@ -497,6 +582,7 @@ fn element(node: roxmltree::Node<'_, '_>, keyboard: Option<&str>) -> Vec<RawElem
         selected: Some(flag("selected") || flag("checked")),
         focused: Some(flag("focused")),
         secure: flag("password"),
+        hint: editable.then(|| attribute("hint").map(str::to_owned)).flatten(),
         keyboard_key: in_keyboard,
         children,
     }]
