@@ -26,7 +26,7 @@ const BY_USE = 'byUse'
 const database = new IndexedDatabase('demi-plugin-cache', 1, (request) => {
   const entries = request.result.createObjectStore(STORE, { keyPath: ['plugin', 'key'] })
   entries.createIndex(BY_USE, ['plugin', 'used'])
-})
+}, { [STORE]: [BY_USE] })
 
 const entrySchema = z.object({
   plugin: z.string(),
@@ -49,7 +49,13 @@ export function pluginCache(plugin: string, limit = PLUGIN_CACHE_BYTES, now: () 
           if (request.result === undefined) {
             return
           }
-          found = entrySchema.parse(request.result)
+          const read = entrySchema.safeParse(request.result)
+          if (!read.success) {
+            // An entry this page cannot read is dropped, and is a miss.
+            entries.delete([plugin, key])
+            return
+          }
+          found = read.data
           entries.put({ ...found, used: now() })
         }
         return () => found?.bytes ?? null
@@ -66,7 +72,12 @@ export function pluginCache(plugin: string, limit = PLUGIN_CACHE_BYTES, now: () 
         cursor.onsuccess = () => {
           const at = cursor.result
           if (at) {
-            sizes.push({ key: at.primaryKey, size: entrySchema.parse(at.value).bytes.byteLength })
+            const read = entrySchema.safeParse(at.value)
+            if (read.success) {
+              sizes.push({ key: at.primaryKey, size: read.data.bytes.byteLength })
+            } else {
+              at.delete()
+            }
             at.continue()
             return
           }

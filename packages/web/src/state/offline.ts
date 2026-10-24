@@ -78,6 +78,9 @@ export const EVICTION_BATCH = 200
 /** The blocks of a node's run a view reads from the disk at once, a page. */
 export const DISK_WINDOW = PAGE_BLOCKS
 
+/** The indexes of `NODES`, each on the field of its own name. */
+const NODE_INDEXES = ['viewedAt', 'conversation']
+
 /**
  * The database's layout. Its records are disposable, so a change of their
  * shape needs no new version: a record of another build is dropped. A new
@@ -92,10 +95,11 @@ const database = new IndexedDatabase('demi-offline', 3, (request) => {
   db.createObjectStore(ACCOUNT)
   db.createObjectStore(CONVERSATIONS)
   const nodes = db.createObjectStore(NODES)
-  nodes.createIndex('viewedAt', 'viewedAt')
-  nodes.createIndex('conversation', 'conversation')
+  for (const index of NODE_INDEXES) {
+    nodes.createIndex(index, index)
+  }
   db.createObjectStore(BLOCKS)
-})
+}, { [NODES]: NODE_INDEXES })
 
 const accountRecordSchema = z.object({
   build: z.string(),

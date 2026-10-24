@@ -469,7 +469,7 @@ function resetShortcuts(): void {
     <SettingsArchived
       v-else-if="section === 'archived'"
       :conversations="archived"
-      :load="conversations.listStatus"
+      :load="product.load"
       :overlay-store="appOverlayStore"
       @retry="conversations.reloadList"
       @open="openConversation"

@@ -1,26 +1,5 @@
-import { shallowRef } from 'vue'
-import { environmental } from './errors'
-
-/**
- * One IndexedDB database of the page: opened on first use and kept open, so
- * that a write issued as the page hides starts at once, and opened again
- * whenever the web browser or another page closed the connection.
- *
- * The web browser closes a connection on its own when the site's data is
- * cleared or evicted, or a frozen page is restored, and says so with a
- * `close` event; another page that upgrades or deletes the database asks with
- * `versionchange`, and this page lets it go. Safari also closes an idle
- * connection in a background tab without an event, which the next
- * transaction on it finds out with an InvalidStateError.
- */
-/**
- * Set once a newer build has upgraded a database this page uses, as a page
- * of that build in another tab does: this page would write in a shape the
- * newer build has left behind, so it loads itself again. The value names the
- * database and the version this page knows, which the page loads itself again
- * for only once.
- */
-export const newerStorage = shallowRef<string | null>(null)
+import { environmental, errorFields } from './errors'
+import { pageLog } from './log'
 
 /**
  * The failures of the browser's storage itself, which are the environment's
@@ -35,16 +14,64 @@ function storageFailure<E>(error: E): E {
   return error instanceof DOMException && STORAGE_FAILURES.has(error.name) ? environmental(error) : error
 }
 
+/** Whether `error` is the browser's NotFoundError: a store or an index that is not there. */
+function isNotFound(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'NotFoundError'
+}
+
+/**
+ * One IndexedDB database of the page: opened on first use and kept open, so
+ * that a write issued as the page hides starts at once, and opened again
+ * whenever the web browser or another page closed the connection.
+ *
+ * The web browser closes a connection on its own when the site's data is
+ * cleared or evicted, or a frozen page is restored, and says so with a
+ * `close` event; another page that upgrades or deletes the database asks with
+ * `versionchange`, and this page lets it go. Safari also closes an idle
+ * connection in a background tab without an event, which the next
+ * transaction on it finds out with an InvalidStateError.
+ *
+ * The data is the web browser's and disposable, so the page never waits on
+ * what it cannot use: a database it cannot open at its version, as one a
+ * newer build upgraded (VersionError) or whose upgrade failed, and one
+ * missing a store or an index it needs, is deleted and created anew, once
+ * for an operation, and the operation goes on; each deletion is logged. A
+ * page of another build in another tab lets the deletion through at its
+ * `versionchange`, and opens the database again at its own version on its
+ * next transaction; each page drops what the other wrote, and neither stops.
+ * An open or a deletion that waits for a page that does not let go, as a
+ * frozen one, keeps the operations behind it waiting: a caller whose work
+ * must not wait for the database, such as the page's start, does not await
+ * it. A record the page cannot read is dropped by the code that decodes it.
+ */
 export class IndexedDatabase {
   #database: IDBDatabase | null = null
   #opening: Promise<IDBDatabase> | null = null
+  #recreating: Promise<IDBDatabase> | null = null
+  readonly #deleted = new Set<() => void>()
 
-  /** `upgrade` turns the database of `oldVersion` into `version`, inside the open's versionchange transaction. */
+  /**
+   * `upgrade` turns the database of `oldVersion` into `version`, inside the
+   * open's versionchange transaction. `indexes` names the indexes each store
+   * has once it did, which the page's operations use; one missing from a
+   * database of this version makes it unusable.
+   */
   constructor(
     private readonly name: string,
     private readonly version: number,
     private readonly upgrade: (request: IDBOpenDBRequest, oldVersion: number) => void,
+    private readonly indexes: Readonly<Record<string, readonly string[]>> = {},
   ) {}
+
+  /**
+   * Calls `listener` whenever the database was deleted, by this page or by
+   * another, so that its owner writes again what it holds in memory as saved.
+   * Answers the call that stops it.
+   */
+  onDeleted(listener: () => void): () => void {
+    this.#deleted.add(listener)
+    return () => void this.#deleted.delete(listener)
+  }
 
   /**
    * Runs `operation` in a transaction on `store` and resolves with its
@@ -104,10 +131,23 @@ export class IndexedDatabase {
     operation: (transaction: IDBTransaction) => () => T,
     retried: boolean,
   ): Promise<T> {
-    let transaction: IDBTransaction
+    let transaction: IDBTransaction | null = null
+    let result: () => T
+    let unusable = false
     try {
       transaction = database.transaction([...stores], mode)
+      try {
+        result = operation(transaction)
+      } catch (error) {
+        unusable = isNotFound(error) && this.#lacks(database, stores, transaction)
+        transaction.abort()
+        throw error
+      }
     } catch (error) {
+      unusable ||= transaction === null && isNotFound(error) && this.#lacks(database, stores, null)
+      if (unusable && !retried) {
+        return this.#recreate(database, error).then((created) => this.#run(created, stores, mode, operation, true))
+      }
       if (retried || !(error instanceof DOMException) || error.name !== 'InvalidStateError') {
         return Promise.reject(storageFailure(error))
       }
@@ -116,7 +156,6 @@ export class IndexedDatabase {
       return this.#again(database, stores, mode, operation)
     }
     return new Promise<T>((resolve, reject) => {
-      const result = operation(transaction)
       transaction.oncomplete = () => resolve(result())
       // A failed request aborts its transaction, so `abort` reports every
       // failure; its `error` event comes first and is left to it.
@@ -133,6 +172,16 @@ export class IndexedDatabase {
     })
   }
 
+  /** Whether `database` lacks a store of `stores`, or an index `indexes` names for one, as `transaction` shows. */
+  #lacks(database: IDBDatabase, stores: readonly string[], transaction: IDBTransaction | null): boolean {
+    return stores.some(
+      (store) =>
+        !database.objectStoreNames.contains(store) ||
+        (transaction !== null &&
+          (this.indexes[store] ?? []).some((index) => !transaction.objectStore(store).indexNames.contains(index))),
+    )
+  }
+
   #again<T>(
     closed: IDBDatabase,
     stores: readonly string[],
@@ -147,10 +196,58 @@ export class IndexedDatabase {
     if (this.#opening) {
       return this.#opening
     }
-    const opening = new Promise<IDBDatabase>((resolve, reject) => {
+    const opening: Promise<IDBDatabase> = this.#connect().then(
+      (database) => {
+        if (this.#opening === opening) {
+          this.#opening = null
+          this.#keep(database)
+        }
+        return database
+      },
+      (error) => {
+        if (this.#opening === opening) {
+          this.#opening = null
+        }
+        throw error
+      },
+    )
+    this.#opening = opening
+    return opening
+  }
+
+  /** Opens the database, deleting it first once when this page cannot open it as it is. */
+  async #connect(): Promise<IDBDatabase> {
+    try {
+      return await this.#request()
+    } catch (error) {
+      if (!(error instanceof DOMException) || STORAGE_FAILURES.has(error.name)) {
+        throw storageFailure(error)
+      }
+      // A VersionError, or an upgrade that failed: what the database holds is
+      // not what this build reads.
+      pageLog.warn('storage.dropped', { database: this.name, ...errorFields(error) })
+    }
+    await this.#delete()
+    // Failing again is not the browser's storage failing, unless it says so.
+    return this.#request().catch((error) => {
+      throw storageFailure(error)
+    })
+  }
+
+  /** One `open`, answering the connection or why there is none. */
+  #request(): Promise<IDBDatabase> {
+    return new Promise<IDBDatabase>((resolve, reject) => {
       let blocked = false
+      // Whatever aborts the upgrade, the open request's error is an
+      // AbortError; the transaction's own says whether the upgrade threw or
+      // the storage failed under it.
+      let aborted: DOMException | null = null
       const request = indexedDB.open(this.name, this.version)
-      request.onupgradeneeded = (event) => this.upgrade(request, event.oldVersion)
+      request.onupgradeneeded = (event) => {
+        const upgrading = request.transaction!
+        upgrading.addEventListener('abort', () => (aborted = upgrading.error))
+        this.upgrade(request, event.oldVersion)
+      }
       request.onsuccess = () => {
         const database = request.result
         if (blocked) {
@@ -158,39 +255,69 @@ export class IndexedDatabase {
           database.close()
           return
         }
-        if (this.#opening === opening) {
-          this.#opening = null
-          this.#keep(database)
-        }
         resolve(database)
       }
-      request.onerror = () => {
-        if (this.#opening === opening) {
-          this.#opening = null
-        }
-        if (request.error?.name === 'VersionError') {
-          newerStorage.value = `${this.name} ${this.version}`
-        }
-        reject(environmental(request.error))
-      }
+      request.onerror = () => reject(aborted ?? request.error)
       request.onblocked = () => {
         blocked = true
-        if (this.#opening === opening) {
-          this.#opening = null
-        }
         reject(environmental(new Error(`Another page keeps an older version of ${this.name} open.`)))
       }
     })
-    this.#opening = opening
-    return opening
+  }
+
+  /**
+   * Deletes the database, as the page's own connection and every other
+   * page's let go of it at `versionchange`. A page that keeps a transaction
+   * running first blocks the deletion for a moment, and one that does not
+   * let go at all keeps it waiting: it finishes once that page closes.
+   */
+  #delete(): Promise<void> {
+    this.#database?.close()
+    this.#database = null
+    return new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(this.name)
+      request.onsuccess = () => {
+        this.#deleted.forEach((listener) => listener())
+        resolve()
+      }
+      request.onerror = () => reject(environmental(request.error))
+    })
+  }
+
+  /**
+   * A new database in place of `broken`, which a transaction found unusable;
+   * the operations that find the same one at once share the deletion, and one
+   * that finds it already replaced uses the new one.
+   */
+  #recreate(broken: IDBDatabase, error: unknown): Promise<IDBDatabase> {
+    if (this.#recreating) {
+      return this.#recreating
+    }
+    if (this.#database !== broken) {
+      return this.#database ? Promise.resolve(this.#database) : this.#open()
+    }
+    pageLog.warn('storage.dropped', { database: this.name, ...errorFields(error) })
+    const recreating = this.#delete()
+      .then(() => this.#open())
+      .finally(() => {
+        if (this.#recreating === recreating) {
+          this.#recreating = null
+        }
+      })
+    this.#recreating = recreating
+    return recreating
   }
 
   #keep(database: IDBDatabase): void {
     this.#database = database
     database.addEventListener('close', () => this.#forget(database))
-    database.addEventListener('versionchange', () => {
+    database.addEventListener('versionchange', (event) => {
       this.#forget(database)
       database.close()
+      if (event.newVersion === null) {
+        // Another page deletes the database: what this page saved is gone.
+        this.#deleted.forEach((listener) => listener())
+      }
     })
   }
 
