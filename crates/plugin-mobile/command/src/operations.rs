@@ -34,8 +34,18 @@ use crate::{
 /// A settled picture: no new frame from the device for this long. Neither
 /// platform's own idle signal is used, since both report idle while an app
 /// draws its own animation; both drivers send a frame only when the screen
-/// changes, so the live view's frames tell it at no cost.
+/// changes, so the live view's frames tell it at no cost. A screen whose
+/// frames keep coming is settled too when two pictures of it this far
+/// apart look the same ([`alike`]).
 pub const QUIET: Duration = Duration::from_millis(300);
+/// The share of pixels two pictures of a settled screen may differ in: a
+/// spinner or a progress bar changes less, a page sliding or fading in
+/// changes most of the screen. Maestro's threshold for a static screen.
+const STILL_SHARE: f64 = 0.005;
+/// How far a pixel's color may move, of 255, and the pixel still count as
+/// the same: a simulator shades a still picture slightly differently from
+/// one frame to the next.
+const STILL_COLOR: u8 = 16;
 /// The longest a screenshot or an inspect waits for one.
 pub const SETTLE_LIMIT: Duration = Duration::from_millis(1500);
 /// How often `wait` reads the tree again.
@@ -156,8 +166,11 @@ pub async fn run(
                 )
             }
             (MobileOperation::Screenshot(input), Some(open)) => {
-                let settled = settle(&open).await;
-                let png = open.device.screenshot().await?;
+                let Settled { settled, picture } = settle(&open).await;
+                let png = match picture {
+                    Some(png) => png,
+                    None => open.device.screenshot().await?,
+                };
                 let about = format!("{} · {} · {}×{}", open.handle, open.name, png.width, png.height);
                 let mut notes = Vec::new();
                 if !settled {
@@ -185,7 +198,7 @@ pub async fn run(
                 Ok(Outcome { produced, notes })
             }
             (MobileOperation::Inspect(input), Some(open)) => {
-                let settled = settle(&open).await;
+                let settled = settle(&open).await.settled;
                 let raw = open.device.tree().await?;
                 let screen = *open.device.screen().borrow();
                 let scale = Scale::of(&screen);
@@ -475,23 +488,91 @@ async fn open_device(devices: &Arc<Devices>, call: &Call<'_>, query: &str) -> Re
     )
 }
 
-/// Waits for a settled picture: no new frame for [`QUIET`], at most
-/// [`SETTLE_LIMIT`]. Answers whether it settled; a screen still changing
-/// then, a video or a spinner, is taken as it is.
-pub async fn settle(open: &OpenDevice) -> bool {
+/// How a wait for a settled picture ended.
+pub struct Settled {
+    /// Whether the screen settled; a screen still changing at
+    /// [`SETTLE_LIMIT`], a video or a page in transition, is taken as it is.
+    pub settled: bool,
+    /// The last of two pictures that looked the same, which is the settled
+    /// screen; none when no frame came for [`QUIET`].
+    pub picture: Option<crate::driver::Png>,
+}
+
+/// Waits for a settled picture: no new frame for [`QUIET`], or two
+/// pictures [`QUIET`] apart that look the same, at most [`SETTLE_LIMIT`].
+pub async fn settle(open: &OpenDevice) -> Settled {
+    let limit = Instant::now() + SETTLE_LIMIT;
+    tokio::select! {
+        biased;
+        () = quiet(open) => Settled { settled: true, picture: None },
+        picture = looks_still(open) => Settled { settled: true, picture: Some(picture) },
+        _ = tokio::time::sleep_until(limit) => Settled { settled: false, picture: None },
+    }
+}
+
+/// Resolves once no new frame came for [`QUIET`].
+async fn quiet(open: &OpenDevice) {
     let mut drawn = open.device.drawn();
     drawn.borrow_and_update();
-    let limit = Instant::now() + SETTLE_LIMIT;
     loop {
-        let quiet = Instant::now() + QUIET;
         tokio::select! {
             biased;
-            _ = tokio::time::sleep_until(quiet) => return true,
-            _ = tokio::time::sleep_until(limit) => return false,
+            _ = tokio::time::sleep(QUIET) => return,
             // A device that is gone draws nothing more.
-            changed = drawn.changed() => if changed.is_err() { return true },
+            changed = drawn.changed() => if changed.is_err() { return },
         }
     }
+}
+
+/// Resolves with the second of two pictures [`QUIET`] apart that look the
+/// same. It starts after the first [`QUIET`], which [`quiet`] tells a still
+/// screen in at no cost; a picture that does not read leaves the wait to
+/// [`quiet`].
+async fn looks_still(open: &OpenDevice) -> crate::driver::Png {
+    tokio::time::sleep(QUIET).await;
+    let picture = || async {
+        let png = open.device.screenshot().await.ok()?;
+        let bytes = png.bytes.clone();
+        let pixels = tokio::task::spawn_blocking(move || image::load_from_memory(&bytes).ok().map(|image| image.to_rgb8()))
+            .await
+            .ok()
+            .flatten()?;
+        Some((png, pixels))
+    };
+    // Pictures are QUIET apart from when each is taken: a picture itself
+    // takes a few hundred milliseconds on iOS.
+    let mut taken = Instant::now();
+    let Some((_, mut before)) = picture().await else {
+        return std::future::pending().await;
+    };
+    loop {
+        tokio::time::sleep_until(taken + QUIET).await;
+        taken = Instant::now();
+        let Some((png, after)) = picture().await else {
+            return std::future::pending().await;
+        };
+        let (still, after) = tokio::task::spawn_blocking(move || (alike(&before, &after), after))
+            .await
+            .unwrap_or((false, image::RgbImage::new(0, 0)));
+        if still {
+            return png;
+        }
+        before = after;
+    }
+}
+
+/// Whether two pictures of the screen look the same: at most
+/// [`STILL_SHARE`] of their pixels differ by more than [`STILL_COLOR`].
+fn alike(before: &image::RgbImage, after: &image::RgbImage) -> bool {
+    if before.dimensions() != after.dimensions() || before.is_empty() {
+        return false;
+    }
+    let differ = before
+        .pixels()
+        .zip(after.pixels())
+        .filter(|(a, b)| a.0.iter().zip(b.0).any(|(a, b)| a.abs_diff(b) > STILL_COLOR))
+        .count();
+    (differ as f64) <= STILL_SHARE * f64::from(before.width()) * f64::from(before.height())
 }
 
 fn unsettled(call: &Call<'_>) -> String {

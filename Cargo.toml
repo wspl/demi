@@ -165,6 +165,19 @@ opt-level = 3
 [profile.dev.package.fast_image_resize]
 opt-level = 3
 
+# A screen whose frames keep coming is settled when two of its pictures look
+# the same (`crates/plugin-mobile/command/src/operations.rs`), so a
+# screenshot of it decodes two PNGs. Measured on two 721 × 1568 pictures:
+# 160 ms unoptimized, 7 ms optimized.
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
 # Small executables, since every paired device downloads each one
 # (`crates/xtask/src/native/build.rs`). Measured on aarch64-apple-darwin,
 # runner and demi-commands: thin LTO at opt-level 3 36.0 and 23.8 MiB in 79 s;
