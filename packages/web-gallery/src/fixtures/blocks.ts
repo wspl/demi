@@ -666,9 +666,9 @@ export function screenshotRunBlocks(): Block[] {
     createdAt: iso(590_000),
     toolName: 'shell',
     status: 'completed',
-    input: JSON.stringify({ script: 'demi browser open http://localhost:5173/login', description: 'Open the sign-in page' }),
-    output: [{ type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 71\noutput:\nt1\n' }],
-    view: shellView({ commandId: '71', chunks: [{ stream: 'stdout', text: 't1\n' }] }),
+    input: JSON.stringify({ script: 'demi browser tab new && demi browser open t1 http://localhost:5173/login', description: 'Open the sign-in page' }),
+    output: [{ type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 71\noutput:\nt1\nOpened http://localhost:5173/login.\nTitle: Sign in\n' }],
+    view: shellView({ commandId: '71', chunks: [{ stream: 'stdout', text: 't1\nOpened http://localhost:5173/login.\nTitle: Sign in\n' }] }),
   })
   const shots = { ...twelveScreenshotsTool, id: 'shots-run-shots', toolUseId: 'shots-run-shots', createdAt: iso(585_000) }
   return inRequests([
@@ -1892,9 +1892,9 @@ export function viewedMediaBlocks(): Block[] {
     createdAt: iso(590_000),
     toolName: 'shell',
     status: 'completed',
-    input: JSON.stringify({ script: 'demi browser open https://example.com', description: 'Open example.com' }),
-    output: [{ type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 61\noutput:\nt1\n' }],
-    view: shellView({ commandId: '61', chunks: [{ stream: 'stdout', text: 't1\n' }] }),
+    input: JSON.stringify({ script: 'demi browser tab new && demi browser open t1 https://example.com', description: 'Open example.com' }),
+    output: [{ type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 61\noutput:\nt1\nOpened https://example.com/.\nTitle: Example Domain\n' }],
+    view: shellView({ commandId: '61', chunks: [{ stream: 'stdout', text: 't1\nOpened https://example.com/.\nTitle: Example Domain\n' }] }),
   })
   const shots = screenshotsCall(
     {

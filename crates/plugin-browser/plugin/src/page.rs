@@ -9,10 +9,10 @@
 //! browser tabs for panel tabs is the panel's work ([`crate::panel`]), through
 //! the same operations.
 //!
-//! - A user waits in the panel, not in a script, so for a `user` caller `open`,
-//!   `goto`, `back`, `forward` and `reload` answer once their work started, and
-//!   name the number of the last tab list before the request. The page ends its
-//!   loading only on a list numbered after it.
+//! - A user waits in the panel, not in a script, so for a `user` caller
+//!   `tab.new`, `open`, `back`, `forward` and `reload` answer once their work
+//!   started, and the navigations name the number of the last tab list before
+//!   the request. The page ends its loading only on a list numbered after it.
 //! - `stop` runs `browser.stop`, which only a `user` caller reaches: the agent
 //!   waits for its commands rather than stopping a load, so `demi browser` has
 //!   no `stop`.
@@ -25,9 +25,9 @@
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
 use demi_command_package_browser_protocol::browser::{
-    BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab, CloseInput,
-    FailureDocument, ForwardInput, GotoInput, NavigationResult, OpenInput, OpenResult, PREFIX,
-    ReloadInput, StopInput, TabId, TabMoved,
+    BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab,
+    FailureDocument, ForwardInput, NavigationResult, OpenInput, PREFIX, ReloadInput, StopInput,
+    TabCloseInput, TabId, TabMoved, TabNewInput, TabNewResult,
 };
 use demi_plugin_interface::{
     CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State,
@@ -113,17 +113,17 @@ fn operation(name: &str) -> NativeOperation {
 /// whenever the browser package says the conversation's tabs changed.
 pub(crate) fn page() -> Page {
     Page::new("@demicodes/plugin-browser")
-        .conversation_state(State::new::<BrowserTabs>().calls(operation("tabs")).held())
+        .conversation_state(State::new::<BrowserTabs>().calls(operation("tab.list")).held())
         .panel_kind(KIND)
         .method(
             Method::new::<BindTab, TabBound>("bind", Scope::Conversation)
+                .calls(operation("tab.new"))
                 .calls(operation("open"))
-                .calls(operation("goto"))
-                .calls(operation("close")),
+                .calls(operation("tab.close")),
         )
         .method(
             Method::new::<NavigateTab, TabMoved>("navigate", Scope::Conversation)
-                .calls(operation("goto")),
+                .calls(operation("open")),
         )
         .method(
             Method::new::<TabHistory, TabMoved>("history", Scope::Conversation)
@@ -175,22 +175,17 @@ pub(crate) async fn keep(
     Ok(port.keep_report(device.as_str(), revision, value).await?)
 }
 
-/// A new tab on `url`, starting the environment when needed: work the
-/// user starts, which wakes a stopped Cloud.
-pub(crate) async fn open(port: &PluginPort, url: &str) -> Result<BrowserTab, PluginError> {
-    let input = OpenInput {
-        url: url.to_owned(),
-        load: None,
-        show: None,
-        timeout: None,
-    };
-    let opened = run::<OpenResult, _>(port, BrowserOperation::Open, input, CallKind::Starts)
+/// A new empty tab, starting the environment when needed: work the user
+/// starts, which wakes a stopped Cloud.
+pub(crate) async fn new_tab(port: &PluginPort) -> Result<BrowserTab, PluginError> {
+    let input = TabNewInput { timeout: None };
+    let made = run::<TabNewResult, _>(port, BrowserOperation::TabNew, input, CallKind::Starts)
         .await
         .map_err(refused)?;
     Ok(BrowserTab {
-        id: opened.tab,
-        title: opened.title.unwrap_or_default(),
-        url: opened.url,
+        id: made.tab,
+        title: String::new(),
+        url: "about:blank".to_owned(),
         created_by: BrowserCreatedBy::User {},
         loading: false,
         can_go_back: false,
@@ -206,8 +201,8 @@ pub(crate) async fn close(port: &PluginPort, tab: &str) -> Result<(), PluginErro
     let Ok(tab) = TabId::try_from(tab.to_owned()) else {
         return Ok(());
     };
-    let input = CloseInput { tab, timeout: None };
-    match run::<Value, _>(port, BrowserOperation::Close, input, CallKind::Operates).await {
+    let input = TabCloseInput { tab, timeout: None };
+    match run::<Value, _>(port, BrowserOperation::TabClose, input, CallKind::Operates).await {
         Ok(_) => Ok(()),
         Err(failure) if stopped(&failure) || tab_missing(&failure) => Ok(()),
         Err(failure) => Err(refused(failure)),
@@ -220,13 +215,14 @@ pub(crate) async fn navigate(
     tab: &str,
     url: String,
 ) -> Result<TabMoved, PluginError> {
-    let input = GotoInput {
+    let input = OpenInput {
         tab: tab_id(tab.to_owned())?,
         url,
         load: None,
+        show: None,
         timeout: None,
     };
-    moved(run(port, BrowserOperation::Goto, input, CallKind::Operates).await)
+    moved(run(port, BrowserOperation::Open, input, CallKind::Operates).await)
 }
 
 /// Answers the page call `method` with `params`, which its schema checked,

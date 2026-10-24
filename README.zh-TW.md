@@ -108,7 +108,7 @@ Demi 既是智慧體的介面，也是智慧體本身。
 大多數智慧體會給模型一長串工具，Demi 只給一個：Shell。瀏覽器、其他機器、子智慧體等所有能力，都是這個 Shell 裡的 `demi` 指令：
 
 ```sh
-demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
+T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```

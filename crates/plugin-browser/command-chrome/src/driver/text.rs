@@ -17,11 +17,11 @@ use crate::driver::{
         ActionResult, AssetsExportResult, AssetsListResult, BrowserCreatedBy, BrowserNode,
         BrowserOperation, BrowserTarget, BrowserTreeNode, BrowserViewport, CapabilitiesResult,
         CdpDetachResult, CdpEventsResult, CdpSendResult, CdpTargetsResult, ClipboardReadResult,
-        ClipboardWriteResult, CloseResult, ContentFetchResult, ContentReadResult, Dialog,
+        ClipboardWriteResult, ContentFetchResult, ContentReadResult, Dialog,
         DialogInspectResult, DialogOutcome, DialogResult, DownloadResult, EvalResult, FindResult,
         HistoryResult, InfoResult, InspectResult, InstallResult, LogsResult, MouseButton, NavigationResult,
-        NodeValue, OpenResult, ProbeResult, ReadResult, ResolvedElement, ScreenshotResult,
-        SelectedOption, ShowResult, TabsResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
+        NodeValue, ProbeResult, ReadResult, ResolvedElement, ScreenshotResult,
+        SelectedOption, ShowResult, TabCloseResult, TabListResult, TabNewResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
         WebmcpListResult,
     },
 };
@@ -30,22 +30,33 @@ use crate::driver::{
 /// command cuts what it shows.
 pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<String> {
     let text = match operation {
-        BrowserOperation::Open(input) => open(&typed(value)?, input.show == Some(true)),
+        BrowserOperation::TabNew(_) => {
+            // The ID alone, so a script takes it as T=$(demi browser tab new).
+            let result: TabNewResult = typed(value)?;
+            format!("{}\n", result.tab)
+        }
         BrowserOperation::Show(_) => {
             let result: ShowResult = typed(value)?;
             format!("Shown {} to the user.\n", result.tab)
         }
-        BrowserOperation::Tabs(_) => tabs(&typed(value)?),
+        BrowserOperation::TabList(_) => tabs(&typed(value)?),
         BrowserOperation::Info(_) => info(&typed(value)?),
-        BrowserOperation::Goto(_) | BrowserOperation::Back(_) | BrowserOperation::Forward(_) => {
+        BrowserOperation::Open(input) => {
+            let mut text = navigation("Opened", &typed(value)?);
+            if input.show == Some(true) {
+                text.push_str("Shown to the user.\n");
+            }
+            text
+        }
+        BrowserOperation::Back(_) | BrowserOperation::Forward(_) => {
             navigation("Navigated to", &typed(value)?)
         }
         BrowserOperation::Reload(_) => navigation("Reloaded", &typed(value)?),
         // Only the user's page stops a load, and it reads the JSON.
         BrowserOperation::Stop(_) => "Stopped loading.\n".to_owned(),
         BrowserOperation::History(_) => history(&typed(value)?),
-        BrowserOperation::Close(_) => {
-            let result: CloseResult = typed(value)?;
+        BrowserOperation::TabClose(_) => {
+            let result: TabCloseResult = typed(value)?;
             format!("Closed {}.\n", result.closed)
         }
         BrowserOperation::Inspect(_) => inspect(&typed(value)?),
@@ -206,17 +217,6 @@ fn truncated(text: &mut String, truncated: bool) {
     }
 }
 
-fn open(result: &OpenResult, shown: bool) -> String {
-    let mut text = format!("Tab: {}\nURL: {}\n", result.tab, plain(&result.url));
-    if let Some(title) = &result.title {
-        text.push_str(&format!("Title: {}\n", plain(title)));
-    }
-    if shown {
-        text.push_str("Shown to the user.\n");
-    }
-    text
-}
-
 fn created_by(created_by: &BrowserCreatedBy) -> String {
     match created_by {
         BrowserCreatedBy::Agent { number } => format!("agent {number}"),
@@ -226,7 +226,7 @@ fn created_by(created_by: &BrowserCreatedBy) -> String {
     }
 }
 
-fn tabs(result: &TabsResult) -> String {
+fn tabs(result: &TabListResult) -> String {
     let mut text = table(
         ["tab", "created by", "url", "title"],
         result.tabs.iter().map(|tab| {

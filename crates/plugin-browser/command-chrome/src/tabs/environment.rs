@@ -74,7 +74,7 @@ use crate::driver::{
 use demi_command_protocol::{ColorScheme, CommandLocale};
 
 use crate::tabs::{
-    protocol::{BrowserCreatedBy, BrowserViewport, Load, TabId},
+    protocol::{BrowserCreatedBy, BrowserViewport, TabId},
     registry::{self, Hold, Snapshot, Tabs},
     tab::BrowserTab,
 };
@@ -824,67 +824,16 @@ impl BrowserEnvironment {
         &self.changes
     }
 
-    /// Opens `url` in a new tab, as the conversation's root agent does.
-    pub async fn open(
+    /// A new empty tab, made by `created_by`: `tab.new`, whose caller opens
+    /// a page in it next.
+    pub async fn new_tab(
         &self,
-        url: &str,
-        cancellation: &CancellationToken,
-        timeout: Duration,
-    ) -> Result<BrowserTab> {
-        self.open_for(
-            url,
-            0,
-            Load::DomContentLoaded,
-            cancellation,
-            tokio::time::Instant::now() + timeout,
-        )
-        .await
-        .map(|(tab, _)| tab)
-    }
-
-    pub async fn open_for(
-        &self,
-        url: &str,
-        caller: u64,
-        load: Load,
-        cancellation: &CancellationToken,
-        deadline: tokio::time::Instant,
-    ) -> Result<(BrowserTab, String)> {
-        crate::tabs::navigation::validate_url(url)?;
-        let operation = Operation::until(&self.ended, cancellation, deadline);
-        let tab = self
-            .create(BrowserCreatedBy::Agent { number: caller }, &operation)
-            .await?;
-        let mut session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
-        let url = tab
-            .navigate(
-                crate::tabs::navigation::Navigation::Url(url.into()),
-                load,
-                &operation,
-                &mut session.references,
-            )
-            .await?;
-        drop(session);
-        Ok((tab, url))
-    }
-
-    /// A tab the user opens in the work panel, blank or loading `url`; the
-    /// panel shows its loading, so opening does not wait for it.
-    pub async fn open_user(
-        &self,
-        url: Option<&str>,
+        created_by: BrowserCreatedBy,
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
     ) -> Result<BrowserTab> {
-        if let Some(url) = url {
-            crate::tabs::navigation::validate_url(url)?;
-        }
         let operation = Operation::until(&self.ended, cancellation, deadline);
-        let tab = self.create(BrowserCreatedBy::User {}, &operation).await?;
-        if let Some(url) = url {
-            crate::tabs::navigation::visit(&tab, url);
-        }
-        Ok(tab)
+        self.create(created_by, &operation).await
     }
 
     /// Creates `count` temporary tabs, and keeps the environment from

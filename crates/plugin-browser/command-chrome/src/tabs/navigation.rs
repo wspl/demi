@@ -553,7 +553,7 @@ where
     });
 }
 
-/// The user's `goto`, `reload`, `back` or `forward`: the work panel shows the
+/// The user's `open`, `reload`, `back` or `forward`: the work panel shows the
 /// page loading, so the navigation starts and the answer does not wait for it.
 pub async fn steer(
     tab: &BrowserTab,
@@ -564,7 +564,7 @@ pub async fn steer(
     // tab after it.
     let list = tab.list_number();
     let url = match command {
-        BrowserOperation::Goto(input) => {
+        BrowserOperation::Open(input) => {
             validate_url(&input.url)?;
             requested(tab, &input.url);
             visit(tab, &input.url);

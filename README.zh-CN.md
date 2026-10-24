@@ -108,7 +108,7 @@ Demi 既是 Agent 的界面，也是 Agent 本身。
 大多数 Agent 会给模型一长串工具，Demi 只给一个：Shell。浏览器、其他机器、子 Agent 等所有能力，都是这个 Shell 里的 `demi` 命令：
 
 ```sh
-demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
+T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```

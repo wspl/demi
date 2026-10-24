@@ -33,10 +33,10 @@
 //! - Retirement invalidates tabs, references and debugging handles together. A
 //!   release cancels the commands that run (`cancelled`) before it retires. A
 //!   command still running when another closes the last tab fails with
-//!   `browser_lost`. Nothing is restored: the next `open` starts fresh.
+//!   `browser_lost`. Nothing is restored: the next `tab.new` starts fresh.
 //! - A failed cleanup keeps another environment from starting over the
-//!   unresolved owner. After a completed one the next `open` may start a fresh
-//!   browser.
+//!   unresolved owner. After a completed one the next `tab.new` may start a
+//!   fresh browser.
 //! - A resident shutdown retires all its browsers at once, so it takes as long
 //!   as the slowest. A resident that ends first leaves them to the sweep in
 //!   `tabs::environment`.
@@ -77,9 +77,9 @@ use demi_shared_openh264::Codec;
 use demi_shared_recording::{Answer, Library, Live, Reading};
 
 use crate::protocol::{
-    self, ActionProgress, RecordAction, RecordInput, RecordTarget, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
-    CloseResult, ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, InstallResult,
-    OpenResult, ScreenshotResult, ShowResult, TabsResult,
+    self, ActionProgress, RecordAction, RecordInput, RecordTarget, BrowserCreatedBy, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
+    ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, InstallResult,
+    ScreenshotResult, ShowResult, TabCloseResult, TabListResult, TabNewResult,
 };
 use demi_command_package_browser_chrome::traced::SpawnTraced as _;
 
@@ -225,7 +225,7 @@ impl ConversationBrowser {
         browser
     }
 
-    /// The conversation's tabs as the user's `browser.tabs` lists them, all
+    /// The conversation's tabs as the user's `browser.tab.list` lists them, all
     /// of them, at the list's number, and the latest tabs closed on purpose;
     /// no tab while no browser runs. It never starts a browser.
     async fn report(&self, cancel: &CancellationToken) -> Result<(u64, Vec<protocol::BrowserTab>, Vec<protocol::TabId>)> {
@@ -775,7 +775,7 @@ enum Find {
     },
 }
 
-/// Tells `plugin-browser` the whole of what `browser.tabs` lists of
+/// Tells `plugin-browser` the whole of what `browser.tab.list` lists of
 /// `conversation` each time it changes, once for each burst of changes: a
 /// change made while a message is on its way is told by the next one. It
 /// tells the list once more whenever the resident is given a sender again, and
@@ -831,7 +831,7 @@ async fn announce(
     }
 }
 
-/// Each tab's record as `browser.tabs` lists it, not the tab itself: from
+/// Each tab's record as `browser.tab.list` lists it, not the tab itself: from
 /// `offset`, at most `limit` of them.
 fn tab_rows(listing: &Snapshot, offset: usize, limit: usize) -> Vec<protocol::BrowserTab> {
     listing
@@ -1221,7 +1221,7 @@ impl Conversations {
         }
         let starts = matches!(
             command,
-            BrowserOperation::Open(_) | BrowserOperation::ContentFetch(_)
+            BrowserOperation::TabNew(_) | BrowserOperation::ContentFetch(_)
         );
         let starting = starts.then(|| Starting {
             locale: context.request.context.locale.clone(),
@@ -1229,8 +1229,8 @@ impl Conversations {
         });
         let environment = browser.environment(starting.as_ref(), cancellation).await?;
         let Some(environment) = environment else {
-            if matches!(command, BrowserOperation::Tabs(_)) {
-                return Ok(CommandOutput::Json(output::value(TabsResult {
+            if matches!(command, BrowserOperation::TabList(_)) {
+                return Ok(CommandOutput::Json(output::value(TabListResult {
                     // No browser runs: the conversation's latest list number.
                     list: user.then(|| browser.numbers.list_number()),
                     tabs: Vec::new(),
@@ -1240,58 +1240,36 @@ impl Conversations {
             }
             return Err(BrowserError::TabNotFound);
         };
-        if let BrowserOperation::Open(input) = command
-            && user
-        {
-            // The user's new tab: the
-            // work panel shows its loading, so opening does not wait for the page.
-            let url = (input.url != "about:blank").then_some(input.url.as_str());
-            let tab = environment.open_user(url, cancellation, deadline).await?;
-            if input.show == Some(true) {
-                tab.show();
-            }
-            return Ok(CommandOutput::Json(output::value(OpenResult {
-                tab: tab.id().clone(),
-                url: url.unwrap_or("about:blank").to_owned(),
-                title: None,
-                viewport: None,
-            })?));
-        }
-        if let BrowserOperation::Open(input) = command {
-            let (tab, url) = environment
-                .open_for(
-                    &input.url,
-                    demi_command_package_browser_chrome::driver::operation::agent(context)?,
-                    input.load.unwrap_or_default(),
-                    cancellation,
-                    deadline,
-                )
-                .await?;
-            if input.show == Some(true) {
-                tab.show();
-            }
-            // Navigation completed. Metadata is optional and cannot undo that input.
-            let result = match demi_command_package_browser_chrome::page::actions::metadata(
-                &tab,
-                cancellation,
-                deadline.saturating_duration_since(tokio::time::Instant::now()),
-            )
-            .await
-            {
-                Ok(metadata) if metadata.url == url => OpenResult {
-                    tab: metadata.tab,
-                    url: metadata.url,
-                    title: Some(metadata.title),
-                    viewport: Some(metadata.viewport),
-                },
-                _ => OpenResult {
-                    tab: tab.id().clone(),
-                    url,
-                    title: None,
-                    viewport: None,
-                },
+        if matches!(command, BrowserOperation::TabNew(_)) {
+            let created_by = if user {
+                BrowserCreatedBy::User {}
+            } else {
+                BrowserCreatedBy::Agent {
+                    number: demi_command_package_browser_chrome::driver::operation::agent(context)?,
+                }
             };
-            return Ok(CommandOutput::Json(output::value(result)?));
+            let tab = environment
+                .new_tab(created_by, cancellation, deadline)
+                .await?;
+            // The user's new tab answers at once: the work panel shows its
+            // loading. The agent's names its viewport when the tab reports it
+            // in time; the tab is made either way.
+            let viewport = if user {
+                None
+            } else {
+                demi_command_package_browser_chrome::page::actions::metadata(
+                    &tab,
+                    cancellation,
+                    deadline.saturating_duration_since(tokio::time::Instant::now()),
+                )
+                .await
+                .ok()
+                .map(|metadata| metadata.viewport)
+            };
+            return Ok(CommandOutput::Json(output::value(TabNewResult {
+                tab: tab.id().clone(),
+                viewport,
+            })?));
         }
         if matches!(command, BrowserOperation::ContentFetch(_)) {
             let result = demi_command_package_browser_chrome::page::fetch::execute(
@@ -1314,12 +1292,12 @@ impl Conversations {
             )
             .map(CommandOutput::Json);
         }
-        if let BrowserOperation::Tabs(input) = command {
+        if let BrowserOperation::TabList(input) = command {
             let (list, listing) = environment.numbered(cancellation, command.timeout()).await?;
             let offset = input.offset.unwrap_or(0);
             let limit = input.limit.unwrap_or(DEFAULT_NODES);
             let rows = tab_rows(&listing, offset, limit);
-            return Ok(CommandOutput::Json(output::value(TabsResult {
+            return Ok(CommandOutput::Json(output::value(TabListResult {
                 list: user.then_some(list),
                 tabs: rows,
                 truncated: listing.tabs.len() > offset.saturating_add(limit),
@@ -1349,7 +1327,7 @@ impl Conversations {
         if user
             && matches!(
                 command,
-                BrowserOperation::Goto(_)
+                BrowserOperation::Open(_)
                     | BrowserOperation::Reload(_)
                     | BrowserOperation::Back(_)
                     | BrowserOperation::Forward(_)
@@ -1499,14 +1477,14 @@ impl Conversations {
                 viewport: metadata.viewport,
             })?));
         }
-        if matches!(command, BrowserOperation::Close(_)) {
+        if matches!(command, BrowserOperation::TabClose(_)) {
             // Closing the last tab stops Chrome and removes its profile
             // before the close is acknowledged.
             let closed = tab.close_request(cancellation, command.timeout()).await?;
             if matches!(closed, Closed::Environment) || environment.emptied().is_cancelled() {
                 browser.retire(&environment).await?;
             }
-            return Ok(CommandOutput::Json(output::value(CloseResult {
+            return Ok(CommandOutput::Json(output::value(TabCloseResult {
                 closed: tab.id().clone(),
             })?));
         }
@@ -1564,6 +1542,13 @@ impl Conversations {
             deadline,
         )
         .await?;
+        if let BrowserOperation::Open(input) = command
+            && input.show == Some(true)
+        {
+            // The page opened: the user's panel shows the tab once the job
+            // ends, as show does.
+            tab.show();
+        }
         if let BrowserOperation::ContentRead(input) = command
             && let Some(file) = &input.output
         {

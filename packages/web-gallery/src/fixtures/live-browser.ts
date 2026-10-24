@@ -594,7 +594,8 @@ class GalleryBrowserView {
 export interface GalleryBrowser {
   /** The tab list, as the plugin's conversation state last brought it. */
   listed: ShallowRef<BrowserTabList>
-  open(url: string): Promise<BrowserTab>
+  /** Makes an empty tab, as the user's `tab.new` does; the panel opens its page in it next. */
+  newTab(): Promise<BrowserTab>
   /** Closes the tab; a tab the browser does not have is closed already. */
   close(tab: string): Promise<void>
   /** Answers the number of the last tab list before the request started, as a user's navigation on the Host does. */
@@ -604,7 +605,7 @@ export interface GalleryBrowser {
   stop(tab: string): Promise<number>
   /** The tabs closed on purpose, which the panel removes rather than open again. */
   closedOnPurpose: ReadonlySet<string>
-  /** The tab closes on the device on purpose, as the agent's `demi browser close` closes it. */
+  /** The tab closes on the device on purpose, as the agent's `demi browser tab close` closes it. */
   closeOnDevice(tab: string): void
   /** The browser ends on the device and takes its tabs with it, as a release or a stopped Cloud does. */
   end(): void
@@ -612,7 +613,7 @@ export interface GalleryBrowser {
   failNextOpen(failure: BrowserTabsError): void
   /** The agent shows the tab to the user, as `demi browser show` does: its count of showings rises. */
   show(tab: string): void
-  /** The agent opens a tab, as `demi browser open` does, and shows it with `show`, as `--show` does. */
+  /** The agent makes a tab and opens `url` in it, as `demi browser tab new` and `open` do, and shows it with `show`, as `--show` does. */
   agentOpens(url: string, options: { show: boolean }): void
   /** The Host fails what a viewer asked, such as its input, and tells every view, as the module's notice does. */
   fail(reason: PanelReason, message: string): void
@@ -889,8 +890,9 @@ export function galleryBrowser(
     load(tab, url)
   }
 
-  /** The browser opens a tab on `url`, after a Host's moment; fails once `failNextOpen` said so. */
-  function opened(url: string): Promise<BrowserTab> {
+  /** The browser makes an empty tab, after a Host's moment; fails once `failNextOpen` said so. */
+  function made(): Promise<BrowserTab> {
+    const url = 'about:blank'
     return later(() => {
       if (failOpen) {
         const failure = failOpen
@@ -899,7 +901,7 @@ export function galleryBrowser(
       }
       const tab: LiveTab = {
         id: `t${next++}`,
-        title: url === 'about:blank' ? 'about:blank' : URL.parse(url)?.host ?? url,
+        title: url,
         url,
         createdBy: { kind: 'user' },
         viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
@@ -915,9 +917,9 @@ export function galleryBrowser(
 
   return {
     listed,
-    open: async (url) => {
+    newTab: async () => {
       await started()
-      return opened(url)
+      return made()
     },
     close: (id) => later(() => remove(id)),
     navigate: (id, url) => later(() => {
@@ -928,7 +930,9 @@ export function galleryBrowser(
       }
       const history = historyOf(tab)
       return loadLater(tab, url, () => {
-        history.entries.splice(history.index + 1, Infinity, url)
+        // A new tab's first page takes the place of its blank start, as in Chrome.
+        const blank = history.entries.length === 1 && history.entries[0] === 'about:blank'
+        history.entries.splice(blank ? 0 : history.index + 1, Infinity, url)
         history.index = history.entries.length - 1
       })
     }),

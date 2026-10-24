@@ -108,7 +108,7 @@ Claude Code や Codex をラップするのではなく、独自のランタイ�
 多くのエージェントはモデルに長いツールの一覧を渡しますが、Demi が渡すのはシェルひとつだけです。ブラウザ、他のマシン、サブエージェントなど、それ以外の機能はすべてシェルの中の `demi` コマンドです:
 
 ```sh
-demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
+T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```

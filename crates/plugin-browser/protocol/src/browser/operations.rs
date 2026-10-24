@@ -32,8 +32,8 @@ pub trait BrowserInput {
         Duration::from_millis(self.timeout_ms().unwrap_or(Self::DEFAULT_TIMEOUT_MS))
     }
 
-    /// The tab the operation acts on; `open`, `tabs` and `content.fetch` act
-    /// on none.
+    /// The tab the operation acts on; `tab.new`, `tab.list` and
+    /// `content.fetch` act on none.
     fn tab(&self) -> Option<&TabId> {
         None
     }
@@ -68,7 +68,7 @@ macro_rules! input {
         pub struct $name:ident { $($body:tt)* }
     ) => {
         input!(@struct $(#[$meta])* $name {
-            /// Browser tab ID returned by open or tabs
+            /// Browser tab ID returned by tab new or tab list
             #[garde(skip)]
             pub tab: TabId,
             $($body)*
@@ -93,7 +93,7 @@ macro_rules! input {
             target
             $(#[$meta])*
             pub struct $name {
-                /// Browser tab ID returned by open or tabs
+                /// Browser tab ID returned by tab new or tab list
                 #[garde(skip)]
                 pub tab: TabId,
             } {
@@ -150,24 +150,13 @@ macro_rules! input {
 }
 
 input!(@struct
-    /// `open`: opens a tab at a URL, starting the browser when it does not run.
-    OpenInput {
-        #[garde(length(chars, min = 1))]
-        pub url: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "Load")]
-        #[garde(skip)]
-        pub load: Option<Load>,
-        /// Also show the new tab to the user, as show does
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "bool")]
-        #[garde(skip)]
-        pub show: Option<bool>,
-    }
+    /// `tab.new`: makes an empty tab, starting the browser when it does not
+    /// run.
+    TabNewInput {}
 );
 
-impl BrowserInput for OpenInput {
-    /// A cold start launches Chrome before the page loads.
+impl BrowserInput for TabNewInput {
+    /// A cold start launches Chrome before the tab opens.
     const DEFAULT_TIMEOUT_MS: u64 = MAX_TIMEOUT_MS;
 
     fn timeout_ms(&self) -> Option<u64> {
@@ -175,20 +164,12 @@ impl BrowserInput for OpenInput {
     }
 }
 
-/// What `open` answers: the new tab, with its title and viewport when the
-/// page reported them in time.
+/// What `tab.new` answers: the new tab, with its viewport when the tab
+/// reported it in time.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct OpenResult {
+pub struct TabNewResult {
     pub tab: TabId,
-    pub url: String,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String")]
-    pub title: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -212,8 +193,8 @@ pub struct ShowResult {
 }
 
 input! {
-    /// `tabs`: lists the browser's tabs.
-    pub struct TabsInput {
+    /// `tab.list`: lists the browser's tabs.
+    pub struct TabListInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "usize")]
         #[garde(skip)]
@@ -227,7 +208,7 @@ input! {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct TabsResult {
+pub struct TabListResult {
     /// The list's number in the Host's sequence, for a `user` caller only.
     /// The model has no use for it, so the agent's command never prints it and
     /// its `--json` schema does not name it.
@@ -276,14 +257,19 @@ pub struct InfoResult {
 
 input! {
     tab
-    /// `goto`: navigates a tab to a URL.
-    pub struct GotoInput {
+    /// `open`: opens a URL in a tab, in place of its page.
+    pub struct OpenInput {
         #[garde(length(chars, min = 1))]
         pub url: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
+        /// Also show the tab to the user, as show does
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
+        #[garde(skip)]
+        pub show: Option<bool>,
     }
 }
 
@@ -398,13 +384,13 @@ pub struct HistoryResult {
 
 input! {
     tab
-    /// `close`: closes a tab.
-    pub struct CloseInput {}
+    /// `tab.close`: closes a tab.
+    pub struct TabCloseInput {}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct CloseResult {
+pub struct TabCloseResult {
     pub closed: TabId,
 }
 
@@ -1579,17 +1565,17 @@ macro_rules! operations {
 }
 
 operations! {
+    "tab.new" => TabNew(TabNewInput),
+    "tab.list" => TabList(TabListInput),
+    "tab.close" => TabClose(TabCloseInput),
     "open" => Open(OpenInput),
     "show" => Show(ShowInput),
-    "tabs" => Tabs(TabsInput),
     "info" => Info(InfoInput),
-    "goto" => Goto(GotoInput),
     "back" => Back(BackInput),
     "forward" => Forward(ForwardInput),
     "reload" => Reload(ReloadInput),
     "stop" => Stop(StopInput),
     "history" => History(HistoryInput),
-    "close" => Close(CloseInput),
     "inspect" => Inspect(InspectInput),
     "find" => Find(FindInput),
     "read" => Read(ReadInput),
