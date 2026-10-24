@@ -119,9 +119,10 @@ import { EMPTY_TRANSCRIPT, addPage, heldEdge } from '@demicodes/web-ui/transport
 import {
   deleteDraft,
   readDraft,
+  onDraftStorageDeleted,
+  OVER_ANY,
   readLocalDrafts,
   takeLastWords,
-  UnreadableDraftError,
   writeDraft,
   writeLastWords,
   type SavedDraft,
@@ -176,6 +177,11 @@ function withConversation(
   }
 }
 
+/** `restored`, then what the page added meanwhile that `restored` does not name. */
+function joined<T extends { id: string }>(restored: readonly T[], meanwhile: readonly T[]): T[] {
+  return [...restored, ...meanwhile.filter((item) => !restored.some((each) => each.id === item.id))]
+}
+
 export const useConversations = defineStore('conversations', () => {
   const product = useProduct()
   const preferences = usePreferences()
@@ -200,11 +206,11 @@ export const useConversations = defineStore('conversations', () => {
   const archiving = new Map<string, Promise<void>>()
   /**
    * This web browser's own drafts, new conversations before their first
-   * send, are on their way back from IndexedDB (`restoreLocalDrafts`): the
-   * list is not whole, and an address may name one of them.
+   * send, are on their way back from IndexedDB (`restoreLocalDrafts`): an
+   * address that names no conversation yet may name one of them. Nothing else
+   * waits for them.
    */
   const restoringLocalDrafts = ref(false)
-  const listStatus = computed(() => restoringLocalDrafts.value ? 'loading' : product.load)
   /**
    * What the sidebar lists: every conversation not archived; a new
    * conversation whose draft holds nothing yet only while it is the open
@@ -223,6 +229,8 @@ export const useConversations = defineStore('conversations', () => {
   const restored = reactive(new Set<string>())
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
   const savedDrafts = new Map<string, string>()
+  // A deleted draft database holds nothing this page saved: its next save writes every draft it holds again.
+  onDraftStorageDeleted(() => savedDrafts.clear())
   /** How many changes made in one step are under way (`atOnce`); none is saved halfway. */
   let steps = 0
   const uploads = createConversationUploads(saveDrafts, (error) =>
@@ -275,7 +283,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   const commentSends = new Set<string>()
   /** The draft storage failures this page reported, each once. */
-  const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
+  const storageReported = new Set<'save' | 'restore'>()
 
   // A failed operation is a toast; server state is never replaced by a message.
   function report(site: string, title: HeadlineText, error: unknown, options: Omit<ReportErrorOptions, 'site'> = {}): void {
@@ -288,18 +296,15 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Reports, once a page, that the draft storage failed to save or restore,
-   * or that a record it holds did not read and was set aside. The toast says it
-   * in words; what failed goes to the console.
+   * Reports, once a page, that the draft storage failed to save or restore.
+   * The toast says it in words; what failed goes to the console.
    */
   function storageError(error: unknown, what: 'save' | 'restore'): void {
-    const kind = error instanceof UnreadableDraftError ? 'unreadable' : what
-    if (storageReported.has(kind)) {
+    if (storageReported.has(what)) {
       return
     }
-    storageReported.add(kind)
-    const detail = error instanceof UnreadableDraftError ? error.detail : undefined
-    switch (kind) {
+    storageReported.add(what)
+    switch (what) {
       case 'save':
         reportError(t('failures.saveDrafts'), error, {
           site: 'failures.saveDrafts',
@@ -312,14 +317,6 @@ export const useConversations = defineStore('conversations', () => {
           site: 'failures.restoreDrafts',
           userVisible: true,
           message: t('drafts.readFailed'),
-        })
-        break
-      case 'unreadable':
-        reportError(t('failures.restoreStoredDraft'), error, {
-          site: 'failures.restoreStoredDraft',
-          userVisible: true,
-          detail,
-          message: t('drafts.unreadable'),
         })
         break
     }
@@ -766,11 +763,8 @@ export const useConversations = defineStore('conversations', () => {
     }
     const signal = lifetime.signal
     try {
-      const { drafts, unreadable } = await readLocalDrafts(userId)
+      const drafts = await readLocalDrafts(userId)
       signal.throwIfAborted()
-      for (const record of unreadable) {
-        storageError(record, 'restore')
-      }
       for (const draft of drafts) {
         if (
           !draft.local ||
@@ -814,17 +808,19 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  async function initialize(): Promise<void> {
+  function initialize(): void {
     const signal = lifetime.signal
     restoringLocalDrafts.value = true
-    await restoreLocalDrafts()
-    if (signal.aborted) {
-      return
-    }
-    restoringLocalDrafts.value = false
+    // The start never waits on the web browser's storage: the drafts of the
+    // new conversations join the list when it answers.
     product.start()
-    // The address may name one of them, shown before they were back.
-    openListed()
+    void restoreLocalDrafts().then(() => {
+      if (!signal.aborted) {
+        restoringLocalDrafts.value = false
+        // The address may name one of them, shown before they were back.
+        openListed()
+      }
+    })
   }
 
   /**
@@ -866,6 +862,17 @@ export const useConversations = defineStore('conversations', () => {
     return made
   }
 
+  /**
+   * Whether the user changed the composer since the conversation opened: a
+   * synced conversation's composer may show the backend's draft, read
+   * meanwhile, which is no change of theirs.
+   */
+  function typedIn(conversation: Conversation): boolean {
+    return conversation.persistence === 'synced'
+      ? recordSync.unsaved(conversation)
+      : conversation.draft !== '' || conversation.comments.length > 0 || conversation.attachmentIds.length > 0
+  }
+
   async function restoreDraft(
     conversation: Conversation,
     signal: AbortSignal,
@@ -874,15 +881,30 @@ export const useConversations = defineStore('conversations', () => {
     if (restored.has(conversation.id) || !session.user) {
       return
     }
+    // What the page restores from the web browser's storage, which answers when
+    // it does: the conversation is open and typeable meanwhile, so each part
+    // fills in only what the user has not set since.
+    let sends: Conversation['pendingSends'] = []
+    let writes: SavedDraft['savedWrites'] = []
+    let files: ProductAttachment[] = []
+    let composer: { text: string; comments: MessageComment[]; over: number | null; attachmentIds: string[] } | null = null
+    let typed = false
     try {
       const draft = saved ?? (await readDraft(session.user.id, conversation.id))
       signal.throwIfAborted()
+      if (restored.has(conversation.id)) {
+        // Another call of this restore came first.
+        return
+      }
+      typed = typedIn(conversation)
       if (draft) {
         // A message whose answer the page did not hear is still on its way,
         // as a message: the backend may hold it already. One refused stays not
         // delivered.
-        conversation.pendingSends = draft.pendingSends.map((pending) => ({ ...pending, way: 'send' }))
-        conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
+        sends = draft.pendingSends.map((pending) => ({ ...pending, way: 'send' }))
+        if (conversation.messageEdit === null) {
+          conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
+        }
         // A draft holds model settings only for a conversation without a
         // record.
         if (draft.model && conversation.persistence !== 'synced') {
@@ -891,25 +913,25 @@ export const useConversations = defineStore('conversations', () => {
         if (draft.workflow && conversation.persistence !== 'synced') {
           conversation.workflow = draft.workflow
         }
-        conversation.scroll = draft.scroll
+        if (conversation.scroll === null) {
+          conversation.scroll = draft.scroll
+        }
+        writes = draft.savedWrites
+        files = draft.files.map(savedAttachment)
         // The composer's text is here only when the backend does not have
         // it; a synced conversation's composer shows the backend's draft
         // otherwise, once read.
-        // A composer the backend has not accepted is a change of its draft,
-        // written over the revision it names.
-        if (draft.over !== null) {
-          recordSync.restore(conversation, draft.over)
+        if (conversation.persistence !== 'synced' || draft.over !== null) {
+          const sending = sendingFileIds({ pendingSends: sends })
+          composer = {
+            text: draft.text,
+            comments: draft.comments,
+            over: draft.over,
+            // The files of the message, in the order of its capsules; the rest
+            // are those of the sends not yet accepted.
+            attachmentIds: files.filter((file) => !sending.has(file.id)).map((file) => file.id),
+          }
         }
-        conversation.savedWrites = draft.savedWrites
-        conversation.draft = draft.text
-        conversation.comments = draft.comments
-        conversation.files = draft.files.map(savedAttachment)
-        // The files of the message, in the order of its capsules; the rest
-        // are those of the sends not yet accepted.
-        const sending = sendingFileIds(conversation)
-        conversation.attachmentIds = conversation.files
-          .filter((file) => !sending.has(file.id))
-          .map((file) => file.id)
       }
       // What a page of the conversation held as it closed is newer than the
       // record, whose last writes may not have made it.
@@ -917,57 +939,85 @@ export const useConversations = defineStore('conversations', () => {
       if (words) {
         // The messages on their way then; a file of theirs the record lacks
         // is known by its upload, or is gone.
-        conversation.pendingSends = words.pendingSends.map((pending) => ({ ...pending, way: 'send' }))
-        conversation.savedWrites = words.savedWrites
-        conversation.files = [
-          ...conversation.files,
-          ...words.files.filter((file) => !conversation.files.some((held) => held.id === file.id)).map(savedAttachment),
+        sends = words.pendingSends.map((pending) => ({ ...pending, way: 'send' }))
+        writes = words.savedWrites
+        files = [
+          ...files,
+          ...words.files.filter((file) => !files.some((held) => held.id === file.id)).map(savedAttachment),
         ]
-        const sending = sendingFileIds(conversation)
+        const sending = sendingFileIds({ pendingSends: sends })
         if (words.composer) {
-          if (words.composer.over !== null) {
-            recordSync.restore(conversation, words.composer.over)
+          composer = {
+            text: words.composer.text,
+            comments: composer?.comments ?? [],
+            over: words.composer.over ?? composer?.over ?? null,
+            attachmentIds: words.composer.attachmentIds.filter((id) => files.some((file) => file.id === id)),
           }
-          conversation.draft = words.composer.text
-          conversation.attachmentIds = words.composer.attachmentIds.filter((id) =>
-            conversation.files.some((file) => file.id === id),
-          )
-        } else {
+        } else if (composer) {
           // The composer's text is the backend's: a file the record held for
           // it was the sent message's.
-          conversation.attachmentIds = conversation.attachmentIds.filter((id) => !sending.has(id))
+          composer.attachmentIds = composer.attachmentIds.filter((id) => !sending.has(id))
         }
       }
+      // The composer's text the backend's draft has replaced since, or the one
+      // the user typed meanwhile, stays.
+      const revision = conversation.record.revision('draft')
+      const replaced = composer?.over != null && composer.over !== OVER_ANY && revision >= 0 && composer.over !== revision
+      if (composer && !typed && !replaced) {
+        // Before the draft is read, the read says whether the backend took
+        // the composer (`receiveDraft`); once read, the composer is a change
+        // of the draft shown, as typing is.
+        if (composer.over !== null && revision < 0) {
+          recordSync.restore(conversation, composer.over)
+        }
+        conversation.draft = composer.text
+        conversation.comments = composer.comments
+        conversation.attachmentIds = composer.attachmentIds
+      } else {
+        // Only the files of the messages on their way come back.
+        const sending = sendingFileIds({ pendingSends: sends })
+        files = files.filter((file) => sending.has(file.id))
+      }
+      conversation.pendingSends = joined(sends, conversation.pendingSends)
+      conversation.savedWrites = joined(writes, conversation.savedWrites)
+      conversation.files = joined(files, conversation.files)
       // A message on its way from the list keeps it out of the list.
-      for (const pending of conversation.pendingSends) {
+      for (const pending of sends) {
         if (pending.saved) {
           recordSync.hideSent(conversation, pending.saved, pending.id)
         }
       }
     } catch (error) {
       signal.throwIfAborted()
+      typed = typedIn(conversation)
       storageError(error, 'restore')
     }
     restored.add(conversation.id)
-    // The page starts from what storage held: saving the restored draft
-    // unchanged could only replace a newer one another tab saved since.
-    changedDraft(conversation.id, persisted(conversation))
+    if (typed) {
+      // What the user typed meanwhile is not in storage: it is saved now.
+      saveDrafts()
+    } else {
+      // The page starts from what storage held: saving the restored draft
+      // unchanged could only replace a newer one another tab saved since.
+      changedDraft(conversation.id, persisted(conversation))
+    }
     // A Save the backend did not confirm goes again, and shows meanwhile; once
     // answered, the stored draft lets it go.
-    for (const write of conversation.savedWrites) {
+    for (const write of writes) {
       void writeSaved(conversation, write)
     }
     // A file of a message not delivered whose upload did not finish failed
     // with it: its capsule says so, as before the page closed, and only the
     // dock's Retry uploads it again. One with nothing to upload from is gone,
     // which it says already.
-    const undelivered = new Set(conversation.pendingSends.flatMap((pending) => pending.error === null ? [] : pending.fileIds))
-    for (const file of conversation.files) {
+    const undelivered = new Set(sends.flatMap((pending) => pending.error === null ? [] : pending.fileIds))
+    const brought = new Set(files.map((file) => file.id))
+    for (const file of conversation.files.filter((held) => brought.has(held.id))) {
       if (undelivered.has(file.id) && isComposerFile(file) && !file.upload && (file.file || file.claim)) {
         applyAttachmentUpdate(file, { phase: 'failed' })
       }
     }
-    for (const file of conversation.files) {
+    for (const file of conversation.files.filter((held) => brought.has(held.id))) {
       if (isComposerFile(file) && !file.upload && !undelivered.has(file.id)) {
         // A pasted file whose attaching the page did not see end attaches
         // again, and falls back as a paste does. Any other failure its capsule
@@ -983,9 +1033,9 @@ export const useConversations = defineStore('conversations', () => {
     // Each message still on its way goes again with its id once the session
     // is open, which takes it once: one the backend already holds is not
     // sent twice, and only its answer ends it, taken or refused.
-    for (const pending of conversation.pendingSends) {
+    for (const pending of sends) {
       if (pending.error === null) {
-        void deliverInOrder(conversation, pending)
+        void deliverInOrder(conversation, conversation.pendingSends.find((held) => held.id === pending.id) ?? pending)
       }
     }
   }
@@ -1449,19 +1499,22 @@ export const useConversations = defineStore('conversations', () => {
       signal.throwIfAborted()
     }
     try {
-      const draftRestored = restoreDraft(conversation, signal)
+      // The opening never waits on the web browser's storage: the stored
+      // draft and the disk's copy show, or fill in what is still empty, when
+      // they answer, and the backend's data shows when it arrives. What they
+      // fail with is told by the draft's and the copy's own reports, or is an
+      // abort.
+      void restoreDraft(conversation, signal).catch(() => {})
       if (conversation.persistence !== 'synced') {
-        await draftRestored
         conversation.load = 'ready'
         return
       }
       if (madeHere.delete(conversation.id)) {
         // Its record is what the page created: no transcript yet, the
         // metadata its answer brought, and the composer's draft.
-        await draftRestored
         conversation.load = 'ready'
       } else {
-        await Promise.all([draftRestored, showFromDisk(conversation, signal)])
+        void showFromDisk(conversation, signal).catch(() => {})
       }
       // The saved list and the hosts come with the metadata, the disk's now
       // and the socket's as it arrives.
@@ -1506,7 +1559,9 @@ export const useConversations = defineStore('conversations', () => {
       readNodeCopy(userId, conversation.id),
     ])
     signal.throwIfAborted()
-    if (conversation.load !== 'reading') {
+    // The opening does not wait for the copy: it shows only while the
+    // backend's data has not come, and fills in only what is still empty.
+    if (conversation.load !== 'reading' && conversation.load !== 'loading') {
       return false
     }
     if (copy && conversation.metadata.read.value === null) {
@@ -3903,7 +3958,7 @@ export const useConversations = defineStore('conversations', () => {
     items,
     listed,
     deleted,
-    listStatus,
+    restoringLocalDrafts,
     composerFocusRequests,
     appendToDraft,
     reveal,

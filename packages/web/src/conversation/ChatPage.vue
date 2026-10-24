@@ -114,10 +114,18 @@ const place = useTemplateRef<InstanceType<typeof WorkspaceInfo>>('place')
 const primaryHost = computed(() =>
   conversation.value ? primaryHostOf(executionFor(conversation.value)) : null,
 )
+/**
+ * Whether the conversations are known: an address that names none yet waits
+ * for the drafts the web browser stored, which may hold it, and no other
+ * address waits for them.
+ */
+const listStatus = computed(() =>
+  props.id !== undefined && !conversation.value && store.restoringLocalDrafts ? 'loading' : product.load,
+)
 const pageKind = computed(() =>
-  !props.id && store.listStatus === 'ready'
+  !props.id && listStatus.value === 'ready'
     ? 'none'
-    : conversationPageKind(store.listStatus, !!conversation.value),
+    : conversationPageKind(listStatus.value, !!conversation.value),
 )
 // A new conversation's address, as a reload of it shows, has nothing to read.
 watch(
@@ -138,7 +146,7 @@ onUnmounted(() => void store.activate(null))
 // immediately typeable draft, as New does. Settings opened by a link over that
 // address leave it as it is, since moving the address would close them.
 watch(
-  () => router.currentRoute.value.path === '/chat' && store.listStatus === 'ready',
+  () => router.currentRoute.value.path === '/chat' && listStatus.value === 'ready',
   (start) => {
     if (start) {
       navigation.replaceWithNew()
@@ -163,7 +171,7 @@ watch(
 // it finds: a new conversation opens again. Any other shows that the
 // conversation is not found.
 watch(
-  () => props.id !== undefined && !conversation.value && store.listStatus === 'ready' && router.currentRoute.value.path.startsWith('/chat/'),
+  () => props.id !== undefined && !conversation.value && listStatus.value === 'ready' && router.currentRoute.value.path.startsWith('/chat/'),
   (missing) => {
     if (missing) {
       navigation.reopenNew()

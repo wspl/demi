@@ -9,7 +9,6 @@
     "deleteMessage": "メッセージを削除できませんでした",
     "saveDrafts": "下書きを保存できませんでした",
     "restoreDrafts": "下書きを復元できませんでした",
-    "restoreStoredDraft": "下書きを復元できませんでした",
     "readDraft": "下書きを読み取れませんでした",
     "readSaved": "保存したメッセージを読み取れませんでした",
     "readRecentCost": "直近のコストを読み取れませんでした",
@@ -42,7 +41,6 @@
   "drafts": {
     "storeFailed": "このブラウザーは下書きを保存できませんでした。",
     "readFailed": "このブラウザーは保存済みの下書きを読み取れませんでした。",
-    "unreadable": "保存済みの下書きを 1 件読み取れなかったため、別に保管しました。",
     "missingFile": "ファイル"
   },
   "savedDeleted": "保存したメッセージを削除しました",

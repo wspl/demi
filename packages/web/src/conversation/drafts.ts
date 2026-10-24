@@ -5,6 +5,7 @@ import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 import { copiedStoredFileSchema } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 
 /**
  * The upload the backend took: the attachment id a message names the file
@@ -235,7 +236,7 @@ function draftV5ToV6(value: unknown): unknown {
  *   composer, before the text it holds, as a refused Save for Later's goes
  *   back.
  *
- * A record of another shape stays as it was, and its read reports it.
+ * A record of another shape stays as it was, and its read drops it.
  */
 function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
   if (oldVersion < 1) {
@@ -289,17 +290,15 @@ function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
   }
 }
 
-/** A record a read could not decode: it is set aside, and every other is read. */
-export class UnreadableDraftError extends Error {
-  constructor(readonly detail: string) {
-    super('A draft stored in this web browser could not be read.')
-  }
+/** The record `value` as a draft; none when it does not decode. */
+function decodeDraft(value: unknown): SavedDraft | null {
+  const draft = draftSchema.safeParse(value)
+  return draft.success ? draft.data : null
 }
 
-/** The record `value` as a draft, or why it is unreadable. */
-function decodeDraft(value: unknown): SavedDraft | UnreadableDraftError {
-  const draft = draftSchema.safeParse(value)
-  return draft.success ? draft.data : new UnreadableDraftError(schemaRefusal(draft.error))
+/** Calls `listener` when the draft database was deleted, as by another page; answers the call that stops it. */
+export function onDraftStorageDeleted(listener: () => void): () => void {
+  return drafts.onDeleted(listener)
 }
 
 const drafts = new IndexedDatabase('demi-drafts', DRAFTS_VERSION, upgradeDrafts)
@@ -316,20 +315,44 @@ function draftStorage<T>(
   return drafts.transaction('drafts', mode, operation)
 }
 
-/** The conversation's draft; rejects with `UnreadableDraftError` when its record does not decode. */
+/**
+ * Deletes the records under `keys` that still do not decode. The local data is
+ * disposable, so a record of a shape this page cannot read, as a newer build
+ * wrote, is dropped and the page goes on without it. A deletion that fails
+ * leaves the record to the next read.
+ */
+function dropUnreadable(keys: readonly IDBValidKey[]): Promise<void> {
+  return drafts
+    .across(['drafts'], 'readwrite', (transaction) => {
+      const store = transaction.objectStore('drafts')
+      for (const key of keys) {
+        const request = store.get(key)
+        request.onsuccess = () => {
+          const draft = draftSchema.safeParse(request.result)
+          if (request.result !== undefined && !draft.success) {
+            pageLog.warn('storage.dropped', { database: 'demi-drafts', record: String(key), reason: schemaRefusal(draft.error) })
+            store.delete(key)
+          }
+        }
+      }
+      return () => undefined
+    })
+    .catch(() => {})
+}
+
+/** The conversation's draft; none when it has none or its record does not decode, which is then dropped. */
 export async function readDraft(
   userId: string,
   conversationId: string,
 ): Promise<SavedDraft | null> {
-  const value = await draftStorage('readonly', (store) =>
-    store.get([userId, conversationId]),
-  )
+  const key = [userId, conversationId]
+  const value = await draftStorage('readonly', (store) => store.get(key))
   if (value === undefined) {
     return null
   }
   const draft = decodeDraft(value)
-  if (draft instanceof UnreadableDraftError) {
-    throw draft
+  if (draft === null) {
+    await dropUnreadable([key])
   }
   return draft
 }
@@ -344,19 +367,18 @@ export async function writeDraft(
   )
 }
 
-/**
- * The drafts of the user's new conversations, and the records that did not
- * decode, which are set aside: one never keeps the others from being read.
- */
-export async function readLocalDrafts(userId: string): Promise<{ drafts: SavedDraft[]; unreadable: UnreadableDraftError[] }> {
-  const values = await draftStorage('readonly', (store) =>
-    store.getAll(IDBKeyRange.bound([userId], [userId, []])),
-  )
+/** The drafts of the user's new conversations; a record that does not decode is dropped, and every other is read. */
+export async function readLocalDrafts(userId: string): Promise<SavedDraft[]> {
+  const range = IDBKeyRange.bound([userId], [userId, []])
+  const { values, keys } = await drafts.across(['drafts'], 'readonly', (transaction) => {
+    const store = transaction.objectStore('drafts')
+    const found = store.getAll(range)
+    const named = store.getAllKeys(range)
+    return () => ({ values: found.result as unknown[], keys: named.result })
+  })
   const decoded = values.map(decodeDraft)
-  return {
-    drafts: decoded.filter((draft): draft is SavedDraft => !(draft instanceof UnreadableDraftError) && draft.local !== null),
-    unreadable: decoded.filter((draft) => draft instanceof UnreadableDraftError),
-  }
+  await dropUnreadable(keys.filter((_, index) => decoded[index] === null))
+  return decoded.filter((draft): draft is SavedDraft => draft !== null && draft.local !== null)
 }
 
 export async function deleteDraft(

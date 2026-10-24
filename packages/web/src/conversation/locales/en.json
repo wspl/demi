@@ -9,7 +9,6 @@
     "deleteMessage": "Could Not Delete the Message",
     "saveDrafts": "Could Not Save Drafts",
     "restoreDrafts": "Could Not Restore Drafts",
-    "restoreStoredDraft": "Could Not Restore a Draft",
     "readDraft": "Could Not Read the Draft",
     "readSaved": "Could Not Read the Saved Messages",
     "readRecentCost": "Could Not Read the Recent Cost",
@@ -42,7 +41,6 @@
   "drafts": {
     "storeFailed": "This browser couldn’t store your drafts.",
     "readFailed": "This browser couldn’t read the stored drafts.",
-    "unreadable": "A stored draft couldn’t be read and was set aside.",
     "missingFile": "File"
   },
   "savedDeleted": "Saved Message Deleted",

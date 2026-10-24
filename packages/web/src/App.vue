@@ -48,7 +48,6 @@ import { blobUrl, keepPicture } from './api/uploads'
 import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { productPageHost } from './plugins/host'
 import { useProduct } from './state/product'
-import { newerStorage } from '@demicodes/web-ui/infra/indexed-db'
 import { usePasskeySignals } from './auth/passkeys'
 import { useSessions } from './auth/handoff'
 import { usePasskeyOffer } from './auth/passkey-offer'
@@ -61,12 +60,11 @@ const product = useProduct()
 // The password manager follows the account's email and passkeys.
 usePasskeySignals()
 providePageHost(productPageHost())
-// A page of another build than the backend serves, or whose storage a
-// newer build upgraded, loads itself again, once per build; one that still
-// gets another says so.
+// A page of another build than the backend serves loads itself again, once
+// per build; one that still gets another says so.
 const updateFailed = ref(false)
 watch(
-  () => product.newBuild ?? newerStorage.value,
+  () => product.newBuild,
   (newer) => {
     if (newer !== null && !reloadFor(newer, reloadPage)) {
       updateFailed.value = true
@@ -363,7 +361,7 @@ useAppShortcuts(
           :projects="resources.projects"
           :conversations="sidebarConversations"
           :active-id="activeId"
-          :list-status="conversations.listStatus"
+          :list-status="product.load"
           :section-entries="resources.sectionEntries"
           :automations="{ count: automations.unread, open: automationsOpen }"
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"

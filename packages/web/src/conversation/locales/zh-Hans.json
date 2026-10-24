@@ -9,7 +9,6 @@
     "deleteMessage": "无法删除消息",
     "saveDrafts": "无法保存草稿",
     "restoreDrafts": "无法恢复草稿",
-    "restoreStoredDraft": "无法恢复草稿",
     "readDraft": "无法读取草稿",
     "readSaved": "无法读取已保存的消息",
     "readRecentCost": "无法读取近期费用",
@@ -42,7 +41,6 @@
   "drafts": {
     "storeFailed": "此浏览器无法存储你的草稿。",
     "readFailed": "此浏览器无法读取已存储的草稿。",
-    "unreadable": "有一份已存储的草稿无法读取，已另行保留。",
     "missingFile": "文件"
   },
   "savedDeleted": "已删除保存的消息",
