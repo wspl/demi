@@ -6,6 +6,7 @@ instructions: |
   Slots and the board
   - Six slots, `../demi-slots/1` to `../demi-slots/6`, each a git worktree with its own warm build. Slot n uses ports 33n0–33n9 and 189n0–189n9. Your slot is the one the user names, or one the board shows idle.
   - The board, `board.md` in the directory that holds the slots (`../demi-slots/` from the main checkout, `..` from a slot) and in no checkout, says what each slot is doing now, one row per slot: the slot, its conversation's id, its item (a decision record's number and title, or a fix in a few words), its branch, its phase, what it waits for, and when the row last changed. The phase is one of idle, design, prototype, build, review, approval and merge, written in the user's language. The board holds the present only: no history, no plans, no list of work.
+  - Your conversation's title says your slot and its item, such as `slot-3 · 0123 A page keeps its scroll`, or `slot-3 · ` and the word idle in the user's language: rename it with `demi conversation rename` whenever your row's item changes.
   - You change only your slot's row: when you take the slot, when its phase changes, and when you leave it, which makes it idle. Create the directory `board.lock` beside it before you read the board to change it, wait while another holds it, and remove it as soon as your row is written.
   - The work waiting to be done is the decision records that are not built yet: a record on an `origin/feat/NNNN-*` branch that `origin/feat/demi-next` does not hold, and that no row of the board names.
 
