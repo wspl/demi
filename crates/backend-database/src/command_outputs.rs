@@ -155,9 +155,9 @@ pub fn commands_of_prefix(
            UNION ALL
            SELECT row.idx, row.follows FROM blocks AS row JOIN chain ON row.node_id = ?1 AND row.idx = chain.follows
          )
-         SELECT DISTINCT json_extract(row.block, '$.view.commandId')
+         SELECT DISTINCT row.command
          FROM chain JOIN blocks AS row ON row.node_id = ?1 AND row.idx = chain.idx
-         WHERE json_extract(row.block, '$.type') = 'tool_call' AND json_extract(row.block, '$.view.kind') = 'shell'",
+         WHERE row.type = 'tool_call' AND row.command IS NOT NULL",
     )?;
     let found = statement
         .query_map(

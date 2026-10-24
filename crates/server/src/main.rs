@@ -285,6 +285,7 @@ fn rollback(layout: &Layout, yes: bool) -> Result<(), Box<dyn std::error::Error>
             return Err("nothing changed".into());
         }
     }
+    data::separate(&backend, &earlier)?;
     Err(hand_over(layout, &earlier, "move").into())
 }
 

@@ -44,6 +44,9 @@ tracing.workspace = true
 # `DEMI_LOG`'s targets, which a page's lines are held to (`server_log`).
 tracing-subscriber.workspace = true
 uuid = { version = "1", features = ["v4"] }
+# The contents and the records' bodies are stored compressed; the records of a
+# conversation share a dictionary trained on its own (`records.rs`).
+zstd = { version = "0.13", default-features = false, features = ["zdict_builder"] }
 # The passkeys and their challenges the control store keeps
 # (`crates/backend/src/config/secret.rs`), as `webauthn-rs` encodes them.
 #

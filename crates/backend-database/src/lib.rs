@@ -83,11 +83,15 @@
 //!   re-encoding a stored value. What it writes goes through the encoding and
 //!   validation of any write.
 //! - A value stored as JSON is part of its schema: the schema's text names the
-//!   format of each such column in a comment (`-- blocks.block: transcript block
-//!   format 2`). A release that changes what the value holds raises that number,
+//!   format of each such column in a comment (`-- nodes.state: checkpoint state
+//!   format 8`). A release that changes what the value holds raises that number,
 //!   so the text and the version change and the migration re-encodes the stored
 //!   values. Decoding stays strict: a value of an earlier format is never read as
 //!   the current one.
+//! - A transcript row is a record that names its contents (`records.rs`,
+//!   `contents.rs`) and carries its block format, so a change of the block
+//!   format rewrites no row: a release reads each format it knows. A migration
+//!   adds or drops the columns queries read, and never decodes every row.
 //! - The control database is migrated as the backend starts, before it serves; a
 //!   conversation's database when the conversation is next opened, so a start
 //!   does not wait for every conversation a server ever had. `demi-server`
@@ -99,6 +103,8 @@ pub mod attachments;
 pub mod schedules;
 pub mod columns;
 pub mod command_outputs;
+mod contents;
+mod convert;
 pub mod conversation_attachments;
 pub mod control;
 pub mod credentials;
@@ -123,6 +129,7 @@ pub mod plugin_values;
 pub mod port_forwards;
 pub mod providers;
 pub mod push;
+mod records;
 pub mod references;
 pub mod running;
 pub mod saved;
