@@ -1305,11 +1305,6 @@ html[data-theme="light"] .file-pill {
   text-decoration: underline 1px rgb(250 204 21 / 0.35);
 }
 
-/* The text a comment box is open for keeps the system's selection color, which the field took. */
-::highlight(comment-selection) {
-  background-color: rgb(96 165 250 / 0.35);
-}
-
 [data-theme="light"] ::highlight(comment) {
   background-color: rgb(250 204 21 / 0.3);
   text-decoration-color: rgb(202 138 4);
@@ -1318,10 +1313,6 @@ html[data-theme="light"] .file-pill {
 [data-theme="light"] ::highlight(comment-sent) {
   background-color: rgb(250 204 21 / 0.13);
   text-decoration-color: rgb(202 138 4 / 0.45);
-}
-
-[data-theme="light"] ::highlight(comment-selection) {
-  background-color: rgb(59 130 246 / 0.3);
 }
 
 /*
@@ -1373,10 +1364,6 @@ html[data-theme="light"] .file-pill {
   outline-color: rgb(250 204 21 / 0.4);
 }
 
-.picture-outline-comment-selection {
-  outline-color: rgb(96 165 250 / 0.8);
-}
-
 .picture-outline-ask {
   outline-color: rgb(192 132 252 / 0.9);
 }
@@ -1389,12 +1376,48 @@ html[data-theme="light"] .file-pill {
   outline-color: rgb(202 138 4 / 0.45);
 }
 
-[data-theme="light"] .picture-outline-comment-selection {
-  outline-color: rgb(59 130 246 / 0.7);
-}
-
 [data-theme="light"] .picture-outline-ask {
   outline-color: rgb(147 51 234 / 0.75);
+}
+
+/*
+ * A list that draws its selection (`DrawnSelection.vue`): the browser paints
+ * none in it, but in a text field, which keeps its own. The strips blend into
+ * what is under them, so its words keep their colors.
+ */
+[data-drawn-selection] ::selection {
+  background-color: transparent;
+}
+
+/* A field's selection inherits the list's: it takes the system's color back. */
+[data-drawn-selection] :is(input, textarea, [contenteditable], [contenteditable] *)::selection {
+  background-color: Highlight;
+}
+
+.drawn-selection {
+  mix-blend-mode: screen;
+}
+
+.drawn-selection-strip {
+  border-radius: 5px;
+  background-color: rgb(59 130 246 / 0.42);
+}
+
+.drawn-selection-picture {
+  outline: 2px solid rgb(96 165 250);
+  outline-offset: 2px;
+}
+
+[data-theme="light"] .drawn-selection {
+  mix-blend-mode: multiply;
+}
+
+[data-theme="light"] .drawn-selection-strip {
+  background-color: rgb(59 130 246 / 0.22);
+}
+
+[data-theme="light"] .drawn-selection-picture {
+  outline-color: rgb(59 130 246);
 }
 
 /* A comment's box or a side question's card stands in the reply under the line

@@ -4,10 +4,10 @@
  * list that marks comments, as the gallery's specimens do side by side,
  * publishes its ranges here and they are painted together.
  */
-export type MarkKind = 'comment' | 'comment-sent' | 'comment-selection' | 'ask'
+export type MarkKind = 'comment' | 'comment-sent' | 'ask'
 
 /** In the order they paint, the last over the others. */
-const KINDS: readonly MarkKind[] = ['comment-selection', 'comment-sent', 'comment', 'ask']
+const KINDS: readonly MarkKind[] = ['comment-sent', 'comment', 'ask']
 
 const published = new Map<symbol, Record<MarkKind, StaticRange[]>>()
 
@@ -25,7 +25,6 @@ export function publishMarks(owner: symbol, ranges: Record<MarkKind, readonly Ra
   if (ranges) {
     const copy = (kind: MarkKind) => ranges[kind].map((range) => new StaticRange(range))
     published.set(owner, {
-      'comment-selection': copy('comment-selection'),
       'comment-sent': copy('comment-sent'),
       'comment': copy('comment'),
       'ask': copy('ask'),

@@ -4,7 +4,7 @@ import { MessageCircleQuestionMark, MessageSquarePlus } from '@lucide/vue'
 import type { MediaSource, MessageComment } from '@demicodes/protocol'
 import { usePhone } from '../../ui/phone'
 import { selectedText, type ContextMenuEntry, type ResolvedSelection, type SelectionFieldActions } from '../../ui/context-menu'
-import { chooseWay, openPictureField, pictureField } from './selection-field'
+import { chooseWay, openPictureField } from './selection-field'
 import { t } from '../locales/text'
 import { reportError } from '../../infra/errors'
 import { anchorOf, pictureAnchor, pictureOf, pictureQuote, rangeOf, type TextAnchor } from './anchors'
@@ -269,8 +269,8 @@ watch(questions, (shown) => {
 
 const layer = ref<HTMLElement>()
 /**
- * The outline of each picture a comment, a side question or the comment field
- * stands on, over the list.
+ * The outline of each picture a comment or a side question stands on, over the
+ * list.
  */
 const outlines = shallowRef<{ key: string; kind: MarkKind; top: number; left: number; width: number; height: number }[]>([])
 const owner = Symbol('reply-comments')
@@ -297,7 +297,7 @@ function measure(): void {
   prune(keys)
   placeRemarks(remarks)
   // Read once the places are set: placing split and joined the words' text.
-  const ranges: Record<MarkKind, Range[]> = { 'comment': [], 'comment-sent': [], 'comment-selection': [], 'ask': [] }
+  const ranges: Record<MarkKind, Range[]> = { 'comment': [], 'comment-sent': [], 'ask': [] }
   const nextOutlines: typeof outlines.value = []
   const outline = (key: string, kind: MarkKind, range: Range) => {
     const rect = range.getBoundingClientRect()
@@ -323,13 +323,6 @@ function measure(): void {
       outline(question.id, 'ask', range)
     else
       ranges.ask.push(...aroundPlaces(range))
-  }
-  // The picture the page's one comment field is open on.
-  const opened = pictureField.value
-  if (opened && props.root?.contains(opened.image)) {
-    const range = document.createRange()
-    range.selectNode(opened.image)
-    outline('field', 'comment-selection', range)
   }
   outlines.value = nextOutlines
   publishMarks(owner, ranges)
@@ -397,7 +390,7 @@ watch(() => props.root, (root, _before, onCleanup) => {
   })
 }, { immediate: true })
 
-watch([marked, pictureField, questions], schedule)
+watch([marked, questions], schedule)
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(frame)

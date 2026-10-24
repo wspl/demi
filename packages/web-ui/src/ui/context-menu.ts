@@ -616,12 +616,12 @@ export interface ResolvedSelection extends SelectionReading {
  * (`role="img"`), whose words are no text. An icon, which the page hides from
  * assistive technology, is none.
  */
-const PICTURE = 'img, video, [role="img"]'
+export const PICTURE = 'img, video, [role="img"]'
 
 /** What a range takes: the part of a text node it selects, or a picture. */
 type SelectedItem = { node: Text; start: number; end: number } | { node: Element }
 
-function isPicture(el: Element): boolean {
+export function isPicture(el: Element): boolean {
   return el.matches(PICTURE) && el.closest('[aria-hidden="true"]') === null
 }
 

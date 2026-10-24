@@ -49,6 +49,7 @@ import { versionPlaces, type VersionChoice } from './versions'
 import type { HeldBlock } from '@demicodes/conversation-client'
 import type { StepsNotSharedRow } from './pending-steers'
 import ReplyComments from './comments/ReplyComments.vue'
+import DrawnSelection from '../ui/DrawnSelection.vue'
 import { sentComments, type ReplyCommenting } from './comments/comments'
 import type { ReplyAsking } from './comments/asks'
 import { provideReplySelectionTools } from './reply-selection'
@@ -711,6 +712,7 @@ defineExpose({
         :style="{ paddingBottom: 'var(--transcript-clearance)' }"
       >
         <div ref="rowsRoot" class="relative w-full" :style="{ height: `${totalSize}px` }">
+          <DrawnSelection :root="rowsRoot" />
           <ReplyComments v-if="commenting" ref="comments" :root="rowsRoot" :commenting="commenting" :sent="sent" :asking="asking" />
           <!--
             The rows slide to their places (`moveRows`): the clip keeps a sliding
