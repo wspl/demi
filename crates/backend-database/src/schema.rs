@@ -438,13 +438,10 @@ fn control_from_0_1_65(transaction: &Transaction<'_>, seals: &dyn ResealSealed) 
          DROP TABLE automation_calls;
          DROP TABLE automation_runs;
          DROP TABLE automations;
-         UPDATE permission_grants SET category = 'schedule.manage' WHERE category = 'automation.manage';
-         UPDATE permission_requests SET categories = replace(categories, 'automation.manage', 'schedule.manage')
-           WHERE instr(categories, 'automation.manage') > 0;
-         DELETE FROM permission_grants WHERE category = 'conversation.organize';
+         DELETE FROM permission_grants WHERE category IN ('conversation.organize', 'automation.manage');
          DELETE FROM permission_requests
            WHERE kind = 'permission'
-             AND EXISTS (SELECT 1 FROM json_each(categories) WHERE value = 'conversation.organize');",
+             AND EXISTS (SELECT 1 FROM json_each(categories) WHERE value IN ('conversation.organize', 'automation.manage'));",
     )
 }
 
