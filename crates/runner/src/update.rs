@@ -2,10 +2,31 @@
 //! backend.
 //!
 //! It puts the backend's executable in the installation's `releases/` as the
-//! installers do, under their lock, names it in `release-id`, and starts it in
-//! its own place once the registration has ended. The new runner cannot take
-//! the jobs over, so the old one stops them first; the backend learns of them
-//! from the new runner's hello as lost to the update.
+//! installers do, under their lock, moves it over the installation's runner,
+//! `<installation>/demi-runner`, names it in `release-id`, and starts it in its
+//! own place once the registration has ended. The new runner cannot take the
+//! jobs over, so the old one stops them first; the backend learns of them from
+//! the new runner's hello as lost to the update.
+//!
+//! # One path
+//!
+//! Every release runs from `<installation>/demi-runner`, so the system tells
+//! one program across updates: a Mac's privacy permissions follow the path of a
+//! program outside an app bundle, and a new path asked for them all again.
+//!
+//! - On Unix the new executable is renamed over the running one, whose process
+//!   keeps its own file.
+//! - Windows cannot replace a running executable but can rename it: the running
+//!   one moves to `releases/.replaced-<release>.exe`, which the next update
+//!   removes.
+//! - Every update writes the installation's launcher anew, so a launcher never
+//!   names a file an update removed.
+//! - An installation from before ran each release from
+//!   `releases/<release>/demi-runner`. Its runner of this release links itself
+//!   to the one path as it starts ([`Installed::settle`]), writes the
+//!   installation's launcher anew, and starts from there. The old path stays
+//!   until the launcher is written, so a failure leaves a launcher that still
+//!   starts a runner, which tries again at its next start.
 //!
 //! # Downloading ahead
 //!
@@ -43,6 +64,7 @@ use std::{
 
 use demi_command_protocol::host_target;
 use demi_runner_protocol::{
+    installation::{LAUNCHER_PS1, LAUNCHER_SH},
     release::{COMPRESSED_SUFFIX, RELEASE_ENV, RUNNER, RunnerUpdate, TOKEN_HEADER},
     values::{BackendUrl, DeviceToken},
 };
@@ -50,10 +72,13 @@ use demi_shared_artifacts::{Digest, Mode, Permissions, Publication};
 use tokio_util::sync::CancellationToken;
 
 /// An installation that an installer made, whose runner this process is:
-/// its executable is `<root>/releases/<release>/demi-runner`.
+/// its executable is `<root>/demi-runner`, or in an installation from before
+/// `<root>/releases/<release>/demi-runner`, until it settles.
 pub struct Installed {
     root: PathBuf,
     release: String,
+    /// This process's executable, canonical.
+    running: PathBuf,
 }
 
 /// The runner that takes this one's place.
@@ -68,17 +93,46 @@ impl Installed {
     /// guest's or one a developer runs from a build.
     pub fn of(root: &Path, release: Option<&str>, executable: &Path) -> Option<Self> {
         let release = release?;
-        let installed = root
-            .join("releases")
-            .join(release)
-            .join(executable.file_name()?)
-            .canonicalize()
-            .ok()?;
         let running = executable.canonicalize().ok()?;
-        (installed == running).then(|| Self {
+        let runs = |path: PathBuf| path.canonicalize().is_ok_and(|path| path == running);
+        let installed = runs(root.join(file_name()))
+            || runs(root.join("releases").join(release).join(file_name()));
+        installed.then(|| Self {
             root: root.to_owned(),
             release: release.to_owned(),
+            running,
         })
+    }
+
+    /// The file every release of the installation runs from.
+    fn executable(&self) -> PathBuf {
+        self.root.join(file_name())
+    }
+
+    /// Links the runner of an installation from before, which runs from its
+    /// release's directory, to the installation's one path, writes the
+    /// installation's launcher anew, which starts it there, and removes the
+    /// releases. The runner to start in this one's place; none when this one
+    /// runs from the one path already.
+    pub async fn settle(&self) -> io::Result<Option<Successor>> {
+        let executable = self.executable();
+        if executable.canonicalize().is_ok_and(|path| path == self.running) {
+            return Ok(None);
+        }
+        let _lock = InstallerLock::take(&self.root)?;
+        // An earlier start that failed to write the launcher leaves one,
+        // which no process runs.
+        remove_if_present(&executable).await?;
+        tokio::fs::hard_link(&self.running, &executable).await?;
+        if let Err(error) = self.publish_launcher().await {
+            remove_if_present(&executable).await?;
+            return Err(error);
+        }
+        self.prune().await;
+        Ok(Some(Successor {
+            executable,
+            release: self.release.clone(),
+        }))
     }
 
     /// Puts the executable of `release`, whose decompressed copy `expected`
@@ -99,9 +153,9 @@ impl Installed {
     }
 
     /// Puts the executable `update` names in place, downloaded from
-    /// `backend` unless a download ahead put it there, and makes it the
-    /// installation's release. Every release directory but the new one and
-    /// this runner's goes.
+    /// `backend` unless a download ahead put it there, moves it over the
+    /// installation's runner and makes it the installation's release. Every
+    /// other release goes.
     pub async fn update(
         &self,
         backend: &BackendUrl,
@@ -124,6 +178,21 @@ impl Installed {
         let path = self
             .place(backend, token, &update.release, &expected, cancel)
             .await?;
+        let executable = self.executable();
+        // Windows renames the running executable aside, which it cannot
+        // replace; a runner that runs from its release's directory leaves
+        // none there.
+        #[cfg(windows)]
+        if tokio::fs::try_exists(&executable).await? {
+            let aside = self
+                .root
+                .join("releases")
+                .join(format!(".replaced-{}.exe", self.release));
+            remove_if_present(&aside).await?;
+            tokio::fs::rename(&executable, &aside).await?;
+        }
+        tokio::fs::rename(&path, &executable).await?;
+        self.publish_launcher().await?;
         demi_shared_artifacts::publish_bytes(
             &self.root.join("release-id"),
             format!("{}\n", update.release).as_bytes(),
@@ -135,16 +204,38 @@ impl Installed {
         )
         .await
         .map_err(io::Error::other)?;
-        self.prune(&self.root.join("releases"), &update.release).await;
+        self.prune().await;
         Ok(Successor {
-            executable: path,
+            executable,
             release: update.release.clone(),
         })
     }
 
+    /// Writes the installation's launcher, which starts the one path.
+    async fn publish_launcher(&self) -> io::Result<()> {
+        let (name, launcher) = if cfg!(windows) {
+            ("run.ps1", LAUNCHER_PS1)
+        } else {
+            ("run", LAUNCHER_SH)
+        };
+        demi_shared_artifacts::publish_bytes(
+            &self.root.join(name),
+            launcher.as_bytes(),
+            Publication {
+                mode: Mode::Replace,
+                permissions: Permissions::Executable,
+                durable: true,
+            },
+        )
+        .await
+        .map_err(io::Error::other)
+    }
+
     /// The executable of `release` in place in `releases/<release>/`, checked
     /// against `expected`: the one there, or one downloaded from `backend` as
-    /// its compressed copy (`crates/backend-http/src/install.rs`).
+    /// its compressed copy (`crates/backend-http/src/install.rs`). A directory
+    /// whose executable is missing or differs, such as one an update that
+    /// failed midway emptied, is downloaded again.
     ///
     /// The download keeps its bytes in `releases/.download-<release>/` across
     /// attempts and resumes from them. It is decompressed and checked once
@@ -162,16 +253,17 @@ impl Installed {
         let directory = releases.join(release);
         let name = file_name();
         let path = directory.join(&name);
-        if directory.exists() {
+        if path.exists() {
             let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
                 .await
                 .map_err(io::Error::other)?;
-            if found != *expected {
-                return Err(io::Error::other(format!(
-                    "the installed runner of release {release} does not match its release"
-                )));
+            if found == *expected {
+                return Ok(path);
             }
-            return Ok(path);
+        }
+        match tokio::fs::remove_dir_all(&directory).await {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
         }
         let url = backend
             .url()
@@ -231,9 +323,11 @@ impl Installed {
         Ok(path)
     }
 
-    /// Removes every release directory but `kept`'s and this runner's.
-    async fn prune(&self, releases: &Path, kept: &str) {
-        let mut entries = match tokio::fs::read_dir(releases).await {
+    /// Removes every release in `releases/`, the one path holding the
+    /// installation's runner; what the system still holds open, such as the
+    /// running executable Windows renamed aside, goes at the next update.
+    async fn prune(&self) {
+        let mut entries = match tokio::fs::read_dir(self.root.join("releases")).await {
             Ok(entries) => entries,
             Err(error) => {
                 tracing::warn!(event = "runner_update.prune_failed", %error, "the earlier runner releases stay");
@@ -242,10 +336,11 @@ impl Installed {
         };
         while let Ok(Some(entry)) = entries.next_entry().await {
             let name = entry.file_name();
-            if name == *kept || name == *self.release {
-                continue;
-            }
-            if let Err(error) = tokio::fs::remove_dir_all(entry.path()).await {
+            let removed = match entry.file_type().await {
+                Ok(kind) if kind.is_dir() => tokio::fs::remove_dir_all(entry.path()).await,
+                _ => tokio::fs::remove_file(entry.path()).await,
+            };
+            if let Err(error) = removed {
                 tracing::warn!(event = "runner_update.prune_failed", release = %name.to_string_lossy(), %error, "an earlier runner release stays");
             }
         }
@@ -287,6 +382,13 @@ impl Successor {
 }
 
 /// The runner executable's file name on this platform.
+async fn remove_if_present(path: &Path) -> io::Result<()> {
+    match tokio::fs::remove_file(path).await {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
 fn file_name() -> String {
     if cfg!(windows) {
         format!("{RUNNER}.exe")

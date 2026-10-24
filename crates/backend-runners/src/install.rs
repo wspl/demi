@@ -30,7 +30,7 @@
 use std::path::Path;
 
 use demi_runner_protocol::console::{HANDED_OVER, NO_AUTOSTART, PAIRED, PAIRING_CODE, REMOVAL};
-use demi_runner_protocol::installation::installation_name;
+use demi_runner_protocol::installation::{LAUNCHER_PS1, LAUNCHER_SH, installation_name};
 use demi_runner_protocol::release::{ReleaseError, RunnerRelease};
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::devices::InstallCommands;
@@ -227,6 +227,7 @@ pub fn shell_script(backend: &Url, release: &RunnerRelease) -> String {
         })
         .collect();
     SHELL_SCRIPT
+        .replace("@LAUNCHER@", LAUNCHER_SH.trim_end())
         .replace("@BACKEND@", &sh(backend.as_str()))
         .replace("@RELEASE@", &sh(&release.release))
         .replace("@INSTALLATION@", &sh(&installation_name(backend)))
@@ -256,6 +257,7 @@ pub fn powershell_script(backend: &Url, release: &RunnerRelease) -> String {
         })
         .collect();
     POWERSHELL_SCRIPT
+        .replace("@LAUNCHER@", LAUNCHER_PS1.trim_end())
         .replace("@BACKEND@", &powershell(backend.as_str()))
         .replace(
             "@BASE@",
@@ -329,7 +331,6 @@ umask 077
 mkdir -p "$state/releases"
 # Absolute, as the runner and the lines this installer shows name it.
 state=$(CDPATH= cd -- "$state" && pwd)
-bin="$state/releases/$release"
 if ! mkdir "$state/install.lock" 2>/dev/null; then
   echo 'Another installer is active for this installation' >&2
   exit 1
@@ -359,12 +360,6 @@ verify() {
 curl -fSL "$base/runner-artifacts/$release/$target/demi-runner" -o "$stage/demi-runner"
 verify "$stage/demi-runner" "$runner_hash"
 chmod 755 "$stage/demi-runner"
-if [ -d "$bin" ]; then
-  verify "$bin/demi-runner" "$runner_hash"
-else
-  mv "$stage" "$bin"
-  mkdir "$stage"
-fi
 pid=
 log="$state/runner.log"
 previous="$state/runner.log.1"
@@ -382,31 +377,26 @@ size_of() {
 # log was moved there.
 seen=0
 previous_size=$(size_of "$previous")
-if DEMI_HOME="$state" DEMI_RELEASE_ID="$release" "$bin/demi-runner" status --backend "$backend" >/dev/null 2>&1; then
+if DEMI_HOME="$state" DEMI_RELEASE_ID="$release" "$stage/demi-runner" status --backend "$backend" >/dev/null 2>&1; then
   echo "Runner already running: $state"
   # It wrote its state before this installer began: it writes it again,
   # its code or the device it is paired as, to its log alone. A runner that
   # ended meanwhile is found stopped below.
   seen=$(size_of "$log")
-  DEMI_HOME="$state" "$bin/demi-runner" announce --backend "$backend" >/dev/null 2>&1 || true
+  DEMI_HOME="$state" "$stage/demi-runner" announce --backend "$backend" >/dev/null 2>&1 || true
 else
   # Not `status`, which zsh keeps read-only.
   runner_status=$?
   if [ "$runner_status" -eq 3 ]; then
     echo 'Waiting for existing jobs before upgrading this runner…'
-    DEMI_HOME="$state" "$bin/demi-runner" drain --backend "$backend"
+    DEMI_HOME="$state" "$stage/demi-runner" drain --backend "$backend"
   fi
+  # Every release runs from one file, so the system tells one program across
+  # updates (`crates/runner-protocol/src/installation.rs`).
+  mv -f "$stage/demi-runner" "$state/demi-runner"
   # Pass values as quoted arguments; never interpolate a backend into executable shell code.
   cat > "$state/run.next" <<'LAUNCHER'
-#!/bin/sh
-set -eu
-state=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-IFS= read -r backend < "$state/backend-url"
-IFS= read -r release < "$state/release-id"
-export DEMI_HOME="$state" DEMI_RELEASE_ID="$release"
-action=${1:-run}
-[ "$#" -eq 0 ] || shift
-exec "$state/releases/$release/demi-runner" "$action" --backend "$backend" "$@"
+@LAUNCHER@
 LAUNCHER
   printf '%s\n' "$backend" > "$state/backend-url"
   printf '%s\n' "$release" > "$state/release-id"
@@ -573,12 +563,11 @@ if ((Test-Path $demiBackendFile) -and ([IO.File]::ReadAllText($demiBackendFile).
   throw 'Installation belongs to another backend'
 }
 $demiReleases = Join-Path $demiState 'releases'
-$demiBin = Join-Path $demiReleases $demiRelease
-$demiExe = Join-Path $demiBin 'demi-runner.exe'
 [IO.Directory]::CreateDirectory($demiReleases) | Out-Null
 $demiLockFile = Join-Path $demiState 'install.lock'
 $demiLock = [IO.File]::Open($demiLockFile, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::None)
 $demiStage = Join-Path $demiReleases ('.download-' + [Guid]::NewGuid().ToString('N'))
+$demiExe = Join-Path $demiStage 'demi-runner.exe'
 $demiPreviousHome = $env:DEMI_HOME
 $demiPreviousRelease = $env:DEMI_RELEASE_ID
 $demiProcess = $null
@@ -768,26 +757,17 @@ function Install-DemiGit {
 try {
   try {
     [IO.Directory]::CreateDirectory($demiStage) | Out-Null
-    $demiDownload = Join-Path $demiStage 'demi-runner.exe'
     Write-Output "Downloading runner for $demiTarget..."
     $demiPreviousProgress = $ProgressPreference
     try {
       $ProgressPreference = 'SilentlyContinue'
-      Invoke-WebRequest -UseBasicParsing -Uri "$demiBase/runner-artifacts/$demiRelease/$demiTarget/demi-runner.exe" -OutFile $demiDownload
+      Invoke-WebRequest -UseBasicParsing -Uri "$demiBase/runner-artifacts/$demiRelease/$demiTarget/demi-runner.exe" -OutFile $demiExe
     } finally {
       $ProgressPreference = $demiPreviousProgress
     }
-    if ((Get-Item $demiDownload).Length -ne $demiArtifacts[$demiTarget].Size -or
-        (Get-FileHash -Algorithm SHA256 $demiDownload).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
+    if ((Get-Item $demiExe).Length -ne $demiArtifacts[$demiTarget].Size -or
+        (Get-FileHash -Algorithm SHA256 $demiExe).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
       throw 'Runner download checksum mismatch'
-    }
-    if (Test-Path $demiBin) {
-      if ((Get-Item $demiExe).Length -ne $demiArtifacts[$demiTarget].Size -or
-          (Get-FileHash -Algorithm SHA256 $demiExe).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
-        throw 'Installed runner checksum mismatch'
-      }
-    } else {
-      Move-Item $demiStage $demiBin
     }
     # A job's utilities besides Demi's own are Git for Windows': a device is
     # not added without it, so a failed or refused install ends the setup.
@@ -813,30 +793,22 @@ try {
         Write-Output 'Waiting for existing jobs before upgrading this runner...'
         if ((Invoke-DemiControl 'drain') -ne 0) { throw 'Runner drain failed' }
       }
+      # Every release runs from one file, so the system tells one program
+      # across updates (`crates/runner-protocol/src/installation.rs`).
+      $demiRunner = Join-Path $demiState 'demi-runner.exe'
+      # A drained runner releases its lock before its process ends, and
+      # Windows replaces no running executable but renames one: the earlier
+      # runner is set aside, as an update does (`crates/runner/src/update.rs`).
+      if (Test-Path $demiRunner) {
+        Move-Item $demiRunner (Join-Path $demiReleases ('.replaced-' + [Guid]::NewGuid().ToString('N') + '.exe'))
+      }
+      Move-Item $demiExe $demiRunner
+      $demiExe = $demiRunner
       $demiUtf8 = [Text.UTF8Encoding]::new($false)
       [IO.File]::WriteAllText($demiBackendFile, $demiBackend + [Environment]::NewLine, $demiUtf8)
       [IO.File]::WriteAllText((Join-Path $demiState 'release-id'), $demiRelease + [Environment]::NewLine, $demiUtf8)
       $demiLauncher = @'
-param(
-  [ValidateSet('run', 'start', 'status', 'drain', 'uninstall')][string]$Action = 'run',
-  [Parameter(ValueFromRemainingArguments)][string[]]$Rest = @()
-)
-$ErrorActionPreference = 'Stop'
-$demiState = $PSScriptRoot
-$demiBackend = [IO.File]::ReadAllText((Join-Path $demiState 'backend-url')).Trim()
-$demiRelease = [IO.File]::ReadAllText((Join-Path $demiState 'release-id')).Trim()
-$demiPreviousHome = $env:DEMI_HOME
-$demiPreviousRelease = $env:DEMI_RELEASE_ID
-try {
-  $env:DEMI_HOME = $demiState
-  $env:DEMI_RELEASE_ID = $demiRelease
-  & (Join-Path $demiState "releases/$demiRelease/demi-runner.exe") $Action --backend $demiBackend @Rest
-  $demiExit = $LASTEXITCODE
-} finally {
-  $env:DEMI_HOME = $demiPreviousHome
-  $env:DEMI_RELEASE_ID = $demiPreviousRelease
-}
-exit $demiExit
+@LAUNCHER@
 '@
       [IO.File]::WriteAllText((Join-Path $demiState 'run.ps1'), $demiLauncher, $demiUtf8)
       Write-Output 'Starting runner...'
