@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
+import { followMathWait } from '../markdown/math'
 import { useDocumentImages } from './document-images'
 import type { FileContents } from './types'
 import { useMarkdownRenderVersion } from '../markdown/render-version'
@@ -41,10 +42,9 @@ useContentScrollers(root)
 const codeBlocks = shallowRef<HTMLElement[]>([])
 watch(html, async () => {
   await nextTick()
-  // The document has shown once its text is on the page with no formula waiting (`base.css`).
   const body = root.value?.querySelector('.markdown-body')
-  if (body && !body.hasAttribute('data-shown') && !body.querySelector('.math-waiting'))
-    body.setAttribute('data-shown', '')
+  if (body)
+    followMathWait(body)
   codeBlocks.value = [...root.value?.querySelectorAll<HTMLElement>('.code-block') ?? []]
 }, { immediate: true, flush: 'post' })
 

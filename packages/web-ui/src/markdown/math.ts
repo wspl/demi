@@ -122,3 +122,27 @@ export function mathExtensions(options: KatexOptions, katex: () => Katex | null 
     },
   ]
 }
+
+/**
+ * Keeps what `base.css` reads of the rendered message or document `body`:
+ * `data-math-waiting` while a formula in it waits for KaTeX; `data-shown`
+ * once its text has been on the page with none waiting, from when a formula
+ * hides only itself; and, until then, `data-math-held` on the top-level
+ * block that holds the first formula waiting and on each block after it.
+ *
+ * The blocks are marked here, not found by a selector: `> X ~ *` has every
+ * element of the message look back over all of its siblings, which took
+ * seconds at each style update for a reply of a thousand lines.
+ */
+export function followMathWait(body: Element): void {
+  const waiting = body.querySelector('.math-waiting') !== null
+  body.toggleAttribute('data-math-waiting', waiting)
+  if (!waiting)
+    body.setAttribute('data-shown', '')
+  const hiding = waiting && !body.hasAttribute('data-shown')
+  let held = false
+  for (const block of body.children) {
+    held ||= hiding && (block.classList.contains('math-waiting') || block.querySelector('.math-waiting') !== null)
+    block.toggleAttribute('data-math-held', held)
+  }
+}
