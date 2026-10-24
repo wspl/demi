@@ -39,8 +39,9 @@ pub(crate) struct Schema {
     history: &'static [Shipped],
 }
 
-/// A schema a published release shipped, and the migration from it to the
-/// schema after it in the history, or to the current one after the last.
+/// A schema a published release shipped, or a development build a server
+/// keeps data of, and the migration from it to the schema after it in the
+/// history, or to the current one after the last.
 pub(crate) struct Shipped {
     sql: &'static str,
     migration: Migration,
@@ -310,10 +311,14 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.65.sql"),
             migration: Migration::Reseal(control_from_0_1_65),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5409.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_5409),
+        },
     ],
 };
 
-/// From 0.1.65's control schema, which 0.1.64 shipped too, to the current one.
+/// From 0.1.65's control schema, which 0.1.64 shipped too, to 0.1.5409's.
 ///
 /// - An automation that wakes an existing conversation becomes that
 ///   conversation's schedule, with its runs and its pending URL calls, its URL
@@ -335,8 +340,9 @@ pub(crate) const CONTROL: Schema = Schema {
 ///   nothing on.
 /// - A schedule names its conversation as the conversation's record spells
 ///   it, and only a conversation of the automation's user.
-/// - The permission to manage automations is the permission to manage
-///   schedules.
+/// - The permission to manage automations goes, with its grants and every
+///   request for it still stored, since an agent manages its conversation's
+///   schedules without asking.
 /// - The permission to organize conversations goes, with its grants and every
 ///   request for it still stored: one that waits for an answer, and one whose
 ///   answer a restart kept from its agent, which would reach the agent with
@@ -347,16 +353,12 @@ pub(crate) const CONTROL: Schema = Schema {
 /// - A conversation in a linked worktree of its project keeps the worktree
 ///   with its selection, and each project the worktrees its Host reports
 ///   ([`CONTROL_WORKTREES_FROM_0_1_65`]).
-/// - A project is named by its directory, keeps its saved messages per
-///   conversation until the user picks otherwise, and is kept when deleted
-///   ([`CONTROL_PROJECTS_FROM_0_1_65`]).
 ///
 /// The automations are read one row at a time: the table is small, but a
 /// migration collects no table into memory.
 fn control_from_0_1_65(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_SHORTCUTS_FROM_0_1_65)?;
     transaction.execute_batch(CONTROL_WORKTREES_FROM_0_1_65)?;
-    transaction.execute_batch(CONTROL_PROJECTS_FROM_0_1_65)?;
     transaction.execute_batch(CONTROL_SCHEDULES_FROM_0_1_65)?;
     {
         let mut read = transaction.prepare(
@@ -578,11 +580,12 @@ CREATE TABLE workspace_worktrees (
 CREATE INDEX workspace_worktrees_path ON workspace_worktrees (path);
 ";
 
-/// The projects' part of [`control_from_0_1_65`]: a project's stored name
-/// goes, since its directory names it; every project keeps its saved messages
-/// per conversation, as all did; and a saved message may be a project's, so
-/// the table is rebuilt with every message still its conversation's.
-const CONTROL_PROJECTS_FROM_0_1_65: &str = "
+/// From 0.1.5409's control schema, a development build's that a server
+/// keeps data of, to the current one: a project's stored name goes, since its
+/// directory names it; every project keeps its saved messages per
+/// conversation, as all did; and a saved message may be a project's, so the
+/// table is rebuilt with every message still its conversation's.
+const CONTROL_FROM_0_1_5409: &str = "
 ALTER TABLE workspaces DROP COLUMN name;
 ALTER TABLE workspaces ADD COLUMN saved_scope TEXT NOT NULL DEFAULT 'conversation'
   CHECK (saved_scope IN ('conversation', 'project'));
