@@ -18,6 +18,7 @@ import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { copyId } from '../infra/copy-id'
 import type {
   ListLoad,
+  SavedScope,
   SidebarAccount,
   SidebarConversation,
   SidebarEntry,
@@ -34,12 +35,13 @@ import SidebarGroupLabel from './SidebarGroupLabel.vue'
 import SidebarToggle from './SidebarToggle.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
-import { projectHostName, projectsNamingTheirHost } from './project-hosts'
+import { projectHostName, projectQualifiers } from './project-hosts'
 import { projectEntries, selectionEntries } from './selection-menu'
 import SidebarRow from './SidebarRow.vue'
 import { useRevealOpen } from './reveal-open'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 import ProjectDeleteDialog from './ProjectDeleteDialog.vue'
+import SavedScopeDialog from './SavedScopeDialog.vue'
 
 /**
  * The sidebar has three regions:
@@ -72,6 +74,11 @@ const props = defineProps<{
    * conversations; its row works until it settles.
    */
   onRemoveProject?: Action<[id: string]>
+  /**
+   * Switches how the project's conversations keep their saved messages; to per conversation, `to`
+   * names the conversation that takes the project's list, none when it is empty.
+   */
+  onSwitchSavedScope?: Action<[id: string, scope: SavedScope, to: string | null]>
   /** Signs this browser out; the account's row works until the page goes. */
   onSignOut?: Action
 }>()
@@ -138,7 +145,7 @@ const byId = computed(
 )
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
 /** The projects whose row names its host, since a project of the same name runs on another. */
-const namesakes = computed(() => projectsNamingTheirHost(props.projects))
+const qualifiers = computed(() => projectQualifiers(props.projects))
 /** Each group's label, in list order, with the dot it carries while folded. */
 const groupLabels = computed(() => {
   const label = (group: SidebarGroup, text: string, conversations: readonly SidebarConversation[]) => {
@@ -349,10 +356,16 @@ function projectMenu(project: SidebarProject): ContextMenuDeclaration {
     opened: () => {
       list.focusedId.value = project.id
     },
-    entries: () => projectEntries({ folded: isFolded(project.id), count: projectCount(project) }, {
+    entries: () => projectEntries({
+      folded: isFolded(project.id),
+      count: projectCount(project),
+      savedScope: project.savedScope,
+      savedCount: project.savedCount,
+    }, {
       create: () => emit('create', project.id),
       toggleFold: () => setFolded(project.id, !isFolded(project.id)),
       selectAll: () => selectProjectConversations(project),
+      savedScope: (scope) => chooseSavedScope(project, scope),
       delete: () => askDeleteProject(project),
     }),
   }
@@ -471,6 +484,49 @@ function askDelete(ids: string[]): void {
 function confirmDelete(): void {
   deleteOpen.value = false
   emit('delete', deleteTargets.value.map((target) => target.id))
+}
+
+/** The project whose list of saved messages Per Conversation asks a conversation for, and whether it asks. */
+const savingProject = ref<SidebarProject | null>(null)
+const savedScopeOpen = ref(false)
+
+/** The conversations of the project that asks, which may take its list: the latest changed first. */
+const savingConversations = computed(() => {
+  const project = savingProject.value
+  if (!project) {
+    return []
+  }
+  return props.conversations
+    .filter((conversation) => conversation.projectId === project.id)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+})
+
+/**
+ * A choice of Saved Messages: to per project, or back to per conversation with an empty list, it
+ * switches at once; back with messages, it asks which conversation takes them.
+ */
+function chooseSavedScope(project: SidebarProject, scope: SavedScope): void {
+  if (scope === 'conversation' && project.savedCount > 0) {
+    savingProject.value = project
+    savedScopeOpen.value = true
+    return
+  }
+  void props.onSwitchSavedScope?.(project.id, scope, null)
+}
+
+/** Move confirmed: once it is done, the question closes, if it still asks about this project. */
+async function confirmSavedScope(to: string): Promise<void> {
+  const project = savingProject.value
+  if (!project) {
+    return
+  }
+  try {
+    await props.onSwitchSavedScope?.(project.id, 'conversation', to)
+  } finally {
+    if (savingProject.value?.id === project.id) {
+      savedScopeOpen.value = false
+    }
+  }
 }
 
 /** The project Delete Project… asks about, and whether it asks. */
@@ -688,7 +744,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 v-if="entry.kind === 'project'"
                 :id="rowId(entry.id)"
                 :project="projectById.get(entry.id)!"
-                :namesake="namesakes.has(entry.id)"
+                :qualifier="qualifiers.get(entry.id)"
                 :collapsed="isFolded(entry.id)"
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
                 @toggle="list.onProjectClick(entry.id)"
@@ -776,6 +832,17 @@ function selectProjectConversations(project: SidebarProject): void {
       :host="projectHostName(deletingProject)"
       @close="projectDeleteOpen = false"
       @delete="confirmProjectDelete"
+    />
+    <SavedScopeDialog
+      v-if="savingProject"
+      :is-open="savedScopeOpen"
+      :overlay-store="appOverlayStore"
+      :id="savingProject.id"
+      :count="savingProject.savedCount"
+      :conversations="savingConversations"
+      :initial="savingConversations.some((conversation) => conversation.id === activeId) ? activeId : null"
+      @close="savedScopeOpen = false"
+      @move="confirmSavedScope"
     />
   </aside>
 </template>

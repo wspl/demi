@@ -1137,6 +1137,9 @@ impl DeviceRecorder {
                 for conversation in settled.moved {
                     self.marks.mark(Part::Conversation(conversation));
                 }
+                for conversation in settled.saved {
+                    self.marks.mark(Part::Metadata(conversation));
+                }
                 self.marks.mark(Part::Devices);
             }
             // The home stays unrecorded, so the runner's next hello settles

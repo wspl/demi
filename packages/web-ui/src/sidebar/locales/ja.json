@@ -60,6 +60,10 @@
     "fold": "折りたたむ",
     "unfold": "展開",
     "select": "チャットを選択",
+    "saved": "保存したメッセージ",
+    "savedPerConversation": "チャットごと",
+    "savedPerProject": "プロジェクト全体",
+    "savedNoConversation": "保存したメッセージを引き継げるチャットがプロジェクトにありません。",
     "delete": "プロジェクトを削除…"
   },
   "delete": {
@@ -75,6 +79,12 @@
     "archived": "{count} 件のチャットはアーカイブされます。",
     "files": "{host} 上のファイルは削除されません。"
   },
+  "savedScope": {
+    "title": "保存したメッセージをチャットごとにしますか？",
+    "body": "プロジェクトの保存したメッセージ {count} 件は 1 つのチャットに移動します。",
+    "to": "移動先",
+    "action": "移動"
+  },
   "archivedToast": {
     "title": "{count} 件のチャットをアーカイブしました",
     "undo": "元に戻す"
@@ -83,6 +93,7 @@
     "quote": "「{name}」",
     "line": "{name}: {reasons}",
     "deleteProject": "プロジェクトを削除できませんでした",
+    "savedScope": "保存したメッセージの管理方法を変更できませんでした",
     "reorderProjects": "プロジェクトを並べ替えられませんでした",
     "archive": {
       "one": "{name}をアーカイブできませんでした",

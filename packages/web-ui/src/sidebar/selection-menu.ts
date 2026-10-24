@@ -1,8 +1,10 @@
-import { Archive, ArrowRight, ChevronsDownUp, ChevronsUpDown, Copy, ListChecks, Pin, PinOff, SquarePen, TextCursorInput, Trash2 } from '@lucide/vue'
+import { h } from 'vue'
+import { Archive, ArrowRight, ChevronsDownUp, ChevronsUpDown, Copy, ListChecks, NotebookPen, Pin, PinOff, SquarePen, TextCursorInput, Trash2 } from '@lucide/vue'
 import type { ContextMenuEntry, ContextMenuGroup } from '../ui/context-menu'
 import { namedKeyCap, shortcutFor } from '../ui/shortcut'
 import { t } from './locales/text'
-import type { SidebarConversation } from './types'
+import SavedScopeMenu from './SavedScopeMenu.vue'
+import type { SavedScope, SidebarConversation } from './types'
 
 /** The keys that pin or unpin the selected conversations in the list (`useSidebarList`), which the menu shows. */
 export function pinKeys(): string {
@@ -69,14 +71,31 @@ export function selectionEntries(
 
 /** A project header's commands. */
 export function projectEntries(
-  state: { folded: boolean; count: number },
-  actions: { create: () => void; toggleFold: () => void; selectAll: () => void; delete: () => void },
+  state: { folded: boolean; count: number; savedScope: SavedScope; savedCount: number },
+  actions: {
+    create: () => void
+    toggleFold: () => void
+    selectAll: () => void
+    /** A choice of Saved Messages' submenu, which differs from the project's way. */
+    savedScope: (scope: SavedScope) => void
+    delete: () => void
+  },
 ): ContextMenuGroup[] {
   return [
     [
       { icon: SquarePen, label: t('projectMenu.newHere'), run: actions.create },
       { icon: state.folded ? ChevronsUpDown : ChevronsDownUp, label: state.folded ? t('projectMenu.unfold') : t('projectMenu.fold'), shortcut: namedKeyCap('Enter'), run: actions.toggleFold },
       { icon: ListChecks, label: t('projectMenu.select'), disabled: state.count === 0, run: actions.selectAll },
+      {
+        icon: NotebookPen,
+        label: t('projectMenu.saved'),
+        submenu: () => h(SavedScopeMenu, {
+          scope: state.savedScope,
+          hasConversation: state.count > 0,
+          savedCount: state.savedCount,
+          onChoose: actions.savedScope,
+        }),
+      },
     ],
     // Asks before the project is deleted (`ProjectDeleteDialog`).
     [{ icon: Trash2, label: t('projectMenu.delete'), danger: true, run: actions.delete }],

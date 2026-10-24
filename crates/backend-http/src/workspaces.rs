@@ -1,26 +1,29 @@
-//! Workspaces: the user's named directories on their devices.
+//! Workspaces: the user's directories on their devices, each named by its
+//! directory.
 //!
-//! They are created, renamed and deleted as pointers that never touch a file.
-//! Deleting one archives its conversations.
+//! They are created and deleted as pointers that never touch a file, but a
+//! new Cloud project's directory, which its creation makes. Deleting one
+//! archives its conversations and keeps it, marked deleted, to come back.
 
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_database::saved::ScopeSwitch;
 use demi_backend_database::workspaces::{WorkspaceChange, WorkspaceCreation, new_workspace_id};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::WorkspaceId;
-use demi_web_api_protocol::text::Trimmed;
 use demi_web_api_protocol::workspaces::{
-    ChangeWorkspace, CreateWorkspace, WorkspaceAnswer, Workspaces,
+    ChangeWorkspace, CreateWorkspace, SavedScopeSwitch, WorkspaceAnswer, Workspaces,
 };
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
+use demi_backend_user_shard::conversation::CloudProject;
 use demi_backend_user_shard::services::Services;
 
 pub(super) async fn list(
@@ -44,11 +47,7 @@ pub(super) async fn create(
     JsonBody(request): JsonBody<CreateWorkspace>,
 ) -> Result<(StatusCode, Json<WorkspaceAnswer>), ApiError> {
     let workspace = match request {
-        CreateWorkspace::Device {
-            device_id,
-            path,
-            name,
-        } => {
+        CreateWorkspace::Device { device_id, path } => {
             // The directory as its Host names it, so two spellings of one
             // directory are one project (`crates/backend-database/src/selection.rs`).
             let resolving = device_id.clone();
@@ -63,7 +62,7 @@ pub(super) async fn create(
             match state
             .services
             .control
-            .create_workspace(new_workspace_id(), user.id.clone(), device_id, path, name.into_string())
+            .create_workspace(new_workspace_id(), user.id.clone(), device_id, path)
             .await?
         {
             WorkspaceCreation::Created(workspace) => workspace,
@@ -93,11 +92,30 @@ pub(super) async fn create(
         }
         CreateWorkspace::Cloud { name } => {
             let name = name.into_string();
-            state
+            let shown = name.clone();
+            match state
                 .shards
                 .of(&user.id)
                 .call(move |shard, _| async move { shard.create_cloud_workspace(name).await })
                 .await??
+            {
+                CloudProject::Made(workspace) => workspace,
+                CloudProject::NameTaken => {
+                    return Err(ApiError::new(
+                        StatusCode::CONFLICT,
+                        ErrorCode::WorkspaceNameTaken,
+                        format!("The name “{shown}” is already taken. Choose a different name."),
+                    )
+                    .with_param("name", shown));
+                }
+                CloudProject::NameInvalid => {
+                    return Err(ApiError::new(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        ErrorCode::WorkspaceNameInvalid,
+                        "A project’s name can’t contain “/” or “\\”, or be “.” or “..”.",
+                    ));
+                }
+            }
         }
     };
     // Through the shard, which also tells the Host's runner the new
@@ -115,7 +133,7 @@ pub(super) async fn create(
     ))
 }
 
-/// A new name, or what the project's next conversation starts with.
+/// What the project's next conversation starts with.
 pub(super) async fn change(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
@@ -124,7 +142,6 @@ pub(super) async fn change(
 ) -> Result<Json<WorkspaceAnswer>, ApiError> {
     let id = workspace_id(id)?;
     let change = WorkspaceChange {
-        name: change.name.map(Trimmed::into_string),
         last_model: change.last_model,
         last_workflow: change.last_workflow,
     };
@@ -134,6 +151,48 @@ pub(super) async fn change(
         .await?
         .ok_or_else(not_found)?;
     services.sync.mark(&user.id, Part::Workspaces);
+    Ok(Json(WorkspaceAnswer {
+        workspace: workspace.dto(),
+    }))
+}
+
+/// Switches how the project's conversations keep their saved messages,
+/// moving them in the same step; every page that shows one of the
+/// conversations whose list changed receives its new list.
+pub(super) async fn switch_saved_scope(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(switch): JsonBody<SavedScopeSwitch>,
+) -> Result<Json<WorkspaceAnswer>, ApiError> {
+    let id = workspace_id(id)?;
+    let switched = services
+        .control
+        .switch_saved_scope(user.id.clone(), id.clone(), switch.scope, switch.to)
+        .await?;
+    let changed = match switched {
+        ScopeSwitch::Switched(changed) => changed,
+        ScopeSwitch::Missing => return Err(not_found()),
+        ScopeSwitch::DestinationNeeded => {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::SavedDestinationNeeded,
+                "The project has saved messages: name the conversation that takes them",
+            ));
+        }
+        ScopeSwitch::DestinationInvalid => {
+            return Err(ApiError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                ErrorCode::SavedDestinationInvalid,
+                "That conversation is not one of the project's that is not archived",
+            ));
+        }
+    };
+    for conversation in changed {
+        services.sync.mark(&user.id, Part::Metadata(conversation));
+    }
+    services.sync.mark(&user.id, Part::Workspaces);
+    let workspace = services.control.workspace(id).await?.ok_or_else(not_found)?;
     Ok(Json(WorkspaceAnswer {
         workspace: workspace.dto(),
     }))

@@ -107,7 +107,7 @@ import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
 import type { SearchRow } from '@demicodes/web-ui/search/search'
 import { fixtureSearch, searchableMessages } from '../fixtures/search'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
-import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
+import { demoAccount, demoConversations, demoProjects, savedScopeSwitched } from '../sidebar/sidebar-data'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
 import { dockWindowShare } from '../dock-window-share'
@@ -3805,6 +3805,7 @@ onBeforeUnmount(() => {
                   @search="frameSearchOpen = true"
                   :account="demoAccount"
                   :projects="panelProjects"
+                  @switch-saved-scope="(id, scope, to) => (panelProjects = savedScopeSwitched(panelProjects, id, scope, to))"
                   :conversations="panelConversations"
                   :active-id="panelActiveConversationId"
                   :section-entries="sidebarEntries(PLUGIN_PAGES, () => true)"

@@ -19,10 +19,11 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::saved::SavedRefusal;
+use demi_backend_database::saved::{SavedRefusal, SavedSharers};
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::saved::{
     FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedFromDraft, SavedListing, SavedMessage, SavedRemoved, SavedSave,
     SavedWrite,
@@ -76,7 +77,7 @@ pub(super) async fn from_draft(
         .save_from_draft(record.id.clone(), user.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Metadata(record.id));
+    mark_sharers(&services, &user.id, record.id).await;
     Ok((StatusCode::CREATED, Json(answer)))
 }
 
@@ -95,7 +96,7 @@ pub(super) async fn save(
         .add_saved(record.id.clone(), user.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Metadata(record.id));
+    mark_sharers(&services, &user.id, record.id).await;
     Ok((StatusCode::CREATED, Json(answer)))
 }
 
@@ -115,7 +116,7 @@ pub(super) async fn write(
         .write_saved(record.id.clone(), user.id.clone(), message, write.text, files)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Metadata(record.id));
+    mark_sharers(&services, &user.id, record.id).await;
     Ok(Json(answer))
 }
 
@@ -131,7 +132,7 @@ pub(super) async fn remove(
         .delete_saved(record.id.clone(), message)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Metadata(record.id));
+    mark_sharers(&services, &user.id, record.id).await;
     Ok(Json(SavedRemoved { revisions, message }))
 }
 
@@ -150,7 +151,7 @@ fn refused(refusal: SavedRefusal) -> ApiError {
         SavedRefusal::Full => ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::SavedFull,
-            format!("The conversation keeps {SAVED_MAX} messages saved for later"),
+            format!("The list keeps {SAVED_MAX} messages saved for later"),
         )
         .with_param("limit", SAVED_MAX),
         SavedRefusal::IdTaken => ApiError::new(
@@ -163,5 +164,30 @@ fn refused(refusal: SavedRefusal) -> ApiError {
             ErrorCode::SavedNotFound,
             "No such message saved for later",
         ),
+    }
+}
+
+/// Tells every page that shows a conversation whose list `conversation`
+/// shows, its project's conversations when the project shares one, that
+/// the list changed, and the projects' record its count when it is a
+/// project's. A failed read tells the conversation's own pages.
+async fn mark_sharers(services: &Services, user: &UserId, conversation: ConversationId) {
+    let sharers = match services.control.saved_sharers(conversation.clone()).await {
+        Ok(sharers) => sharers,
+        Err(error) => {
+            tracing::warn!(
+                event = "saved_message.sharers_unread",
+                %conversation,
+                error = &error as &dyn std::error::Error,
+                "the conversations that share a saved messages list were not read"
+            );
+            SavedSharers { key: conversation.to_string(), conversations: vec![conversation], project: false }
+        }
+    };
+    for sharer in sharers.conversations {
+        services.sync.mark(user, Part::Metadata(sharer));
+    }
+    if sharers.project {
+        services.sync.mark(user, Part::Workspaces);
     }
 }

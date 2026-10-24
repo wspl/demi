@@ -60,6 +60,10 @@
     "fold": "折叠",
     "unfold": "展开",
     "select": "选择对话",
+    "saved": "暂存的消息",
+    "savedPerConversation": "每个对话各自一份",
+    "savedPerProject": "整个项目共用",
+    "savedNoConversation": "项目里没有可以接收暂存消息的对话。",
     "delete": "删除项目…"
   },
   "delete": {
@@ -75,6 +79,12 @@
     "archived": "它的 {count} 个对话将被归档。",
     "files": "{host} 上的文件不会被删除。"
   },
+  "savedScope": {
+    "title": "改为每个对话各自一份？",
+    "body": "项目的 {count} 条暂存消息将移到一个对话里。",
+    "to": "移到",
+    "action": "移动"
+  },
   "archivedToast": {
     "title": "已归档 {count} 个对话",
     "undo": "撤销"
@@ -83,6 +93,7 @@
     "quote": "“{name}”",
     "line": "{name}：{reasons}",
     "deleteProject": "无法删除项目",
+    "savedScope": "无法更改暂存消息的保存方式",
     "reorderProjects": "无法重新排序项目",
     "archive": {
       "one": "无法归档{name}",

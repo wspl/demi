@@ -257,6 +257,7 @@ pub fn web() -> Vec<Root> {
         receives::<workspaces::Workspaces>(),
         sends::<workspaces::CreateWorkspace>(),
         sends::<workspaces::ChangeWorkspace>(),
+        sends::<workspaces::SavedScopeSwitch>(),
         receives::<workspaces::WorkspaceAnswer>(),
         sends::<sidebar::SidebarReorder>(),
         sends::<panel::PanelChanges>(),

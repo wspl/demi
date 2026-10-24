@@ -60,6 +60,10 @@
     "fold": "收合",
     "unfold": "展開",
     "select": "選取對話",
+    "saved": "暫存的訊息",
+    "savedPerConversation": "每個對話各自一份",
+    "savedPerProject": "整個專案共用",
+    "savedNoConversation": "專案裡沒有可以接收暫存訊息的對話。",
     "delete": "刪除專案…"
   },
   "delete": {
@@ -75,6 +79,12 @@
     "archived": "它的 {count} 個對話將被封存。",
     "files": "{host} 上的檔案不會被刪除。"
   },
+  "savedScope": {
+    "title": "改為每個對話各自一份？",
+    "body": "專案的 {count} 則暫存訊息將移到一個對話裡。",
+    "to": "移到",
+    "action": "移動"
+  },
   "archivedToast": {
     "title": "已封存 {count} 個對話",
     "undo": "復原"
@@ -83,6 +93,7 @@
     "quote": "「{name}」",
     "line": "{name}：{reasons}",
     "deleteProject": "無法刪除專案",
+    "savedScope": "無法變更暫存訊息的保存方式",
     "reorderProjects": "無法重新排序專案",
     "archive": {
       "one": "無法封存{name}",

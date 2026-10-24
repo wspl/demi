@@ -163,6 +163,9 @@ pub struct FirstHome {
 pub struct HomeSettled {
     pub moved: Vec<ConversationId>,
     pub projects_changed: bool,
+    /// The conversations whose list of saved messages changed, whose pages
+    /// read it again.
+    pub saved: Vec<ConversationId>,
 }
 
 /// A paired device's system: its platform, and the operating system its
@@ -370,8 +373,17 @@ impl ControlService {
     /// off them, each to its workspace's directory, or its worktree's,
     /// on the device as a direct device target, which no longer runs. A workspace is a pointer: no file goes.
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
-        self.call(move |connection, _| {
+        self.call(move |connection, now| {
             let transaction = connection.transaction()?;
+            // A list a project kept goes to its conversation changed last.
+            let projects = transaction
+                .prepare_cached("SELECT id FROM workspaces WHERE device_id = ?1")?
+                .query_map([device.as_str()], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for project in projects {
+                let project = decode("workspaces", "id", WorkspaceId::try_from(project))?;
+                super::saved::project_ends(&transaction, &project, None, now)?;
+            }
             let mut conversations = {
                 let mut statement = transaction.prepare_cached(
                     "UPDATE conversations SET target_kind = 'device', target_workspace_id = NULL,
@@ -393,7 +405,8 @@ impl ControlService {
             };
             let workspaces = {
                 let mut statement = transaction.prepare_cached(
-                    "DELETE FROM workspaces WHERE device_id = ?1 RETURNING id, name",
+                    "DELETE FROM workspaces WHERE device_id = ?1 RETURNING id, path,
+                       (SELECT platform FROM devices WHERE devices.id = workspaces.device_id) AS platform",
                 )?;
                 let mut rows = statement.query([device.as_str()])?;
                 let mut workspaces = Vec::new();
@@ -403,9 +416,14 @@ impl ControlService {
                         "id",
                         WorkspaceId::try_from(row.get::<_, String>("id")?),
                     )?;
+                    let platform = decode(
+                        "devices",
+                        "platform",
+                        row.get::<_, String>("platform")?.parse::<RunnerPlatform>(),
+                    )?;
                     workspaces.push(RemovedWorkspace {
                         id,
-                        name: row.get("name")?,
+                        name: super::workspaces::project_name(platform, &row.get::<_, String>("path")?),
                     });
                 }
                 workspaces
@@ -633,6 +651,24 @@ impl ControlService {
                 let real = canonical(&path);
                 match kept.iter().find(|(_, _, directory)| *directory == real) {
                     Some((survivor, _, directory)) => {
+                        // A project in use brings back the one the user deleted of its directory.
+                        let live: bool = transaction.query_row(
+                            "SELECT deleted_at IS NULL FROM workspaces WHERE id = ?1",
+                            [&id],
+                            |row| row.get(0),
+                        )?;
+                        if live {
+                            super::workspaces::revive(
+                                &transaction,
+                                &decode("workspaces", "id", WorkspaceId::try_from(survivor.as_str()))?,
+                            )?;
+                        }
+                        settled.saved.extend(super::saved::project_ends(
+                            &transaction,
+                            &decode("workspaces", "id", WorkspaceId::try_from(id.as_str()))?,
+                            Some(&decode("workspaces", "id", WorkspaceId::try_from(survivor.as_str()))?),
+                            now,
+                        )?);
                         settled.moved.extend(workspace_conversations(&transaction, &id)?);
                         transaction.execute(
                             "UPDATE conversations SET target_workspace_id = ?2, target_path = ?3 WHERE target_workspace_id = ?1",
@@ -654,6 +690,12 @@ impl ControlService {
             for (id, path, real) in &kept {
                 let conversations = workspace_conversations(&transaction, id)?;
                 if *real == home_directory {
+                    settled.saved.extend(super::saved::project_ends(
+                        &transaction,
+                        &decode("workspaces", "id", WorkspaceId::try_from(id.as_str()))?,
+                        None,
+                        now,
+                    )?);
                     for conversation in &conversations {
                         set_selection(&transaction, conversation, &Selection::Home { device_id: device.id.clone() })?;
                     }
@@ -687,6 +729,9 @@ impl ControlService {
                     }
                 })?;
                 set_selection(&transaction, &id, &selected.selection)?;
+                if let Selection::Workspace { workspace_id, .. } = &selected.selection {
+                    super::saved::moved(&transaction, &id, None, Some(workspace_id), now)?;
+                }
                 settled.projects_changed |= selected.made.is_some();
                 settled.moved.push(id);
             }

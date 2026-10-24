@@ -239,7 +239,10 @@ const CONVERSATION_COLUMNS: &str = "id, user_id, title, title_origin, archived, 
      workflow_id, workflow_worktree, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT saved_revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS saved_revision,
-     (SELECT count(*) FROM saved_messages WHERE conversation_id = conversations.id) AS saved,
+     (SELECT count(*) FROM saved_messages
+      WHERE conversation_id = conversations.id
+         OR workspace_id = (SELECT id FROM workspaces
+                            WHERE id = conversations.target_workspace_id AND saved_scope = 'project')) AS saved,
      COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL AND NOT read) AS unread_permission_requests,
@@ -1087,6 +1090,14 @@ impl ControlService {
                 return Ok(SwitchWrite::Conflict);
             };
             let revision = decode("conversations", "context_version", u64::try_from(revision))?;
+            let workspace = |columns: &TargetColumns| {
+                columns
+                    .workspace
+                    .as_ref()
+                    .map(|id| decode("conversations", "target_workspace_id", WorkspaceId::try_from(id.as_str())))
+                    .transpose()
+            };
+            super::saved::moved(&transaction, &id, workspace(&before)?.as_ref(), workspace(&target)?.as_ref(), now)?;
             if let Some(arriving) = &ends.arriving {
                 let removed = transaction.execute(
                     "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
@@ -1132,8 +1143,9 @@ pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result
 }
 
 /// Restores the conversation `id`. One whose project was deleted while it
-/// was archived moves back to its directory, into that directory's
-/// workspace, made again (`crates/backend-database/src/selection.rs`);
+/// was archived brings it back (`crates/backend-database/src/workspaces.rs`);
+/// one whose project is gone moves back to its directory, into that
+/// directory's workspace, made again (`crates/backend-database/src/selection.rs`);
 /// one whose device was revoked meanwhile keeps its directory there.
 ///
 /// Its schedules count from now in the same step, as a schedule turned on
@@ -1158,13 +1170,19 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
     // project gone, is a project as any directory is.
     let path = worktree.as_ref().map_or(path, |worktree| &worktree.path);
     if super::workspaces::workspace_in(connection, workspace_id)?.is_some() {
+        super::workspaces::revive(connection, workspace_id)?;
         return Ok(());
     }
     let Some(device) = super::devices::device_in(connection, device_id)? else {
         return Ok(());
     };
     let selected = super::selection::project_of(connection, &device, path, now)?;
-    super::devices::set_selection(connection, id, &selected.selection)
+    super::devices::set_selection(connection, id, &selected.selection)?;
+    let to = match &selected.selection {
+        Selection::Workspace { workspace_id, .. } => Some(workspace_id),
+        _ => None,
+    };
+    super::saved::moved(connection, id, None, to, now)
 }
 
 /// The conversation's attached hosts, first attached first, each by its device's

@@ -9,9 +9,17 @@ export type { ListLoad }
 /** A checkout the agent works in, on the host that has it. Conversations that belong to one run there. */
 export type SidebarProject = {
   id: string
+  /** The checkout's folder name, which the project goes by. */
   name: string
   path: string
+  /** How its conversations keep their messages saved for later: each its own, or one list for the project. */
+  savedScope: SavedScope
+  /** How many messages the project's own list keeps; 0 while each conversation keeps its own. */
+  savedCount: number
 } & SidebarProjectHost
+
+/** How a project's conversations keep their messages saved for later. */
+export type SavedScope = 'conversation' | 'project'
 
 /** Where a project's checkout lives: the user's Cloud, which is woken when needed, or a device, which is connected or not. */
 export type SidebarProjectHost =

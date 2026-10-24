@@ -94,6 +94,12 @@ use crate::transfer::{OpenTransfer, TransferSet, TransfersClosed};
 #[derive(Default)]
 pub struct Conversations {
     slots: RefCell<HashMap<ConversationId, Rc<ConversationSlot>>>,
+    /// Orders the sends of each list of messages saved for later, by the
+    /// list's key: a conversation's own, or a project's, which all its
+    /// conversations show. One is read, handed to the session and taken off
+    /// the list before the next is read, so two pages, of one conversation or
+    /// of two that share the list, never send it twice.
+    saved_lists: RefCell<HashMap<String, Rc<SerialGate>>>,
 }
 
 /// One conversation's part of its user's shard.
@@ -114,10 +120,6 @@ pub struct ConversationSlot {
     /// time; an open of its tree takes the same turn, so it opens with the
     /// selection the record holds.
     pub settings: SerialGate,
-    /// Orders the sends of the conversation's messages saved for later: one
-    /// is read, handed to the session and taken off the list before the
-    /// next is read, so two pages never send it twice.
-    pub saved: SerialGate,
     /// Its running shell jobs, each with its device, the admission it holds
     /// when it holds one, and the request that stops it when that device is
     /// detached.
@@ -318,6 +320,12 @@ impl ConversationSlot {
 }
 
 impl Conversations {
+    /// The gate of the list of saved messages `key` names
+    /// (`ControlService::saved_sharers`).
+    pub fn saved_list(&self, key: &str) -> Rc<SerialGate> {
+        self.saved_lists.borrow_mut().entry(key.to_owned()).or_default().clone()
+    }
+
     pub fn slot(&self, id: &ConversationId) -> Rc<ConversationSlot> {
         self.slots
             .borrow_mut()
@@ -328,7 +336,6 @@ impl Conversations {
                     streams: ActivityGate::new(),
                     transfers: TransferSet::new(),
                     settings: SerialGate::new(),
-                    saved: SerialGate::new(),
                     jobs: RefCell::default(),
                     jobs_ended: Notify::new(),
                     waiting: RefCell::default(),

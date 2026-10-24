@@ -10,7 +10,7 @@ import { reloadFor, reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
-import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import type { SavedScope, SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { followTabAttention } from '@demicodes/web-ui/sidebar/tab-attention'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
@@ -292,6 +292,13 @@ async function removeProject(id: string) {
     }
   }
 }
+async function switchSavedScope(id: string, scope: SavedScope, to: string | null) {
+  try {
+    await resources.switchSavedScope(id, scope, to)
+  } catch (error) {
+    reportError(sidebarText('refused.savedScope'), error, { site: 'refused.savedScope', userVisible: true })
+  }
+}
 async function signOut(): Promise<void> {
   try {
     await useSession().signOut()
@@ -364,6 +371,7 @@ useAppShortcuts(
           @create="create"
           @add-project="addProject"
           @remove-project="removeProject"
+          @switch-saved-scope="switchSavedScope"
           @rename="conversations.rename"
           @pin="conversations.pin"
           @archive="conversations.archive"

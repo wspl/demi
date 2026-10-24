@@ -642,8 +642,12 @@ impl Shard {
         // nothing to take off the list.
         let (frame, saved, from_list, _sending) = match frame {
             ClientFrame::SendSaved { id, turn_id, delivery, content } => {
-                let sending = self.conversations().slot(conversation).saved.acquire().await;
                 let control = &self.services().control;
+                let list = match control.saved_sharers(conversation.clone()).await {
+                    Ok(sharers) => sharers.key,
+                    Err(error) => return Handled::Replies(vec![send_failed(error.to_string())]),
+                };
+                let sending = self.conversations().saved_list(&list).acquire().await;
                 match control.saved_message(conversation.clone(), id.clone()).await {
                     Ok(Some(message)) => {
                         let content = content.unwrap_or_else(|| saved_content(message));
@@ -907,7 +911,17 @@ impl Shard {
     /// it follows has happened and has its own answer.
     async fn take_saved(&self, conversation: &ConversationId, id: String, turn: TurnId) {
         match self.services().control.take_saved(conversation.clone(), id, turn).await {
-            Ok(true) => self.mark(Part::Metadata(conversation.clone())),
+            Ok(true) => match self.services().control.saved_sharers(conversation.clone()).await {
+                Ok(sharers) => {
+                    for sharer in sharers.conversations {
+                        self.mark(Part::Metadata(sharer));
+                    }
+                    if sharers.project {
+                        self.mark(Part::Workspaces);
+                    }
+                }
+                Err(_) => self.mark(Part::Metadata(conversation.clone())),
+            },
             Ok(false) => {}
             Err(error) => tracing::error!(
                 event = "saved_message.stuck",

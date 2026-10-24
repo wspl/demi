@@ -127,6 +127,9 @@ impl HostShard for Shard {
         if named.projects {
             self.mark(Part::Workspaces);
         }
+        for sharer in &named.saved {
+            self.mark(Part::Metadata(sharer.clone()));
+        }
         let shard = Shard::this(self);
         let conversations = named.conversations;
         let first = conversation.clone();

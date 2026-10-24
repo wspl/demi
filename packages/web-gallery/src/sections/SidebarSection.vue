@@ -42,7 +42,7 @@ import { productWould } from '../product-would'
 import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
 import { galleryHandoff } from '../fixtures/handoff'
 import { slow } from '../fixtures/slow'
-import { demoAccount, demoConversations, demoProjects, emailOnlyAccount, longEmailAccount } from '../sidebar/sidebar-data'
+import { demoAccount, demoConversations, demoProjects, savedScopeSwitched, emailOnlyAccount, longEmailAccount } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
@@ -172,7 +172,9 @@ function addProject(): void {
       name: `project-${nextId}`,
       hostKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
-      path: `/Users/alex/Projects/project-${nextId}`
+      path: `/Users/alex/Projects/project-${nextId}`,
+      savedScope: 'conversation',
+      savedCount: 0,
     }
   ]
   create(id)
@@ -322,7 +324,7 @@ const hoverActive = ref<string | null>(null)
 function markProjects(): SidebarProject[] {
   const mac = { kind: 'paired', name: 'MacBook Pro', state: 'online', mark: GALLERY_MARKS.mac } as const
   const project = (id: string, name: string, host: SidebarProjectHost): SidebarProject => ({
-    id, name, path: `/Users/alex/${name}`, ...host,
+    id, name, path: `/Users/alex/${name}`, savedScope: 'conversation', savedCount: 0, ...host,
   })
   return [
     project('m-chromium', 'chromium', { hostKind: 'device', device: mac }),
@@ -592,6 +594,7 @@ onBeforeUnmount(() => {
             @create="create"
             @add-project="addProject"
             @remove-project="(id) => deleteProject('demo', id)"
+            @switch-saved-scope="(id, scope, to) => (projects = savedScopeSwitched(projects, id, scope, to))"
             @rename="(id, title) => patch(id, (c) => ({ ...c, title }))"
             @pin="(ids, pinned) => patchMany(ids, (c) => ({ ...c, pinned }))"
             @archive="dropMany"
@@ -687,6 +690,7 @@ onBeforeUnmount(() => {
                 @create="productWould('Start a New Conversation')"
                 @add-project="productWould('Add a Project')"
                 @remove-project="async () => { await slow(); productWould('Delete the Project') }"
+                @switch-saved-scope="(id, scope, to) => savedScopeSwitched(fixedProjects, id, scope, to)"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
                 @hand-off-to-phone="wouldHandOffToPhone"
@@ -772,6 +776,7 @@ onBeforeUnmount(() => {
                 @create="create"
                 @add-project="productWould('Add a Project')"
                 @remove-project="(id) => deleteProject('marks', id)"
+                @switch-saved-scope="(id, scope, to) => (markProjectList = savedScopeSwitched(markProjectList, id, scope, to))"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
                 @hand-off-to-phone="wouldHandOffToPhone"
@@ -877,6 +882,7 @@ onBeforeUnmount(() => {
               @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
+              @switch-saved-scope="(id, scope, to) => savedScopeSwitched(fixedProjects, id, scope, to)"
               :conversations="[]"
               :active-id="null"
               list-status="loading"
@@ -905,6 +911,7 @@ onBeforeUnmount(() => {
               @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
+              @switch-saved-scope="(id, scope, to) => savedScopeSwitched(fixedProjects, id, scope, to)"
               :conversations="recoveredConversations"
               :active-id="recoveredActive"
               :list-status="recoveredStatus"
@@ -928,6 +935,7 @@ onBeforeUnmount(() => {
               @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
+              @switch-saved-scope="(id, scope, to) => savedScopeSwitched(fixedProjects, id, scope, to)"
               :conversations="[]"
               :active-id="null"
               @create="create"
