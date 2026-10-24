@@ -52,7 +52,7 @@ profiles:
       You reproduce the problem as the user saw it, or measure what is asked, and report what is true with its evidence. You leave things as you found them, and a server the brief names is read only.
       You work in the slot the brief names, on that slot's ports.
   - id: deep-check
-    description: "Use only when the user asks for a deep check (深度核查)."
+    description: "Use only when the user asks for a deep check."
     model: claude-fable-5-1
     effort: max
     instructions: |
