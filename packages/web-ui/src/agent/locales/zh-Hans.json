@@ -251,12 +251,7 @@
   "notices": {
     "hostOffline": "{name} 已离线。",
     "moveHost": "移到其他主机…",
-    "pluginsChanged": "插件已更改",
-    "replacedDraft": "较新的保存替换了{draft}",
-    "quoted": "“{text}”",
-    "restore": "恢复",
-    "dismiss": "关闭",
-    "dismissDraft": "关闭被替换的草稿"
+    "pluginsChanged": "插件已更改"
   },
   "composer": {
     "placeholder": "询问任何问题…",
@@ -284,7 +279,7 @@
     "afterEdit": "编辑完成后可用",
     "saved": {
       "count": "已暂存 {count} 条",
-      "notSaved": "未保存",
+      "saving": "正在保存…",
       "edit": "编辑",
       "send": "发送",
       "delete": "删除"

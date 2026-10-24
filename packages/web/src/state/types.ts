@@ -24,7 +24,7 @@ import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
 import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, FiledRun, KeptWorkflowList, RecentCost, WorkflowChoice } from '../api/generated/web-api'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
-import type { NotSaved, RecordSlot } from '../conversation/record'
+import type { RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
@@ -112,8 +112,6 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * not landed yet (`record.ts`). The composer shows its draft.
    */
   record: Raw<RecordSlot>
-  /** The messages the backend did not save, newest first, which the list shows as Not Saved; only this page has them. */
-  notSaved: NotSaved[]
   /** The Saves of saved messages' edits on their way, which the web browser keeps until the backend confirms them. */
   savedWrites: SavedDraft['savedWrites']
   /** Every file the composer carries, those of the message first, in its order. */

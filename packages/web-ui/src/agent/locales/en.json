@@ -251,12 +251,7 @@
   "notices": {
     "hostOffline": "{name} is offline.",
     "moveHost": "Move to Another Host…",
-    "pluginsChanged": "Plugins changed",
-    "replacedDraft": "A later save replaced {draft}",
-    "quoted": "“{text}”",
-    "restore": "Restore",
-    "dismiss": "Dismiss",
-    "dismissDraft": "Dismiss the replaced draft"
+    "pluginsChanged": "Plugins changed"
   },
   "composer": {
     "placeholder": "Ask anything…",
@@ -284,7 +279,7 @@
     "afterEdit": "Available after the edit",
     "saved": {
       "count": "{count} Saved",
-      "notSaved": "Not saved",
+      "saving": "Saving…",
       "edit": "Edit",
       "send": "Send",
       "delete": "Delete"

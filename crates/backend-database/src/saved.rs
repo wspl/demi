@@ -82,8 +82,8 @@ impl ControlService {
     }
 
     /// Saves the composer's message, `text` and `files`, for later as the message
-    /// `id` and empties the conversation's draft, as a save of an empty draft built
-    /// on the revision `base` would, in one transaction.
+    /// `id` and empties the conversation's draft, as a save of an empty draft
+    /// would, in one transaction.
     ///
     /// Each upload is presented with what its record holds, as a draft's is. A save
     /// sent again, with an `id` the conversation keeps with the same content,
@@ -93,7 +93,6 @@ impl ControlService {
         conversation: ConversationId,
         owner: UserId,
         id: SavedMessageId,
-        base: u64,
         text: String,
         files: Vec<StagedFile>,
     ) -> Result<Result<FromDraftAnswer, SavedRefusal>, StorageError> {
@@ -117,9 +116,8 @@ impl ControlService {
                 .as_ref()
                 .map(|draft| draft.version.comments.clone())
                 .unwrap_or_default();
-            let mut draft = Stored::saved_on(
+            let mut draft = Stored::written(
                 current,
-                base,
                 Version {
                     comments,
                     ..Version::empty()

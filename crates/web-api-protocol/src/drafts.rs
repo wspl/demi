@@ -1,10 +1,9 @@
 //! A conversation's draft: the message its composer holds before it is sent, which the
-//! backend keeps so that every page of the conversation shows it. A save names the
-//! revision its text was built on and always takes effect; one built on an older revision
-//! keeps the version it replaced, which a page restores or dismisses.
+//! backend keeps so that every page of the conversation shows it. The draft is the last one
+//! saved, whichever page saved it.
 
 use demi_conversation_socket_protocol::ClientContent;
-use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, MessageComment, Nullable};
+use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, MessageComment};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -21,38 +20,12 @@ pub const ATTACHMENT_MARK: char = '\u{FFFC}';
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DraftSave {
-    /// The revision the page's text was built on.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub base: u64,
     #[garde(skip)]
     pub text: String,
     #[garde(dive)]
     pub files: Vec<ClientContent>,
     #[garde(dive)]
     pub comments: Vec<MessageComment>,
-}
-
-/// What the page asks of the version a save replaced.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ReplacedAction {
-    /// Exchange it with the draft, which then becomes the replaced version.
-    Restore,
-    /// Drop it.
-    Dismiss,
-}
-
-/// `POST /conversations/:id/draft/replaced`: an action on the replaced
-/// version the page shows, named by its revision.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
-)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReplacedDraftAction {
-    #[garde(skip)]
-    pub action: ReplacedAction,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub revision: u64,
 }
 
 /// `GET /conversations/:id/draft`'s answer: the draft as it now is.
@@ -72,9 +45,9 @@ pub struct Revisions {
     pub saved: u64,
 }
 
-/// The answer of a write that changes the draft, a save, a restore, a
-/// dismissal or an edit of a saved message: the draft as the write left it,
-/// with the revisions after it.
+/// The answer of a write that changes the draft, a save or an edit of a
+/// saved message: the draft as the write left it, with the revisions after
+/// it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DraftWritten {
     pub draft: ConversationDraft,
@@ -86,7 +59,7 @@ pub struct DraftWritten {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationDraft {
     /// How many times the draft changed: 0 before its first save, one more
-    /// with every save, restore and dismissal.
+    /// with every save.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
     /// The message's Markdown, with an attachment mark where each file's
@@ -96,10 +69,6 @@ pub struct ConversationDraft {
     pub files: Vec<DraftFile>,
     /// The comments waiting to be sent, in the order they were saved.
     pub comments: Vec<MessageComment>,
-    /// The version a save replaced without having been built on it.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<ReplacedDraft>")]
-    pub replaced: Option<ReplacedDraft>,
 }
 
 impl ConversationDraft {
@@ -110,21 +79,8 @@ impl ConversationDraft {
             text: String::new(),
             files: Vec::new(),
             comments: Vec::new(),
-            replaced: None,
         }
     }
-}
-
-/// A version of the draft that a save replaced, with the revision it had as
-/// the draft.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ReplacedDraft {
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub revision: u64,
-    pub text: String,
-    pub files: Vec<DraftFile>,
-    pub comments: Vec<MessageComment>,
 }
 
 /// A file of a draft as every page shows it.

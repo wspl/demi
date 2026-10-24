@@ -16,7 +16,6 @@ import {
 } from './message-input/attachments'
 import { missingFilesToast, pasteMessage, type CopiedMessage, type PasteHost } from './message-input/copied-message'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
-import { draftPreview } from './message-input/draft-preview'
 import { editHasContent, editKey, useEditLastMessage, type MessageEditState } from './message-editing'
 import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
 import { parseUserMarkdown, serializeUserMarkdown } from '../markdown/user-markdown'
@@ -35,7 +34,6 @@ import type { WorkflowChoice, WorkflowList } from './workflow-menu'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import type { ContextLimitChange } from './context-limit'
 import SessionNoticeBar from './SessionNoticeBar.vue'
-import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
 import PluginsChangedNotice from './PluginsChangedNotice.vue'
 import HostOfflineNotice from './HostOfflineNotice.vue'
 import type { OfflineHost } from './offline-host'
@@ -153,11 +151,6 @@ const props = withDefaults(
      */
     hold?: string | null
     /**
-     * The version of the draft a later save replaced, which the composer offers
-     * to restore. It holds the Markdown and the names of the files.
-     */
-    replaced?: { markdown: string; fileNames: readonly string[] } | null
-    /**
      * The conversation's primary Host is a paired device that is offline. The
      * composer says how to start its runner again, and offers a move to Run
      * On's online Hosts.
@@ -184,8 +177,6 @@ const props = withDefaults(
     onSendSaved?: Action<[id: string, way: SendWay]>
     /** Removes a saved message at once; the caller offers the undo. */
     onDeleteSaved?: Action<[id: string]>
-    /** Saves again a message the server did not save. */
-    onRetrySaved?: Action<[id: string]>
     /** The reload the composer offered is under way. */
     reloading?: boolean
     /**
@@ -265,9 +256,6 @@ const emit = defineEmits<{
    * ends the edit.
    */
   saveEdit: []
-  /** Bring back the replaced version, in exchange for the draft. */
-  restoreReplaced: []
-  dismissReplaced: []
   /** Open the conversation again with the plugins the user has on. */
   reloadPlugins: []
   /**
@@ -504,15 +492,6 @@ watch(edit.attachmentError, (message) => {
     showToast({ title: t('composer.couldntAttach'), message, tone: 'danger' })
   }
 })
-/**
- * The replaced version as the offer shows it; none while there is none, or
- * while a message is edited.
- */
-const replacedPreview = computed(() =>
-  props.replaced && !shownEdit.value
-    ? draftPreview(props.replaced.markdown, props.replaced.fileNames)
-    : null,
-)
 /**
  * Why Compact cannot run now apart from how full the context is: the session
  * takes it only while idle.
@@ -751,13 +730,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           :reloading="reloading"
           @reload="emit('reloadPlugins')"
         />
-        <ReplacedDraftNotice
-          v-if="replacedPreview !== null"
-          class="mb-2"
-          :preview="replacedPreview"
-          @restore="emit('restoreReplaced')"
-          @dismiss="emit('dismissReplaced')"
-        />
       </Teleport>
       <ComposerShell
         :focused="focused || props.focused"
@@ -890,7 +862,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @edit="editSaved"
             @send="sendSaved"
             @delete="onDeleteSaved?.($event)"
-            @retry="onRetrySaved?.($event)"
           />
         </template>
         <template #below>

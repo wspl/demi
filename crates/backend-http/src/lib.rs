@@ -448,7 +448,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/draft",
             get(drafts::read).put(drafts::save),
         )
-        .route("/conversations/{id}/draft/replaced", post(drafts::replaced))
         .route(
             "/conversations/{id}/saved",
             get(saved::list).post(saved::save),

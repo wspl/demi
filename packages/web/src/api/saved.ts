@@ -42,7 +42,7 @@ export async function saveFromDraft(conversationId: string, save: SavedFromDraft
   return readResponse(response, fromDraftAnswerSchema)
 }
 
-/** Adds a message for later, leaving the draft as it is, as Undo after Delete and Retry of a message not saved do. */
+/** Adds a message for later, leaving the draft as it is, as Undo after Delete does. */
 export async function postSaved(conversationId: string, save: SavedSave, signal: AbortSignal): Promise<SavedAnswer> {
   const response = await apiRequest(savedPath(conversationId), { method: 'POST', signal, ...jsonBody(save) })
   return readResponse(response, savedAnswerSchema)

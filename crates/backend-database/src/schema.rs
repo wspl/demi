@@ -313,12 +313,27 @@ pub(crate) const CONTROL: Schema = Schema {
 ///   conversation's, and the conversation's hosts and execution context move
 ///   on. Each host's runner lets go of the conversation at its next `hello`,
 ///   which names only the conversations it is to hold.
+/// - A draft is the last one saved: its row no longer keeps the revision its
+///   text was written at nor the version a save replaced. A replaced version
+///   is dropped, its files with it, since the blobs a draft names are read
+///   from its row. The table is rebuilt, since its checks name those columns.
 const CONTROL_FROM_0_1_63: &str = "
 UPDATE conversations
    SET context_version = context_version + 1, hosts_revision = hosts_revision + 1
  WHERE id IN (SELECT conversation_id FROM conversation_hosts WHERE detaching = 1);
 DELETE FROM conversation_hosts WHERE detaching = 1;
 ALTER TABLE conversation_hosts DROP COLUMN detaching;
+CREATE TABLE conversation_drafts_next (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  revision        INTEGER NOT NULL CHECK (revision >= 1),
+  document        TEXT NOT NULL,
+  saved_revision  INTEGER NOT NULL CHECK (saved_revision >= 0),
+  updated_at      INTEGER NOT NULL
+) STRICT;
+INSERT INTO conversation_drafts_next (conversation_id, revision, document, saved_revision, updated_at)
+  SELECT conversation_id, revision, document, saved_revision, updated_at FROM conversation_drafts;
+DROP TABLE conversation_drafts;
+ALTER TABLE conversation_drafts_next RENAME TO conversation_drafts;
 CREATE TABLE plugin_reports (
   plugin_id       TEXT NOT NULL,
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
@@ -4677,21 +4692,16 @@ CREATE TABLE plugin_reports (
   PRIMARY KEY (plugin_id, conversation_id, device_id)
 ) STRICT;
 
--- A conversation's draft: its text and files with the revision they were
--- written at, and the version a save replaced with the revision that version
--- had. The row stays when the draft is emptied, so a revision is never used
--- twice. It holds the revision of the conversation's messages saved for
--- later too, which every save, edit, send and removal of one raises.
+-- A conversation's draft: its text and files, the last saved, with the
+-- revision of the save. The row stays when the draft is emptied, so a revision
+-- is never used twice. It holds the revision of the conversation's messages
+-- saved for later too, which every save, edit, send and removal of one raises.
 CREATE TABLE conversation_drafts (
-  conversation_id   TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  revision          INTEGER NOT NULL CHECK (revision >= 1),
-  document          TEXT NOT NULL,
-  written           INTEGER NOT NULL CHECK (written BETWEEN 1 AND revision),
-  replaced_revision INTEGER,
-  replaced          TEXT,
-  saved_revision    INTEGER NOT NULL CHECK (saved_revision >= 0),
-  updated_at        INTEGER NOT NULL,
-  CHECK ((replaced IS NULL) = (replaced_revision IS NULL))
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  revision        INTEGER NOT NULL CHECK (revision >= 1),
+  document        TEXT NOT NULL,
+  saved_revision  INTEGER NOT NULL CHECK (saved_revision >= 0),
+  updated_at      INTEGER NOT NULL
 ) STRICT;
 
 -- A conversation's messages saved for later: each one's text and files as

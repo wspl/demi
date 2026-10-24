@@ -234,7 +234,7 @@ import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
 import { useGalleryTerminalChips } from '../terminal-chips'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
-import { notSavedOnTop, sevenSaved, twoSaved } from '../fixtures/saved'
+import { savingOnTop, sevenSaved, twoSaved } from '../fixtures/saved'
 import { noWorkflows, projectWorkflows } from '../fixtures/workflows'
 import GalleryProjectStart from '../components/GalleryProjectStart.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
@@ -1506,7 +1506,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, as tall as a line of its text whether the message stands on one line or the composer is open, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button’s reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line’s end. One send; while the agent works, Enter steers the running turn or queues the message, as Settings › General chooses, and ⌘⏎ outside a code block, or a ⌘-click on the send button, sends it the other way, which the button’s tooltip names; Stop stays beside it for the whole turn. Here a steer or a queued message is a toast naming what the product would do; the sessions below take them. When a later save replaced a version of the draft, a row above the input offers it by its first line: Restore exchanges it with the draft, which the row then offers, and × dismisses it. When the user’s plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The model chip and the context ring stand in a row under the box, at its right edge, model first; loading and a failed load show there too. The narrow composer resizes from its corner."
+        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, as tall as a line of its text whether the message stands on one line or the composer is open, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button’s reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line’s end. One send; while the agent works, Enter steers the running turn or queues the message, as Settings › General chooses, and ⌘⏎ outside a code block, or a ⌘-click on the send button, sends it the other way, which the button’s tooltip names; Stop stays beside it for the whole turn. Here a steer or a queued message is a toast naming what the product would do; the sessions below take them. When the user’s plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The model chip and the context ring stand in a row under the box, at its right edge, model first; loading and a failed load show there too. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -1538,15 +1538,6 @@ onBeforeUnmount(() => {
           >
             <GalleryComposer
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename."
-            />
-          </GallerySpecimen>
-          <GallerySpecimen
-            variant="a later save replaced a version · Restore exchanges them"
-            wide
-          >
-            <GalleryComposer
-              draft="Fix the login test in packages/web/src/auth.test.ts."
-              replaced="Fix the login bug before the release; the session cookie was renamed."
             />
           </GallerySpecimen>
           <GallerySpecimen
@@ -1890,7 +1881,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Saved for Later"
-        note="A message saved for later is one the user keeps to send later, and nothing sends it but the user. It is not the conversation’s draft, the message the composer holds, which it leaves to be saved. While the message holds text or files, Save for Later (⌘S) stands left of Stop and Send; it keeps the whole message, its files included, and empties the composer. The entry under the composer, at the left of the model’s row, reads 1 Saved or 3 Saved and is absent while there is none. Pressed, it opens the list under the composer, which rises to make room: at most half the window tall, scrolling within. A row shows the message’s first line and, when it has files, their count, and no time; pressing it edits the message. Edit, Send and Delete always stand at its end, after the count, on every width: quiet, and in the normal icon color while the pointer or the focus is on the row. In a narrow composer the entry keeps its mark and the count alone, with the whole label as its tip. Edit opens the message in the composer’s edit mode, the one a sent message is edited in, and closes the list; the message stays in the list in its place, and the count stays. A line at the top of the composer says Editing saved message, and the composer’s end has Cancel (×) where Save for Later stands, Save and Send. Save (⌘S) writes the message back in its place; Send sends it as the composer would and takes it off the list; Cancel or Escape leaves it as it was. The draft the composer held waits out of sight and comes back unchanged when the edit ends. Send on a row sends it as the composer would, steering or queueing while the agent works, and here a toast names what the product would do. Send and Delete keep the list open. Delete removes it at once, with Undo in a toast. A save the server refuses leaves its row as Not Saved in secondary red, with Retry in place of Send; nothing the user wrote is lost. Here the saved messages are the specimen’s own state; the product keeps them on the server, per conversation."
+        note="A message saved for later is one the user keeps to send later, and nothing sends it but the user. It is not the conversation’s draft, the message the composer holds, which it leaves to be saved. While the message holds text or files, Save for Later (⌘S) stands left of Stop and Send; it keeps the whole message, its files included, and empties the composer. The entry under the composer, at the left of the model’s row, reads 1 Saved or 3 Saved and is absent while there is none. Pressed, it opens the list under the composer, which rises to make room: at most half the window tall, scrolling within. A row shows the message’s first line and, when it has files, their count, and no time; pressing it edits the message. Edit, Send and Delete always stand at its end, after the count, on every width: quiet, and in the normal icon color while the pointer or the focus is on the row. In a narrow composer the entry keeps its mark and the count alone, with the whole label as its tip. Edit opens the message in the composer’s edit mode, the one a sent message is edited in, and closes the list; the message stays in the list in its place, and the count stays. A line at the top of the composer says Editing saved message, and the composer’s end has Cancel (×) where Save for Later stands, Save and Send. Save (⌘S) writes the message back in its place; Send sends it as the composer would and takes it off the list; Cancel or Escape leaves it as it was. The draft the composer held waits out of sight and comes back unchanged when the edit ends. Send on a row sends it as the composer would, steering or queueing while the agent works, and here a toast names what the product would do. Send and Delete keep the list open. Delete removes it at once, with Undo in a toast. A message the server has not taken yet, as while its save is sent again, reads Saving… before its count. A Save for Later the server refuses puts the message back in the composer, before what it holds, with a toast that says why; an edit of a message sent or deleted meanwhile is dropped, with a toast that says so. Here the saved messages are the specimen’s own state; the product keeps them on the server, per conversation."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="none saved · type, then Save for Later or ⌘S" wide>
@@ -1917,10 +1908,10 @@ onBeforeUnmount(() => {
               />
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="open · a message the server did not save, with Retry and Delete" wide>
+          <GallerySpecimen variant="open · a message the server has not taken yet reads Saving…" wide>
             <div class="flex min-h-[13rem] flex-col justify-end p-3">
               <GalleryComposer
-                :saved="notSavedOnTop"
+                :saved="savingOnTop"
                 saved-open
               />
             </div>

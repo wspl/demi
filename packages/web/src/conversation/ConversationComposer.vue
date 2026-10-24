@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { baseName } from '@demicodes/utils'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
@@ -72,37 +71,33 @@ function addFiles(files: File[]) {
 /** How a message pasted into the draft brings its files back, as the store takes them. */
 const paste = computed(() => store.pasteHost(props.conversation))
 
-/** The version of the draft a later save replaced, which the composer offers to restore. */
-const replaced = computed(() => {
-  const version = props.conversation.record.read.value?.draft.replaced
-  return version
-    ? {
-        markdown: version.text,
-        fileNames: version.files.map((file) =>
-          file.type === 'upload' ? file.fileName : baseName(file.path),
-        ),
-      }
-    : null
-})
-
 /**
  * The messages saved for later as the list under the composer shows them,
- * newest first: those the server did not save, then the list, each saved, or
- * saving while the page's save of it is on its way.
+ * newest first, each saved, or saving while the backend has not taken it or
+ * its edit: the page's write of it is on its way, or waits in the queue the
+ * web browser keeps, whose text the row shows.
  */
 const savedRows = computed<SavedRow[]>(() => {
   const record = props.conversation.record
   const shown = record.shown.value?.saved ?? []
   const kept = new Set(record.read.value?.saved.map((message) => message.id))
+  const queued = (id: string) => props.conversation.savedWrites.findLast((write) => write.id === id)
   const row = (id: string, text: string, files: unknown[], state: SavedRow['state']): SavedRow => (
     { id, preview: savedPreview(text), attachmentCount: files.length, state }
   )
+  // A saved message's row shows its first line, which its opening holds.
   return [
-    ...props.conversation.notSaved
-      .filter((message) => !shown.some((each) => each.id === message.id))
-      .map((message) => row(message.id, message.text, message.files, 'notSaved')),
-    // A saved message's row shows its first line, which its opening holds.
-    ...shown.map((message) => row(message.id, message.opening, message.files, kept.has(message.id) ? 'saved' : 'saving')),
+    // A save the page lists no more, as one whose write failed, still stands.
+    ...props.conversation.savedWrites
+      .filter((write) => write.kind === 'save' && !shown.some((message) => message.id === write.id))
+      .reverse()
+      .map((write) => row(write.id, write.text, write.files, 'saving')),
+    ...shown.map((message) => {
+      const write = queued(message.id)
+      return write
+        ? row(message.id, write.text, write.files, 'saving')
+        : row(message.id, message.opening, message.files, kept.has(message.id) ? 'saved' : 'saving')
+    }),
   ]
 })
 /** The list stands open while this composer shows; another conversation's starts closed. */
@@ -279,7 +274,6 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :hold="hold"
       :offline-host="offlineHost"
       @move-host="emit('moveHost', $event)"
-      :replaced="replaced"
       :draft-shown="conversation.draftShown"
       :plugins-changed="conversation.pluginsChanged"
       :reloading="store.pendingChanges.includes(conversation.id)"
@@ -290,9 +284,6 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @edit-saved="store.editSaved(conversation, $event)"
       @send-saved="(id, way) => store.sendSaved(conversation, id, way)"
       @delete-saved="store.deleteSaved(conversation, $event)"
-      @retry-saved="store.retrySaved(conversation, $event)"
-      @restore-replaced="store.restoreReplaced(conversation)"
-      @dismiss-replaced="store.dismissReplaced(conversation)"
       @reload-plugins="store.reloadPlugins(conversation)"
       @submit="send"
       @configure="openProviders"

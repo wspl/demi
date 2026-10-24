@@ -251,12 +251,7 @@
   "notices": {
     "hostOffline": "{name} はオフラインです。",
     "moveHost": "別のホストに移動…",
-    "pluginsChanged": "プラグインが変更されました",
-    "replacedDraft": "後の保存で{draft}が置き換えられました",
-    "quoted": "「{text}」",
-    "restore": "復元",
-    "dismiss": "閉じる",
-    "dismissDraft": "置き換えられた下書きを閉じる"
+    "pluginsChanged": "プラグインが変更されました"
   },
   "composer": {
     "placeholder": "何でも聞いてください…",
@@ -284,7 +279,7 @@
     "afterEdit": "編集後に使用できます",
     "saved": {
       "count": "{count} 件を保存済み",
-      "notSaved": "未保存",
+      "saving": "保存中…",
       "edit": "編集",
       "send": "送信",
       "delete": "削除"

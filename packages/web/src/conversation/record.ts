@@ -1,4 +1,3 @@
-import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { markRaw, type Raw } from 'vue'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
@@ -9,9 +8,10 @@ import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import type { MessageEditContent } from '@demicodes/web-ui/agent/message-editing'
 import { splitMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { ApiError } from '../api/client'
-import { changeReplacedDraft, loadDraft, saveDraft } from '../api/drafts'
+import { OVER_ANY } from './drafts'
+import { saveDraft } from '../api/drafts'
 import { deleteSaved, postSaved, putSaved, saveFromDraft } from '../api/saved'
-import type { ConversationDraft, DraftFile, ListedSavedMessage, ReplacedAction, Revisions, SavedListing } from '../api/generated/web-api'
+import type { ConversationDraft, DraftFile, ListedSavedMessage, Revisions, SavedListing } from '../api/generated/web-api'
 import type { Conversation, ProductAttachment } from '../state/types'
 import { t } from './locales/text'
 
@@ -21,11 +21,14 @@ import { t } from './locales/text'
 // - Every write of either is a change of the slot, sent in the order made after
 //   the writes before it. Its answer names the revisions it produced, so the
 //   change leaves once a read of them is held.
-// - The composer shows the slot's draft. What its user types is a change of it,
-//   sent half a second after typing pauses. A newer draft read shows in it
-//   unless its user has a change the backend has not confirmed.
-// - Text the user wrote is never only in a change: a refused one goes back to
-//   the composer or stands in the list as Not Saved.
+// - The draft is the last one written, on whichever page. The composer shows
+//   the slot's draft. What its user types is a change of it, sent half a
+//   second after typing pauses. A newer draft read shows in it unless its user
+//   has a change the backend has not confirmed.
+// - Text the user wrote is never only in a change: a message a refused Save
+//   for Later carried goes back to the composer, and so does a draft write's
+//   text while no later change of the draft took its place. An edit of a saved
+//   message that the backend refused is dropped.
 // - The list holds each saved message as the composer lists it, its text's
 //   opening and length; the page's own change lists the text it wrote whole.
 //   The conversation's metadata brings the list under its revision.
@@ -53,28 +56,14 @@ export interface Writing extends Message {
   comments: MessageComment[]
 }
 
-/** A message the backend did not save, which the list shows as Not Saved until its user retries or deletes it. */
-export interface NotSaved extends Message {
-  id: string
-  /** Why it was not saved, as the backend or the page said it. */
-  reason: string
-}
-
-/** What the composer's text was built on: a revision of the draft read, or a change of the page's below it. */
-type Basis = number | RecordChange
-
 /** What the page keeps with a change of the record. */
 export interface RecordMeta {
   kind: 'typing' | 'save' | 'write' | 'delete' | 'resave' | 'send'
-  /** For a change that sets the draft, what the text below it was built on. */
-  base: Basis | null
-  /** The revision of the draft its answer produced. */
-  answered: number | null
   /**
-   * The user's writing the change carries, which a refusal must not lose,
-   * and where it goes back to: the composer, or the list under its id.
+   * The user's writing the change carries, which a refusal must not lose:
+   * it goes back to the composer. An edit of a saved message carries none.
    */
-  carries: (Writing & { id: string; into: 'draft' | 'list' }) | null
+  carries: Writing | null
 }
 
 export type RecordChange = SlotChange<ConversationRecord, RecordMeta>
@@ -83,7 +72,7 @@ export type RecordSlot = Slot<ConversationRecord, RecordMeta>
 /** A conversation's record as the page holds it before reading anything. */
 export function newRecord(): Raw<RecordSlot> {
   const slot = new Slot<ConversationRecord, RecordMeta>()
-  slot.replace({ draft: { revision: 0, text: '', files: [], comments: [], replaced: null }, saved: [] })
+  slot.replace({ draft: { revision: 0, text: '', files: [], comments: [] }, saved: [] })
   return markRaw(slot)
 }
 
@@ -220,6 +209,17 @@ function withoutSaved(record: ConversationRecord, id: string): ConversationRecor
     : record
 }
 
+/** Resolves after `ms`, or at once when `signal` aborts. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      resolve()
+    }, { once: true })
+  })
+}
+
 /** A refusal the backend answered, which sending again would not change. */
 function isRefusal(error: unknown): boolean {
   return error instanceof ApiError && error.status >= 400 && error.status < 500
@@ -235,14 +235,14 @@ function failed(site: string, title: HeadlineText): Failure {
   return { site, title }
 }
 
-/** The words a refusal stands in the list with. */
-function reasonOf(error: unknown): string {
-  return errorMessage(error)
-}
-
 export function createRecordSync(options: {
   /** Shows `writing` in the conversation's composer, with its files. */
   show: (conversation: Conversation, writing: Writing) => void
+  /**
+   * Puts `message`, with its files, in the conversation's composer before what
+   * it holds, files still uploading included, which `show` would not keep.
+   */
+  prepend: (conversation: Conversation, message: Message) => void
   /** Makes the conversation's backend record, when it has none yet. */
   persist: (conversation: Conversation) => Promise<void>
   report: (site: string, title: HeadlineText, error: unknown) => void
@@ -253,8 +253,12 @@ export function createRecordSync(options: {
   let queue = new SerialQueue()
   /** Each conversation's change of its draft that its user types and the page has not sent yet. */
   const typing = new Map<string, RecordChange>()
-  /** What each conversation's composer text was built on, while the composer shows the slot's draft. */
-  const builtOn = new Map<string, Basis>()
+  /**
+   * The conversations whose composer this web browser kept, restored before
+   * their draft is read, with the revision of the backend's draft it was
+   * written over (`OVER_ANY` for any).
+   */
+  const restored = new Map<string, number>()
   /** The changes that hide a saved message being sent, by the send's turn id. */
   const sends = new Map<string, RecordChange>()
   /**
@@ -272,22 +276,6 @@ export function createRecordSync(options: {
   function clearTimer(id: string): void {
     clearTimeout(timers.get(id))
     timers.delete(id)
-  }
-
-  /** The revision of the draft that `basis` stands for once its writes are answered. */
-  function revisionOf(basis: Basis | null | undefined): number {
-    if (basis === null || basis === undefined) {
-      return 0
-    }
-    if (typeof basis === 'number') {
-      return Math.max(0, basis)
-    }
-    return basis.meta.answered ?? revisionOf(basis.meta.base)
-  }
-
-  /** What the slot's draft is built on now: the last change of it, or the revision read. */
-  function basis(conversation: Conversation): Basis {
-    return conversation.record.pending('draft').at(-1) ?? conversation.record.revision('draft')
   }
 
   /** The draft the slot shows. */
@@ -313,7 +301,6 @@ export function createRecordSync(options: {
       seen.set(conversation.id, held(shown))
       options.show(conversation, shown)
     }
-    builtOn.set(conversation.id, basis(conversation))
   }
 
   /**
@@ -325,20 +312,26 @@ export function createRecordSync(options: {
     const { writing, complete } = composerWriting(conversation)
     return !complete ||
       conversation.pendingSends.length > 0 ||
-      conversation.record.pending('draft').some((change) => change.status !== 'landed') ||
+      // A Save for Later empties the draft in the backend with its own write,
+      // which the page keeps in its queue; the emptied composer is not input.
+      conversation.record.pending('draft').some((change) => change.status !== 'landed' && change.meta.kind !== 'save') ||
       !sameWriting(writing, shownDraft(conversation))
   }
 
-  /** The revision the composer's text was built on, as the web browser keeps it with an unconfirmed change. */
-  function base(conversation: Conversation): number {
-    return revisionOf(builtOn.get(conversation.id) ?? conversation.record.revision('draft'))
+  /**
+   * The revision of the backend's draft the composer's text is written over:
+   * the one the page last read or had answered, and while the draft is not
+   * read yet, the one a restored composer was written over. This web browser
+   * keeps it with an unconfirmed composer, and never sends it.
+   */
+  function over(conversation: Conversation): number {
+    const read = conversation.record.revision('draft')
+    return read >= 0 ? read : restored.get(conversation.id) ?? 0
   }
 
-  /** A composer this web browser kept builds on `revision`, the one it was built on then. */
-  function restore(conversation: Conversation, revision: number | null): void {
-    if (revision !== null) {
-      builtOn.set(conversation.id, revision)
-    }
+  /** A composer this web browser kept, written over the backend's draft at revision `over`, holds a change the backend has not accepted. */
+  function restore(conversation: Conversation, over: number): void {
+    restored.set(conversation.id, over)
   }
 
   /**
@@ -354,12 +347,12 @@ export function createRecordSync(options: {
     const { writing } = composerWriting(conversation)
     const unsent = typing.get(conversation.id)
     // A composer this web browser kept, restored before the draft is read,
-    // is a change on the revision it was built on whatever it holds, an
-    // empty one after a send included: there is no draft yet to compare it
+    // is a change whatever it holds, an empty one after a send included:
+    // there is no draft yet to compare it
     // with, and the draft read compares with it, never the other way round.
     // The first look counts it so; the change it makes brings this back
     // before it is kept as the typing, and finds it seen.
-    const unread = record.revision('draft') < 0 && builtOn.has(conversation.id)
+    const unread = record.revision('draft') < 0 && restored.has(conversation.id)
     if (!(unread && !seen.has(conversation.id)) && (seen.get(conversation.id) ?? held({ text: '', files: [], comments: [] })) === held(writing)) {
       return
     }
@@ -373,7 +366,7 @@ export function createRecordSync(options: {
       }
       return
     }
-    const carries = { id: crypto.randomUUID(), ...writing, into: 'draft' as const }
+    const carries = writing
     const apply = (value: ConversationRecord) => ({
       ...value,
       draft: { ...value.draft, text: writing.text, files: writing.files, comments: writing.comments },
@@ -384,10 +377,9 @@ export function createRecordSync(options: {
     } else {
       const change = record.change(apply, {
         parts: ['draft'],
-        meta: { kind: 'typing', base: builtOn.get(conversation.id) ?? record.revision('draft'), answered: null, carries },
+        meta: { kind: 'typing', carries },
       })
       typing.set(conversation.id, change)
-      builtOn.set(conversation.id, change)
     }
     schedule(conversation, DRAFT_SAVE_DELAY_MS)
   }
@@ -421,16 +413,20 @@ export function createRecordSync(options: {
       conversation.archived || conversation.pendingSends.length > 0) {
       return
     }
+    // A restored composer waits for the draft to be read, which says whether
+    // the backend took its text or holds a later one (`receiveDraft`).
+    if (restored.has(conversation.id) && conversation.record.revision('draft') < 0) {
+      return
+    }
     typing.delete(conversation.id)
     clearTimer(conversation.id)
     const signal = lifetime.signal
     const writing = change.meta.carries!
-    const revision = revisionOf(change.meta.base)
     change.send()
     try {
       const answer = await saveDraft(
         conversation.id,
-        { base: revision, text: writing.text, files: writing.files.map(namedFile), comments: writing.comments },
+        { text: writing.text, files: writing.files.map(namedFile), comments: writing.comments },
         { signal, keepalive },
       )
       signal.throwIfAborted()
@@ -456,7 +452,6 @@ export function createRecordSync(options: {
   ): boolean {
     const { draft } = answer
     if (draft) {
-      change.meta.answered = answer.revisions.draft
       conversation.record.receive('draft', (value) => ({ ...value, draft }), { revision: answer.revisions.draft })
     }
     const left = conversation.record.land([change], { revisions: answer.revisions })
@@ -466,11 +461,12 @@ export function createRecordSync(options: {
 
   /**
    * A write of `change` failed: the change leaves, the failure is reported
-   * when `failure` names it, and what the user wrote in it is kept. Writing
-   * the list or the composer shows already stays there; the composer's own
-   * goes back to it while no later change of the draft took its place, and
-   * any other stands in the list as Not Saved, the composer not showing it a
-   * second time.
+   * when `failure` names it, and what the user wrote in it is kept. A draft
+   * write's text goes back to the composer while no later change of the draft
+   * took its place; a message a Save for Later carried goes back before what
+   * the composer holds now. An edit of a saved message carries nothing: the
+   * backend refused it because the message was sent or deleted meanwhile, or
+   * the edit itself, and the failure says which.
    */
   function refused(conversation: Conversation, change: RecordChange, failure: Failure | null, error: unknown): void {
     const record = conversation.record
@@ -481,53 +477,59 @@ export function createRecordSync(options: {
     }
     if (carried && !isBlank(carried)) {
       const shown = record.shown.value!
-      const listed = shown.saved.some((message) => lists(message, carried))
-      if (!listed && carried.into === 'draft') {
-        if (!sameWriting(shown.draft, carried) && !typing.has(conversation.id)) {
-          if (record.pending('draft').length === 0) {
-            const again = record.change(
-              (value) => ({ ...value, draft: { ...value.draft, text: carried.text, files: carried.files, comments: carried.comments } }),
-              { parts: ['draft'], meta: { kind: 'typing', base: change.meta.base, answered: null, carries: carried } },
-            )
-            typing.set(conversation.id, again)
-          } else {
-            keepNotSaved(conversation, carried, error)
-          }
-        }
-      } else if (!listed) {
-        keepNotSaved(conversation, carried, error)
-        if (change.meta.kind === 'save' && sameMessage(shown.draft, carried)) {
-          // A Save for Later's message stands in the list now: the composer,
-          // which would show it again, is emptied, a change of the draft as
-          // any; its comments stay waiting. Any other write of the list
-          // never took the message from the draft, which it leaves alone.
-          const comments = shown.draft.comments
-          const empty = record.change(
-            (value) => ({ ...value, draft: { ...value.draft, text: '', files: [] } }),
-            {
-              parts: ['draft'],
-              meta: { kind: 'typing', base: basis(conversation), answered: null, carries: { id: crypto.randomUUID(), text: '', files: [], comments, into: 'draft' } },
-            },
+      if (change.meta.kind === 'typing') {
+        if (!sameWriting(shown.draft, carried) && !typing.has(conversation.id) && record.pending('draft').length === 0) {
+          const again = record.change(
+            (value) => ({ ...value, draft: { ...value.draft, text: carried.text, files: carried.files, comments: carried.comments } }),
+            { parts: ['draft'], meta: { kind: 'typing', carries: carried } },
           )
-          typing.set(conversation.id, empty)
-          schedule(conversation, DRAFT_SAVE_DELAY_MS)
+          typing.set(conversation.id, again)
         }
+      } else if (!shown.saved.some((message) => lists(message, carried))) {
+        putBack(conversation, carried)
       }
     }
     follow(conversation)
   }
 
-  /** Keeps `writing` in the list as Not Saved, under its id, newest first. */
-  function keepNotSaved(conversation: Conversation, writing: Message & { id: string }, error: unknown): void {
-    const row: NotSaved = { id: writing.id, text: writing.text, files: writing.files, reason: reasonOf(error) }
-    conversation.notSaved = [row, ...conversation.notSaved.filter((each) => each.id !== row.id)]
+  /**
+   * Puts the message a refused Save for Later carried back in the composer,
+   * before what the composer holds now, which stays after it; the draft's
+   * waiting comments stay as they are.
+   */
+  function putBack(conversation: Conversation, message: Message): void {
+    const record = conversation.record
+    const unsent = typing.get(conversation.id)
+    const { writing: now, complete } = composerWriting(conversation)
+    if (!complete) {
+      // A file is still uploading, which the slot's draft does not hold: the
+      // composer takes the message itself, and its change follows from it.
+      options.prepend(conversation, message)
+      return
+    }
+    const text = isBlankMessage(now) ? message.text : `${message.text}\n\n${now.text}`
+    const merged: Writing = { text, files: [...message.files, ...now.files], comments: now.comments }
+    const apply = (value: ConversationRecord) => ({
+      ...value,
+      draft: { ...value.draft, text: merged.text, files: merged.files, comments: merged.comments },
+    })
+    if (unsent) {
+      unsent.meta.carries = merged
+      unsent.revise(apply)
+    } else {
+      typing.set(conversation.id, record.change(apply, { parts: ['draft'], meta: { kind: 'typing', carries: merged } }))
+    }
+    schedule(conversation, DRAFT_SAVE_DELAY_MS)
   }
 
   /**
    * Writes `change` after the conversation's writes before it: `request`
    * answers what the write produced. `sending` runs as it goes out, for a
-   * change that settles what it shows then. A failure is a refusal of the
-   * change (`refused`). Answers how it ended.
+   * change that settles what it shows then. A refusal of the backend ends the
+   * write (`refused`). With `retrying`, a failure of the backend or of the
+   * network is reported once and the write is sent again every few seconds,
+   * holding the writes after it, until it lands or is refused. Answers how it
+   * ended.
    */
   function write(
     conversation: Conversation,
@@ -535,6 +537,7 @@ export function createRecordSync(options: {
     failure: Failure,
     request: (signal: AbortSignal) => Promise<{ draft?: ConversationDraft; revisions: Revisions }>,
     sending?: () => void,
+    retrying = false,
   ): Promise<'landed' | 'waiting' | 'refused'> {
     const signal = lifetime.signal
     return queue.run(conversation.id, async () => {
@@ -543,15 +546,27 @@ export function createRecordSync(options: {
       }
       sending?.()
       change.send()
-      try {
-        const answer = await request(signal)
-        signal.throwIfAborted()
-        return landed(conversation, change, answer) ? 'landed' as const : 'waiting' as const
-      } catch (error) {
-        if (!signal.aborted) {
+      let reported = false
+      for (;;) {
+        try {
+          const answer = await request(signal)
+          signal.throwIfAborted()
+          return landed(conversation, change, answer) ? 'landed' as const : 'waiting' as const
+        } catch (error) {
+          if (signal.aborted) {
+            return 'refused' as const
+          }
+          if (retrying && !isRefusal(error)) {
+            if (!reported) {
+              reported = true
+              options.report(failure.site, failure.title, error)
+            }
+            await pause(DRAFT_RETRY_MS, signal)
+            continue
+          }
           refused(conversation, change, failure, error)
+          return 'refused' as const
         }
-        return 'refused' as const
       }
     })
   }
@@ -559,13 +574,23 @@ export function createRecordSync(options: {
   /**
    * Save for Later: `writing`, the composer's message, stands at the top of
    * the list under `id` and leaves the composer at once; the backend keeps
-   * it and empties the draft with it, after the writes before it.
+   * it and empties the draft with it, after the writes before it, and the
+   * save is sent again until the backend answers it. With `again`, the save
+   * is one the page kept from before, whose message is no longer the
+   * composer's: the composer is left as it is.
    */
-  function saveForLater(conversation: Conversation, id: string, writing: Message): Promise<'landed' | 'waiting' | 'refused'> {
+  function saveForLater(conversation: Conversation, id: string, writing: Message, again = false): Promise<'landed' | 'waiting' | 'refused'> {
     const record = conversation.record
+    if (again) {
+      const message = listedAs(id, writing)
+      const change = record.change((value) => ({ ...value, saved: withSaved(value.saved, message) }), {
+        parts: ['saved'],
+        meta: { kind: 'save', carries: { ...writing, comments: [] } },
+      })
+      return sendSave(conversation, change, id, writing)
+    }
     // The message is the composer's: the change its user typed is in it.
     const unsent = typing.get(conversation.id)
-    const built = unsent?.meta.base ?? builtOn.get(conversation.id) ?? record.revision('draft')
     // The comments the change its user typed holds and the writes below it
     // do not, such as one saved while an earlier save is on its way: the
     // backend keeps the draft's comments as it has them, so these follow
@@ -583,7 +608,7 @@ export function createRecordSync(options: {
       (value) => ({ draft: { ...value.draft, text: '', files: [] }, saved: withSaved(value.saved, message) }),
       {
         parts: ['draft', 'saved'],
-        meta: { kind: 'save', base: built, answered: null, carries: { id, text: writing.text, files: writing.files, comments: [], into: 'list' } },
+        meta: { kind: 'save', carries: { ...writing, comments: [] } },
       },
     )
     const kept = unsaved
@@ -591,22 +616,12 @@ export function createRecordSync(options: {
         (value) => ({ ...value, draft: { ...value.draft, text: '', files: [], comments } }),
         {
           parts: ['draft'],
-          meta: { kind: 'typing', base: change, answered: null, carries: { id: crypto.randomUUID(), text: '', files: [], comments, into: 'draft' } },
+          meta: { kind: 'typing', carries: { text: '', files: [], comments } },
         },
       )
       : null
-    if (kept) {
-      builtOn.set(conversation.id, kept)
-    }
     follow(conversation)
-    const saved = write(conversation, change, failed('failures.saveMessage', t('failures.saveMessage')), async (signal) => {
-      await options.persist(conversation)
-      return saveFromDraft(
-        conversation.id,
-        { id, base: revisionOf(built), text: writing.text, files: writing.files.map(namedFile) },
-        signal,
-      )
-    })
+    const saved = sendSave(conversation, change, id, writing)
     if (kept) {
       // Saved once the save has gone, which it is built on; a change typed
       // meanwhile carries the comments the composer shows, these among them.
@@ -625,13 +640,30 @@ export function createRecordSync(options: {
     return saved
   }
 
+  /** The write of `change`, the Save for Later of `writing` under `id`. */
+  function sendSave(conversation: Conversation, change: RecordChange, id: string, writing: Message): Promise<'landed' | 'waiting' | 'refused'> {
+    return write(conversation, change, failed('failures.saveMessage', t('failures.saveMessage')), async (signal) => {
+      await options.persist(conversation)
+      return saveFromDraft(
+        conversation.id,
+        { id, text: writing.text, files: writing.files.map(namedFile) },
+        signal,
+      )
+    }, undefined, true)
+  }
+
   /**
    * Save of an edit of the saved message `id`: it holds `message` in its place
-   * at once, and the draft is left as it is. A refusal, as for a message
-   * another page deleted meanwhile, keeps the edited message in the list as
-   * Not Saved under an id of its own, so nothing is lost.
+   * at once, and the draft is left as it is. The edit is sent again until the
+   * backend answers it. Answers how the write ended; `gone` when the message
+   * was sent or deleted meanwhile, which drops the edit, as no other refusal
+   * does.
    */
-  function rewrite(conversation: Conversation, id: string, message: Message): Promise<'landed' | 'waiting' | 'refused'> {
+  function rewrite(
+    conversation: Conversation,
+    id: string,
+    message: Message,
+  ): Promise<'landed' | 'waiting' | 'refused' | 'gone'> {
     const change = conversation.record.change(
       (value) => ({
         ...value,
@@ -639,13 +671,19 @@ export function createRecordSync(options: {
       }),
       {
         parts: ['saved'],
-        meta: { kind: 'write', base: null, answered: null, carries: { id: crypto.randomUUID(), ...message, comments: [], into: 'list' } },
+        meta: { kind: 'write', carries: null },
       },
     )
+    let gone = false
     return write(conversation, change, failed('failures.saveMessage', t('failures.saveMessage')), async (signal) => {
-      const answer = await putSaved(conversation.id, id, { text: message.text, files: message.files.map(namedFile) }, signal)
-      return { revisions: answer.revisions }
-    })
+      try {
+        const answer = await putSaved(conversation.id, id, { text: message.text, files: message.files.map(namedFile) }, signal)
+        return { revisions: answer.revisions }
+      } catch (error) {
+        gone = error instanceof ApiError && error.code === 'saved_not_found'
+        throw error
+      }
+    }, undefined, true).then((ended) => ended === 'refused' && gone ? 'gone' : ended)
   }
 
   /**
@@ -656,7 +694,7 @@ export function createRecordSync(options: {
   function remove(conversation: Conversation, id: string): Promise<{ ended: 'landed' | 'waiting' | 'refused'; message: Message | null }> {
     const change = conversation.record.change((value) => withoutSaved(value, id), {
       parts: ['saved'],
-      meta: { kind: 'delete', base: null, answered: null, carries: null },
+      meta: { kind: 'delete', carries: null },
     })
     let removed: Message | null = null
     return write(conversation, change, failed('failures.deleteMessage', t('failures.deleteMessage')), async (signal) => {
@@ -668,26 +706,26 @@ export function createRecordSync(options: {
 
   /**
    * Saves `writing` for later under `id`, leaving the draft as it is: Undo
-   * of a deletion, under a new id, and Retry of a message not saved, under
-   * its own. It stands at the top of the list at once.
+   * of a deletion, under a new id. It stands at the top of the list at once;
+   * a refusal puts it back in the composer.
    */
   function resave(conversation: Conversation, id: string, writing: Message): Promise<'landed' | 'waiting' | 'refused'> {
     const message = listedAs(id, writing)
     const change = conversation.record.change((value) => ({ ...value, saved: withSaved(value.saved, message) }), {
       parts: ['saved'],
-      meta: { kind: 'resave', base: null, answered: null, carries: { id, text: writing.text, files: writing.files, comments: [], into: 'list' } },
+      meta: { kind: 'resave', carries: { ...writing, comments: [] } },
     })
     return write(conversation, change, failed('failures.saveMessage', t('failures.saveMessage')), async (signal) => {
       const answer = await postSaved(conversation.id, { id, text: writing.text, files: writing.files.map(namedFile) }, signal)
       return { revisions: answer.revisions }
-    })
+    }, undefined, true)
   }
 
   /** The saved message `id` leaves the list as the message `turnId` goes, until the send ends. */
   function hideSent(conversation: Conversation, id: string, turnId: string): void {
     sends.set(turnId, conversation.record.change((value) => withoutSaved(value, id), {
       parts: ['saved'],
-      meta: { kind: 'send', base: null, answered: null, carries: null },
+      meta: { kind: 'send', carries: null },
     }))
   }
 
@@ -722,13 +760,22 @@ export function createRecordSync(options: {
    * Takes a draft read or one the socket brought; one no newer than the
    * draft held, such as this page's own save, whose answer's revision the
    * page holds already, changes nothing. A change restored from this web
-   * browser that the backend holds already only takes its revision.
+   * browser holds only while the backend's draft is the one it was written
+   * over: at another revision the backend accepted it, or a later write
+   * replaced it, and the backend's draft is shown. One the backend holds
+   * already only takes its revision.
    */
   function receiveDraft(conversation: Conversation, draft: ConversationDraft): void {
     const record = conversation.record
     record.receive('draft', (value) => ({ ...value, draft }), { revision: draft.revision })
+    const restoredOver = restored.get(conversation.id)
+    restored.delete(conversation.id)
     const unsent = typing.get(conversation.id)
-    if (unsent && record.pending('draft').length === 1 && sameWriting(unsent.meta.carries!, draft)) {
+    if (unsent && restoredOver !== undefined && restoredOver !== OVER_ANY && restoredOver !== draft.revision) {
+      record.leave([unsent])
+      typing.delete(conversation.id)
+      clearTimer(conversation.id)
+    } else if (unsent && record.pending('draft').length === 1 && sameWriting(unsent.meta.carries!, draft)) {
       record.leave([unsent])
       typing.delete(conversation.id)
       clearTimer(conversation.id)
@@ -739,45 +786,10 @@ export function createRecordSync(options: {
 
   /**
    * Takes the saved messages as the conversation's metadata lists them; one
-   * no newer than the list held changes nothing. A message not saved that
-   * the list holds now was saved after all, and is listed as saved.
+   * no newer than the list held changes nothing.
    */
   function receiveSaved(conversation: Conversation, list: SavedListing): void {
     conversation.record.receive('saved', (value) => ({ ...value, saved: list.messages }), { revision: list.revision })
-    if (conversation.notSaved.some((row) => list.messages.some((message) => message.id === row.id))) {
-      conversation.notSaved = conversation.notSaved.filter((row) => !list.messages.some((message) => message.id === row.id))
-    }
-  }
-
-  /**
-   * Restores or dismisses the replaced version the composer offers, after
-   * saving what the composer holds. The answer shows in the composer; a
-   * replaced version that changed meanwhile is read again, so the composer
-   * offers the one there is.
-   */
-  function act(conversation: Conversation, action: ReplacedAction): Promise<void> {
-    const signal = lifetime.signal
-    clearTimer(conversation.id)
-    return queue.run(conversation.id, async () => {
-      await sendTyping(conversation)
-      const replaced = conversation.record.read.value?.draft.replaced
-      if (!replaced) {
-        return
-      }
-      try {
-        const answer = await changeReplacedDraft(conversation.id, { action, revision: replaced.revision }, signal)
-        signal.throwIfAborted()
-        conversation.record.receive('draft', (value) => ({ ...value, draft: answer.draft }), { revision: answer.revisions.draft })
-        follow(conversation)
-      } catch (error) {
-        if (!(error instanceof ApiError && error.code === 'draft_changed')) {
-          throw error
-        }
-        const draft = await loadDraft(conversation.id, signal)
-        signal.throwIfAborted()
-        receiveDraft(conversation, draft)
-      }
-    })
   }
 
   /**
@@ -809,7 +821,7 @@ export function createRecordSync(options: {
     }
     queue = new SerialQueue()
     typing.clear()
-    builtOn.clear()
+    restored.clear()
     sends.clear()
     seen.clear()
   }
@@ -819,11 +831,10 @@ export function createRecordSync(options: {
     save,
     follow,
     unsaved,
-    base,
+    over,
     restore,
     receiveDraft,
     receiveSaved,
-    act,
     saveForLater,
     rewrite,
     remove,

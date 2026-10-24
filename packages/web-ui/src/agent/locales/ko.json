@@ -251,12 +251,7 @@
   "notices": {
     "hostOffline": "{name} 호스트가 오프라인입니다.",
     "moveHost": "다른 호스트로 이동…",
-    "pluginsChanged": "플러그인 변경됨",
-    "replacedDraft": "나중에 저장한 내용으로 대체되었습니다: {draft}",
-    "quoted": "“{text}”",
-    "restore": "복원",
-    "dismiss": "닫기",
-    "dismissDraft": "바뀐 초안 닫기"
+    "pluginsChanged": "플러그인 변경됨"
   },
   "composer": {
     "placeholder": "무엇이든 물어보세요…",
@@ -284,7 +279,7 @@
     "afterEdit": "편집 후 사용 가능",
     "saved": {
       "count": "저장됨 {count}개",
-      "notSaved": "저장되지 않음",
+      "saving": "저장 중…",
       "edit": "편집",
       "send": "보내기",
       "delete": "삭제"
