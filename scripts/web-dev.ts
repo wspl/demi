@@ -1,5 +1,7 @@
 // `bun run web:dev`: generates the contracts, then runs the product's Vite dev
-// server under Node with the arguments given.
+// server under Node with the arguments given. `build` also builds the
+// packages it reads that are missing or stale (`web-dists.ts`), and `preview`
+// serves a build already made, so it generates nothing.
 //
 // The dev server forwards the page's WebSockets to the backend, which Vite
 // cannot do under Bun: Bun's `node:http` client never reports the backend's 101
@@ -33,7 +35,9 @@ if (!node) {
 
 const repository = resolve(import.meta.dir, '..')
 const web = resolve(repository, 'packages/web')
+const mode = Bun.argv[2]
 await runSteps([
-  { command: [process.execPath, 'run', 'contracts'], cwd: repository },
+  ...(mode === 'preview' ? [] : [{ command: [process.execPath, 'run', 'contracts'], cwd: repository }]),
+  ...(mode === 'build' ? [{ command: [process.execPath, 'scripts/web-dists.ts'], cwd: repository }] : []),
   { command: [node, join(web, 'node_modules/vite/bin/vite.js'), ...Bun.argv.slice(2)], cwd: web },
 ])
