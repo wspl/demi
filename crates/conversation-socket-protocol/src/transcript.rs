@@ -179,7 +179,9 @@ pub fn light<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Vec<Block> {
 /// `block` in its light form: without what only its open row shows, nor
 /// the entries of the vendor's record, which never leave the backend. A
 /// tool call longer than [`LIGHT_INPUT_BYTES`] keeps of its input only its
-/// `description`, so its row is titled as the call whole.
+/// `description`, so its row is titled as the call whole. An instructions
+/// block keeps the list of what its text holds, which the context card
+/// shows without opening it.
 fn light_block(block: &Block) -> Block {
     let mut light = block.clone();
     if let Some(entries) = light.entries_mut() {
@@ -224,10 +226,7 @@ fn light_block(block: &Block) -> Block {
                 report.output.clear();
             }
         }
-        Block::Context(context) => {
-            context.text.clear();
-            context.instructions.clear();
-        }
+        Block::Context(context) => context.text.clear(),
         Block::CompactionBoundary(boundary) => boundary.summary.clear(),
         Block::User(_)
         | Block::Steer(_)
