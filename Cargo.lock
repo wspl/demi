@@ -1714,7 +1714,7 @@ dependencies = [
 
 [[package]]
 name = "demi-agent-server"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "comrak",
@@ -1744,7 +1744,7 @@ dependencies = [
 
 [[package]]
 name = "demi-agent-session"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-agent-session",
  "demi-agent-store",
@@ -1771,7 +1771,7 @@ dependencies = [
 
 [[package]]
 name = "demi-agent-store"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-protocol",
@@ -1790,7 +1790,7 @@ dependencies = [
 
 [[package]]
 name = "demi-agent-tools"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-agent-session",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "demi-agent-transcript"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "comrak",
  "demi-agent-store",
@@ -1834,7 +1834,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "clap",
  "demi-backend-accounts",
@@ -1898,7 +1898,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-accounts"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -1931,7 +1931,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-blobs"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1949,7 +1949,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-cloud"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-backend-database",
  "demi-backend-idle-watch",
@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-database"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2011,7 +2011,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-host-access"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-agent-store",
@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-http"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "axum",
  "axum-extra",
@@ -2101,7 +2101,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-idle-watch"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-shared-gates",
  "futures-util",
@@ -2112,7 +2112,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-page-sync"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-backend-database",
  "demi-web-api-protocol",
@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-permissions"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-backend-database",
  "demi-backend-page-sync",
@@ -2139,7 +2139,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-plugins"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "demi-backend-database",
@@ -2166,7 +2166,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-providers"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "aes-gcm 0.10.3",
  "async-stream",
@@ -2201,7 +2201,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-remote-host"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "axum",
  "bytes",
@@ -2224,7 +2224,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-runners"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "axum",
  "bytes",
@@ -2259,7 +2259,7 @@ dependencies = [
 
 [[package]]
 name = "demi-backend-user-shard"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "axum",
@@ -2320,7 +2320,7 @@ dependencies = [
 
 [[package]]
 name = "demi-browser"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-package-browser-chrome",
@@ -2341,7 +2341,7 @@ dependencies = [
 
 [[package]]
 name = "demi-claude-code"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-package-claude-code-protocol",
@@ -2359,7 +2359,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-declarations"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "clap",
  "jsonschema",
@@ -2372,7 +2372,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-package-browser-chrome"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2409,7 +2409,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-package-browser-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "demi-live-view-protocol",
@@ -2427,7 +2427,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-package-claude-code-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "garde",
  "semver",
@@ -2439,7 +2439,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-package-fetch-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-shared-types",
  "garde",
@@ -2452,7 +2452,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-package-file-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-shared-types",
  "garde",
@@ -2465,7 +2465,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-package-mobile-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-live-view-protocol",
  "demi-shared-recording-protocol",
@@ -2481,7 +2481,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "garde",
@@ -2499,7 +2499,7 @@ dependencies = [
 
 [[package]]
 name = "demi-command-sdk"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "clap",
@@ -2523,7 +2523,7 @@ dependencies = [
 
 [[package]]
 name = "demi-conversation-socket-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-shared-types",
  "garde",
@@ -2537,7 +2537,7 @@ dependencies = [
 
 [[package]]
 name = "demi-fetch"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-package-fetch-protocol",
@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "demi-file"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-package-file-protocol",
@@ -2588,7 +2588,7 @@ dependencies = [
 
 [[package]]
 name = "demi-host-interface"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-declarations",
@@ -2608,7 +2608,7 @@ dependencies = [
 
 [[package]]
 name = "demi-live-view"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-sdk",
@@ -2626,7 +2626,7 @@ dependencies = [
 
 [[package]]
 name = "demi-live-view-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-shared-types",
@@ -2640,7 +2640,7 @@ dependencies = [
 
 [[package]]
 name = "demi-machine-manager"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "clap",
  "demi-machine-manager-protocol",
@@ -2675,7 +2675,7 @@ dependencies = [
 
 [[package]]
 name = "demi-machine-manager-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-command-protocol",
  "demi-runner-protocol",
@@ -2689,7 +2689,7 @@ dependencies = [
 
 [[package]]
 name = "demi-mobile"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "aws-lc-rs",
  "base64 0.22.1",
@@ -2742,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-audio"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-browser"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-command-declarations",
  "demi-command-package-browser-protocol",
@@ -2774,14 +2774,14 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-changes"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-plugin-interface",
 ]
 
 [[package]]
 name = "demi-plugin-file"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-command-declarations",
  "demi-command-package-file-protocol",
@@ -2791,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-file-browser"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-plugin-interface",
  "futures-util",
@@ -2799,7 +2799,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-image"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
@@ -2815,7 +2815,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-interface"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-command-declarations",
  "demi-host-interface",
@@ -2833,7 +2833,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-media"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
@@ -2847,7 +2847,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-mobile"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-command-declarations",
  "demi-command-package-mobile-protocol",
@@ -2865,7 +2865,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-skills"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
@@ -2885,7 +2885,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-video"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
@@ -2899,7 +2899,7 @@ dependencies = [
 
 [[package]]
 name = "demi-plugin-web"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "demi-command-declarations",
@@ -2917,7 +2917,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-anthropic-api"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "demi-provider-common",
@@ -2931,7 +2931,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-bytedance"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2945,7 +2945,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-claude-code"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
@@ -2970,7 +2970,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-codex"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "bytes",
@@ -2992,7 +2992,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-common"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
@@ -3022,7 +3022,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-elevenlabs"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-provider-common",
@@ -3035,7 +3035,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-google"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
@@ -3052,7 +3052,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-grok-build"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "bytes",
@@ -3071,7 +3071,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-minimax"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-provider-common",
@@ -3085,7 +3085,7 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-openai-api"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-stream",
  "bytes",
@@ -3100,7 +3100,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "clap",
@@ -3143,7 +3143,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner-command-packages"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-command-protocol",
  "demi-command-sdk",
@@ -3163,7 +3163,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner-direct"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-live-view-protocol",
@@ -3183,7 +3183,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner-host"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-protocol",
@@ -3209,7 +3209,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner-jobs"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-declarations",
@@ -3232,7 +3232,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner-process"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "command-fds",
@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bytes",
  "demi-command-declarations",
@@ -3282,7 +3282,7 @@ dependencies = [
 
 [[package]]
 name = "demi-runner-shell"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "brush-builtins",
  "brush-core",
@@ -3338,7 +3338,7 @@ dependencies = [
 
 [[package]]
 name = "demi-server"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "bzip2",
  "clap",
@@ -3366,7 +3366,7 @@ dependencies = [
 
 [[package]]
 name = "demi-shared-artifacts"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "async-compression",
  "bytes",
@@ -3386,7 +3386,7 @@ dependencies = [
 
 [[package]]
 name = "demi-shared-cli"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "clap",
  "mimalloc",
@@ -3395,14 +3395,14 @@ dependencies = [
 
 [[package]]
 name = "demi-shared-gates"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "demi-shared-h264"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-shared-openh264",
  "openh264",
@@ -3415,7 +3415,7 @@ dependencies = [
 
 [[package]]
 name = "demi-shared-openh264"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "aws-lc-rs",
  "bzip2",
@@ -3429,7 +3429,7 @@ dependencies = [
 
 [[package]]
 name = "demi-shared-recording"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-shared-h264",
  "demi-shared-openh264",
@@ -3446,7 +3446,7 @@ dependencies = [
 
 [[package]]
 name = "demi-shared-recording-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "demi-shared-types",
  "schemars",
@@ -3456,7 +3456,7 @@ dependencies = [
 
 [[package]]
 name = "demi-shared-types"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3480,7 +3480,7 @@ dependencies = [
 
 [[package]]
 name = "demi-web-api-protocol"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "base64 0.22.1",
  "demi-command-protocol",
@@ -11948,7 +11948,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.63"
+version = "0.1.64"
 dependencies = [
  "axum",
  "clap",
