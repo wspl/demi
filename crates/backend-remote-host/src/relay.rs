@@ -274,6 +274,8 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
     }
     let command = call.path.join(" ");
     let name = command.clone();
+    let (entry_for_abort, call_id_for_abort, command_for_abort) =
+        (entry.clone(), call.call_id.clone(), command.clone());
     let (session, stopped) = (relaying.session.clone(), entry.stopped.clone());
     let task = async move {
         let call_id = call.call_id.clone();
@@ -350,7 +352,38 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "exit", call = %call_id, %error, "a message to a runner was not sent");
         }
     };
-    session.spawn_call(name, stopped, task);
+    // A handler aborted after its grace never answered: the call ends here
+    // with the reason it stopped for, so its caller does not wait for ever.
+    let aborted = {
+        let (relaying, entry, call_id) = (link.call_env(), entry_for_abort, call_id_for_abort);
+        let command = command_for_abort;
+        move || {
+            if relaying.session.remove_call(&call_id).is_none() {
+                return;
+            }
+            entry.finish_input();
+            let reason = entry
+                .cause()
+                .map_or_else(|| "rpc call ended".to_owned(), |cause| cause.text().to_owned());
+            let text = Inbound::RpcOutput {
+                call_id: call_id.clone(),
+                bytes: WireBytes(format!("{command}: {reason}\n").into_bytes()),
+            };
+            let exit = Inbound::RpcExit {
+                call_id: call_id.clone(),
+                exit_code: match entry.cause() {
+                    Some(Stop::Cancelled) => 130,
+                    _ => 1,
+                },
+            };
+            for message in [text, exit] {
+                if let Err(error) = relaying.send(&message) {
+                    tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "aborted_call", call = %call_id, %error, "a message to a runner was not sent");
+                }
+            }
+        }
+    };
+    session.spawn_call(name, stopped, task, aborted);
 }
 
 /// Why a call ended without its handler's exit code.

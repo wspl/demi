@@ -306,8 +306,11 @@ struct Running {
     stop: CancellationToken,
     /// Its job, once started.
     job: watch::Sender<Option<RemoteJob>>,
-    /// Asks it to end as lost, when its Host leaves the conversation.
+    /// Asks it to stop, when its Host leaves the conversation.
     withdrawal: Rc<Withdrawal>,
+    /// Asks its stop to end it as lost instead of waiting for a runner that
+    /// is away, which only that runner could report the stop of.
+    loses_if_away: Withdrawal,
     /// The output the backend received within the streams' views, in the
     /// order it came: the whole output when neither stream went beyond.
     received: RefCell<Vec<OutputRecord>>,
@@ -448,6 +451,7 @@ impl RemoteShellEnvironment {
             stop,
             job: watch::Sender::new(None),
             withdrawal: Rc::default(),
+            loses_if_away: Withdrawal::default(),
             received: RefCell::new(Vec::new()),
             settled: watch::Sender::new(false),
         });
@@ -488,11 +492,8 @@ impl RemoteShellEnvironment {
             async move {
                 tokio::select! {
                     reason = running.withdrawal.asked() => {
+                        running.loses_if_away.withdraw(&reason);
                         let _ = environment.stop_command(&command);
-                        let job = running.job.borrow().clone();
-                        if let Some(job) = job {
-                            job.abandon_if_away(&reason);
-                        }
                     }
                     () = running.settled() => {}
                     () = environment.0.detached.cancelled() => {}
@@ -724,7 +725,15 @@ impl RemoteShellEnvironment {
             if record.borrow_mut().mark_stopping() {
                 self.report(record);
             }
-            job.stop().await;
+            // A runner that is away when its command is being stopped for the
+            // Host's detach or the environment's end is not waited for.
+            tokio::select! {
+                _ = job.stop() => {}
+                _ = async {
+                    let reason = running.loses_if_away.asked().await;
+                    job.lose_when_away(&reason).await
+                } => {}
+            }
         };
         tokio::pin!(stop);
         let mut stopped = false;
@@ -1289,18 +1298,15 @@ impl ShellEnvironment for RemoteShellEnvironment {
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
             let running: Vec<_> = self.0.state.borrow().running.values().cloned().collect();
+            // A command whose Host's runner is away ends as lost: its stop
+            // could only be reported by that runner, which stops the job when
+            // it is back, and nothing here waits for a Host that may never
+            // return.
             for running in &running {
+                running.loses_if_away.withdraw(LEFT_AWAY);
                 running.stop.cancel();
             }
             for running in &running {
-                // A command whose Host's runner is away ends as lost: its
-                // stop could only be reported by that runner, which stops the
-                // job when it is back, and nothing here waits for a Host that
-                // may never return.
-                let job = running.job.borrow().clone();
-                if let Some(job) = job {
-                    job.abandon_if_away(LEFT_AWAY);
-                }
                 self.settled_or_let_go(running).await;
             }
         })
