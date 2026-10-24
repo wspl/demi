@@ -8,7 +8,7 @@
  */
 import type { Read } from '@demicodes/web-ui/files/file-cache'
 import type { FileReads } from '@demicodes/web-ui/files/kept-source'
-import type { FileText, FileUploadOptions } from '@demicodes/web-ui/files/types'
+import type { FileSearchEvent, FileSearchQuery, FileText, FileUploadOptions } from '@demicodes/web-ui/files/types'
 import type { OpenUserStream, StreamBytes, UserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { LiveFrameSplitter, frameKind } from '@demicodes/web-ui/live/frames'
 import { REFUSED_FRAME } from '@demicodes/web-ui/live/link'
@@ -18,6 +18,7 @@ import { reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { relayWatchLink, watchReceiver, watchText, type OpenConversationWatchLink } from '../conversation/file-watch'
 import { ApiError } from '../api/client'
 import { fileBrowserEntry, fileBrowserError } from '../api/files'
+import { searchEvents } from '../api/file-search'
 import {
   errorCodeSchema,
   listedSchema,
@@ -173,6 +174,12 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
             }, () => relay.remove!(path, signal)),
         }
       : {}),
+    ...(relay.search
+      ? {
+          search: (root: string, query: FileSearchQuery, signal: AbortSignal) =>
+            searchEitherPath(routeOf, root, query, signal, relay.search!),
+        }
+      : {}),
     ...(relay.upload
       ? {
           upload: (path: string, file: File, options: FileUploadOptions) =>
@@ -182,6 +189,68 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
             ),
         }
       : {}),
+  }
+}
+
+/**
+ * A search on a `search` channel, or on the relay as `eitherPath` chooses:
+ * the runner answers once the search started, then sends its lines as bytes
+ * until it ends. An abort, or a caller that stops reading, closes the channel,
+ * which stops the search on the Host.
+ */
+async function* searchEitherPath(
+  routeOf: RouteOf,
+  root: string,
+  query: FileSearchQuery,
+  signal: AbortSignal,
+  relay: NonNullable<FileReads['search']>,
+): AsyncGenerator<FileSearchEvent> {
+  let opened: OperationChannel<unknown> | null
+  let abort = () => {}
+  try {
+    opened = await eitherPath<OperationChannel<unknown> | null>(routeOf, async (peer, route) => {
+      const channel = await peer.open({ ...route.scope, op: 'search', root, query }, openedSchema, true, signal)
+      // An abort while the runner answers closes the channel too.
+      abort = () => channel.close()
+      signal.addEventListener('abort', abort, { once: true })
+      if (signal.aborted)
+        channel.close()
+      try {
+        await channel.answer()
+      } catch (error) {
+        // A channel the abort closed did not fail: the direct path stays as it was.
+        signal.throwIfAborted()
+        throw error
+      }
+      return channel
+    }, async () => null)
+  } catch (error) {
+    signal.removeEventListener('abort', abort)
+    throw fileBrowserError(error)
+  }
+  if (opened === null) {
+    signal.removeEventListener('abort', abort)
+    yield* relay(root, query, signal)
+    return
+  }
+  const channel = opened
+  const bytes = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const message = await channel.next()
+      if (message === null)
+        controller.close()
+      else if (message.kind === 'bytes')
+        controller.enqueue(message.bytes)
+      else
+        controller.error(new ChannelFailed('The runner sent text among bytes'))
+    },
+    cancel: () => channel.close(),
+  })
+  try {
+    yield* searchEvents(bytes)
+  } finally {
+    signal.removeEventListener('abort', abort)
+    channel.close()
   }
 }
 

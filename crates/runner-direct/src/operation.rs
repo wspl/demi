@@ -14,6 +14,7 @@ use demi_runner_protocol::direct::{
 };
 use demi_live_view_protocol::{FrameSplitter, VIDEO_FRAME, raw_kind};
 use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchRequest};
+use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::ReadAt;
 use futures_util::{Stream, StreamExt, future::BoxFuture};
 use tokio::sync::mpsc;
@@ -100,6 +101,10 @@ pub trait Operations: Send + Sync + 'static {
     fn list(&self, scope: Scope, path: Option<String>) -> Answer<Listing>;
     fn mkdir(&self, scope: Scope, path: String) -> Answer<()>;
     fn delete(&self, scope: Scope, path: String) -> Answer<()>;
+    /// Searches the text of the files under `root`
+    /// (`crates/runner-protocol/src/search.rs`): the search's lines, once its
+    /// query is read and `root` is a directory. Dropping them stops it.
+    fn search(&self, scope: Scope, root: String, query: SearchQuery) -> Answer<ByteStream>;
     /// The page's file watch: its `subscribe`, `unsubscribe` and `renew`
     /// messages come through `requests`, and the watch says what the
     /// relay's would.
@@ -401,6 +406,16 @@ async fn carry_out(
                 Err(error) => out.refuse(error).await,
             };
         }
+        ChannelHeader::Search { root, query, .. } => match operations.search(scope, root, query).await {
+            Ok(lines) => {
+                if out.answer(&Opened::new()).await {
+                    out.bytes(lines).await;
+                }
+            }
+            Err(error) => {
+                out.refuse(error).await;
+            }
+        },
         ChannelHeader::Watch { .. } => {
             if !out.answer(&Opened::new()).await {
                 return;

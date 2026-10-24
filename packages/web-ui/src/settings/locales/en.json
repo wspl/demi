@@ -129,7 +129,8 @@
       "new": "New conversation",
       "search": "Search conversations",
       "sidebar": "Toggle sidebar",
-      "settings": "Open settings"
+      "settings": "Open settings",
+      "searchFiles": "Search in files"
     }
   },
   "notifications": {

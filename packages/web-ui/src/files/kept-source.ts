@@ -39,7 +39,7 @@ export interface ContentReads {
  * built over them keeps what they answer, each with the Host's number
  * before it read.
  */
-export interface FileReads extends Pick<FileBrowserSource, 'platform' | 'home' | 'createDirectory' | 'upload' | 'remove'> {
+export interface FileReads extends Pick<FileBrowserSource, 'platform' | 'home' | 'createDirectory' | 'upload' | 'remove' | 'search'> {
   list(path: string): Promise<Answered<FileBrowserEntry[]>>
   /**
    * A file's text with its version. A read the browser's cache does not
@@ -172,6 +172,8 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
           },
         }
       : {}),
+    // What a search finds is shown once, never kept.
+    ...(reads.search ? { search: reads.search } : {}),
   }
 }
 

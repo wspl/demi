@@ -226,5 +226,25 @@
     "previous": "上一個",
     "next": "下一個",
     "none": "沒有開啟的圖片或影片。"
+  },
+  "tabs": {
+    "files": "檔案",
+    "search": "搜尋"
+  },
+  "search": {
+    "placeholder": "搜尋",
+    "matchCase": "大小寫須相符",
+    "wholeWord": "全字拼寫須相符",
+    "regex": "使用規則運算式",
+    "filters": "要包含和排除的檔案",
+    "include": "要包含的檔案，例如 src, *.ts",
+    "exclude": "要排除的檔案",
+    "includeIgnored": "也搜尋 .gitignore 排除的檔案",
+    "searching": "正在搜尋…",
+    "nothing": "沒有結果",
+    "resultCount": "{count} 個結果",
+    "inFiles": "{count} 個檔案中有 {results}",
+    "limited": "{found}。搜尋已達上限。",
+    "results": "搜尋結果"
   }
 }

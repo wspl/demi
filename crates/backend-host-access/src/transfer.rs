@@ -51,6 +51,7 @@ use demi_backend_remote_host::{OpenedRead, PipeReader, PipeWriter};
 use demi_host_interface::{
     ByteRange, FileStat, HostError, WhenExists, WriteOptions,
 };
+use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::ReadAt;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
@@ -100,6 +101,14 @@ pub enum Download {
         lease: Lease,
         read_at: ReadAt,
     },
+}
+
+/// A search's lines as the Host writes them
+/// (`crates/runner-host/src/search.rs`); the edge holds the lease until the
+/// last one, or until the user's browser leaves, which stops the search.
+pub struct OpenSearch {
+    pub body: PipeReader,
+    pub lease: Lease,
 }
 
 /// An upload's write: the Host takes the bytes the edge writes and puts the
@@ -197,6 +206,29 @@ impl dyn HostShard + '_ {
             lease,
             read_at,
         })
+    }
+
+    /// Admits a search of the text of the files under `root` on the
+    /// conversation's primary Host, its working directory when `root` is
+    /// none, and answers its lines as a stream once the Host started it.
+    pub async fn open_search(
+        &self,
+        id: &ConversationId,
+        root: Option<String>,
+        query: SearchQuery,
+        cancel: &CancellationToken,
+    ) -> Result<OpenSearch, HostAccessError> {
+        let record = self.owned_conversation(id).await?;
+        let slot = self.conversations().slot(&record.id);
+        // From the check to the registration nothing awaits, as a download's.
+        let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
+        let waits = Waits::until_ended(cancel, &open.ended);
+        let admitted = self.admit_host(&record.id, None, waits).await?;
+        bind_to(&open, &admitted)?;
+        let root = root.unwrap_or_else(|| admitted.host.root.clone());
+        let body = waits.wait(admitted.host.host.search(&root, query)).await??;
+        let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
+        Ok(OpenSearch { body, lease })
     }
 
     /// Admits an upload of one file to the conversation's primary Host: a

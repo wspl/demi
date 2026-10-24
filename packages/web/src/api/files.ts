@@ -8,6 +8,7 @@ import {
   type FileBrowserFailure,
   type FileBrowserLink,
   type FileBrowserSource,
+  type FileSearchQuery,
   type FileUploadOptions,
 } from '@demicodes/web-ui/files/types'
 import { z } from 'zod'
@@ -20,7 +21,9 @@ import {
   type CreateDirectory,
   type DirectoryEntry,
   type LinkTarget,
+  type SearchRequest,
 } from './generated/web-api'
+import { searchEvents } from './file-search'
 import { uploadBytes } from './uploads'
 import { t } from './locales/text'
 import type { Device } from '../state/types'
@@ -72,6 +75,8 @@ function failureKind(error: ApiError): FileBrowserFailure['kind'] {
     return 'exists'
   if (error.code === 'not_repository')
     return 'not-repository'
+  if (error.code === 'invalid_pattern')
+    return 'invalid-pattern'
   if (error.code === 'not_text' || error.status === 415)
     return 'binary'
   if (error.code === 'file_too_large' || error.status === 413)
@@ -105,6 +110,7 @@ function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): Sen
     case 'fs_not_found':
     case 'host_operation_failed':
     case 'changes_failed':
+    case 'invalid_pattern':
       if (error.message !== '') {
         return error.message
       }
@@ -127,6 +133,8 @@ function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): Sen
       return t('files.tooLarge')
     case 'not-repository':
       return t('files.notRepository')
+    case 'invalid-pattern':
+      return t('files.invalidPattern')
     case 'other':
       return t('files.other')
   }
@@ -198,6 +206,9 @@ export function rawFileContents(endpoint: string, fixed: Record<string, string> 
   }
 }
 
+/** The longest a search's answer streams before the page stops it. */
+const SEARCH_TIMEOUT_MS = 10 * 60_000
+
 /** The routes a file source reads and writes through; each one it lacks leaves that capability out. */
 export interface FileRoutes {
   /** Lists a directory, and makes one with `POST`. */
@@ -212,6 +223,8 @@ export interface FileRoutes {
   upload?: string
   /** Deletes a file or a directory with `DELETE`. */
   remove?: string
+  /** Searches the text of the files under a directory with `POST`. */
+  search?: string
 }
 
 /**
@@ -220,7 +233,15 @@ export interface FileRoutes {
  */
 export function conversationFileRoutes(conversationId: string): Required<FileRoutes> {
   const base = `/conversations/${encodeURIComponent(conversationId)}/fs`
-  return { directory: base, lists: `${base}/lists`, text: `${base}/file`, raw: `${base}/raw`, upload: `${base}/raw`, remove: base }
+  return {
+    directory: base,
+    lists: `${base}/lists`,
+    text: `${base}/file`,
+    raw: `${base}/raw`,
+    upload: `${base}/raw`,
+    remove: base,
+    search: `${base}/search`,
+  }
 }
 
 /** What the page keeps of each Host's files, by its device: every conversation on a Host shares it. */
@@ -352,6 +373,7 @@ export function fileReads(
     raw: rawEndpoint,
     upload: uploadEndpoint,
     remove: removeEndpoint,
+    search: searchEndpoint,
   } = endpoints
   const listOne: ListOne = async (path) => {
     if (!endpoint) {
@@ -426,6 +448,27 @@ export function fileReads(
             } catch (error) {
               browserError(error)
             }
+          },
+        }
+      : {}),
+    ...(searchEndpoint
+      ? {
+          async *search(root: string, query: FileSearchQuery, signal: AbortSignal) {
+            let response: Response
+            try {
+              response = await apiRequest(searchEndpoint, {
+                method: 'POST',
+                signal,
+                // The answer streams for as long as the search runs.
+                timeoutMs: SEARCH_TIMEOUT_MS,
+                ...jsonBody({ root, query } satisfies SearchRequest),
+              })
+            } catch (error) {
+              browserError(error)
+            }
+            if (!response.body)
+              throw new FileBrowserError('other', t('files.searchCut'))
+            yield* searchEvents(response.body)
           },
         }
       : {}),

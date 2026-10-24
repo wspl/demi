@@ -11,6 +11,7 @@ import type { SettingsKeyBinding } from './types'
  * - New conversation is ⇧⌘O, as in ChatGPT: ⌘N is the browser's new window, which a
  *   page never receives.
  * - Search is ⌘K, as in Slack, Linear and ChatGPT.
+ * - Search in files is ⇧⌘F, as in VS Code and Zed.
  * - The sidebar is ⌘\, as in Notion, whose editor keeps ⌘B for bold and ⇧⌘S for
  *   strikethrough as the composer does: the focused composer takes its keys first, so
  *   a sidebar shortcut on either would never run while it has the focus.
@@ -21,12 +22,14 @@ const APP_SHORTCUTS = {
     { id: 'search', keys: '⌘K' },
     { id: 'sidebar', keys: '⌘\\' },
     { id: 'settings', keys: '⌘,' },
+    { id: 'searchFiles', keys: '⇧⌘F' },
   ],
   pc: [
     { id: 'new', keys: 'Ctrl+Shift+O' },
     { id: 'search', keys: 'Ctrl+K' },
     { id: 'sidebar', keys: 'Ctrl+\\' },
     { id: 'settings', keys: 'Ctrl+,' },
+    { id: 'searchFiles', keys: 'Ctrl+Shift+F' },
   ],
 } as const
 
@@ -48,6 +51,8 @@ export function shortcutAction(id: string): SentenceText {
       return t('keyboard.actions.sidebar')
     case 'settings':
       return t('keyboard.actions.settings')
+    case 'searchFiles':
+      return t('keyboard.actions.searchFiles')
     default:
       return id
   }

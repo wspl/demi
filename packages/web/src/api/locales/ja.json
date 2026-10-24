@@ -9,6 +9,8 @@
     "notRepository": "Git リポジトリ内にありません。",
     "other": "ホストが応答しませんでした。",
     "conversationBusy": "チャットのホストを変更しています。",
-    "selectDevice": "接続済みのデバイスを選択してください。"
+    "selectDevice": "接続済みのデバイスを選択してください。",
+    "searchCut": "検索が完了する前に止まりました。",
+    "invalidPattern": "検索パターンが正しくありません。"
   }
 }

@@ -203,6 +203,7 @@
     "not_repository": "このフォルダーは Git リポジトリにありません。",
     "ambiguous": "コミットの省略形があいまいです。",
     "changes_failed": "変更を読み取れませんでした。",
+    "invalid_pattern": "検索パターンが正しくありません。",
     "host_operation_failed": "ホストで操作に失敗しました。",
     "forbidden_origin": "このページからはそのリクエストを行えません。",
     "unknown_stream": "ストリームが見つかりませんでした。",

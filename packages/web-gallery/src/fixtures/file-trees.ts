@@ -192,3 +192,66 @@ export function linksSource(): MemoryFileSource {
     }),
   })
 }
+
+/** A project whose text Search finds `retryDelay` in: code, its test, a document and a minified bundle of one long line. */
+function searchTree(): MemoryDirectory {
+  const bundle = Array.from({ length: 12 }, (_, index) =>
+    `function r${index}(e){return new Promise(t=>setTimeout(t,e.retryDelay*2**${index}))}`).join(';')
+  return dir({
+    dist: dir({ 'app.min.js': textFile(`var c={retryDelay:250};${bundle}\n`, at) }),
+    docs: dir({ 'network.md': textFile('# Network\n\nA request that fails waits `retryDelay` milliseconds, then twice as long each time.\n', at) }),
+    src: dir({
+      net: dir({
+        'client.ts': textFile([
+          'export const retryDelay = 250',
+          '',
+          'export async function fetchWithRetry(url: string): Promise<Response> {',
+          '  for (let attempt = 0; ; attempt++) {',
+          '    try {',
+          '      return await fetch(url)',
+          '    } catch (error) {',
+          '      if (attempt === 2)',
+          '        throw error',
+          '      await sleep(retryDelay * 2 ** attempt)',
+          '    }',
+          '  }',
+          '}',
+          '',
+        ].join('\n'), at),
+        'client.test.ts': textFile("import { retryDelay } from './client'\n\ntest('waits before a retry', () => {\n  expect(retryDelay).toBe(250)\n})\n", at),
+      }),
+      'index.ts': textFile("export { fetchWithRetry } from './net/client'\n", at),
+    }),
+    'README.md': textFile('# Example\n\nA client that retries.\n', at),
+  })
+}
+
+/** The search workspace, answering as a Host does. */
+export function searchSource(): FileBrowserSource {
+  return wrap(searchTree(), 150)
+}
+
+/** The search workspace on a Host whose search reaches its limit: it stops after what it found, and says so. */
+export function limitedSearchSource(): FileBrowserSource {
+  const source = wrap(searchTree())
+  const search = source.search!
+  return {
+    ...source,
+    async *search(root, query, signal) {
+      for await (const event of search(root, query, signal))
+        yield event.type === 'end' ? { ...event, limitReached: true } : event
+    },
+  }
+}
+
+/** The search workspace on a Host whose search never ends, until Enter or another query stops it. */
+export function searchingSource(): FileBrowserSource {
+  return {
+    ...wrap(searchTree()),
+    async *search(_root, _query, signal) {
+      await new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+    },
+  }
+}

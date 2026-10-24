@@ -226,5 +226,25 @@
     "previous": "Previous",
     "next": "Next",
     "none": "No picture or video is open."
+  },
+  "tabs": {
+    "files": "Files",
+    "search": "Search"
+  },
+  "search": {
+    "placeholder": "Search",
+    "matchCase": "Match case",
+    "wholeWord": "Match whole word",
+    "regex": "Use regular expression",
+    "filters": "Files to Include and Exclude",
+    "include": "Files to include, such as src, *.ts",
+    "exclude": "Files to exclude",
+    "includeIgnored": "Also search files .gitignore leaves out",
+    "searching": "Searching…",
+    "nothing": "No results",
+    "resultCount": "{count} result | {count} results",
+    "inFiles": "{results} in {count} file | {results} in {count} files",
+    "limited": "{found}. The search stopped at its limit.",
+    "results": "Search results"
   }
 }

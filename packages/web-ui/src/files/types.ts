@@ -55,12 +55,14 @@ export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; r
  *
  * - `exists`: a file an upload was not to replace.
  * - `not-repository`: a history read of a folder outside any Git repository.
+ * - `invalid-pattern`: a search's pattern or one of its globs is not one; the
+ *   message says why, in the Host's words.
  * - `not-found`, `binary` and `too-large`: what the Host answered of the path,
  *   respectively nothing there, a file that is not text, and one too large to
  *   read as text. The kept files keep each as an answer, never as a failure.
  */
 export interface FileBrowserFailure {
-  kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'not-repository' | 'other'
+  kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'not-repository' | 'invalid-pattern' | 'other'
   message?: SentenceText
   /** The request that failed, which the view shows with the failure. */
   requestId?: string | null
@@ -176,7 +178,47 @@ export interface FileBrowserSource {
    * upload then cannot replace a folder.
    */
   remove?(path: string, signal?: AbortSignal): Promise<void>
+  /**
+   * Searches the text of the files under `root`, an absolute path, and yields
+   * what it finds as the Host finds it (`FileSearchEvent`). Aborting `signal`
+   * stops the search on the Host. Rejects with a `FileBrowserError`, of kind
+   * `invalid-pattern` for a query the Host cannot read. Absent when the source
+   * cannot search; Files then offers no Search.
+   */
+  search?(root: string, query: FileSearchQuery, signal: AbortSignal): AsyncIterable<FileSearchEvent>
 }
+
+/** What a search looks for (`crates/runner-protocol/src/search.rs`). */
+export interface FileSearchQuery {
+  /** The text to find, or a regular expression when `regex`; a match never spans lines. */
+  pattern: string
+  caseSensitive: boolean
+  wholeWord: boolean
+  regex: boolean
+  /** Globs of the paths to search, relative to the root; none searches every file. */
+  include: string[]
+  /** Globs of the paths to leave out. */
+  exclude: string[]
+  /** Also searches what `.gitignore` leaves out. */
+  includeIgnored: boolean
+}
+
+/**
+ * A match a search found, one result: its line, 1-based, the part of the line
+ * that shows it, and where it is there, in UTF-16 code units of `text`; `end`
+ * is `start` for a pattern that matches only a place, as `^`.
+ */
+export interface FileSearchMatch {
+  line: number
+  text: string
+  start: number
+  end: number
+}
+
+/** What a search yields: a file that matched, by its path relative to the root, or how the search ended. */
+export type FileSearchEvent =
+  | { type: 'file', path: string, matches: FileSearchMatch[] }
+  | { type: 'end', files: number, matches: number, limitReached: boolean }
 
 export interface FileUploadOptions {
   replace: boolean

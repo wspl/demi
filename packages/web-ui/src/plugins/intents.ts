@@ -15,8 +15,10 @@ export interface IntentPayloads {
    *   agent that named the file. Absent, the conversation's.
    * - `tree`, as Show in Files asks, also shows the view's tree with the file
    *   selected and scrolled into view.
+   * - `search`, as Search in Files asks, shows the view's Search with its query
+   *   selected, and keeps the file the view shows; it names no path.
    */
-  file: { path: string; line?: number; root?: string; tree?: true }
+  file: { path: string; line?: number; root?: string; tree?: true; search?: true }
   /**
    * A request's changes, as its line or a file pill under one of its calls
    * names them: the request, its file, and the edit of it or All Changes.

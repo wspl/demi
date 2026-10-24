@@ -286,6 +286,9 @@ pub enum ErrorCode {
     Ambiguous,
     /// The working tree could not be read.
     ChangesFailed,
+    /// A search's pattern, or one of its globs, is not one; the message
+    /// says why, in the Host's words.
+    InvalidPattern,
     /// The Host failed the operation in a way no other code names.
     HostOperationFailed,
     /// The request could act with the user's session and came from a page

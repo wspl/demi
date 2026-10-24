@@ -129,7 +129,8 @@
       "new": "新對話",
       "search": "搜尋對話",
       "sidebar": "切換側邊欄",
-      "settings": "開啟設定"
+      "settings": "開啟設定",
+      "searchFiles": "在檔案中搜尋"
     }
   },
   "notifications": {

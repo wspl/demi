@@ -226,5 +226,25 @@
     "previous": "前へ",
     "next": "次へ",
     "none": "開いている画像やビデオはありません。"
+  },
+  "tabs": {
+    "files": "ファイル",
+    "search": "検索"
+  },
+  "search": {
+    "placeholder": "検索",
+    "matchCase": "大文字と小文字を区別",
+    "wholeWord": "単語単位で検索",
+    "regex": "正規表現を使用",
+    "filters": "含めるファイルと除外するファイル",
+    "include": "含めるファイル（例: src, *.ts）",
+    "exclude": "除外するファイル",
+    "includeIgnored": ".gitignore で除外されたファイルも検索",
+    "searching": "検索しています…",
+    "nothing": "結果はありません",
+    "resultCount": "{count} 件の結果",
+    "inFiles": "{count} 個のファイルに {results}",
+    "limited": "{found}。検索は上限で止まりました。",
+    "results": "検索結果"
   }
 }

@@ -328,6 +328,20 @@ pub enum ChannelHeader {
         #[garde(length(min = 1), custom(without_nul))]
         path: String,
     },
+    /// Searches the text of the files under `root`
+    /// (`crates/runner-protocol/src/search.rs`): the runner answers
+    /// [`Opened`], then the search's lines as bytes, until the search ends or
+    /// the channel closes.
+    Search {
+        #[garde(custom(conversation_name))]
+        conversation: String,
+        #[garde(length(min = 1), custom(without_nul))]
+        cwd: String,
+        #[garde(length(min = 1), custom(without_nul))]
+        root: String,
+        #[garde(dive)]
+        query: crate::search::SearchQuery,
+    },
     /// The file watch; `subscribe`, `unsubscribe` and `renew` messages
     /// follow, as on the relay.
     Watch {
@@ -351,6 +365,7 @@ impl ChannelHeader {
         | Self::List { conversation, cwd, .. }
         | Self::Mkdir { conversation, cwd, .. }
         | Self::Delete { conversation, cwd, .. }
+        | Self::Search { conversation, cwd, .. }
         | Self::Watch { conversation, cwd }) = self
         else {
             return None;
@@ -458,10 +473,13 @@ pub enum ChannelErrorCode {
     /// relay, whose messages are larger, answers it.
     TooLarge,
     Busy,
+    /// A search's pattern or one of its globs is not one.
+    InvalidPattern,
 }
 
 /// The runner's first message when it carries out an operation that
-/// answers nothing more: `stream`, `write`, `mkdir`, `delete` and `watch`.
+/// answers nothing more: `stream`, `write`, `mkdir`, `delete`, `watch` and
+/// `search`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Opened {

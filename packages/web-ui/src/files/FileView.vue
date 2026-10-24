@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight } from '@lucide/vue'
 import { showToast } from '../infra/toast'
 import IconButton from '../ui/IconButton.vue'
+import Segmented from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileContent from './FileContent.vue'
+import FileSearch from './FileSearch.vue'
 import FileTree from './FileTree.vue'
 import TreeFrame from './TreeFrame.vue'
 import { TREE_WIDTH } from './file-view'
@@ -36,6 +38,10 @@ import type { FileBrowserSource, FileDirectory } from './types'
  *
  * Files dropped on the tree, or uploaded from its menu, list under it until
  * cleared (`FileTree`).
+ *
+ * A source that searches gives the tree's place two tabs, Files and Search
+ * (`FileSearch`): each keeps what it shows while the other does, and a line
+ * Search found opens its file at that line.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -60,7 +66,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  open: [path: string]
+  /** A file to show, and the line to open it at, from Search. */
+  open: [path: string, line?: number]
   back: []
   forward: []
   /** The tree's caption chose another of `directories`. */
@@ -98,12 +105,37 @@ async function showInTree(): Promise<void> {
   const path = props.path
   if (path === null)
     return
+  treeTab.value = 'files'
   frame.value?.show()
   await nextTick()
   treeView.value?.reveal(path, false)
 }
 
-defineExpose({ showInTree })
+/** What the tree's place shows: the tree, or Search. */
+const treeTab = ref<'files' | 'search'>('files')
+const searchView = ref<InstanceType<typeof FileSearch> | null>(null)
+const treeTabs = computed(() => [
+  { value: 'files' as const, label: t('tabs.files') },
+  { value: 'search' as const, label: t('tabs.search') },
+])
+
+/** Search in Files: Search, shown where the tree is, with its query focused and selected. */
+async function showSearch(): Promise<void> {
+  if (!props.source.search)
+    return
+  treeTab.value = 'search'
+  frame.value?.show()
+  await nextTick()
+  searchView.value?.focus()
+}
+
+/** A line Search found: its file at that line, the tree over the file put away as a pick in it would. */
+function openFound(path: string, line: number): void {
+  frame.value?.dismiss()
+  emit('open', path, line)
+}
+
+defineExpose({ showInTree, showSearch })
 
 // A file the tree opened, whose link the tree has just read again.
 let openedFromTree: string | null = null
@@ -174,6 +206,7 @@ async function go(target: string): Promise<void> {
 watch(located, async (folder) => {
   if (folder === null)
     return
+  treeTab.value = 'files'
   frame.value?.show()
   await nextTick()
   treeView.value?.reveal(folder, true)
@@ -227,17 +260,35 @@ onBeforeUnmount(() => {
       />
     </template>
     <template #tree>
-      <FileTree
-        ref="treeView"
-        :source="source"
-        :root="root"
-        :root-name="rootName"
-        :directories="directories"
-        :home="source.home"
-        :selected="located ?? path"
-        @open="openFromTree"
-        @switch="emit('switchDirectory', $event)"
-      />
+      <!-- The editor's surface, which the tree paints itself, under the tabs and Search too. -->
+      <div class="flex h-full min-h-0 flex-col bg-surface-editor">
+        <div v-if="source.search" class="flex shrink-0 px-2 pt-2">
+          <Segmented v-model="treeTab" :options="treeTabs" size="xs" fit />
+        </div>
+        <!-- FileTree has more than one root, which `v-show` cannot hide. -->
+        <div v-show="treeTab === 'files'" class="min-h-0 flex-1">
+          <FileTree
+            ref="treeView"
+            :source="source"
+            :root="root"
+            :root-name="rootName"
+            :directories="directories"
+            :home="source.home"
+            :selected="located ?? path"
+            @open="openFromTree"
+            @switch="emit('switchDirectory', $event)"
+          />
+        </div>
+        <FileSearch
+          v-if="source.search"
+          v-show="treeTab === 'search'"
+          ref="searchView"
+          class="min-h-0 flex-1"
+          :source="source"
+          :root="root"
+          @open="openFound"
+        />
+      </div>
     </template>
   </TreeFrame>
 </template>

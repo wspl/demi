@@ -23,7 +23,7 @@ use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
     AbsolutePath, ChangeSides, ChangesQuery, CommitName, CommitQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryLists, DirectoryQuery, ListedDirectories, ListedDirectory, LogQuery,
-    FileQuery, FileText, RawFileQuery, RemoveQuery, TreeFileQuery,
+    FileQuery, FileText, RawFileQuery, RemoveQuery, SearchRequest, TreeFileQuery,
     UploadQuery, WorkingTreeChanges,
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
@@ -38,7 +38,7 @@ use super::listener::Peer;
 use super::query::QueryParams;
 use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
 use demi_backend_host_access::access::{ConversationHost, HostAccessError, Refusal};
-use demi_backend_host_access::transfer::{Download, DownloadRequest, RangeAnswer};
+use demi_backend_host_access::transfer::{Download, DownloadRequest, OpenSearch, RangeAnswer};
 
 pub(super) async fn list(
     State(state): State<AppState>,
@@ -353,6 +353,46 @@ pub(super) async fn raw(
             Ok(read_answer(&read_at, (part.status(), headers, body)))
         }
     }
+}
+
+/// A search of the text of the files under a directory, the conversation's
+/// working directory without one (`crates/runner-host/src/search.rs`): its
+/// lines as the Host finds them, one JSON object per line, streamed as a
+/// download is, so the user's browser that leaves stops the search. A pattern
+/// or a glob that is not one answers 400 `invalid_pattern`.
+pub(super) async fn search(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    ConnectInfo(peer): ConnectInfo<Peer>,
+    Path(id): Path<String>,
+    JsonBody(SearchRequest { root, query }): JsonBody<SearchRequest>,
+) -> Result<Response, ApiError> {
+    let conversation = conversation_id(&id)?;
+    let root = root.map(|root| root.as_str().to_owned());
+    let opened = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, cancel| async move {
+            shard
+                .host_shard()
+                .open_search(&conversation, root, query, &cancel)
+                .await
+        })
+        .await?;
+    let OpenSearch { body, lease } = match opened {
+        Ok(opened) => opened,
+        Err(HostAccessError::Host(error)) if error.code() == Some("invalid_pattern") => {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidPattern, error.message));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    // From here a connection nothing moves on is closed, as a download's.
+    let watch = peer.control.watch(TRANSFER_IDLE, lease.ending());
+    let headers = [
+        (axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/x-ndjson")),
+        (axum::http::header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+    ];
+    Ok((headers, paced_body(body, lease, watch)).into_response())
 }
 
 /// An upload (§ Host operations): the request's body streams into the file

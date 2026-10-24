@@ -57,6 +57,7 @@ pub mod git;
 mod history;
 pub mod host;
 pub mod numbers;
+pub mod search;
 pub mod subscriptions;
 pub mod volumes;
 pub mod watches;

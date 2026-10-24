@@ -9,6 +9,8 @@
     "notRepository": "It isn’t in a Git repository.",
     "other": "The Host didn’t answer.",
     "conversationBusy": "The conversation is changing its Host.",
-    "selectDevice": "Select a connected device."
+    "selectDevice": "Select a connected device.",
+    "searchCut": "The search stopped before it finished.",
+    "invalidPattern": "The search pattern isn’t valid."
   }
 }

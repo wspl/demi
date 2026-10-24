@@ -501,6 +501,19 @@ pub enum Inbound {
         limit: u64,
         output: PipeRef,
     },
+    /// Searches the text of the files under `root`
+    /// (`crates/runner-host/src/search.rs`). The reply comes once the query is
+    /// read and `root` is a directory; then `output` carries what the search
+    /// finds, one [`crate::search::SearchLine`] per line, until it ends or the
+    /// pipe closes.
+    FsSearch {
+        id: String,
+        #[garde(length(min = 1))]
+        root: String,
+        #[garde(dive)]
+        query: crate::search::SearchQuery,
+        output: PipeRef,
+    },
     /// Looks at several paths at once (`crates/runner-host/src/lib.rs`):
     /// each answers whether it exists, its kind, a directory's entries, or a
     /// file's size with its first bytes, up to the path's `limit`, which go
@@ -986,6 +999,7 @@ impl Inbound {
             | Self::FsWriteDirectory { .. }
             | Self::FsRemoveAll { .. }
             | Self::FsReadFiles { .. }
+            | Self::FsSearch { .. }
             | Self::FsLook { .. }
             | Self::FsExists { .. }
             | Self::FsStat { .. }
@@ -1035,6 +1049,7 @@ impl Inbound {
             | Self::FsDownloadFile { id, .. }
             | Self::FsLook { id, .. }
             | Self::FsReadFiles { id, .. }
+            | Self::FsSearch { id, .. }
             | Self::FsWriteDirectory { id, .. }
             | Self::FsRemoveAll { id, .. }
             | Self::FsExists { id, .. }

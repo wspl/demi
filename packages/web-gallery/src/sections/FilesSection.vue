@@ -19,7 +19,7 @@ import FileView from '@demicodes/web-ui/files/FileView.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
 import { uploadsOf, type FileUploads, type UploadClash, type UploadItem, type UploadPlacement } from '@demicodes/web-ui/files/file-uploads'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { LINKS, SHOTS_DIR, TREE_ROOT, TREE_SELECTED, failingSource, linksSource, offlineSource, rowsSource, screenshotsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
+import { LINKS, SHOTS_DIR, TREE_ROOT, TREE_SELECTED, failingSource, limitedSearchSource, linksSource, offlineSource, rowsSource, screenshotsSource, searchSource, searchingSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
@@ -315,6 +315,16 @@ const treeDirectoryPick = ref<string | null>(null)
 const linksTree = linksSource()
 const linksTreeSelected = ref<string | null>(LINKS.deep)
 const linkFiles = linksSource()
+const searchFiles = searchSource()
+const limitedSearchFiles = limitedSearchSource()
+const searchingFiles = searchingSource()
+/** Each search specimen's file shown and its line, as its view opened them. */
+const searchShown = reactive<Record<'live' | 'limited' | 'searching', { path: string | null, line: number | null }>>({
+  live: { path: null, line: null },
+  limited: { path: null, line: null },
+  searching: { path: null, line: null },
+})
+const searchViews: Record<'live' | 'limited' | 'searching', InstanceType<typeof FileView> | null> = { live: null, limited: null, searching: null }
 const linkFilePath = ref<string>(LINKS.file)
 const missingLinks = linksSource()
 const missingLinkPath = ref<string>(LINKS.missing)
@@ -539,6 +549,42 @@ onMounted(() => {
             />
           </div>
         </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Search"
+        note="The tree's place switches to Search with the tabs above it, or with Search in Files, ⇧⌘F, which the buttons stand in for. Type a query and press Enter: retryDelay finds a match in each file here. Each match is a row, as Visual Studio Code lists them, with its line's number and the part of the line around it, the match marked, so the minified bundle's one long line lists every match it holds, each in sight. A file's row folds its matches and shows how many it holds; a click on a match opens its file at that line. Down from the field moves into the results, where the arrow keys move and fold and Enter opens. The toggles match case, whole words and regular expressions; a pattern the Host refuses, such as (, says why under the field. The folded row holds globs of files to include and to exclude, such as src or *.md, which choose among the files the ignore files leave in, and the box that searches what .gitignore leaves out too. Enter again starts over, and a search that runs stops when another starts or the view goes away."
+      >
+        <div class="flex flex-wrap gap-6">
+          <GallerySpecimen
+            v-for="[kind, variant, source] in ([
+              ['live', 'search · Enter searches the workspace', searchFiles],
+              ['limited', 'a search that reached its limit', limitedSearchFiles],
+              ['searching', 'a search that runs · Enter stops it and starts over', searchingFiles],
+            ] as const)"
+            :key="kind"
+            :variant="variant"
+            wide
+          >
+            <div class="flex flex-col gap-2">
+              <div class="flex flex-wrap gap-1">
+                <Button size="sm" @click="searchViews[kind]?.showSearch()">Search in Files</Button>
+              </div>
+              <div class="gallery-frame flex h-[24rem] overflow-hidden">
+                <FileView
+                  :ref="(view) => { searchViews[kind] = view as InstanceType<typeof FileView> | null }"
+                  class="w-full"
+                  :source="source"
+                  :root="TREE_ROOT"
+                  :path="searchShown[kind].path"
+                  :line="searchShown[kind].line"
+                  @open="(path: string, line?: number) => { searchShown[kind].path = path; searchShown[kind].line = line ?? null }"
+                  @back="productWould('Show the File Before')"
+                  @forward="productWould('Show the File After')"
+                />
+              </div>
+            </div>
+          </GallerySpecimen>
+        </div>
       </GallerySection>
       <GallerySection
         title="Symbolic Links"

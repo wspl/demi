@@ -203,6 +203,7 @@
     "not_repository": "The folder isn’t in a Git repository.",
     "ambiguous": "The commit abbreviation is ambiguous.",
     "changes_failed": "The changes couldn’t be read.",
+    "invalid_pattern": "The search pattern isn’t valid.",
     "host_operation_failed": "The operation failed on the host.",
     "forbidden_origin": "This page isn’t allowed to make that request.",
     "unknown_stream": "The stream wasn’t found.",

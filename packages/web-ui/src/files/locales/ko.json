@@ -226,5 +226,25 @@
     "previous": "이전",
     "next": "다음",
     "none": "열린 사진이나 동영상이 없습니다."
+  },
+  "tabs": {
+    "files": "파일",
+    "search": "검색"
+  },
+  "search": {
+    "placeholder": "검색",
+    "matchCase": "대/소문자 구분",
+    "wholeWord": "단어 단위로",
+    "regex": "정규식 사용",
+    "filters": "포함할 파일과 제외할 파일",
+    "include": "포함할 파일(예: src, *.ts)",
+    "exclude": "제외할 파일",
+    "includeIgnored": ".gitignore에서 제외한 파일도 검색",
+    "searching": "검색 중…",
+    "nothing": "결과 없음",
+    "resultCount": "결과 {count}개",
+    "inFiles": "파일 {count}개에서 {results}",
+    "limited": "{found}. 검색이 한도에서 멈췄습니다.",
+    "results": "검색 결과"
   }
 }

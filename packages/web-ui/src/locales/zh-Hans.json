@@ -203,6 +203,7 @@
     "not_repository": "此文件夹不在 Git 存储库中。",
     "ambiguous": "提交缩写不明确。",
     "changes_failed": "无法读取更改。",
+    "invalid_pattern": "搜索模式无效。",
     "host_operation_failed": "操作在主机上失败。",
     "forbidden_origin": "此页面不允许发出该请求。",
     "unknown_stream": "未找到该流。",

@@ -321,6 +321,12 @@ const actions: Record<string, () => void> = {
       resources.sidebarCollapsed = !resources.sidebarCollapsed
   },
   settings: () => void settingsAddress.open(),
+  // The shown conversation's Files, at its Search.
+  searchFiles: () => {
+    const conversationId = activeId.value
+    if (conversationId !== null && work.canOpen('file'))
+      work.openIn(conversationId, { intent: 'file', payload: { path: '', search: true } })
+  },
 }
 useAppShortcuts(
   () => resources.signedIn,

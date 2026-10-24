@@ -226,5 +226,25 @@
     "previous": "上一个",
     "next": "下一个",
     "none": "没有打开的图片或视频。"
+  },
+  "tabs": {
+    "files": "文件",
+    "search": "搜索"
+  },
+  "search": {
+    "placeholder": "搜索",
+    "matchCase": "区分大小写",
+    "wholeWord": "全字匹配",
+    "regex": "使用正则表达式",
+    "filters": "要包含和排除的文件",
+    "include": "要包含的文件，如 src, *.ts",
+    "exclude": "要排除的文件",
+    "includeIgnored": "也搜索 .gitignore 排除的文件",
+    "searching": "正在搜索…",
+    "nothing": "没有结果",
+    "resultCount": "{count} 个结果",
+    "inFiles": "{count} 个文件中有 {results}",
+    "limited": "{found}。搜索已达上限。",
+    "results": "搜索结果"
   }
 }

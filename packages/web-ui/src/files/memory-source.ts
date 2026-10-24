@@ -10,6 +10,10 @@
  * - A source given an upload rate takes uploads at that rate, each landing as a
  *   file of its size; without one it takes no uploads.
  * - Directories are made and entries deleted at once.
+ * - A search finds what the Host's would in the text files, each match a
+ *   result with its line around it, with the browser's regular expressions
+ *   for the Host's. The tree holds no ignore files, so files that `.gitignore`
+ *   leaves out are none.
  *
  * The source keeps what it read as the product's does (`keptSource`), with the
  * subscriptions a simulated Host's watch answers (`SimulatedWatch`):
@@ -33,6 +37,8 @@ import {
   type FileBrowserSource,
   type FileBrowserPlatform,
   type FileContents,
+  type FileSearchMatch,
+  type FileSearchQuery,
 } from './types'
 import { joinPath, normalizePath, parentPath, resolveHostPath } from './paths'
 import { WatchChannel, type OpenWatchLink, type ReadAt, type Subject, type WatchLinkHandlers } from './watch-channel'
@@ -63,6 +69,78 @@ export interface MemoryLink {
 }
 
 export type MemoryNode = MemoryFile | MemoryDirectory | MemoryLink
+
+/** The most UTF-16 code units a result shows of its line, and of them before its match, as the Host's. */
+const LINE_UNITS = 240
+const LEAD_UNITS = 40
+
+/** The expression a query searches with: its pattern, or its text when it is no pattern. */
+function searchExpression(query: FileSearchQuery): RegExp {
+  const pattern = query.regex ? query.pattern : query.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  try {
+    return new RegExp(query.wholeWord ? `\\b(?:${pattern})\\b` : pattern, query.caseSensitive ? 'g' : 'gi')
+  } catch (error) {
+    throw new FileBrowserError('invalid-pattern', error instanceof Error ? `${error.message}.` : undefined)
+  }
+}
+
+/**
+ * Whether `path`, relative to the directory searched, or one of its folders
+ * matches `glob`, as a `.gitignore` line reads it: one without a slash
+ * matches a name at any depth, and `**` crosses folders.
+ */
+function globMatches(glob: string, path: string): boolean {
+  const trimmed = glob.replace(/\/+$/, '')
+  const anchored = trimmed.includes('/')
+  const body = trimmed.replace(/^\//, '').split(/(\*\*\/?|\*|\?)/).map((part) => {
+    if (part.startsWith('**'))
+      return part.endsWith('/') ? '(?:.*/)?' : '.*'
+    if (part === '*')
+      return '[^/]*'
+    if (part === '?')
+      return '[^/]'
+    return part.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }).join('')
+  const expression = new RegExp(`^${anchored ? '' : '(?:.*/)?'}${body}(?:/.*)?$`)
+  return expression.test(path)
+}
+
+/** The results of a file's text: each match, with the part of its line that shows it. */
+function matchesIn(content: string, expression: RegExp): FileSearchMatch[] {
+  const found: FileSearchMatch[] = []
+  content.split(/\r?\n/).forEach((line, index) => {
+    const ranges: [number, number][] = []
+    let place: number | null = null
+    expression.lastIndex = 0
+    for (let match = expression.exec(line); match; match = expression.exec(line)) {
+      if (match[0] === '') {
+        place ??= match.index
+        expression.lastIndex += 1
+      } else {
+        ranges.push([match.index, match.index + match[0].length])
+      }
+    }
+    if (ranges.length === 0 && place !== null)
+      ranges.push([place, place])
+    const indent = line.length - line.trimStart().length
+    for (const range of ranges) {
+      // A place in the space the line starts with shows where its text starts.
+      const [at, end] = range[0] === range[1] && range[0] < indent ? [indent, indent] : range
+      const from = Math.min(at, indent)
+      const cutBefore = line.length - from > LINE_UNITS && at - from > LEAD_UNITS
+      const shownFrom = cutBefore ? at - LEAD_UNITS : from
+      const shownTo = Math.min(line.length, shownFrom + LINE_UNITS)
+      const prefix = cutBefore ? '…' : ''
+      found.push({
+        line: index + 1,
+        text: `${prefix}${line.slice(shownFrom, shownTo)}${shownTo < line.length ? '…' : ''}`,
+        start: prefix.length + at - shownFrom,
+        end: prefix.length + Math.min(end, shownTo) - shownFrom,
+      })
+    }
+  })
+  return found
+}
 
 /** How many links a path may pass before it counts as a loop, as Linux counts them. */
 const MAX_LINK_HOPS = 40
@@ -487,6 +565,44 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
       if (parent.failure)
         throw new FileBrowserError(parent.failure.kind, parent.failure.message)
       delete parent.children[name]
+    },
+    async *search(directory, query, signal) {
+      await wait()
+      if (options.offline)
+        throw new FileBrowserError('offline')
+      const expression = searchExpression(query)
+      const start = lookup(directory)
+      if (!start || start.kind !== 'directory')
+        throw new FileBrowserError('not-found', `No such directory: ${normalizePath(directory)}`)
+      const chosen = (path: string) =>
+        (query.include.length === 0 || query.include.some((glob) => globMatches(glob, path)))
+        && !query.exclude.some((glob) => globMatches(glob, path))
+      let files = 0
+      let matches = 0
+      // A link is not followed, as the Host's walk follows none.
+      const walk = function* (folder: MemoryDirectory, at: string): Generator<[string, string]> {
+        for (const [name, child] of Object.entries(folder.children)) {
+          const path = at === '' ? name : `${at}/${name}`
+          if (child.kind === 'directory' && !child.failure)
+            yield* walk(child, path)
+          else if (child.kind === 'file' && child.content !== undefined)
+            yield [path, child.content]
+        }
+      }
+      for (const [path, content] of walk(start, '')) {
+        if (!chosen(path))
+          continue
+        const found = matchesIn(content, expression)
+        if (found.length === 0)
+          continue
+        if (latencyMs > 0)
+          await delay(latencyMs, signal)
+        signal.throwIfAborted()
+        files += 1
+        matches += found.length
+        yield { type: 'file' as const, path, matches: found }
+      }
+      yield { type: 'end' as const, files, matches, limitReached: false }
     },
     ...(uploadRate === undefined ? {} : { upload: uploadAt(uploadRate) }),
   }
