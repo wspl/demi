@@ -66,5 +66,5 @@ jiff = { workspace = true, features = ["tz-system", "tzdb-bundle-platform"] }
 tracing.workspace = true
 url = "2"
 uuid = { version = "1", features = ["v4"] }
-# The public holidays an automation's working days skip, kept compressed.
+# The public holidays a schedule's working days skip, kept compressed.
 zstd = { version = "0.13", default-features = false }

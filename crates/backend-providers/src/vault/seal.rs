@@ -33,11 +33,12 @@ pub enum Row<'a> {
     },
     /// A user's credential's values, by the user and the credential's name.
     Credential { user: &'a UserId, name: &'a str },
-    /// An automation's URL secret, by the automation's id.
+    /// A schedule's URL secret, by the schedule's id.
+    ScheduleSecret(&'a str),
+    /// A URL secret as releases before schedules sealed it, by the id its
+    /// automation had, which the schedule keeps. Only the migration that
+    /// seals it again as a schedule's opens it.
     AutomationSecret(&'a str),
-    /// The Stripe signing secret the user pasted into an automation, by the
-    /// automation's id.
-    AutomationStripeSecret(&'a str),
 }
 
 impl Row<'_> {
@@ -54,10 +55,8 @@ impl Row<'_> {
                 (b"demi plugin secret", vec![*plugin, user.as_str(), *name])
             }
             Self::Credential { user, name } => (b"demi credential", vec![user.as_str(), *name]),
+            Self::ScheduleSecret(schedule) => (b"demi schedule secret", vec![*schedule]),
             Self::AutomationSecret(automation) => (b"demi automation secret", vec![*automation]),
-            Self::AutomationStripeSecret(automation) => {
-                (b"demi automation stripe secret", vec![*automation])
-            }
         };
         let mut name = label.to_vec();
         for id in ids {

@@ -104,7 +104,7 @@ pub use agent_message::{
     PermissionOutcome, Sender,
 };
 pub use block::{
-    AbortBlock, AccountSwitchBlock, AgentMessageBlock, AutomationMark, Block, CodeFile, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock, Entry,
+    AbortBlock, AccountSwitchBlock, AgentMessageBlock, ScheduleMark, Block, CodeFile, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock, Entry,
     ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, SIDE_QUESTIONS_SOURCE, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, ShellCommand, SteerBlock, StoppedBy,
     WORKING_DIRECTORY_SOURCE, PictureCopy, PictureFailure, ReplyPicture,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
@@ -134,7 +134,7 @@ pub use file_types::{
 #[doc(hidden)]
 pub use ids::__private;
 pub use ids::{
-    AutomationId, AutomationRunId, BlockId, CommandId, DeviceId, EmptyId, NodeId, OperationId, RequestId,
+    ScheduleId, ScheduleRunId, BlockId, CommandId, DeviceId, EmptyId, NodeId, OperationId, RequestId,
     Sequence, TurnId,
 };
 pub use log::{HostLogLine, LogLevel, LogLine, LogOrigin, is_event_name};

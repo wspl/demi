@@ -23,6 +23,8 @@
     "detachDevice": "デバイスをデタッチできませんでした",
     "changeModel": "モデルを変更できませんでした",
     "changeWorkflow": "ワークフローを変更できませんでした",
+    "pauseSchedule": "スケジュールを変更できませんでした",
+    "deleteSchedule": "スケジュールを削除できませんでした",
     "clearDraft": "下書きを消去できませんでした",
     "recallMessage": "メッセージを取り消せませんでした",
     "connectionLost": "接続が切断されました",

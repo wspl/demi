@@ -98,7 +98,7 @@
       "recall": "取り消す",
       "recalled": "メッセージを取り消しました",
       "notDelivered": "このメッセージは配信されませんでした。",
-      "fromAutomation": "オートメーション"
+      "fromSchedule": "スケジュール"
     },
     "assistant": {
       "fork": "分岐",

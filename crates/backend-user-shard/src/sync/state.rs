@@ -14,7 +14,6 @@ use demi_backend_runners::install::install_commands;
 use demi_conversation_socket_protocol::Version;
 use demi_plugin_interface::PluginError;
 use demi_web_api_protocol::auth::{Role, UserDto};
-use demi_web_api_protocol::automations::AutomationList;
 use demi_web_api_protocol::exposed_ports::ExposedPortList;
 use demi_web_api_protocol::instructions::InstructionsAnswer;
 use demi_web_api_protocol::port_forwards::PortForwardList;
@@ -88,7 +87,6 @@ impl Shard {
                 None
             }
         };
-        let automations_unread = services.control.unread_automation_runs(self.user().clone()).await?;
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         let public_url = services
@@ -114,7 +112,6 @@ impl Shard {
             conversations,
             cloud,
             logins,
-            automations_unread,
             passkey_rp_id: relying_party_id(public_url).map(str::to_owned),
             plugins,
             plugin_states,
@@ -205,14 +202,6 @@ impl Shard {
                 SyncEvent::ExposedPorts {
                     etag: etag_of(&list),
                     exposed_ports: list.ports,
-                }
-            }
-            Part::Automations => {
-                let list = AutomationList { automations: self.automation_list().await? };
-                SyncEvent::Automations {
-                    etag: etag_of(&list),
-                    automations: list.automations,
-                    automations_unread: self.services().control.unread_automation_runs(self.user().clone()).await?,
                 }
             }
             Part::Passkeys => {

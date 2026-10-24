@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
 use demi_conversation_socket_protocol::{TranscriptPatch, Version, Versions};
 use demi_provider_common::{AccountSwitch, ToolCall};
-use demi_shared_types::{AutomationMark, CodeFile, MessageComment, PictureCopy, ReplyPicture, 
+use demi_shared_types::{ScheduleMark, CodeFile, MessageComment, PictureCopy, ReplyPicture, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, Entry, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
@@ -137,8 +137,8 @@ impl TranscriptLog {
         crate::last_turn(&self.blocks).or(self.earlier.last_turn())
     }
 
-    /// The latest message the user or an automation wrote, when there is
-    /// one: the automation's run and when it came for a run's message.
+    /// The latest message the user or a schedule wrote, when there is
+    /// one: the schedule's run and when it came for a run's message.
     pub fn user_input(&self) -> Option<crate::UserInput> {
         self.blocks
             .iter()
@@ -212,7 +212,7 @@ impl TranscriptLog {
         content: Vec<UserContentBlock>,
         comments: Vec<MessageComment>,
         preamble: Option<String>,
-        automation: Option<AutomationMark>,
+        schedule: Option<ScheduleMark>,
     ) {
         let (id, created_at) = self.stamp();
         self.append(Block::User(UserBlock {
@@ -224,7 +224,7 @@ impl TranscriptLog {
             content,
             comments,
             preamble,
-            automation,
+            schedule,
             entries: Vec::new(),
         }));
     }

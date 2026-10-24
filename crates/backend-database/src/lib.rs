@@ -96,7 +96,7 @@
 
 pub mod accounts;
 pub mod attachments;
-pub mod automations;
+pub mod schedules;
 pub mod columns;
 pub mod command_outputs;
 pub mod conversation_attachments;

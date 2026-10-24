@@ -78,8 +78,6 @@ pub enum Part {
     PortForwards,
     /// The user's exposed ports.
     ExposedPorts,
-    /// The user's automations with their latest runs.
-    Automations,
     /// The user's passkeys.
     Passkeys,
     /// The user's sessions, the signed-in browsers.

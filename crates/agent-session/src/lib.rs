@@ -108,7 +108,7 @@ use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
     MessageComment,
-    AgentMessage, AutomationMark, Block, BlockId, Clock, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
+    AgentMessage, ScheduleMark, Block, BlockId, Clock, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
     PendingSteer, PictureCopy, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
     TextBlock, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
@@ -984,13 +984,13 @@ impl AgentSession {
         window::latest(&self.shared)
     }
 
-    /// The automation's run whose message is the latest the user or an
-    /// automation sent this agent, with when it came.
+    /// The schedule's run whose message is the latest the user or an
+    /// schedule sent this agent, with when it came.
     ///
     /// Every turn it starts or that continues from it works for that run, until
     /// the user writes again, in a message or a steer. None when the user's own
     /// is the latest, or neither came.
-    pub fn automation_input(&self) -> Option<(AutomationMark, Timestamp)> {
+    pub fn schedule_input(&self) -> Option<(ScheduleMark, Timestamp)> {
         self.shared.read(|core| core.transcript.user_input().flatten())
     }
 
@@ -1088,11 +1088,11 @@ impl AgentSession {
             id,
             content,
             comments: Vec::new(),
-            automation: None,
+            schedule: None,
         })
     }
 
-    /// Submits a message, which may be an automation's run's.
+    /// Submits a message, which may be a schedule's run's.
     pub fn send_message(&self, message: QueuedMessage) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| core.admit_send(message))
     }

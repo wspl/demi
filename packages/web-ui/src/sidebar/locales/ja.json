@@ -2,9 +2,7 @@
   "nav": {
     "new": "新しいチャット",
     "search": "検索",
-    "archived": "アーカイブ済み",
-    "automations": "オートメーション",
-    "unreadRuns": "未読 {count} 件"
+    "archived": "アーカイブ済み"
   },
   "groups": {
     "conversations": "チャット",

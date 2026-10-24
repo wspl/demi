@@ -169,13 +169,13 @@ crate::id!(
     CommandId
 );
 crate::id!(
-    /// An automation: 128 random bits as 32 lowercase hexadecimal digits, which
+    /// A schedule: 128 random bits as 32 lowercase hexadecimal digits, which
     /// its URL trigger's address names, so the address cannot be guessed.
-    AutomationId
+    ScheduleId
 );
 crate::id!(
-    /// One run of an automation, which the backend assigns.
-    AutomationRunId
+    /// One run of a schedule, which the backend assigns.
+    ScheduleRunId
 );
 crate::id!(
     /// A message edit, which the web app chooses so that a repeated request

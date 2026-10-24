@@ -17,7 +17,7 @@
     "markdown": "Markdown",
     "phone": "手機",
     "roadmap": "路線圖",
-    "automations": "自動化"
+    "schedules": "排程"
   },
   "views": {
     "errors": {
@@ -70,7 +70,7 @@
       "search": "搜尋"
     },
     "page": "頁面",
-    "automations": {
+    "schedules": {
       "app": "App",
       "phone": "手機"
     }

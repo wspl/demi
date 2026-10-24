@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { computed } from 'vue'
-import { Archive, Pin, PinOff, Zap } from '@lucide/vue'
+import { AlarmClock, Archive, Pin, PinOff } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
@@ -11,7 +11,7 @@ import { usePhone } from '@demicodes/web-ui/ui/phone'
 import type { SidebarConversation } from './types'
 import ConversationDot from './ConversationDot.vue'
 import DeviceMark from './DeviceMark.vue'
-import { t as automationText } from '../automations/locales/text'
+import { t as scheduleText } from '../schedules/locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 
 const props = defineProps<{
@@ -42,7 +42,7 @@ const emit = defineEmits<{
 const phone = usePhone()
 const shownTitle = computed(() => conversationTitle(props.conversation.title))
 
-// The row's end holds, in the flow, the marks: the pin, the bolt and the device's
+// The row's end holds, in the flow, the marks: the pin, the alarm clock and the device's
 // mark, each in a box as wide as its glyph (14, 14 and 16px), 6px from the row's
 // end. They are marks, not buttons. Every glyph at the row's end, mark or button,
 // stands 6px from the next, as two side-by-side 20px buttons' 14px glyphs do, so
@@ -71,10 +71,10 @@ const END_INSET_PX = 6
 /** An extra-small icon button (`IconButton` `xs`) is 20px with its glyph centered. */
 const BUTTON_INSET_PX = (20 - ICON_PX.in24) / 2
 
-/** The widths of the marks that stay on hover, the device's and the bolt, from the row's end. */
+/** The widths of the marks that stay on hover, the device's and the alarm clock's, from the row's end. */
 const stayingMarks = computed(() => [
   ...(props.conversation.device ? [ICON_PX.markIn28] : []),
-  ...(props.conversation.automations?.length ? [ICON_PX.in24] : []),
+  ...(props.conversation.scheduled ? [ICON_PX.in24] : []),
 ])
 
 /** Where the actions' right edge stands, from the row's: Archive's glyph where the pin's is. */
@@ -146,7 +146,7 @@ const rowClass = computed(() => [
     >{{ shownTitle }}</Tooltip>
     <!-- The pin's glyph and the device's mark end the row, in the flow, so the title never reaches
          them. The mark stays on hover; the pin gives its place to Archive. -->
-    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.automations?.length)" class="flex shrink-0 items-center gap-1.5 phone:gap-0.5">
+    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.scheduled)" class="flex shrink-0 items-center gap-1.5 phone:gap-0.5">
       <span
         v-if="conversation.pinned"
         class="pointer-events-none flex h-6 w-3.5 items-center justify-center text-fg-muted transition-opacity phone:size-8"
@@ -154,19 +154,19 @@ const rowClass = computed(() => [
       >
         <Pin :size="phone ? ICON_PX.in32 : ICON_PX.in24" />
       </span>
-      <!-- The bolt before the device's mark says automations wake the conversation; a mark only, the row opens the conversation. -->
+      <!-- The alarm clock before the device's mark says schedules wake the conversation; a mark only, the row opens the conversation. -->
       <span
-        v-if="conversation.automations?.length"
+        v-if="conversation.scheduled"
         role="img"
-        :aria-label="automationText('mark.bolt')"
+        :aria-label="scheduleText('mark')"
         class="flex h-6 w-3.5 shrink-0 items-center justify-center text-fg-muted phone:size-8"
       >
-        <Zap :size="phone ? ICON_PX.in32 : ICON_PX.in24" />
+        <AlarmClock :size="phone ? ICON_PX.in32 : ICON_PX.in24" />
       </span>
       <DeviceMark v-if="conversation.device" :host="conversation.device" />
     </span>
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. The actions
-         stand where the pin is, and left of the bolt and the device's mark when the row is not pinned. -->
+         stand where the pin is, and left of the alarm clock and the device's mark when the row is not pinned. -->
     <span
       v-if="!renaming && !phone"
       class="on-fill absolute inset-y-0 flex items-center transition-opacity"

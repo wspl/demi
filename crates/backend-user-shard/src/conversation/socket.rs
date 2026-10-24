@@ -835,12 +835,8 @@ impl Shard {
                     .control
                     .touch_conversation(record.id.clone())
                     .await?;
-                // The user's message lets a run's conversation into the
-                // sidebar.
-                self.answered_by_user(&record.id).await;
                 self.mark(Part::Conversation(record.id));
             }
-            ClientFrame::Steer { .. } => self.answered_by_user(&record.id).await,
             _ => {}
         }
         Ok(Prepared::Deliver)

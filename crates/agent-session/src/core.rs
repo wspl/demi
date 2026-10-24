@@ -31,7 +31,7 @@ use demi_provider_common::{
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
-    AutomationMark, MessageComment,
+    ScheduleMark, MessageComment,
     AgentAccount, AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ShellToolView, ShellViewStatus, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
@@ -416,8 +416,8 @@ pub(super) enum ActionKind {
         content: Vec<UserContentBlock>,
         /// The comments sent with it, which its `user` block keeps.
         comments: Vec<MessageComment>,
-        /// The automation's run that sent it, which its `user` block keeps.
-        automation: Option<AutomationMark>,
+        /// The schedule's run that sent it, which its `user` block keeps.
+        schedule: Option<ScheduleMark>,
     },
     /// Input that arrived while nothing ran, command reports or agent
     /// messages: it opens a turn of its own, never shown in the queue.
@@ -896,7 +896,7 @@ impl SessionCore {
         message: QueuedMessage,
     ) -> Result<ActionHandle, AdmissionError> {
         self.refuse_admission()?;
-        let QueuedMessage { id, content, comments, automation } = message;
+        let QueuedMessage { id, content, comments, schedule } = message;
         if self.knows_turn(&id) {
             return Ok(ActionHandle::ended(ActionEnd::Duplicate));
         }
@@ -917,7 +917,7 @@ impl SessionCore {
             queued_ahead = self.pending.len(),
             "a message was admitted"
         );
-        Ok(self.push_action(ActionKind::Send { content, comments, automation }, id))
+        Ok(self.push_action(ActionKind::Send { content, comments, schedule }, id))
     }
 
     /// Admits a retry, a resume or a compaction pass.
@@ -987,11 +987,11 @@ impl SessionCore {
         let cancel = TurnCancel::new();
         self.held = false;
         let unwritten = match &kind {
-            ActionKind::Send { content, comments, automation } => Some(QueuedMessage {
+            ActionKind::Send { content, comments, schedule } => Some(QueuedMessage {
                 id: turn.clone(),
                 content: content.clone(),
                 comments: comments.clone(),
-                automation: automation.clone(),
+                schedule: schedule.clone(),
             }),
             _ => None,
         };
@@ -1295,9 +1295,9 @@ impl SessionCore {
         if began {
             self.record_stop(CancelReason::Shutdown);
             self.log_turn_ended("interrupted", None);
-        } else if let ActionKind::Send { content, comments, automation } = kind {
+        } else if let ActionKind::Send { content, comments, schedule } = kind {
             self.pending.push_front(PendingAction {
-                kind: ActionKind::Send { content, comments, automation },
+                kind: ActionKind::Send { content, comments, schedule },
                 turn: turn.clone(),
                 reply: None,
                 admitted_at: self.clock.now(),
@@ -1673,11 +1673,11 @@ impl SessionCore {
         self.pending
             .iter()
             .filter_map(|action| match &action.kind {
-                ActionKind::Send { content, comments, automation } => Some(QueuedMessage {
+                ActionKind::Send { content, comments, schedule } => Some(QueuedMessage {
                     id: action.turn.clone(),
                     content: content.clone(),
                     comments: comments.clone(),
-                    automation: automation.clone(),
+                    schedule: schedule.clone(),
                 }),
                 _ => None,
             })
@@ -2168,7 +2168,7 @@ impl SessionCore {
         content: Vec<UserContentBlock>,
         comments: Vec<MessageComment>,
         preamble: Option<String>,
-        automation: Option<AutomationMark>,
+        schedule: Option<ScheduleMark>,
     ) {
         session_log!(
             self,
@@ -2186,7 +2186,7 @@ impl SessionCore {
             "a message was written into its turn"
         );
         self.transcript
-            .push_user(turn, &self.model, content, comments, preamble, automation);
+            .push_user(turn, &self.model, content, comments, preamble, schedule);
         if let Activity::Running(run) = &mut self.activity {
             run.unwritten = None;
         }

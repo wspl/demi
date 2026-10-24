@@ -32,7 +32,7 @@ use std::sync::Arc;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::providers::{
-    CredentialRow, CredentialWrite, MediaSwitches, NewProvider, ProviderRow, ResealConfigs,
+    CredentialRow, CredentialWrite, MediaSwitches, NewProvider, ProviderRow, ResealSealed,
 };
 use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_common::Secret;
@@ -221,7 +221,7 @@ impl ApiKeyConfig {
 /// and reads, which the control schema names. Format 1, the bare
 /// configuration that 0.1.21 and the builds before this one sealed, told a
 /// compatible entry by its endpoint rather than by its vendor; the control
-/// database's migration re-encodes it ([`ConfigReseal`]).
+/// database's migration re-encodes it ([`VaultReseal`]).
 const CONFIG_FORMAT: u32 = 2;
 
 /// The sealed document: the configuration under its format.
@@ -822,24 +822,25 @@ impl Vault {
     }
 }
 
-/// The vault's side of the control database's migration to provider
-/// configuration format 2 (`crates/backend-database/src/lib.rs`).
+/// The vault's side of the control database's migrations that seal a value
+/// again (`crates/backend-database/src/schema.rs`).
 ///
-/// It opens each configuration of format 1 under the vault's key, decodes and
-/// checks it as any configuration is, and seals it again in format 2.
-///
-/// - A configuration that names neither a vendor nor an endpoint was its
-///   family's own vendor's entry and now names that vendor.
-/// - A configuration with an endpoint and no vendor stays a compatible entry.
-pub struct ConfigReseal(VaultKey);
+/// - To provider configuration format 2, it opens each configuration of format
+///   1 under the vault's key, decodes and checks it as any configuration is,
+///   and seals it again in format 2. A configuration that names neither a
+///   vendor nor an endpoint was its family's own vendor's entry and now names
+///   that vendor; one with an endpoint and no vendor stays a compatible entry.
+/// - To schedules, it seals a URL secret as a schedule's in place of an
+///   automation's.
+pub struct VaultReseal(VaultKey);
 
-impl ConfigReseal {
+impl VaultReseal {
     pub fn new(key: VaultKey) -> Self {
         Self(key)
     }
 }
 
-impl ResealConfigs for ConfigReseal {
+impl ResealSealed for VaultReseal {
     fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
         let text = open_text(&self.0, id, sealed)?;
         let config = decode_secret::<ApiKeyConfig>(&text).map_err(|error| error.to_string())?;
@@ -848,6 +849,14 @@ impl ResealConfigs for ConfigReseal {
             config.vendor_id = Some(family.to_owned());
         }
         Ok(seal_config(&self.0, id, &config))
+    }
+
+    fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
+        let secret = self
+            .0
+            .open(seal::Row::AutomationSecret(id), sealed)
+            .map_err(|error| error.to_string())?;
+        Ok(self.0.seal(seal::Row::ScheduleSecret(id), &secret))
     }
 }
 

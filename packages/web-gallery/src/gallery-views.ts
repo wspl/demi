@@ -56,9 +56,9 @@ function galleryViews(): Record<string, readonly GalleryViewOption[]> {
       { value: 'shared', label: t('views.session.shared') },
     ],
     '/sidebar': [{ value: 'sidebar', label: t('nav.sidebar') }],
-    '/automations': [
-      { value: 'app', label: t('views.automations.app') },
-      { value: 'phone', label: t('views.automations.phone') },
+    '/schedules': [
+      { value: 'app', label: t('views.schedules.app') },
+      { value: 'phone', label: t('views.schedules.phone') },
     ],
     '/settings': [{ value: 'settings', label: t('nav.settings') }],
     '/dialogs': [

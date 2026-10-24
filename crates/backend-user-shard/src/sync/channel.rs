@@ -192,7 +192,7 @@ impl Follows {
     /// Whether any value `part` is a part of is followed.
     fn wants(&self, part: &Part) -> bool {
         match list_of(part) {
-            Some(list) => self.lists.borrow().contains_key(&list) || (*part == Part::Automations && self.follows_state()),
+            Some(list) => self.lists.borrow().contains_key(&list),
             None => self.follows_state(),
         }
     }
@@ -262,7 +262,6 @@ fn list_of(part: &Part) -> Option<SyncFollowed> {
         Part::Credentials => SyncFollowed::Credentials,
         Part::PortForwards => SyncFollowed::PortForwards,
         Part::ExposedPorts => SyncFollowed::ExposedPorts,
-        Part::Automations => SyncFollowed::Automations,
         Part::Passkeys => SyncFollowed::Passkeys,
         Part::Sessions => SyncFollowed::Sessions,
         Part::Users => SyncFollowed::Users,
@@ -279,7 +278,6 @@ fn part_of(list: SyncFollowed) -> Option<Part> {
         SyncFollowed::Credentials => Part::Credentials,
         SyncFollowed::PortForwards => Part::PortForwards,
         SyncFollowed::ExposedPorts => Part::ExposedPorts,
-        SyncFollowed::Automations => Part::Automations,
         SyncFollowed::Passkeys => Part::Passkeys,
         SyncFollowed::Sessions => Part::Sessions,
         SyncFollowed::Users => Part::Users,
@@ -466,14 +464,6 @@ impl Channel<'_> {
             SyncEvent::Credentials { etag, .. } => (SyncFollowed::Credentials, etag),
             SyncEvent::PortForwards { etag, .. } => (SyncFollowed::PortForwards, etag),
             SyncEvent::ExposedPorts { etag, .. } => (SyncFollowed::ExposedPorts, etag),
-            SyncEvent::Automations { etag, automations_unread, .. } => {
-                if !self.follows.lists.borrow().contains_key(&SyncFollowed::Automations) {
-                    return self.follows.follows_state().then_some(SyncEvent::AutomationsUnread {
-                        automations_unread: *automations_unread,
-                    });
-                }
-                (SyncFollowed::Automations, etag)
-            }
             SyncEvent::Passkeys { etag, .. } => (SyncFollowed::Passkeys, etag),
             SyncEvent::Sessions { etag, .. } => (SyncFollowed::Sessions, etag),
             SyncEvent::Users { etag, .. } => (SyncFollowed::Users, etag),
@@ -568,7 +558,6 @@ fn part_name(part: &Part) -> (&'static str, Option<&ConversationId>, Option<&str
         Part::Credentials => ("credentials", None, None),
         Part::PortForwards => ("port_forwards", None, None),
         Part::ExposedPorts => ("exposed_ports", None, None),
-        Part::Automations => ("automations", None, None),
         Part::Passkeys => ("passkeys", None, None),
         Part::Sessions => ("sessions", None, None),
         Part::Users => ("users", None, None),

@@ -36,24 +36,33 @@ pub struct CatalogRecord {
     pub catalog: ProviderModelList,
 }
 
-/// What the control migration that re-encodes the API-key entries' sealed
-/// configurations works with: the vault, which alone holds the key they
-/// are sealed under and knows their format.
-pub trait ResealConfigs: Send + Sync {
+/// What the control migrations that re-encode sealed values work with: the
+/// vault, which alone holds the key they are sealed under and knows their
+/// format.
+pub trait ResealSealed: Send + Sync {
     /// Entry `id` of `family`'s configuration `sealed`, opened, decoded and
     /// checked in the format the schema before names, and sealed again in
     /// the format of the schema after it; an error, which never quotes the
     /// configuration, says why it cannot be read.
     fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String>;
+
+    /// The URL secret `sealed` for the automation `id`, opened and sealed
+    /// again for the schedule of the same id; an error, which never quotes
+    /// the secret, says why it cannot be opened.
+    fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String>;
 }
 
 /// A database that holds no sealed configuration a migration re-encodes,
 /// such as a conversation's.
-pub struct NoSealedConfigs;
+pub struct NoSealed;
 
-impl ResealConfigs for NoSealedConfigs {
+impl ResealSealed for NoSealed {
     fn provider_config(&self, id: &ProviderId, _: &str, _: &[u8]) -> Result<Vec<u8>, String> {
         Err(format!("no key opens the configuration of entry {id} here"))
+    }
+
+    fn schedule_secret(&self, id: &str, _: &[u8]) -> Result<Vec<u8>, String> {
+        Err(format!("no key opens the secret of schedule {id} here"))
     }
 }
 

@@ -602,7 +602,7 @@ impl<H: HostResolver> Connection<H> {
                     id: message_id.clone(),
                     content,
                     comments,
-                    automation: None,
+                    schedule: None,
                 };
                 if let Err(error) = session.send_message(message) {
                     self.reject(kind, error.refusal());

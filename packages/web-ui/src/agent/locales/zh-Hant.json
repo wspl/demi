@@ -98,7 +98,7 @@
       "recall": "收回",
       "recalled": "訊息已收回",
       "notDelivered": "此訊息未能送達。",
-      "fromAutomation": "自動化"
+      "fromSchedule": "排程"
     },
     "assistant": {
       "fork": "分岔",

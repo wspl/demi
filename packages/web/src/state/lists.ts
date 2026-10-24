@@ -1,7 +1,5 @@
 import { z } from 'zod'
 import {
-  automationDtoSchema,
-  automationListSchema,
   credentialDtoSchema,
   credentialListSchema,
   exposedPortDtoSchema,
@@ -34,7 +32,6 @@ export const heldListsShape = {
   passkeys: passkeyListSchema.optional(),
   sessions: z.array(sessionDtoSchema).optional(),
   users: z.array(listedUserSchema).optional(),
-  automations: z.array(automationDtoSchema).optional(),
   portForwards: z.array(portForwardDtoSchema).optional(),
   exposedPorts: z.array(exposedPortDtoSchema).optional(),
 }
@@ -44,7 +41,7 @@ export const pageStateSchema = productStateSchema.extend(heldListsShape)
 export type PageState = z.infer<typeof pageStateSchema>
 
 /** A list the page holds only while a view shows it, named as the message that carries it. */
-export type ListPart = 'subagents' | 'instructions' | 'credentials' | 'passkeys' | 'sessions' | 'users' | 'automations' | 'port_forwards' | 'exposed_ports'
+export type ListPart = 'subagents' | 'instructions' | 'credentials' | 'passkeys' | 'sessions' | 'users' | 'port_forwards' | 'exposed_ports'
 
 /** `event` without the entity tag a list's message carries, which an answer of a write has none of. */
 export type Untagged<Event> = Event extends { etag: string } ? Omit<Event, 'etag'> & { etag?: string } : Event
@@ -93,11 +90,6 @@ export const LIST_ROUTES = {
     route: '/users',
     schema: usersSchema,
     event: ({ users }) => ({ type: 'users', users }),
-  }),
-  automations: route({
-    route: '/automations',
-    schema: automationListSchema,
-    event: ({ automations }, state) => ({ type: 'automations', automations, automationsUnread: state.automationsUnread }),
   }),
   port_forwards: route({
     route: '/port-forwards',

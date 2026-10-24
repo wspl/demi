@@ -33,7 +33,7 @@ const BACKEND_CLOSING = 1001
 const ABNORMAL_CLOSURE = 1006
 
 /** A message that carries one part of the product state, as a write's answer can. */
-export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'heartbeat' | 'pong' | 'synced' | 'stale' | 'automations_unread' }>>
+export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'heartbeat' | 'pong' | 'synced' | 'stale' }>>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
 export type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
@@ -155,8 +155,6 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'sessions', sessions: heldList(state.sessions, part) }
     case 'users':
       return { type: 'users', users: heldList(state.users, part) }
-    case 'automations':
-      return { type: 'automations', automations: heldList(state.automations, part), automationsUnread: state.automationsUnread }
     case 'port_forwards':
       return { type: 'port_forwards', portForwards: heldList(state.portForwards, part) }
     case 'exposed_ports':
@@ -212,8 +210,6 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, sessions: event.sessions }
     case 'users':
       return { ...state, users: event.users }
-    case 'automations':
-      return { ...state, automations: event.automations, automationsUnread: event.automationsUnread }
     case 'port_forwards':
       return { ...state, portForwards: event.portForwards }
     case 'exposed_ports':
@@ -306,7 +302,6 @@ const LIST_FIELDS = {
   passkeys: 'passkeys',
   sessions: 'sessions',
   users: 'users',
-  automations: 'automations',
   port_forwards: 'portForwards',
   exposed_ports: 'exposedPorts',
 } as const satisfies Record<ListPart, keyof PageState>
@@ -664,11 +659,6 @@ export const useProduct = defineStore('product', () => {
       } else if (isListPart(event.value)) {
         readList(event.value, true)
       }
-      return
-    }
-    if (event.type === 'automations_unread') {
-      const unread = event.automationsUnread
-      slot.receive('automations', (state) => ({ ...state, automationsUnread: unread }))
       return
     }
     if (event.type === 'user' && read.value === null) {

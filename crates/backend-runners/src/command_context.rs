@@ -3,7 +3,7 @@
 //! The backend is its only source and builds it when the work starts.
 
 use demi_command_protocol::{
-    AUTOMATION_SCOPE_PREFIX, ColorScheme, CommandCaller, CommandContext, CommandLocale,
+    ColorScheme, CommandCaller, CommandContext, CommandLocale,
     PROVIDER_SCOPE_PREFIX,
 };
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
@@ -43,23 +43,6 @@ pub async fn provider_context(
         control,
         user,
         format!("{PROVIDER_SCOPE_PREFIX}{provider}"),
-        CommandCaller::User {},
-    )
-    .await
-}
-
-/// The context of `user`'s work for the automation `automation` that
-/// belongs to no conversation, such as a change watch's command for a new
-/// conversation each run: it names the automation.
-pub async fn automation_context(
-    control: &ControlService,
-    user: &UserId,
-    automation: &str,
-) -> Result<CommandContext, StorageError> {
-    context(
-        control,
-        user,
-        format!("{AUTOMATION_SCOPE_PREFIX}{automation}"),
         CommandCaller::User {},
     )
     .await

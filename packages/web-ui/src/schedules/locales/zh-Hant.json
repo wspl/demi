@@ -1,0 +1,60 @@
+{
+  "chip": "{count} 個排程 | {count} 個排程",
+  "delete": "刪除",
+  "notYet": "尚未喚醒",
+  "trigger": {
+    "once": "一次 · {when}",
+    "change": "輸出變更時 · {interval}",
+    "url": "URL 被呼叫時",
+    "interval": {
+      "minutes": "{count} 分鐘",
+      "hours": "{count} 小時 | {count} 小時",
+      "days": "{count} 天 | {count} 天"
+    }
+  },
+  "wake": {
+    "failed": "上次喚醒失敗",
+    "skipped": "上次喚醒已略過"
+  },
+  "words": {
+    "interval": {
+      "minutes": "每分鐘 | 每 {count} 分鐘",
+      "hours": "每小時 | 每 {count} 小時",
+      "days": "每天 | 每 {count} 天"
+    },
+    "daily": "每天 {time}",
+    "weekdays": "平日 {time}",
+    "weekly": "每{day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "每天 | 每 {count} 天",
+      "weeks": "每週 | 每 {count} 週",
+      "months": "每月 | 每 {count} 個月",
+      "years": "每年 | 每 {count} 年"
+    },
+    "tasks": "{count} 個任務",
+    "date": "{date} 日",
+    "lastDay": "最後一天",
+    "week": {
+      "first": "第一個{weekday}",
+      "second": "第二個{weekday}",
+      "third": "第三個{weekday}",
+      "fourth": "第四個{weekday}",
+      "last": "最後一個{weekday}"
+    },
+    "workingDay": {
+      "first": "第一個工作日",
+      "last": "最後一個工作日"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{month}{date}日",
+    "dayOfMonth": "{month}{day}"
+  },
+  "note": {
+    "offline": "{device} 當時離線",
+    "limit": "已達每天 {limit} 次的上限，此後又有 {calls} 次呼叫",
+    "timedOut": "指令執行超過 60 秒",
+    "commandFailed": "指令失敗：{message}"
+  },
+  "mark": "有排程會喚醒此對話"
+}

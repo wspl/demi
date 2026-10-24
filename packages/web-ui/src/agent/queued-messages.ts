@@ -1,4 +1,4 @@
-import type { AutomationMark, MessageComment, QueuedMessage, UserContentBlock } from '@demicodes/protocol'
+import type { ScheduleMark, MessageComment, QueuedMessage, UserContentBlock } from '@demicodes/protocol'
 
 export interface QueueDividerBlock {
   type: 'queue_divider'
@@ -13,8 +13,8 @@ export interface QueuedRenderBlock {
   content: UserContentBlock[]
   /** The comments it carries; absent with none. */
   comments?: MessageComment[]
-  /** The automation's run that queued it; none for the user's own. */
-  automation?: AutomationMark
+  /** The schedule's run that queued it; none for the user's own. */
+  schedule?: ScheduleMark
 }
 
 /**
@@ -28,6 +28,6 @@ export function queuedMessagesToRenderBlocks(queue: readonly QueuedMessage[]): Q
     queueId: item.id,
     content: item.content,
     comments: item.comments,
-    automation: item.automation,
+    schedule: item.schedule,
   }))
 }

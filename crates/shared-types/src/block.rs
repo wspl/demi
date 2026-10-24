@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{
-    AgentMessage, AutomationId, AutomationRunId, BlockId, CommandId, MAX_SAFE_INTEGER, MessageComment, ModelSelection, comments_content, Nullable, ProviderErrorDiagnostics,
+    AgentMessage, ScheduleId, ScheduleRunId, BlockId, CommandId, MAX_SAFE_INTEGER, MessageComment, ModelSelection, comments_content, Nullable, ProviderErrorDiagnostics,
     QuotaWindowName, Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
@@ -338,7 +338,7 @@ pub struct UserBlock {
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub preamble: Option<String>,
-    /// The automation's run that sent the message, which the transcript
+    /// The schedule's run that sent the message, which the transcript
     /// names above it as a receipt names the agent that sent one; absent
     /// for a message the user wrote.
     #[serde(
@@ -346,9 +346,9 @@ pub struct UserBlock {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "AutomationMark")]
+    #[schemars(with = "ScheduleMark")]
     #[garde(dive)]
-    pub automation: Option<AutomationMark>,
+    pub schedule: Option<ScheduleMark>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them
     /// (`crates/provider-claude-code/src/session.rs`); omitted when there are
@@ -374,16 +374,16 @@ impl UserBlock {
     }
 }
 
-/// The automation's run a message came from: which automation, as it was named
+/// The schedule's run a message came from: which schedule, as it was named
 /// when it fired, and when.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AutomationMark {
+pub struct ScheduleMark {
     #[garde(skip)]
-    pub automation_id: AutomationId,
+    pub schedule_id: ScheduleId,
     #[garde(skip)]
-    pub run_id: AutomationRunId,
-    /// The automation's name when the run started; the automation may be
+    pub run_id: ScheduleRunId,
+    /// The schedule's name when the run started; the schedule may be
     /// renamed or deleted since.
     #[garde(length(chars, min = 1))]
     pub name: String,

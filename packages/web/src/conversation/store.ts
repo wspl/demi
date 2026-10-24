@@ -98,6 +98,7 @@ import {
   type ReadRequest,
   type SidebarReorder,
   type WorkflowChoice,
+  type ScheduleChange,
 } from '../api/generated/web-api'
 import { isEmptyMessage, joinMessageContent, storedMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { startingChoices, startingWorkflow, type RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
@@ -216,9 +217,8 @@ export const useConversations = defineStore('conversations', () => {
    * conversation whose draft holds nothing yet only while it is the open
    * one, so it shows the moment it opens and goes when it is left empty.
    */
-  // A run's conversation filed under its automation stays out of the sidebar.
   const listed = computed(() => items.value.filter((item) =>
-    !item.archived && !item.filed && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
+    !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
   /**
    * The writes on their way, by the conversation they change, or by
    * `conversation_order` for a move: each conversation's go one at a time in
@@ -347,7 +347,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'title'
       | 'pinned'
       | 'archived'
-      | 'automation'
+      | 'scheduled'
       | 'target'
       | 'revision'
       | 'readRevision'
@@ -362,7 +362,7 @@ export const useConversations = defineStore('conversations', () => {
       title: record.title,
       pinned: record.pinned,
       archived: record.archived,
-      filed: record.automation,
+      scheduled: record.scheduled,
       target: record.target,
       projectId:
         record.target.kind === 'workspace' ? record.target.workspaceId : null,
@@ -781,7 +781,7 @@ export const useConversations = defineStore('conversations', () => {
         }
         const conversation = newConversation({
           ...draft.local.conversation,
-          automation: null,
+          scheduled: false,
           permissionRequests: 0,
           unreadPermissionRequests: 0,
           status: 'idle',
@@ -1719,10 +1719,9 @@ export const useConversations = defineStore('conversations', () => {
       if (conversation.archived && !signal.aborted) {
         return
       }
-      // A record that holds no model, such as one an automation's run
-      // started, opens no session until one is chosen: it shows its
-      // transcript, and the composer's choice writes the record and opens
-      // it (`changeModel`), never a failed opening.
+      // A record that holds no model opens no session until one is chosen:
+      // it shows its transcript, and the composer's choice writes the record
+      // and opens it (`changeModel`), never a failed opening.
       if (errorCode(error) === 'model_not_selected' && !signal.aborted) {
         entry.runtime = null
         runtime.dispose()
@@ -2423,7 +2422,7 @@ export const useConversations = defineStore('conversations', () => {
       title: null,
       pinned: false,
       archived: false,
-      automation: null,
+      scheduled: false,
       target: projectId
         ? { kind: 'workspace', workspaceId: projectId }
         : { kind: 'cloud' },
@@ -2840,6 +2839,71 @@ export const useConversations = defineStore('conversations', () => {
       .catch((error) => {
         change.drop()
         report('failures.changeWorkflow', t('failures.changeWorkflow'), error)
+      })
+  }
+
+  /**
+   * Turns the schedule `schedule` of the conversation `id` off, or with
+   * `paused` false on, the switch of its row in the Schedules menu: the row
+   * shows it at once, and returns if the backend refuses. When it next wakes
+   * the conversation comes with the metadata the change brings.
+   */
+  async function pauseSchedule(id: string, schedule: string, paused: boolean): Promise<void> {
+    const conversation = items.value.find((item) => item.id === id)
+    if (!conversation || conversation.persistence !== 'synced') {
+      return
+    }
+    const change = conversation.metadata.change((metadata) => ({
+      ...metadata,
+      schedules: metadata.schedules.map((each) => (each.id === schedule
+        ? { ...each, paused, nextAt: paused ? null : each.nextAt }
+        : each)),
+    }))
+    const signal = lifetime.signal
+    await writes
+      .run(id, async () => {
+        signal.throwIfAborted()
+        change.send()
+        await apiRequest(`/conversations/${encodeURIComponent(id)}/schedules/${encodeURIComponent(schedule)}`, {
+          method: 'PATCH',
+          signal,
+          ...jsonBody({ paused } satisfies ScheduleChange),
+        })
+        change.land()
+      })
+      .catch((error) => {
+        change.drop()
+        report('failures.pauseSchedule', t('failures.pauseSchedule'), error)
+      })
+  }
+
+  /**
+   * Deletes the schedule `schedule` of the conversation `id`, the Schedules menu's
+   * Delete: it leaves the menu at once, and returns if the backend refuses.
+   */
+  async function deleteSchedule(id: string, schedule: string): Promise<void> {
+    const conversation = items.value.find((item) => item.id === id)
+    if (!conversation || conversation.persistence !== 'synced') {
+      return
+    }
+    const change = conversation.metadata.change((metadata) => ({
+      ...metadata,
+      schedules: metadata.schedules.filter((each) => each.id !== schedule),
+    }))
+    const signal = lifetime.signal
+    await writes
+      .run(id, async () => {
+        signal.throwIfAborted()
+        change.send()
+        await apiRequest(`/conversations/${encodeURIComponent(id)}/schedules/${encodeURIComponent(schedule)}`, {
+          method: 'DELETE',
+          signal,
+        })
+        change.land()
+      })
+      .catch((error) => {
+        change.drop()
+        report('failures.deleteSchedule', t('failures.deleteSchedule'), error)
       })
   }
 
@@ -3992,6 +4056,8 @@ export const useConversations = defineStore('conversations', () => {
       ),
     changeModel,
     changeWorkflow,
+    pauseSchedule,
+    deleteSchedule,
     settleStartingWorkflow,
     send,
     retrySends,

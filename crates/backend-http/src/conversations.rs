@@ -429,10 +429,6 @@ pub(super) async fn read(
         .control
         .mark_conversation_read(record.id.clone(), revision)
         .await?;
-    // Opening a run's conversation marks the run read.
-    if services.control.read_automation_runs(record.id.clone()).await? {
-        services.sync.mark(&user.id, Part::Automations);
-    }
     if read {
         services.sync.mark(&user.id, Part::Conversation(record.id));
     }

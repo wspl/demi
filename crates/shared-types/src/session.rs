@@ -119,16 +119,16 @@ pub struct QueuedMessage {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub comments: Vec<crate::MessageComment>,
-    /// The automation's run that sent it, which its `user` block keeps;
+    /// The schedule's run that sent it, which its `user` block keeps;
     /// absent for a message the user wrote.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "serde_with::rust::unwrap_or_skip"
     )]
-    #[schemars(with = "crate::AutomationMark")]
+    #[schemars(with = "crate::ScheduleMark")]
     #[garde(dive)]
-    pub automation: Option<crate::AutomationMark>,
+    pub schedule: Option<crate::ScheduleMark>,
 }
 
 /// A call the model is writing: the provider opened it and has not handed

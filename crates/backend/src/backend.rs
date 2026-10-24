@@ -436,12 +436,12 @@ impl Backend {
         // off. A failure does not stop the start: the marks stay for the next
         // start, and meanwhile the turns wait for the user's Resume.
         start_step("interrupted_turns", resume_after_restart(&services.control, &shards.shards())).await;
-        // Each user's automations fire what a backend that was down missed
+        // Each user's schedules fire what a backend that was down missed
         // and wait for their next times. A failure does not stop the start: a
         // user's next call starts them.
         start_step(
-            "automation_users",
-            demi_backend_user_shard::automations::start_schedulers(&services.control, &shards.shards()),
+            "schedule_users",
+            demi_backend_user_shard::schedules::start_schedulers(&services.control, &shards.shards()),
         )
         .await;
         // Each user's search index catches up with the conversations, in the

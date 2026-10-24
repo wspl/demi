@@ -286,24 +286,23 @@ async function deleteProject(specimen: 'demo' | 'marks', id: string): Promise<vo
 
 /**
  * The hover specimen's rows: pinned and not, each on the Cloud and on a paired device, and each
- * of those with an automation that wakes it, whose bolt stands before the device's mark.
+ * of those with a schedule that wakes it, whose alarm clock stands before the device's mark.
  */
 function hoverRows(): SidebarConversation[] {
-  const row = (id: string, title: string, pinned: boolean, device?: SidebarConversation['device'], automations?: SidebarConversation['automations']): SidebarConversation => ({
-    id, title, pinned, device, automations, updatedAt: '2026-10-10T09:00:00Z', status: 'done', projectId: null, unread: false,
+  const row = (id: string, title: string, pinned: boolean, device?: SidebarConversation['device'], scheduled?: boolean): SidebarConversation => ({
+    id, title, pinned, device, scheduled, updatedAt: '2026-10-10T09:00:00Z', status: 'done', projectId: null, unread: false,
   })
   const laptop = { kind: 'paired', name: 'MacBook Pro', state: 'online', mark: GALLERY_MARKS.mac } as const
   const server = { kind: 'paired', name: 'build-01', state: 'online', mark: GALLERY_MARKS.ubuntu } as const
-  const daily = [{ id: 'a-daily', name: 'Morning summary', trigger: 'Weekdays 09:00', paused: false }]
   return [
     row('h-pinned', 'Release checklist', true),
     row('h-pinned-device', 'Profile the indexer', true, laptop),
-    row('h-pinned-bolt', 'Watch the nightly build', true, undefined, daily),
-    row('h-pinned-bolt-device', 'Check the backups', true, server, daily),
+    row('h-pinned-bolt', 'Watch the nightly build', true, undefined, true),
+    row('h-pinned-bolt-device', 'Check the backups', true, server, true),
     row('h-plain', 'Fix the login test', false),
     row('h-plain-device', 'Tidy the dotfiles', false, laptop),
-    row('h-plain-bolt', 'Summarize the inbox', false, undefined, daily),
-    row('h-plain-bolt-device', 'Rotate the server logs', false, server, daily),
+    row('h-plain-bolt', 'Summarize the inbox', false, undefined, true),
+    row('h-plain-bolt-device', 'Rotate the server logs', false, server, true),
   ]
 }
 const hoverConversations = ref(hoverRows())
@@ -700,7 +699,7 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Row Hover"
-      note="Hover a row: Archive appears at its end, to the left of the device’s mark and the bolt of the automations that wake it, which stay. The marks and the buttons stand evenly apart. A pinned row shows Unpin before Archive, and Archive takes the pin’s place; a row that is not pinned offers Pin in its menu, as right-click shows. Archive drops the row, and the toast’s Undo brings it back; Reset gives the specimen its rows again."
+      note="Hover a row: Archive appears at its end, to the left of the device’s mark and the alarm clock that marks the schedules that wake it, which stay. The marks and the buttons stand evenly apart. A pinned row shows Unpin before Archive, and Archive takes the pin’s place; a row that is not pinned offers Pin in its menu, as right-click shows. Archive drops the row, and the toast’s Undo brings it back; Reset gives the specimen its rows again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="pinned and not · live">
