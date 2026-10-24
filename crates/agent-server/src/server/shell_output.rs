@@ -67,7 +67,7 @@ const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its promp
 /// The group's entry in the model's capability index.
 const GROUP_ENTRY: &str = "status, input, output and stop of commands by commandId.";
 
-const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them, at once.";
+const STATUS_SUMMARY: &str = "Show commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and the output you have not seen yet, as a shell result shows them, at once.";
 
 const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails.";
 
