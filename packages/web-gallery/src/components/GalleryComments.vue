@@ -13,19 +13,18 @@ import GalleryComposer from './GalleryComposer.vue'
 
 /**
  * Comments on a reply's words, live: the user selects text in the reply,
- * writes one in the comment field and presses Return. The comment marks the text
- * and waits in the composer's pill, which lists the waiting comments and whose
- * × removes them.
+ * writes one in the comment field and presses Return. The comment marks the text,
+ * its box stands under the line the text ends on, and it waits in the
+ * composer's pill, which lists the waiting comments and whose × removes them.
  *
  * - Send sends them with what is typed, the bubble showing each quoted text
- *   and its comment, and the reply keeps their marks, dimmer.
- * - Send in the comment field, or Command-Return, sends a message holding that
- *   comment alone, leaving the pill and the typed text as they are, steering
- *   while a turn runs.
+ *   and its comment, and the reply keeps their marks and boxes, dimmer.
+ * - Command-Return in the comment field sends a message holding that comment
+ *   alone, leaving the pill and the typed text as they are, steering while a
+ *   turn runs.
  * - A picture of the reply takes a comment from its menu (right-click), which
- *   opens the same field, then outlined yellow with its mark at the picture's
- *   top, and its bubble shows a
- *   small copy of it as the quote.
+ *   opens the same field; the picture is then outlined yellow with the box
+ *   under it, and the bubble shows a small copy of it as the quote.
  *
  * `seed` pins a state: two waiting comments, two sent with a message, or a
  * comment on the picture, waiting or sent. Comments stay in the specimen,
@@ -127,7 +126,7 @@ onMounted(async () => {
           @stop="flow.stop"
           @compact="flow.compact"
         >
-          <template v-if="ordered.length > 0" #context>
+          <template v-if="ordered.length > 0" #carried>
             <WaitingComments
               :comments="ordered"
               @edit="commenting.edit"

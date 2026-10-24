@@ -1228,24 +1228,42 @@ html[data-theme="light"] .file-pill {
   pointer-events: none;
 }
 
-/* A row over the message for what it carries besides its text (ComposerShell's
-   `context`), such as the comments' pill: its left edge on the text's. */
-.composer-shell-expanded.composer-shell-context {
+/* A row over the message that captions it (ComposerShell's `caption`), such as
+   what an edit edits: its left edge on the text's. */
+.composer-shell-expanded.composer-shell-caption {
   grid-template-areas:
-    "context context context"
+    "caption caption caption"
     "editor editor editor"
     "attach ruler actions";
 }
 
-.composer-context {
-  grid-area: context;
+.composer-caption {
+  grid-area: caption;
   margin-inline: calc(-1 * var(--composer-inset));
   padding: var(--composer-editor-pad-top) var(--composer-editor-pad-x) 0;
 }
 
-/* A caption row, such as what an edit edits, stands right over the message's
-   first line, as a line of the same text would. */
-.composer-shell-expanded.composer-shell-captioned .composer-editor {
+/* What the message carries besides its text, such as the comments' pill,
+   stands by the attach control, on the one line and under the open box. */
+.composer-carried {
+  grid-area: carried;
+}
+
+.composer-shell-capsule.composer-shell-carried {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "attach carried editor actions";
+}
+
+.composer-shell-expanded.composer-shell-carried {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "editor editor editor editor"
+    "attach carried ruler actions";
+}
+
+/* The caption stands right over the message's first line, as a line of the
+   same text would. */
+.composer-shell-expanded.composer-shell-caption .composer-editor {
   padding-top: 4px;
 }
 
@@ -1253,9 +1271,9 @@ html[data-theme="light"] .file-pill {
  * Comments on a reply's words, painted through the CSS Custom Highlight API so the
  * reply's DOM stays as it rendered.
  *
- * - A yellow tint with a solid yellow underline, deeper while its card is open, and
- *   dimmer once the comment is sent.
- * - The comment mark in the margin and the composer's pill take the same yellow.
+ * - A yellow tint with a solid yellow underline, dimmer once the comment is sent.
+ * - The comment's box under the line and the composer's pill mark it in the same
+ *   yellow.
  */
 :root,
 [data-theme="dark"] {
@@ -1278,11 +1296,6 @@ html[data-theme="light"] .file-pill {
   text-decoration: underline 1px rgb(250 204 21 / 0.35);
 }
 
-::highlight(comment-active) {
-  background-color: rgb(250 204 21 / 0.38);
-  text-decoration: underline 2px rgb(250 204 21);
-}
-
 /* The text a comment box is open for keeps the system's selection color, which the field took. */
 ::highlight(comment-selection) {
   background-color: rgb(96 165 250 / 0.35);
@@ -1298,43 +1311,25 @@ html[data-theme="light"] .file-pill {
   text-decoration-color: rgb(202 138 4 / 0.45);
 }
 
-[data-theme="light"] ::highlight(comment-active) {
-  background-color: rgb(250 204 21 / 0.55);
-  text-decoration-color: rgb(202 138 4);
-}
-
 [data-theme="light"] ::highlight(comment-selection) {
   background-color: rgb(59 130 246 / 0.3);
-}
-
-.comment-marker {
-  color: var(--comment-ink);
-  background-color: var(--comment-tint);
-}
-
-.comment-marker-sent {
-  opacity: 0.6;
 }
 
 /*
  * Side questions on a reply's words:
  *
- * - The asked words take a purple tint with a purple underline, deeper under the
- *   pointer.
- * - The folded card's question mark in the margin takes the same purple, as does
- *   the card's header icon.
+ * - The asked words take a purple tint with a purple underline.
+ * - The card's header icon takes the same purple.
  * - The card itself has no purple: it stands on the page's background with the line
  *   color's border.
  */
 :root,
 [data-theme="dark"] {
-  --ask-tint: rgb(192 132 252 / 0.2);
   --ask-ink: rgb(216 180 254);
   --ask-border: var(--color-line);
 }
 
 [data-theme="light"] {
-  --ask-tint: rgb(168 85 247 / 0.16);
   --ask-ink: rgb(126 34 206);
 }
 
@@ -1343,30 +1338,14 @@ html[data-theme="light"] .file-pill {
   text-decoration: underline 2px rgb(192 132 252 / 0.9);
 }
 
-::highlight(ask-active) {
-  background-color: rgb(192 132 252 / 0.36);
-  text-decoration: underline 2px rgb(216 180 254);
-}
-
 [data-theme="light"] ::highlight(ask) {
   background-color: rgb(168 85 247 / 0.16);
   text-decoration-color: rgb(147 51 234);
 }
 
-[data-theme="light"] ::highlight(ask-active) {
-  background-color: rgb(168 85 247 / 0.32);
-  text-decoration-color: rgb(147 51 234);
-}
-
-.ask-marker {
-  color: var(--ask-ink);
-  background-color: var(--ask-tint);
-}
-
 /*
  * A picture a comment or a side question stands on is outlined in its color, around
- * the picture, as its words would be tinted: yellow, dimmer once sent and deeper
- * while its card is open, or purple, deeper under the pointer. The box's outline is
+ * the picture, as its words would be tinted: yellow, dimmer once sent, or purple. The box's outline is
  * in the selection's blue.
  */
 .picture-outline {
@@ -1385,10 +1364,6 @@ html[data-theme="light"] .file-pill {
   outline-color: rgb(250 204 21 / 0.4);
 }
 
-.picture-outline-comment-active {
-  outline-color: rgb(250 204 21);
-}
-
 .picture-outline-comment-selection {
   outline-color: rgb(96 165 250 / 0.8);
 }
@@ -1397,12 +1372,7 @@ html[data-theme="light"] .file-pill {
   outline-color: rgb(192 132 252 / 0.9);
 }
 
-.picture-outline-ask-active {
-  outline-color: rgb(216 180 254);
-}
-
-[data-theme="light"] .picture-outline-comment,
-[data-theme="light"] .picture-outline-comment-active {
+[data-theme="light"] .picture-outline-comment {
   outline-color: rgb(202 138 4);
 }
 
@@ -1418,19 +1388,11 @@ html[data-theme="light"] .file-pill {
   outline-color: rgb(147 51 234 / 0.75);
 }
 
-[data-theme="light"] .picture-outline-ask-active {
-  outline-color: rgb(126 34 206);
-}
-
-/* A side question's card stands in the reply after the block holding the end of its words. */
-.markdown-body [data-ask-host] {
-  margin-top: var(--markdown-block-gap);
-}
-
-.markdown-body [data-ask-host]:empty {
+/* A comment's box or a side question's card stands in the reply under the line
+   its words end on (`lines.ts`); a place not filled yet takes no room. */
+.markdown-body [data-remark-place]:empty {
   display: none;
 }
-
 
 .composer-shell-expanded .composer-line-ruler {
   grid-area: ruler;

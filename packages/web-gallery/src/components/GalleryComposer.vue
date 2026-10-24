@@ -550,8 +550,8 @@ const slots = useSlots()
  */
 function handOn(text: string, sent: ComposerAttachment[], way: SendWay): boolean {
   const content = joinMessageContent(text, sent.map(sentBlocks))
-  // What the `context` slot shows goes with the message, so it may go without text.
-  if (!content.length && !slots.context) {
+  // What the `carried` slot shows goes with the message, so it may go without text.
+  if (!content.length && !slots.carried) {
     return false
   }
   const waiting = sent.filter((item) => isComposerFile(item) && item.phase !== 'ready')
@@ -814,8 +814,8 @@ onBeforeUnmount(() => {
     @compact="compact"
     @open-instruction="demoOpenInstruction($event, productWould)"
   >
-    <template v-if="$slots.context" #context>
-      <slot name="context" />
+    <template v-if="$slots.carried" #carried>
+      <slot name="carried" />
     </template>
   </SessionComposer>
   <RemoteFilePicker

@@ -23,11 +23,12 @@ import { transferCopiedMessage } from './message-input/copied-message'
  * - The `below-start` slot is the same row's left end, for what lists the
  *   conversation's messages saved for later.
  * - The `list` slot is a panel under that row.
- * - The `context` slot is a row at the top of the box, for what the message
- *   carries besides its text, such as a batch of comments, or for what an edit
- *   edits. The owner opens the shell while it shows, so the row stands over
- *   the message. A row that is one line of text captioning the message
- *   (`captioned`), such as what an edit edits, stands right over its first
+ * - The `carried` slot stands by the attach control, for what the message
+ *   carries besides its text, such as a batch of comments: on the one line,
+ *   and in the open shell's lower row.
+ * - The `caption` slot is a row at the top of the box, one line of text that
+ *   captions the message, such as what an edit edits. The owner opens the
+ *   shell while it shows, and the row stands right over the message's first
  *   line.
  *
  * The list opens and closes in 150 ms. The layout takes its new shape at once,
@@ -54,8 +55,6 @@ const props = defineProps<{
   focused?: boolean
   expanded?: boolean
   dropping?: boolean
-  /** The `context` row is one line of text that captions the message. */
-  captioned?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -156,16 +155,19 @@ onBeforeUnmount(() => {
       :class="[
         showDrop ? 'outline-transparent' : focused ? 'outline-line-focus' : 'outline-line',
         expanded ? 'composer-shell-expanded' : 'composer-shell-capsule',
-        $slots.context ? 'composer-shell-context' : '',
-        $slots.context && captioned ? 'composer-shell-captioned' : '',
+        $slots.caption ? 'composer-shell-caption' : '',
+        $slots.carried ? 'composer-shell-carried' : '',
       ]"
       :data-dropping="showDrop ? '' : undefined"
     >
-      <div v-if="$slots.context" class="composer-context flex flex-wrap items-start gap-1">
-        <slot name="context" />
+      <div v-if="$slots.caption" class="composer-caption flex flex-wrap items-start gap-1">
+        <slot name="caption" />
       </div>
       <div class="composer-attach">
         <slot name="attach" />
+      </div>
+      <div v-if="$slots.carried" class="composer-carried flex items-center">
+        <slot name="carried" />
       </div>
       <div class="composer-editor">
         <slot name="editor" :line="line" />

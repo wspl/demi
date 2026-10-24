@@ -16,7 +16,7 @@ import GalleryComposer from './GalleryComposer.vue'
 /**
  * Side questions on a reply's words, live. The user selects words of the reply,
  * writes a question in the comment field and chooses Ask. The words turn purple and a card
- * opens under their block, titled Ask until the small model's title arrives, with one
+ * opens under the line they end on, titled Ask until the small model's title arrives, with one
  * status line while the answer is made and then the answer.
  *
  * The card's controls:
@@ -24,9 +24,9 @@ import GalleryComposer from './GalleryComposer.vue'
  * - Stop, while it works, ends the answer where it is: the card keeps what was
  *   answered and says Stopped.
  * - Reply asks a follow-up.
- * - × folds the card into the margin's mark; the mark or the words open it again.
- *   On a question still on its first answer it deletes the question with its
- *   card instead, as if it had not been asked.
+ * - The header or its chevron folds the card to its header and opens it again.
+ * - Delete, in the card's menu (right-click) of a question still on its first
+ *   answer, deletes the question with its card, as if it had not been asked.
  * - ↗ opens the whole side conversation in the subagent window.
  * - A failure's Retry runs the turn again.
  *

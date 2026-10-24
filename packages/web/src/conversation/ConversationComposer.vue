@@ -300,7 +300,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @compact="store.compact(conversation)"
       @open-instruction="card.openInstruction"
     >
-      <template v-if="waitingComments.length > 0" #context>
+      <template v-if="waitingComments.length > 0" #carried>
         <WaitingComments
           :comments="waitingComments"
           @edit="(id, text) => commenting.edit(id, text)"

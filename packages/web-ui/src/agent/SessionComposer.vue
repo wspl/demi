@@ -368,13 +368,12 @@ const carrying = computed(() => {
 const slots = useSlots()
 /**
  * What the page sends with the message besides its draft, such as a batch of
- * comments, which its `context` slot shows inside the box.
+ * comments, which its `carried` slot shows by the paperclip.
  *
- * While it is there, the box takes its multi-line layout. Send sends it with
- * the draft, or alone when the draft is empty. It is read at each render and
- * each send, as a slot is.
+ * Send sends it with the draft, or alone when the draft is empty. It is read at
+ * each render and each send, as a slot is.
  */
-const carriesContext = () => slots.context !== undefined
+const carries = () => slots.carried !== undefined
 const hasDraft = computed(
   () => shownEdit.value ? editHasContent(shownEdit.value)
     : !!draft.value.trim() || !!capsules.value.length,
@@ -534,7 +533,7 @@ const waitingSend = useSendOnceLoaded({
   blocked: () => sendDisabled.value,
   loading: () => modelsLoading.value,
   send: (asksOtherWay) => {
-    if ((hasDraft.value || carriesContext()) && !shownEdit.value) {
+    if ((hasDraft.value || carries()) && !shownEdit.value) {
       emit('submit', chooseSendWay(working.value, props.sendWhileRunning, asksOtherWay))
     }
   },
@@ -545,16 +544,16 @@ const waitingSend = useSendOnceLoaded({
  * ⌘/Ctrl-click on the send button.
  */
 function submit(asksOtherWay: boolean) {
-  const sendsContext = !shownEdit.value && carriesContext()
+  const sendsCarried = !shownEdit.value && carries()
   if (sendDisabled.value) {
-    if ((hasDraft.value || sendsContext) && !shownEdit.value) {
+    if ((hasDraft.value || sendsCarried) && !shownEdit.value) {
       waitingSend.keep(asksOtherWay)
     }
     // Enter on a message that cannot go: the send button says why, unpointed.
     sendButton.value?.showReason()
     return
   }
-  if (!hasDraft.value && !sendsContext) {
+  if (!hasDraft.value && !sendsCarried) {
     return
   }
   const way = chooseSendWay(working.value, props.sendWhileRunning, asksOtherWay)
@@ -733,8 +732,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       </Teleport>
       <ComposerShell
         :focused="focused || props.focused"
-        :expanded="multiline || !!shownEdit || carriesContext()"
-        :captioned="!!shownEdit"
+        :expanded="multiline || !!shownEdit"
         :dropping="dropping"
         @drop-files="dropFiles"
       >
@@ -742,12 +740,14 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           An edit says what it edits where the draft shows what it carries,
           marked as what opened it: the Saved entry's mark, or Edit's pencil.
         -->
-        <template v-if="shownEdit || carriesContext()" #context>
-          <span v-if="shownEdit" class="inline-flex select-none items-center text-fg-subtle">
+        <template v-if="shownEdit" #caption>
+          <span class="inline-flex select-none items-center text-fg-subtle">
             <component :is="savedEdit ? NotebookPen : Pencil" :size="ICON_PX.in28" class="mr-1 shrink-0" />
             {{ savedEdit ? t('composer.editingSaved') : t('composer.editingMessage') }}
           </span>
-          <slot v-else name="context" />
+        </template>
+        <template v-if="!shownEdit && carries()" #carried>
+          <slot name="carried" />
         </template>
         <template #editor="{ line }">
           <MessageEditor
@@ -945,7 +945,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             ⌘/Ctrl-click sends the other way while the agent works.
           -->
           <Tooltip
-            v-if="hasDraft || (!shownEdit && carriesContext())"
+            v-if="hasDraft || (!shownEdit && carries())"
             :content="submitTip"
             :disabled="sendDisabled"
           >
