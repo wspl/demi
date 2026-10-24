@@ -42,6 +42,7 @@
   "directory": {
     "switch": "Switch directory",
     "chooseAnother": "Choose Another Directory…",
-    "useThis": "Use This Folder"
+    "useThis": "Use This Folder",
+    "worktree": "Worktree {name}"
   }
 }

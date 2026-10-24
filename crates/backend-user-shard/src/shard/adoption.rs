@@ -243,6 +243,7 @@ impl Shard {
         // queued meanwhile leaves after the welcome.
         let _ = send(&mut socket, &welcome).await;
         self.forwards_presence(&device.id, true).await;
+        self.projects_presence(&device.id).await;
         serving.serve(socket).await;
         self.forwards_presence(&device.id, false).await;
     }
@@ -299,6 +300,7 @@ impl Shard {
                 .dto(device, self.services().public_url.get()),
         );
         self.forwards_presence(&id, true).await;
+        self.projects_presence(&id).await;
         serving.serve(socket).await;
         self.forwards_presence(&id, false).await;
     }

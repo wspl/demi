@@ -18,3 +18,26 @@ export const projectWorkflows: WorkflowList = {
 
 /** A project without workflows: the menu offers Global Workflow and No Subagents only. */
 export const noWorkflows: WorkflowList = { state: 'read', workflows: [] }
+
+/**
+ * A conversation in the linked worktree 2 of the project app, whose
+ * worktree's workflows differ from the project's: the menu lists both, each
+ * under its name.
+ */
+export const worktreeWorkflows: WorkflowList = {
+  state: 'read',
+  workflows: [
+    { id: 'parallel', name: 'Parallel Development', path: '/Users/alex/app/.demi/workflows/parallel.yaml', unavailable: null, profiles: ['builder', 'reviewer'] },
+    { id: 'review', name: 'Review Team', path: '/Users/alex/app/.demi/workflows/review.yaml', unavailable: null, profiles: ['explore', 'reviewer'] },
+  ],
+  worktree: {
+    project: 'app',
+    name: '2',
+    list: {
+      state: 'read',
+      workflows: [
+        { id: 'parallel', name: 'Parallel Development', path: '/Users/alex/app-worktrees/2/.demi/workflows/parallel.yaml', unavailable: null, profiles: ['builder'] },
+      ],
+    },
+  },
+}

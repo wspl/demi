@@ -46,7 +46,7 @@ use demi_backend_host_access::root_of;
 use demi_backend_plugins::Lost;
 use demi_backend_database::server_log::ServerLog;
 use demi_backend_remote_host::{DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
-use demi_runner_protocol::wire::HostLogLine;
+use demi_runner_protocol::wire::{HostLogLine, LinkedWorktree};
 use demi_backend_runners::host_key::conversation_of;
 use demi_backend_database::permissions::AskedHost;
 use demi_backend_permissions::Need;
@@ -390,6 +390,14 @@ impl LinkPolicy for ShardPolicy {
         // A shard that is closing serves no forward.
         if let Ok(shard) = self.shard() {
             shard.forward_event(&self.device, event);
+        }
+    }
+
+    fn worktrees(&self, directory: String, worktrees: Vec<LinkedWorktree>) {
+        // A shard that is closing stores nothing; the next connection
+        // reports again.
+        if let Ok(shard) = self.shard() {
+            shard.worktrees_reported(&self.device, directory, worktrees);
         }
     }
 }

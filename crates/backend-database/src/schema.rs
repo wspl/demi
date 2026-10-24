@@ -339,11 +339,15 @@ pub(crate) const CONTROL: Schema = Schema {
 ///   without asking.
 /// - The saved shortcuts are the Mac's set, and the PC's starts at its
 ///   defaults ([`CONTROL_SHORTCUTS_FROM_0_1_65`]).
+/// - A conversation in a linked worktree of its project keeps the worktree
+///   with its selection, and each project the worktrees its Host reports
+///   ([`CONTROL_WORKTREES_FROM_0_1_65`]).
 ///
 /// The automations are read one row at a time: the table is small, but a
 /// migration collects no table into memory.
 fn control_from_0_1_65(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_SHORTCUTS_FROM_0_1_65)?;
+    transaction.execute_batch(CONTROL_WORKTREES_FROM_0_1_65)?;
     transaction.execute_batch(CONTROL_SCHEDULES_FROM_0_1_65)?;
     {
         let mut read = transaction.prepare(
@@ -547,6 +551,25 @@ CREATE TABLE plugin_reports (
   reported_at     INTEGER NOT NULL,
   PRIMARY KEY (plugin_id, conversation_id, device_id)
 ) STRICT;
+";
+
+/// The worktrees' part of [`control_from_0_1_65`]: none is known before the
+/// Host's first report after the upgrade, and no workflow choice was a
+/// worktree's file.
+const CONTROL_WORKTREES_FROM_0_1_65: &str = "
+ALTER TABLE conversations ADD COLUMN target_worktree_name TEXT;
+ALTER TABLE conversations ADD COLUMN target_worktree_path TEXT
+  CHECK ((target_worktree_name IS NULL) = (target_worktree_path IS NULL)
+    AND (target_worktree_path IS NULL OR target_kind = 'workspace'));
+ALTER TABLE conversations ADD COLUMN workflow_worktree INTEGER NOT NULL DEFAULT 0
+  CHECK (workflow_worktree IN (0, 1) AND (workflow_worktree = 0 OR workflow_kind = 'workflow'));
+CREATE TABLE workspace_worktrees (
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  path         TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, name)
+) STRICT;
+CREATE INDEX workspace_worktrees_path ON workspace_worktrees (path);
 ";
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
@@ -4723,6 +4746,17 @@ CREATE TABLE workspaces (
 CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
 CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path);
 
+-- The linked worktrees of each project's repository, by git's name and their
+-- directory, as the project's Host last reported them
+-- (`crates/backend-database/src/selection.rs` § Worktrees).
+CREATE TABLE workspace_worktrees (
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  path         TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, name)
+) STRICT;
+CREATE INDEX workspace_worktrees_path ON workspace_worktrees (path);
+
 -- Each user's port forwards (port-forwarding.md): a name unique among the
 -- user's, the Listen On device and its port there, the Connect To device,
 -- none until the user chooses one, and the `host:port` it connects to, and
@@ -4965,6 +4999,16 @@ CREATE TABLE conversations (
   workflow_kind TEXT NOT NULL DEFAULT 'default' CHECK (workflow_kind IN ('default', 'none', 'workflow')),
   workflow_id   TEXT CHECK ((workflow_kind = 'workflow') = (workflow_id IS NOT NULL)),
   last_switch_revision INTEGER,
+  -- The linked worktree of its project it works in, by git's name and its
+  -- directory, in place of the project's directory; both null outside one
+  -- (`crates/backend-database/src/selection.rs` § Worktrees).
+  target_worktree_name TEXT,
+  target_worktree_path TEXT
+    CHECK ((target_worktree_name IS NULL) = (target_worktree_path IS NULL)
+      AND (target_worktree_path IS NULL OR target_kind = 'workspace')),
+  -- Whether its workflow is the worktree's file rather than the project's.
+  workflow_worktree INTEGER NOT NULL DEFAULT 0
+    CHECK (workflow_worktree IN (0, 1) AND (workflow_worktree = 0 OR workflow_kind = 'workflow')),
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)

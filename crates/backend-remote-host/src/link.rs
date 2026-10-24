@@ -44,7 +44,7 @@ use demi_host_interface::{
 };
 use demi_runner_protocol::direct::{DialRefusal, Introduced, OfferRefusal, StunUrl};
 use demi_runner_protocol::forward::{Forward, ForwardRunState};
-use demi_runner_protocol::wire::{
+use demi_runner_protocol::wire::{LinkedWorktree, 
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, HostLogLine, Inbound, Outbound,
     Read, ReadAt,
 };
@@ -143,6 +143,12 @@ pub trait LinkPolicy {
     /// with another runner (`crates/backend-user-shard/src/shard/port_forwards.rs`), in the order it said
     /// it; the policy answers through the link.
     fn forward_event(&self, event: ForwardEvent);
+
+    /// The runner reported the linked worktrees of the repository of its
+    /// project directory `directory` (`crates/runner-host/src/worktrees.rs`).
+    /// The policy takes them before the connection routes the runner's next
+    /// message, which may follow their change, as a move does.
+    fn worktrees(&self, directory: String, worktrees: Vec<LinkedWorktree>);
 
     /// Where the Host's log lines go; none keeps the connection without one,
     /// and then the backend never asks the runner to send them.
@@ -1192,6 +1198,12 @@ impl Link {
         self.post(&message);
     }
 
+    /// Tells the runner the directories of the projects on its Host, whose
+    /// worktrees it reports.
+    pub fn projects(&self, directories: Vec<String>) {
+        self.post(&Inbound::Projects { directories });
+    }
+
     /// Tells the runner every forward it is an end of, and the STUN
     /// servers it asks when it offers a peer to another runner.
     pub fn forwards(&self, forwards: Vec<Forward>, stun: Vec<StunUrl>) {
@@ -1569,6 +1581,7 @@ impl Link {
             Outbound::ForwardState { forward, state } => {
                 self.0.policy.forward_event(ForwardEvent::State { forward, state });
             }
+            Outbound::Worktrees { directory, worktrees } => self.0.policy.worktrees(directory, worktrees),
             Outbound::ForwardOpen { id, forward } => {
                 self.0.policy.forward_event(ForwardEvent::Open { id, forward });
             }

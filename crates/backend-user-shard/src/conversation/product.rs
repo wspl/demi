@@ -205,7 +205,7 @@ impl SubagentSource for ShardSubagents {
         &'a self,
         root: &'a NodeId,
         choice: WorkflowChoice,
-    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+    ) -> LocalBoxFuture<'a, Result<(WorkflowChoice, Option<String>), String>> {
         Box::pin(async move {
             self.shard()?
                 .choose_workflow(&conversation_of(root), choice)

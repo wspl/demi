@@ -853,6 +853,15 @@ pub enum Inbound {
         #[garde(length(max = crate::direct::MAX_STUN_URLS))]
         stun: Vec<crate::direct::StunUrl>,
     },
+    /// The directories of the projects on this runner's Host, as the
+    /// backend stores them, as the connection begins and whenever one is
+    /// added, removed or named otherwise. The runner reports each one's
+    /// linked worktrees (`worktrees`) and keeps them current
+    /// (`crates/runner-host/src/worktrees.rs`).
+    Projects {
+        #[garde(inner(length(min = 1)))]
+        directories: Vec<String>,
+    },
     /// The user asks the Listen On runner to try forward `forward`'s port
     /// again.
     ForwardRetry {
@@ -1008,6 +1017,7 @@ impl Inbound {
             | Self::DirectDialed { .. }
             | Self::DirectDialRefused { .. }
             | Self::Forwards { .. }
+            | Self::Projects { .. }
             | Self::ForwardRetry { .. }
             | Self::ForwardConnect { .. }
             | Self::ForwardOpened { .. }
@@ -1519,6 +1529,17 @@ pub enum Outbound {
             with = "unwrap_or_skip"
         )]
         state: Option<crate::forward::ForwardRunState>,
+    },
+    /// The linked worktrees of the repository whose main worktree is the
+    /// project directory `directory`, named as the backend's `projects`
+    /// named it; none for a directory that is no repository's main worktree.
+    /// It goes before any message that could follow a change of them
+    /// (`crates/runner-host/src/worktrees.rs`).
+    Worktrees {
+        #[garde(length(min = 1))]
+        directory: String,
+        #[garde(dive)]
+        worktrees: Vec<LinkedWorktree>,
     },
     /// A connection of forward `forward` that goes through the relay; the
     /// backend answers `forward_opened` or `forward_refused`.
@@ -2389,6 +2410,18 @@ pub struct KeptJob {
     pub outliving: Vec<String>,
 }
 
+/// A linked worktree of a project's repository, as git keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinkedWorktree {
+    /// Its name: its directory's under the repository's `.git/worktrees/`.
+    #[garde(length(min = 1))]
+    pub name: String,
+    /// Its directory, canonical where it exists.
+    #[garde(length(min = 1))]
+    pub path: String,
+}
+
 /// How a kept job ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2473,7 +2506,8 @@ impl Outbound {
             | Self::RpcStdin { .. }
             | Self::RpcStdinEnd { .. }
             | Self::RpcCancel { .. }
-            | Self::PipeDone { .. } => Carriage::Outlasting,
+            | Self::PipeDone { .. }
+            | Self::Worktrees { .. } => Carriage::Outlasting,
             Self::ConversationReleased { .. }
             | Self::PackageReleased { .. }
             | Self::NumbersReserve { .. }

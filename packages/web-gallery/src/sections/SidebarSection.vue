@@ -119,7 +119,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user and has not been read, over every other mark; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished and red once failed until the user reads it, and a faint ring once a finished answer, a failure or a request is read, when stopped or when nothing has run yet (Status Dots). An answer not yet read also shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, to the left of the device’s mark, with Unpin before it on a pinned row; rename is inline. The pin, the bolt, the device’s mark and the buttons rest in one grey, on a selected row and in dark mode too; only the button under the pointer darkens and shows its fill, as Finder’s eject button does, and the marks never change on hover. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user and has not been read, over every other mark; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished and red once failed until the user reads it, and a faint ring once a finished answer, a failure or a request is read, when stopped or when nothing has run yet (Status Dots). An answer not yet read also shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, to the left of the device’s mark, with Unpin before it on a pinned row; rename is inline. A conversation in a linked worktree of its project shows the worktree’s mark after the bolt, its name, git’s, read aloud. The pin, the bolt, the worktree’s mark, the device’s mark and the buttons rest in one grey, on a selected row and in dark mode too; only the button under the pointer darkens and shows its fill, as Finder’s eject button does, and the marks never change on hover. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -286,11 +286,13 @@ async function deleteProject(specimen: 'demo' | 'marks', id: string): Promise<vo
 
 /**
  * The hover specimen's rows: pinned and not, each on the Cloud and on a paired device, and each
- * of those with a schedule that wakes it, whose alarm clock stands before the device's mark.
+ * of those with a schedule that wakes it, whose alarm clock stands before the device's mark; then,
+ * pinned and not, in a project's linked worktree, whose mark follows the alarm clock. A row in a
+ * project shows no device's mark, so no row has both.
  */
 function hoverRows(): SidebarConversation[] {
-  const row = (id: string, title: string, pinned: boolean, device?: SidebarConversation['device'], scheduled?: boolean): SidebarConversation => ({
-    id, title, pinned, device, scheduled, updatedAt: '2026-10-10T09:00:00Z', status: 'done', projectId: null, unread: false,
+  const row = (id: string, title: string, pinned: boolean, device?: SidebarConversation['device'], scheduled?: boolean, worktree?: string): SidebarConversation => ({
+    id, title, pinned, device, scheduled, worktree, updatedAt: '2026-10-10T09:00:00Z', status: 'done', projectId: null, unread: false,
   })
   const laptop = { kind: 'paired', name: 'MacBook Pro', state: 'online', mark: GALLERY_MARKS.mac } as const
   const server = { kind: 'paired', name: 'build-01', state: 'online', mark: GALLERY_MARKS.ubuntu } as const
@@ -303,6 +305,10 @@ function hoverRows(): SidebarConversation[] {
     row('h-plain-device', 'Tidy the dotfiles', false, laptop),
     row('h-plain-bolt', 'Summarize the inbox', false, undefined, true),
     row('h-plain-bolt-device', 'Rotate the server logs', false, server, true),
+    row('h-pinned-worktree', 'Try the new parser', true, undefined, undefined, 'parser'),
+    row('h-pinned-bolt-worktree', 'Rebuild the docs nightly', true, undefined, true, 'docs'),
+    row('h-plain-worktree', 'Bump the dependencies', false, undefined, undefined, '2'),
+    row('h-plain-bolt-worktree', 'Check the flaky tests', false, undefined, true, '3'),
   ]
 }
 const hoverConversations = ref(hoverRows())

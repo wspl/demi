@@ -154,13 +154,15 @@ pub enum ConversationProfiles {
     Workflow(ChosenWorkflow),
     /// The chosen workflow cannot be used now: its file is gone or does not
     /// read, as `reason` says.
-    Unavailable { id: String, reason: String },
+    Unavailable { id: String, worktree: bool, reason: String },
 }
 
 /// A workflow a conversation chose, as its file reads now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChosenWorkflow {
     pub id: String,
+    /// Whether it is the file of the worktree the conversation works in.
+    pub worktree: bool,
     /// What the menu shows.
     pub name: String,
     /// Its profiles, in the file's order.
@@ -201,10 +203,13 @@ pub struct WorkflowListing {
     pub workflows: Vec<ListedWorkflow>,
 }
 
-/// A workflow file of the project.
+/// A workflow file of the project, or of the worktree the conversation
+/// works in while the worktree's differ from the project's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct ListedWorkflow {
     pub id: String,
+    /// Whether it is the worktree's file.
+    pub worktree: bool,
     /// What the menu shows; null for a file that cannot be used.
     pub name: Option<String>,
     /// The file on the Host.
@@ -363,14 +368,15 @@ pub trait SubagentSource {
 
     /// Makes `choice` the conversation `root`'s Workflow menu choice through
     /// the menu's own change, so the menu shows it at once; answers the
-    /// chosen workflow's name, none for Global Workflow and No Subagents. A
-    /// workflow the project does not have, or that cannot be used, is refused
-    /// with why, and the choice stays.
+    /// choice made, the worktree's workflow when only the worktree has the
+    /// id, and the chosen workflow's name, none for Global Workflow and No
+    /// Subagents. A workflow the project does not have, or that cannot be
+    /// used, is refused with why, and the choice stays.
     fn choose_workflow<'a>(
         &'a self,
         _root: &'a NodeId,
         _choice: WorkflowChoice,
-    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+    ) -> LocalBoxFuture<'a, Result<(WorkflowChoice, Option<String>), String>> {
         Box::pin(async { Err(NO_WORKFLOWS.to_owned()) })
     }
 

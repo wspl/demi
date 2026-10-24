@@ -26,7 +26,7 @@ use super::StorageError;
 use super::columns::{decode, instant, json, to_json, workflow_choice, workflow_columns};
 use super::control::ControlService;
 use super::devices::CLOUD_NAME;
-use super::selection::{Selected, Selection, Unselectable, execution_target, select};
+use super::selection::{Selected, Selection, Unselectable, Worktree, execution_target, select};
 use super::workspaces::WorkspaceRecord;
 
 /// A conversation as the index holds it.
@@ -235,7 +235,8 @@ pub enum Creation {
 const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, title_origin, archived, pinned, read_revision, target_kind, target_device_id,
-     target_path, target_workspace_id, context_version, model, workflow_kind, workflow_id, created_at, updated_at, hosts_revision,
+     target_path, target_workspace_id, target_worktree_name, target_worktree_path, context_version, model, workflow_kind,
+     workflow_id, workflow_worktree, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT saved_revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS saved_revision,
      (SELECT count(*) FROM saved_messages WHERE conversation_id = conversations.id) AS saved,
@@ -250,6 +251,8 @@ pub struct TargetColumns {
     pub device: Option<String>,
     pub path: Option<String>,
     pub workspace: Option<String>,
+    pub worktree_name: Option<String>,
+    pub worktree_path: Option<String>,
 }
 
 impl TargetColumns {
@@ -260,28 +263,37 @@ impl TargetColumns {
                 device: None,
                 path: path.clone(),
                 workspace: None,
+                worktree_name: None,
+                worktree_path: None,
             },
             Selection::Home { device_id } => Self {
                 kind: "home",
                 device: Some(device_id.as_str().to_owned()),
                 path: None,
                 workspace: None,
+                worktree_name: None,
+                worktree_path: None,
             },
             Selection::Workspace {
                 workspace_id,
                 device_id,
                 path,
+                worktree,
             } => Self {
                 kind: "workspace",
                 device: Some(device_id.as_str().to_owned()),
                 path: Some(path.clone()),
                 workspace: Some(workspace_id.as_str().to_owned()),
+                worktree_name: worktree.as_ref().map(|worktree| worktree.name.clone()),
+                worktree_path: worktree.as_ref().map(|worktree| worktree.path.clone()),
             },
             Selection::Directory { device_id, path } => Self {
                 kind: "device",
                 device: Some(device_id.as_str().to_owned()),
                 path: Some(path.clone()),
                 workspace: None,
+                worktree_name: None,
+                worktree_path: None,
             },
         }
     }
@@ -336,6 +348,15 @@ impl ControlService {
                 Ok(selected) => selected,
                 Err(reason) => return Ok((Creation::Unselectable(reason), None)),
             };
+            // Before it exists, a conversation's Workflow menu lists its
+            // directory's workflows, so in a linked worktree its choice is
+            // the worktree's file.
+            let workflow = match (&selection, &start.workflow) {
+                (Selection::Workspace { worktree: Some(_), .. }, WorkflowChoice::Workflow { id, worktree: false }) => {
+                    WorkflowChoice::Workflow { id: id.clone(), worktree: true }
+                }
+                (_, workflow) => workflow.clone(),
+            };
             let inserted = insert_conversation(
                 &transaction,
                 &NewConversation {
@@ -345,7 +366,7 @@ impl ControlService {
                     pinned: start.pinned,
                     target: &selection,
                     model: start.model.as_ref(),
-                    workflow: &start.workflow,
+                    workflow: &workflow,
                     context_version: 0,
                     at: now,
                 },
@@ -556,10 +577,10 @@ impl ControlService {
                     params![id.as_str(), to_json(model)],
                 )?,
                 RecordChange::Workflow(choice) => {
-                    let (kind, workflow) = workflow_columns(choice);
+                    let (kind, workflow, worktree) = workflow_columns(choice);
                     transaction.execute(
-                        "UPDATE conversations SET workflow_kind = ?2, workflow_id = ?3 WHERE id = ?1",
-                        params![id.as_str(), kind, workflow],
+                        "UPDATE conversations SET workflow_kind = ?2, workflow_id = ?3, workflow_worktree = ?4 WHERE id = ?1",
+                        params![id.as_str(), kind, workflow, worktree],
                     )?
                 }
                 RecordChange::Attach(host) => {
@@ -711,14 +732,15 @@ pub fn insert_conversation(
     new: &NewConversation<'_>,
 ) -> Result<usize, StorageError> {
     let target = TargetColumns::of(new.target);
-    let (workflow_kind, workflow_id) = workflow_columns(new.workflow);
+    let (workflow_kind, workflow_id, workflow_worktree) = workflow_columns(new.workflow);
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
-           model, created_at, updated_at, workflow_kind, workflow_id)
+           model, created_at, updated_at, workflow_kind, workflow_id, target_worktree_name, target_worktree_path,
+           workflow_worktree)
          VALUES (?1, ?2, ?3, ?4, 0, ?11,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-           0, ?5, ?6, ?7, ?8, ?14, ?9, ?10, ?10, ?12, ?13)
+           0, ?5, ?6, ?7, ?8, ?14, ?9, ?10, ?10, ?12, ?13, ?15, ?16, ?17)
          ON CONFLICT (id) DO NOTHING",
         params![
             new.id.as_str(),
@@ -734,7 +756,10 @@ pub fn insert_conversation(
             new.pinned,
             workflow_kind,
             workflow_id,
-            revision_column(new.context_version)
+            revision_column(new.context_version),
+            target.worktree_name,
+            target.worktree_path,
+            workflow_worktree
         ],
     )?;
     Ok(inserted)
@@ -762,7 +787,7 @@ pub fn conversation_by_id(
 /// The choice a `conversations` row's workflow columns hold.
 fn workflow_row(row: &Row<'_>) -> Result<WorkflowChoice, StorageError> {
     let kind: String = row.get("workflow_kind")?;
-    workflow_choice("conversations", "workflow_kind", &kind, row.get("workflow_id")?)
+    workflow_choice("conversations", "workflow_kind", &kind, row.get("workflow_id")?, row.get("workflow_worktree")?)
 }
 
 /// A `conversations` row, read from its columns in `CONVERSATION_COLUMNS`.
@@ -878,6 +903,8 @@ fn target_row(row: &Row<'_>) -> Result<Selection, StorageError> {
         },
         "workspace" => {
             let workspace: Option<String> = row.get("target_workspace_id")?;
+            let name: Option<String> = row.get("target_worktree_name")?;
+            let worktree: Option<String> = row.get("target_worktree_path")?;
             Selection::Workspace {
                 workspace_id: decode(
                     TABLE,
@@ -886,6 +913,7 @@ fn target_row(row: &Row<'_>) -> Result<Selection, StorageError> {
                 )?,
                 device_id: device()?,
                 path: path_of(path)?,
+                worktree: name.zip(worktree).map(|(name, path)| Worktree { name, path }),
             }
         }
         other => {
@@ -1031,10 +1059,11 @@ impl ControlService {
             // `IS` compares NULL as equal to NULL, which `=` does not.
             let revision: Option<i64> = transaction.query_row(
                 "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
-                   target_workspace_id = ?5, last_switch = ?6, last_switch_revision = context_version + 1,
+                   target_workspace_id = ?5, target_worktree_name = ?12, target_worktree_path = ?13,
+                   last_switch = ?6, last_switch_revision = context_version + 1,
                    context_version = context_version + 1, updated_at = ?7
                  WHERE id = ?1 AND archived = 0 AND target_kind = ?8 AND target_device_id IS ?9
-                   AND target_path IS ?10 AND target_workspace_id IS ?11
+                   AND target_path IS ?10 AND target_workspace_id IS ?11 AND target_worktree_path IS ?14
                  RETURNING context_version",
                 params![
                     id.as_str(),
@@ -1047,7 +1076,10 @@ impl ControlService {
                     before.kind,
                     before.device,
                     before.path,
-                    before.workspace
+                    before.workspace,
+                    target.worktree_name,
+                    target.worktree_path,
+                    before.worktree_path
                 ],
                 |row| row.get(0),
             ).optional()?;
@@ -1119,9 +1151,12 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
     let Some(record) = conversation_by_id(connection, id)? else {
         return Ok(());
     };
-    let Selection::Workspace { workspace_id, device_id, path } = &record.target else {
+    let Selection::Workspace { workspace_id, device_id, path, worktree } = &record.target else {
         return Ok(());
     };
+    // A worktree's conversation goes back to the worktree, which, its
+    // project gone, is a project as any directory is.
+    let path = worktree.as_ref().map_or(path, |worktree| &worktree.path);
     if super::workspaces::workspace_in(connection, workspace_id)?.is_some() {
         return Ok(());
     }

@@ -266,6 +266,11 @@ impl JobTable {
                             },
                         );
                     }
+                    // What the job changed of the Host's projects goes
+                    // first, so what follows its end finds it (`Lane::report`).
+                    if let (WorkId::Job(_), Some(commands)) = (&key, &config.commands) {
+                        commands.connection.lane().report();
+                    }
                     // Without a connection the exit waits with the job's
                     // directory.
                     let _ = config.output.send(terminal.frame);

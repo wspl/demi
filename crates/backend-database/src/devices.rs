@@ -367,7 +367,7 @@ impl ControlService {
 
     /// Deletes the device with its attachments to conversations, its
     /// workspaces, the port forwards it is an end of and its exposed ports, one transaction. The workspaces' conversations first move
-    /// off them, each to its workspace's directory
+    /// off them, each to its workspace's directory, or its worktree's,
     /// on the device as a direct device target, which no longer runs. A workspace is a pointer: no file goes.
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         self.call(move |connection, _| {
@@ -375,7 +375,8 @@ impl ControlService {
             let mut conversations = {
                 let mut statement = transaction.prepare_cached(
                     "UPDATE conversations SET target_kind = 'device', target_workspace_id = NULL,
-                       target_path = COALESCE(target_path, (SELECT home FROM devices WHERE id = ?1))
+                       target_path = COALESCE(target_worktree_path, target_path, (SELECT home FROM devices WHERE id = ?1)),
+                       target_worktree_name = NULL, target_worktree_path = NULL
                      WHERE target_device_id = ?1 AND target_kind IN ('workspace', 'home')
                      RETURNING id",
                 )?;
@@ -934,9 +935,18 @@ fn workspace_conversations(connection: &Connection, workspace: &str) -> Result<V
 pub(crate) fn set_selection(connection: &Connection, id: &ConversationId, selection: &Selection) -> Result<(), StorageError> {
     let columns = TargetColumns::of(selection);
     connection.execute(
-        "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4, target_workspace_id = ?5
+        "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4, target_workspace_id = ?5,
+           target_worktree_name = ?6, target_worktree_path = ?7
          WHERE id = ?1",
-        params![id.as_str(), columns.kind, columns.device, columns.path, columns.workspace],
+        params![
+            id.as_str(),
+            columns.kind,
+            columns.device,
+            columns.path,
+            columns.workspace,
+            columns.worktree_name,
+            columns.worktree_path
+        ],
     )?;
     Ok(())
 }

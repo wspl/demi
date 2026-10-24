@@ -168,8 +168,10 @@ impl ControlService {
     ) -> Result<Option<WorkspaceRecord>, StorageError> {
         self.call(move |connection, _| {
             let (kind, workflow) = match &change.last_workflow {
+                // A new conversation is in no worktree, so the project's
+                // last choice keeps the workflow alone.
                 Some(choice) => {
-                    let (kind, workflow) = workflow_columns(choice);
+                    let (kind, workflow, _worktree) = workflow_columns(choice);
                     (Some(kind), workflow)
                 }
                 None => (None, None),
@@ -323,16 +325,12 @@ impl ControlService {
                         .collect::<Result<_, _>>()?;
                     match workspace_at(&transaction, &project.user, &project.device, &canonical)? {
                         Some(other) if other.id != project.id => {
+                            // Each keeps the worktree it works in.
+                            transaction.execute(
+                                "UPDATE conversations SET target_workspace_id = ?2, target_path = ?3 WHERE target_workspace_id = ?1",
+                                params![id.as_str(), other.id.as_str(), other.path],
+                            )?;
                             for member in &inside {
-                                super::devices::set_selection(
-                                    &transaction,
-                                    member,
-                                    &super::Selection::Workspace {
-                                        workspace_id: other.id.clone(),
-                                        device_id: other.device.clone(),
-                                        path: other.path.clone(),
-                                    },
-                                )?;
                                 super::conversation_index::advance_context(&transaction, member)?;
                             }
                             transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id.as_str()])?;
@@ -351,7 +349,21 @@ impl ControlService {
                             }
                         }
                     }
-                    DirectoryNamed { conversations: inside, projects: true }
+                    let mut named = DirectoryNamed { conversations: inside, projects: true };
+                    // A directory that is a project's worktree is no project
+                    // of its own (`crates/backend-database/src/selection.rs` § Worktrees).
+                    if let Some(device) = device_in(&transaction, &project.device)?
+                        && let Some(super::Selection::Workspace { workspace_id, worktree: Some(worktree), .. }) =
+                            super::selection::worktree_at(&transaction, &device, &canonical)?
+                    {
+                        let folded = fold_into_worktree(&transaction, &device, &workspace_id, &worktree)?;
+                        for id in folded.into_iter().flatten() {
+                            if !named.conversations.contains(&id) {
+                                named.conversations.push(id);
+                            }
+                        }
+                    }
+                    named
                 }
             };
             transaction.commit()?;
@@ -359,6 +371,103 @@ impl ControlService {
         })
         .await
     }
+}
+
+/// What a project's reported worktrees changed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorktreesStored {
+    /// The conversations now in a worktree of the project, which were in a
+    /// project of the worktree's own; their pages and agents learn where they
+    /// work.
+    pub conversations: Vec<ConversationId>,
+    /// The projects changed: a worktree's project went into the project.
+    pub projects: bool,
+}
+
+impl ControlService {
+    /// Keeps `worktrees` as the linked worktrees of the project of
+    /// `directory` on `device`, as its runner reported them, in place of what
+    /// it kept; a directory that is no project's keeps nothing. A worktree
+    /// whose directory is a project of its own takes that project's
+    /// conversations into this one, with the worktree, and deletes it
+    /// (`crates/backend-database/src/selection.rs` § Worktrees).
+    pub async fn store_worktrees(
+        &self,
+        device: DeviceId,
+        directory: String,
+        worktrees: Vec<super::Worktree>,
+    ) -> Result<WorktreesStored, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let Some(device) = device_in(&transaction, &device)? else {
+                return Ok(WorktreesStored::default());
+            };
+            let Some(project) = workspace_at(&transaction, &device.user, &device.id, &directory)? else {
+                return Ok(WorktreesStored::default());
+            };
+            transaction.execute("DELETE FROM workspace_worktrees WHERE workspace_id = ?1", [project.id.as_str()])?;
+            let mut stored = WorktreesStored::default();
+            for worktree in &worktrees {
+                // A repository names each worktree once; a report that named
+                // one twice keeps the first.
+                transaction.execute(
+                    "INSERT INTO workspace_worktrees (workspace_id, name, path) VALUES (?1, ?2, ?3)
+                     ON CONFLICT (workspace_id, name) DO NOTHING",
+                    params![project.id.as_str(), worktree.name, worktree.path],
+                )?;
+            }
+            for worktree in &worktrees {
+                if let Some(folded) = fold_into_worktree(&transaction, &device, &project.id, worktree)? {
+                    stored.projects = true;
+                    stored.conversations.extend(folded);
+                }
+            }
+            transaction.commit()?;
+            Ok(stored)
+        })
+        .await
+    }
+}
+
+/// Takes the conversations of the project of `worktree`'s directory on
+/// `device`, if one is, into the project `into`, working in `worktree`, and
+/// deletes that project; answers the conversations it took, none when no
+/// project was deleted.
+fn fold_into_worktree(
+    connection: &Connection,
+    device: &super::devices::DeviceRecord,
+    into: &WorkspaceId,
+    worktree: &super::Worktree,
+) -> Result<Option<Vec<ConversationId>>, StorageError> {
+    let Some(own) = workspace_at(connection, &device.user, &device.id, &worktree.path)? else {
+        return Ok(None);
+    };
+    let Some(project) = workspace_by_id(connection, into)? else {
+        return Ok(None);
+    };
+    if own.id == project.id {
+        return Ok(None);
+    }
+    let members: Vec<ConversationId> = connection
+        .prepare_cached("SELECT id FROM conversations WHERE target_workspace_id = ?1")?
+        .query_map([own.id.as_str()], |row| row.get::<_, String>(0))?
+        .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
+        .collect::<Result<_, _>>()?;
+    for member in &members {
+        super::devices::set_selection(
+            connection,
+            member,
+            &super::Selection::Workspace {
+                workspace_id: project.id.clone(),
+                device_id: project.device.clone(),
+                path: project.path.clone(),
+                worktree: Some(worktree.clone()),
+            },
+        )?;
+        super::conversation_index::advance_context(connection, member)?;
+    }
+    connection.execute("DELETE FROM workspaces WHERE id = ?1", [own.id.as_str()])?;
+    Ok(Some(members))
 }
 
 fn workspace_conversations(
@@ -465,7 +574,7 @@ fn workspace_row(row: &Row<'_>) -> Result<WorkspaceRecord, StorageError> {
             .transpose()?,
         last_workflow: row
             .get::<_, Option<String>>("last_workflow_kind")?
-            .map(|kind| workflow_choice(TABLE, "last_workflow_kind", &kind, row.get("last_workflow_id")?))
+            .map(|kind| workflow_choice(TABLE, "last_workflow_kind", &kind, row.get("last_workflow_id")?, false))
             .transpose()?,
     })
 }

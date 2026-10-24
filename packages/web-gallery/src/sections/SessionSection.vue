@@ -235,7 +235,7 @@ import { useGalleryTerminalChips } from '../terminal-chips'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import { savingOnTop, sevenSaved, twoSaved } from '../fixtures/saved'
-import { noWorkflows, projectWorkflows } from '../fixtures/workflows'
+import { noWorkflows, projectWorkflows, worktreeWorkflows } from '../fixtures/workflows'
 import GalleryProjectStart from '../components/GalleryProjectStart.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
@@ -1944,7 +1944,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Workflow Menu"
-        note="The composer’s lower left has the Workflow menu, which shows the conversation’s choice. Global Workflow follows Settings › Subagents; No Subagents turns subagents off for this conversation; each workflow the project keeps in .demi/workflows/ is an option of its own, by its name. A file that does not read stands in the menu with why, as its tip, and cannot be chosen; a .demi/workflows directory the Host cannot read makes the menu say so in one row. A new conversation offers the menu before its first message and keeps the choice it was given. It starts with the model and the workflow last chosen in its project, or outside projects; a project never used starts as a conversation outside one does, and a remembered workflow the project no longer has starts as No Subagents. A chosen workflow that is gone shows a warning beside its id, and the menu lists it with why until another is chosen. The choice shows at once, and applies from the next spawn. In a narrow composer the menu keeps its mark alone, with the choice as its tip. Here choosing changes the specimen’s own choice; the product keeps it with the conversation, and lists the workflows from the conversation’s file watch."
+        note="The composer’s lower left has the Workflow menu, which shows the conversation’s choice. Global Workflow follows Settings › Subagents; No Subagents turns subagents off for this conversation; each workflow the project keeps in .demi/workflows/ is an option of its own, by its name. A file that does not read stands in the menu with why, as its tip, and cannot be chosen; a .demi/workflows directory the Host cannot read makes the menu say so in one row. A conversation in a git worktree of its project lists the project’s workflows, and the worktree’s too while they differ, each under its name. A new conversation offers the menu before its first message and keeps the choice it was given. It starts with the model and the workflow last chosen in its project, or outside projects; a project never used starts as a conversation outside one does, and a remembered workflow the project no longer has starts as No Subagents. A chosen workflow that is gone shows a warning beside its id, and the menu lists it with why until another is chosen. The choice shows at once, and applies from the next spawn. In a narrow composer the menu keeps its mark alone, with the choice as its tip. Here choosing changes the specimen’s own choice; the product keeps it with the conversation, and lists the workflows from the conversation’s file watch."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="a new conversation starts with its project’s choices" wide>
@@ -1958,6 +1958,12 @@ onBeforeUnmount(() => {
               :workflows="projectWorkflows"
               :workflow-choice="{ type: 'workflow', id: 'review' }"
               :saved="twoSaved.slice(0, 1)"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="in a worktree whose workflows differ · the worktree’s chosen" wide>
+            <GalleryComposer
+              :workflows="worktreeWorkflows"
+              :workflow-choice="{ type: 'workflow', id: 'parallel', worktree: true }"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="the chosen workflow is gone" wide>
@@ -3607,6 +3613,14 @@ onBeforeUnmount(() => {
       >
         <div class="max-w-full resize-x overflow-hidden pb-3" style="min-width: 20rem">
           <GalleryConnectedSession />
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Product Session in a Worktree"
+        note="An agent moved the conversation into 2, a linked worktree of shop that git names 2. It stays in shop: the directory button names the project, and the worktree's mark and name follow it as a label, which opens nothing; its tooltip is the worktree's path. The menu lists projects, never worktrees, and choosing shop moves the conversation back to shop's own directory; Choose Another Directory into ~/Projects/shop-worktrees/2 brings it back to the worktree."
+      >
+        <div class="max-w-full resize-x overflow-hidden pb-3" style="min-width: 20rem">
+          <GalleryConnectedSession in-worktree />
         </div>
       </GallerySection>
       <GallerySection

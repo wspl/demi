@@ -182,6 +182,7 @@ pub async fn serve(
         transport.output.clone(),
         registered.cwd.clone(),
         registered.pipes.clone(),
+        kept.link.lane().clone(),
     );
     let streams = ResidentStreams::new(
         kept.handle.clone(),
@@ -730,6 +731,14 @@ impl Owner<'_> {
                 });
             }
             Inbound::DirectCandidate { peer, candidate } => self.direct.candidate(&peer, candidate),
+            Inbound::Projects { directories } => {
+                // Reading every project's repository takes milliseconds
+                // each, which the control loop does not wait for; the naming
+                // is numbered here, so a later one wins however they run.
+                let naming = self.kept.worktrees.named(directories);
+                let lane = self.kept.link.lane().clone();
+                tokio::task::spawn_blocking(move || naming.follow(&lane));
+            }
             Inbound::Forwards { .. }
             | Inbound::ForwardRetry { .. }
             | Inbound::ForwardConnect { .. }

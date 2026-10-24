@@ -2,6 +2,7 @@
 import { t } from './locales/text'
 import { computed } from 'vue'
 import { AlarmClock, Archive, Pin, PinOff } from '@lucide/vue'
+import WorktreeIcon from '@demicodes/web-ui/ui/WorktreeIcon.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
@@ -12,6 +13,7 @@ import type { SidebarConversation } from './types'
 import ConversationDot from './ConversationDot.vue'
 import DeviceMark from './DeviceMark.vue'
 import { t as scheduleText } from '../schedules/locales/text'
+import { t as hostText } from '../hosts/locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 
 const props = defineProps<{
@@ -71,9 +73,10 @@ const END_INSET_PX = 6
 /** An extra-small icon button (`IconButton` `xs`) is 20px with its glyph centered. */
 const BUTTON_INSET_PX = (20 - ICON_PX.in24) / 2
 
-/** The widths of the marks that stay on hover, the device's and the alarm clock's, from the row's end. */
+/** The widths of the marks that stay on hover, the device's, the worktree's and the alarm clock's, from the row's end. */
 const stayingMarks = computed(() => [
   ...(props.conversation.device ? [ICON_PX.markIn28] : []),
+  ...(props.conversation.worktree ? [ICON_PX.in24] : []),
   ...(props.conversation.scheduled ? [ICON_PX.in24] : []),
 ])
 
@@ -144,9 +147,9 @@ const rowClass = computed(() => [
       :class="[conversation.unread && !open ? 'text-fg-emphasis' : '', titleMargin]"
       @dblclick="emit('renameStart')"
     >{{ shownTitle }}</Tooltip>
-    <!-- The pin's glyph and the device's mark end the row, in the flow, so the title never reaches
-         them. The mark stays on hover; the pin gives its place to Archive. -->
-    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.scheduled)" class="flex shrink-0 items-center gap-1.5 phone:gap-0.5">
+    <!-- The pin's glyph, the alarm clock, the worktree's mark and the device's mark end the row, in the flow, so the title never
+         reaches them. The marks stay on hover; the pin gives its place to Archive. -->
+    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.scheduled || conversation.worktree)" class="flex shrink-0 items-center gap-1.5 phone:gap-0.5">
       <span
         v-if="conversation.pinned"
         class="pointer-events-none flex h-6 w-3.5 items-center justify-center text-fg-muted transition-opacity phone:size-8"
@@ -163,6 +166,19 @@ const rowClass = computed(() => [
       >
         <AlarmClock :size="phone ? ICON_PX.in32 : ICON_PX.in24" />
       </span>
+      <!-- The worktree's mark says it works in a linked worktree of its project, which its tip names; a mark only. -->
+      <Tooltip
+        v-if="conversation.worktree"
+        :content="hostText('directory.worktree', { name: conversation.worktree })"
+        tag="span"
+        class="flex h-6 w-3.5 shrink-0 items-center justify-center text-fg-muted phone:size-8"
+      >
+        <WorktreeIcon
+          role="img"
+          :aria-label="hostText('directory.worktree', { name: conversation.worktree })"
+          :size="phone ? ICON_PX.in32 : ICON_PX.in24"
+        />
+      </Tooltip>
       <DeviceMark v-if="conversation.device" :host="conversation.device" />
     </span>
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. The actions

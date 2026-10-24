@@ -2,7 +2,8 @@
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`).
 //!
 //! It lists the project's workflows as the conversation's Workflow menu lists
-//! them, checks a file with the parser that reads them, and picks one for the
+//! them, with those of the linked worktree the conversation works in while
+//! they differ, checks a file with the parser that reads them, and picks one for the
 //! conversation as the menu does. Its help is where the file format is
 //! written.
 //!
@@ -40,17 +41,20 @@ const NONE: &str = "none";
 
 const WORKFLOWS_GROUP: &str = "The project's workflows, groups of subagent profiles in .demi/workflows/*.yaml picked for a conversation in the composer's Workflow menu: list them, check a file, and pick one for this conversation. Its --help gives the file format and an example.";
 
-const LIST_SUMMARY: &str = "List the workflows of this conversation's project as the composer's Workflow menu does, CURRENT naming the one this conversation uses; a warning on stderr says why a file cannot be used. A read.";
+const LIST_SUMMARY: &str = "List the workflows of this conversation's project as the composer's Workflow menu does, and in a git worktree whose own workflows differ the worktree's too, WORKTREE true for those; CURRENT names the one this conversation uses, and a warning on stderr says why a file cannot be used. A read.";
 
 const CHECK_SUMMARY: &str = "Check a workflow file with the parser that reads it: prints its name and profiles, with a warning on stderr when the name does not read as a menu item, or fails naming the line and the field that are wrong. Run it on every workflow file you write or change before you report it.";
 
-const USE_SUMMARY: &str = "Pick this conversation's workflow as the composer's Workflow menu does, which shows it at once: a workflow by its id, global for Global Workflow (the user's own profiles) or none for No Subagents. Spawns take its profiles from then on, and its instructions reach the leading agent from its next request. A workflow that cannot be used fails with why and the choice stays. Needs the user's permission.";
+const USE_SUMMARY: &str = "Pick this conversation's workflow as the composer's Workflow menu does, which shows it at once: a workflow by its id, the project's or with --worktree the git worktree's this conversation works in (the worktree's when only it has the id), global for Global Workflow (the user's own profiles) or none for No Subagents. Spawns take its profiles from then on, and its instructions reach the leading agent from its next request. A workflow that cannot be used fails with why and the choice stays. Needs the user's permission.";
 
 /// The input of `demi agent workflows use`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct UseArgs {
     workflow: String,
+    /// The workflow of the git worktree this conversation works in, in place
+    /// of the project's of that id.
+    worktree: Option<bool>,
 }
 
 /// The input of `demi agent workflows list`, which takes none.
@@ -101,6 +105,8 @@ pub(super) fn workflows_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> 
 struct Used {
     /// The workflow's id, global or none.
     workflow: String,
+    /// Whether it is the worktree's file.
+    worktree: bool,
     /// What the Workflow menu shows.
     name: String,
 }
@@ -109,6 +115,8 @@ struct Used {
 #[derive(Serialize, JsonSchema)]
 struct ListedEntry {
     id: String,
+    /// Whether it is the file of the worktree the conversation works in.
+    worktree: bool,
     /// What the menu shows; null for a file that cannot be used.
     name: Option<String>,
     /// The file on the Host.
@@ -144,7 +152,7 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
         port.stderr(warning(&call.command, &note)).await?;
     }
     let chosen = match &listing.chosen {
-        WorkflowChoice::Workflow { id } => Some(id.as_str()),
+        WorkflowChoice::Workflow { id, worktree } => Some((id.as_str(), *worktree)),
         WorkflowChoice::Default | WorkflowChoice::None => None,
     };
     let entries: Vec<ListedEntry> = listing
@@ -152,19 +160,21 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
         .iter()
         .map(|workflow| ListedEntry {
             id: workflow.id.clone(),
+            worktree: workflow.worktree,
             name: workflow.name.clone(),
             path: workflow.path.clone(),
-            current: Some(workflow.id.as_str()) == chosen,
+            current: Some((workflow.id.as_str(), workflow.worktree)) == chosen,
             unavailable: workflow.unavailable.clone(),
         })
         .collect();
     if call.json {
         return json(&port, &entries).await;
     }
-    let mut table = Table::new(["id", "current", "status", "path", "name"]);
+    let mut table = Table::new(["id", "worktree", "current", "status", "path", "name"]);
     for entry in &entries {
         table.row::<Cell>([
             entry.id.as_str().into(),
+            entry.worktree.into(),
             entry.current.into(),
             if entry.unavailable.is_some() { "unavailable" } else { "available" }.into(),
             entry.path.as_str().into(),
@@ -179,22 +189,36 @@ async fn use_workflow<H: HostResolver>(call: Invoked<H, UseArgs>, port: RpcPort)
     let choice = match workflow.as_str() {
         GLOBAL => WorkflowChoice::Default,
         NONE => WorkflowChoice::None,
-        id => WorkflowChoice::Workflow { id: id.to_owned() },
+        // Without --worktree, the project's, or the worktree's when only the
+        // worktree has it, as the backend resolves it.
+        id => WorkflowChoice::Workflow {
+            id: id.to_owned(),
+            worktree: call.args.worktree.unwrap_or(false),
+        },
     };
-    let name = match call.tree.choose_workflow(choice).await {
-        Ok(Some(name)) => name,
-        Ok(None) if workflow == GLOBAL => "Global Workflow".to_owned(),
-        Ok(None) => "No Subagents".to_owned(),
+    if call.args.worktree == Some(true) && !matches!(choice, WorkflowChoice::Workflow { .. }) {
+        return fail(&format!("--worktree picks a workflow by its id, not {workflow}"));
+    }
+    let (chosen, name) = match call.tree.choose_workflow(choice).await {
+        Ok(chosen) => chosen,
         Err(error) => return fail(&error),
     };
-    let used = Used { workflow, name };
+    let worktree = matches!(chosen, WorkflowChoice::Workflow { worktree: true, .. });
+    let name = match name {
+        Some(name) => name,
+        None if workflow == GLOBAL => "Global Workflow".to_owned(),
+        None => "No Subagents".to_owned(),
+    };
+    let used = Used { workflow, worktree, name };
     if call.json {
         return json(&port, &used).await;
     }
     let mut fields = Fields::new();
-    fields
-        .field("Workflow", used.workflow.as_str())
-        .field("Name", used.name.as_str());
+    fields.field("Workflow", used.workflow.as_str());
+    if used.worktree {
+        fields.field("Worktree", "true");
+    }
+    fields.field("Name", used.name.as_str());
     out(&port, fields.render()).await
 }
 
@@ -251,10 +275,11 @@ fn notes(listing: &WorkflowListing) -> Vec<String> {
     if let Some(reason) = &listing.unavailable {
         notes.push(format!("the workflows in {directory} cannot be used: {reason}"));
     }
-    if let WorkflowChoice::Workflow { id } = &listing.chosen
-        && !listing.workflows.iter().any(|workflow| workflow.id == *id)
+    if let WorkflowChoice::Workflow { id, worktree } = &listing.chosen
+        && !listing.workflows.iter().any(|workflow| workflow.id == *id && workflow.worktree == *worktree)
     {
-        notes.push(format!("this conversation's workflow {id} is no longer in the project"));
+        let place = if *worktree { "the worktree" } else { "the project" };
+        notes.push(format!("this conversation's workflow {id} is no longer in {place}"));
     }
     for workflow in &listing.workflows {
         if let Some(reason) = &workflow.unavailable {

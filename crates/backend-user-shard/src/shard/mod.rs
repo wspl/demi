@@ -29,6 +29,7 @@ pub mod exposed_ports;
 mod policy;
 pub mod port_forwards;
 pub mod subagents;
+mod worktrees;
 
 pub(crate) use self::page_socket::{PageEnd, PageGone, PageSocket, PageStream};
 
@@ -151,6 +152,9 @@ pub struct Shard {
     /// What the user's runners announced of their forwards, and the peers
     /// introduced between two of them.
     forwards: port_forwards::ForwardsHeld,
+    /// What the user's runners were told of their projects, and the store of
+    /// what they reported of their worktrees.
+    worktrees: worktrees::WorktreesHeld,
     /// The user's schedules' scheduler, change watches and URL calls.
     schedules: crate::schedules::Schedules,
     /// Each conversation's timer for the retry time of its root's failed
@@ -241,6 +245,7 @@ impl Shard {
             waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
             forwards: port_forwards::ForwardsHeld::default(),
+            worktrees: worktrees::WorktreesHeld::default(),
             schedules: crate::schedules::Schedules::default(),
             retry_resumes: RetryResumes::default(),
             notifications: Notifications::default(),

@@ -129,7 +129,7 @@ pub mod saved;
 mod schema;
 pub use schema::{DatabaseKind, SchemaFit, schema_fit};
 mod selection;
-pub use selection::{CLOUD_HOME, Selection, Unselectable};
+pub use selection::{CLOUD_HOME, Selection, Unselectable, Worktree};
 pub mod search;
 pub mod server_log;
 pub mod shares;

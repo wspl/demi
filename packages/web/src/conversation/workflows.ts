@@ -47,7 +47,8 @@ function failed(error: unknown): WorkflowList {
 
 /**
  * The workflows of `place`, as the Workflow menu lists them: what the backend
- * keeps of the conversation's working directory, which the opening reads and
+ * keeps of the conversation's project, and of the linked worktree it works in
+ * while they differ, which the opening reads and
  * the socket brings again when the Host reports a change;
  * or a new conversation's, `GET /devices/:id/workflows`, read once for its
  * directory.
@@ -116,7 +117,21 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
       return read.value
     }
     const kept = conversation().workflows
-    return kept ? listOf(kept) : { state: 'reading' }
+    if (!kept) {
+      return { state: 'reading' }
+    }
+    const project = listOf(kept.list)
+    const shown = conversation()
+    // The worktree's, under its name, beside the project's while they differ.
+    if (project.state !== 'read' || !kept.worktree || !shown.worktree) {
+      return project
+    }
+    const worktree = {
+      project: executionFor(shown).workspaceName ?? '',
+      name: shown.worktree,
+      list: listOf(kept.worktree),
+    }
+    return { ...project, worktree }
   })
   // A new conversation that started with a workflow its directory does not
   // have goes on with No Subagents once the workflows are read.

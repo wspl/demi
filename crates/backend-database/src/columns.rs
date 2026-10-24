@@ -51,28 +51,29 @@ pub fn to_json<T: Serialize>(value: &T) -> String {
     serde_json::to_string(value).expect("a stored value serializes to JSON")
 }
 
-/// A Workflow menu choice as its typed columns: the kind, and the
-/// workflow's id for a workflow.
-pub fn workflow_columns(choice: &WorkflowChoice) -> (&'static str, Option<&str>) {
+/// A Workflow menu choice as its typed columns: the kind, the workflow's id
+/// for a workflow, and whether it is the worktree's.
+pub fn workflow_columns(choice: &WorkflowChoice) -> (&'static str, Option<&str>, bool) {
     match choice {
-        WorkflowChoice::Default => ("default", None),
-        WorkflowChoice::None => ("none", None),
-        WorkflowChoice::Workflow { id } => ("workflow", Some(id)),
+        WorkflowChoice::Default => ("default", None, false),
+        WorkflowChoice::None => ("none", None, false),
+        WorkflowChoice::Workflow { id, worktree } => ("workflow", Some(id), *worktree),
     }
 }
 
-/// The choice a row's workflow columns `kind` and `id` hold, the kind read
-/// from `table.column`.
+/// The choice a row's workflow columns `kind`, `id` and `worktree` hold,
+/// the kind read from `table.column`.
 pub fn workflow_choice(
     table: &'static str,
     column: &'static str,
     kind: &str,
     id: Option<String>,
+    worktree: bool,
 ) -> Result<WorkflowChoice, StorageError> {
     match (kind, id) {
         ("default", None) => Ok(WorkflowChoice::Default),
         ("none", None) => Ok(WorkflowChoice::None),
-        ("workflow", Some(id)) => Ok(WorkflowChoice::Workflow { id }),
+        ("workflow", Some(id)) => Ok(WorkflowChoice::Workflow { id, worktree }),
         _ => Err(StorageError::Corrupt {
             table,
             column,

@@ -89,8 +89,9 @@ function move(target: ConversationTarget): Promise<boolean> {
   if (locked.value !== undefined) {
     return Promise.resolve(false)
   }
-  // Where it runs already is no move.
-  if (sameTarget(target, props.conversation.target)) {
+  // Where it runs already is no move; its project, while it works in a
+  // worktree of it, is the move back to the project's directory.
+  if (sameTarget(target, props.conversation.target) && !(target.kind === 'workspace' && props.conversation.worktree)) {
     return Promise.resolve(true)
   }
   if (props.conversation.persistence !== 'synced') {
@@ -162,6 +163,7 @@ defineExpose({ choose })
     :browse-enabled="execution.kind !== 'cloud'"
     :projects="hostProjects"
     :hosts="hosts"
+    :worktree="conversation.worktree ? { name: conversation.worktree, path: conversation.cwd } : null"
     :select-folder="selectFolder"
     @select-project="selectProject"
   >

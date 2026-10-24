@@ -22,7 +22,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, KeptWorkflowList, RecentCost, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, ConversationWorkflowList, RecentCost, WorkflowChoice } from '../api/generated/web-api'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
@@ -58,10 +58,11 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** The speed of the root's last turn, which the chips row shows once no reading does. */
   turnSpeed: TurnSpeed | null
   /**
-   * The workflows the backend keeps for the conversation's directory, which the
-   * Workflow menu lists; none until the opening read them.
+   * The workflows the backend keeps for the conversation's project, and the
+   * linked worktree's it works in while they differ, which the Workflow menu
+   * lists; none until the opening read them.
    */
-  workflows: KeptWorkflowList | null
+  workflows: ConversationWorkflowList | null
   createdAt: string
   cwd: string
   /** The parts of the root's transcript the page holds. */

@@ -46,6 +46,8 @@ export interface SidebarConversation {
   device?: SidebarDevice
   /** Whether it has schedules, which wake it and which an alarm clock at its row's end marks. */
   scheduled?: boolean
+  /** The name git gives the linked worktree it works in, which a mark at its row's end shows. */
+  worktree?: string
 }
 
 /** A device as a row's mark shows it: by name, state and mark (`shownMark`), or as one since removed. */

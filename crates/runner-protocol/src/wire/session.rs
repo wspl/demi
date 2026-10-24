@@ -300,16 +300,38 @@ pub fn own_frame(message: Vec<u8>) -> Vec<u8> {
 /// work that goes on across a connection's loss: a message waits here for the
 /// next connection, and a connection takes the messages in the order they
 /// came.
+///
+/// It also holds what reports, ahead of a message that could follow a change
+/// on the Host, the changes the backend must know of first ([`Lane::report`]).
 #[derive(Clone, Default)]
 pub struct Lane(std::sync::Arc<LaneInner>);
+
+/// What pushes the Host's reports of what changed since its last call.
+pub type Reporter = Box<dyn Fn(&Lane) + Send + Sync>;
 
 #[derive(Default)]
 struct LaneInner {
     queue: std::sync::Mutex<VecDeque<super::Frame>>,
     pushed: tokio::sync::Notify,
+    reporter: std::sync::OnceLock<Reporter>,
 }
 
 impl Lane {
+    /// Sets what [`Lane::report`] runs, once for the lane's life: a second
+    /// reporter is dropped.
+    pub fn set_reporter(&self, reporter: Reporter) {
+        let _ = self.0.reporter.set(reporter);
+    }
+
+    /// Pushes the reports of what changed on the Host, so they go before
+    /// whatever is queued after this call: a command's request, a job's
+    /// end, a folder's listing. Nothing without a reporter.
+    pub fn report(&self) {
+        if let Some(reporter) = self.0.reporter.get() {
+            reporter(self);
+        }
+    }
+
     pub fn push(&self, frame: super::Frame) {
         self.0
             .queue

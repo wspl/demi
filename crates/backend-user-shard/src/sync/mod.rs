@@ -31,8 +31,15 @@ pub use self::state::{StateError, etag_of, etag_of_json};
 use crate::shard::Shard;
 
 impl Shard {
-    /// Marks `part` changed on the user's open channels.
+    /// Marks `part` changed on the user's open channels. A change of the
+    /// projects also tells each runner the directories of its Host's
+    /// projects, whose worktrees it reports.
     pub fn mark(&self, part: Part) {
+        let projects = part == Part::Workspaces;
         self.services().sync.mark(self.user(), part);
+        if projects {
+            let shard = self.this();
+            self.tasks().spawn_local(async move { shard.projects_changed().await });
+        }
     }
 }

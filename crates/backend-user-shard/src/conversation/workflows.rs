@@ -96,6 +96,20 @@ impl ProjectWorkflows {
         }
     }
 
+    /// Whether `other` offers the same workflows: the same ids, each reading
+    /// as the same workflow, its instructions and profiles whole, or neither
+    /// reading, wherever their files are.
+    pub(crate) fn offers_same(&self, other: &ProjectWorkflows) -> bool {
+        let offered = |found: &ProjectWorkflows| {
+            found
+                .files
+                .iter()
+                .map(|file| (file.id.clone(), file.read.as_ref().ok().cloned()))
+                .collect::<Vec<_>>()
+        };
+        self.unavailable.is_some() == other.unavailable.is_some() && offered(self) == offered(other)
+    }
+
     /// The Workflow menu's list, by id.
     pub(crate) fn menu(&self) -> ConversationWorkflows {
         let workflows = self
@@ -329,14 +343,25 @@ pub(crate) async fn search_conversation_workflows(
 }
 
 impl Shard {
-    /// The workflows the shard holds for the conversation `id`'s working
-    /// directory; why none are, while it holds none, as on a Host that has
-    /// not run since.
-    pub(crate) async fn project_workflows(&self, id: &ConversationId) -> Result<Rc<ProjectWorkflows>, String> {
-        match self.kept_workflows(id).await.map_err(|error| error.to_string())? {
+    /// The workflows the shard holds for the conversation `id`'s project, or
+    /// with `worktree` for the linked worktree it works in; why none are,
+    /// while it holds none, as on a Host that has not run since.
+    pub(crate) async fn project_workflows(&self, id: &ConversationId, worktree: bool) -> Result<Rc<ProjectWorkflows>, String> {
+        match self.kept_workflows(id, worktree).await.map_err(|error| error.to_string())? {
             KeptWorkflows::Found(found) => Ok(found),
             KeptWorkflows::None => Err(ReadFilesError::NotRunning.to_string()),
         }
+    }
+
+    /// The workflows of the linked worktree the conversation `id` works in,
+    /// while they differ from `project`'s; none in no worktree, or while the
+    /// shard holds none of them.
+    pub(crate) async fn worktree_workflows(&self, id: &ConversationId, project: &ProjectWorkflows) -> Option<Rc<ProjectWorkflows>> {
+        if !self.works_in_worktree(id).await {
+            return None;
+        }
+        let own = self.project_workflows(id, true).await.ok()?;
+        (!project.offers_same(&own)).then_some(own)
     }
 
     /// The Workflow menu's list for a new conversation that works in `directory`
@@ -383,19 +408,34 @@ impl Shard {
     pub(crate) async fn workflow_listing(&self, id: &ConversationId) -> Result<WorkflowListing, String> {
         let chosen = self.workflow_choice(id).await?;
         let found = self
-            .project_workflows(id)
+            .project_workflows(id, false)
             .await
             .map_err(|error| format!("the project's workflows cannot be read: {error}"))?;
-        let workflows = found
-            .files
-            .iter()
-            .map(|file| ListedWorkflow {
-                id: file.id.clone(),
-                name: file.read.as_ref().ok().map(|workflow| workflow.name.clone()),
-                path: file.path.clone(),
-                unavailable: file.read.as_ref().err().cloned(),
-            })
-            .collect();
+        let listed = |found: &ProjectWorkflows, worktree: bool| {
+            found
+                .files
+                .iter()
+                .map(|file| ListedWorkflow {
+                    id: file.id.clone(),
+                    worktree,
+                    name: file.read.as_ref().ok().map(|workflow| workflow.name.clone()),
+                    path: file.path.clone(),
+                    unavailable: file.read.as_ref().err().cloned(),
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut workflows = listed(&found, false);
+        // The worktree's, after the project's, while they differ; while they
+        // do not, a worktree's choice is the project's row, as in the menu.
+        let mut chosen = chosen;
+        match self.worktree_workflows(id, &found).await {
+            Some(worktree) => workflows.extend(listed(&worktree, true)),
+            None => {
+                if let WorkflowChoice::Workflow { worktree, .. } = &mut chosen {
+                    *worktree = false;
+                }
+            }
+        }
         Ok(WorkflowListing {
             chosen,
             directory: found.directory.clone(),
@@ -410,7 +450,10 @@ impl Shard {
     ///
     /// A workflow is chosen only as the menu offers it: listed in what the
     /// shard holds and usable; otherwise it is refused with why, and the
-    /// choice stays. Answers the chosen workflow's name, none for Global
+    /// choice stays. A workflow is the project's, or the worktree's when only
+    /// the worktree has the id; one asked for as the worktree's that is the
+    /// same as the project's is the project's, as the menu lists it. Answers
+    /// the choice made and the chosen workflow's name, none for Global
     /// Workflow and No Subagents. Unlike the user's pick in the menu, it is
     /// not remembered as the project's workflow, since the user did not make
     /// it.
@@ -418,14 +461,28 @@ impl Shard {
         &self,
         id: &ConversationId,
         choice: WorkflowChoice,
-    ) -> Result<Option<String>, String> {
-        let name = match &choice {
+    ) -> Result<(WorkflowChoice, Option<String>), String> {
+        let mut choice = choice;
+        let name = match &mut choice {
             WorkflowChoice::Default | WorkflowChoice::None => None,
-            WorkflowChoice::Workflow { id: chosen } => {
-                let found = self
-                    .project_workflows(id)
+            WorkflowChoice::Workflow { id: chosen, worktree } => {
+                if *worktree && !self.works_in_worktree(id).await {
+                    return Err("this conversation works in no git worktree of its project".to_owned());
+                }
+                let mut found = self
+                    .project_workflows(id, false)
                     .await
                     .map_err(|reason| format!("the project's workflows cannot be read: {reason}"))?;
+                let own = self.worktree_workflows(id, &found).await;
+                match own {
+                    Some(own) if *worktree || (found.get(chosen).is_none() && own.get(chosen).is_some()) => {
+                        found = own;
+                        *worktree = true;
+                    }
+                    _ => *worktree = false,
+                }
+                let place = if *worktree { "the worktree" } else { "the project" };
+                let chosen = &*chosen;
                 let Some(directory) = &found.directory else {
                     return Err("this project has no workflows: no directory from the working directory up to the repository's root has .demi/workflows/".to_owned());
                 };
@@ -434,7 +491,7 @@ impl Shard {
                 }
                 let Some(file) = found.get(chosen) else {
                     return Err(format!(
-                        "the project has no workflow \"{chosen}\"; demi agent workflows list lists them"
+                        "{place} has no workflow \"{chosen}\"; demi agent workflows list lists them"
                     ));
                 };
                 if let Some(reason) = file.reason() {
@@ -444,7 +501,7 @@ impl Shard {
             }
         };
         let patch = ConversationPatch {
-            workflow: Some(choice),
+            workflow: Some(choice.clone()),
             ..ConversationPatch::default()
         };
         let update = self
@@ -457,7 +514,7 @@ impl Shard {
                 return Err(message);
             }
         }
-        Ok(name)
+        Ok((choice, name))
     }
 
     /// The Workflow menu choice of the conversation `id`.
@@ -480,14 +537,14 @@ impl Shard {
         &self,
         id: &ConversationId,
     ) -> Result<ConversationProfiles, String> {
-        let chosen = match self.workflow_choice(id).await? {
+        let (chosen, worktree) = match self.workflow_choice(id).await? {
             WorkflowChoice::Default => return Ok(ConversationProfiles::Settings),
             WorkflowChoice::None => return Ok(ConversationProfiles::Off),
-            WorkflowChoice::Workflow { id } => id,
+            WorkflowChoice::Workflow { id, worktree } => (id, worktree),
         };
-        let found = self.project_workflows(id).await?;
+        let found = self.project_workflows(id, worktree).await?;
         if let Some(reason) = found.unavailable(&chosen) {
-            return Ok(ConversationProfiles::Unavailable { id: chosen, reason });
+            return Ok(ConversationProfiles::Unavailable { id: chosen, worktree, reason });
         }
         let file = found.get(&chosen).expect("an available workflow is listed");
         let workflow = file.read.as_ref().ok().expect("an available workflow reads");
@@ -525,6 +582,7 @@ impl Shard {
         }
         Ok(ConversationProfiles::Workflow(ChosenWorkflow {
             id: chosen,
+            worktree,
             name: workflow.name.clone(),
             profiles,
         }))

@@ -222,7 +222,7 @@ impl<H: HostResolver> Tree<H> {
         };
         match profiles {
             ConversationProfiles::Off => unreachable!("an Off choice is a spawn's refusal or the user's settings"),
-            ConversationProfiles::Unavailable { id, reason } => Err(format!(
+            ConversationProfiles::Unavailable { id, reason, .. } => Err(format!(
                 "this conversation's workflow \"{id}\" is unavailable: {reason}; do this work in this session, or have another picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use <id> once the user allows it."
             )),
             ConversationProfiles::Workflow(workflow) => {
@@ -297,8 +297,9 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// `demi agent workflows use`: makes `choice` the conversation's
-    /// Workflow menu choice; answers the chosen workflow's name.
-    pub(crate) async fn choose_workflow(&self, choice: WorkflowChoice) -> Result<Option<String>, String> {
+    /// Workflow menu choice; answers the choice made and the chosen
+    /// workflow's name.
+    pub(crate) async fn choose_workflow(&self, choice: WorkflowChoice) -> Result<(WorkflowChoice, Option<String>), String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         server.deps.subagents.choose_workflow(self.root.id(), choice).await
     }
@@ -352,9 +353,9 @@ impl<H: HostResolver> Tree<H> {
         };
         match self.conversation_profiles(&server).await? {
             ConversationProfiles::Off => Ok(off(WorkflowChoice::None)),
-            ConversationProfiles::Unavailable { id, reason } => Ok(ProfileListing {
+            ConversationProfiles::Unavailable { id, worktree, reason } => Ok(ProfileListing {
                 unavailable: Some(reason),
-                ..off(WorkflowChoice::Workflow { id })
+                ..off(WorkflowChoice::Workflow { id, worktree })
             }),
             ConversationProfiles::Workflow(workflow) => {
                 let profiles = workflow
@@ -383,7 +384,7 @@ impl<H: HostResolver> Tree<H> {
                     .collect();
                 Ok(ProfileListing {
                     enabled: true,
-                    choice: WorkflowChoice::Workflow { id: workflow.id },
+                    choice: WorkflowChoice::Workflow { id: workflow.id, worktree: workflow.worktree },
                     workflow: Some(workflow.name),
                     unavailable: None,
                     profiles,
@@ -667,7 +668,7 @@ impl ProfileListing {
             WorkflowChoice::None => Some(
                 "subagents are turned off for this conversation; demi agent spawn fails until Global Workflow or a workflow is picked in the composer's Workflow menu, or with demi agent workflows use global or use <id> once the user allows it".to_owned(),
             ),
-            WorkflowChoice::Workflow { id } if !self.enabled => Some(format!(
+            WorkflowChoice::Workflow { id, .. } if !self.enabled => Some(format!(
                 "this conversation's workflow \"{id}\" is unavailable: {}; demi agent spawn fails until another is picked in the composer's Workflow menu, or with demi agent workflows use <id> once the user allows it",
                 self.unavailable.as_deref().unwrap_or_default()
             )),

@@ -285,6 +285,10 @@ impl Shard {
         }
         let host = self.host_shard();
         let slot = self.conversations().slot(&record.id);
+        // The worktrees the Host reported before the move are its
+        // destination's, as a command that adds one and then moves there
+        // expects (`crate::shard::worktrees`).
+        self.worktrees_stored().await;
         // A destination's directory is stored as typed; its Host names it at
         // the first use.
         let step = Instant::now();

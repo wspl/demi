@@ -40,6 +40,7 @@ use demi_runner_jobs::{
     job_directories::JobDirectories,
     tasks::{Commands, JobConfig, JobTable, WorkId},
 };
+use demi_runner_host::worktrees::Worktrees;
 use demi_runner_protocol::wire;
 use tokio::{
     sync::{mpsc, watch},
@@ -61,6 +62,9 @@ pub struct Kept {
     pub link: LinkState,
     /// How the jobs' commands reach the backend.
     pub handle: ConnectionHandle,
+    /// The projects' worktrees, which the lane reports ahead of a message
+    /// that could follow their change.
+    pub worktrees: Worktrees,
     requests: mpsc::UnboundedReceiver<Request>,
     reach: watch::Sender<Reach>,
     /// The connection the jobs' messages go to; none while none serves.
@@ -86,6 +90,9 @@ impl Kept {
         let directories = JobDirectories::open(registered.jobs.clone()).await;
         let (reach, reaching) = watch::channel(Reach::Away);
         let link = LinkState::default();
+        let worktrees = Worktrees::default();
+        let reporter = worktrees.clone();
+        link.lane().set_reporter(Box::new(move |lane| reporter.report(lane)));
         let (handle, requests) = ConnectionHandle::new(reaching, link.lane().clone());
         let (jobs_output, forwarded) = mpsc::unbounded_channel();
         let output = watch::Sender::new(None);
@@ -114,6 +121,7 @@ impl Kept {
             watches: JoinSet::new(),
             link,
             handle,
+            worktrees,
             requests,
             reach,
             output,

@@ -60,9 +60,20 @@ pub enum KeptWorkflowList {
 /// a change, 0 before the backend first read them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ConversationWorkflowList {
+    /// For a conversation in a linked worktree, the sum of the project's
+    /// directory's revision and the worktree's.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
+    /// The project's, which a conversation in no worktree reads in its own
+    /// directory.
     pub list: KeptWorkflowList,
+    /// The workflows of the linked worktree the conversation works in, while
+    /// they differ from the project's; null otherwise
+    /// (`crates/backend-database/src/selection.rs` § Worktrees).
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<KeptWorkflowList>")]
+    #[garde(skip)]
+    pub worktree: Option<KeptWorkflowList>,
 }
 
 /// One workflow file.
