@@ -167,6 +167,20 @@ pub fn read(
         .transpose()
 }
 
+/// The conversation's first attachment whose bytes are the blob `blob`;
+/// none when it has none. A medium a tool showed takes its number, so the
+/// same bytes keep one number however often they are shown.
+pub fn with_blob(connection: &Connection, blob: &BlobRef) -> Result<Option<AttachmentRow>, StorageError> {
+    connection
+        .prepare_cached(
+            "SELECT number, name, media_type, size, width, height, blob, source_host, source_path
+             FROM attachments WHERE blob = ?1 ORDER BY number LIMIT 1",
+        )?
+        .query_row([blob.as_str()], |row| Ok(decode_row(row)))
+        .optional()?
+        .transpose()
+}
+
 /// The attachments of `numbers` that the conversation has, in their order.
 pub fn read_all(
     connection: &Connection,

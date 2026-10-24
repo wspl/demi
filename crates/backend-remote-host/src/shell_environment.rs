@@ -17,8 +17,10 @@
 //! environment of its node takes them up again
 //! (`crates/backend-remote-host/src/device_jobs.rs`).
 //!
-//! When a command ends, the keeper stores its whole output before any result
-//! reports the end, so the result and the pages show the same lines.
+//! When a command ends, the keeper stores its whole output, and each medium
+//! of one that exited or was lost as an attachment of the conversation,
+//! before any result reports the end, so the result and the pages show the
+//! same lines and the result names each medium's attachment.
 //!
 //! - The backend stores what it received when that is the whole output: each
 //!   stream within its first 8 KiB and every byte received. Otherwise it reads
@@ -133,6 +135,17 @@ pub trait CommandKeeper {
         files: &'a [JobFileChange],
     ) -> LocalBoxFuture<'a, Vec<EditedFile>>;
 
+    /// Stores each of `command`'s media whose bytes the backend has as an
+    /// attachment of the conversation, the one that has its bytes already
+    /// or a new one, and answers, in order, each one's id (`a12`) or why it
+    /// could not store it; none for a medium whose bytes it does not have.
+    /// A failure is the keeper's to log too.
+    fn attach<'a>(
+        &'a self,
+        command: &'a CommandId,
+        media: &'a [CommandMedium],
+    ) -> LocalBoxFuture<'a, Vec<Option<Result<String, String>>>>;
+
     /// The bytes of the blob `blob` when the conversation owner's
     /// namespace holds it, so a medium it holds is not read from the Host.
     fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>>;
@@ -144,15 +157,16 @@ pub trait CommandKeeper {
     /// record it is the keeper's to log.
     fn looked<'a>(&'a self, command: &'a CommandId, seen: Seen) -> LocalBoxFuture<'a, ()>;
 
-    /// Records the command's end, `end`, with its whole output and the
-    /// title of the call that started it, in place of its record as
-    /// running.
+    /// Records the command's end, `end`, with its whole output, what its
+    /// result tells of its media and the title of the call that started it,
+    /// in place of its record as running.
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
         title: &'a str,
         end: CommandEnd,
         output: &'a WholeOutput,
+        media: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()>;
 }
 
@@ -849,12 +863,16 @@ impl RemoteShellEnvironment {
                     .as_ref()
                     .map_or_else(String::new, |missing| format!("{}\n", missing.line()));
                 set_files(retained.await);
-                // The media went with the connection too.
-                let media = job
-                    .media()
+                // The media went with the connection too, but for those the
+                // conversation owner's namespace holds.
+                let announced = job.media();
+                let held = self.held(&announced).await;
+                let media = announced
                     .into_iter()
-                    .map(|medium| command_medium(medium, Err(LOST.into())))
+                    .zip(held)
+                    .map(|(medium, held)| command_medium(medium, held.ok_or_else(|| LOST.into())))
                     .collect();
+                let media = self.attached(command, media).await;
                 let settlement = Settlement {
                     end: CommandEnd::Lost {
                         reason: reason.clone(),
@@ -944,6 +962,12 @@ impl RemoteShellEnvironment {
         } else {
             CommandEnd::Exited { exit_code }
         };
+        // A stopped command's result shows no media, so none is attached.
+        let media = if stopped {
+            Vec::new()
+        } else {
+            self.attached(command, media).await
+        };
         {
             let mut record = record.borrow_mut();
             record.grew(StreamKind::Stdout, lengths.stdout_bytes);
@@ -965,13 +989,7 @@ impl RemoteShellEnvironment {
     /// the Host, all with one request; or why the backend does not have them.
     async fn media(&self, job: &RemoteJob) -> Vec<CommandMedium> {
         let announced = job.media();
-        let mut held = Vec::with_capacity(announced.len());
-        for medium in &announced {
-            held.push(match &self.0.options.keeper {
-                Some(keeper) => keeper.stored_blob(&medium.sha256).await,
-                None => None,
-            });
-        }
+        let held = self.held(&announced).await;
         let unheld: Vec<u32> = announced
             .iter()
             .zip(&held)
@@ -1004,6 +1022,32 @@ impl RemoteShellEnvironment {
             .collect()
     }
 
+    /// The bytes of each of `announced` that the conversation owner's
+    /// namespace holds, in order.
+    async fn held(&self, announced: &[JobMedium]) -> Vec<Option<Bytes>> {
+        let mut held = Vec::with_capacity(announced.len());
+        for medium in announced {
+            held.push(match &self.0.options.keeper {
+                Some(keeper) => keeper.stored_blob(&medium.sha256).await,
+                None => None,
+            });
+        }
+        held
+    }
+
+    /// `media`, each with the attachment the keeper stores it as.
+    async fn attached(&self, command: &CommandId, media: Vec<CommandMedium>) -> Vec<CommandMedium> {
+        let Some(keeper) = &self.0.options.keeper else {
+            return media;
+        };
+        let attachments = keeper.attach(command, &media).await;
+        media
+            .into_iter()
+            .zip(attachments)
+            .map(|(medium, attachment)| CommandMedium { attachment, ..medium })
+            .collect()
+    }
+
     /// Ends the command with its whole output: the keeper stores it, the
     /// runner lets the job's directory go, since the backend now has what it
     /// needs of the job, and the record settles, the pages' view with
@@ -1024,7 +1068,7 @@ impl RemoteShellEnvironment {
         } = settlement;
         if let Some(keeper) = &self.0.options.keeper {
             let title = record.borrow().title().to_owned();
-            keeper.keep_output(command, &title, end.clone(), &output).await;
+            keeper.keep_output(command, &title, end.clone(), &output, &media).await;
         }
         if let Some(job) = job {
             job.release().await;
@@ -1373,6 +1417,7 @@ fn command_medium(medium: JobMedium, bytes: Result<Bytes, String>) -> CommandMed
         height: medium.height,
         duration_ms: medium.duration_ms,
         bytes,
+        attachment: None,
     }
 }
 

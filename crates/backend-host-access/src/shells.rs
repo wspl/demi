@@ -38,12 +38,15 @@ use demi_host_interface::{
     PageView, Seen, ShellEnvironment, ShellError, TakenUp, Unreachable, UnsentStart, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId};
+use demi_shared_types::{
+    BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId, PixelSize, model_media_type_for,
+};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use crate::access::{DeviceWait, HostAccessError, Refusal, ShowWait, Waits};
+use crate::attachment_commands::{Numbering, Unnumbered, commit};
 use crate::{HostShard, conversation_of};
 
 impl dyn HostShard + '_ {
@@ -289,6 +292,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                     HostError::new(HostErrorKind::Protocol, "the node's Host is no device's")
                 })?;
             options.keeper = Some(Rc::new(Keeper {
+                shard: self.shard.clone(),
                 conversation: conversation.clone(),
                 node: scope.node.clone(),
                 device,
@@ -373,6 +377,8 @@ impl ShowWait for Shown<'_> {
 /// - Their whole outputs, each with its record in the conversation's database
 ///   (`crates/backend-database/src/command_outputs.rs`).
 struct Keeper {
+    /// The shard, through which a stored attachment reaches the pages.
+    shard: Weak<dyn HostShard>,
     conversation: ConversationId,
     /// The node whose commands these are.
     node: NodeId,
@@ -439,6 +445,49 @@ impl Keeper {
             .put(Bytes::from(encoded))
             .await
             .map_err(|error| error.to_string())
+    }
+
+    /// Stores `medium`, the original bytes its job viewed, as the agent's
+    /// attachment, the one that has its bytes already or the next, and
+    /// answers its id or why it is none; none for a medium whose bytes the
+    /// backend does not have.
+    async fn attach_medium(&self, command: &CommandId, medium: &CommandMedium) -> Option<Result<String, String>> {
+        let bytes = medium.bytes.as_ref().ok()?;
+        let stored = self.store_medium(medium, bytes).await;
+        match &stored {
+            Ok(number) => {
+                tracing::info!(event = "medium_attachment.stored", conversation = %self.conversation, %command, medium = medium.number, attachment = %number, "a medium a command viewed is an attachment");
+            }
+            Err(error) => {
+                tracing::warn!(event = "medium_attachment.store_failed", conversation = %self.conversation, %command, medium = medium.number, %error, "a medium a command viewed was not stored as an attachment");
+            }
+        }
+        Some(stored)
+    }
+
+    /// Stores `bytes`, `medium`'s, as an attachment and answers its id.
+    async fn store_medium(&self, medium: &CommandMedium, bytes: &Bytes) -> Result<String, String> {
+        let shard = self.shard.upgrade().ok_or("the backend is stopping")?;
+        let blob = self.blobs.put(bytes.clone()).await.map_err(|error| error.to_string())?;
+        let attachment = Unnumbered {
+            name: medium_name(medium),
+            media_type: medium.media_type.clone(),
+            size: u64::try_from(bytes.len()).expect("a medium's size fits u64"),
+            pixels: medium
+                .width
+                .zip(medium.height)
+                .map(|(width, height)| PixelSize { width, height }),
+            blob,
+            node: Some(self.node.clone()),
+            source: None,
+        };
+        let announce = {
+            let shard = shard.this();
+            let conversation = self.conversation.clone();
+            move || shard.summary_changed(&conversation)
+        };
+        let row = commit(shard.tasks(), self.db.clone(), attachment, Numbering::SameBytes, announce).await?;
+        Ok(row.number.to_string())
     }
 
     /// Stores `text` as a blob.
@@ -563,6 +612,20 @@ impl CommandKeeper for Keeper {
         })
     }
 
+    fn attach<'a>(
+        &'a self,
+        command: &'a CommandId,
+        media: &'a [CommandMedium],
+    ) -> LocalBoxFuture<'a, Vec<Option<Result<String, String>>>> {
+        Box::pin(async move {
+            let mut attachments = Vec::with_capacity(media.len());
+            for medium in media {
+                attachments.push(self.attach_medium(command, medium).await);
+            }
+            attachments
+        })
+    }
+
     fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>> {
         Box::pin(async move {
             match self.blobs.get(blob).await {
@@ -597,6 +660,7 @@ impl CommandKeeper for Keeper {
         title: &'a str,
         end: CommandEnd,
         output: &'a WholeOutput,
+        media: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
             let ended = self.clock.now();
@@ -616,6 +680,7 @@ impl CommandKeeper for Keeper {
                 ended,
                 end,
                 output: stored,
+                media: media.to_vec(),
             };
             let recorded = self
                 .db
@@ -748,5 +813,18 @@ impl ShellEnvironment for Registered {
             self.registration.replace(commands.clone(), selection);
         }
         Ok(())
+    }
+}
+
+/// The name an attachment of `medium` goes by: its file's, or, for one viewed
+/// from stdin, its kind and number with its type's extension, such as
+/// `image-1.png`.
+fn medium_name(medium: &CommandMedium) -> String {
+    if let Some(name) = &medium.name {
+        return name.clone();
+    }
+    match model_media_type_for(&medium.media_type) {
+        Some(entry) => format!("{}-{}.{}", entry.kind.name(), medium.number, entry.extension),
+        None => format!("medium-{}", medium.number),
     }
 }

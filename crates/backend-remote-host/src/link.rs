@@ -699,7 +699,7 @@ pub struct JobMedium {
     pub size: u64,
     /// The SHA-256 of its bytes, which names its blob.
     pub sha256: BlobRef,
-    /// A document's name, and an image's or video's size in pixels and a
+    /// Its file's name, and an image's or video's size in pixels and a
     /// video's length, as the handler read them from its header.
     pub name: Option<String>,
     pub width: Option<u32>,

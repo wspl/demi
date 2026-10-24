@@ -5,14 +5,17 @@
 //! table holds one row per command, keyed by its id, which says:
 //!
 //! - when the command ended and how;
-//! - whether its output is stored, or was not stored and why.
+//! - whether its output is stored, or was not stored and why;
+//! - what its result tells of the media its job viewed, without their
+//!   bytes: each one's facts, its attachment or why it has none.
 //!
 //! A row is written once when its command ends, or copied into a Fork's
 //! destination, and never changes.
 
-use demi_host_interface::Missing;
+use demi_host_interface::{CommandMedium, Missing};
 use demi_shared_types::{BlobRef, Block, CommandEnd, CommandId, Timestamp, ToolView};
 use rusqlite::{Connection, OptionalExtension, Row, params};
+use serde::{Deserialize, Serialize};
 
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
@@ -41,10 +44,88 @@ pub struct CommandOutput {
     /// which the column holds as null.
     pub end: CommandEnd,
     pub output: OutputRow,
+    /// The media its job viewed, each read back with its bytes missing for
+    /// the reason the row keeps, or [`NOT_KEPT`]; none for a row written
+    /// before rows kept them.
+    pub media: Vec<CommandMedium>,
+}
+
+/// Why a medium read back from a row has no bytes when the backend had
+/// them: a row keeps none.
+pub const NOT_KEPT: &str = "not kept past the command's end";
+
+/// What a row keeps of a medium (command media format 1): the facts the
+/// runner announced, its attachment or why it has none, and why the backend
+/// did not have its bytes.
+#[derive(Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+struct KeptMedium {
+    number: u32,
+    media_type: String,
+    size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    height: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attachment: Option<KeptAttachment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unheld: Option<String>,
+}
+
+/// A kept medium's attachment: its id, or why the backend could not store
+/// it.
+#[derive(Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+enum KeptAttachment {
+    Id(String),
+    Failed(String),
+}
+
+impl KeptMedium {
+    fn of(medium: &CommandMedium) -> Self {
+        Self {
+            number: medium.number,
+            media_type: medium.media_type.clone(),
+            size: medium.size,
+            name: medium.name.clone(),
+            width: medium.width,
+            height: medium.height,
+            duration_ms: medium.duration_ms,
+            attachment: medium.attachment.clone().map(|attachment| match attachment {
+                Ok(id) => KeptAttachment::Id(id),
+                Err(reason) => KeptAttachment::Failed(reason),
+            }),
+            unheld: medium.bytes.as_ref().err().cloned(),
+        }
+    }
+
+    fn medium(self) -> CommandMedium {
+        CommandMedium {
+            number: self.number,
+            media_type: self.media_type,
+            size: self.size,
+            name: self.name,
+            width: self.width,
+            height: self.height,
+            duration_ms: self.duration_ms,
+            bytes: Err(self.unheld.unwrap_or_else(|| NOT_KEPT.to_owned())),
+            attachment: self.attachment.map(|attachment| match attachment {
+                KeptAttachment::Id(id) => Ok(id),
+                KeptAttachment::Failed(reason) => Err(reason),
+            }),
+        }
+    }
 }
 
 const COLUMNS: &str =
-    "command_id, ended_at, ending, blob, missing_bytes, missing_reason, not_stored, title";
+    "command_id, ended_at, ending, blob, missing_bytes, missing_reason, not_stored, title, media";
 
 /// Writes `rows` in one transaction; a command that has a row keeps it.
 pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
@@ -59,7 +140,7 @@ pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(),
 pub(crate) fn insert_in(transaction: &Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
     {
         let mut insert = transaction.prepare_cached(&format!(
-            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT (command_id) DO NOTHING"
         ))?;
         for row in rows {
@@ -73,6 +154,8 @@ pub(crate) fn insert_in(transaction: &Connection, rows: &[CommandOutput]) -> Res
                 CommandEnd::Unrecorded => None,
                 end => Some(to_json(end)),
             };
+            let media = (!row.media.is_empty())
+                .then(|| to_json(&row.media.iter().map(KeptMedium::of).collect::<Vec<_>>()));
             insert.execute(params![
                 row.command.as_str(),
                 row.ended.as_millisecond(),
@@ -82,6 +165,7 @@ pub(crate) fn insert_in(transaction: &Connection, rows: &[CommandOutput]) -> Res
                 missing.map(|missing| missing.reason.as_str()),
                 not_stored,
                 row.title,
+                media,
             ])?;
         }
     }
@@ -222,12 +306,20 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
             });
         }
     };
+    let media = match row.get::<_, Option<String>>("media")? {
+        Some(text) => json::<Vec<KeptMedium>>("command_outputs", "media", &text)?
+            .into_iter()
+            .map(KeptMedium::medium)
+            .collect(),
+        None => Vec::new(),
+    };
     Ok(CommandOutput {
         command,
         title: row.get("title")?,
         ended,
         end,
         output,
+        media,
     })
 }
 

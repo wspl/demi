@@ -1015,7 +1015,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         Box::pin(async move {
             // The media the job viewed, which only its end report attaches:
             // a look that showed the end attached none.
-            let media = self
+            let mut media = self
                 .environments
                 .owning(command)
                 .and_then(|environment| environment.media(command).ok())
@@ -1074,7 +1074,12 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             let (title, status) = match self.environments.owning(command) {
                 Some(environment) => (environment.title(command).unwrap_or_default(), None),
                 None => match self.stored(command).await {
-                    Some(stored) => (stored.title.clone(), self.stored_status(command, stored)),
+                    Some(stored) => {
+                        // Its record keeps them without their bytes, so the
+                        // report names their attachments.
+                        media.clone_from(&stored.media);
+                        (stored.title.clone(), self.stored_status(command, stored))
+                    }
                     None => (String::new(), None),
                 },
             };

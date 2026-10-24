@@ -59,7 +59,7 @@ use std::{
 };
 
 use demi_conversation_socket_protocol::{JobModel, JobPhase, Subagent, TurnSpeed, Versions};
-use demi_host_interface::{Seen, UnsentStart, WholeOutput};
+use demi_host_interface::{CommandMedium, Seen, UnsentStart, WholeOutput};
 use demi_shared_types::{
     AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
@@ -340,12 +340,14 @@ pub struct RunningCommand {
 
 /// What a conversation holds of an ended command: the title of the call
 /// that started it, which its reports name, empty for one recorded before
-/// records kept it; how it ended; and its output.
+/// records kept it; how it ended; its output; and the media its job viewed,
+/// without their bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredCommand {
     pub title: String,
     pub end: CommandEnd,
     pub output: StoredOutput,
+    pub media: Vec<CommandMedium>,
 }
 
 /// What a conversation holds of an ended command's output.
