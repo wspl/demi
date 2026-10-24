@@ -1211,7 +1211,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     const conversation = items.value.find((item) => item.id === id)
     if (id) {
-      shownRecently.splice(0, shownRecently.length, id, ...shownRecently.filter((each) => each !== id))
+      shownRecently.splice(0, shownRecently.length, id, ...shownRecently.filter((each) => each !== id).slice(0, KEPT_CONVERSATIONS - 1))
       letGoBeyondKept()
     }
     if (!conversation) {
@@ -1948,35 +1948,119 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /** How many conversations shown most recently stay open, the one shown among them, because each holds its state and socket in memory. */
-  const KEPT_CONVERSATIONS = 3
-  /** The conversations shown, most recent first. */
+  /**
+   * How many conversations shown most recently stay open, the one shown among
+   * them: each holds its state and socket in memory, and someone who works in
+   * several conversations switches between about this many.
+   */
+  const KEPT_CONVERSATIONS = 8
+  /** The conversations shown, most recent first, at most `KEPT_CONVERSATIONS`. */
   const shownRecently: string[] = []
 
+  /** The conversations whose turn runs, as the list says it. */
+  const listedRunning = computed(() => new Set(
+    (product.snapshot?.conversations ?? [])
+      .filter((record) => summaryStatus(record.status) === 'active')
+      .map((record) => record.id),
+  ))
+
   /**
-   * Lets go the conversations beyond the `KEPT_CONVERSATIONS` shown most
-   * recently: their connection closes and their transcripts leave memory,
-   * which their copies on disk keep, so showing one again opens it from its
-   * copy. One with a message still on its way stays open, as its delivery
-   * needs its session.
+   * Whether the conversation runs: its session says so, a subagent's or a
+   * terminal's work included, or the list does, which knows of a turn the
+   * page holds no session of.
+   */
+  function running(conversation: Conversation): boolean {
+    return conversation.status === 'active' || listedRunning.value.has(conversation.id)
+  }
+
+  /**
+   * Whether the page holds the conversation but not yet what its session
+   * says now: its opening goes on, or its session is not connected or still
+   * reads the root's transcript again. Until then neither its status nor its
+   * copy tells whether its turn ended.
+   */
+  function catchingUp(conversation: Conversation): boolean {
+    const entry = cache.get(conversation.id)
+    if (!entry || conversation.archived) {
+      return false
+    }
+    return entry.runtime ? !entry.runtime.caughtUp : !entry.settled
+  }
+
+  /**
+   * Whether the page keeps the conversation open: shown recently, running,
+   * so that showing it again shows what it holds now, still catching up with
+   * its session, which may say it runs, or with a message still on its way,
+   * as its delivery needs its session.
+   */
+  function kept(conversation: Conversation): boolean {
+    return shownRecently.includes(conversation.id)
+      || running(conversation)
+      || catchingUp(conversation)
+      || conversation.pendingSends.length > 0
+  }
+
+  /**
+   * Lets go each conversation the page holds that it no longer keeps: its
+   * connection closes and its transcripts leave memory, which its copy on
+   * disk keeps, so showing it again opens it from its copy. A running one
+   * is let go once its turn ends, when its copy holds the end of the turn.
    */
   function letGoBeyondKept(): void {
-    for (const id of shownRecently.slice(KEPT_CONVERSATIONS)) {
-      const conversation = items.value.find((item) => item.id === id)
-      if (conversation && conversation.pendingSends.length > 0) {
+    for (const conversation of items.value) {
+      if (!cache.get(conversation.id) || kept(conversation)) {
         continue
       }
-      shownRecently.splice(shownRecently.indexOf(id), 1)
-      if (!conversation || !cache.get(id)) {
-        continue
-      }
-      cache.delete(id)
-      copies.released(id)
+      pageLog.info('conversation.let_go', {}, conversation.id)
+      cache.delete(conversation.id)
+      copies.released(conversation.id)
       startLoading(conversation)
       // Not open now: the next showing opens it.
       conversation.load = 'loading'
+      // Its status is the list's again, as for any conversation not open.
+      const record = product.snapshot?.conversations?.find((item) => item.id === conversation.id)
+      if (record) {
+        conversation.status = summaryStatus(record.status)
+      }
     }
   }
+
+  /**
+   * Opens a conversation the page does not show, as a shown one opens, so
+   * that showing it later shows what it holds by then; nothing on screen
+   * changes. A failure is its load state, which showing it retries.
+   */
+  function openInBackground(conversation: Conversation): void {
+    if (cache.get(conversation.id) || conversation.persistence !== 'synced' || conversation.archived) {
+      return
+    }
+    pageLog.info('conversation.opened_in_background', { load: conversation.load }, conversation.id)
+    copies.opened(conversation.id)
+    if (conversation.load !== 'ready') {
+      startLoading(conversation)
+    }
+    void cache.open(conversation.id, (entry) => loadConversation(conversation, entry)).catch(() => {})
+  }
+
+  // A conversation that starts to run opens, one a schedule's run or
+  // another conversation's message started included, and one that stops
+  // running, catches up with its session or ends its delivery is let go
+  // unless it is kept.
+  watch(
+    () => items.value
+      .filter((item) => running(item) || catchingUp(item) || item.pendingSends.length > 0)
+      .map((item) => item.id)
+      .join(' '),
+    () => {
+      for (const conversation of items.value) {
+        if (running(conversation)) {
+          openInBackground(conversation)
+        }
+      }
+      letGoBeyondKept()
+    },
+    { immediate: true },
+  )
 
   /**
    * The Agents window shows the subagent `id`, or none. It shows at once from
@@ -2067,7 +2151,15 @@ export const useConversations = defineStore('conversations', () => {
         cache.delete(conversation.id)
       }
     }
-    await activate(conversation.id)
+    // A conversation the page does not show, one whose restored message goes
+    // again as it opens in the background, opens without being shown: only
+    // the user's choice changes what the page shows.
+    if (conversation.id === product.activeConversationId) {
+      await activate(conversation.id)
+    } else {
+      openInBackground(conversation)
+      await cache.get(conversation.id)?.opening.catch(() => {})
+    }
     // A change of the conversation's context, which the channel can bring
     // while the conversation opens, replaces its entry: the send waits for
     // the entry that stands.

@@ -50,7 +50,7 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
     return items().find((item) => item.id === id)
   }
 
-  /** The user opened conversation `id`: what the page holds of it is kept on disk from now on. */
+  /** The page opened conversation `id`: what it holds of it is kept on disk from now on. */
   function opened(id: string): void {
     if (watches.has(id)) {
       return

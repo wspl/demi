@@ -203,6 +203,15 @@ export class ConversationRuntime {
   }
 
   /**
+   * Whether the page holds what the session says now: connected, with the
+   * root's transcript current. Every event the client brings is seen here,
+   * so a caller that watches it sees the moment a read again ends.
+   */
+  get caughtUp(): boolean {
+    return this.client.value?.holdsCurrent(this.options.state.id) ?? false
+  }
+
+  /**
    * Whether a session of this view has opened, whose handshake the page has
    * applied.
    */
