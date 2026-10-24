@@ -41,10 +41,6 @@
       "action": "管理供应商",
       "description": "添加、更改和移除你的供应商及其模型，你的每个对话都可以使用它们。"
     },
-    "conversation_organize": {
-      "action": "整理对话",
-      "description": "“整理对话”允许此对话的智能体重命名此对话。"
-    },
     "conversation_read": {
       "action": "读取你的其他对话",
       "description": "“读取你的其他对话”允许此对话的智能体列出你的对话，并读取其中任何一个的内容。读取的内容会发送给此对话的模型供应商。"

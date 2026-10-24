@@ -41,10 +41,6 @@
       "action": "manage providers",
       "description": "Add, change and remove your provider entries and their models, which every conversation of yours can use."
     },
-    "conversation_organize": {
-      "action": "organize conversations",
-      "description": "Organize Conversations lets the agents of this conversation rename it."
-    },
     "conversation_read": {
       "action": "read your other conversations",
       "description": "Read Your Other Conversations lets the agents of this conversation list your conversations and read what any of them holds. What they read goes to this conversation’s model provider."

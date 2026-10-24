@@ -1,8 +1,8 @@
 //! The product's `demi conversation` group
 //! (`crates/backend-host-access/src/host_commands.rs`).
 //!
-//! With the user's Organize Conversations, an agent renames its conversation at
-//! once. Listing the user's projects only reads, so it asks no permission.
+//! An agent renames its conversation at once, without asking: the title is
+//! the conversation's own, and the user renames it back as easily. Listing the user's projects only reads, so it asks no permission.
 //! Listing the user's conversations, and reading one's transcript
 //! (`history.rs`), asks the user's Read Your Other Conversations. Where the
 //! conversation runs decides its project, so an agent moves it into or out of
@@ -28,13 +28,6 @@ use serde::{Deserialize, Serialize};
 use super::history::{history_group, shell_word};
 use super::search::search;
 use crate::shard::Shard;
-
-/// The permission category of the commands that organize the conversation.
-pub(crate) const ORGANIZE: &str = "conversation.organize";
-
-const ORGANIZE_ACTION: &str = "organize conversations";
-
-const ORGANIZE_DESCRIPTION: &str = "Organize Conversations lets the agents of this conversation rename it.";
 
 /// The permission category of the commands that read the user's other
 /// conversations.
@@ -74,13 +67,11 @@ struct NoArgs {}
 pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
     GroupBuilder::new("conversation", SUMMARY)
         .index_entry(ENTRY)
-        .permission(ORGANIZE, ORGANIZE_ACTION, ORGANIZE_DESCRIPTION)
         .permission(READ, READ_ACTION, READ_DESCRIPTION)
         .leaf(
             LeafBuilder::rpc("rename", RENAME_SUMMARY)
                 .input::<RenameArgs>()
                 .positionals(["title"])
-                .permission(ORGANIZE)
                 .bind(TypedRpc::new(verb(shard.clone(), rename))),
         )
         .leaf(
