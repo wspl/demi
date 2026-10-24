@@ -1804,17 +1804,18 @@ fn rewrite_stored(transaction: &Transaction<'_>, inputs: bool) -> rusqlite::Resu
         if !present {
             continue;
         }
-        let rows = transaction
-            .prepare(&format!(
-                "SELECT rowid, {column} FROM {table}
-                 WHERE instr({column}, 'background') > 0 OR instr({column}, 'foreground') > 0
-                    OR instr({column}, 'intervals') > 0 OR instr({column}, 'intervalMs') > 0
-                 ORDER BY rowid"
-            ))?
-            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = rowids(
+            transaction,
+            table,
+            &format!(
+                "WHERE instr({column}, 'background') > 0 OR instr({column}, 'foreground') > 0
+                    OR instr({column}, 'intervals') > 0 OR instr({column}, 'intervalMs') > 0"
+            ),
+        )?;
+        let mut read = transaction.prepare(&format!("SELECT {column} FROM {table} WHERE rowid = ?1"))?;
         let mut update = transaction.prepare(&format!("UPDATE {table} SET {column} = ?2 WHERE rowid = ?1"))?;
-        for (row, text) in rows {
+        for row in rows {
+            let text: String = read.query_row([row], |row| row.get(0))?;
             let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
             let mut changed = stored_names(&mut value, inputs);
             if table == "nodes" {
@@ -1835,6 +1836,22 @@ fn rewrite_stored(transaction: &Transaction<'_>, inputs: bool) -> rusqlite::Resu
         }
     }
     Ok(())
+}
+
+/// The rowids of the rows of `table` that the clause `selection` (a `WHERE` and
+/// an `ORDER BY`, either alone or both) picks, in its order.
+///
+/// A step that rewrites the stored text of many rows lists them by this and
+/// then reads, rewrites and writes one row at a time, in the migration's
+/// transaction, so its memory is bounded by the largest row and not by the
+/// table: a conversation's blocks may be gigabytes, and collecting them all
+/// before writing the first made the backend run out of memory at every start,
+/// the transaction rolling back each time.
+fn rowids(transaction: &Transaction<'_>, table: &str, selection: &str) -> rusqlite::Result<Vec<i64>> {
+    transaction
+        .prepare(&format!("SELECT rowid FROM {table} {selection}"))?
+        .query_map([], |row| row.get(0))?
+        .collect()
 }
 
 /// Gives the names of [`current_names`], but its watches', to a stored block or
@@ -2132,12 +2149,12 @@ fn named_kept_messages(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 
     let boundaries = transaction
         .prepare(
-            "SELECT node_id, idx, block FROM blocks
+            "SELECT node_id, idx FROM blocks
              WHERE json_extract(block, '$.type') = 'compaction_boundary'
                AND json_extract(block, '$.kept[0].content') IS NOT NULL
              ORDER BY node_id, idx",
         )?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     if boundaries.is_empty() {
         return Ok(());
@@ -2174,7 +2191,7 @@ fn named_kept_messages(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let mut node = String::new();
     let mut places: HashMap<i64, Place> = HashMap::new();
     let mut written: HashMap<i64, Vec<UserContentBlock>> = HashMap::new();
-    for (of, index, text) in boundaries {
+    for (of, index) in boundaries {
         if of != node {
             node = of;
             places.clear();
@@ -2201,6 +2218,7 @@ fn named_kept_messages(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
             }
         }
         let invalid = |reason: &str| corrupt_text(&format!("the compaction boundary at row {index} of node {node} {reason}"));
+        let text: String = read.query_row(rusqlite::params![node, index], |row| row.get(0))?;
         let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
         let stored: Vec<Stored> = serde_json::from_value(block["kept"].take()).map_err(corrupt)?;
         let model: ModelSelection = serde_json::from_value(block["model"].clone()).map_err(corrupt)?;
@@ -2493,15 +2511,15 @@ fn number_attachments_then(
         if !present {
             continue;
         }
-        let rows = transaction
-            .prepare(&format!(
-                "SELECT rowid, {column} FROM {table}
-                 WHERE instr({column}, '\"type\":\"attachment\"') > 0 ORDER BY rowid"
-            ))?
-            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = rowids(
+            transaction,
+            table,
+            &format!("WHERE instr({column}, '\"type\":\"attachment\"') > 0 ORDER BY rowid"),
+        )?;
+        let mut read = transaction.prepare(&format!("SELECT {column} FROM {table} WHERE rowid = ?1"))?;
         let mut update = transaction.prepare(&format!("UPDATE {table} SET {column} = ?2 WHERE rowid = ?1"))?;
-        for (row, text) in rows {
+        for row in rows {
+            let text: String = read.query_row([row], |row| row.get(0))?;
             let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
             if numbers.renumber(&mut value, &mut insert)? {
                 update.execute(rusqlite::params![row, value.to_string()])?;
@@ -2723,13 +2741,12 @@ fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) 
 /// 2. Each transcript becomes a tree of rows of one path ([`ONE_PATH`]).
 fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let switches = "json_extract(block, '$.type') = 'account_switch'";
-    let rows = transaction
-        .prepare(&format!("SELECT node_id, idx, block FROM blocks WHERE {switches}"))?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
-    for (node, index, text) in rows {
-        update.execute(rusqlite::params![node, index, named_switch(&text)?])?;
+    let rows = rowids(transaction, "blocks", &format!("WHERE {switches}"))?;
+    let mut read = transaction.prepare("SELECT block FROM blocks WHERE rowid = ?1")?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?2 WHERE rowid = ?1")?;
+    for row in rows {
+        let text: String = read.query_row([row], |row| row.get(0))?;
+        update.execute(rusqlite::params![row, named_switch(&text)?])?;
     }
     shares_as_lists(transaction)?;
     transaction.execute_batch(ONE_PATH)
@@ -2968,14 +2985,13 @@ fn codex_length(text: &str, unit: u64) -> Option<Option<u64>> {
 /// shares' snapshots are removed later ([`shares_as_lists`]).
 fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let calls = "json_extract(block, '$.type') = 'tool_call'";
-    let rows = transaction
-        .prepare(&format!("SELECT node_id, idx, block FROM blocks WHERE {calls}"))?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
-    for (node, index, text) in rows {
+    let rows = rowids(transaction, "blocks", &format!("WHERE {calls}"))?;
+    let mut read = transaction.prepare("SELECT block FROM blocks WHERE rowid = ?1")?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?2 WHERE rowid = ?1")?;
+    for row in rows {
+        let text: String = read.query_row([row], |row| row.get(0))?;
         if let Some(block) = ended_call(&text)? {
-            update.execute(rusqlite::params![node, index, block])?;
+            update.execute(rusqlite::params![row, block])?;
         }
     }
     Ok(())
@@ -3144,17 +3160,16 @@ const CONVERSATION_FROM_BLOCK_FORMAT_7: &str = "";
 /// marked outside, and the stored run and request lists, which already left those
 /// out, stay as they are.
 fn views_with_outside_paths(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
-    let rows = transaction
-        .prepare("SELECT node_id, idx, block FROM blocks WHERE json_extract(block, '$.view.commandId') IS NOT NULL")?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
-    for (node, index, text) in rows {
+    let rows = rowids(transaction, "blocks", "WHERE json_extract(block, '$.view.commandId') IS NOT NULL")?;
+    let mut read = transaction.prepare("SELECT block FROM blocks WHERE rowid = ?1")?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?2 WHERE rowid = ?1")?;
+    for row in rows {
+        let text: String = read.query_row([row], |row| row.get(0))?;
         let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
         if with_outside_paths(&mut block).map_err(corrupt)? {
             with_its_end(&mut block)?;
             let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
-            update.execute(rusqlite::params![node, index, super::columns::to_json(&block)])?;
+            update.execute(rusqlite::params![row, super::columns::to_json(&block)])?;
         }
     }
     Ok(())
@@ -3223,15 +3238,12 @@ fn nodes_with_their_directories(transaction: &Transaction<'_>, _: &dyn ReadBlob)
          ALTER TABLE nodes ADD COLUMN cwd_device TEXT;
          ALTER TABLE nodes ADD COLUMN cwd_under TEXT CHECK (cwd_under <> '');",
     )?;
-    let states = transaction
-        .prepare("SELECT id, parent_id IS NOT NULL, state FROM nodes")?
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?, row.get::<_, String>(2)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update =
-        transaction.prepare("UPDATE nodes SET state = ?2, cwd = ?3, cwd_under = ?3 WHERE id = ?1")?;
-    for (id, child, state) in states {
+    let nodes = rowids(transaction, "nodes", "")?;
+    let mut read = transaction.prepare("SELECT id, parent_id IS NOT NULL, state FROM nodes WHERE rowid = ?1")?;
+    let mut update = transaction.prepare("UPDATE nodes SET state = ?2, cwd = ?3, cwd_under = ?3 WHERE id = ?1")?;
+    for node in nodes {
+        let (id, child, state): (String, bool, String) =
+            read.query_row([node], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
         let mut fields: serde_json::Map<String, serde_json::Value> =
             decode("nodes", "state", serde_json::from_str(&state)).map_err(corrupt)?;
         // The root's goes whatever it was; a child's is its row's now.
@@ -3269,16 +3281,15 @@ fn boundaries_with_kept_messages(transaction: &Transaction<'_>, _: &dyn ReadBlob
     // It reads blocks with the current types (`number_attachments`).
     number_attachments(transaction)?;
     current_names(transaction)?;
-    let rows = transaction
-        .prepare("SELECT node_id, idx, block FROM blocks WHERE json_extract(block, '$.type') = 'compaction_boundary'")?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
-    for (node, index, text) in rows {
+    let rows = rowids(transaction, "blocks", "WHERE json_extract(block, '$.type') = 'compaction_boundary'")?;
+    let mut read = transaction.prepare("SELECT block FROM blocks WHERE rowid = ?1")?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?2 WHERE rowid = ?1")?;
+    for row in rows {
+        let text: String = read.query_row([row], |row| row.get(0))?;
         let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
         if with_no_kept_messages(&mut block) {
             let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
-            update.execute(rusqlite::params![node, index, super::columns::to_json(&block)])?;
+            update.execute(rusqlite::params![row, super::columns::to_json(&block)])?;
         }
     }
     Ok(())
@@ -3723,18 +3734,17 @@ fn corrupt_text(message: &str) -> rusqlite::Error {
 /// Format 2 is not the current one: the migration to format 3
 /// ([`nodes_with_their_directories`]) decodes and checks each state.
 fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
-    let states = transaction
-        .prepare("SELECT id, state FROM nodes")?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update = transaction.prepare("UPDATE nodes SET state = ?2 WHERE id = ?1")?;
-    for (id, state) in states {
+    let nodes = rowids(transaction, "nodes", "")?;
+    let mut read = transaction.prepare("SELECT state FROM nodes WHERE rowid = ?1")?;
+    let mut update = transaction.prepare("UPDATE nodes SET state = ?2 WHERE rowid = ?1")?;
+    for node in nodes {
+        let state: String = read.query_row([node], |row| row.get(0))?;
         let mut fields: serde_json::Map<String, serde_json::Value> =
             decode("nodes", "state", serde_json::from_str(&state)).map_err(corrupt)?;
         fields.remove("wakeups");
         fields.insert("reports".to_owned(), serde_json::json!([]));
         fields.insert("intervals".to_owned(), serde_json::json!([]));
-        update.execute(rusqlite::params![id, to_json(&fields)])?;
+        update.execute(rusqlite::params![node, to_json(&fields)])?;
     }
     Ok(())
 }
@@ -3754,26 +3764,17 @@ fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()>
 /// encoding; a block that does not decode stops the migration.
 fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let titles = command_titles_of_0_1_21(transaction)?;
-    let mut blocks = Vec::new();
-    {
-        let mut statement = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
-        let mut rows = statement.query([])?;
-        while let Some(row) = rows.next()? {
-            let text: String = row.get(2)?;
-            let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
-            if migrate_block(&mut block, &titles) {
-                with_its_end(&mut block)?;
-                let block: demi_shared_types::Block =
-                    demi_shared_types::decode_value(block).map_err(corrupt)?;
-                let node: String = row.get(0)?;
-                let index: i64 = row.get(1)?;
-                blocks.push((node, index, super::columns::to_json(&block)));
-            }
+    let rows = rowids(transaction, "blocks", "")?;
+    let mut read = transaction.prepare("SELECT block FROM blocks WHERE rowid = ?1")?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?2 WHERE rowid = ?1")?;
+    for row in rows {
+        let text: String = read.query_row([row], |row| row.get(0))?;
+        let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+        if migrate_block(&mut block, &titles) {
+            with_its_end(&mut block)?;
+            let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
+            update.execute(rusqlite::params![row, super::columns::to_json(&block)])?;
         }
-    }
-    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
-    for (node, index, block) in blocks {
-        update.execute(rusqlite::params![node, index, block])?;
     }
     Ok(())
 }
