@@ -25,6 +25,11 @@ pub const SCREENSHOT_LONG_SIDE: u32 = 1568;
 /// How long `wait` waits when it names no timeout, and the longest it may
 /// name, in seconds.
 pub const WAIT_SECONDS: u64 = 30;
+/// How long a command waits for the element a `text=` or `id=` target
+/// names, by default: long enough for a page to load and slide in, short
+/// enough that a misspelled text fails soon; a longer load is waited for
+/// with `wait` or `--timeout`.
+pub const FIND_SECONDS: u64 = 10;
 pub const MAX_WAIT_SECONDS: u64 = 300;
 /// The longest output path, in characters: the longest path the systems the
 /// Host runs on take.
@@ -475,14 +480,19 @@ pub struct InspectResult {
 device_input! {
     /// `tap`: a tap at a point or on an element.
     pub struct TapInput {
-        /// An element ref from the last inspect, or x and y in screenshot pixels
-        #[garde(length(min = 1, max = 2), inner(length(chars, min = 1, max = 32)))]
+        /// An element: a ref from the last inspect, text=<text it shows> or id=<identifier>; or x and y in screenshot pixels
+        #[garde(length(min = 1, max = 2), inner(length(chars, min = 1)))]
         pub at: Vec<String>,
         /// Hold for a second, a long press
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
         #[garde(skip)]
         pub long: Option<bool>,
+        /// Seconds to wait for a text= or id= element; default 10, at most 300
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "u64")]
+        #[garde(range(min = 1, max = MAX_WAIT_SECONDS))]
+        pub timeout: Option<u64>,
     }
 }
 
@@ -499,9 +509,14 @@ pub struct TapResult {
 device_input! {
     /// `swipe`: a finger from one point to another, or across an element.
     pub struct SwipeInput {
-        /// x1 y1 x2 y2 in screenshot pixels, or an element ref and up, down, left or right
-        #[garde(length(min = 2, max = 4), inner(length(chars, min = 1, max = 32)))]
+        /// x1 y1 x2 y2 in screenshot pixels, or an element (a ref, text=<text> or id=<identifier>) and up, down, left or right
+        #[garde(length(min = 2, max = 4), inner(length(chars, min = 1)))]
         pub at: Vec<String>,
+        /// Seconds to wait for a text= or id= element; default 10, at most 300
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "u64")]
+        #[garde(range(min = 1, max = MAX_WAIT_SECONDS))]
+        pub timeout: Option<u64>,
     }
 }
 
@@ -522,16 +537,21 @@ device_input! {
         /// The text to type
         #[garde(length(chars, min = 1))]
         pub text: String,
-        /// Tap this element ref first, then type into it
+        /// Tap this element first, then type into it: a ref, text=<text> or id=<identifier>
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "ElementRef")]
-        #[garde(skip)]
-        pub into: Option<ElementRef>,
+        #[schemars(with = "String")]
+        #[garde(length(chars, min = 1))]
+        pub into: Option<String>,
         /// Set the field's text at once instead of adding to it; needs --into
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
         #[garde(skip)]
         pub replace: Option<bool>,
+        /// Seconds to wait for a text= or id= element; default 10, at most 300
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "u64")]
+        #[garde(range(min = 1, max = MAX_WAIT_SECONDS))]
+        pub timeout: Option<u64>,
     }
 }
 
@@ -621,21 +641,21 @@ pub struct AppearanceResult {
 device_input! {
     /// `wait`: until text or an element appears, or an element is gone.
     pub struct WaitInput {
-        /// Wait until an element's label or value contains this text
+        /// Wait until an element shows this text, as text= finds it
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1))]
         pub text: Option<String>,
-        /// Wait until this element ref is on the screen
+        /// Wait until this element is on the screen: a ref, text=<text> or id=<identifier>
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "ElementRef")]
-        #[garde(skip)]
-        pub element: Option<ElementRef>,
-        /// Wait until this element ref is gone from the screen
+        #[schemars(with = "String")]
+        #[garde(length(chars, min = 1))]
+        pub element: Option<String>,
+        /// Wait until this element is gone from the screen: a ref, text=<text> or id=<identifier>
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "ElementRef")]
-        #[garde(skip)]
-        pub gone: Option<ElementRef>,
+        #[schemars(with = "String")]
+        #[garde(length(chars, min = 1))]
+        pub gone: Option<String>,
         /// Seconds to wait; default 30, at most 300
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "u64")]

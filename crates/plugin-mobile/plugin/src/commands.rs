@@ -38,13 +38,13 @@ operations! {
     "close" => CloseInput, CloseResult, ["device"], "Close a device; shuts it down when demi mobile booted it, else leaves it booted.";
     "screenshot" => ScreenshotInput, ScreenshotResult, ["device"], format!("Capture the settled screen: its PNG's bytes on stdout, its long side at most {SCREENSHOT_LONG_SIDE} pixels, so demi mobile screenshot m1 | demi file view shows it to you and > shot.png saves it; or save a new PNG with --output. Waits up to 1.5 s for the screen to stop changing.");
     "inspect" => InspectInput, InspectResult, ["device"], "Read the settled screen's UI tree, alerts and the keyboard included: each element's ref, role, label, value, identifier, frame in screenshot pixels and state.";
-    "tap" => TapInput, TapResult, ["device", "at"], "Tap an element ref from the last inspect, or x y in screenshot pixels: tap m1 e7, tap m1 540 1210. Returns once the device took the tap, not once the screen changed.";
-    "swipe" => SwipeInput, SwipeResult, ["device", "at"], "Swipe from x1 y1 to x2 y2 in screenshot pixels, or across an element so its content moves up, down, left or right: swipe m1 e4 up.";
-    "type" => TypeInput, TypeResult, ["device", "text"], "Type text into the focused field, or tap --into <ref> first, checking that it landed and saying what the field holds; --replace sets the field's text at once instead of adding to it.";
+    "tap" => TapInput, TapResult, ["device", "at"], "Tap an element, or x y in screenshot pixels: tap m1 text=Continue, tap m1 id=submit, tap m1 e7 (a ref from the last inspect), tap m1 540 1210. text= and id= need no inspect and wait until the element is there, 10 s by default. Returns once the device took the tap; wait waits for what the tap changes.";
+    "swipe" => SwipeInput, SwipeResult, ["device", "at"], "Swipe from x1 y1 to x2 y2 in screenshot pixels, or across an element so its content moves up, down, left or right: swipe m1 id=list up.";
+    "type" => TypeInput, TypeResult, ["device", "text"], "Type text into the focused field, or tap --into <element> first, such as --into id=email or --into text=Email, checking that it landed and saying what the field holds; --replace sets the field's text at once instead of adding to it.";
     "key" => KeyInput, KeyResult, ["device", "key"], "Press home, lock, volume-up or volume-down, or the keyboard's enter, delete, tab or escape.";
     "rotate" => RotateInput, RotateResult, ["device", "orientation"], "Turn the device portrait or landscape, or a quarter turn left or right; screenshots and coordinates follow it.";
     "appearance" => AppearanceInput, AppearanceResult, ["device", "appearance"], "Switch the system to light or dark, or toggle it.";
-    "wait" => WaitInput, WaitResult, ["device"], "Wait until an element shows --text, an element ref appears (--element) or is gone (--gone), re-reading the tree; 30 s by default.";
+    "wait" => WaitInput, WaitResult, ["device"], "Wait until an element shows --text, an element appears (--element) or is gone (--gone), such as --gone text=Loading, re-reading the tree; 30 s by default.";
     "record" => RecordInput, RecordResult, ["target", "action"], record_about("device", "m1");
 }
 
