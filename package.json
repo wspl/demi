@@ -74,5 +74,8 @@
     "@lezer/highlight": "1.2.3",
     "@lezer/lr": "1.4.8",
     "@replit/codemirror-indentation-markers": "6.5.3"
+  },
+  "patchedDependencies": {
+    "overlayscrollbars@2.16.0": "patches/overlayscrollbars@2.16.0.patch"
   }
 }

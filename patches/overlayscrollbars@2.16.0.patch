@@ -1,0 +1,88 @@
+diff --git a/overlayscrollbars.cjs b/overlayscrollbars.cjs
+index ec871bc71397ef9f5586519c121a65b90907ad9d..d2296c67cb97324c513f404902af552be2d9471b 100644
+--- a/overlayscrollbars.cjs
++++ b/overlayscrollbars.cjs
+@@ -2653,9 +2653,14 @@ const createOverflowUpdateSegment = (t, s) => {
+   };
+   const setViewportOverflowStyle = t => {
+     const createAllOverflowStyleClassNames = t => [ x, H, E ].map((n => createViewportOverflowStyleClassName(overflowCssValueToOverflowStyle(n), t)));
+-    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames()).join(" ");
+-    p(n);
+-    p(keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x"))).join(" "), true);
++    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames());
++    // Demi: the styles that stay are never removed and added back, so an update
++    // that keeps them leaves the attribute as it was. Each change of it restyles
++    // the whole content of the viewport, through
++    // `[data-overlayscrollbars-viewport~=noContent] > *`.
++    const o = keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x")));
++    p(o.join(" "), true);
++    p(n.filter((t => !o.includes(t))).join(" "));
+   };
+   const [O, C] = createCache(S, bind(getFractionalSize, a));
+   const [$, D] = createCache(S, bind(T, a));
+diff --git a/overlayscrollbars.cjs.js b/overlayscrollbars.cjs.js
+index ab9d930b11ea64af9a2d5b7315b554db88cd5bbd..f694c79b8209e8d6743c8cd8a2248421a0b17833 100644
+--- a/overlayscrollbars.cjs.js
++++ b/overlayscrollbars.cjs.js
+@@ -2653,9 +2653,14 @@ const createOverflowUpdateSegment = (t, s) => {
+   };
+   const setViewportOverflowStyle = t => {
+     const createAllOverflowStyleClassNames = t => [ x, H, E ].map((n => createViewportOverflowStyleClassName(overflowCssValueToOverflowStyle(n), t)));
+-    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames()).join(" ");
+-    p(n);
+-    p(keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x"))).join(" "), true);
++    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames());
++    // Demi: the styles that stay are never removed and added back, so an update
++    // that keeps them leaves the attribute as it was. Each change of it restyles
++    // the whole content of the viewport, through
++    // `[data-overlayscrollbars-viewport~=noContent] > *`.
++    const o = keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x")));
++    p(o.join(" "), true);
++    p(n.filter((t => !o.includes(t))).join(" "));
+   };
+   const [O, C] = createCache(S, bind(getFractionalSize, a));
+   const [$, D] = createCache(S, bind(T, a));
+diff --git a/overlayscrollbars.esm.js b/overlayscrollbars.esm.js
+index b05b8043eba78f20754a14e84daa09ff505e2fbc..c51e5279ff52af4abcb72025a168dc984bfdb0b0 100644
+--- a/overlayscrollbars.esm.js
++++ b/overlayscrollbars.esm.js
+@@ -2647,9 +2647,14 @@ const createOverflowUpdateSegment = (t, s) => {
+   };
+   const setViewportOverflowStyle = t => {
+     const createAllOverflowStyleClassNames = t => [ x, H, E ].map((n => createViewportOverflowStyleClassName(overflowCssValueToOverflowStyle(n), t)));
+-    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames()).join(" ");
+-    p(n);
+-    p(keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x"))).join(" "), true);
++    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames());
++    // Demi: the styles that stay are never removed and added back, so an update
++    // that keeps them leaves the attribute as it was. Each change of it restyles
++    // the whole content of the viewport, through
++    // `[data-overlayscrollbars-viewport~=noContent] > *`.
++    const o = keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x")));
++    p(o.join(" "), true);
++    p(n.filter((t => !o.includes(t))).join(" "));
+   };
+   const [O, C] = createCache(S, bind(getFractionalSize, a));
+   const [$, D] = createCache(S, bind(T, a));
+diff --git a/overlayscrollbars.mjs b/overlayscrollbars.mjs
+index ae4c28abc9bbb5a972bdff8889bc552069bcf0fe..339bc192157f6b1a943b60fd824898d2b1f10175 100644
+--- a/overlayscrollbars.mjs
++++ b/overlayscrollbars.mjs
+@@ -2647,9 +2647,14 @@ const createOverflowUpdateSegment = (t, s) => {
+   };
+   const setViewportOverflowStyle = t => {
+     const createAllOverflowStyleClassNames = t => [ x, H, E ].map((n => createViewportOverflowStyleClassName(overflowCssValueToOverflowStyle(n), t)));
+-    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames()).join(" ");
+-    p(n);
+-    p(keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x"))).join(" "), true);
++    const n = createAllOverflowStyleClassNames(true).concat(createAllOverflowStyleClassNames());
++    // Demi: the styles that stay are never removed and added back, so an update
++    // that keeps them leaves the attribute as it was. Each change of it restyles
++    // the whole content of the viewport, through
++    // `[data-overlayscrollbars-viewport~=noContent] > *`.
++    const o = keys(t).map((n => createViewportOverflowStyleClassName(t[n], n === "x")));
++    p(o.join(" "), true);
++    p(n.filter((t => !o.includes(t))).join(" "));
+   };
+   const [O, C] = createCache(S, bind(getFractionalSize, a));
+   const [$, D] = createCache(S, bind(T, a));

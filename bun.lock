@@ -283,6 +283,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "overlayscrollbars@2.16.0": "patches/overlayscrollbars@2.16.0.patch",
+  },
   "overrides": {
     "@codemirror/autocomplete": "6.20.1",
     "@codemirror/commands": "6.10.3",
