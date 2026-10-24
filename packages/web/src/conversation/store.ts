@@ -105,7 +105,8 @@ import { startingChoices, startingWorkflow, type RememberedChoices } from '@demi
 import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
 import { useResources } from '../state/resources'
-import { useProduct, type ProductChange } from '../state/product'
+import { known, useProduct, type ProductChange } from '../state/product'
+import type { PageState } from '../state/lists'
 import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
@@ -168,13 +169,13 @@ type TakenBack =
 
 /** `state` with the conversation `id` as `change` makes it; one that is gone stays gone. */
 function withConversation(
-  state: ProductState,
+  state: PageState,
   id: string,
   change: (record: ConversationSummary) => ConversationSummary,
-): ProductState {
+): PageState {
   return {
     ...state,
-    conversations: state.conversations.map((record) => record.id === id ? change(record) : record),
+    conversations: known(state.conversations, 'conversations').map((record) => record.id === id ? change(record) : record),
   }
 }
 
@@ -550,16 +551,17 @@ export const useConversations = defineStore('conversations', () => {
   watch(
     () => product.snapshot,
     (snapshot) => {
-      if (!snapshot) {
+      const conversations = snapshot?.conversations
+      if (!conversations) {
         return
       }
       const previous = items.value
       for (const item of previous) {
-        if (item.persistence === 'synced' && !snapshot.conversations.some((record) => record.id === item.id)) {
+        if (item.persistence === 'synced' && !conversations.some((record) => record.id === item.id)) {
           deleted.add(item.id)
         }
       }
-      for (const record of snapshot.conversations) {
+      for (const record of conversations) {
         deleted.delete(record.id)
       }
       // New conversations before their first send, which only this page
@@ -567,9 +569,9 @@ export const useConversations = defineStore('conversations', () => {
       const local = previous.filter(
         (item) =>
           item.persistence !== 'synced' &&
-          !snapshot.conversations.some((record) => record.id === item.id),
+          !conversations.some((record) => record.id === item.id),
       )
-      const synced = snapshot.conversations.map((record) => {
+      const synced = conversations.map((record) => {
         const current = items.value.find((item) => item.id === record.id)
         if (!current) {
           return newConversation(record)
@@ -674,7 +676,7 @@ export const useConversations = defineStore('conversations', () => {
         recordSync.changed(item)
       }
     }
-    const userId = session.user?.id ?? product.snapshot?.user.id
+    const userId = session.user?.id ?? product.snapshot?.user?.id
     if (!userId) {
       return
     }
@@ -1637,7 +1639,7 @@ export const useConversations = defineStore('conversations', () => {
     reconcileSubmission(conversation)
     // No session runs: the status stays the sidebar's, which the transcript
     // alone would not tell, such as a turn the process died under.
-    const summary = product.snapshot?.conversations.find((item) => item.id === conversation.id)
+    const summary = product.snapshot?.conversations?.find((item) => item.id === conversation.id)
     if (summary) {
       conversation.status = summaryStatus(summary.status)
     }
@@ -2333,7 +2335,7 @@ export const useConversations = defineStore('conversations', () => {
    * toast. Answers whether every one was deleted.
    */
   async function remove(ids: string[]): Promise<boolean> {
-    const userId = session.user?.id ?? product.snapshot?.user.id
+    const userId = session.user?.id ?? product.snapshot?.user?.id
     const forget = (id: string) => {
       restored.delete(id)
       savedDrafts.delete(id)
@@ -2351,7 +2353,7 @@ export const useConversations = defineStore('conversations', () => {
     }))
     const removals = new Map(synced.map((id) => [id, product.change(`conversation:${id}`, (state) => ({
       ...state,
-      conversations: state.conversations.filter((record) => record.id !== id),
+      conversations: known(state.conversations, 'conversations').filter((record) => record.id !== id),
     }))]))
     const signal = lifetime.signal
     try {
@@ -2408,7 +2410,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   function create(projectId: string | null = null): string {
     const starting = startingChoices(
-      product.snapshot?.workspaces.find((workspace) => workspace.id === projectId) ?? null,
+      product.snapshot?.workspaces?.find((workspace) => workspace.id === projectId) ?? null,
       { lastModel: preferences.lastModel, lastWorkflow: preferences.lastWorkflow },
     )
     const empty = items.value.find(
@@ -2580,10 +2582,11 @@ export const useConversations = defineStore('conversations', () => {
     const before = beforeId
     // The end of its part of the list is the end of the list there.
     const change = product.change('conversation_order', (state) => {
-      const moved = state.conversations.find((record) => record.id === id)
-      const next = state.conversations.find((record) => record.id === before) ?? null
+      const conversations = known(state.conversations, 'conversations')
+      const moved = conversations.find((record) => record.id === id)
+      const next = conversations.find((record) => record.id === before) ?? null
       return moved && (before === null || next)
-        ? { ...state, conversations: moveBefore(state.conversations, moved, next) }
+        ? { ...state, conversations: moveBefore(conversations, moved, next) }
         : state
     })
     const signal = lifetime.signal

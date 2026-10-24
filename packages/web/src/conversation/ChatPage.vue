@@ -106,7 +106,7 @@ const primaryHost = computed(() =>
  * address waits for them.
  */
 const listStatus = computed(() =>
-  props.id !== undefined && !conversation.value && store.restoringLocalDrafts ? 'loading' : product.load,
+  props.id !== undefined && !conversation.value && store.restoringLocalDrafts ? 'loading' : product.partLoad('conversations'),
 )
 const pageKind = computed(() =>
   !props.id && listStatus.value === 'ready'

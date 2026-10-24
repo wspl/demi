@@ -6,6 +6,7 @@ import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 import { copiedStoredFileSchema } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 import { pageLog } from '@demicodes/web-ui/infra/log'
+import { holds } from '../state/account-owner'
 
 /**
  * The upload the backend took: the attachment id a message names the file
@@ -362,6 +363,10 @@ export async function writeDraft(
   conversationId: string,
   draft: SavedDraft,
 ): Promise<void> {
+  // A page whose account no longer holds the browser's data writes none of it.
+  if (!holds(userId)) {
+    return
+  }
   await draftStorage('readwrite', (store) =>
     store.put(draft, [userId, conversationId]),
   )
@@ -379,6 +384,27 @@ export async function readLocalDrafts(userId: string): Promise<SavedDraft[]> {
   const decoded = values.map(decodeDraft)
   await dropUnreadable(keys.filter((_, index) => decoded[index] === null))
   return decoded.filter((draft): draft is SavedDraft => draft !== null && draft.local !== null)
+}
+
+/**
+ * Deletes every draft but those of the account `keep`, every one for none:
+ * the browser forgets an account's drafts with the account.
+ */
+export async function deleteDraftsBut(keep: string | null): Promise<void> {
+  await drafts.across(['drafts'], 'readwrite', (transaction) => {
+    const cursor = transaction.objectStore('drafts').openCursor()
+    cursor.onsuccess = () => {
+      const at = cursor.result
+      if (!at) {
+        return
+      }
+      if (keep === null || !Array.isArray(at.key) || at.key[0] !== keep) {
+        at.delete()
+      }
+      at.continue()
+    }
+    return () => undefined
+  })
 }
 
 export async function deleteDraft(
@@ -418,6 +444,9 @@ function lastWordsKey(userId: string, conversationId: string): string {
 }
 
 export function writeLastWords(userId: string, conversationId: string, words: LastWords): void {
+  if (!holds(userId)) {
+    return
+  }
   try {
     localStorage.setItem(lastWordsKey(userId, conversationId), JSON.stringify(words))
   } catch {

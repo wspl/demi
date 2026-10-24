@@ -95,49 +95,49 @@ export const usePreferences = defineStore('preferences', () => {
    */
   let queued: { patch: PreferencesPatch; changes: ProductChange[] } = { patch: {}, changes: [] }
 
-  const lastModel = computed(() => product.snapshot?.preferences.lastModel)
-  const lastWorkflow = computed(() => product.snapshot?.preferences.lastWorkflow)
-  const lastProjectHost = computed(() => product.snapshot?.preferences.lastProjectHost)
+  const lastModel = computed(() => product.snapshot?.preferences?.lastModel)
+  const lastWorkflow = computed(() => product.snapshot?.preferences?.lastWorkflow)
+  const lastProjectHost = computed(() => product.snapshot?.preferences?.lastProjectHost)
   /** The language the user chose; absent means System. */
-  const language = computed(() => product.snapshot?.preferences.language ?? 'system')
+  const language = computed(() => product.snapshot?.preferences?.language ?? 'system')
   /** What Enter does with a message while the agent works. */
   const sendWhileRunning = computed(() =>
-    product.snapshot?.preferences.sendWhileRunning ?? DEFAULT_SEND_WHILE_RUNNING,
+    product.snapshot?.preferences?.sendWhileRunning ?? DEFAULT_SEND_WHILE_RUNNING,
   )
   /**
    * Whether a turn that failed with a known time to try again resumes by
    * itself at that time; absent means no.
    */
-  const resumeAtRetry = computed(() => product.snapshot?.preferences.resumeAtRetry ?? false)
+  const resumeAtRetry = computed(() => product.snapshot?.preferences?.resumeAtRetry ?? false)
   /**
    * Whether a turn a deployment, an upgrade or a restart of the backend
    * interrupted goes on by itself once the backend is back; absent means yes.
    */
-  const resumeAfterRestart = computed(() => product.snapshot?.preferences.resumeAfterRestart ?? true)
+  const resumeAfterRestart = computed(() => product.snapshot?.preferences?.resumeAfterRestart ?? true)
   /** Whether the page shows the defects it found itself, with the ID of their lines in the log; absent means no. */
-  const showUnexpectedErrors = computed(() => product.snapshot?.preferences.showUnexpectedErrors ?? false)
+  const showUnexpectedErrors = computed(() => product.snapshot?.preferences?.showUnexpectedErrors ?? false)
   /**
    * Whether the user went on past the warning about several subscription
    * accounts, which then never shows again
    * (`crates/backend-providers/src/llm/rotation.rs`); absent means no.
    */
-  const multiAccountWarned = computed(() => product.snapshot?.preferences.multiAccountWarned ?? false)
+  const multiAccountWarned = computed(() => product.snapshot?.preferences?.multiAccountWarned ?? false)
   /** The small model the user chose (`crates/backend-providers/src/llm/small_model.rs`); null for Automatic. */
-  const smallModel = computed(() => product.snapshot?.preferences.smallModel ?? null)
+  const smallModel = computed(() => product.snapshot?.preferences?.smallModel ?? null)
   /** Whether small requests stay on the conversation's provider; absent means no. */
-  const smallModelSameProvider = computed(() => product.snapshot?.preferences.smallModelSameProvider ?? false)
+  const smallModelSameProvider = computed(() => product.snapshot?.preferences?.smallModelSameProvider ?? false)
 
   /**
    * Whether the user turned the provider entry `providerId` off in
    * Settings › Providers, which takes it out of every model menu.
    */
   function hidesProvider(providerId: string): boolean {
-    return product.snapshot?.preferences.hiddenProviders?.includes(providerId) ?? false
+    return product.snapshot?.preferences?.hiddenProviders?.includes(providerId) ?? false
   }
 
   /** Whether the user turned the model `modelId` of the entry `providerId` off. */
   function hidesModel(providerId: string, modelId: string): boolean {
-    return product.snapshot?.preferences.hiddenModels?.some(
+    return product.snapshot?.preferences?.hiddenModels?.some(
       (hidden) => hidden.providerId === providerId && hidden.modelId === modelId,
     ) ?? false
   }
@@ -147,7 +147,7 @@ export const usePreferences = defineStore('preferences', () => {
     if (hidesProvider(providerId) !== shown) {
       return
     }
-    const hidden = (product.snapshot?.preferences.hiddenProviders ?? [])
+    const hidden = (product.snapshot?.preferences?.hiddenProviders ?? [])
       .filter((candidate) => candidate !== providerId)
     update({ hiddenProviders: shown ? hidden : [...hidden, providerId] })
   }
@@ -157,7 +157,7 @@ export const usePreferences = defineStore('preferences', () => {
     if (hidesModel(providerId, modelId) !== shown) {
       return
     }
-    const hidden = (product.snapshot?.preferences.hiddenModels ?? [])
+    const hidden = (product.snapshot?.preferences?.hiddenModels ?? [])
       .filter((candidate) => candidate.providerId !== providerId || candidate.modelId !== modelId)
     update({ hiddenModels: shown ? hidden : [...hidden, { providerId, modelId }] })
   }
@@ -168,7 +168,7 @@ export const usePreferences = defineStore('preferences', () => {
    * (`packages/web-ui/src/agent/context-limit.ts`).
    */
   function contextLimit(providerId: string, modelId: string): number | null {
-    return product.snapshot?.preferences.contextLimits?.[providerId]?.[modelId] ?? null
+    return product.snapshot?.preferences?.contextLimits?.[providerId]?.[modelId] ?? null
   }
 
   /** Saves `patch`; answers what the backend stored. */
@@ -187,7 +187,7 @@ export const usePreferences = defineStore('preferences', () => {
   function show(patch: PreferencesPatch): ProductChange {
     return product.change('preferences', (state) => ({
       ...state,
-      preferences: withPatch(state.preferences, patch),
+      preferences: state.preferences && withPatch(state.preferences, patch),
     }))
   }
 
@@ -196,13 +196,13 @@ export const usePreferences = defineStore('preferences', () => {
     tone: 'ink' as const,
     accent: DEFAULT_ACCENT,
     fontSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
-    ...product.snapshot?.preferences.appearance,
+    ...product.snapshot?.preferences?.appearance,
   }))
   /** The shortcuts of the page's set: the user's keys, or the set's defaults. */
   const keys = computed(() =>
     appShortcuts().map((binding) => ({
       ...binding,
-      keys: product.snapshot?.preferences.shortcuts[shortcutSet()][binding.id] ?? binding.keys,
+      keys: product.snapshot?.preferences?.shortcuts[shortcutSet()][binding.id] ?? binding.keys,
     })),
   )
 
@@ -318,7 +318,7 @@ export const usePreferences = defineStore('preferences', () => {
         const sentAt = product.sent()
         product.answered(sentAt, await save(patch, current.signal))
         if (patch.locale)
-          reported = { sent: JSON.stringify(patch.locale), stored: JSON.stringify(product.snapshot?.preferences.locale ?? null) }
+          reported = { sent: JSON.stringify(patch.locale), stored: JSON.stringify(product.snapshot?.preferences?.locale ?? null) }
       } catch (error) {
         if (!current.signal.aborted) {
           reportError(t('failures.updateTimeZoneLanguage'), error, { site: 'failures.updateTimeZoneLanguage' })

@@ -17,13 +17,13 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { viewSupplied } from '@demicodes/web-ui/infra/view-timing'
 import { heldTranscript, type HeldBlock, type HeldTranscript, type TranscriptWindow } from '@demicodes/web-ui/transport/protocol'
-import { onSessionExpired } from '../api/client'
+import { heldAccount, holds } from './account-owner'
 import {
   conversationMetadataSchema,
   userDtoSchema,
   type UserDto,
 } from '../api/generated/web-api'
-import { pageStateSchema, type PageState } from './lists'
+import { readStateSchema, type PageState } from './lists'
 import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 import { t } from './locales/text'
 
@@ -32,8 +32,9 @@ import { t } from './locales/text'
  * tab opened again show it at once and catch up by changes alone, and so the
  * page opens offline.
  *
- * - The account's record: the product state, with the conversation list,
- *   and the account the session names.
+ * - The account's record: the parts of the product state that show the
+ *   conversations (`COPIED_PARTS`), and the account the session names.
+ *   Nothing else of the state is written to disk.
  * - Each conversation's record: its metadata and its agents at their
  *   version, and the descriptions of the attachments its replies name, so
  *   an opening from the copy shows the whole conversation at once.
@@ -101,10 +102,36 @@ const database = new IndexedDatabase('demi-offline', 3, (request) => {
   db.createObjectStore(BLOCKS)
 }, { [NODES]: NODE_INDEXES })
 
+/**
+ * The parts of the state the account's record keeps: what the sidebar and an
+ * opened conversation draw before the state is read.
+ */
+export const COPIED_PARTS = [
+  'user',
+  'conversations',
+  'workspaces',
+  'devices',
+  'plugins',
+  'preferences',
+  'publicUrl',
+  'providers',
+  'models',
+  'subagents',
+] as const satisfies readonly (keyof PageState)[]
+
+const copiedPartsSchema = readStateSchema
+  .pick(Object.fromEntries(COPIED_PARTS.map((part) => [part, true])) as { [Part in typeof COPIED_PARTS[number]]: true })
+  .partial()
+
+/** What the account's record keeps of `state`. */
+function copiedParts(state: PageState): PageState {
+  return Object.fromEntries(COPIED_PARTS.flatMap((part) => (state[part] === undefined ? [] : [[part, state[part]]])))
+}
+
 const accountRecordSchema = z.object({
   build: z.string(),
   user: userDtoSchema,
-  state: pageStateSchema,
+  parts: copiedPartsSchema,
 })
 
 const conversationRecordSchema = z.object({
@@ -176,7 +203,8 @@ export interface NodeWrite {
 
 export interface AccountCopy {
   user: UserDto
-  state: PageState
+  /** The parts of the state the record keeps (`COPIED_PARTS`). */
+  parts: PageState
 }
 
 
@@ -242,19 +270,7 @@ export async function readAccountCopy(): Promise<AccountCopy | null> {
     await deleteAccountCache()
     return null
   }
-  return { user: record.data.user, state: record.data.state }
-}
-
-/**
- * The session that ended, whose copies are never written again: its account
- * and the user object the page held for it. A new sign-in, which brings a
- * user object of its own, writes again.
- */
-let ended: { userId: string; user: object } | null = null
-
-/** Whether the page may write copies for `userId`, the account of the session it holds. */
-function writable(userId: string): boolean {
-  return ended?.userId !== userId
+  return { user: record.data.user, parts: record.data.parts }
 }
 
 /** Reads `value` as `schema` says a record of this build for `userId` is; another build's, another account's or one that does not read is none. */
@@ -294,11 +310,11 @@ export async function readConversationCopy(userId: string, id: string): Promise<
 
 /**
  * Replaces conversation `id`'s copy with `copy`, plain data behind no
- * proxy, unless the session of `userId` ended. A write that fails says so
+ * proxy, unless the browser's data is no longer `userId`'s. A write that fails says so
  * on the console: the page works without the copy.
  */
 export async function writeConversationCopy(userId: string, id: string, copy: ConversationCopy): Promise<void> {
-  if (!writable(userId)) {
+  if (!holds(userId)) {
     return
   }
   const record = { build: cacheBuild(), userId, ...copy }
@@ -424,12 +440,12 @@ async function readRun(node: string, start: number, end: number): Promise<{ bloc
 
 /**
  * Writes what changed of node `node` for `userId`, its record and its
- * blocks in one transaction, unless the session of `userId` ended; each
+ * blocks in one transaction, unless the browser's data is no longer `userId`'s; each
  * block is plain data behind no proxy. A write that fails says so on the
  * console: the page works without it.
  */
 export async function writeNode(userId: string, node: string, write: NodeWrite): Promise<void> {
-  if (!writable(userId)) {
+  if (!holds(userId)) {
     return
   }
   const began = performance.now()
@@ -703,18 +719,24 @@ export interface CacheSession {
 /** What the account's cache reads of the page's product state, and how it shows the copy. */
 export interface CacheProduct {
   readonly read: PageState | null
-  showCopy(state: PageState): void
+  showCopy(parts: PageState): void
 }
 
 /**
- * The account's cache from the page's start on: the copy is read once,
- * shown at once for the account the session names until the channel's
- * first snapshot, and kept as the state changes. `signInOffline` is the
- * account a first session check that cannot reach the backend signs in as,
- * whose copy then shows; `settled` resolves once the writes asked for so
- * far are done.
+ * The account's cache from the page's start on: the copy is read once, its
+ * parts shown at once for the account the session names until the state is
+ * read, and kept as those parts change, while the browser's data is the
+ * account's; its first write waits for what the account's sign-in forgets
+ * (`taken`, `./account-data`).
+ * `signInOffline` is the account a first session check that cannot reach the
+ * backend signs in as, the one the browser's data is, whose copy then shows;
+ * `settled` resolves once the writes asked for so far are done.
  */
-export function startAccountCache(session: CacheSession, product: CacheProduct) {
+export function startAccountCache(
+  session: CacheSession,
+  product: CacheProduct,
+  account: { taken(userId: string): Promise<void> },
+) {
   const copy = readAccountCopy().catch((error: unknown) => {
     // A database that fails leaves the page as it is without a copy.
     reportError(t('failures.readOffline'), error, { site: 'failures.readOffline' })
@@ -726,73 +748,67 @@ export function startAccountCache(session: CacheSession, product: CacheProduct) 
       if (id) {
         void copy.then((kept) => {
           if (kept && kept.user.id === id && session.user?.id === id) {
-            product.showCopy(kept.state)
+            product.showCopy(kept.parts)
           }
         })
       }
     },
     { immediate: true },
   )
-  const keeping = keepAccountCopy(() =>
-    session.user && product.read ? { user: session.user, state: product.read } : null,
+  const keeping = keepAccountCopy(
+    () => (session.user && product.read ? { user: session.user, parts: copiedParts(product.read) } : null),
+    account.taken,
   )
-  // The cache is the account's: a 401 or the channel's `session_ended` takes
-  // it along at once, whatever the page then learns of the session, and no
-  // write of the session that ended brings it back.
-  const stopExpiry = onSessionExpired((over) => {
-    if (!over) {
-      return
-    }
-    const user = session.user
-    if (user) {
-      ended = { userId: user.id, user: toRaw(user) }
-    }
-    void deleteAccountCache().catch((error: unknown) => reportError(t('failures.keepOffline'), error, { site: 'failures.keepOffline' }))
-  })
   return {
     async signInOffline(): Promise<UserDto | null> {
       const kept = await copy
-      if (!kept) {
+      if (!kept || kept.user.id !== heldAccount()) {
         return null
       }
-      product.showCopy(kept.state)
+      product.showCopy(kept.parts)
       return kept.user
     },
     settled: keeping.settled,
     stop(): void {
       stopShowing()
-      stopExpiry()
       keeping.stop()
     },
   }
 }
 
+/** Whether `a` and `b` hold the same value of each part the copy keeps. */
+function sameParts(a: PageState, b: PageState): boolean {
+  return COPIED_PARTS.every((part) => a[part] === b[part])
+}
+
 /**
- * Keeps the account's copy as `account` changes: each change is written,
- * the latest one when several came during a write; nothing while the page
- * is signed out. The first copy of an account replaces another account's
- * cache whole.
+ * Keeps the account's copy as `account` changes: a change of a part the copy
+ * keeps is written, the latest one when several came during a write; nothing
+ * while the page is signed out or the browser's data is not the account's.
+ * The first write of an account waits for what its sign-in forgets (`taken`).
  */
-function keepAccountCopy(account: () => AccountCopy | null): { settled(): Promise<void>; stop(): void } {
+function keepAccountCopy(
+  account: () => AccountCopy | null,
+  taken: (userId: string) => Promise<void>,
+): { settled(): Promise<void>; stop(): void } {
   let next: AccountCopy | null = null
+  /** What was last asked to be written, which a change of no part it keeps does not write again. */
+  let last: AccountCopy | null = null
   let writing: Promise<void> | null = null
-  /** The account whose cache this page knows the database holds. */
-  let owner: string | null = null
 
   async function drain(): Promise<void> {
     try {
       while (next) {
-        const { user, state } = next
+        const { user, parts } = next
         next = null
-        if (owner !== user.id) {
-          await replaceOtherAccount(user.id)
-          owner = user.id
-        }
-        // Signed out meanwhile, or the session ended: the cache is gone, and stays gone.
-        if (!account() || !writable(user.id)) {
+        await taken(user.id)
+        // Signed out meanwhile, the session ended or another account took the
+        // browser: the cache is gone, and stays gone. A state another
+        // account's cookie read under the page is not this account's either.
+        if (!account() || !holds(user.id) || (parts.user !== undefined && parts.user.id !== user.id)) {
           return
         }
-        const record = stored({ build: cacheBuild(), user, state })
+        const record = stored({ build: cacheBuild(), user, parts })
         await withRoom(null, () => database.transaction(ACCOUNT, 'readwrite', (store) => store.put(record, ACCOUNT_KEY)))
       }
     } catch (error) {
@@ -803,10 +819,10 @@ function keepAccountCopy(account: () => AccountCopy | null): { settled(): Promis
 
   // Heard at once, so a write asked for is one `settled` waits for.
   const stop = watch(account, (copy) => {
-    // A new sign-in of the account whose session ended writes again.
-    if (copy && ended?.userId === copy.user.id && ended.user !== toRaw(copy.user)) {
-      ended = null
+    if (copy && last && copy.user === last.user && sameParts(copy.parts, last.parts)) {
+      return
     }
+    last = copy
     next = copy
     // Cleared once the writes end, after it was set.
     writing ??= drain().finally(() => {
@@ -820,15 +836,7 @@ function keepAccountCopy(account: () => AccountCopy | null): { settled(): Promis
     stop: () => {
       stop()
       next = null
+      last = null
     },
-  }
-}
-
-/** Drops the cache when it is another account's than `userId`. */
-async function replaceOtherAccount(userId: string): Promise<void> {
-  const value = await database.transaction(ACCOUNT, 'readonly', (store) => store.get(ACCOUNT_KEY))
-  const user = z.object({ user: z.object({ id: z.string() }) }).safeParse(value)
-  if (value !== undefined && (!user.success || user.data.user.id !== userId)) {
-    await deleteAccountCache()
   }
 }

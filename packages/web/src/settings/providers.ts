@@ -47,7 +47,7 @@ import {
 } from '../api/generated/web-api'
 import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
-import { useProduct } from '../state/product'
+import { known, useProduct } from '../state/product'
 import { subscriptionName, type ProductProvider } from '../state/catalog'
 
 export const useProviderSettings = defineStore('provider-settings', () => {
@@ -86,7 +86,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     if (!newest) {
       return null
     }
-    const install = product.snapshot?.providers.find((provider) => provider.id === providerId)?.cliInstall ?? null
+    const install = product.snapshot?.providers?.find((provider) => provider.id === providerId)?.cliInstall ?? null
     return {
       newest,
       install: install && (install.state === 'failed' ? { state: 'failed', message: install.message } : { state: install.state }),
@@ -254,7 +254,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       })
       const saved = await readResponse(response, providerAnswerSchema)
       signal.throwIfAborted()
-      await product.until((state) => state.providers.some((entry) => entry.id === saved.provider.id), signal)
+      await product.until((state) => state.providers?.some((entry) => entry.id === saved.provider.id) ?? false, signal)
       select(saved.provider.id)
     }).catch((error) => {
       if (!current.signal.aborted) {
@@ -651,7 +651,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   function reorderAccounts(provider: SettingsProviderEntry, ids: string[]): Promise<void> {
     const shown = product.change('providers', (state) => ({
       ...state,
-      providers: state.providers.map((entry) =>
+      providers: known(state.providers, 'providers').map((entry) =>
         entry.id === provider.id && entry.details.type === 'read'
           ? {
               ...entry,
@@ -695,7 +695,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   function reorderProviders(ids: string[]): Promise<void> {
     const shown = product.change('providers', (state) => ({
       ...state,
-      providers: ids.flatMap((id) => state.providers.filter((entry) => entry.id === id)),
+      providers: ids.flatMap((id) => known(state.providers, 'providers').filter((entry) => entry.id === id)),
     }))
     const current = lifetime
     return writes
@@ -725,7 +725,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   function activateAccount(provider: SettingsProviderEntry, id: string): Promise<boolean> {
     const shown = product.change('providers', (state) => ({
       ...state,
-      providers: state.providers.map((entry) =>
+      providers: known(state.providers, 'providers').map((entry) =>
         entry.id === provider.id && entry.details.type === 'read'
           ? { ...entry, details: { ...entry.details, active: id } }
           : entry,

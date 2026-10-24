@@ -162,7 +162,7 @@ const usesCloud = computed(() =>
   cliPackageOf(product.catalog, props.conversation.model.providerId) !== null,
 )
 const hold = computed(() =>
-  usesCloud.value && product.snapshot?.cloud.state === 'resetting'
+  usesCloud.value && product.snapshot?.cloud?.state === 'resetting'
     ? t('composer.cloudResetting')
     : null,
 )

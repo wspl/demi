@@ -354,7 +354,7 @@ useAppShortcuts(
           :projects="resources.projects"
           :conversations="sidebarConversations"
           :active-id="activeId"
-          :list-status="product.load"
+          :list-status="product.partLoad('conversations')"
           :section-entries="resources.sectionEntries"
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
           :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"

@@ -15,7 +15,7 @@ import {
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import { unsubscribeOnSignOut } from '../state/notifications'
 import { signalUnknownPasskey, signWithPasskey } from './webauthn'
-import { deleteAccountCache } from '../state/offline'
+import { forgetAccount } from '../state/account-data'
 
 type User = UserDto
 type SessionState =
@@ -253,10 +253,14 @@ export const useSession = defineStore('session', {
           throw error
         }
       }
-      // Deleted before the page loads itself again, which could cut it short;
-      // one that stays is replaced by the next account that signs in.
-      await deleteAccountCache().catch((cause: unknown) => pageLog.warn('offline_cache.delete_failed', errorFields(cause)))
+      // Signed out first, so that the page stops following the account and no
+      // request the ended session makes reads as the session expiring; then
+      // forgotten before the page loads itself again, which could cut it
+      // short. What stays is forgotten when another account signs in.
+      const { current } = this
+      const userId = current.status === 'signedIn' || current.status === 'choosingPassword' ? current.user.id : null
       this.current = { status: 'signedOut' }
+      await (userId ? forgetAccount(userId) : Promise.resolve()).catch((cause: unknown) => pageLog.warn('account_data.forget_failed', errorFields(cause)))
     },
   },
 })

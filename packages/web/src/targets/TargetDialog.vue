@@ -55,7 +55,7 @@ async function create(draft: WorkspaceDraft): Promise<void> {
   <WorkspaceDialog
     :is-open="resources.targetOpen"
     :overlay-store="appOverlayStore"
-    :load="product.load"
+    :load="product.partLoad('devices')"
     @retry="product.reconnect"
     :devices="resources.devices"
     :last-host="preferences.lastProjectHost"

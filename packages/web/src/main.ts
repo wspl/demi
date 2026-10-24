@@ -29,9 +29,9 @@ import { followThemeColor } from '@demicodes/web-ui/theme/themeColor'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
 import { keepShownLanguage, lastShownLanguage, resolveLanguage } from '@demicodes/web-ui/i18n/languages'
-import { reportPageErrorsWith, showUnexpectedErrors } from '@demicodes/web-ui/infra/errors'
+import { errorFields, reportPageErrorsWith, showUnexpectedErrors } from '@demicodes/web-ui/infra/errors'
 import { reportUncaughtErrors } from '@demicodes/web-ui/infra/uncaught'
-import { logPageError, logPageWith, pageLogSignedIn } from '@demicodes/web-ui/infra/log'
+import { logPageError, logPageWith, pageLog, pageLogSignedIn } from '@demicodes/web-ui/infra/log'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
@@ -40,6 +40,8 @@ import { useProduct } from './state/product'
 import { followDirect } from './direct'
 import { startServiceWorker } from './offline/page'
 import { startAccountCache } from './state/offline'
+import { accountTaken, forgetAccount, takeAccount } from './state/account-data'
+import { onOwnerChange } from './state/account-owner'
 import { usePreferences } from './state/preferences'
 import { useNotifications } from './state/notifications'
 import { useWorkPanel } from './conversation/work'
@@ -136,9 +138,40 @@ function stopUnlessSignedIn(): void {
     product.stop()
   }
 }
+// The browser holds one account's data: a sign-in makes it the account's,
+// forgetting another's first, an account still to choose its password
+// included, and a session that ended forgets it.
+const stopTaking = watch(
+  () => {
+    const { current } = session
+    return current.status === 'signedIn' || current.status === 'choosingPassword' ? current.user.id : undefined
+  },
+  (id) => {
+    if (id) {
+      void takeAccount(id).catch((error: unknown) => pageLog.warn('account_data.take_failed', errorFields(error)))
+    }
+  },
+  { immediate: true },
+)
+const stopForgetting = onSessionExpired((over) => {
+  const user = session.user
+  if (over && user) {
+    void forgetAccount(user.id).catch((error: unknown) => pageLog.warn('account_data.forget_failed', errorFields(error)))
+  }
+})
+// Another tab that signed out, found its session ended or signed another
+// account in has ended this page's account in the browser too, whose cookie
+// the tabs share: the page loads itself again at the sign-in page, as its own
+// sign-out does, which shows the product to an account that is signed in.
+// It waits for no backend, so a page offline leaves as well.
+const stopOwner = onOwnerChange((owner) => {
+  if (session.user && owner !== session.user.id) {
+    window.location.replace('/login')
+  }
+})
 // The account's cache for opening offline: shown at once for the account the
 // session names, and signed in as when the backend cannot be reached.
-const accountCache = startAccountCache(session, product)
+const accountCache = startAccountCache(session, product, { taken: accountTaken })
 const restored = session.restore(startup.signal, accountCache.signInOffline).then(stopUnlessSignedIn).catch((error) => {
   // Hot replacement can dispose this composition root before startup finishes.
   if (!startup.signal.aborted) {
@@ -200,6 +233,9 @@ async function settleSession(): Promise<void> {
   if (status === 'signedOut') {
     void router.replace(signInAddress(router.currentRoute.value.fullPath, 'expired'))
   } else if (status === 'signedIn') {
+    // A session still alive is the browser's account again: what its end
+    // forgot is written anew.
+    void takeAccount(session.current.user.id).catch((error: unknown) => pageLog.warn('account_data.take_failed', errorFields(error)))
     product.reconnect()
   }
 }
@@ -355,6 +391,9 @@ if (import.meta.hot) {
     stopLogSession()
     stopIdentity()
     accountCache.stop()
+    stopTaking()
+    stopForgetting()
+    stopOwner()
     stopRetry()
     stopExpiry()
     stopChoice()

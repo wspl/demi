@@ -4,7 +4,7 @@ import { SerialQueue } from '@demicodes/utils'
 import { errorCode, reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody } from '../api/client'
 import type { PluginSwitch } from '../api/generated/web-api'
-import { useProduct, withPart } from '../state/product'
+import { known, useProduct, withPart } from '../state/product'
 
 /**
  * The user's plugin switches. A switch shows at once, and a plugin turned off leaves the pages with
@@ -19,7 +19,7 @@ export const usePluginSettings = defineStore('plugin-settings', () => {
   function switchPlugin(id: string, enabled: boolean): Promise<void> {
     const change = product.change('plugins', (state) => withPart(state, {
       type: 'plugins',
-      plugins: state.plugins.map((plugin) => plugin.id === id ? { ...plugin, enabled } : plugin),
+      plugins: known(state.plugins, 'plugins').map((plugin) => plugin.id === id ? { ...plugin, enabled } : plugin),
     }))
     return writes
       .run(id, async () => {

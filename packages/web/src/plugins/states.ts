@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { effectScope, reactive, watch, type EffectScope } from 'vue'
 import type { PluginCallError, StateFeed } from '@demicodes/web-ui/plugins/page'
 import { apiRequest, readResponse } from '../api/client'
-import { pluginStateAnswerSchema, type ConversationMetadata, type ProductState } from '../api/generated/web-api'
+import { pluginStateAnswerSchema, type ConversationMetadata } from '../api/generated/web-api'
+import type { PageState } from '../state/lists'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { isNewer, type RunRevision } from '../state/revisions'
@@ -31,7 +32,7 @@ interface Held {
  * lifetime, so following again shows it at once.
  */
 export function conversationStates(
-  snapshot: () => ProductState | null,
+  snapshot: () => PageState | null,
   metadataOf: (conversation: string) => ConversationMetadata | null,
 ) {
   const held = reactive(new Map<string, Held>())
@@ -41,7 +42,7 @@ export function conversationStates(
   function metadataRevision(plugin: string, conversation: string): RunRevision | null {
     const state = snapshot()
     const revision = metadataOf(conversation)?.pluginRevisions.find((entry) => entry.plugin === plugin)?.revision
-    return state && revision !== undefined ? { run: state.run, revision } : null
+    return state?.run !== undefined && revision !== undefined ? { run: state.run, revision } : null
   }
 
   function entryOf(key: string): Held {
