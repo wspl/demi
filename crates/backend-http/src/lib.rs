@@ -30,7 +30,7 @@ mod accounts;
 mod assets;
 mod attachments;
 mod auth;
-mod automations;
+mod schedules;
 mod blobs;
 mod body;
 mod cloud;
@@ -478,20 +478,9 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/push/subscription",
             put(push::subscribe).delete(push::unsubscribe),
         )
-        .route("/automations", get(automations::list).post(automations::create))
-        .route("/automations/holidays", get(automations::holidays))
         .route(
-            "/automations/{id}",
-            patch(automations::patch).delete(automations::delete),
-        )
-        .route("/automations/{id}/run", post(automations::run))
-        .route(
-            "/automations/{id}/secret",
-            get(automations::secret).post(automations::regenerate),
-        )
-        .route(
-            "/conversations/{id}/move-to-conversations",
-            post(automations::move_to_conversations),
+            "/conversations/{id}/schedules/{schedule}",
+            patch(schedules::change).delete(schedules::delete),
         )
         .route("/port-forwards", get(port_forwards::list).post(port_forwards::create))
         .route(
@@ -615,11 +604,11 @@ fn public_shares() -> Router<AppState> {
         .layer(middleware::map_response(shares::public_headers))
 }
 
-/// The automations' URLs: no session gate and no check of the page they come
+/// The schedules' URLs: no session gate and no check of the page they come
 /// from, since another system calls them; the id and the secret are their only
 /// keys.
 fn hooks() -> Router<AppState> {
-    Router::new().route("/hooks/{id}", axum::routing::any(automations::hook))
+    Router::new().route("/hooks/{id}", axum::routing::any(schedules::hook))
 }
 
 /// The routes of the backend's runner socket: what a Cloud's runner reaches

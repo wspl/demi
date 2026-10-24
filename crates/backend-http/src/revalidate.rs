@@ -31,7 +31,7 @@ use demi_backend_user_shard::sync::etag_of_json;
 
 /// Whether the answer of a `GET` of `path`, relative to `/api`, holds a secret
 /// or is a session's own: the authentication routes except the passkey list,
-/// which names no secret, a credential's values, an automation's URL secret,
+/// which names no secret, a credential's values, a schedule's URL secret,
 /// the direct channel's offer and a subscription sign-in's code.
 fn is_sensitive(path: &str) -> bool {
     path == "/auth"

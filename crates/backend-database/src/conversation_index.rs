@@ -17,7 +17,6 @@
 //! spelling is taken.
 
 use demi_shared_types::{ModelSelection, Timestamp, WorkflowChoice};
-use demi_web_api_protocol::automations::FiledRun;
 use demi_web_api_protocol::conversations::{ConversationTarget, ModelChoice};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -72,8 +71,8 @@ pub struct ConversationRecord {
     /// How many of those the user has not read yet: none has been
     /// acknowledged since it was raised (`mark_conversation_read`).
     pub unread_permission_requests: u64,
-    /// The automation's run it is filed under, out of the sidebar.
-    pub filed: Option<FiledRun>,
+    /// Whether it has a schedule, which the sidebar marks.
+    pub scheduled: bool,
 }
 
 /// A change a user asks of a conversation, which `Shard::transition`
@@ -243,9 +242,7 @@ const CONVERSATION_COLUMNS: &str = "id, user_id, title, title_origin, archived, 
      COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL AND NOT read) AS unread_permission_requests,
-     (SELECT automation_id FROM automation_runs WHERE conversation_id = conversations.id AND filed) AS filed_automation,
-     (SELECT id FROM automation_runs WHERE conversation_id = conversations.id AND filed) AS filed_run,
-     (SELECT at FROM automation_runs WHERE conversation_id = conversations.id AND filed) AS filed_at";
+     EXISTS (SELECT 1 FROM schedules WHERE conversation_id = conversations.id) AS scheduled";
 
 /// A selection as its typed columns: the kind and what the kind names.
 pub struct TargetColumns {
@@ -852,22 +849,7 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "read",
             u64::try_from(row.get::<_, i64>("unread_permission_requests")?),
         )?,
-        filed: match (
-            row.get::<_, Option<String>>("filed_automation")?,
-            row.get::<_, Option<String>>("filed_run")?,
-            row.get::<_, Option<i64>>("filed_at")?,
-        ) {
-            (Some(automation), Some(run), Some(at)) => Some(FiledRun {
-                automation_id: decode(
-                    "automation_runs",
-                    "automation_id",
-                    demi_shared_types::AutomationId::try_from(automation),
-                )?,
-                run_id: decode("automation_runs", "id", demi_shared_types::AutomationRunId::try_from(run))?,
-                at: decode("automation_runs", "at", demi_shared_types::Timestamp::from_millisecond(at))?,
-            }),
-            _ => None,
-        },
+        scheduled: row.get("scheduled")?,
     })
 }
 
@@ -1121,8 +1103,19 @@ pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result
 /// was archived moves back to its directory, into that directory's
 /// workspace, made again (`crates/backend-database/src/selection.rs`);
 /// one whose device was revoked meanwhile keeps its directory there.
+///
+/// Its schedules count from now in the same step, as a schedule turned on
+/// does, so nothing its archive held back fires: no time it passed, and no
+/// change a watch's command shows since, whose next check only records its
+/// output again.
 fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> Result<(), StorageError> {
     connection.execute("UPDATE conversations SET archived = 0 WHERE id = ?1", [id.as_str()])?;
+    connection.execute(
+        "UPDATE schedules SET since = ?2, watch_stdout = NULL, watch_digest = NULL, watch_exit = NULL,
+           watch_checked_at = NULL
+         WHERE conversation_id = ?1",
+        rusqlite::params![id.as_str(), now.as_millisecond()],
+    )?;
     let Some(record) = conversation_by_id(connection, id)? else {
         return Ok(());
     };

@@ -17,7 +17,7 @@
     "markdown": "Markdown",
     "phone": "手机",
     "roadmap": "路线图",
-    "automations": "自动化"
+    "schedules": "定时任务"
   },
   "views": {
     "errors": {
@@ -70,7 +70,7 @@
       "search": "搜索"
     },
     "page": "页面",
-    "automations": {
+    "schedules": {
       "app": "应用",
       "phone": "手机"
     }

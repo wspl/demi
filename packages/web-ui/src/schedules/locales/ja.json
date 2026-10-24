@@ -1,0 +1,60 @@
+{
+  "chip": "{count} 件のスケジュール | {count} 件のスケジュール",
+  "delete": "削除",
+  "notYet": "まだ起こしていません",
+  "trigger": {
+    "once": "1 回 · {when}",
+    "change": "出力が変わったとき · {interval}",
+    "url": "URL が呼ばれたとき",
+    "interval": {
+      "minutes": "{count} 分",
+      "hours": "{count} 時間 | {count} 時間",
+      "days": "{count} 日 | {count} 日"
+    }
+  },
+  "wake": {
+    "failed": "前回の起動は失敗しました",
+    "skipped": "前回の起動はスキップされました"
+  },
+  "words": {
+    "interval": {
+      "minutes": "毎分 | {count} 分ごと",
+      "hours": "毎時 | {count} 時間ごと",
+      "days": "毎日 | {count} 日ごと"
+    },
+    "daily": "毎日 {time}",
+    "weekdays": "平日 {time}",
+    "weekly": "毎週{day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "毎日 | {count} 日ごと",
+      "weeks": "毎週 | {count} 週間ごと",
+      "months": "毎月 | {count} か月ごと",
+      "years": "毎年 | {count} 年ごと"
+    },
+    "tasks": "{count} 個のタスク",
+    "date": "{date} 日",
+    "lastDay": "最終日",
+    "week": {
+      "first": "第1{weekday}",
+      "second": "第2{weekday}",
+      "third": "第3{weekday}",
+      "fourth": "第4{weekday}",
+      "last": "最終{weekday}"
+    },
+    "workingDay": {
+      "first": "最初の営業日",
+      "last": "最後の営業日"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{month}{date}日",
+    "dayOfMonth": "{month}の{day}"
+  },
+  "note": {
+    "offline": "{device} がオフラインでした",
+    "limit": "1日 {limit} 回の上限に達しました。その後の呼び出し {calls} 回",
+    "timedOut": "コマンドが 60 秒を超えました",
+    "commandFailed": "コマンドが失敗しました：{message}"
+  },
+  "mark": "スケジュールがこの会話を起動します"
+}

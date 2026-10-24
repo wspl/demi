@@ -98,6 +98,8 @@ impl Shard {
         {
             stopped = Some(tree.interrupt("the conversation is being deleted").await);
         }
+        // Its schedules go with its records; the shard forgets them after.
+        let schedules = self.conversation_schedule_ids(&record.id).await;
         // Step 1: from this commit on, no request finds the conversation.
         let Some(id) = services
             .control
@@ -107,10 +109,8 @@ impl Shard {
             return Ok(false);
         };
         self.mark(Part::Conversation(id.clone()));
-        // Its runs keep no conversation, and the automations that woke it
-        // pause, saying why.
-        self.automation_target_gone(&id, demi_web_api_protocol::automations::PauseReason::ConversationDeleted)
-            .await;
+        // What the shard holds of its schedules stops.
+        self.conversation_deleted_schedules(&schedules);
         self.agent().close_tree(&root).await;
         drop(stopped);
         self.titles().abort(&id);

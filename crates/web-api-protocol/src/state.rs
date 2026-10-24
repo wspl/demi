@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::auth::UserDto;
-use crate::automations::AutomationDto;
 use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
 use crate::credentials::CredentialDto;
@@ -65,9 +64,6 @@ pub struct ProductState {
     /// The user's sign-ins that run or ended within ten minutes, in the
     /// order they started, as the `logins` message carries them.
     pub logins: Vec<ListedLogin>,
-    /// The runs that notified and whose conversation the user has not
-    /// opened since, of any age: the sidebar's count.
-    pub automations_unread: u32,
     /// The relying party's id of the backend's passkeys, as `GET /setup`
     /// gives it.
     pub passkey_rp_id: Option<String>,
@@ -107,7 +103,6 @@ pub enum SyncFollowed {
     Credentials,
     PortForwards,
     ExposedPorts,
-    Automations,
     Passkeys,
     Sessions,
     Users,
@@ -254,17 +249,6 @@ pub enum SyncEvent {
         /// The entity tag of the list's route's answer; empty when it has none.
         etag: String,
     },
-    /// An automation was created, changed or deleted, or one of its runs
-    /// started, ended or was read, and the page follows the automations: the
-    /// user's automations.
-    Automations {
-        automations: Vec<AutomationDto>,
-        /// As the product state's `automations_unread`.
-        #[serde(rename = "automationsUnread")]
-        automations_unread: u32,
-        /// The entity tag of the list's route's answer; empty when it has none.
-        etag: String,
-    },
     /// A passkey was added, renamed, removed or signed in with: the user's
     /// passkeys, as `GET /auth/passkeys` lists them.
     Passkeys {
@@ -281,12 +265,6 @@ pub enum SyncEvent {
         sessions: Vec<SessionDto>,
         /// The entity tag of the list's route's answer; empty when it has none.
         etag: String,
-    },
-    /// An automation's run started, ended or was read, and the page follows
-    /// the state alone: the sidebar's count.
-    AutomationsUnread {
-        #[serde(rename = "automationsUnread")]
-        automations_unread: u32,
     },
     /// An account was added, changed, reset, disabled or enabled, signed in,
     /// or chose its password: every account, as `GET /users` lists them. Only

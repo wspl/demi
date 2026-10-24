@@ -151,8 +151,8 @@ pub struct Shard {
     /// What the user's runners announced of their forwards, and the peers
     /// introduced between two of them.
     forwards: port_forwards::ForwardsHeld,
-    /// The user's automations' scheduler, change watches and URL calls.
-    automations: crate::automations::Automations,
+    /// The user's schedules' scheduler, change watches and URL calls.
+    schedules: crate::schedules::Schedules,
     /// Each conversation's timer for the retry time of its root's failed
     /// turn.
     retry_resumes: RetryResumes,
@@ -241,7 +241,7 @@ impl Shard {
             waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
             forwards: port_forwards::ForwardsHeld::default(),
-            automations: crate::automations::Automations::default(),
+            schedules: crate::schedules::Schedules::default(),
             retry_resumes: RetryResumes::default(),
             notifications: Notifications::default(),
         }
@@ -264,8 +264,8 @@ impl Shard {
         &self.claude_cli
     }
 
-    pub(crate) fn automations(&self) -> &crate::automations::Automations {
-        &self.automations
+    pub(crate) fn schedules(&self) -> &crate::schedules::Schedules {
+        &self.schedules
     }
 
     pub(crate) fn retry_resumes(&self) -> &RetryResumes {
@@ -850,11 +850,11 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         shard
                             .tasks
                             .spawn_local(shard.clone().follow_credential_expiry());
-                        // And the user's automations, which fire what a
+                        // And the user's schedules, which fire what a
                         // backend that was down missed.
                         shard
                             .tasks
-                            .spawn_local(shard.clone().follow_automations());
+                            .spawn_local(shard.clone().follow_schedules());
                         shard
                     })
                     .clone();

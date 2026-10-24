@@ -15,10 +15,6 @@ const props = defineProps<{
   icon?: Component
   label: TitleText
   shortcut?: string
-  /** A count at the entry's end, such as the runs that notified and were not opened since; none at 0. */
-  count?: number
-  /** What the count counts, as its accessible name. */
-  countLabel?: string
   pressed?: boolean
   /** lg is a list that is a page of its own, as narrow settings are; on a phone either is a finger's height. */
   size?: 'md' | 'lg'
@@ -74,11 +70,6 @@ const emit = defineEmits<{
       <slot>
         <span class="min-w-0 flex-1 truncate">{{ label }}</span>
       </slot>
-      <span
-        v-if="count"
-        class="shrink-0 text-[12px] tabular-nums text-fg-subtle phone:text-[15px]"
-        :aria-label="countLabel"
-      >{{ count }}</span>
       <span
         v-if="shortcut"
         class="text-[11px] text-fg-faint phone:hidden"

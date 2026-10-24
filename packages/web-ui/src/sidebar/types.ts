@@ -1,4 +1,3 @@
-import type { AutomationLink } from '../automations/types'
 import type { Component } from 'vue'
 import type { ConversationStatus } from '@demicodes/web-ui/agent/conversation-status'
 import type { DeviceMark } from '@demicodes/web-ui/devices/mark'
@@ -45,8 +44,8 @@ export interface SidebarConversation {
    * absent on the Cloud and in a project.
    */
   device?: SidebarDevice
-  /** The automations that wake it, which a bolt at its row's end marks. */
-  automations?: readonly AutomationLink[]
+  /** Whether it has schedules, which wake it and which an alarm clock at its row's end marks. */
+  scheduled?: boolean
 }
 
 /** A device as a row's mark shows it: by name, state and mark (`shownMark`), or as one since removed. */

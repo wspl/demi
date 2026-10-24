@@ -126,15 +126,11 @@ pub enum ColorScheme {
 /// conversation, followed by the entry's id.
 pub const PROVIDER_SCOPE_PREFIX: &str = "provider-";
 
-/// The start of the scope name of work for an automation that belongs to no
-/// conversation, followed by the automation's id.
-pub const AUTOMATION_SCOPE_PREFIX: &str = "automation-";
-
 /// Whether the scope `name` of a context is a conversation's, not the one of
 /// work that belongs to none: a resident names a conversation in its log only
 /// when the work serves one.
 pub fn is_conversation_scope(name: &str) -> bool {
-    !name.starts_with(PROVIDER_SCOPE_PREFIX) && !name.starts_with(AUTOMATION_SCOPE_PREFIX)
+    !name.starts_with(PROVIDER_SCOPE_PREFIX)
 }
 
 /// What a declared command knows beyond its arguments: which conversation it

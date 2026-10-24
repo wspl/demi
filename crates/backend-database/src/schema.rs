@@ -26,7 +26,7 @@ use demi_web_api_protocol::ids::ProviderId;
 
 use super::StorageError;
 use super::columns::{decode, json, to_json};
-use super::providers::{NoSealedConfigs, ResealConfigs};
+use super::providers::{NoSealed, ResealSealed};
 
 /// A database's schema: its SQL, whose digest names it, and the schemas
 /// that published releases shipped before it, oldest first.
@@ -50,7 +50,7 @@ pub(crate) enum Migration {
     Code(fn(&Transaction<'_>, &dyn ReadBlob) -> rusqlite::Result<()>),
     /// A change that re-encodes sealed values, which only their owner can
     /// open and seal again.
-    Reseal(fn(&Transaction<'_>, &dyn ResealConfigs) -> rusqlite::Result<()>),
+    Reseal(fn(&Transaction<'_>, &dyn ResealSealed) -> rusqlite::Result<()>),
 }
 
 /// How a migration reads the bytes of a blob a database's values name, in
@@ -124,7 +124,8 @@ impl ReadBlob for NoBlobs {
 ///   once instead of waiting, as an agent's did, for its conversation's work
 ///   to end.
 /// - 0.1.65's, which 0.1.64 shipped too, before the shortcuts came in a Mac
-///   set and a PC set.
+///   set and a PC set and a conversation had schedules in place of the
+///   account's automations.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -302,10 +303,198 @@ pub(crate) const CONTROL: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/control-0.1.65.sql"),
-            migration: Migration::Sql(CONTROL_FROM_0_1_65),
+            migration: Migration::Reseal(control_from_0_1_65),
         },
     ],
 };
+
+/// From 0.1.65's control schema, which 0.1.64 shipped too, to the current one.
+///
+/// - An automation that wakes an existing conversation becomes that
+///   conversation's schedule, with its runs and its pending URL calls, its URL
+///   secret sealed again as a schedule's. Its trigger names its time `timing`,
+///   not `schedule`.
+/// - An automation that starts a new conversation each run is deleted with its
+///   runs and calls; the conversations its runs started stay and join the
+///   sidebar, since only an automation's run filed a conversation out of it.
+///   One whose conversation is gone, or that paused for its deletion, goes the
+///   same way.
+/// - The Stripe signing secret a user pasted goes, and so do the runs that
+///   skipped for a conversation gone or a model not chosen, which no note
+///   says now.
+/// - An archived conversation's schedules do not wake it, read from its
+///   archived state, so no schedule is paused for it: one an archiving paused
+///   is on while its conversation is still archived, counting from the
+///   migration, as a schedule turned on does. One whose conversation was
+///   restored since stays paused, as its user left it: a restore turned
+///   nothing on.
+/// - A schedule names its conversation as the conversation's record spells
+///   it, and only a conversation of the automation's user.
+/// - The permission to manage automations is the permission to manage
+///   schedules.
+/// - The saved shortcuts are the Mac's set, and the PC's starts at its
+///   defaults ([`CONTROL_SHORTCUTS_FROM_0_1_65`]).
+///
+/// The automations are read one row at a time: the table is small, but a
+/// migration collects no table into memory.
+fn control_from_0_1_65(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
+    transaction.execute_batch(CONTROL_SHORTCUTS_FROM_0_1_65)?;
+    transaction.execute_batch(CONTROL_SCHEDULES_FROM_0_1_65)?;
+    {
+        let mut read = transaction.prepare(
+            "SELECT id, user_id, name, trigger, time_zone, max_runs_per_day, target, prompt, paused, paused_because,
+                    schedule_since, secret, watch_stdout, watch_digest, watch_exit, watch_checked_at,
+                    created_at, updated_at
+             FROM automations ORDER BY created_at, id",
+        )?;
+        let mut live = transaction.prepare("SELECT id, archived FROM conversations WHERE id = ?1 AND user_id = ?2")?;
+        let mut insert = transaction.prepare(
+            "INSERT INTO schedules (id, conversation_id, name, trigger, time_zone, max_runs_per_day, if_busy,
+               prompt, paused, since, secret, watch_stdout, watch_digest, watch_exit,
+               watch_checked_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+        )?;
+        let mut rows = read.query([])?;
+        while let Some(row) = rows.next()? {
+            let id: String = row.get("id")?;
+            let target: serde_json::Value = serde_json::from_str(&row.get::<_, String>("target")?).map_err(corrupt)?;
+            let paused_because: Option<String> = row.get("paused_because")?;
+            let (Some("existing"), Some(named)) = (
+                target.get("kind").and_then(serde_json::Value::as_str),
+                target.get("conversationId").and_then(serde_json::Value::as_str),
+            ) else {
+                continue;
+            };
+            if paused_because.as_deref() == Some("conversation_deleted") {
+                continue;
+            }
+            let user: String = row.get("user_id")?;
+            let Some((conversation, archived)) = live
+                .query_row(rusqlite::params![named, user], |row| Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?)))
+                .optional()?
+            else {
+                continue;
+            };
+            let archive_paused = archived && paused_because.as_deref() == Some("conversation_archived");
+            let if_busy = target.get("ifBusy").and_then(serde_json::Value::as_str).unwrap_or("queue");
+            let trigger = schedule_trigger_3(&row.get::<_, String>("trigger")?)?;
+            let secret = row
+                .get::<_, Option<Vec<u8>>>("secret")?
+                .map(|sealed| {
+                    seals
+                        .schedule_secret(&id, &sealed)
+                        .map_err(|reason| corrupt_text(&format!("automation {id}: {reason}")))
+                })
+                .transpose()?;
+            insert.execute(rusqlite::params![
+                id,
+                conversation,
+                row.get::<_, String>("name")?,
+                to_json(&trigger),
+                row.get::<_, String>("time_zone")?,
+                row.get::<_, Option<i64>>("max_runs_per_day")?,
+                if_busy,
+                row.get::<_, String>("prompt")?,
+                row.get::<_, bool>("paused")? && !archive_paused,
+                if archive_paused { jiff::Timestamp::now().as_millisecond() } else { row.get::<_, i64>("schedule_since")? },
+                secret,
+                row.get::<_, Option<Vec<u8>>>("watch_stdout")?,
+                row.get::<_, Option<Vec<u8>>>("watch_digest")?,
+                row.get::<_, Option<i64>>("watch_exit")?,
+                row.get::<_, Option<i64>>("watch_checked_at")?,
+                row.get::<_, i64>("created_at")?,
+                row.get::<_, i64>("updated_at")?,
+            ])?;
+        }
+    }
+    transaction.execute_batch(
+        "INSERT INTO schedule_runs (id, schedule_id, cause, at, state, note, line, turn_id, notified, task_id)
+           SELECT id, automation_id, cause, at, state, note, line, turn_id, notified, task_id
+           FROM automation_runs
+           WHERE automation_id IN (SELECT id FROM schedules)
+             AND (note IS NULL OR json_extract(note, '$.kind') NOT IN ('target_gone', 'no_model'));
+         INSERT INTO schedule_calls (id, schedule_id, at, delivery_id, state, method, headers, body)
+           SELECT id, automation_id, at, delivery_id, state, method, headers, body
+           FROM automation_calls
+           WHERE automation_id IN (SELECT id FROM schedules);
+         DROP TABLE automation_calls;
+         DROP TABLE automation_runs;
+         DROP TABLE automations;
+         UPDATE permission_grants SET category = 'schedule.manage' WHERE category = 'automation.manage';
+         UPDATE permission_requests SET categories = replace(categories, 'automation.manage', 'schedule.manage')
+           WHERE instr(categories, 'automation.manage') > 0;",
+    )
+}
+
+/// The tables of the schedules, as the current schema makes them.
+const CONTROL_SCHEDULES_FROM_0_1_65: &str = "
+CREATE TABLE schedules (
+  id               TEXT PRIMARY KEY,
+  conversation_id  TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  name             TEXT NOT NULL,
+  trigger          TEXT NOT NULL,
+  time_zone        TEXT NOT NULL,
+  max_runs_per_day INTEGER CHECK (max_runs_per_day > 0),
+  if_busy          TEXT NOT NULL CHECK (if_busy IN ('queue', 'steer')),
+  prompt           TEXT NOT NULL,
+  paused           INTEGER NOT NULL CHECK (paused IN (0, 1)),
+  since            INTEGER NOT NULL,
+  secret           BLOB,
+  watch_stdout     BLOB,
+  watch_digest     BLOB,
+  watch_exit       INTEGER,
+  watch_checked_at INTEGER,
+  created_at       INTEGER NOT NULL,
+  updated_at       INTEGER NOT NULL
+) STRICT;
+CREATE INDEX schedules_by_conversation ON schedules (conversation_id, created_at);
+CREATE TABLE schedule_runs (
+  id          TEXT PRIMARY KEY,
+  schedule_id TEXT NOT NULL REFERENCES schedules (id) ON DELETE CASCADE,
+  cause       TEXT NOT NULL CHECK (cause IN ('time', 'change', 'url', 'now')),
+  at          INTEGER NOT NULL,
+  state       TEXT NOT NULL CHECK (state IN ('running', 'done', 'notified', 'skipped', 'failed')),
+  note        TEXT,
+  line        TEXT,
+  turn_id     TEXT,
+  notified    INTEGER NOT NULL CHECK (notified IN (0, 1)),
+  task_id     TEXT
+) STRICT;
+CREATE INDEX schedule_runs_by_schedule ON schedule_runs (schedule_id, at);
+CREATE TABLE schedule_calls (
+  id          INTEGER PRIMARY KEY,
+  schedule_id TEXT NOT NULL REFERENCES schedules (id) ON DELETE CASCADE,
+  at          INTEGER NOT NULL,
+  delivery_id TEXT,
+  state       TEXT NOT NULL CHECK (state IN ('pending', 'taken', 'held')),
+  method      TEXT,
+  headers     TEXT,
+  body        BLOB,
+  CHECK ((state = 'pending') = (method IS NOT NULL AND headers IS NOT NULL AND body IS NOT NULL))
+) STRICT;
+CREATE INDEX schedule_calls_by_state ON schedule_calls (schedule_id, state, id);
+CREATE INDEX schedule_calls_by_delivery ON schedule_calls (schedule_id, delivery_id)
+  WHERE delivery_id IS NOT NULL;
+";
+
+/// A trigger of format 2 as format 3 holds it: a time trigger names its time
+/// `timing`, the name it had as `schedule` while a trigger was not a schedule's.
+/// A trigger already in format 3 is read as it is.
+fn schedule_trigger_3(text: &str) -> rusqlite::Result<demi_web_api_protocol::schedules::Trigger> {
+    let mut value: serde_json::Value = serde_json::from_str(text).map_err(corrupt)?;
+    named_timing(&mut value);
+    json("schedules", "trigger", &value.to_string()).map_err(storage)
+}
+
+/// Gives the time trigger `value` the field name `timing` in place of `schedule`.
+fn named_timing(value: &mut serde_json::Value) {
+    if value.get("kind").and_then(serde_json::Value::as_str) == Some("time")
+        && let Some(fields) = value.as_object_mut()
+        && let Some(timing) = fields.remove("schedule")
+    {
+        fields.insert("timing".to_owned(), timing);
+    }
+}
 
 /// From 0.1.63's control schema, which 0.1.49 to 0.1.62 shipped too, to
 /// 0.1.65's.
@@ -351,11 +540,10 @@ CREATE TABLE plugin_reports (
 ) STRICT;
 ";
 
-/// From 0.1.65's control schema, which 0.1.64 shipped too, to the current one.
-///
-/// - The saved shortcuts are the Mac's set, since all of them are written in
-///   its notation; the PC's set starts empty, at its defaults.
-const CONTROL_FROM_0_1_65: &str = "
+/// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
+/// the Mac's set, since all of them are written in its notation; the PC's set
+/// starts empty, at its defaults.
+const CONTROL_SHORTCUTS_FROM_0_1_65: &str = "
 UPDATE user_preferences
    SET preferences = json_set(preferences, '$.shortcuts', json_object('mac', json_extract(preferences, '$.shortcuts'), 'pc', json_object()))
  WHERE json_type(preferences, '$.shortcuts') = 'object';
@@ -425,11 +613,14 @@ const DAILY_TASK: &str = "daily";
 
 /// A trigger of format 1 in format 2, with the prompt the automation keeps
 /// and the id of the task a daily schedule became.
+///
+/// It is written as the current types write it, which name a time trigger's
+/// time `timing`, as the later step ([`control_from_0_1_65`]) reads it.
 fn automation_trigger_2(
     text: &str,
     prompt: String,
-) -> rusqlite::Result<(demi_web_api_protocol::automations::Trigger, String, Option<&'static str>)> {
-    use demi_web_api_protocol::automations::{MonthDay, Repeat, RepeatUnit, Schedule, Task, Trigger, Weekday};
+) -> rusqlite::Result<(demi_web_api_protocol::schedules::Trigger, String, Option<&'static str>)> {
+    use demi_web_api_protocol::schedules::{MonthDay, Repeat, RepeatUnit, Task, Timing, Trigger, Weekday};
     /// What format 1 had that format 2 does not.
     #[derive(serde::Deserialize)]
     #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -437,9 +628,10 @@ fn automation_trigger_2(
         Daily { time: String, days: Vec<Weekday> },
     }
     let mut value: serde_json::Value = serde_json::from_str(text).map_err(corrupt)?;
+    named_timing(&mut value);
     let daily = value
-        .get_mut("schedule")
-        .filter(|schedule| schedule.get("kind").and_then(serde_json::Value::as_str) == Some("daily"))
+        .get_mut("timing")
+        .filter(|timing| timing.get("kind").and_then(serde_json::Value::as_str) == Some("daily"))
         .map(serde_json::Value::take);
     let Some(daily) = daily else {
         let trigger: Trigger = serde_json::from_value(value).map_err(corrupt)?;
@@ -448,7 +640,7 @@ fn automation_trigger_2(
     let Daily::Daily { time, days } = serde_json::from_value(daily).map_err(corrupt)?;
     let unit = if days.len() == Weekday::ALL.len() { RepeatUnit::Days } else { RepeatUnit::Weeks };
     let trigger = Trigger::Time {
-        schedule: Schedule::Repeat {
+        timing: Timing::Repeat {
             repeat: Repeat { every: 1, unit, start: None },
             tasks: vec![Task {
                 id: DAILY_TASK.into(),
@@ -466,14 +658,14 @@ fn automation_trigger_2(
 }
 
 /// A target of format 1 in format 2: an existing conversation queues.
-fn automation_target_2(text: &str) -> rusqlite::Result<demi_web_api_protocol::automations::AutomationTarget> {
+fn automation_target_2(text: &str) -> rusqlite::Result<serde_json::Value> {
     let mut value: serde_json::Value = serde_json::from_str(text).map_err(corrupt)?;
     if value.get("kind").and_then(serde_json::Value::as_str) == Some("existing")
         && let Some(object) = value.as_object_mut()
     {
         object.insert("ifBusy".into(), serde_json::Value::String("queue".into()));
     }
-    serde_json::from_value(value).map_err(corrupt)
+    Ok(value)
 }
 
 /// From 0.1.36's control schema, which 0.1.33 to 0.1.35 shipped too, to
@@ -1192,7 +1384,7 @@ UPDATE provider_credentials SET position = (
 /// read stops the migration, so the database stays as it was.
 fn control_sealed_config_format_2(
     transaction: &Transaction<'_>,
-    seals: &dyn ResealConfigs,
+    seals: &dyn ResealSealed,
 ) -> rusqlite::Result<()> {
     let rows = transaction
         .prepare("SELECT id, provider_type, config FROM providers WHERE config IS NOT NULL")?
@@ -1645,9 +1837,11 @@ CREATE TABLE plugin_oauth_clients (
 ///   before the messages a compaction kept named theirs, 0.1.48 the one
 ///   before a path could start with another node's rows, 0.1.58 the one
 ///   before a running command kept whether it is a service in place of its
-///   interval, and 0.1.63, which 0.1.59 to 0.1.62 shipped too, the one before
+///   interval, 0.1.63, which 0.1.59 to 0.1.62 shipped too, the one before
 ///   that column and every stored name of a service, an interval and a
-///   command's watch took their current names.
+///   command's watch took their current names, and 0.1.65, which 0.1.64
+///   shipped too, the one before the mark of a message a schedule sent took
+///   its name.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1767,8 +1961,51 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.63.sql"),
             migration: Migration::Code(conversation_from_0_1_63),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.65.sql"),
+            migration: Migration::Code(conversation_from_0_1_65),
+        },
     ],
 };
+
+/// From 0.1.65's conversation schema, which 0.1.64 shipped too, of transcript
+/// block format 15 and checkpoint state format 8, to the current one, of block
+/// format 16 and state format 9, so that nothing reads a name the code no
+/// longer has.
+///
+/// - The mark a `user` block carries of the automation's run that sent it, and
+///   the one a queued message in a checkpoint state carries, are a schedule's:
+///   the field is `schedule` and holds `scheduleId` ([`named_marks`]).
+/// - The receipt of a permission request to manage automations, an agent
+///   message's, names the category `schedule.manage` and the action "manage
+///   schedules".
+///
+/// Nothing else is renamed: the vendor's own records a block keeps may name an
+/// automation of their own.
+///
+/// Each block, share's copy and state it rewrites is decoded and checked as the
+/// current format before it is written back, one row at a time.
+fn conversation_from_0_1_65(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    for (table, column) in [("blocks", "block"), ("share_blocks", "block"), ("nodes", "state")] {
+        let rows = rowids(transaction, table, &format!("WHERE instr({column}, 'automation') > 0"))?;
+        let mut read = transaction.prepare(&format!("SELECT {column} FROM {table} WHERE rowid = ?1"))?;
+        let mut update = transaction.prepare(&format!("UPDATE {table} SET {column} = ?2 WHERE rowid = ?1"))?;
+        for row in rows {
+            let text: String = read.query_row([row], |row| row.get(0))?;
+            let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+            if !named_marks(table, &mut value) {
+                continue;
+            }
+            let written = if table == "nodes" {
+                to_json(&json::<CheckpointState>("nodes", "state", &value.to_string()).map_err(corrupt)?)
+            } else {
+                to_json(&demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)?)
+            };
+            update.execute(rusqlite::params![row, written])?;
+        }
+    }
+    Ok(())
+}
 
 /// From 0.1.63's conversation schema, of transcript block format 14 and
 /// checkpoint state format 7, to the current one, of block format 15 and state
@@ -1800,6 +2037,8 @@ fn conversation_from_0_1_63(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
 ///   silence is not reported yet as `foreground`.
 /// - A stored report of a command's silence names no interval, as one saved
 ///   before named the one the command reported at.
+/// - The mark of the run that sent a message names a schedule, not an
+///   automation.
 fn current_names(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     rewrite_stored(transaction, false)
 }
@@ -1825,7 +2064,8 @@ fn rewrite_stored(transaction: &Transaction<'_>, inputs: bool) -> rusqlite::Resu
             table,
             &format!(
                 "WHERE instr({column}, 'background') > 0 OR instr({column}, 'foreground') > 0
-                    OR instr({column}, 'intervals') > 0 OR instr({column}, 'intervalMs') > 0"
+                    OR instr({column}, 'intervals') > 0 OR instr({column}, 'intervalMs') > 0
+                    OR instr({column}, 'automation') > 0"
             ),
         )?;
         let mut read = transaction.prepare(&format!("SELECT {column} FROM {table} WHERE rowid = ?1"))?;
@@ -1834,6 +2074,7 @@ fn rewrite_stored(transaction: &Transaction<'_>, inputs: bool) -> rusqlite::Resu
             let text: String = read.query_row([row], |row| row.get(0))?;
             let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
             let mut changed = stored_names(&mut value, inputs);
+            changed |= named_marks(table, &mut value);
             if table == "nodes" {
                 let state = value.as_object_mut().ok_or_else(|| corrupt_text("a checkpoint state is no object"))?;
                 changed |= named_watches(state)?;
@@ -1901,6 +2142,87 @@ fn stored_names(value: &mut serde_json::Value, inputs: bool) -> bool {
         _ => {}
     }
     changed
+}
+
+/// Gives what the row `value` of `table` holds of an automation the names a
+/// schedule's has: the mark of the run that sent a message, a `user` block's
+/// or a queued message's, and a permission receipt's category and action, an
+/// `agent_message` block's or an agent input's waiting in a checkpoint state;
+/// answers whether it renamed any.
+fn named_marks(table: &str, value: &mut serde_json::Value) -> bool {
+    use serde_json::Value;
+
+    let mut changed = false;
+    if table == "nodes" {
+        if let Some(Value::Array(queue)) = value.get_mut("queue") {
+            for message in queue {
+                if let Value::Object(fields) = message {
+                    changed |= named_schedule_mark(fields);
+                }
+            }
+        }
+        if let Some(Value::Array(inputs)) = value.get_mut("agentInputs") {
+            for input in inputs {
+                if let Some(event) = input.pointer_mut("/message/event") {
+                    changed |= named_permission_receipt(event);
+                }
+            }
+        }
+        return changed;
+    }
+    let kind = value.get("type").and_then(Value::as_str).map(str::to_owned);
+    match (kind.as_deref(), value) {
+        (Some("user"), Value::Object(fields)) => named_schedule_mark(fields),
+        (Some("agent_message"), value) => value.pointer_mut("/message/event").is_some_and(named_permission_receipt),
+        _ => false,
+    }
+}
+
+/// Gives a permission receipt `event` that names the category to manage
+/// automations the category and the action to manage schedules; answers
+/// whether it did.
+fn named_permission_receipt(event: &mut serde_json::Value) -> bool {
+    use serde_json::Value;
+
+    if event.get("type").and_then(Value::as_str) != Some("permission") {
+        return false;
+    }
+    let Some(Value::Array(categories)) = event.get_mut("categories") else {
+        return false;
+    };
+    let mut changed = false;
+    for category in categories {
+        if category.as_str() == Some("automation.manage") {
+            *category = Value::String("schedule.manage".to_owned());
+            changed = true;
+        }
+    }
+    if changed && let Some(Value::String(action)) = event.get_mut("action") {
+        *action = action.replace("manage automations", "manage schedules");
+    }
+    changed
+}
+
+/// Gives the mark of an automation's run that a `user` block or a queued
+/// message `fields` carries the names a schedule's has: `schedule` for
+/// `automation`, and `scheduleId` for `automationId`; answers whether it did.
+/// Only a mark of that shape is one: an object with `automationId` and `runId`.
+fn named_schedule_mark(fields: &mut serde_json::Map<String, serde_json::Value>) -> bool {
+    use serde_json::Value;
+
+    let Some(Value::Object(mark)) = fields.get_mut("automation") else {
+        return false;
+    };
+    if !mark.contains_key("runId") {
+        return false;
+    }
+    let Some(id) = mark.remove("automationId") else {
+        return false;
+    };
+    mark.insert("scheduleId".to_owned(), id);
+    let mark = fields.remove("automation").expect("the mark was found");
+    fields.insert("schedule".to_owned(), mark);
+    true
 }
 
 /// Gives the input of the `shell` call `call`, which keeps it as the JSON text
@@ -4064,7 +4386,7 @@ impl Schema {
         &self,
         connection: &mut Connection,
         path: &Path,
-        seals: &dyn ResealConfigs,
+        seals: &dyn ResealSealed,
     ) -> Result<(), StorageError> {
         self.migrate(connection, path, &NoBlobs, seals)
     }
@@ -4077,7 +4399,7 @@ impl Schema {
         path: &Path,
         blobs: &dyn ReadBlob,
     ) -> Result<(), StorageError> {
-        self.migrate(connection, path, blobs, &NoSealedConfigs)
+        self.migrate(connection, path, blobs, &NoSealed)
     }
 
     fn migrate(
@@ -4085,7 +4407,7 @@ impl Schema {
         connection: &mut Connection,
         path: &Path,
         blobs: &dyn ReadBlob,
-        seals: &dyn ResealConfigs,
+        seals: &dyn ResealSealed,
     ) -> Result<(), StorageError> {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let recorded: i32 =
@@ -4518,34 +4840,28 @@ CREATE TABLE user_credentials (
 ) STRICT;
 CREATE INDEX user_credentials_by_expiry ON user_credentials (keep_until) WHERE keep_until IS NOT NULL;
 
--- Each user's automations (`automations.md`): the trigger as JSON,
--- automation trigger format 2, the `Trigger` of the web contract; the
--- target as JSON, automation target format 2, with the existing
--- conversation it wakes again in `conversation_id`, null for a new one each
--- run; the model settings as JSON, null for none chosen; why it paused
--- itself, null while it is on or the user paused it; when its trigger was
--- last set or it was last turned on, before which no time of its schedule
--- fires; a URL trigger's secret and the Stripe signing secret the user
--- pasted, each sealed with the automation as the additional data; and a
--- change watch's last output, its standard output's last 16 KB, the
--- SHA-256 of the whole of it, which a check compares, and its exit status,
--- with when its command last ran, all null before its first.
-CREATE TABLE automations (
+-- Each conversation's schedules: the trigger as JSON, schedule trigger
+-- format 3, the `Trigger` of the web contract; what a run does while the
+-- conversation works, queue or steer; whether the user paused it, which an
+-- archived conversation does not change; when its trigger was last set or
+-- it was last turned on, before which no time of its timing fires; a URL trigger's
+-- secret, sealed with the schedule as the additional data; and a change
+-- watch's last output, its standard output's last 16 KB, the SHA-256 of the
+-- whole of it, which a check compares, and its exit status, with when its
+-- command last ran, all null before its first. A schedule wakes its
+-- conversation only and goes with it.
+CREATE TABLE schedules (
   id               TEXT PRIMARY KEY,
-  user_id          TEXT NOT NULL REFERENCES users (id),
+  conversation_id  TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
   name             TEXT NOT NULL,
   trigger          TEXT NOT NULL,
   time_zone        TEXT NOT NULL,
   max_runs_per_day INTEGER CHECK (max_runs_per_day > 0),
-  target           TEXT NOT NULL,
-  conversation_id  TEXT,
+  if_busy          TEXT NOT NULL CHECK (if_busy IN ('queue', 'steer')),
   prompt           TEXT NOT NULL,
-  model            TEXT,
   paused           INTEGER NOT NULL CHECK (paused IN (0, 1)),
-  paused_because   TEXT CHECK (paused_because IN ('conversation_archived', 'conversation_deleted')),
-  schedule_since   INTEGER NOT NULL,
+  since            INTEGER NOT NULL,
   secret           BLOB,
-  stripe_secret    BLOB,
   watch_stdout     BLOB,
   watch_digest     BLOB,
   watch_exit       INTEGER,
@@ -4553,53 +4869,44 @@ CREATE TABLE automations (
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL
 ) STRICT;
-CREATE INDEX automations_by_user ON automations (user_id, created_at);
-CREATE INDEX automations_by_conversation ON automations (conversation_id) WHERE conversation_id IS NOT NULL;
--- Each automation's runs (`automations.md` § Runs): what fired it, when,
--- its state with a note as JSON, automation run note format 1, the `RunNote`
--- of the web contract, the start of its agent's last answer, the
--- conversation it ran in with the turn its message started, whether that
--- new conversation is still filed under the automation, out of the
--- sidebar, whether it notified and its conversation was not opened since,
--- and whether its agent notified at all, which makes it end Notified, and
--- the repeat's task that started it, null for a single trigger's. A run's
--- conversation outlives it.
-CREATE TABLE automation_runs (
-  id              TEXT PRIMARY KEY,
-  automation_id   TEXT NOT NULL REFERENCES automations (id) ON DELETE CASCADE,
-  cause           TEXT NOT NULL CHECK (cause IN ('time', 'change', 'url', 'now')),
-  at              INTEGER NOT NULL,
-  state           TEXT NOT NULL CHECK (state IN ('running', 'done', 'notified', 'skipped', 'failed')),
-  note            TEXT,
-  line            TEXT,
-  conversation_id TEXT,
-  turn_id         TEXT,
-  filed           INTEGER NOT NULL CHECK (filed IN (0, 1)),
-  unread          INTEGER NOT NULL CHECK (unread IN (0, 1)),
-  notified        INTEGER NOT NULL CHECK (notified IN (0, 1)),
-  task_id         TEXT
+CREATE INDEX schedules_by_conversation ON schedules (conversation_id, created_at);
+-- Each schedule's runs: what fired it, when, its state with a note as JSON,
+-- schedule run note format 1, the `RunNote` of the web contract, the start
+-- of its agent's last answer, the turn its message started, whether its
+-- agent notified, which makes it end Notified, and the repeat's task that
+-- started it, null for a single trigger's.
+CREATE TABLE schedule_runs (
+  id          TEXT PRIMARY KEY,
+  schedule_id TEXT NOT NULL REFERENCES schedules (id) ON DELETE CASCADE,
+  cause       TEXT NOT NULL CHECK (cause IN ('time', 'change', 'url', 'now')),
+  at          INTEGER NOT NULL,
+  state       TEXT NOT NULL CHECK (state IN ('running', 'done', 'notified', 'skipped', 'failed')),
+  note        TEXT,
+  line        TEXT,
+  turn_id     TEXT,
+  notified    INTEGER NOT NULL CHECK (notified IN (0, 1)),
+  task_id     TEXT
 ) STRICT;
-CREATE INDEX automation_runs_by_automation ON automation_runs (automation_id, at);
-CREATE INDEX automation_runs_by_conversation ON automation_runs (conversation_id) WHERE conversation_id IS NOT NULL;
--- A URL's calls (`automations.md` § Triggers), each kept as it is taken,
--- with its delivery ID: pending until a run takes it, so a restart loses
--- none; taken; or held, for one a paused automation or its daily limit
--- answered and one a pause or an edit dropped. A pending call keeps its
--- method, its headers as JSON and its body; the others keep only what
--- dedupes a repeated delivery ID, for an hour.
-CREATE TABLE automation_calls (
-  id            INTEGER PRIMARY KEY,
-  automation_id TEXT NOT NULL REFERENCES automations (id) ON DELETE CASCADE,
-  at            INTEGER NOT NULL,
-  delivery_id   TEXT,
-  state         TEXT NOT NULL CHECK (state IN ('pending', 'taken', 'held')),
-  method        TEXT,
-  headers       TEXT,
-  body          BLOB,
+CREATE INDEX schedule_runs_by_schedule ON schedule_runs (schedule_id, at);
+-- A URL's calls, each kept as it is taken, with its delivery ID: pending
+-- until a run takes it, so a restart loses none; taken; or held, for one a
+-- paused schedule or its daily limit answered and one a pause or an edit
+-- dropped. A pending call keeps its method, its headers as JSON and its
+-- body; the others keep only what dedupes a repeated delivery ID, for an
+-- hour.
+CREATE TABLE schedule_calls (
+  id          INTEGER PRIMARY KEY,
+  schedule_id TEXT NOT NULL REFERENCES schedules (id) ON DELETE CASCADE,
+  at          INTEGER NOT NULL,
+  delivery_id TEXT,
+  state       TEXT NOT NULL CHECK (state IN ('pending', 'taken', 'held')),
+  method      TEXT,
+  headers     TEXT,
+  body        BLOB,
   CHECK ((state = 'pending') = (method IS NOT NULL AND headers IS NOT NULL AND body IS NOT NULL))
 ) STRICT;
-CREATE INDEX automation_calls_by_state ON automation_calls (automation_id, state, id);
-CREATE INDEX automation_calls_by_delivery ON automation_calls (automation_id, delivery_id)
+CREATE INDEX schedule_calls_by_state ON schedule_calls (schedule_id, state, id);
+CREATE INDEX schedule_calls_by_delivery ON schedule_calls (schedule_id, delivery_id)
   WHERE delivery_id IS NOT NULL;
 
 -- The conversation index. The web app chooses a conversation's id and its
@@ -5081,7 +5388,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 8
+  -- nodes.state: checkpoint state format 9
   state            TEXT NOT NULL,
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that
@@ -5118,7 +5425,7 @@ CREATE TABLE nodes (
   -- the root, whose model the conversation's record holds, and for a side
   -- question, which keeps its checkpoint's. Its reader refuses a row that
   -- is a child without one, since a migration adds no table CHECK.
-  -- nodes.model: model selection, as in checkpoint state format 8
+  -- nodes.model: model selection, as in checkpoint state format 9
   model            TEXT,
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (failure IS NULL OR closed_phase = 'error')
@@ -5158,14 +5465,14 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 15.
+-- blocks.block: transcript block format 16.
 -- A node's transcript is a tree of rows (message-editing.md § Versions):
 -- `idx` is a row's number, its place in the order the node's rows were
 -- written, which no other row is ever given. A row is never deleted.
 CREATE TABLE blocks (
   node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx      INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 15
+  -- blocks.block: transcript block format 16
   block    TEXT NOT NULL,
   -- The row before it on its path; null for a path's first row.
   follows  INTEGER CHECK (follows < idx),
@@ -5252,7 +5559,7 @@ CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 15
+  -- share_blocks.block: transcript block format 16
   block TEXT NOT NULL,
   PRIMARY KEY (token, idx)
 ) STRICT;

@@ -20,7 +20,7 @@
 
 pub mod attachments;
 pub mod auth;
-pub mod automations;
+pub mod schedules;
 pub mod cloud;
 pub mod conversations;
 pub mod credentials;

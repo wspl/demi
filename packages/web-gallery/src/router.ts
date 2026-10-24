@@ -19,8 +19,8 @@ import RoadmapSection from './sections/RoadmapSection.vue'
 import PhoneSection from './sections/PhoneSection.vue'
 import PhoneFrameView from './phone/PhoneFrameView.vue'
 import AsksFrameView from './phone/AsksFrameView.vue'
-import AutomationsSection from './sections/AutomationsSection.vue'
-import AutomationsFrameView from './phone/AutomationsFrameView.vue'
+import SchedulesSection from './sections/SchedulesSection.vue'
+import SchedulesFrameView from './phone/SchedulesFrameView.vue'
 import { t } from './locales/text'
 
 /** `frame`: a page alone, with no gallery around it, as a phone frame shows it. */
@@ -42,7 +42,7 @@ export function galleryNav(): { path: string; label: TitleText }[] {
     { path: '/files', label: t('nav.files') },
     { path: '/session', label: t('nav.session') },
     { path: '/sidebar', label: t('nav.sidebar') },
-    { path: '/automations', label: t('nav.automations') },
+    { path: '/schedules', label: t('nav.schedules') },
     { path: '/settings', label: t('nav.settings') },
     { path: '/markdown', label: t('nav.markdown') },
     { path: '/phone', label: t('nav.phone') },
@@ -83,7 +83,7 @@ export const router = createRouter({
     { path: '/files', component: FilesSection, meta: { layout: 'catalog' } },
     { path: '/session', component: SessionSection, meta: { layout: 'session' } },
     { path: '/sidebar', component: SidebarSection, meta: { layout: 'catalog' } },
-    { path: '/automations', component: AutomationsSection, meta: { layout: 'catalog' } },
+    { path: '/schedules', component: SchedulesSection, meta: { layout: 'catalog' } },
     {
       path: '/settings',
       component: SettingsSection,
@@ -97,7 +97,7 @@ export const router = createRouter({
     { path: '/roadmap', component: RoadmapSection, meta: { layout: 'catalog' } },
     { path: '/phone', component: PhoneSection, meta: { layout: 'catalog' } },
     { path: '/phone-frame', component: PhoneFrameView, meta: { layout: 'frame' } },
-    { path: '/automations-frame', component: AutomationsFrameView, meta: { layout: 'frame' } },
+    { path: '/schedules-frame', component: SchedulesFrameView, meta: { layout: 'frame' } },
     { path: '/asks-frame', component: AsksFrameView, meta: { layout: 'frame' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },
   ],

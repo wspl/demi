@@ -17,7 +17,7 @@
     "markdown": "Markdown",
     "phone": "スマートフォン",
     "roadmap": "ロードマップ",
-    "automations": "オートメーション"
+    "schedules": "スケジュール"
   },
   "views": {
     "errors": {
@@ -70,7 +70,7 @@
       "search": "検索"
     },
     "page": "ページ",
-    "automations": {
+    "schedules": {
       "app": "アプリ",
       "phone": "スマートフォン"
     }

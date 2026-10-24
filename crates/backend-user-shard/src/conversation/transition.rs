@@ -196,6 +196,10 @@ impl Shard {
                 if restored.is_ok() && remakes {
                     self.mark(Part::Workspaces);
                 }
+                if restored.is_ok() {
+                    // Its schedules wake it again, counting from now.
+                    self.conversation_unarchived_schedules(&record.id);
+                }
                 restored.map(|()| None)
             }
             ConversationChange::Record(change) => host.commit(&record.id, change).await.map(|()| None),
@@ -365,13 +369,11 @@ impl Shard {
         self.stop_idle(id);
         demi_backend_permissions::changed(self.permission_shard(), id);
         demi_backend_permissions::withdrawn(self.permission_shard(), id);
-        // The automations that wake it pause, saying why.
+        // Its schedules wake nothing now; what they had under way drops.
         let shard = self.this();
         let id = id.clone();
         self.tasks().spawn_local(async move {
-            shard
-                .automation_target_gone(&id, demi_web_api_protocol::automations::PauseReason::ConversationArchived)
-                .await;
+            shard.conversation_archived_schedules(&id).await;
         });
     }
 

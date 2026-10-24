@@ -4,7 +4,7 @@ import { t as shared } from '../../locales/text'
 import { computed, onMounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
-import { Copy, Pencil, Trash2, Zap } from '@lucide/vue'
+import { AlarmClock, Copy, Pencil, Trash2 } from '@lucide/vue'
 import { useCopy } from '../../composables/useCopy'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
@@ -74,7 +74,7 @@ const props = defineProps<{
    */
   brief?: string | null
   /**
-   * What sent the message when the user did not write it, an automation: named
+   * What sent the message when the user did not write it, a schedule: named
    * above the bubble, as a receipt names the agent that sent one.
    */
   origin?: MessageOrigin | null
@@ -303,8 +303,8 @@ useResizeObserver(bodyRef, measure)
     :class="forceStuck ? 'user-sticky' : ''"
   >
     <div v-if="origin" class="flex max-w-[80%] select-none items-center gap-1.5 pb-1 text-detail text-fg-subtle">
-      <Zap :size="ICON_PX.in24" class="shrink-0" aria-hidden="true" />
-      <NoticeLabel :notice="t('transcript.user.fromAutomation')" :title="origin.name" :go="origin.go" />
+      <AlarmClock :size="ICON_PX.in24" class="shrink-0" aria-hidden="true" />
+      <NoticeLabel :notice="t('transcript.user.fromSchedule')" :title="origin.name" :go="origin.go" />
       <span class="shrink-0">· {{ origin.when }}</span>
     </div>
     <div v-else-if="sender" class="flex max-w-[80%] select-none items-center pb-1 text-detail text-fg-subtle">

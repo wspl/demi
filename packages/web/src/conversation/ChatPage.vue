@@ -8,9 +8,6 @@ import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBloc
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import { provideCostWatch } from '@demicodes/web-ui/agent/context-cost'
 import { provideHistoryReading } from '@demicodes/web-ui/agent/history-reading'
-import { provideAutomationOpener } from '@demicodes/web-ui/agent/message-origins'
-import AutomationRunBar from '@demicodes/web-ui/automations/AutomationRunBar.vue'
-import { useAutomations } from '../automations/store'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
@@ -84,12 +81,6 @@ const navigation = useConversationNavigation()
 const conversation = computed(() =>
   store.items.find((c) => c.id === props.id),
 )
-const automations = useAutomations()
-function openAutomation(id: string): void {
-  void router.push(`/automations/${encodeURIComponent(id)}`)
-}
-// An automation's message names it in the transcript and leads to it.
-provideAutomationOpener(openAutomation)
 // The cards of the open conversation, the composer's and its subagents' windows', keep the window of its cost they show current.
 provideCostWatch((window) => {
   const current = conversation.value
@@ -101,13 +92,8 @@ provideHistoryReading((node) => {
   const current = conversation.value
   return current ? store.history.reading(current, node) : { before: false, after: false }
 })
-/** The automation and run the conversation is filed under, whose bar shows under the header. */
-const filedRun = computed(() => {
-  const filed = conversation.value?.filed
-  return filed ? automations.runOf(filed) : null
-})
-/** The automations that wake the conversation, which the chip above the composer lists. */
-const wakers = computed(() => (conversation.value ? automations.wakers(conversation.value.id) : []))
+/** The schedules that wake the conversation, which the chip above the composer lists. */
+const schedules = computed(() => conversation.value?.metadata.shown.value?.schedules ?? [])
 /** The header's place, which carries out a move the offline primary Host's card asks for. */
 const place = useTemplateRef<InstanceType<typeof WorkspaceInfo>>('place')
 /** Where the conversation runs now, live over the account's device states: Resume runs there. */
@@ -425,18 +411,10 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :subagent-cost="(id) => store.costShown(conversation!, id)"
     @refresh-limits="card.refreshLimits"
     @open-instruction="card.openInstruction"
-    :automations="wakers"
-    @open-automation="openAutomation"
+    :schedules="schedules"
+    @pause-schedule="(schedule, paused) => store.pauseSchedule(conversation!.id, schedule, paused)"
+    @delete-schedule="(schedule) => store.deleteSchedule(conversation!.id, schedule)"
   >
-    <template v-if="filedRun" #bar
-      ><AutomationRunBar
-        :name="filedRun.automation.name"
-        :at="filedRun.run.at"
-        :time-zone="filedRun.automation.timeZone"
-        @open-page="router.push('/automations')"
-        @open-automation="openAutomation(filedRun.automation.id)"
-        @move="automations.moveToConversations(conversation.id)"
-    /></template>
     <template #workspace
       ><WorkspaceInfo ref="place" :project="project" :conversation="conversation"
     /></template>

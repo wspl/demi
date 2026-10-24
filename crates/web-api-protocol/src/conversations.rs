@@ -213,13 +213,10 @@ pub struct ConversationSummary {
     /// them with the output.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub unread_permission_requests: u64,
-    /// The automation's run the conversation is filed under, which keeps it
-    /// out of the sidebar until the user sends it a message or moves it; null
-    /// for an ordinary conversation.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<crate::automations::FiledRun>")]
+    /// Whether the conversation has a schedule, which the sidebar marks with
+    /// an alarm clock; its schedules are in its metadata.
     #[garde(skip)]
-    pub automation: Option<crate::automations::FiledRun>,
+    pub scheduled: bool,
     /// The conversation's work panel: its tabs under the revision that counts
     /// its changes. The page draws the panel's frame and tabs from it as soon
     /// as the conversation is listed.
@@ -298,6 +295,9 @@ pub struct ConversationMetadata {
     /// that rises with each change of them in this run of the backend.
     #[garde(dive)]
     pub permissions: ConversationPermissions,
+    /// The conversation's schedules, which wake it, newest first.
+    #[garde(skip)]
+    pub schedules: Vec<crate::schedules::ConversationSchedule>,
 }
 
 /// How far back `GET /conversations/:id/cost/recent` counts, as its `window`

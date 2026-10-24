@@ -29,7 +29,7 @@ use demi_backend_providers::llm::catalog_cache::ModelCatalogCache;
 use demi_backend_providers::llm::claude_releases::ClaudeReleases;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::llm::vendors::VendorCatalog;
-use demi_backend_providers::vault::entries::{ConfigReseal, SeededAccount, Vault};
+use demi_backend_providers::vault::entries::{VaultReseal, SeededAccount, Vault};
 use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
 use demi_backend_providers::vault::operations::ProviderOperations;
 use demi_backend_providers::vault::quotas::AccountQuotas;
@@ -92,8 +92,8 @@ pub struct Services {
     /// The log, which the runners' and the pages' lines are stored in
     /// (`crates/backend-database/src/server_log/mod.rs`).
     pub log: ServerLog,
-    /// The calls the automations' URLs took this minute.
-    pub hook_limits: crate::automations::HookLimits,
+    /// The calls the schedules' URLs took this minute.
+    pub hook_limits: crate::schedules::HookLimits,
     pub runners: RunnerTuning,
     pub conversation_tuning: ConversationTuning,
     /// How the sockets to a page are timed.
@@ -258,7 +258,7 @@ impl Storage {
         let control = ControlService::open(
             &data_dir.join(CONTROL_DATABASE),
             clock.clone(),
-            Arc::new(ConfigReseal::new(vault)),
+            Arc::new(VaultReseal::new(vault)),
         )
         .await?;
         let rest = async {
@@ -435,7 +435,7 @@ impl Services {
             logins,
             claims: PendingClaims::new(settings.runners.claims_per_minute),
             log: settings.log,
-            hook_limits: crate::automations::HookLimits::default(),
+            hook_limits: crate::schedules::HookLimits::default(),
             runners: settings.runners,
             conversation_tuning: settings.conversations,
             pages: settings.pages,

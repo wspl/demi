@@ -98,7 +98,7 @@
       "recall": "撤回",
       "recalled": "消息已撤回",
       "notDelivered": "此消息未能送达。",
-      "fromAutomation": "自动化"
+      "fromSchedule": "定时任务"
     },
     "assistant": {
       "fork": "分叉",

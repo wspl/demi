@@ -393,30 +393,8 @@ pub enum ErrorCode {
     /// A message saved for later has the id already, with other content or in
     /// another conversation.
     IdTaken,
-    /// The caller has no automation of that id.
-    AutomationNotFound,
-    /// A schedule's cron expression is not five fields cron reads, which
-    /// `message` names.
-    InvalidCron,
-    /// The time zone is not one the backend knows, such as `Asia/Shanghai`.
-    InvalidTimeZone,
-    /// An automation's existing conversation is not one of the caller's
-    /// active conversations.
-    AutomationConversationUnavailable,
-    /// A limit on runs a day is for a change watch or a URL, not a time.
-    LimitNotTaken,
-    /// The automation's trigger is not a URL, which alone has a secret.
-    NotUrlTrigger,
-    /// The conversation is not filed under an automation's run.
-    NotFiled,
-    /// No public holidays are known for the country or the region a task
-    /// names.
-    UnknownHolidays,
-    /// Run Now names no task the automation's repeat holds, names one of a
-    /// single trigger, or names none among several.
-    TaskNotFound,
-    /// Run Now names a task with no message, which does not run.
-    TaskWithoutMessage,
+    /// The caller has no schedule of that id.
+    ScheduleNotFound,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

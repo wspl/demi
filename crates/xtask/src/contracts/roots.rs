@@ -112,11 +112,11 @@ pub fn protocol() -> Vec<Root> {
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
     use api::{
-        attachments, auth, automations, cloud, conversations, credentials, devices, diagnostics, drafts, error, exposed_ports, files, instructions, port_forwards,
+        attachments, auth, cloud, conversations, credentials, devices, diagnostics, drafts, error, exposed_ports, files, instructions, port_forwards,
         panel,
         passkeys,
         permissions,
-        plugins, providers, push, saved, search, sessions, settings, shares, side_questions, sidebar, state, subagents, usage, users, workflows, workspaces,
+        plugins, providers, push, saved, schedules, search, sessions, settings, shares, side_questions, sidebar, state, subagents, usage, users, workflows, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -164,12 +164,7 @@ pub fn web() -> Vec<Root> {
         receives::<exposed_ports::ExposedPortAnswer>(),
         sends::<exposed_ports::NewExposedPort>(),
         sends::<exposed_ports::ExposedPortPatch>(),
-        receives::<automations::AutomationList>(),
-        receives::<automations::AutomationAnswer>(),
-        receives::<automations::AutomationSecret>(),
-        receives::<automations::HolidayCountries>(),
-        sends::<automations::AutomationPatch>(),
-        sends::<automations::RunNow>(),
+        sends::<schedules::ScheduleChange>(),
         receives::<subagents::SubagentSettings>(),
         sends::<subagents::SubagentsPatch>(),
         sends::<subagents::NewProfile>(),

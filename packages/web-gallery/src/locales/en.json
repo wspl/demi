@@ -17,7 +17,7 @@
     "markdown": "Markdown",
     "phone": "Phone",
     "roadmap": "Roadmap",
-    "automations": "Automations"
+    "schedules": "Schedules"
   },
   "views": {
     "errors": {
@@ -70,7 +70,7 @@
       "search": "Search"
     },
     "page": "Page",
-    "automations": {
+    "schedules": {
       "app": "App",
       "phone": "Phone"
     }

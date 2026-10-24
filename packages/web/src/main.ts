@@ -76,11 +76,6 @@ const router = createRouter({
       path: '/chat/:id?',
       component: ChatPage,
     },
-    // The Automations page, and one automation.
-    {
-      path: '/automations/:automation?',
-      component: ChatPage,
-    },
     {
       path: '/settings/:section?/:detail?',
       name: SETTINGS_ROUTE,

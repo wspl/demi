@@ -64,8 +64,9 @@ import { selectionEntries } from '../sidebar/selection-menu'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
 import { copyId } from '../infra/copy-id'
 import StatusDot from '../ui/StatusDot.vue'
-import AutomationsChip from '../automations/AutomationsChip.vue'
-import type { AutomationLink } from '../automations/types'
+import SchedulesChip from '../schedules/SchedulesChip.vue'
+import type { ConversationSchedule } from '../schedules/types'
+import { provideScheduleOpener } from './message-origins'
 import { usePhone } from '../ui/phone'
 import { tabCountIcon } from '../ui/tab-count-icon'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
@@ -120,10 +121,10 @@ const props = withDefaults(defineProps<{
    */
   listed?: { pinned: boolean }
   /**
-   * The automations that wake the conversation. A chip above the composer lists
+   * The schedules that wake the conversation. A chip above the composer lists
    * them.
    */
-  automations?: readonly AutomationLink[]
+  schedules?: readonly ConversationSchedule[]
   /**
    * The conversation's Host files its messages name; absent, their paths stay
    * text.
@@ -233,12 +234,27 @@ const props = withDefaults(defineProps<{
  */
 const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
 
+// A schedule's name above a message in the transcript opens the Schedules menu.
+const schedulesOpen = ref(false)
+provideScheduleOpener((id) => (props.schedules?.some((schedule) => schedule.id === id)
+  ? () => { schedulesOpen.value = true }
+  : undefined))
+// With no schedule left the chip goes, and its menu does not come back open
+// with the next one.
+watch(() => props.schedules?.length ?? 0, (count) => {
+  if (count === 0) {
+    schedulesOpen.value = false
+  }
+})
+
 const sharing = useShare(() => props.share)
 const shareConversation = { kind: 'conversation' } as const
 
 const emit = defineEmits<{
-  /** Open an automation that wakes the conversation, from its mark. */
-  openAutomation: [id: string]
+  /** Turn a schedule that wakes the conversation off, or with `false` on, from the Schedules menu. */
+  pauseSchedule: [id: string, paused: boolean]
+  /** Delete a schedule that wakes the conversation, from the Schedules menu. */
+  deleteSchedule: [id: string]
   /**
    * The dock windows' share settled: a drag ended, a key or a double-click
    * applied.
@@ -911,11 +927,6 @@ watch(
         </Tooltip>
       </div>
     </header>
-    <!--
-      A bar about where the conversation belongs, under the header: an
-      automation's run's.
-    -->
-    <slot name="bar" />
     <div class="relative min-h-0 flex-1 overflow-hidden">
       <SessionSurface
         ref="surface"
@@ -1033,10 +1044,12 @@ watch(
                 :active-id="activeTerminalId"
                 @open="toggleTerminals('service')"
               />
-              <AutomationsChip
-                v-if="automations?.length"
-                :automations="automations"
-                @open="(id) => emit('openAutomation', id)"
+              <SchedulesChip
+                v-model:open="schedulesOpen"
+                :schedules="schedules ?? []"
+                :archived="conversation.archived"
+                @pause="(id, paused) => emit('pauseSchedule', id, paused)"
+                @delete="(id) => emit('deleteSchedule', id)"
               />
             </template>
             <!--

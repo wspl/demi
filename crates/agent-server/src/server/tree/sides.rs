@@ -139,7 +139,7 @@ fn first_message(id: TurnId, of: &SideOf) -> QueuedMessage {
         comments: Vec::new(),
         id,
         content,
-        automation: None,
+        schedule: None,
     }
 }
 

@@ -88,7 +88,7 @@ impl Shard {
             revision: facts.revision,
             permission_requests: record.permission_requests,
             unread_permission_requests: record.unread_permission_requests,
-            automation: record.filed,
+            scheduled: record.scheduled,
             panel,
         })
     }
@@ -143,6 +143,7 @@ impl Shard {
             .map(|kept| kept.cost)
             .unwrap_or_default();
         let first_call_at = services.control.conversation_first_call(record.id.clone()).await?;
+        let schedules = self.conversation_schedules(&record.id).await?;
         Ok(ConversationMetadata {
             model: record.model.as_ref().map(settings).transpose()?,
             workflow: record.workflow,
@@ -160,6 +161,7 @@ impl Shard {
             last_attachment: facts.last_attachment,
             plugin_revisions: self.plugins().plugin_revisions(&record.id),
             permissions,
+            schedules,
             id: record.id,
         })
     }

@@ -529,7 +529,7 @@ export function closingFormat(
 /**
  * What typing `typed` after `tail` formats: every construct it closes, as
  * typing it a character at a time would, since a run of text can arrive in
- * one input, as dictation, a text replacement or an automation types it.
+ * one input, as dictation, a text replacement or a schedule types it.
  * The composer replaces the tail and the typed text, `length` characters,
  * with `nodes`; null when nothing closes. With nothing typed, the tail alone
  * is read, as after an input method's text lands.

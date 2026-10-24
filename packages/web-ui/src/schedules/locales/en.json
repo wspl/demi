@@ -1,0 +1,60 @@
+{
+  "chip": "{count} Scheduled",
+  "delete": "Delete",
+  "notYet": "Not woken yet",
+  "trigger": {
+    "once": "Once · {when}",
+    "change": "When output changes · {interval}",
+    "url": "When a URL is called",
+    "interval": {
+      "minutes": "{count} min",
+      "hours": "{count} hour | {count} hours",
+      "days": "{count} day | {count} days"
+    }
+  },
+  "wake": {
+    "failed": "Last wake failed",
+    "skipped": "Last wake skipped"
+  },
+  "words": {
+    "interval": {
+      "minutes": "Every minute | Every {count} min",
+      "hours": "Every hour | Every {count} hours",
+      "days": "Every day | Every {count} days"
+    },
+    "daily": "Every day {time}",
+    "weekdays": "Weekdays {time}",
+    "weekly": "Every {day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "Every day | Every {count} days",
+      "weeks": "Every week | Every {count} weeks",
+      "months": "Every month | Every {count} months",
+      "years": "Every year | Every {count} years"
+    },
+    "tasks": "{count} task | {count} tasks",
+    "date": "Day {date}",
+    "lastDay": "Last day",
+    "week": {
+      "first": "First {weekday}",
+      "second": "Second {weekday}",
+      "third": "Third {weekday}",
+      "fourth": "Fourth {weekday}",
+      "last": "Last {weekday}"
+    },
+    "workingDay": {
+      "first": "First working day",
+      "last": "Last working day"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{month} {date}",
+    "dayOfMonth": "{day} of {month}"
+  },
+  "note": {
+    "offline": "{device} was offline",
+    "limit": "The limit of {limit} runs a day was reached, {calls} call since | The limit of {limit} runs a day was reached, {calls} calls since",
+    "timedOut": "The command ran over 60 seconds",
+    "commandFailed": "The command failed: {message}"
+  },
+  "mark": "Schedules wake this conversation"
+}

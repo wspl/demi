@@ -42,8 +42,7 @@ const state = computed(() =>
   ),
 )
 // The menu marks the model the chip shows. Where nothing is chosen the chip
-// shows the first usable model, which the menu would not otherwise mark: the
-// automation's menu, with no such fall-through, leaves its row unmarked.
+// shows the first usable model, which the menu would not otherwise mark.
 const menuSettings = computed(() => {
   const shown = selected.value
   if (!shown || (props.settings?.providerId && props.settings.modelId))

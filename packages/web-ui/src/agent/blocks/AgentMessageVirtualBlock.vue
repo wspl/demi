@@ -40,7 +40,7 @@ import { provideMessageFiles, useMessageFiles } from '../../markdown/message-fil
 
 defineOptions({ inheritAttrs: false })
 
-/** Who sent a message the user did not write, such as an automation's run. */
+/** Who sent a message the user did not write, such as a schedule's run. */
 const originOf = useMessageOrigin()
 const props = defineProps<{
   block: MessageListBlock
@@ -170,7 +170,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :content="block.content"
       :comments="block.comments"
-      :origin="originOf(block.automation)"
+      :origin="originOf(block.schedule)"
       :brief="block.comments?.length ? null : childBrief(transcript?.node ?? null, block.content)"
       :editable="editable"
       :versions="versions"
@@ -189,7 +189,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :content="block.message.content"
       :comments="block.message.comments"
-      :origin="originOf(block.message.automation)"
+      :origin="originOf(block.message.schedule)"
       :editable="false"
     />
     <UserBlock
@@ -213,7 +213,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :content="block.content"
       :comments="block.comments"
-      :origin="originOf(block.automation)"
+      :origin="originOf(block.schedule)"
       :pending="waitingAs(block)"
       @recall="emit('recallQueued', block.queueId)"
       @send-now="emit('sendQueued', block.queueId)"

@@ -1,0 +1,60 @@
+{
+  "chip": "일정 {count}개 | 일정 {count}개",
+  "delete": "삭제",
+  "notYet": "아직 깨운 적 없음",
+  "trigger": {
+    "once": "한 번 · {when}",
+    "change": "출력이 바뀔 때 · {interval}",
+    "url": "URL이 호출될 때",
+    "interval": {
+      "minutes": "{count}분",
+      "hours": "{count}시간 | {count}시간",
+      "days": "{count}일 | {count}일"
+    }
+  },
+  "wake": {
+    "failed": "마지막 실행 실패",
+    "skipped": "마지막 실행 건너뜀"
+  },
+  "words": {
+    "interval": {
+      "minutes": "매분 | {count}분마다",
+      "hours": "매시간 | {count}시간마다",
+      "days": "매일 | {count}일마다"
+    },
+    "daily": "매일 {time}",
+    "weekdays": "평일 {time}",
+    "weekly": "매주 {day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "매일 | {count}일마다",
+      "weeks": "매주 | {count}주마다",
+      "months": "매월 | {count}개월마다",
+      "years": "매년 | {count}년마다"
+    },
+    "tasks": "작업 {count}개",
+    "date": "{date}일",
+    "lastDay": "마지막 날",
+    "week": {
+      "first": "첫째 {weekday}",
+      "second": "둘째 {weekday}",
+      "third": "셋째 {weekday}",
+      "fourth": "넷째 {weekday}",
+      "last": "마지막 {weekday}"
+    },
+    "workingDay": {
+      "first": "첫 영업일",
+      "last": "마지막 영업일"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{month} {date}일",
+    "dayOfMonth": "{month} {day}"
+  },
+  "note": {
+    "offline": "{device}이(가) 오프라인이었습니다",
+    "limit": "하루 {limit}회 한도에 도달했습니다. 이후 호출 {calls}회",
+    "timedOut": "명령이 60초를 넘겼습니다",
+    "commandFailed": "명령 실패: {message}"
+  },
+  "mark": "일정이 이 대화를 깨웁니다"
+}

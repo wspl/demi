@@ -23,6 +23,8 @@
     "detachDevice": "無法取消附加裝置",
     "changeModel": "無法變更模型",
     "changeWorkflow": "無法變更工作流程",
+    "pauseSchedule": "無法更改排程",
+    "deleteSchedule": "無法刪除排程",
     "clearDraft": "無法清除草稿",
     "recallMessage": "無法收回訊息",
     "connectionLost": "連線已中斷",

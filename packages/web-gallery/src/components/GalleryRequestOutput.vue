@@ -5,12 +5,13 @@ import type { TurnSpeed } from '@demicodes/protocol'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
-import AutomationsChip from '@demicodes/web-ui/automations/AutomationsChip.vue'
+import SchedulesChip from '@demicodes/web-ui/schedules/SchedulesChip.vue'
 import { useGalleryTerminalChips } from '../terminal-chips'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { gallerySubagents } from '../fixtures/subagents'
 import { previewService, runningRunCommand } from '../fixtures/terminals'
 import { productWould } from '../product-would'
+import { gallerySchedules, switched } from '../fixtures/schedules'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
@@ -80,7 +81,23 @@ const specimens = reactive<Specimen[]>([
 const agents = reactive(gallerySubagents())
 const terminals = [runningRunCommand(), previewService()]
 const terminalChips = useGalleryTerminalChips(() => terminals)
-const automations = [{ id: 'au-1', name: 'Weekly dependency check', trigger: 'Mondays 09:00', paused: false }]
+const schedules = reactive(gallerySchedules().slice(0, 1))
+
+/** The schedule's switch, as the product turns it off and on. */
+function pauseSchedule(id: string, paused: boolean): void {
+  const at = schedules.findIndex((each) => each.id === id)
+  if (at >= 0) {
+    schedules.splice(at, 1, switched(schedules[at]!, paused))
+  }
+}
+
+/** The schedule's Delete. */
+function deleteSchedule(id: string): void {
+  const at = schedules.findIndex((each) => each.id === id)
+  if (at >= 0) {
+    schedules.splice(at, 1)
+  }
+}
 
 /** What the server sends twice a second of each streaming request. */
 const frames = setInterval(() => {
@@ -188,7 +205,11 @@ const WIDTHS = ['22rem', '27.5rem', '30rem', '17rem']
               <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
               <TerminalChip :terminals="terminals" kind="command" :active-id="terminalChips.activeId.value" @open="terminalChips.press('command')" />
               <TerminalChip :terminals="terminals" kind="service" :active-id="terminalChips.activeId.value" @open="terminalChips.press('service')" />
-              <AutomationsChip :automations="automations" @open="productWould('Open the Automation')" />
+              <SchedulesChip
+                :schedules="schedules"
+                @pause="pauseSchedule"
+                @delete="deleteSchedule"
+              />
             </template>
             <GalleryComposer
               @send="send(specimen)"

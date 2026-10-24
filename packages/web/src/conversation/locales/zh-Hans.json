@@ -23,6 +23,8 @@
     "detachDevice": "无法取消关联设备",
     "changeModel": "无法更改模型",
     "changeWorkflow": "无法更改工作流",
+    "pauseSchedule": "无法更改定时任务",
+    "deleteSchedule": "无法删除定时任务",
     "clearDraft": "无法清除草稿",
     "recallMessage": "无法撤回消息",
     "connectionLost": "连接已断开",

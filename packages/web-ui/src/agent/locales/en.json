@@ -98,7 +98,7 @@
       "recall": "Recall",
       "recalled": "Message Recalled",
       "notDelivered": "This message was not delivered.",
-      "fromAutomation": "Automation"
+      "fromSchedule": "Schedule"
     },
     "assistant": {
       "fork": "Fork",

@@ -103,7 +103,7 @@
 //! Its own behavior is `impl Shard` blocks, one per module. The crate serves no
 //! HTTP.
 
-pub mod automations;
+pub mod schedules;
 pub mod conversation;
 pub mod lifecycle;
 pub mod provider_settings;

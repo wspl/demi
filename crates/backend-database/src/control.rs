@@ -22,7 +22,7 @@ use super::accounts::{
     Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash, TokenHash,
 };
 use super::columns::{decode, instant, json, to_json};
-use super::providers::ResealConfigs;
+use super::providers::ResealSealed;
 use super::usage::UsageWritten;
 use super::{StorageError, schema, sqlite};
 
@@ -52,7 +52,7 @@ impl ControlService {
     pub async fn open(
         path: &Path,
         clock: Arc<dyn Clock>,
-        seals: Arc<dyn ResealConfigs>,
+        seals: Arc<dyn ResealSealed>,
     ) -> Result<Self, StorageError> {
         let db = tokio_rusqlite::Connection::open(path).await?;
         let control = Self {

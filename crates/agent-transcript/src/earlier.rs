@@ -8,14 +8,14 @@
 use std::collections::HashSet;
 
 use demi_agent_store::{EarlierRows, SessionStore, StoreError};
-use demi_shared_types::{AutomationMark, Block, BlockId, ErrorBlock, Timestamp, TurnId};
+use demi_shared_types::{ScheduleMark, Block, BlockId, ErrorBlock, Timestamp, TurnId};
 
 use super::cut::{turn_of, turn_record};
 
-/// The latest message the user or an automation wrote, as
-/// [`Earlier::user_input`] tells it: the automation's run and when it came
+/// The latest message the user or a schedule wrote, as
+/// [`Earlier::user_input`] tells it: the schedule's run and when it came
 /// for a run's message, none for the user's own.
-pub type UserInput = Option<(AutomationMark, Timestamp)>;
+pub type UserInput = Option<(ScheduleMark, Timestamp)>;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Earlier {
@@ -90,7 +90,7 @@ impl Earlier {
         self.record.as_ref().map(Option::as_ref)
     }
 
-    /// The latest message the user or an automation wrote, when there is
+    /// The latest message the user or a schedule wrote, when there is
     /// one.
     pub fn user_input(&self) -> Option<&UserInput> {
         self.user_input.as_ref()
@@ -108,7 +108,7 @@ fn failure(record: &Block) -> Option<ErrorBlock> {
 /// What a `user` block or a steer tells of who wrote it.
 pub fn user_input(block: &Block) -> Option<UserInput> {
     match block {
-        Block::User(user) => Some(user.automation.clone().map(|mark| (mark, user.created_at))),
+        Block::User(user) => Some(user.schedule.clone().map(|mark| (mark, user.created_at))),
         Block::Steer(_) => Some(None),
         _ => None,
     }

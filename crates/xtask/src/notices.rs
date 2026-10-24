@@ -90,8 +90,8 @@ struct Library {
 ///   (`crates/plugin-mobile/page/src/index.ts`), whose license asks for its
 ///   attribution.
 /// - The public holidays exported from the `holidays` Python package, which
-///   an automation's working days skip
-///   (`crates/backend-user-shard/src/automations/holidays.rs`).
+///   a schedule's working days skip
+///   (`crates/backend-user-shard/src/schedules/holidays.rs`).
 const LIBRARIES: [Library; 7] = [
     Library {
         name: "idb",
@@ -133,7 +133,7 @@ const LIBRARIES: [Library; 7] = [
         name: "holidays",
         version: "0.107",
         license: "MIT",
-        notice: "crates/backend-user-shard/src/automations/LICENSE-holidays",
+        notice: "crates/backend-user-shard/src/schedules/LICENSE-holidays",
     },
 ];
 

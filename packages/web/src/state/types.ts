@@ -22,7 +22,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, FiledRun, KeptWorkflowList, RecentCost, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, KeptWorkflowList, RecentCost, WorkflowChoice } from '../api/generated/web-api'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
@@ -43,11 +43,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   revision: number
   readRevision: number
   archived: boolean
-  /**
-   * The automation's run it is filed under, out of the sidebar until the
-   * user answers it or moves it; null otherwise.
-   */
-  filed: FiledRun | null
+  /** Whether it has schedules, which the sidebar marks. */
+  scheduled: boolean
   /**
    * What a page shows only of an open conversation, as its socket or a read
    * of it brings it and the page's own changes, such as a model chosen, show

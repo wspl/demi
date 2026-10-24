@@ -2,7 +2,7 @@
 import { t } from './locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 import { computed, nextTick, ref, useId, watch } from 'vue'
-import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen, Zap } from '@lucide/vue'
+import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { closeContextMenu, shownContextMenu, vContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -59,14 +59,8 @@ const props = defineProps<{
   activeId: string | null
   /** `loading` is a spinner, not a first-run empty list. */
   listStatus?: ListLoad
-  /** The entries after Search, before Automations and Archived, each opening its settings section. */
+  /** The entries after Search, before Archived, each opening its settings section. */
   sectionEntries?: readonly SidebarEntry[]
-  /**
-   * The Automations entry above Archived, which ends the list: its count, the runs that notified
-   * and whose conversation was not opened since, and whether its page is the one open; none
-   * without the entry.
-   */
-  automations?: { count: number; open: boolean }
   /** The keys New conversation has in the keyboard settings, which New shows; none when it has none. */
   newShortcut?: string
   /** The keys Search conversations has in the keyboard settings, which Search shows; none when it has none. */
@@ -96,8 +90,6 @@ const emit = defineEmits<{
   delete: [ids: string[]]
   /** Settings, on a section when an entry names one (`archived`, or an entry's own). */
   openSettings: [section?: string]
-  /** Opens the Automations page in the main area. */
-  openAutomations: []
   /** The phone mark at the foot: hand off to a phone by a QR code. */
   handOffToPhone: []
   retryList: []
@@ -580,15 +572,6 @@ function selectProjectConversations(project: SidebarProject): void {
         :icon="entry.icon"
         :label="entry.label"
         @click="emit('openSettings', entry.section)"
-      />
-      <SidebarNavItem
-        v-if="automations"
-        :icon="Zap"
-        :label="t('nav.automations')"
-        :count="automations.count"
-        :count-label="t('nav.unreadRuns', { count: automations.count })"
-        :pressed="automations.open"
-        @click="emit('openAutomations')"
       />
       <SidebarNavItem
         :icon="Archive"
