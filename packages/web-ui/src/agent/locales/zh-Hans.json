@@ -209,7 +209,6 @@
     "tabsOpen": "标签页，已打开 {count} 个",
     "closePanel": "关闭面板",
     "options": "{title}，对话选项",
-    "connecting": "正在连接",
     "hostState": "{name} {state}",
     "renameTitle": "重命名对话",
     "titleLabel": "对话标题",

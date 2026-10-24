@@ -209,7 +209,6 @@
     "tabsOpen": "分頁，已開啟 {count} 個",
     "closePanel": "關閉面板",
     "options": "{title}，對話選項",
-    "connecting": "正在連線",
     "hostState": "{name} {state}",
     "renameTitle": "重新命名對話",
     "titleLabel": "對話標題",

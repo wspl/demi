@@ -4155,6 +4155,7 @@ export const useConversations = defineStore('conversations', () => {
     appendToDraft,
     reveal,
     history,
+    catchingUp,
     activate,
     create,
     fork,

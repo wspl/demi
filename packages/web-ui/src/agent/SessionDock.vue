@@ -6,12 +6,20 @@ import { ChevronDown } from '@lucide/vue'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
 import type { TurnSpeed } from '@demicodes/protocol'
 import IconButton from '../ui/IconButton.vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
+import { useIconPx } from '../ui/icon-metrics'
 import RequestOutputMeter from './RequestOutputMeter.vue'
 import { sessionComposerKey, sessionCoverKey } from './session-cover'
 import { dockCardsKey } from './dock-cards'
+import { DOCK_STEP_PX } from './composer-clearance'
 
 withDefaults(defineProps<{
   showScrollToBottom?: boolean
+  /**
+   * Whether the page is behind the conversation's session, which a spinner
+   * over the dock's top says, where what it waits for will appear.
+   */
+  catchingUp?: boolean
   /**
    * Reads the server's reading of the request the root agent runs, which the
    * row shows at its right end. A getter, not a value: the response's own
@@ -25,6 +33,7 @@ withDefaults(defineProps<{
   turnSpeed?: TurnSpeed | null
 }>(), {
   showScrollToBottom: false,
+  catchingUp: false,
   output: () => null,
   scope: '',
   turnSpeed: null,
@@ -78,7 +87,7 @@ onBeforeUnmount(() => {
   }
 })
 /** The chips row's step over the composer (its `pb-2`). */
-const STEP_PX = 8
+const STEP_PX = DOCK_STEP_PX
 /** The gap between the row's parts (its `gap-1.5`). */
 const GAP_PX = 6
 const scrollBottom = computed(() =>
@@ -86,6 +95,12 @@ const scrollBottom = computed(() =>
     ? `${composerHeight.value + STEP_PX}px`
     : `calc(100% + ${coverHeight.value + STEP_PX}px)`,
 )
+/**
+ * The spinner stands a step above whatever is the dock's top: what waits for
+ * a decision over it, or else its first part.
+ */
+const catchUpBottom = computed(() => `calc(100% + ${coverHeight.value + STEP_PX}px)`)
+const iconPx = useIconPx()
 const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + GAP_PX}px` : '0px'))
 </script>
 
@@ -133,6 +148,26 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
         />
       </Transition>
     </span>
+    <!--
+      Catching up is said over the transcript's end, centred over the column,
+      and takes no room, so nothing in the transcript moves for it.
+    -->
+    <Transition
+      enter-active-class="transition-opacity duration-200 ease-out"
+      leave-active-class="transition-opacity duration-200 ease-out"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
+      <span
+        v-if="catchingUp"
+        class="pointer-events-none absolute left-1/2 z-20 flex -translate-x-1/2 text-fg-subtle"
+        :style="{ bottom: catchUpBottom }"
+        role="status"
+        :aria-label="t('session.loading')"
+      >
+        <IndeterminateSpinner :size="iconPx.in28" />
+      </span>
+    </Transition>
     <!--
       What waits for the user's decision sits over the chips, below the
       transcript, and over the lower part of an open panel.

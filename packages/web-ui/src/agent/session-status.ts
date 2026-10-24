@@ -20,7 +20,7 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  *   agents show. The session is opening, and nothing only the live session
  *   knows shows yet.
  * - `connecting`: the first step, whose session could not be reached yet and is
- *   tried again. The title says it connects.
+ *   tried again. The spinner over the transcript's end says it connects.
  * - `ready`: the second step, the session open and shown; or a conversation
  *   that opens no session, which stops at the first step.
  * - `reconnecting`: an open session whose connection was lost. What it showed
@@ -48,11 +48,20 @@ export function transcriptShown(load: SessionLoad): boolean {
 }
 
 /**
- * How long a socket that is not open waits before the title says it
- * (`docs/decisions/0059-connecting-is-a-spinner-by-the-title.md`): a shorter
- * wait, as at every opening, shows nothing.
+ * How long the page is behind the conversation's session before the spinner
+ * over the transcript's end says it: a shorter wait, as when a conversation
+ * the page keeps connected is shown again, shows nothing.
  */
-export const SOCKET_WAIT_MS = 2000
+export const CATCH_UP_WAIT_MS = 500
+
+/**
+ * Whether the page is behind the session of a conversation whose transcript,
+ * or its Empty pane, shows: its socket is not open, or `catchingUp`, the
+ * root's transcript is read again.
+ */
+export function behindSession(load: SessionLoad, catchingUp: boolean): boolean {
+  return transcriptShown(load) && (socketWaiting(load) || catchingUp)
+}
 
 /**
  * Whether the conversation's socket is not open: an opening that has not
@@ -83,7 +92,7 @@ export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'no
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
  * never reads as an empty conversation, even with cached blocks. Connecting and
- * reconnecting keep the transcript (or an empty list) and say so by the title.
+ * reconnecting keep the transcript (or an empty list) and say so over its end.
  * A failure with history in memory also keeps the transcript: the dock's
  * notice names the failure and offers Retry, and nothing the reader already had
  * disappears. /

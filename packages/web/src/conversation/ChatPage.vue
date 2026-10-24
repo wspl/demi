@@ -348,6 +348,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     v-model:dock-window-share="dockWindowShare"
     @dock-window-resize-end="resources.dockWindowShare = $event"
     :conversation="conversation"
+    :catching-up="store.catchingUp(conversation)"
     :has-provider="hasProvider"
     :credential-kinds="credentialKinds"
     :is-exposed="exposedPorts.isExposed"

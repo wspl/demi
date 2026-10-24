@@ -5,8 +5,8 @@ import type { SessionLoad } from './session-status'
  * provider's answer. It runs from the send of a message that starts a turn,
  * its delivery included. A recovery the server has not acknowledged yet and
  * the agent's own retries are the same wait and keep the same word. A lost or
- * not yet made socket is no wait of the transcript's: the title tells it
- * (`docs/decisions/0059-connecting-is-a-spinner-by-the-title.md`).
+ * not yet made socket is no wait of the transcript's: the spinner over the
+ * transcript's end tells it, beside the dock (`SessionDock.vue`).
  */
 export type ActivityKind = 'requesting'
 

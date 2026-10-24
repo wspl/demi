@@ -73,9 +73,8 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import SidebarToggle from '../sidebar/SidebarToggle.vue'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
-import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import { provideLabelRoom } from '../ui/label-room'
-import { continueWithOffer, endsWithErrorRecord, notExposedOffer, signedOutOffer, sessionFailureNotice, sessionShown, SOCKET_WAIT_MS, socketWaiting, transcriptShown, turnRecovery } from './session-status'
+import { continueWithOffer, endsWithErrorRecord, notExposedOffer, signedOutOffer, sessionFailureNotice, sessionShown, behindSession, CATCH_UP_WAIT_MS, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -88,6 +87,12 @@ import type { CredentialAnswer, PermissionDecision, RequestView } from '../permi
 const props = withDefaults(defineProps<{
   conversation: ChatSessionState
   hasProvider: boolean
+  /**
+   * Whether the page does not hold what the conversation's session says now
+   * though it shows the conversation: its opening goes on, or its socket
+   * reads the root's transcript again.
+   */
+  catchingUp?: boolean
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
@@ -500,11 +505,16 @@ function titleSheetEntries(listed: { pinned: boolean }) {
 }
 
 /**
- * The conversation's socket has not been open for `SOCKET_WAIT_MS`: the title
- * says so with a spinner where its Rename button, or on a phone its chevron,
- * stands (`docs/decisions/0059-connecting-is-a-spinner-by-the-title.md`).
+ * The page has been behind the conversation's session for `CATCH_UP_WAIT_MS`:
+ * its socket is not open, or the root's transcript is read again. A spinner
+ * over the transcript's end, where what it waits for will appear, says so,
+ * unless a dock window covers that end.
  */
-const connecting = useHeldFor(() => socketWaiting(props.conversation.load), SOCKET_WAIT_MS)
+const behind = useHeldFor(
+  () => !props.conversation.archived && behindSession(props.conversation.load, props.catchingUp),
+  CATCH_UP_WAIT_MS,
+)
+const catchingUpShown = computed(() => behind.value && !agentsOpen.value && activeTerminalId.value === null && fullQuestion.value === null)
 const iconPx = useIconPx()
 
 /** The Rename button, or a double-click on the title, names it in place. */
@@ -781,15 +791,7 @@ watch(
           :label="t('session.hostState', { name: hostNotReady.name, state: DEVICE_STATE_LABEL[hostNotReady.state].toLowerCase() })"
         />
         <h1 class="min-w-0 truncate text-[15px] font-medium">{{ shownTitle }}</h1>
-        <span
-          v-if="connecting"
-          class="flex shrink-0 text-fg-subtle"
-          role="status"
-          :aria-label="t('session.connecting')"
-        >
-          <IndeterminateSpinner :size="ICON_PX.in20" />
-        </span>
-        <ChevronDown v-else :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
+        <ChevronDown :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
       </button>
       <IconButton
         v-if="asideOpen !== undefined"
@@ -885,16 +887,7 @@ watch(
           </h1>
           <!-- A cut title shows whole in its tip, as a sidebar row's does. -->
           <Tooltip :trigger="title" :content="shownTitle" :show-if="isTextCut" placement="bottom-start" />
-          <!-- Not a button while it spins; the box is the button's, so the title stays. -->
-          <span
-            v-if="connecting"
-            class="flex size-hit shrink-0 items-center justify-center text-fg-muted"
-            role="status"
-            :aria-label="t('session.connecting')"
-          >
-            <IndeterminateSpinner :size="iconPx.in28" />
-          </span>
-          <Tooltip v-else :content="shared('common.rename')" class="shrink-0">
+<Tooltip :content="shared('common.rename')" class="shrink-0">
             <IconButton
               :icon="TextCursorInput"
               variant="ghost"
@@ -1014,6 +1007,7 @@ watch(
         </div>
         <template #dock>
           <SessionDock
+            :catching-up="catchingUpShown"
             :show-scroll-to-bottom="!shownLatest || (!!list && !list.isAtBottom)"
             :output="() => (transcriptShown(conversation.load) ? conversation.requestOutputs[conversation.id] ?? null : null)"
             :scope="conversation.id"

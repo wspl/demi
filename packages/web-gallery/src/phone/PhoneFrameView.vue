@@ -215,8 +215,8 @@ onMounted(async () => {
       press('[aria-label$="conversation options"]')
       break
     case 'connecting':
-      // The socket is lost for longer than the title waits to say so, then
-      // comes back, and the chevron returns.
+      // The socket is lost for six seconds: the spinner over the transcript's
+      // end turns until it comes back.
       session.load = 'reconnecting'
       setTimeout(() => {
         session.load = 'ready'

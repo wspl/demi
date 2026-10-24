@@ -24,7 +24,7 @@ import { printLive } from './live-command'
  * - `undelivered`: a sent message whose delivery fails, until Retry sends it
  *   again.
  * - `offline`: a message sent while the socket is lost, under Requesting with
- *   the title's spinner, which goes once the socket is back.
+ *   the spinner over the transcript's end, which goes once the socket is back.
  * - `first`: a new conversation's first message, sent with its creation while
  *   its socket opens, under Requesting, which goes on through the opening
  *   until the answer begins.
@@ -1455,7 +1455,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
 
     if (kind === 'connect') {
-      // The socket dropped while a turn was running: the title's spinner says so until it is back.
+      // The socket dropped while a turn was running: the spinner over the transcript's end says so until it is back.
       state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }])]
       state.phase = 'running'
       state.load = 'reconnecting'
@@ -1508,8 +1508,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.blocks = []
     if (kind === 'offline') {
       // The socket is lost: the row says Requesting under the message and the
-      // title shows its spinner; the message goes with its id once the socket
-      // is back.
+      // spinner over the transcript's end turns; the message goes with its id
+      // once the socket is back.
       state.load = 'reconnecting'
       holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
       at(run, OFFLINE_MS, () => {

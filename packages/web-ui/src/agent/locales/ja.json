@@ -209,7 +209,6 @@
     "tabsOpen": "タブ、{count} 個開いています",
     "closePanel": "パネルを閉じる",
     "options": "{title}、チャットのオプション",
-    "connecting": "接続中",
     "hostState": "{name} は{state}",
     "renameTitle": "チャットの名前を変更",
     "titleLabel": "チャットのタイトル",
