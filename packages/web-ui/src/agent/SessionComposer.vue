@@ -368,7 +368,8 @@ const carrying = computed(() => {
 const slots = useSlots()
 /**
  * What the page sends with the message besides its draft, such as a batch of
- * comments, which its `carried` slot shows by the paperclip.
+ * comments, which its `carried` slot shows by the paperclip. During an edit,
+ * the slot shows what the edit carries, which the edit sends itself.
  *
  * Send sends it with the draft, or alone when the draft is empty. It is read at
  * each render and each send, as a slot is.
@@ -746,7 +747,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             {{ savedEdit ? t('composer.editingSaved') : t('composer.editingMessage') }}
           </span>
         </template>
-        <template v-if="!shownEdit && carries()" #carried>
+        <template v-if="carries()" #carried>
           <slot name="carried" />
         </template>
         <template #editor="{ line }">

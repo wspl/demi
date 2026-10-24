@@ -8,7 +8,7 @@
 use demi_agent_session::EditContent;
 use demi_agent_store::media::HeldMedia;
 use demi_conversation_socket_protocol::{AgentCode, ClientContent, Refusal};
-use demi_shared_types::UserContentBlock;
+use demi_shared_types::{UserContentBlock, is_blank};
 use futures_util::future::LocalBoxFuture;
 
 /// A file a message's content refers to, which only the backend can
@@ -141,6 +141,9 @@ async fn resolve(
     let mut parts = Vec::new();
     for part in content {
         match part {
+            // The blank line an editor opens a message without text with is
+            // no text; the request keeps it, so its digest stays as sent.
+            ClientContent::Text { text } if is_blank(&text) => {}
             ClientContent::Text { text } => {
                 parts.push(EditContent::Content(UserContentBlock::Text { text }));
             }

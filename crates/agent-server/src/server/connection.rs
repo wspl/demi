@@ -811,6 +811,7 @@ impl<H: HostResolver> Connection<H> {
                     target: request.target_block_id,
                     version: request.version,
                     content: Some(content),
+                    comments: request.comments,
                     digest,
                 };
                 session.hold_media(media);
@@ -840,6 +841,7 @@ async fn regenerate(session: &AgentSession, request: RegenerateRequest) -> Resul
         target: request.target_block_id,
         version: request.version,
         content: None,
+        comments: None,
         digest,
     };
     let receipt = session

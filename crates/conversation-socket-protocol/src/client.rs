@@ -213,7 +213,7 @@ impl ClientFrame {
 
     /// The rules across a frame's content that its type does not hold: what
     /// the edited message already holds (`media`, `attachment`) appears only
-    /// in `edit_and_send`, and an edit keeps text or a file.
+    /// in `edit_and_send`, and an edit keeps text, a file or a comment.
     pub(crate) fn check_content(&self) -> Result<(), garde::Report> {
         let mut report = garde::Report::new();
         match self {
@@ -231,11 +231,11 @@ impl ClientFrame {
                 let substance = request.content.iter().any(|part| match part {
                     ClientContent::Text { text } => !is_blank(text),
                     _ => true,
-                });
+                }) || request.comments.as_ref().is_some_and(|comments| !comments.is_empty());
                 if !substance {
                     report.append(
                         garde::Path::new("request").join("content"),
-                        garde::Error::new("a message must contain text or a file"),
+                        garde::Error::new("a message must contain text, a file or a comment"),
                     );
                 }
             }
@@ -273,9 +273,14 @@ pub struct EditRequest {
     /// The transcript version the editor showed; a stale one is refused.
     #[garde(dive)]
     pub version: Version,
-    /// The complete replacement content.
-    #[garde(length(min = 1), dive)]
+    /// The complete replacement content; empty only beside a comment.
+    #[garde(dive)]
     pub content: Vec<ClientContent>,
+    /// The new version's comments, which replace the edited message's; none
+    /// keeps the edited message's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub comments: Option<Vec<MessageComment>>,
 }
 
 /// Regenerate of the answer to a user message: the message stays as it

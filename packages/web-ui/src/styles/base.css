@@ -1261,6 +1261,15 @@ html[data-theme="light"] .file-pill {
     "attach carried ruler actions";
 }
 
+/* An edit that carries comments: its caption over the text, its pill by the
+   attach control. */
+.composer-shell-expanded.composer-shell-caption.composer-shell-carried {
+  grid-template-areas:
+    "caption caption caption caption"
+    "editor editor editor editor"
+    "attach carried ruler actions";
+}
+
 /* The caption stands right over the message's first line, as a line of the
    same text would. */
 .composer-shell-expanded.composer-shell-caption .composer-editor {
