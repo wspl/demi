@@ -84,10 +84,10 @@ impl Instructions {
     }
 }
 
-/// The instructions of the workflow `id` the conversation chose, as the
-/// shard holds its workflows; none when it has none or cannot be used.
-async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str) -> Option<WorkflowText> {
-    let found = match shard.kept_workflows(conversation).await {
+/// The instructions of the workflow `id` the conversation chose, the
+/// worktree's with `worktree`, as the shard holds its workflows; none when it has none or cannot be used.
+async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str, worktree: bool) -> Option<WorkflowText> {
+    let found = match shard.kept_workflows(conversation, worktree).await {
         Ok(KeptWorkflows::Found(found)) => found,
         Ok(KeptWorkflows::None) => return None,
         Err(error) => {
@@ -139,7 +139,7 @@ impl ContextSource for Instructions {
             // searches share one hold.
             let chosen = if node.node == node.root {
                 match shard.workflow_choice(&conversation).await? {
-                    WorkflowChoice::Workflow { id } => Some(id),
+                    WorkflowChoice::Workflow { id, worktree } => Some((id, worktree)),
                     WorkflowChoice::Default | WorkflowChoice::None => None,
                 }
             } else {
@@ -147,7 +147,7 @@ impl ContextSource for Instructions {
             };
             let workflow = async {
                 match &chosen {
-                    Some(id) => workflow_text(&shard, &conversation, id).await,
+                    Some((id, worktree)) => workflow_text(&shard, &conversation, id, *worktree).await,
                     None => None,
                 }
             };

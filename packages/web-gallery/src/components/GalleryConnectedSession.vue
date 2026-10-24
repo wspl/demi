@@ -26,7 +26,14 @@ import { useAgentContext } from '../agent-context'
 /** What a child's context card in the Agents window shows and does beside its usage. */
 const agentContext = useAgentContext()
 
-const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
+const props = withDefaults(
+  defineProps<{
+    showActivity?: boolean
+    /** Starts in a linked worktree of shop, as an agent's move there leaves it. */
+    inWorktree?: boolean
+  }>(),
+  { showActivity: true, inWorktree: false },
+)
 // The session runs on the gallery's scripted runtime: a message sent here gets a turn, as in the product.
 const flow = useTurnFlow({
   id: 'shared-product-session',
@@ -49,10 +56,18 @@ const devices: HostDeviceOption[] = hosts.map((host) => ({
   state: host.state,
   mark: host.mark ?? null,
 }))
-const folder = ref({
-  deviceId: hosts[0]!.id,
-  path: hosts[0]!.source.home,
-})
+/**
+ * The linked worktrees of the account's projects, by git's name, as their
+ * Hosts report them: a move to one stays in its project.
+ */
+const worktrees = [
+  { deviceId: hosts[0]!.id, project: WORKSPACE_ROOT, name: '2', path: '/Users/alex/Projects/shop-worktrees/2' },
+]
+const folder = ref<{ deviceId: string; path: string; worktree: { name: string; path: string } | null }>(
+  props.inWorktree
+    ? { deviceId: worktrees[0]!.deviceId, path: worktrees[0]!.project, worktree: worktrees[0]! }
+    : { deviceId: hosts[0]!.id, path: hosts[0]!.source.home, worktree: null },
+)
 /**
  * The account's projects, by host and directory: each host's Recent places
  * to begin with, and every directory but a home the session moves to, which
@@ -77,7 +92,12 @@ const selectedProject = computed(() => hostProjects.value.find((entry) => entry.
 
 /** Puts the session in `path` on `deviceId`, which makes the directory a project unless it is the host's home. */
 function settle(deviceId: string, path: string): void {
-  folder.value = { deviceId, path }
+  const worktree = worktrees.find((entry) => entry.deviceId === deviceId && entry.path === path)
+  if (worktree) {
+    folder.value = { deviceId, path: worktree.project, worktree }
+    return
+  }
+  folder.value = { deviceId, path, worktree: null }
   const home = hosts.find((candidate) => candidate.id === deviceId)?.source.home
   const known = projectDirectories.value.some((project) => project.deviceId === deviceId && project.path === path)
   if (path !== home && !known) {
@@ -189,6 +209,7 @@ function detach(id: string): void {
             :projects="hostProjects"
             :selected-project-id="selectedProject"
             :hosts="hosts"
+            :worktree="folder.worktree"
             :select-folder="selectFolder"
             @select-project="selectProject"
           >

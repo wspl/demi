@@ -15,6 +15,7 @@
 
 use std::rc::{Rc, Weak};
 
+use demi_backend_database::Selection;
 use demi_backend_database::conversation_index::ExecutionTarget;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::conversation_of;
@@ -143,10 +144,29 @@ pub(crate) struct KeptAt {
     device: Option<DeviceId>,
     /// The directory it works in there.
     directory: String,
+    /// Its project's directory, while it works in a linked worktree of the
+    /// project's repository in place of it.
+    project_directory: Option<String>,
     /// Whether it is in a project.
     in_project: bool,
     /// Whether its tree is loaded.
     loaded: bool,
+}
+
+impl KeptAt {
+    /// The directory whose workflows the conversation reads: its project's,
+    /// or with `worktree` the worktree's it works in.
+    fn workflows_directory(&self, worktree: bool) -> &str {
+        match &self.project_directory {
+            Some(project) if !worktree => project,
+            _ => &self.directory,
+        }
+    }
+
+    /// Whether it works in a linked worktree of its project.
+    pub(crate) fn in_worktree(&self) -> bool {
+        self.project_directory.is_some()
+    }
 }
 
 impl Shard {
@@ -156,9 +176,14 @@ impl Shard {
         let host = self.host_shard();
         let record = host.owned_conversation(id).await?;
         let target = host.resolve_target(&record).await?;
+        let project_directory = match &record.target {
+            Selection::Workspace { path, worktree: Some(_), .. } => Some(path.clone()),
+            _ => None,
+        };
         Ok(KeptAt {
             device: target.device().cloned(),
             directory: target.path().to_owned(),
+            project_directory,
             in_project: matches!(target, ExecutionTarget::Workspace { .. }),
             loaded: self.agent().tree(&demi_backend_host_access::root_of(id)).is_some(),
         })
@@ -186,18 +211,26 @@ impl Shard {
             .unwrap_or_else(|| Rc::from([]))
     }
 
-    /// The workflows of the conversation `id`'s directory, or that no search
-    /// of it is held, such as on a Host that never ran; the refusal when the
-    /// last search was refused or failed and nothing is held.
-    pub(crate) async fn kept_workflows(&self, id: &ConversationId) -> Result<KeptWorkflows, Rc<HostAccessError>> {
+    /// Whether the conversation `id` works in a linked worktree of its
+    /// project's repository; not when it cannot be read.
+    pub(crate) async fn works_in_worktree(&self, id: &ConversationId) -> bool {
+        self.kept_at(id).await.is_ok_and(|at| at.in_worktree())
+    }
+
+    /// The workflows of the conversation `id`'s project's directory, or with
+    /// `worktree` of the linked worktree it works in, or that no search of it
+    /// is held, such as on a Host that never ran; the refusal when the last
+    /// search was refused or failed and nothing is held. A conversation in no
+    /// worktree has its own directory's either way.
+    pub(crate) async fn kept_workflows(&self, id: &ConversationId, worktree: bool) -> Result<KeptWorkflows, Rc<HostAccessError>> {
         let at = self.kept_at(id).await.map_err(Rc::new)?;
-        let Some(device) = at.device else {
+        let Some(device) = at.device.clone() else {
             return Ok(KeptWorkflows::None);
         };
         let found = self
             .project_files()
             .workflows
-            .get(id, &device, at.directory.clone(), at.loaded)
+            .get(id, &device, at.workflows_directory(worktree).to_owned(), at.loaded)
             .await?;
         Ok(match found {
             Some(found) => KeptWorkflows::Found(found),
@@ -251,6 +284,7 @@ impl Shard {
                     status,
                     message: error.to_string(),
                 },
+                worktree: None,
             }
         };
         let at = match self.kept_at(id).await {
@@ -260,25 +294,67 @@ impl Shard {
         let unknown = ConversationWorkflowList {
             revision: 0,
             list: KeptWorkflowList::Unknown,
+            worktree: None,
         };
-        let Some(device) = at.device else {
+        let Some(device) = at.device.clone() else {
             return unknown;
         };
-        let kept = &self.project_files().workflows;
-        if at.loaded {
-            kept.keep(id, &device, at.directory.clone());
+        let project = self.stored_workflows(id, &device, at.workflows_directory(false), at.loaded).await;
+        if !at.in_worktree() {
+            return project;
         }
-        match self.services().control.host_workflows(device.clone(), at.directory.clone()).await {
+        // The worktree's, beside the project's while the two differ by what
+        // their files say, which the menu's list does not hold whole.
+        let worktree = self.stored_workflows(id, &device, at.workflows_directory(true), at.loaded).await;
+        let differs = matches!(
+            (&project.list, &worktree.list),
+            (KeptWorkflowList::Read { .. }, KeptWorkflowList::Read { .. })
+        ) && match futures_util::join!(self.kept_workflows(id, false), self.kept_workflows(id, true)) {
+            (Ok(KeptWorkflows::Found(project)), Ok(KeptWorkflows::Found(own))) => !project.offers_same(&own),
+            _ => false,
+        };
+        ConversationWorkflowList {
+            revision: project.revision + worktree.revision,
+            list: project.list,
+            worktree: differs.then_some(worktree.list),
+        }
+    }
+
+    /// The workflows the backend stored of `directory` on `device` for the
+    /// conversation `id`, kept current while its tree is `loaded`.
+    async fn stored_workflows(&self, id: &ConversationId, device: &DeviceId, directory: &str, loaded: bool) -> ConversationWorkflowList {
+        let refused = |error: &HostAccessError| {
+            let (code, status) = error.code();
+            ConversationWorkflowList {
+                revision: 0,
+                list: KeptWorkflowList::Refused {
+                    code,
+                    status,
+                    message: error.to_string(),
+                },
+                worktree: None,
+            }
+        };
+        let kept = &self.project_files().workflows;
+        if loaded {
+            kept.keep(id, device, directory.to_owned());
+        }
+        match self.services().control.host_workflows(device.clone(), directory.to_owned()).await {
             Ok(Some(stored)) => ConversationWorkflowList {
                 revision: stored.revision,
                 list: KeptWorkflowList::Read {
                     list: stored.list,
                     read_at: stored.read_at,
                 },
+                worktree: None,
             },
-            Ok(None) => match kept.refused(&device, at.directory) {
+            Ok(None) => match kept.refused(device, directory.to_owned()) {
                 Some(error) => refused(&*error),
-                None => unknown,
+                None => ConversationWorkflowList {
+                    revision: 0,
+                    list: KeptWorkflowList::Unknown,
+                    worktree: None,
+                },
             },
             Err(error) => refused(&HostAccessError::from(error)),
         }
@@ -352,3 +428,4 @@ fn subscribe(shard: Weak<Shard>) -> Subscribe {
 fn closing() -> SearchError {
     SearchError::Failed("the backend is shutting down".to_owned())
 }
+

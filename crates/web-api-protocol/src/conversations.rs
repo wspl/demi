@@ -194,6 +194,12 @@ pub struct ConversationSummary {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub read_revision: u64,
     pub target: ConversationTarget,
+    /// The name git gave the linked worktree of its project it works in,
+    /// which the sidebar's row and the header show; null outside one
+    /// (`crates/backend-database/src/selection.rs` § Worktrees).
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub worktree: Option<String>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub status: ConversationStatus,

@@ -93,6 +93,8 @@ export function laptopTree(): MemoryDirectory {
               }, day(2)),
               // The Open File specimen opens here, and Recent names it.
               shop: project({ 'checkout.ts': 2_048, 'cart.ts': 1_536 }, day(1)),
+              // A linked worktree of shop, which git names 2: a conversation moved here stays in shop.
+              'shop-worktrees': dir({ '2': project({ 'checkout.ts': 2_048, 'cart.ts': 1_536 }, day(1)) }, { modifiedAt: day(1) }),
               sketchbook: project({ 'main.ts': 5_555 }, old(12, 30)),
               chromium: project({ 'BUILD.gn': 8_120 }, day(5)),
               clients: dir({

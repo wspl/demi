@@ -3,6 +3,7 @@ import { t } from './locales/text'
 import { computed, getCurrentInstance, ref } from 'vue'
 import { operations, type Operation } from '../ui/operations'
 import { Folder } from '@lucide/vue'
+import WorktreeIcon from '@demicodes/web-ui/ui/WorktreeIcon.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -42,6 +43,11 @@ const props = defineProps<{
     disabled: boolean
   }[]
   hosts: DirectoryBrowserHost[]
+  /**
+   * The linked worktree of the project it works in, by git's name, which a
+   * label after the directory shows; no place to choose, so it opens nothing.
+   */
+  worktree?: { name: string; path: string } | null
   selectFolder: (deviceId: string, path: string) => Promise<boolean>
 }>()
 const emit = defineEmits<{ selectProject: [id: string] }>()
@@ -142,6 +148,15 @@ defineExpose({ browse })
           </Menu>
         </template>
       </Dropdown>
+      <Tooltip v-if="worktree" :content="worktree.path">
+        <span
+          class="flex h-hit min-w-0 cursor-default select-none items-center gap-1 px-1 text-chrome text-fg-muted phone:px-1.5"
+          :aria-label="t('directory.worktree', { name: worktree.name })"
+        >
+          <WorktreeIcon :size="ICON_PX.in28" class="shrink-0" />
+          <span class="max-w-32 truncate leading-5">{{ worktree.name }}</span>
+        </span>
+      </Tooltip>
     </template>
     <!-- Stays mounted, open by state, so it can leave the way it arrived. -->
     <FileBrowserDialog

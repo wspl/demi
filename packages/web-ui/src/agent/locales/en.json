@@ -326,7 +326,8 @@
     "reading": "Reading Workflows…",
     "failed": "Couldn’t Read Workflows",
     "unavailable": "Workflows Unavailable",
-    "gone": "This workflow is no longer in the project. Choose another."
+    "gone": "This workflow is no longer in the project. Choose another.",
+    "worktree": "Worktree {name}"
   },
   "context": {
     "window": "Context window",

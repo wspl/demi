@@ -100,7 +100,13 @@ pub(super) async fn create(
                 .await??
         }
     };
-    state.services.sync.mark(&user.id, Part::Workspaces);
+    // Through the shard, which also tells the Host's runner the new
+    // project's directory, whose worktrees it reports.
+    state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.mark(Part::Workspaces) })
+        .await?;
     Ok((
         StatusCode::CREATED,
         Json(WorkspaceAnswer {

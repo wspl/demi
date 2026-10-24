@@ -349,6 +349,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'archived'
       | 'scheduled'
       | 'target'
+      | 'worktree'
       | 'revision'
       | 'readRevision'
       | 'unread'
@@ -366,6 +367,7 @@ export const useConversations = defineStore('conversations', () => {
       target: record.target,
       projectId:
         record.target.kind === 'workspace' ? record.target.workspaceId : null,
+      worktree: record.worktree ?? undefined,
       revision: record.revision,
       readRevision: record.readRevision,
       unread: record.unread,
@@ -781,6 +783,8 @@ export const useConversations = defineStore('conversations', () => {
         }
         const conversation = newConversation({
           ...draft.local.conversation,
+          // A draft is created where the page chose, never in a worktree.
+          worktree: null,
           scheduled: false,
           permissionRequests: 0,
           unreadPermissionRequests: 0,
@@ -1310,7 +1314,7 @@ export const useConversations = defineStore('conversations', () => {
           case 'saved':
             return { apply: () => recordSync.receiveSaved(conversation, data.saved), tagged: { value: 'saved', tag: data.etag } }
           case 'workflows':
-            return { apply: () => { conversation.workflows = data.workflows.list }, tagged: { value: 'workflows', tag: data.etag } }
+            return { apply: () => { conversation.workflows = data.workflows }, tagged: { value: 'workflows', tag: data.etag } }
           // The share dialog reads the shares when it opens.
           case 'shares':
             return { apply: () => {} }
@@ -1378,7 +1382,7 @@ export const useConversations = defineStore('conversations', () => {
     if (conversation && fetched.whole) {
       takeMetadata(conversation, fetched.detail.metadata)
       recordSync.receiveSaved(conversation, fetched.whole.saved)
-      conversation.workflows = fetched.whole.workflows.list
+      conversation.workflows = fetched.whole.workflows
       recordSync.receiveDraft(conversation, fetched.whole.draft)
     }
   }
@@ -2420,6 +2424,7 @@ export const useConversations = defineStore('conversations', () => {
     const conversation = newConversation({
       id: crypto.randomUUID(),
       title: null,
+      worktree: null,
       pinned: false,
       archived: false,
       scheduled: false,

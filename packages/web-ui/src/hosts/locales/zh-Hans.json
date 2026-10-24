@@ -42,6 +42,7 @@
   "directory": {
     "switch": "切换目录",
     "chooseAnother": "选择其他目录…",
-    "useThis": "使用此文件夹"
+    "useThis": "使用此文件夹",
+    "worktree": "工作树 {name}"
   }
 }

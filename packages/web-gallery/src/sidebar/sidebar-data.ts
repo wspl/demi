@@ -171,6 +171,8 @@ export function demoConversations(): SidebarConversation[] {
       unread: false,
       // Running, open, and a subagent asks: the yellow mark wins over the breathing one.
       needsYou: true,
+      // In a linked worktree of the project: its mark joins the row's end, after the pin.
+      worktree: 'login-test',
     },
     {
       id: 'c-cookie',
@@ -179,7 +181,9 @@ export function demoConversations(): SidebarConversation[] {
       status: 'done',
       projectId: 'p-demi',
       pinned: false,
-      unread: true
+      unread: true,
+      // In a linked worktree of the project, by git's name: its mark alone ends the row.
+      worktree: '2',
     },
     {
       id: 'c-gallery',

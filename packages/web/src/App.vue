@@ -104,6 +104,7 @@ const sidebarConversations = computed(() =>
       needsYou: conversation.needsYou,
       device: resources.conversationDevice(conversation.target),
       scheduled: conversation.scheduled,
+      worktree: conversation.worktree,
     }),
   ),
 )

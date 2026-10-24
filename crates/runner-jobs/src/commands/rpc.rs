@@ -183,6 +183,9 @@ pub async fn invoke(
     })
     .map_err(ResidentError::failed)?;
     let result = async {
+        // What the job changed of the Host's projects goes first, so the
+        // backend knows a worktree the command names (`Lane::report`).
+        lane.report();
         lane.push(message);
         if !request.live {
             lane.push(stdin_end(&id)?);

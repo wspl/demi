@@ -17,10 +17,17 @@ pub enum WorkflowChoice {
     Default,
     /// Subagents are off for this conversation.
     None,
-    /// The workflow whose file is `.demi/workflows/<id>.yaml`.
+    /// The workflow whose file is `.demi/workflows/<id>.yaml`: the
+    /// project's, or with `worktree` the one of the linked worktree the
+    /// conversation works in (`crates/backend-database/src/selection.rs`
+    /// § Worktrees). A conversation in no worktree reads its own directory's
+    /// either way.
     Workflow {
         #[garde(length(chars, min = 1, max = 255), custom(file_stem))]
         id: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[garde(skip)]
+        worktree: bool,
     },
 }
 

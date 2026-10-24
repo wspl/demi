@@ -40,7 +40,7 @@ const BUNDLED: &str = ".vite/license.json";
 /// The licenses a shipped dependency may be under: the ones the licensing
 /// audit found in the release's dependencies. A dependency offered under
 /// several is shipped under the first of these it allows.
-const ACCEPTED: [&str; 18] = [
+const ACCEPTED: [&str; 19] = [
     "MIT",
     "Apache-2.0",
     "BSD-2-Clause",
@@ -61,6 +61,9 @@ const ACCEPTED: [&str; 18] = [
     "WTFPL",
     "bzip2-1.0.6",
     "OpenSSL",
+    // The worktree glyph, VS Code's codicon (`@vscode/codicons`), whose
+    // notice gives its attribution.
+    "CC-BY-4.0",
 ];
 
 /// A library a shipped program carries that is neither a crate nor an npm

@@ -42,6 +42,7 @@
   "directory": {
     "switch": "ディレクトリを切り替える",
     "chooseAnother": "別のディレクトリを選択…",
-    "useThis": "このフォルダーを使用"
+    "useThis": "このフォルダーを使用",
+    "worktree": "ワークツリー {name}"
   }
 }

@@ -35,6 +35,28 @@
 //! A workspace is a named `(user, device, path)` record, one per device and
 //! directory. It groups conversations and owns no sandbox: it restricts no
 //! filesystem access.
+//!
+//! # Worktrees
+//!
+//! A linked worktree of a project's repository is never a project of its own:
+//! a conversation that works in one is in the project of the repository's main
+//! worktree, with the worktree, which it works in in place of the project's
+//! directory. For example, `~/app` is a project, and `git worktree add
+//! ../app-2` made the worktree `app-2` of its repository; a conversation moved
+//! to `~/app-2` is in `app`, with the worktree `app-2`.
+//!
+//! - The project's Host reports the worktrees of each project's repository
+//!   (`crates/runner-host/src/worktrees.rs`), before any message that could
+//!   follow a change of them, and each project keeps them as last reported, so
+//!   a move selects by them in its own transaction, with the Host away.
+//! - A directory selects, in order: the project of that directory; the
+//!   project that lists it as a worktree, with the worktree; a project made for
+//!   it.
+//! - A report that lists a worktree whose directory is a project of its own,
+//!   made before the report or before worktrees were known, moves that
+//!   project's conversations into the repository's project, with the
+//!   worktree, and deletes it, as a second spelling of a project's directory
+//!   goes into the project (`ControlService::name_directory`).
 
 use demi_host_interface::HostPaths;
 use demi_backend_remote_host::host_paths;
@@ -63,11 +85,13 @@ pub enum Selection {
     Home { device_id: DeviceId },
     /// A project, with the device and directory its workspace names, kept
     /// so a conversation whose project was deleted is restored to its
-    /// directory.
+    /// directory, and the linked worktree of the project's repository it
+    /// works in, if it does (§ Worktrees).
     Workspace {
         workspace_id: WorkspaceId,
         device_id: DeviceId,
         path: String,
+        worktree: Option<Worktree>,
     },
     /// A directory on a paired device as a release before projects by
     /// directory kept it, until the device's runner first reports its home
@@ -76,7 +100,25 @@ pub enum Selection {
     Directory { device_id: DeviceId, path: String },
 }
 
+/// A linked worktree of a project's repository (§ Worktrees).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Worktree {
+    /// The name git gave it: its directory's under `.git/worktrees/`.
+    pub name: String,
+    /// Its directory, as its Host reported it.
+    pub path: String,
+}
+
 impl Selection {
+    /// The directory the selection's work starts in, where it names one: a
+    /// project's worktree's in place of the project's.
+    pub fn worktree(&self) -> Option<&Worktree> {
+        match self {
+            Self::Workspace { worktree, .. } => worktree.as_ref(),
+            _ => None,
+        }
+    }
+
     /// The selection as the web app reads a conversation's target, from
     /// `resolved`, what it resolves to: a project by its workspace, the
     /// Cloud's directory of a conversation as it was asked for, and a home
@@ -162,6 +204,7 @@ pub(crate) fn select(
                     workspace_id: workspace.id,
                     device_id: workspace.device,
                     path: workspace.path,
+                    worktree: None,
                 }),
                 _ => Err(Unselectable::WorkspaceNotFound),
             })
@@ -201,7 +244,42 @@ pub(crate) fn select_directory(
             device_id: device.id.clone(),
         }));
     }
+    if workspace_at(connection, &device.user, &device.id, &path)?.is_none()
+        && let Some(selection) = worktree_at(connection, device, &path)?
+    {
+        return Ok(Selected::kept(selection));
+    }
     Ok(Ok(project_of(connection, device, &path, now)?))
+}
+
+/// The selection of the linked worktree at `path` on `device`, in the project
+/// that lists it (§ Worktrees); none when no project of the device's user
+/// does.
+pub(crate) fn worktree_at(
+    connection: &Connection,
+    device: &DeviceRecord,
+    path: &str,
+) -> Result<Option<Selection>, StorageError> {
+    Ok(connection
+        .prepare_cached(
+            "SELECT workspace.id, workspace.path, worktree.name, worktree.path
+             FROM workspace_worktrees worktree JOIN workspaces workspace ON workspace.id = worktree.workspace_id
+             WHERE workspace.user_id = ?1 AND workspace.device_id = ?2 AND worktree.path = ?3
+             ORDER BY workspace.id LIMIT 1",
+        )?
+        .query_row(params![device.user.as_str(), device.id.as_str(), path], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
+        })
+        .optional()?
+        .map(|(workspace, project, name, path)| -> Result<Selection, StorageError> {
+            Ok(Selection::Workspace {
+                workspace_id: super::columns::decode("workspace_worktrees", "workspace_id", WorkspaceId::try_from(workspace))?,
+                device_id: device.id.clone(),
+                path: project,
+                worktree: Some(Worktree { name, path }),
+            })
+        })
+        .transpose()?)
 }
 
 /// The workspace of `path` on `device`, made now when its user has none: named
@@ -224,6 +302,7 @@ pub(crate) fn project_of(
                 workspace_id: workspace.id,
                 device_id: workspace.device,
                 path: workspace.path,
+                worktree: None,
             },
             made: None,
         });
@@ -260,6 +339,7 @@ pub(crate) fn project_of(
             workspace_id: workspace.id.clone(),
             device_id: workspace.device.clone(),
             path: workspace.path.clone(),
+            worktree: None,
         },
         made: Some(workspace),
     })
@@ -323,10 +403,11 @@ pub(crate) fn execution_target(
             workspace_id,
             device_id,
             path,
+            worktree,
         } => ExecutionTarget::Workspace {
             workspace_id: workspace_id.clone(),
             device_id: device_id.clone(),
-            path: path.clone(),
+            path: worktree.as_ref().map_or(path, |worktree| &worktree.path).clone(),
         },
         Selection::Directory { device_id, path } => ExecutionTarget::Device {
             device_id: device_id.clone(),

@@ -42,6 +42,7 @@
   "directory": {
     "switch": "디렉터리 전환",
     "chooseAnother": "다른 디렉터리 선택…",
-    "useThis": "이 폴더 사용"
+    "useThis": "이 폴더 사용",
+    "worktree": "워크트리 {name}"
   }
 }

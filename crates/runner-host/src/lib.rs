@@ -6,7 +6,8 @@
 //! - the working tree with its status and diffs;
 //! - the subscriptions to what changes in files, with the numbers that order
 //!   reads and changes;
-//! - the volumes a Host reports.
+//! - the volumes a Host reports;
+//! - the linked worktrees of the repositories of the Host's projects.
 //!
 //! # Authority
 //!
@@ -59,6 +60,7 @@ pub mod numbers;
 pub mod subscriptions;
 pub mod volumes;
 pub mod watches;
+pub mod worktrees;
 
 mod ignore;
 mod tree_watch;

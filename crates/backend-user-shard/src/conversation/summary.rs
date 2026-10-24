@@ -78,6 +78,7 @@ impl Shard {
             unread: facts.revision > record.read_revision,
             status: status(live, &facts),
             target: record.target.shown(&resolved),
+            worktree: record.target.worktree().map(|worktree| worktree.name.clone()),
             id: record.id,
             title: record.title,
             archived: record.archived,
