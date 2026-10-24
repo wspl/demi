@@ -37,8 +37,11 @@ import type { SentenceText, TitleText } from './ui-text'
  *   small button, for a control that stands in a section's heading row. Its
  *   thumb's corner is 4 px, concentric with the track's 6 px, and its label
  *   is 10 px (`--text-control-2xs`), 11 px in Chinese, Japanese and Korean.
+ *   On a phone it stays a mini, a segment 20 px tall with a 12 px label, so
+ *   it fits a section's heading row beside its 13 px caption.
  *   Icons alone draw at `sm`.
- * - A phone draws every size at its segment's height.
+ * - A phone draws `sm` and `md` at its segment's height. With two options a
+ *   tap anywhere on a mini switches, so the whole control is its target.
  *
  * With `iconOnly`, each segment shows its icon alone and its label as the tooltip
  * and the accessible name, and is square: as wide as it is tall, the icon in its
@@ -205,7 +208,7 @@ function choose(clicked: T | undefined) {
               'auto-cols-[minmax(0,1fr)] min-w-[calc(var(--segment-least)*var(--segments)+4px)]',
               // 3em of the label's size, with the segment's padding; a phone pads its segments wider.
               size === 'xs'
-                ? '[--segment-least:calc(3*var(--text-control-2xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(4))]'
+                ? '[--segment-least:calc(3*var(--text-control-2xs)+--spacing(3))]'
                 : size === 'sm'
                   ? '[--segment-least:calc(3*var(--text-control-xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(4))]'
                   : '[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))] phone:[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))]',
@@ -242,12 +245,12 @@ function choose(clicked: T | undefined) {
         :tabindex="disabled ? undefined : index === selectedIndex ? 0 : -1"
         class="relative z-10 inline-flex min-w-0 cursor-default select-none items-center justify-center gap-1 whitespace-nowrap transition-colors duration-200 ease-out"
         :class="[
-          // A phone draws either size at its segment's height (`base.css`), its label 8 px from each side, so a
-          // toolbar's Commits and Conversation stay whole beside Back and Forward on a 320 px phone.
+          // A phone draws `sm` and `md` at its segment's height (`base.css`), its label 8 px from each side, so a
+          // toolbar's Commits and Conversation stay whole beside Back and Forward on a 320 px phone; `xs` stays a mini.
           iconOnly
             ? (size === 'md' ? 'size-segment' : 'size-5 phone:size-segment')
             : size === 'xs'
-              ? [fit ? 'px-2' : 'px-1.5', 'h-4 rounded-[4px] text-control-2xs leading-4 phone:h-segment phone:rounded-[5px] phone:px-2 phone:text-control-xs']
+              ? [fit ? 'px-2' : 'px-1.5', 'h-4 rounded-[4px] text-control-2xs leading-4 phone:h-5 phone:leading-5']
               : (size === 'sm' ? 'rounded-[5px] px-1.5 py-0.5 text-control-xs leading-4 phone:h-segment phone:px-2 phone:py-0' : 'h-segment rounded-[5px] px-2 text-control-sm phone:px-2'),
           model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
         ]"

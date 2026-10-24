@@ -32,6 +32,7 @@ const METRICS = [
   { control: 'Chips under the composer: the model, the workflow, Agents, Running', face: '32 px', icon: '16 px', text: '15 px' },
   { control: 'File-change pills under a work row', face: '28 px, 8 px apart', icon: '16 px', text: '13 px' },
   { control: 'Segmented controls', face: '36 px', icon: '18 px', text: '15 px' },
+  { control: 'A mini segmented control in a section’s heading row, such as the cost’s range', face: '20 px', icon: '—', text: '12 px' },
   { control: 'Form fields', face: '44 px', icon: '—', text: '16 px' },
   { control: 'Switches', face: '51 × 31 px, as iOS’s', icon: '—', text: '—' },
   { control: 'Settings’ descriptions', face: '—', icon: '—', text: '15 px' },
