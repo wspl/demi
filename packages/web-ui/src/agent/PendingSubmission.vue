@@ -13,7 +13,7 @@ import type { PendingSubmissionState } from './types'
  * so it does not change height when the message arrives:
  *
  * - Its delivery is part of the wait for the answer, which the tail row tells.
- * - A lost connection is told by the title's spinner.
+ * - A lost connection is told by the spinner over the transcript's end.
  *
  * A failed delivery is told by the row under the bubble (`DeliveryFailureRow`),
  * which takes the Requesting row's place. The message's own hover actions offer

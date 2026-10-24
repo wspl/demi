@@ -42,9 +42,9 @@ import GallerySpecimen from './GallerySpecimen.vue'
  *   the dock adds nothing.
  *
  * A lost connection is not a failure: the runtime reconnects on its own. The
- * spinner by the title, which replaces the Rename button, is all the reader
- * sees when only the conversation's socket was lost, and when the page cannot
- * reach the backend at all.
+ * spinner over the transcript's end is all the reader sees when only the
+ * conversation's socket was lost, and when the page cannot reach the backend
+ * at all.
  */
 interface SessionCase {
   variant: SentenceText
@@ -202,7 +202,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Connection lost · reconnecting on its own',
-    note: 'Not a failure. Only this conversation’s socket was lost while the page still reaches Demi: the transcript, the draft and the composer stay, and, after two seconds, a spinner by the title in place of the Rename button is the only signal while the runtime retries with backoff, as when the page cannot reach Demi at all, the browser offline included. Nothing to click.',
+    note: 'Not a failure. Only this conversation’s socket was lost while the page still reaches Demi: the transcript, the draft and the composer stay, and, after half a second, a spinner over the transcript’s end is the only signal while the runtime retries with backoff, as when the page cannot reach Demi at all, the browser offline included. Nothing to click.',
     session: state('reconnecting', {
       load: 'reconnecting',
       blocks: shortTranscriptBlocks(),

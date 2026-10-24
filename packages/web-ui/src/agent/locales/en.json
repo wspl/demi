@@ -209,7 +209,6 @@
     "tabsOpen": "Tabs, {count} open",
     "closePanel": "Close panel",
     "options": "{title}, conversation options",
-    "connecting": "Connecting",
     "hostState": "{name} is {state}",
     "renameTitle": "Rename Conversation",
     "titleLabel": "Conversation title",

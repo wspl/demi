@@ -18,5 +18,17 @@ export function composerVeilOpacity(t: number): number {
  */
 export const COMPOSER_CLEARANCE_PX = 16
 
+/** The step between the dock's parts, and between its top and what stands over it. */
+export const DOCK_STEP_PX = 8
+
+/**
+ * The room the catching-up spinner of `spinnerPx` takes over the dock's top,
+ * which the transcript keeps clear whether it shows or not, so it never
+ * covers the last line and nothing moves when it comes.
+ */
+export function catchUpBand(spinnerPx: number): number {
+  return DOCK_STEP_PX + spinnerPx
+}
+
 /** Right inset so the veil does not paint over the transcript scrollbar. */
 export const COMPOSER_VEIL_SCROLLBAR_GUTTER_PX = 16

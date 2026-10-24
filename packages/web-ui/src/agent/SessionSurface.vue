@@ -4,7 +4,8 @@ import { useElementSize } from '@vueuse/core'
 import DockWindowArea from './DockWindowArea.vue'
 import { DOCK_WINDOW_SHARE } from './dock-window'
 import SessionBottomVeil from './SessionBottomVeil.vue'
-import { COMPOSER_VEIL_FADE_PX } from './composer-clearance'
+import { catchUpBand, COMPOSER_VEIL_FADE_PX } from './composer-clearance'
+import { useIconPx } from '../ui/icon-metrics'
 import { sessionComposerKey, sessionCoverKey } from './session-cover'
 
 /**
@@ -45,13 +46,16 @@ const veilReach = computed(() =>
     ? dockFootprint.value - dockOwnHeight.value + composerHeight.value + COMPOSER_VEIL_FADE_PX
     : 0,
 )
+const iconPx = useIconPx()
 /**
- * What the transcript keeps clear at its foot: the dock and what stands over
- * it, or the veil where it reaches higher. A panel the dock opened stands on
- * the dock alone, so the card covers its lower part and it never moves when
- * a card comes or goes.
+ * What the transcript keeps clear at its foot: the dock, what stands over it
+ * and the catching-up spinner's band above them, or the veil where it reaches
+ * higher. A panel the dock opened stands on the dock alone, so the card
+ * covers its lower part and it never moves when a card comes or goes.
  */
-const dockHeight = computed(() => Math.max(dockFootprint.value + coverHeight.value, veilReach.value))
+const dockHeight = computed(() =>
+  Math.max(dockFootprint.value + coverHeight.value + catchUpBand(iconPx.value.in28), veilReach.value),
+)
 
 defineExpose({ dockHeight })
 </script>
