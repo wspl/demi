@@ -2,6 +2,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { md } from '@demicodes/web-ui/markdown/md'
+import { followMathWait } from '@demicodes/web-ui/markdown/math'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/render-version'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
@@ -167,11 +168,8 @@ useMarkdownBlocks({
   render: renderBlock,
   describe: placesIn,
   rendered(found) {
-    // The message has shown once a render has put its text on the page with no
-    // formula waiting; from then on a formula hides only itself (`base.css`).
-    const body = root.value
-    if (body && !body.hasAttribute('data-shown') && !body.querySelector('.math-waiting'))
-      body.setAttribute('data-shown', '')
+    if (root.value)
+      followMathWait(root.value)
     codeBlocks.value = found.flatMap((places) => places.codeBlocks)
     linkIcons.value = found.flatMap((places) => places.linkIcons)
     agentLinks.value = found.flatMap((places) => places.agentLinks)
