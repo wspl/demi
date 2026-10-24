@@ -473,7 +473,8 @@ provideCommandRevealer((commandId) => {
 const openOrigin = useOriginRevealer()
 provideOriginRevealer((origin) => {
   const { blockId } = origin
-  const here = origin.node === (props.node ?? null) && blockId !== null && props.blocks.some((block) => block.id === blockId)
+  const here = origin.conversationId === null && origin.node === (props.node ?? null) && blockId !== null
+    && props.blocks.some((block) => block.id === blockId)
   return here
     ? () => {
         revealAndMark(blockId)

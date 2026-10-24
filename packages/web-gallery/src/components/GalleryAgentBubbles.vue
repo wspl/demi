@@ -22,7 +22,8 @@ import { BUBBLES_ROOT, bubbleAgents, bubblesMainBlocks } from '../fixtures/subag
  * - `child-report`: the same, with the report of its own child Check the
  *   links, which keeps its row.
  * - `main`: the main agent's view, where a message from its child keeps its
- *   row.
+ *   row, and a message from another conversation, Coordinate the release, is
+ *   a bubble that names that conversation.
  *
  * The main agent's transcript is under the window in each, as the product's
  * session is.
@@ -39,7 +40,10 @@ const open = ref(props.view !== 'main')
 const activeId = ref<string | null>(agents[0]!.id)
 const reveal = ref<TranscriptReveal | null>(null)
 
-provideOriginRevealer(({ node, blockId }) => {
+provideOriginRevealer(({ conversationId, node, blockId }) => {
+  if (conversationId !== null) {
+    return () => productWould('Open Coordinate the Release at the Call That Sent the Message')
+  }
   if (node === null) {
     return blockId === null ? undefined : () => productWould('The Main Transcript Shows the Call That Sent the Message')
   }

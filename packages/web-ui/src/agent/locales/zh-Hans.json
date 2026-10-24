@@ -42,6 +42,7 @@
       "fromMain": "来自{agent}的消息",
       "mainAgent": "主智能体",
       "fromAgent": "来自智能体的消息",
+      "fromConversation": "来自对话的消息",
       "finished": "智能体已完成",
       "failed": "智能体失败",
       "stopped": "智能体已停止",
@@ -98,7 +99,8 @@
       "recall": "撤回",
       "recalled": "消息已撤回",
       "notDelivered": "此消息未能送达。",
-      "fromSchedule": "定时任务"
+      "fromSchedule": "定时任务",
+      "fromConversation": "对话"
     },
     "assistant": {
       "fork": "分叉",

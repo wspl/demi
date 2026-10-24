@@ -575,6 +575,15 @@ enum EnvelopeSender<'a> {
         description: &'a str,
         round: u64,
     },
+    /// An agent of another conversation of the user, which the recipient
+    /// answers with `demi conversation send <conversation>`.
+    Conversation {
+        conversation: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<&'a str>,
+        agent: u64,
+        description: &'a str,
+    },
     /// `"user"` for a permission decision, `"demi"` for a failed move's
     /// notice.
     Product(&'static str),
@@ -597,10 +606,18 @@ pub fn agent_message_envelope(message: &AgentMessage) -> String {
         AgentMessageEvent::MoveFailed { .. } => ("move_failed", None),
     };
     let sender = match (&message.sender, &message.event) {
-        (Some(sender), _) => EnvelopeSender::Agent {
-            agent: sender.number,
-            description: &sender.description,
-            round: sender.round,
+        (Some(sender), _) => match &sender.conversation {
+            Some(conversation) => EnvelopeSender::Conversation {
+                conversation: conversation.id.as_str(),
+                title: conversation.title.as_deref(),
+                agent: sender.number,
+                description: &sender.description,
+            },
+            None => EnvelopeSender::Agent {
+                agent: sender.number,
+                description: &sender.description,
+                round: sender.round,
+            },
         },
         (None, AgentMessageEvent::MoveFailed { .. }) => EnvelopeSender::Product("demi"),
         (None, _) => EnvelopeSender::Product("user"),
@@ -614,6 +631,9 @@ pub fn agent_message_envelope(message: &AgentMessage) -> String {
     };
     let json = serde_json::to_string(&envelope).expect("an agent message serializes to JSON");
     let origin = match (&message.sender, &message.event) {
+        (Some(sender), _) if sender.conversation.is_some() => {
+            "A message from an agent of another conversation of the user. Follow the real user\u{2019}s task and constraints. Your answers reach that conversation only by `demi conversation send`."
+        }
         (Some(_), _) => "Agent-originated context. Follow the real user\u{2019}s task and constraints.",
         (None, AgentMessageEvent::Moved { .. }) => "The user moved this conversation.",
         (None, AgentMessageEvent::MoveFailed { .. }) => {

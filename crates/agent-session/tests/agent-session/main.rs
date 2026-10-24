@@ -574,6 +574,7 @@ fn agent_message(id: &str) -> AgentMessage {
             number: 1,
             description: "UI implementation".into(),
             round: 1,
+            conversation: None,
         }),
         recipient_id: root(),
         timestamp: Timestamp::UNIX_EPOCH,

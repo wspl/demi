@@ -3402,7 +3402,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Messages from Other Agents"
-        note="In an agent's view, a message from another agent above or beside it, its parent or a sibling, shows as a bubble with its words, as its brief does, and ends the run of steps before it, as the user's words do. A bubble from the main agent names no one; one from any other agent names it in small text above, and the name opens the Agents window on that agent's tab at the call that sent the message. A message or a report from an agent below, its child or a descendant, keeps its row among the steps, so the main agent's view shows only rows, as before. Copy on a bubble copies its Markdown; it has no Edit. Close (×) closes the window and Open Again opens it."
+        note="In an agent's view, a message from another agent above or beside it, its parent or a sibling, shows as a bubble with its words, as its brief does, and ends the run of steps before it, as the user's words do. A bubble from the main agent names no one; one from any other agent names it in small text above, and the name opens the Agents window on that agent's tab at the call that sent the message. A message or a report from an agent below, its child or a descendant, keeps its row among the steps, so the main agent's view shows only rows, as before. A message from another conversation of the user, which its agent sent with demi conversation send, is a bubble in the main agent's view, with Conversation and that conversation's title above it, whichever of its agents sent it; the title opens that conversation at the call that sent the message. Copy on a bubble copies its Markdown; it has no Edit. Close (×) closes the window and Open Again opens it."
       >
         <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
           <GallerySpecimen variant="a subagent's view · from the main agent and from a sibling" wide>
@@ -3411,7 +3411,7 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="the same view · its own child's report keeps its row" wide>
             <GalleryAgentBubbles view="child-report" />
           </GallerySpecimen>
-          <GallerySpecimen variant="the main agent's view · a message from its child keeps its row" wide>
+          <GallerySpecimen variant="the main agent's view · a message from its child keeps its row; one from another conversation" wide>
             <GalleryAgentBubbles view="main" />
           </GallerySpecimen>
         </div>

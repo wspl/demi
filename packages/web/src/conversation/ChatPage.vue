@@ -394,6 +394,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :reveal="store.reveal?.conversationId === conversation.id ? store.reveal : null"
     @revealed="store.reveal = null"
     @reveal="(at) => (store.reveal = { conversationId: conversation!.id, ...at })"
+    @open-conversation="(at) => navigation.openAt(at.conversationId, at.node, at.blockId)"
     :read-block="async (node, id) => { await store.history.readWhole(conversation!, node, id) }"
     :reveal-command="(id) => revealCommand(conversation!, id)"
     @read-before="readHistory(store.history.readBefore(conversation!, null))"

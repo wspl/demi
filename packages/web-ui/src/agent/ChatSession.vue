@@ -329,6 +329,11 @@ const emit = defineEmits<{
    */
   reveal: [at: TranscriptReveal]
   /**
+   * Show another conversation of the user, at the block of the agent `node`
+   * names (null for its main agent), as the name of a message from there asks.
+   */
+  openConversation: [at: { conversationId: string; node: string | null; blockId: string | null }]
+  /**
    * The reader nears the start of the window shown, which does not reach the
    * transcript's.
    */
@@ -671,8 +676,12 @@ const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerm
   )
 // A receipt's name opens the Agents window on its sender's tab. A finished
 // sender is picked as Completed picks it. The host brings the block the receipt
-// names into view there; the root's block, in the transcript.
-provideOriginRevealer(({ node, blockId }) => {
+// names into view there; the root's block, in the transcript. A message from
+// another conversation opens that conversation, at the call that sent it.
+provideOriginRevealer(({ conversationId, node, blockId }) => {
+  if (conversationId !== null) {
+    return () => emit('openConversation', { conversationId, node, blockId })
+  }
   if (node === null && blockId === null) {
     return undefined
   }

@@ -1586,6 +1586,32 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
+    /// The sender of a message the live agent `caller` sends with its `shell`
+    /// call `call`, and the block of its transcript the message comes from,
+    /// for a message within the tree or to another conversation.
+    pub fn sender_of(&self, caller: &NodeId, call: &str) -> Result<(Sender, Option<BlockId>), String> {
+        if self.is_side(caller) {
+            return Err(SIDE_SENDS.to_owned());
+        }
+        let node = self
+            .node(caller)
+            .ok_or("this session is not in the agent directory")?;
+        let record = node.record();
+        let description = if record.parent.is_none() {
+            "root session".to_owned()
+        } else {
+            record.description.clone()
+        };
+        let sender = Sender {
+            id: caller.clone(),
+            number: record.number,
+            description,
+            round: record.round,
+            conversation: None,
+        };
+        Ok((sender, node.session().call_block(call)))
+    }
+
     /// Sends a message from `caller` to any live agent of the tree, which
     /// `target` names by its number, or to its parent.
     ///
@@ -1638,25 +1664,16 @@ impl<H: HostResolver> Tree<H> {
                 _ => return Err(no_live()),
             }
         };
-        let description = if sender.record().parent.is_none() {
-            "root session".to_owned()
-        } else {
-            sender.record().description.clone()
-        };
+        let (sender, origin) = self.sender_of(caller, call)?;
         let message = AgentMessage {
             id: BlockId::try_from(self.ids.next_id())
                 .expect("an id source never gives an empty id"),
-            sender: Some(Sender {
-                id: caller.clone(),
-                number: sender.record().number,
-                description,
-                round: sender.record().round,
-            }),
+            sender: Some(sender),
             recipient_id: recipient_id.clone(),
             timestamp: self.clock.now(),
             content,
             event: AgentMessageEvent::Message {},
-            origin: sender.session().call_block(call),
+            origin,
         };
         let message_id = message.id.clone();
         recipient
@@ -2050,6 +2067,7 @@ fn completion(record: &NodeRecord, close: &NodeClose, origin: Option<BlockId>, w
             number: record.number,
             description: record.description.clone(),
             round: record.round,
+            conversation: None,
         }),
         recipient_id: record
             .parent

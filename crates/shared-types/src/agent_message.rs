@@ -3,7 +3,8 @@
 //! The input is one of:
 //!
 //! - an explicit message, or the notice of a child's end, which carries what the
-//!   child wrote;
+//!   child wrote; an explicit message may come from an agent of another
+//!   conversation of the user (`demi conversation send`);
 //! - the user's decision on a permission request, which reaches the agent that
 //!   asked the same way;
 //! - the user's move of the conversation, which the user tells the root of;
@@ -85,6 +86,25 @@ pub struct Sender {
     /// The sender's round: 1 for its first run, one more at each resume.
     #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
     pub round: u64,
+    /// The conversation the sender is an agent of, when it is not the
+    /// recipient's: `demi conversation send` reached the recipient from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub conversation: Option<SenderConversation>,
+}
+
+/// Another conversation of the user a message came from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SenderConversation {
+    /// The conversation's id, which also names its tree's root.
+    #[garde(skip)]
+    pub id: NodeId,
+    /// Its title when the message was sent, as the recipient read it; none
+    /// for a conversation that had none yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub title: Option<String>,
 }
 
 /// What an agent message is.

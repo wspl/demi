@@ -45,6 +45,10 @@
       "action": "read your other conversations",
       "description": "Read Your Other Conversations lets the agents of this conversation list your conversations and read what any of them holds. What they read goes to this conversation’s model provider."
     },
+    "conversation_send": {
+      "action": "send messages to your other conversations",
+      "description": "Send Messages to Your Other Conversations lets the agents of this conversation send a message to the main agent of any conversation of yours that is not archived. The message wakes it, and it works on it with its own model."
+    },
     "agent_profiles": {
       "action": "change subagent profiles",
       "description": "Create, edit and delete the subagent profiles every conversation of yours can use."

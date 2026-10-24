@@ -4,7 +4,7 @@ import { t as shared } from '../../locales/text'
 import { computed, onMounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
-import { AlarmClock, Copy, Pencil, Trash2 } from '@lucide/vue'
+import { AlarmClock, Copy, MessagesSquare, Pencil, Trash2 } from '@lucide/vue'
 import { useCopy } from '../../composables/useCopy'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
@@ -81,9 +81,11 @@ const props = defineProps<{
   /**
    * The agent other than the main agent that sent the message, another agent's
    * message in this agent's view (`receivedAsBubble`): named in small text
-   * above the bubble, the name leading to the sender as a receipt's does.
+   * above the bubble, the name leading to the sender as a receipt's does. A
+   * message from another conversation, `conversation`, names that conversation
+   * as a schedule's names the schedule.
    */
-  sender?: { name: string; go?: () => void } | null
+  sender?: { name: string; go?: () => void; conversation?: boolean } | null
 }>()
 
 /**
@@ -306,6 +308,10 @@ useResizeObserver(bodyRef, measure)
       <AlarmClock :size="ICON_PX.in24" class="shrink-0" aria-hidden="true" />
       <NoticeLabel :notice="t('transcript.user.fromSchedule')" :title="origin.name" :go="origin.go" />
       <span class="shrink-0">· {{ origin.when }}</span>
+    </div>
+    <div v-else-if="sender?.conversation" class="flex max-w-[80%] select-none items-center gap-1.5 pb-1 text-detail text-fg-subtle">
+      <MessagesSquare :size="ICON_PX.in24" class="shrink-0" aria-hidden="true" />
+      <NoticeLabel :notice="t('transcript.user.fromConversation')" :title="sender.name" :go="sender.go" />
     </div>
     <div v-else-if="sender" class="flex max-w-[80%] select-none items-center pb-1 text-detail text-fg-subtle">
       <NoticeLabel notice="" :title="sender.name" :go="sender.go" />

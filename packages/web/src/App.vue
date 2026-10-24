@@ -122,7 +122,7 @@ const settingsAddress = useSettingsAddress()
 const pageRoute = computed(() =>
   settingsAddress.section.value === undefined ? route : router.resolve(pageUnderSettings(router)),
 )
-const { open, openFound, create } = useConversationNavigation()
+const { open, openAt, create } = useConversationNavigation()
 /** The search window. */
 const searchOpen = ref(false)
 /** Hand Off to Your Phone: its code opens the page the window shows. */
@@ -168,7 +168,7 @@ provideSendTargets({
 })
 function openSearchResult(row: SearchRow): void {
   searchOpen.value = false
-  openFound(row.conversationId, row.match?.blockId ?? null)
+  openAt(row.conversationId, null, row.match?.blockId ?? null)
 }
 const folded = computed({
   get: () => resources.local.foldedProjects,
