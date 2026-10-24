@@ -13,8 +13,17 @@
 //! The sweep asks Cargo for the products of the builds this repository runs,
 //! keeps the unit directories they are in and the incremental caches those
 //! units wrote, and removes every other unit directory and incremental cache of
-//! the `debug` profile. Every other Cargo target directory, such as the cross
-//! builds' under `.cache`, is only reported with its size.
+//! the `debug` profile.
+//!
+//! Every other build directory goes whole: the `release` profile, each
+//! target's (`x86_64-pc-windows-msvc/`), and each Cargo target directory under
+//! `.cache`, such as the native build's. Those builds have no list to replay:
+//! an agent runs them for a device or a release, and Cargo leaves a unit it
+//! reuses untouched, so nothing tells their current units from stale ones
+//! short of building them again, minutes each. The next build of that kind
+//! starts cold instead. A directory a build holds locked is left alone, and
+//! so is everything that is not a build directory, such as a Cargo registry
+//! or a tool's downloads, which is only reported with its size.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{File, Metadata};
@@ -159,7 +168,7 @@ pub fn run(options: Options) -> Result<(), Error> {
         gigabytes(freed),
         plan.kept.len(),
     );
-    print_others(&repository, &metadata)
+    sweep_others(&repository, &metadata, options.dry_run)
 }
 
 /// The workspace's build and target directories, from `cargo metadata`.
@@ -466,6 +475,24 @@ fn directories(directory: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(directories)
 }
 
+/// The entries of `directory`; none if it is gone.
+fn directories_and_files(directory: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let mut paths = Vec::new();
+    for entry in entries {
+        match entry {
+            Ok(entry) => paths.push(entry.path()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(paths)
+}
+
 fn metadata_if_present(path: &Path) -> std::io::Result<Option<Metadata>> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) => Ok(Some(metadata)),
@@ -485,15 +512,17 @@ fn sizes(paths: &[PathBuf]) -> std::io::Result<BTreeMap<PathBuf, u64>> {
         let mut size = 0;
         let mut pending = vec![path.clone()];
         while let Some(path) = pending.pop() {
-            let metadata = std::fs::symlink_metadata(&path)?;
+            // A build that runs beside the count removes and renames its
+            // temporary files; one gone counts as nothing.
+            let Some(metadata) = metadata_if_present(&path)? else {
+                continue;
+            };
             if metadata.nlink() > 1 && !seen.insert((metadata.dev(), metadata.ino())) {
                 continue;
             }
             size += metadata.blocks() * 512;
             if metadata.is_dir() {
-                for entry in std::fs::read_dir(&path)? {
-                    pending.push(entry?.path());
-                }
+                pending.extend(directories_and_files(&path)?);
             }
         }
         sizes.insert(path.clone(), size);
@@ -526,23 +555,76 @@ fn print_largest(profile: &Path, sizes: &BTreeMap<PathBuf, u64>) {
     }
 }
 
-/// Reports the Cargo target directories the sweep leaves alone: everything
-/// in the target and build directories beside the swept profile, and every
-/// directory of `.cache` that Cargo marked as its own with a `CACHEDIR.TAG`.
-fn print_others(repository: &Path, metadata: &Directories) -> Result<(), Error> {
+/// Removes the build directories beside the swept profile, as the module
+/// says, and reports what it leaves: everything else in the target and build
+/// directories, and every directory of `.cache` that Cargo marked as its own.
+///
+/// A directory is renamed before it is removed, its builds' locks held: a
+/// build that starts meanwhile makes a new directory under the old name and
+/// never writes among the files being removed. A renamed directory that an
+/// interrupted sweep left behind goes too.
+fn sweep_others(repository: &Path, metadata: &Directories, dry_run: bool) -> Result<(), Error> {
+    let mut builds = BTreeSet::new();
     let mut others = BTreeSet::new();
-    for root in [&metadata.target_directory, &metadata.build_directory] {
-        others.extend(
-            directories(root)?
-                .into_iter()
-                .filter(|directory| !directory.ends_with(PROFILE)),
-        );
+    let mut roots = vec![&metadata.target_directory];
+    if metadata.build_directory != metadata.target_directory {
+        roots.push(&metadata.build_directory);
+    }
+    for root in roots {
+        for directory in directories(root)? {
+            if directory.ends_with(PROFILE) {
+                continue;
+            }
+            if directory.ends_with("release") || build_directory(&directory) {
+                builds.insert(directory);
+            } else {
+                others.insert(directory);
+            }
+        }
     }
     for directory in directories(&repository.join(".cache"))? {
-        if directory.join("CACHEDIR.TAG").is_file() {
+        if build_directory(&directory) {
+            builds.insert(directory);
+        } else if directory.join("CACHEDIR.TAG").is_file() {
             others.insert(directory);
         }
     }
+
+    // A leftover first, so a directory's rename finds its name free.
+    let (leftovers, current): (Vec<PathBuf>, Vec<PathBuf>) = builds
+        .into_iter()
+        .partition(|directory| directory.extension().is_some_and(|extension| extension == SWEEPING));
+    let mut freed = 0;
+    let mut removed = 0;
+    for (directory, leftover) in leftovers.iter().map(|d| (d, true)).chain(current.iter().map(|d| (d, false))) {
+        // Held until the directory is renamed, so no build starts in it
+        // before.
+        let locks = if leftover { Some(Vec::new()) } else { locks(directory)? };
+        let Some(locks) = locks else {
+            println!("Left alone {}: a build is running in it.", relative(repository, directory));
+            continue;
+        };
+        let size = sizes(std::slice::from_ref(directory))?.into_values().sum::<u64>();
+        if !dry_run {
+            let doomed = if leftover {
+                directory.clone()
+            } else {
+                let doomed = directory.with_extension(SWEEPING);
+                std::fs::rename(directory, &doomed)?;
+                doomed
+            };
+            drop(locks);
+            std::fs::remove_dir_all(&doomed)?;
+        }
+        println!("{:>10}  {}", gigabytes(size), relative(repository, directory));
+        freed += size;
+        removed += 1;
+    }
+    if removed > 0 {
+        let verb = if dry_run { "Would remove" } else { "Removed" };
+        println!("{verb} these {removed} build directories, {}.", gigabytes(freed));
+    }
+
     if others.is_empty() {
         return Ok(());
     }
@@ -552,6 +634,44 @@ fn print_others(repository: &Path, metadata: &Directories) -> Result<(), Error> 
         println!("{:>10}  {}", gigabytes(size), relative(repository, &directory));
     }
     Ok(())
+}
+
+/// The extension a build directory takes while the sweep removes it.
+const SWEEPING: &str = "sweeping";
+
+/// Whether `directory` holds a Cargo build: Cargo tags a target directory it
+/// makes, and writes the compiler's version into every one it builds in,
+/// tagged or not, as one made before Cargo ran is not. Cargo tags its
+/// registry too, which holds its index. A directory a sweep was removing is
+/// one.
+fn build_directory(directory: &Path) -> bool {
+    directory.extension().is_some_and(|extension| extension == SWEEPING)
+        || ((directory.join("CACHEDIR.TAG").is_file() || directory.join(".rustc_info.json").is_file())
+            && !directory.join("index").is_dir())
+}
+
+/// Every build lock in the profiles under `directory`, each held; `None`
+/// when a build holds one. A profile keeps its lock at its top, and a
+/// profile lies at most two levels down: `<target>/<profile>` in a target
+/// directory under `.cache`.
+fn locks(directory: &Path) -> std::io::Result<Option<Vec<File>>> {
+    let mut held = Vec::new();
+    let mut pending = vec![(directory.to_path_buf(), 0)];
+    while let Some((path, depth)) = pending.pop() {
+        let lock = path.join(".cargo-build-lock");
+        if lock.is_file() {
+            let file = File::options().read(true).write(true).open(&lock)?;
+            match file.try_lock() {
+                Ok(()) => held.push(file),
+                Err(std::fs::TryLockError::WouldBlock) => return Ok(None),
+                Err(std::fs::TryLockError::Error(error)) => return Err(error),
+            }
+        }
+        if depth < 2 {
+            pending.extend(directories(&path)?.into_iter().map(|child| (child, depth + 1)));
+        }
+    }
+    Ok(Some(held))
 }
 
 fn relative(repository: &Path, path: &Path) -> String {
