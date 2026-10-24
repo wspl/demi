@@ -23,7 +23,8 @@ use comrak::{Arena, Options, parse_document};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::StorageError;
-use super::columns::{decode, instant, json};
+use super::columns::{decode, instant};
+use super::records::{self, Codec, Stored, record_of};
 use super::control::ControlService;
 use super::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 
@@ -228,7 +229,7 @@ impl ControlService {
 /// what the root's current path says, its messages and texts, with the steps
 /// between them.
 pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> Result<(), StorageError> {
-    remove(transaction, token)?;
+    clear(transaction, token)?;
     let Some(root) = root(transaction)? else {
         return Ok(());
     };
@@ -250,19 +251,20 @@ pub fn take_answer(
     let Some(root) = root(transaction)? else {
         return Ok(false);
     };
-    let found: Option<(i64, String)> = transaction
+    let found: Option<(i64, Stored)> = transaction
         .query_row(
-            "SELECT blocks.idx, blocks.block FROM blocks INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
+            "SELECT blocks.idx, blocks.format, blocks.dictionary, blocks.body FROM blocks INDEXED BY blocks_by_id
+               CROSS JOIN path_runs AS run
                ON run.node_id = blocks.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE json_extract(blocks.block, '$.id') = ?1 AND blocks.node_id = ?2",
+             WHERE blocks.id = ?1 AND blocks.node_id = ?2",
             params![block.as_str(), root],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, Stored::of(row, 1)?)),
         )
         .optional()?;
     let Some((index, answer)) = found else {
         return Ok(false);
     };
-    let Block::Text(text) = json("blocks", "block", &answer)? else {
+    let Block::Text(text) = Codec::new(transaction).block("blocks", &answer)? else {
         return Ok(false);
     };
     if !text.forkable {
@@ -273,7 +275,7 @@ pub fn take_answer(
     let message: Option<i64> = transaction
         .query_row(
             "SELECT blocks.idx FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
+               ON blocks.node_id = run.node_id AND blocks.type = 'user'
                  AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
              WHERE run.node_id = ?1 AND blocks.idx < ?2
              ORDER BY blocks.idx DESC LIMIT 1",
@@ -284,7 +286,7 @@ pub fn take_answer(
     let Some(message) = message else {
         return Ok(false);
     };
-    remove(transaction, token)?;
+    clear(transaction, token)?;
     list(transaction, token, &root, message..index + 1)?;
     Ok(true)
 }
@@ -325,10 +327,10 @@ fn list(transaction: &Transaction<'_>, token: &ShareToken, root: &str, rows: Ran
     transaction.execute(
         &format!(
             "WITH listed AS (
-               SELECT blocks.idx, json_extract(blocks.block, '$.type') IN {SAID} AS said
+               SELECT blocks.idx, blocks.type IN {SAID} AS said
                FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
                  ON blocks.node_id = run.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-                   AND (json_extract(blocks.block, '$.type') IN {SAID} OR json_extract(blocks.block, '$.type') IN {STEPS})
+                   AND (blocks.type IN {SAID} OR blocks.type IN {STEPS})
                WHERE run.node_id = ?2 AND blocks.idx >= ?3 AND blocks.idx < ?4
              ),
              runs AS (SELECT idx, said, sum(said) OVER (ORDER BY idx) AS before FROM listed),
@@ -342,17 +344,21 @@ fn list(transaction: &Transaction<'_>, token: &ShareToken, root: &str, rows: Ran
         ),
         params![token.as_str(), root, rows.start, rows.end],
     )?;
-    transaction.execute(
-        "INSERT INTO share_blocks (token, idx, block)
-         SELECT entry.token, entry.position, json_remove(row.block, '$.entries')
-         FROM share_entries AS entry JOIN blocks AS row ON row.node_id = entry.node_id AND row.idx = entry.idx
-         WHERE entry.token = ?1 AND json_extract(row.block, '$.type') = 'text'
-           AND entry.idx > coalesce(
-             (SELECT blocks.idx FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-                ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'response'
-                  AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-              WHERE run.node_id = ?2 ORDER BY blocks.idx DESC LIMIT 1),
-             -1)",
+    copy_rows(
+        transaction,
+        &Codec::new(transaction),
+        &format!(
+            "SELECT entry.token, entry.position, {}
+             FROM share_entries AS entry JOIN blocks AS row ON row.node_id = entry.node_id AND row.idx = entry.idx
+             WHERE entry.token = ?1 AND row.type = 'text'
+               AND entry.idx > coalesce(
+                 (SELECT blocks.idx FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+                    ON blocks.node_id = run.node_id AND blocks.type = 'response'
+                      AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+                  WHERE run.node_id = ?2 ORDER BY blocks.idx DESC LIMIT 1),
+                 -1)",
+            record_of("row")
+        ),
         params![token.as_str(), root],
     )?;
     // The attachments its texts name, through `block_attachments`, while
@@ -371,11 +377,12 @@ fn list(transaction: &Transaction<'_>, token: &ShareToken, root: &str, rows: Ran
 /// Lists in `share_blobs` the blobs the copies of `token` name, the few
 /// blocks it holds of its own.
 fn name_copied_blobs(transaction: &Transaction<'_>, token: &ShareToken) -> Result<(), StorageError> {
-    let mut copies = transaction.prepare("SELECT block FROM share_blocks WHERE token = ?1")?;
+    let codec = Codec::new(transaction);
+    let mut copies = transaction.prepare("SELECT format, dictionary, body FROM share_blocks WHERE token = ?1")?;
     let mut name = transaction.prepare("INSERT OR IGNORE INTO share_blobs (token, blob) VALUES (?1, ?2)")?;
     let mut rows = copies.query([token.as_str()])?;
     while let Some(row) = rows.next()? {
-        let block: Block = json("share_blocks", "block", &row.get::<_, String>(0)?)?;
+        let block = codec.block("share_blocks", &Stored::of(row, 0)?)?;
         for blob in block_blobs(&block) {
             name.execute(params![token.as_str(), blob.as_str()])?;
         }
@@ -389,17 +396,20 @@ fn name_copied_blobs(transaction: &Transaction<'_>, token: &ShareToken) -> Resul
 /// A listed row is copied into the share as it stands, with the blobs it names,
 /// and its entry points at the copy, in the write's transaction. The one guard of
 /// every write to `blocks` that changes a row; no write removes one.
-pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, node: &NodeId, index: i64) -> Result<(), StorageError> {
+pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, codec: &Codec<'_>, node: &NodeId, index: i64) -> Result<(), StorageError> {
     let rows = "entry.node_id = ?1 AND entry.idx = ?2";
     let parameters = params![node.as_str(), index];
-    transaction
-        .prepare_cached(&format!(
-            "INSERT INTO share_blocks (token, idx, block)
-             SELECT entry.token, entry.position, json_remove(row.block, '$.entries')
+    copy_rows(
+        transaction,
+        codec,
+        &format!(
+            "SELECT entry.token, entry.position, {}
              FROM share_entries AS entry JOIN blocks AS row ON row.node_id = entry.node_id AND row.idx = entry.idx
-             WHERE {rows}"
-        ))?
-        .execute(parameters)?;
+             WHERE {rows}",
+            record_of("row")
+        ),
+        parameters,
+    )?;
     transaction
         .prepare_cached(&format!(
             "INSERT OR IGNORE INTO share_blobs (token, blob)
@@ -413,6 +423,28 @@ pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, node: &NodeId, index
             "UPDATE share_entries AS entry SET node_id = NULL, idx = NULL WHERE {rows}"
         ))?
         .execute(parameters)?;
+    Ok(())
+}
+
+/// Copies the rows that `query` selects, as the share's token, the position
+/// and the row's record, into the shares at those positions, each without
+/// the vendor's record of the session, which never leaves the backend.
+fn copy_rows(
+    transaction: &Transaction<'_>,
+    codec: &Codec<'_>,
+    query: &str,
+    parameters: &[&dyn rusqlite::ToSql],
+) -> Result<(), StorageError> {
+    let mut statement = transaction.prepare_cached(query)?;
+    let mut rows = statement.query(parameters)?;
+    while let Some(row) = rows.next()? {
+        let (token, position): (String, i64) = (row.get(0)?, row.get(1)?);
+        let mut block = codec.block("blocks", &Stored::of(row, 2)?)?;
+        if let Some(entries) = block.entries_mut() {
+            entries.clear();
+        }
+        records::insert_copy(transaction, codec, &token, position, &block)?;
+    }
     Ok(())
 }
 
@@ -581,12 +613,22 @@ pub fn counts(connection: &Connection, token: &ShareToken) -> Result<ShareCounts
     })
 }
 
-/// Removes the share `token`'s list and copies.
-pub fn remove(connection: &Connection, token: &ShareToken) -> Result<(), StorageError> {
-    for table in ["share_entries", "share_blocks", "share_blobs", "share_attachments"] {
-        connection.execute(&format!("DELETE FROM {table} WHERE token = ?1"), [token.as_str()])?;
-    }
+/// Removes the share `token`'s list and copies, and the contents only its
+/// copies named, in one transaction.
+pub fn remove(connection: &mut Connection, token: &ShareToken) -> Result<(), StorageError> {
+    let transaction = connection.transaction()?;
+    clear(&transaction, token)?;
+    transaction.commit()?;
     Ok(())
+}
+
+/// Removes the share `token`'s list and copies, and the contents only its
+/// copies named, in the caller's transaction.
+fn clear(transaction: &Connection, token: &ShareToken) -> Result<(), StorageError> {
+    for table in ["share_entries", "share_blobs", "share_attachments"] {
+        transaction.execute(&format!("DELETE FROM {table} WHERE token = ?1"), [token.as_str()])?;
+    }
+    records::remove_copies(transaction, token.as_str())
 }
 
 /// Whether the share `token` shows `blob`: a block on its list names it, as a

@@ -7,6 +7,10 @@
 //!   nothing: the next call opens it again.
 //! - A read that needs no live session takes a short-lived read-only connection
 //!   on the blocking pool instead, which takes no writer and never creates a file.
+//! - A database of an earlier release is brought to the current schema by the
+//!   first open or read, which waits for it under the file's opening turn: a
+//!   migration, or a conversion into a new file (`convert.rs`), which the
+//!   backend also runs in the background after it starts.
 //! - A test may hold the commits of the checkpoints (`CommitHold`) and the
 //!   migrations of the databases (`MigrationHold`).
 
@@ -15,13 +19,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bytes::Bytes;
-use demi_shared_gates::KeyedSerialGate;
+use demi_shared_gates::{KeyedPermit, KeyedSerialGate};
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
 use hashlink::LruCache;
 use rusqlite::{Connection, OpenFlags};
 
-use super::{StorageError, schema, sqlite};
+use super::{StorageError, convert, schema, sqlite};
 
 /// The most writer connections open at once.
 ///
@@ -167,22 +171,90 @@ impl ConversationStores {
     /// remove it again.
     pub async fn remove(&self, conversation: &ConversationId) -> Result<(), StorageError> {
         let file = DatabaseFile::of(conversation);
-        let _turn = self.0.opening.acquire(file.clone()).await;
+        let turn = self.0.opening.acquire(file.clone()).await;
         let writer = self.0.lock().open.remove(&file);
         if let Some(writer) = writer {
             sqlite::close(writer).await?;
         }
         let database = file.path(&self.0.directory);
-        for suffix in ["", "-wal", "-shm"] {
-            let mut path = database.clone().into_os_string();
-            path.push(suffix);
-            match tokio::fs::remove_file(PathBuf::from(path)).await {
+        holding(turn, move || {
+            convert::remove_with_logs(&convert::converting(&database))?;
+            convert::remove_with_logs(&database)
+        })
+        .await
+        .map(|_| ())
+    }
+
+    /// The conversations whose databases hold the schema of whole blocks,
+    /// which [`convert`](Self::convert) turns into the current one, the most
+    /// recently written first.
+    pub async fn unconverted(&self) -> Result<Vec<ConversationId>, StorageError> {
+        let directory = self.0.directory.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut found = Vec::new();
+            for entry in std::fs::read_dir(&directory)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().is_none_or(|extension| extension != "sqlite") {
+                    continue;
+                }
+                let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                    continue;
+                };
+                let Ok(id) = ConversationId::try_from(id.to_owned()) else {
+                    continue;
+                };
+                if schema::schema_fit(&path, schema::DatabaseKind::Conversation)? != schema::SchemaFit::Current {
+                    found.push((entry.metadata()?.modified()?, id));
+                }
+            }
+            found.sort_by(|(left, _), (right, _)| right.cmp(left));
+            Ok(found.into_iter().map(|(_, id)| id).collect())
+        })
+        .await?
+    }
+
+    /// Converts each conversation's database of an earlier form, one at a
+    /// time, the most recently written first, until none is left or the
+    /// databases close. One that fails to convert stays as it was, and its
+    /// next open tries again.
+    pub async fn convert_all(&self) {
+        let unconverted = match self.unconverted().await {
+            Ok(unconverted) => unconverted,
+            Err(error) => {
+                tracing::warn!(event = "conversation.conversions_failed", error = &error as &dyn std::error::Error, "the conversations to convert could not be listed");
+                return;
+            }
+        };
+        for conversation in unconverted {
+            match self.convert(&conversation).await {
                 Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error.into()),
+                Err(StorageError::Closed) => return,
+                // `convert_if_due` logged why.
+                Err(_) => {}
             }
         }
-        Ok(())
+    }
+
+    /// Gives the conversation's database the current schema, converting or
+    /// migrating one of an earlier release's, as its next open would.
+    pub async fn convert(&self, conversation: &ConversationId) -> Result<(), StorageError> {
+        let db = self.db(conversation);
+        let turn = self.0.opening.acquire(db.file.clone()).await;
+        if db.open_writer()?.is_some() {
+            return Ok(());
+        }
+        let path = db.file.path(&self.0.directory);
+        let (blobs, conversation) = (self.0.blobs.clone(), conversation.clone());
+        holding(turn, move || {
+            let blobs = BlobsOf {
+                blobs: &*blobs,
+                conversation,
+            };
+            convert::convert_if_due(&path, &blobs)
+        })
+        .await
+        .map(|_| ())
     }
 }
 
@@ -196,10 +268,15 @@ impl Stores {
 
 impl ConversationDb {
     /// The file of the conversation `other`'s database, for a copy of its
-    /// rows into this one; none when it is this one's.
-    pub(crate) fn file_of(&self, other: &ConversationId) -> Option<PathBuf> {
+    /// rows into this one, given the current schema first; none when it is
+    /// this one's.
+    pub(crate) async fn file_of(&self, other: &ConversationId) -> Result<Option<PathBuf>, StorageError> {
         let file = DatabaseFile::of(other);
-        (file != self.file).then(|| file.path(&self.stores.directory))
+        if file == self.file {
+            return Ok(None);
+        }
+        ConversationStores(self.stores.clone()).convert(other).await?;
+        Ok(Some(file.path(&self.stores.directory)))
     }
 
     /// Runs `work` on the conversation's writer connection, on its thread.
@@ -218,15 +295,16 @@ impl ConversationDb {
         if let Some(writer) = self.open_writer()? {
             return Ok(writer);
         }
-        let _turn = self.stores.opening.acquire(self.file.clone()).await;
+        let turn = self.stores.opening.acquire(self.file.clone()).await;
         // Another caller may have opened it while this one waited its turn.
         if let Some(writer) = self.open_writer()? {
             return Ok(writer);
         }
-        let writer = open_writer(
+        let (writer, _turn) = open_writer(
             &self.file.path(&self.stores.directory),
             self.stores.blobs.clone(),
             self.conversation.clone(),
+            turn,
         )
         .await?;
         let mut writers = self.stores.lock();
@@ -270,16 +348,17 @@ impl ConversationDb {
         // giving up on its write lock after the busy timeout, which left the
         // conversation listed without its facts (0.1.22).
         //
-        let _turn = self.stores.opening.acquire(self.file.clone()).await;
+        let turn = self.stores.opening.acquire(self.file.clone()).await;
         let (blobs, conversation) = (self.stores.blobs.clone(), self.conversation.clone());
-        tokio::task::spawn_blocking(move || {
+        holding(turn, move || {
             let blobs = BlobsOf {
                 blobs: &*blobs,
                 conversation,
             };
             migrate_and_read(&path, &blobs, work)
         })
-        .await?
+        .await
+        .map(|(read, _)| read)
     }
 
     /// The writer, if it is open, as the most recently used.
@@ -293,12 +372,26 @@ impl ConversationDb {
 }
 
 /// Opens the writer of the database at `path`, under its file's opening
-/// turn, which the caller holds.
+/// `turn`, converting a database of whole blocks first; gives the turn back
+/// with the writer.
 async fn open_writer(
     path: &Path,
     blobs: Arc<dyn ConversationBlobs>,
     conversation: ConversationId,
-) -> Result<tokio_rusqlite::Connection, StorageError> {
+    turn: Turn,
+) -> Result<(tokio_rusqlite::Connection, Turn), StorageError> {
+    let turn = {
+        let (path, blobs, conversation) = (path.to_owned(), blobs.clone(), conversation.clone());
+        holding(turn, move || {
+            let blobs = BlobsOf {
+                blobs: &*blobs,
+                conversation,
+            };
+            convert::convert_if_due(&path, &blobs)
+        })
+        .await?
+        .1
+    };
     let writer = tokio_rusqlite::Connection::open(path).await?;
     let path = path.to_owned();
     writer
@@ -311,7 +404,21 @@ async fn open_writer(
         })
         .await
         .map_err(sqlite::flatten)?;
-    Ok(writer)
+    Ok((writer, turn))
+}
+
+/// A file's opening turn.
+type Turn = KeyedPermit<DatabaseFile>;
+
+/// Runs `work` on a blocking thread that holds `turn` until the work ends,
+/// so a caller that stops waiting, as a request whose client went away
+/// does, gives the file to no one while the work still changes it; answers
+/// the work's result with the turn.
+async fn holding<T: Send + 'static>(
+    turn: Turn,
+    work: impl FnOnce() -> Result<T, StorageError> + Send + 'static,
+) -> Result<(T, Turn), StorageError> {
+    tokio::task::spawn_blocking(move || work().map(|value| (value, turn))).await?
 }
 
 /// Configures `connection` and gives its database the conversation schema,
@@ -322,6 +429,7 @@ fn migrate(
     path: &Path,
     blobs: &BlobsOf<'_>,
 ) -> Result<(), StorageError> {
+    schema::CONVERSATION.prepare_new(connection)?;
     sqlite::configure(connection)?;
     schema::CONVERSATION.apply(connection, path, blobs)
 }
@@ -357,6 +465,7 @@ where
     match schema::CONVERSATION.current(version) {
         Some(true) => work(&transaction).map(|value| Cold::Read(Some(value))),
         Some(false) => Ok(Cold::Stale(work)),
+        None if schema::LEGACY_CONVERSATION.current(version).is_some() => Ok(Cold::Stale(work)),
         None => Err(StorageError::OtherSchema {
             path: path.to_owned(),
         }),
@@ -382,6 +491,7 @@ where
         Cold::Stale(work) => work,
     };
     // The file is there: removing it takes the opening turn too.
+    convert::convert_if_due(path, blobs)?;
     let mut connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,

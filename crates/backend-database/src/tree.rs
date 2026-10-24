@@ -48,6 +48,8 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_f
 use super::StorageError;
 use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
+use super::contents;
+use super::records::{self, Codec, Stored, record_of};
 use super::conversations::ConversationDb;
 use super::search::{IndexedAgent, IndexedMessage, TranscriptChange, searchable_text};
 use super::{conversation_attachments, running, sequences};
@@ -165,6 +167,9 @@ fn create_in(
 /// of `node`'s path, each following the one before, with the blobs and
 /// attachments they name: the chain of rows from its leaf back to its
 /// path's first, so a later switch of the source leaves it as captured.
+///
+/// The records are copied as they are stored, with the contents they name
+/// and the dictionary they were compressed with, so no block is decoded.
 fn copy_prefix(
     transaction: &Transaction<'_>,
     node: &NodeId,
@@ -174,7 +179,9 @@ fn copy_prefix(
     let length = count(prefix.length);
     transaction.execute_batch(
         "CREATE TEMP TABLE IF NOT EXISTS fork_rows (source INTEGER PRIMARY KEY, idx INTEGER NOT NULL);
-         DELETE FROM temp.fork_rows;",
+         CREATE TEMP TABLE IF NOT EXISTS fork_dictionaries (source INTEGER PRIMARY KEY, id INTEGER NOT NULL);
+         DELETE FROM temp.fork_rows;
+         DELETE FROM temp.fork_dictionaries;",
     )?;
     transaction.execute(
         &format!(
@@ -196,12 +203,63 @@ fn copy_prefix(
             prefix.node, prefix.length
         ))));
     }
+    // The dictionaries the copied records were compressed with, which a
+    // database of its own receives as its own.
+    if schema == "main" {
+        transaction.execute("INSERT INTO temp.fork_dictionaries (source, id) SELECT id, id FROM main.dictionaries", [])?;
+    } else {
+        let used: Vec<i64> = transaction
+            .prepare(&format!(
+                "SELECT DISTINCT row.dictionary FROM temp.fork_rows AS copy
+                   JOIN {schema}.blocks AS row ON row.node_id = ?1 AND row.idx = copy.source
+                 WHERE row.dictionary IS NOT NULL ORDER BY row.dictionary"
+            ))?
+            .query_map([prefix.node.as_str()], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        for source in used {
+            let id: i64 = transaction.query_row(
+                &format!("INSERT INTO main.dictionaries (bytes) SELECT bytes FROM {schema}.dictionaries WHERE id = ?1 RETURNING id"),
+                [source],
+                |row| row.get(0),
+            )?;
+            transaction.execute("INSERT INTO temp.fork_dictionaries (source, id) VALUES (?1, ?2)", params![source, id])?;
+        }
+        transaction.execute(
+            &format!(
+                "INSERT OR IGNORE INTO main.contents (hash, bytes)
+                 SELECT held.hash, held.bytes FROM {schema}.contents AS held
+                 WHERE held.id IN (
+                   SELECT named.content FROM temp.fork_rows AS copy
+                     JOIN {schema}.blocks AS row ON row.node_id = ?1 AND row.idx = copy.source
+                     JOIN {schema}.block_contents AS named ON named.record = row.record
+                 )"
+            ),
+            [prefix.node.as_str()],
+        )?;
+    }
     transaction.execute(
         &format!(
-            "INSERT INTO blocks (node_id, idx, block, follows, replaces)
-             SELECT ?1, copy.idx, row.block, CASE copy.idx WHEN 0 THEN NULL ELSE copy.idx - 1 END, NULL
+            "INSERT INTO blocks (node_id, idx, follows, replaces, format, type, id, turn_id, command, source, status,
+               forkable, placement, created_at, outside_turn, resumed, summary_tokens, dictionary, body)
+             SELECT ?1, copy.idx, CASE copy.idx WHEN 0 THEN NULL ELSE copy.idx - 1 END, NULL,
+               row.format, row.type, row.id, row.turn_id, row.command, row.source, row.status, row.forkable,
+               row.placement, row.created_at, row.outside_turn, row.resumed, row.summary_tokens,
+               (SELECT id FROM temp.fork_dictionaries WHERE source = row.dictionary), row.body
              FROM temp.fork_rows AS copy JOIN {schema}.blocks AS row ON row.node_id = ?2 AND row.idx = copy.source
              ORDER BY copy.idx"
+        ),
+        params![node.as_str(), prefix.node.as_str()],
+    )?;
+    transaction.execute(
+        &format!(
+            "INSERT INTO block_contents (record, content)
+             SELECT copied.record, held.id
+             FROM temp.fork_rows AS copy
+               JOIN {schema}.blocks AS row ON row.node_id = ?2 AND row.idx = copy.source
+               JOIN {schema}.block_contents AS named ON named.record = row.record
+               JOIN {schema}.contents AS source ON source.id = named.content
+               JOIN main.contents AS held ON held.hash = source.hash
+               JOIN main.blocks AS copied ON copied.node_id = ?1 AND copied.idx = copy.idx"
         ),
         params![node.as_str(), prefix.node.as_str()],
     )?;
@@ -229,7 +287,7 @@ fn copy_prefix(
         "UPDATE nodes SET leaf = ?2 WHERE id = ?1",
         params![node.as_str(), length - 1],
     )?;
-    transaction.execute("DELETE FROM temp.fork_rows", [])?;
+    transaction.execute_batch("DELETE FROM temp.fork_rows; DELETE FROM temp.fork_dictionaries;")?;
     Ok(Ok(()))
 }
 
@@ -392,7 +450,7 @@ impl AgentTreeStore for SqliteTreeStore {
             let start = match root {
                 Some(root) => {
                     let source = ConversationId::try_from(root.as_str()).map_err(|error| StoreError::Failed(error.to_string()))?;
-                    Start::Copied(self.db.file_of(&source), prefix.clone())
+                    Start::Copied(self.db.file_of(&source).await.map_err(store_error)?, prefix.clone())
                 }
                 None => Start::Shared(prefix.clone()),
             };
@@ -446,10 +504,21 @@ impl AgentTreeStore for SqliteTreeStore {
             let changed = self
                 .db
                 .call(move |connection| {
-                    Ok(connection.execute(
+                    let transaction = connection.transaction()?;
+                    let named: Vec<i64> = transaction
+                        .prepare(
+                            "SELECT DISTINCT named.content FROM blocks JOIN block_contents AS named ON named.record = blocks.record
+                             WHERE blocks.node_id = ?1",
+                        )?
+                        .query_map([node.as_str()], |row| row.get(0))?
+                        .collect::<rusqlite::Result<_>>()?;
+                    let changed = transaction.execute(
                         "DELETE FROM nodes WHERE id = ?1 AND id IN (SELECT node_id FROM side_questions)",
                         [node.as_str()],
-                    )?)
+                    )?;
+                    contents::remove_unnamed(&transaction, named)?;
+                    transaction.commit()?;
+                    Ok(changed)
                 })
                 .await
                 .map_err(store_error)?;
@@ -1003,7 +1072,7 @@ fn write_checkpoint(
     if cut < stored {
         replaced = path.row_at(cut);
         let mut ids = transaction.prepare_cached(
-            "SELECT idx, json_extract(block, '$.id') FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3",
+            "SELECT idx, id FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3",
         )?;
         for segment in path.segments(node.as_str(), cut..stored) {
             let found = ids
@@ -1020,6 +1089,7 @@ fn write_checkpoint(
         replaced = None;
     }
     let mut next = path::next_row(transaction, node.as_str())?;
+    let codec = Codec::new(transaction);
     for (position, block) in &update.changed_blocks {
         let position = count(*position);
         if position < cut {
@@ -1028,10 +1098,8 @@ fn write_checkpoint(
                     "a save of node {node} rewrites position {position}, which is in the rows it starts from"
                 ))));
             };
-            shares::keep_rewritten(transaction, node, row)?;
-            transaction
-                .prepare_cached("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?
-                .execute(params![node.as_str(), row, to_json(block)])?;
+            shares::keep_rewritten(transaction, &codec, node, row)?;
+            records::update(transaction, &codec, node.as_str(), row, block)?;
             name_block(transaction, node.as_str(), row, block)?;
             continue;
         }
@@ -1048,11 +1116,7 @@ fn write_checkpoint(
             }
             None => replaced.take(),
         };
-        transaction
-            .prepare_cached(
-                "INSERT INTO blocks (node_id, idx, block, follows, replaces) VALUES (?1, ?2, ?3, ?4, ?5)",
-            )?
-            .execute(params![node.as_str(), next, to_json(block), path.leaf(), replaces])?;
+        records::insert(transaction, &codec, node.as_str(), next, path.leaf(), replaces, block)?;
         name_block(transaction, node.as_str(), next, block)?;
         path.push(next);
         next += 1;
@@ -1064,6 +1128,8 @@ fn write_checkpoint(
             update.block_count
         ))));
     }
+    drop(codec);
+    records::train_when_due(transaction)?;
     path.write(transaction)?;
     let output = cut < stored
         || update
@@ -1167,6 +1233,17 @@ fn path_versions(
         .collect()
 }
 
+/// What a block of one of `kind`'s types must also hold, as an SQL condition
+/// on the columns of its row.
+fn condition(kind: Kind) -> &'static str {
+    match kind {
+        Kind::ExecutingCall => "status = 'executing'",
+        Kind::CompletedText => "forkable = 1",
+        Kind::Record => "outside_turn = 0 AND (type != 'wakeup' OR placement != 'steer')",
+        _ => "1",
+    }
+}
+
 /// The position of the last block of `kind` on `node`'s `path` before
 /// `end`, found through the index of block types from the path's last run
 /// back, so no block is decoded.
@@ -1180,9 +1257,9 @@ fn last_of(
     let types = serde_json::to_string(kind.types()).expect("type names serialize");
     let mut statement = connection.prepare_cached(&format!(
         "SELECT max(idx) FROM blocks INDEXED BY blocks_by_type
-         WHERE node_id = ?1 AND json_extract(block, '$.type') IN (SELECT value FROM json_each(?2))
+         WHERE node_id = ?1 AND type IN (SELECT value FROM json_each(?2))
            AND idx >= ?3 AND idx < ?4 AND ({})",
-        kind.condition("block").unwrap_or_else(|| "1".to_owned())
+        condition(kind)
     ))?;
     for Segment { start, node: holder, rows } in path.segments(node.as_str(), 0..end.min(path.len())).into_iter().rev() {
         let found: Option<i64> =
@@ -1206,9 +1283,9 @@ fn next_of(
     let types = serde_json::to_string(kind.types()).expect("type names serialize");
     let mut statement = connection.prepare_cached(&format!(
         "SELECT min(idx) FROM blocks INDEXED BY blocks_by_type
-         WHERE node_id = ?1 AND json_extract(block, '$.type') IN (SELECT value FROM json_each(?2))
+         WHERE node_id = ?1 AND type IN (SELECT value FROM json_each(?2))
            AND idx >= ?3 AND idx < ?4 AND ({})",
-        kind.condition("block").unwrap_or_else(|| "1".to_owned())
+        condition(kind)
     ))?;
     for Segment { start, node: holder, rows } in path.segments(node.as_str(), from..path.len()) {
         let found: Option<i64> =
@@ -1233,18 +1310,18 @@ fn blocks_of(
     let types: Vec<&str> = kinds.iter().flat_map(|kind| kind.types().iter().copied()).collect();
     let types = serde_json::to_string(&types).expect("type names serialize");
     let mut statement = connection.prepare_cached(
-        "SELECT idx, block FROM blocks INDEXED BY blocks_by_type
-         WHERE node_id = ?1 AND json_extract(block, '$.type') IN (SELECT value FROM json_each(?2))
+        "SELECT idx, format, dictionary, body FROM blocks INDEXED BY blocks_by_type
+         WHERE node_id = ?1 AND type IN (SELECT value FROM json_each(?2))
            AND idx >= ?3 AND idx < ?4
          ORDER BY idx",
     )?;
+    let codec = Codec::new(connection);
     let mut found = Vec::new();
     for Segment { start, node: holder, rows } in path.segments(node.as_str(), range.start..range.end.min(path.len())) {
         let mut read = statement.query(params![holder, types, rows.start, rows.end])?;
         while let Some(row) = read.next()? {
             let idx: i64 = row.get(0)?;
-            let text: String = row.get(1)?;
-            let block: Block = json("blocks", "block", &text)?;
+            let block = codec.block("blocks", &Stored::of(row, 1)?)?;
             if kinds.iter().any(|kind| kind.holds(&block)) {
                 found.push((decode("path_runs", "start", usize::try_from(start + idx - rows.start))?, block));
             }
@@ -1259,9 +1336,9 @@ fn turn_position(connection: &Connection, node: &NodeId, turn: &TurnId) -> Resul
     let position: Option<i64> = connection
         .prepare_cached(&format!(
             "SELECT min({POSITION}) FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-               ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') = 'user'
+               ON blocks.node_id = {RUN_NODE} AND blocks.type = 'user'
                  AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE run.node_id = ?1 AND json_extract(blocks.block, '$.turnId') = ?2"
+             WHERE run.node_id = ?1 AND blocks.turn_id = ?2"
         ))?
         .query_row(params![node.as_str(), turn.as_str()], |row| row.get(0))?;
     position.map(|position| decode("path_runs", "start", usize::try_from(position))).transpose()
@@ -1291,11 +1368,9 @@ fn earlier_rows(connection: &Connection, node: &NodeId, path: &Path, end: i64) -
 /// without decoding a block.
 fn earlier_ids(connection: &Connection, node: &NodeId, end: i64) -> Result<(Vec<TurnId>, Vec<BlockId>), StorageError> {
     let mut statement = connection.prepare_cached(&format!(
-        "SELECT json_extract(blocks.block, '$.type'),
-                CASE json_extract(blocks.block, '$.type') WHEN 'user' THEN json_extract(blocks.block, '$.turnId')
-                  ELSE json_extract(blocks.block, '$.id') END
+        "SELECT blocks.type, CASE blocks.type WHEN 'user' THEN blocks.turn_id ELSE blocks.id END
          FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-           ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') IN ('user', 'tool_call')
+           ON blocks.node_id = {RUN_NODE} AND blocks.type IN ('user', 'tool_call')
              AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
          WHERE run.node_id = ?1 AND {POSITION} < ?2
          ORDER BY run.start, blocks.idx"
@@ -1347,7 +1422,8 @@ fn each_block(
     mut take: impl FnMut(usize, Block) -> ControlFlow<()>,
 ) -> Result<(), StorageError> {
     let mut statement = connection
-        .prepare_cached("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx")?;
+        .prepare_cached("SELECT idx, format, dictionary, body FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx")?;
+    let codec = Codec::new(connection);
     let first = decode("path_runs", "start", usize::try_from(range.start))?;
     let mut position = first;
     for Segment { node: holder, rows, .. } in path.segments(node.as_str(), range.clone()) {
@@ -1357,8 +1433,7 @@ fn each_block(
             if row.get::<_, i64>(0)? != expected {
                 return Err(gap(node, position));
             }
-            let text: String = row.get(1)?;
-            if take(position, json("blocks", "block", &text)?).is_break() {
+            if take(position, codec.block("blocks", &Stored::of(row, 1)?)?).is_break() {
                 return Ok(());
             }
             position += 1;
@@ -1800,23 +1875,44 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
     // A failed `compact` ends no turn, and a stop that a Resume continued
     // ended the turn only until the Resume.
     let mut rows = connection.prepare_cached(&format!(
-        "SELECT blocks.idx, json_extract(block, '$.type'), json_extract(block, '$.turnId'),
-                json_extract(block, '$.type') IN ('response', 'error', 'abort')
-                  AND coalesce(json_extract(block, '$.outsideTurn'), 0) = 0
-                  AND coalesce(json_extract(block, '$.isResumed'), 0) = 0,
-                CASE json_extract(block, '$.type') WHEN 'text' THEN json_extract(block, '$.text') END
+        "SELECT blocks.idx, blocks.type, blocks.turn_id,
+                blocks.type IN ('response', 'error', 'abort') AND blocks.outside_turn = 0 AND blocks.resumed = 0,
+                blocks.format, blocks.dictionary, CASE blocks.type WHEN 'text' THEN blocks.body END
            FROM {PATH_ROWS} WHERE run.node_id = ?1 ORDER BY run.start DESC, blocks.idx DESC"
     ))?;
+    let codec = Codec::new(connection);
+    // A text is joined only when the walk reaches it.
     let rows = rows.query_map(params![id], |row| {
-        Ok(WalkRow {
-            index: row.get(0)?,
-            kind: row.get(1)?,
-            turn: row.get(2)?,
-            ends_turn: row.get(3)?,
-            text: row.get(4)?,
-        })
+        let body: Option<Vec<u8>> = row.get(6)?;
+        Ok((
+            WalkRow {
+                index: row.get(0)?,
+                kind: row.get(1)?,
+                turn: row.get(2)?,
+                ends_turn: row.get(3)?,
+                text: None,
+            },
+            match body {
+                Some(body) => Some(Stored {
+                    format: row.get(4)?,
+                    dictionary: row.get(5)?,
+                    body,
+                }),
+                None => None,
+            },
+        ))
     })?;
-    let walk = walk(rows.map(|row| row.map_err(StorageError::from)), state.phase)?;
+    let rows = rows.map(|row| {
+        let (mut walked, stored) = row?;
+        if let Some(stored) = stored {
+            walked.text = match codec.block("blocks", &stored)? {
+                Block::Text(text) => Some(text.text),
+                _ => None,
+            };
+        }
+        Ok(walked)
+    });
+    let walk = walk(rows, state.phase)?;
     let last_turn = match walk.end {
         Some(end) => Some(ended_turn(connection, &id, end, walk.answer)?),
         None => None,
@@ -1894,12 +1990,12 @@ fn ended_turn(
     end: i64,
     answer: Option<String>,
 ) -> Result<EndedTurn, StorageError> {
-    let block: String = connection.query_row(
-        "SELECT block FROM blocks WHERE node_id = ?1 AND idx = ?2",
+    let stored = connection.query_row(
+        "SELECT format, dictionary, body FROM blocks WHERE node_id = ?1 AND idx = ?2",
         params![node, end],
-        |row| row.get(0),
+        |row| Stored::of(row, 0),
     )?;
-    let (id, outcome) = match json::<Block>("blocks", "block", &block)? {
+    let (id, outcome) = match Codec::new(connection).block("blocks", &stored)? {
         Block::Response(block) => (block.id, Terminal::Response),
         Block::Error(block) => (block.id, Terminal::Error),
         Block::Abort(block) => (block.id, Terminal::Abort),
@@ -2078,6 +2174,24 @@ const LISTED: &str = "share_entries AS entry
   LEFT JOIN share_blocks AS copy
     ON entry.node_id IS NULL AND copy.token = entry.token AND copy.idx = entry.position";
 
+/// The columns of the record an entry of [`LISTED`] shows, its row's or its
+/// copy's, which [`listed`] reads.
+fn listed_record() -> String {
+    format!("{}, {}", record_of("row"), record_of("copy"))
+}
+
+/// The record an entry of [`LISTED`] shows, from the columns
+/// [`listed_record`] selected at `first`; none for an entry whose row or
+/// copy is gone, or a run of steps.
+fn listed(row: &Row<'_>, first: usize) -> rusqlite::Result<Option<Stored>> {
+    let own: Option<Vec<u8>> = row.get(first + 2)?;
+    if own.is_some() {
+        return Stored::of(row, first).map(Some);
+    }
+    let copy: Option<Vec<u8>> = row.get(first + 5)?;
+    copy.map(|_| Stored::of(row, first + 3)).transpose()
+}
+
 impl Transcript {
     /// How many entries the transcript holds; none when there is no such
     /// transcript: a node the tree lacks. A share always holds its list.
@@ -2130,17 +2244,19 @@ impl Transcript {
             Self::Shared { token } => token,
         };
         let mut statement = connection.prepare(&format!(
-            "SELECT entry.position, coalesce(row.block, copy.block), entry.steps FROM {LISTED}
+            "SELECT entry.position, entry.steps, {} FROM {LISTED}
              WHERE entry.token = ?1 AND entry.position >= ?2 AND entry.position < ?3
-             ORDER BY entry.position"
+             ORDER BY entry.position",
+            listed_record()
         ))?;
+        let codec = Codec::new(connection);
         let mut rows = statement.query(params![token.as_str(), count(range.start), count(range.end)])?;
         let mut at = range.start;
         while let Some(row) = rows.next()? {
             let index: i64 = row.get(0)?;
             // A share's entry whose row or copy is gone holds no block.
-            let entry = match (index == count(at), row.get::<_, Option<String>>(1)?, row.get::<_, Option<i64>>(2)?) {
-                (true, Some(text), None) => Entry::Block(json(self.table(), "block", &text)?),
+            let entry = match (index == count(at), listed(row, 2)?, row.get::<_, Option<i64>>(1)?) {
+                (true, Some(stored), None) => Entry::Block(codec.block(self.table(), &stored)?),
                 (true, None, Some(steps)) => {
                     Entry::StepsNotShared(decode("share_entries", "steps", u64::try_from(steps))?)
                 }
@@ -2157,16 +2273,11 @@ impl Transcript {
         Ok(())
     }
 
-    /// What `json_extract` reads at each of `paths` in the block of its
-    /// entry at `index`, which it holds, without decoding the block: NULL
-    /// for a path the block lacks, and for every path of a run of steps.
-    fn extract_at(&self, connection: &Connection, index: usize, paths: &[&str]) -> Result<Vec<Value>, StorageError> {
-        let columns = |block: &str| {
-            (0..paths.len())
-                .map(|n| format!("json_extract({block}, ?{})", n + 3))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
+    /// The type, the id and the summary size of the block of its entry at
+    /// `index`, which it holds, read from the columns of its row without
+    /// decoding the block: NULL for what the block lacks, and for each of
+    /// a run of steps. A share's copy, always a text, has no summary size.
+    fn columns_at(&self, connection: &Connection, index: usize) -> Result<[Value; 3], StorageError> {
         let (sql, key) = match self {
             Self::Agent(node) => {
                 let path = Path::read(connection, node.as_str())?;
@@ -2176,7 +2287,7 @@ impl Transcript {
                     return Err(self.gap(index));
                 };
                 (
-                    format!("SELECT {} FROM blocks WHERE node_id = ?1 AND idx = ?2", columns("block")),
+                    "SELECT type, id, summary_tokens FROM blocks WHERE node_id = ?1 AND idx = ?2".to_owned(),
                     [Value::Text(holder.to_owned()), Value::Integer(rows.start)],
                 )
             }
@@ -2184,18 +2295,15 @@ impl Transcript {
                 // An entry whose row or copy is gone, which holds no block,
                 // reads as missing.
                 format!(
-                    "SELECT {} FROM {LISTED} WHERE entry.token = ?1 AND entry.position = ?2
-                       AND (coalesce(row.block, copy.block) IS NOT NULL OR entry.steps IS NOT NULL)",
-                    columns("coalesce(row.block, copy.block)")
+                    "SELECT coalesce(row.type, copy.type), coalesce(row.id, copy.id), row.summary_tokens
+                     FROM {LISTED} WHERE entry.token = ?1 AND entry.position = ?2
+                       AND (row.record IS NOT NULL OR copy.copy IS NOT NULL OR entry.steps IS NOT NULL)"
                 ),
                 [Value::Text(token.as_str().to_owned()), Value::Integer(count(index))],
             ),
         };
-        let parameters = key.into_iter().chain(paths.iter().map(|path| Value::Text((*path).to_owned())));
         connection
-            .query_row(&sql, params_from_iter(parameters), |row| {
-                (0..paths.len()).map(|column| row.get(column)).collect()
-            })
+            .query_row(&sql, params_from_iter(key), |row| Ok([row.get(0)?, row.get(1)?, row.get(2)?]))
             .optional()?
             .ok_or_else(|| self.gap(index))
     }
@@ -2215,7 +2323,7 @@ impl Transcript {
             "SELECT {POSITION} FROM blocks INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
                ON run.node_id = ?1 AND {RUN_NODE} = blocks.node_id
                  AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE json_extract(blocks.block, '$.id') = ?2 AND {POSITION} < ?3"
+             WHERE blocks.id = ?2 AND {POSITION} < ?3"
         );
         let (sql, parameters): (&str, Vec<Value>) = match self {
             Self::Agent(node) => (
@@ -2229,11 +2337,11 @@ impl Transcript {
                 "SELECT entry.position FROM blocks AS row INDEXED BY blocks_by_id
                    CROSS JOIN share_entries AS entry INDEXED BY share_entries_by_row
                      ON entry.token = ?1 AND entry.node_id = row.node_id AND entry.idx = row.idx
-                 WHERE json_extract(row.block, '$.id') = ?2 AND entry.position < ?3
+                 WHERE row.id = ?2 AND entry.position < ?3
                  UNION ALL
                  SELECT entry.position FROM share_blocks AS copy
                    JOIN share_entries AS entry ON entry.token = copy.token AND entry.position = copy.idx
-                 WHERE copy.token = ?1 AND json_extract(copy.block, '$.id') = ?2
+                 WHERE copy.token = ?1 AND copy.id = ?2
                    AND entry.node_id IS NULL AND entry.position < ?3
                  LIMIT 1",
                 [&[Value::Text(token.as_str().to_owned())][..], &wanted].concat(),
@@ -2258,23 +2366,24 @@ impl Transcript {
         let Self::Agent(node) = self else {
             return Ok(Vec::new());
         };
-        let text: Option<String> = connection
+        let stored = connection
             .query_row(
                 &format!(
-                    "SELECT blocks.block FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-                       ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') = 'context'
+                    "SELECT {} FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+                       ON blocks.node_id = {RUN_NODE} AND blocks.type = 'context'
                          AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-                     WHERE run.node_id = ?1 AND {POSITION} < ?2 AND json_extract(blocks.block, '$.source') = ?3
-                     ORDER BY {POSITION} DESC LIMIT 1"
+                     WHERE run.node_id = ?1 AND {POSITION} < ?2 AND blocks.source = ?3
+                     ORDER BY {POSITION} DESC LIMIT 1",
+                    record_of("blocks")
                 ),
                 params![node.as_str(), count(length), INSTRUCTIONS_SOURCE],
-                |row| row.get(0),
+                |row| Stored::of(row, 0),
             )
             .optional()?;
-        let Some(text) = text else {
+        let Some(stored) = stored else {
             return Ok(Vec::new());
         };
-        match json("blocks", "block", &text)? {
+        match Codec::new(connection).block("blocks", &stored)? {
             Block::Context(context) => Ok(context.instructions),
             _ => unreachable!("the query selects a context block"),
         }
@@ -2364,8 +2473,8 @@ pub fn read_page(
         if index >= length {
             return Ok(Err(PageRead::Outside));
         }
-        let held = transcript.extract_at(connection, index, &["$.id"])?;
-        Ok(if matches!(&held[..], [Value::Text(id)] if id == edge.as_str()) {
+        let held = transcript.columns_at(connection, index)?;
+        Ok(if matches!(&held[1], Value::Text(id) if id == edge.as_str()) {
             Ok(index)
         } else {
             Err(PageRead::Changed)
@@ -2440,8 +2549,7 @@ fn summaries_of<'a>(
     for block in blocks {
         if let Block::CompactionMarker(marker) = block
             && let Some(index) = transcript.block_index(connection, &marker.boundary_id, length)?
-            && let [Value::Text(kind), tokens] =
-                &transcript.extract_at(connection, index, &["$.type", "$.summaryTokens"])?[..]
+            && let [Value::Text(kind), _, tokens] = &transcript.columns_at(connection, index)?
             && kind == "compaction_boundary"
         {
             let tokens = match tokens {
@@ -2522,14 +2630,10 @@ pub struct Subagent {
 
 /// Whether the call that started the node `nodes` names is on its parent's
 /// current path.
-///
-/// The unary `+` takes the TEXT affinity off `started_by`: with it, SQLite would
-/// apply that affinity to the indexed expression, which has none, and scan the
-/// whole `blocks_by_id` index for every node instead of searching it.
 const STARTED_ON_PATH: &str = "(nodes.started_by IS NULL OR EXISTS (
      SELECT 1 FROM blocks AS start INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
        ON run.node_id = start.node_id AND start.idx >= run.first AND start.idx < run.first + run.length
-     WHERE json_extract(start.block, '$.id') = +nodes.started_by AND start.node_id = nodes.parent_id
+     WHERE start.id = nodes.started_by AND start.node_id = nodes.parent_id
    ))";
 
 /// The query [`subagents`] runs.
@@ -2576,19 +2680,19 @@ pub fn command_call(
     connection: &Connection,
     command: &CommandId,
 ) -> Result<Option<(NodeId, ToolCallBlock)>, StorageError> {
-    let row: Option<(String, String)> = connection
+    let row: Option<(String, Stored)> = connection
         .query_row(
-            "SELECT blocks.node_id, blocks.block FROM blocks JOIN nodes ON nodes.id = blocks.node_id
-             WHERE json_extract(blocks.block, '$.view.commandId') = ?1
-             ORDER BY json_extract(blocks.block, '$.createdAt'), nodes.number IS NULL, nodes.number LIMIT 1",
+            "SELECT blocks.node_id, blocks.format, blocks.dictionary, blocks.body FROM blocks JOIN nodes ON nodes.id = blocks.node_id
+             WHERE blocks.command = ?1
+             ORDER BY blocks.created_at, nodes.number IS NULL, nodes.number LIMIT 1",
             [command.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, Stored::of(row, 1)?)),
         )
         .optional()?;
-    let Some((node, text)) = row else {
+    let Some((node, stored)) = row else {
         return Ok(None);
     };
-    match json("blocks", "block", &text)? {
+    match Codec::new(connection).block("blocks", &stored)? {
         Block::ToolCall(call) => Ok(Some((decode("blocks", "node_id", NodeId::try_from(node))?, call))),
         _ => Err(StorageError::Corrupt {
             table: "blocks",

@@ -340,6 +340,11 @@ impl Services {
         let clock = providers.clock.clone();
         let returning = Arc::new(Returning::take(&control).await?);
         let edge = tokio::runtime::Handle::current();
+        // The conversations stored before their rows named their contents
+        // convert in the background; an open of one not converted yet
+        // converts it first.
+        let converting = conversations.clone();
+        edge.spawn(async move { converting.convert_all().await });
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder()
             .build()

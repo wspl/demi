@@ -816,21 +816,6 @@ impl Kind {
         }
     }
 
-    /// What a block of one of its [`types`](Self::types) must also hold,
-    /// as an SQL condition on the block's JSON text `column`; none for a
-    /// kind its types make.
-    pub fn condition(self, column: &str) -> Option<String> {
-        match self {
-            Self::ExecutingCall => Some(format!("json_extract({column}, '$.status') = 'executing'")),
-            Self::CompletedText => Some(format!("json_extract({column}, '$.forkable') IS 1")),
-            Self::Record => Some(format!(
-                "json_extract({column}, '$.outsideTurn') IS NOT 1
-                 AND (json_extract({column}, '$.type') != 'wakeup' OR json_extract({column}, '$.placement') != 'steer')"
-            )),
-            _ => None,
-        }
-    }
-
     /// Whether `block` is of the kind: the block whose tag is one of
     /// [`types`](Self::types).
     pub fn holds(self, block: &Block) -> bool {

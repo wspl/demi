@@ -32,6 +32,10 @@ use super::providers::{NoSealed, ResealSealed};
 /// that published releases shipped before it, oldest first.
 pub(crate) struct Schema {
     sql: &'static str,
+    /// What a file that holds no database yet takes before its journal
+    /// mode is set ([`Schema::prepare_new`]): pragmas that only take effect
+    /// on an empty file.
+    initial: &'static str,
     history: &'static [Shipped],
 }
 
@@ -131,6 +135,7 @@ impl ReadBlob for NoBlobs {
 /// limits and with the plugins' secrets and read states no server keeps, but
 /// development databases do, and the server's migrate through them.
 pub(crate) const CONTROL: Schema = Schema {
+    initial: "",
     sql: CONTROL_V1,
     history: &[
         Shipped {
@@ -1836,10 +1841,12 @@ CREATE TABLE plugin_oauth_clients (
 ) STRICT, WITHOUT ROWID;
 ";
 
-/// Each conversation's database's schema.
+/// The schema of each conversation's database whose rows held whole blocks,
+/// up to 0.1.65: a database of it, or of one in its history, is migrated to
+/// it and then converted into [`CONVERSATION`] (`convert.rs`).
 ///
 /// Its history holds the schema of each published release before the one that
-/// ships the current schema, and of each development build a server keeps data of
+/// shipped it, and of each development build a server keeps data of
 /// (`upgrades.md` § A development build on a server). The one of transcript block
 /// format 5 in which a node says which agent it was forked from is the last of
 /// those.
@@ -1874,7 +1881,8 @@ CREATE TABLE plugin_oauth_clients (
 ///   command's watch took their current names, and 0.1.65, which 0.1.64
 ///   shipped too, the one before the mark of a message a schedule sent took
 ///   its name.
-pub(crate) const CONVERSATION: Schema = Schema {
+pub(crate) const LEGACY_CONVERSATION: Schema = Schema {
+    initial: "",
     sql: CONVERSATION_V1,
     history: &[
         Shipped {
@@ -1994,11 +2002,51 @@ pub(crate) const CONVERSATION: Schema = Schema {
             migration: Migration::Code(conversation_from_0_1_63),
         },
         Shipped {
-            sql: include_str!("schema/conversation-0.1.65.sql"),
+            sql: CONVERSATION_0_1_65,
             migration: Migration::Code(conversation_from_0_1_65),
         },
     ],
 };
+
+/// Each conversation's database's schema: its nodes, the records of its
+/// rows and the contents they name, its paths, commands, attachments and
+/// shares.
+///
+/// Its history starts with it. A database of [`LEGACY_CONVERSATION`], whose
+/// rows held whole blocks, is not migrated into it but converted into a new
+/// file (`convert.rs`).
+pub(crate) const CONVERSATION: Schema = Schema {
+    initial: "PRAGMA auto_vacuum = INCREMENTAL;",
+    sql: CONVERSATION_V2,
+    history: &[],
+};
+
+/// 0.1.65's conversation schema, which 0.1.64 shipped too.
+const CONVERSATION_0_1_65: &str = include_str!("schema/conversation-0.1.65.sql");
+
+/// A form of a conversation's database whose rows hold whole blocks that
+/// this build converts as it is, without migrating the file first, so the
+/// conversion never writes the file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LegacyForm {
+    /// [`LEGACY_CONVERSATION`]'s.
+    Current,
+    /// 0.1.65's, whose marks and receipts still name automations: the
+    /// conversion names them as [`conversation_from_0_1_65`] does.
+    AutomationNames,
+}
+
+/// The form of a database that records `recorded`, when this build converts
+/// it as it is.
+pub(crate) fn legacy_form(recorded: i32) -> Option<LegacyForm> {
+    if recorded == LEGACY_CONVERSATION.version() {
+        Some(LegacyForm::Current)
+    } else if recorded == version_of(CONVERSATION_0_1_65) {
+        Some(LegacyForm::AutomationNames)
+    } else {
+        None
+    }
+}
 
 /// From 0.1.65's conversation schema, which 0.1.64 shipped too, of transcript
 /// block format 15 and checkpoint state format 8, to the current one, of block
@@ -2019,22 +2067,30 @@ pub(crate) const CONVERSATION: Schema = Schema {
 /// current format before it is written back, one row at a time.
 fn conversation_from_0_1_65(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     for (table, column) in [("blocks", "block"), ("share_blocks", "block"), ("nodes", "state")] {
-        let rows = rowids(transaction, table, &format!("WHERE instr({column}, 'automation') > 0"))?;
-        let mut read = transaction.prepare(&format!("SELECT {column} FROM {table} WHERE rowid = ?1"))?;
-        let mut update = transaction.prepare(&format!("UPDATE {table} SET {column} = ?2 WHERE rowid = ?1"))?;
-        for row in rows {
-            let text: String = read.query_row([row], |row| row.get(0))?;
-            let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
-            if !named_marks(table, &mut value) {
-                continue;
-            }
-            let written = if table == "nodes" {
-                to_json(&json::<CheckpointState>("nodes", "state", &value.to_string()).map_err(corrupt)?)
-            } else {
-                to_json(&demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)?)
-            };
-            update.execute(rusqlite::params![row, written])?;
+        name_schedules(transaction, table, column)?;
+    }
+    Ok(())
+}
+
+/// Names the marks and receipts of `table`'s `column` as
+/// [`conversation_from_0_1_65`] does, decoding each value it rewrites as the
+/// current format first, one row at a time.
+pub(crate) fn name_schedules(transaction: &Transaction<'_>, table: &str, column: &str) -> rusqlite::Result<()> {
+    let rows = rowids(transaction, table, &format!("WHERE instr({column}, 'automation') > 0"))?;
+    let mut read = transaction.prepare(&format!("SELECT {column} FROM {table} WHERE rowid = ?1"))?;
+    let mut update = transaction.prepare(&format!("UPDATE {table} SET {column} = ?2 WHERE rowid = ?1"))?;
+    for row in rows {
+        let text: String = read.query_row([row], |row| row.get(0))?;
+        let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+        if !named_marks(table, &mut value) {
+            continue;
         }
+        let written = if table == "nodes" {
+            to_json(&json::<CheckpointState>("nodes", "state", &value.to_string()).map_err(corrupt)?)
+        } else {
+            to_json(&demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)?)
+        };
+        update.execute(rusqlite::params![row, written])?;
     }
     Ok(())
 }
@@ -2181,7 +2237,7 @@ fn stored_names(value: &mut serde_json::Value, inputs: bool) -> bool {
 /// or a queued message's, and a permission receipt's category and action, an
 /// `agent_message` block's or an agent input's waiting in a checkpoint state;
 /// answers whether it renamed any.
-fn named_marks(table: &str, value: &mut serde_json::Value) -> bool {
+pub(crate) fn named_marks(table: &str, value: &mut serde_json::Value) -> bool {
     use serde_json::Value;
 
     let mut changed = false;
@@ -4352,6 +4408,11 @@ pub enum SchemaFit {
     /// It holds nothing yet or records a schema in the history: opening
     /// gives it this build's schema.
     Migrates,
+    /// A conversation's database whose rows hold whole blocks, of a form this
+    /// build converts as it is ([`legacy_form`]): it converts it into a new
+    /// file it renames over it, and never writes the file itself, so a
+    /// snapshot may hold it by a link.
+    Converts,
     /// It records another schema, as a newer release or a development build
     /// of another unpublished schema made it: opening refuses it.
     Other,
@@ -4373,6 +4434,11 @@ pub fn schema_fit(path: &Path, kind: DatabaseKind) -> Result<SchemaFit, StorageE
     Ok(match kind.schema().current(recorded) {
         Some(true) => SchemaFit::Current,
         Some(false) => SchemaFit::Migrates,
+        None if kind == DatabaseKind::Conversation => match (legacy_form(recorded), LEGACY_CONVERSATION.current(recorded)) {
+            (Some(_), _) => SchemaFit::Converts,
+            (None, Some(_)) => SchemaFit::Migrates,
+            (None, None) => SchemaFit::Other,
+        },
         None => SchemaFit::Other,
     })
 }
@@ -4409,6 +4475,16 @@ impl Schema {
             .iter()
             .position(|shipped| version_of(shipped.sql) == recorded)?;
         Some(&self.history[from..])
+    }
+
+    /// Gives a file that holds no database yet what it takes before its
+    /// journal mode is set: the pragmas of [`Schema::initial`].
+    pub(crate) fn prepare_new(&self, connection: &Connection) -> Result<(), StorageError> {
+        let pages: i64 = connection.pragma_query_value(None, "page_count", |row| row.get(0))?;
+        if pages == 0 {
+            connection.execute_batch(self.initial)?;
+        }
+        Ok(())
     }
 
     /// Gives `connection`'s database this schema, migrating one of an earlier
@@ -5715,5 +5791,368 @@ CREATE TABLE attachments (
   source_host TEXT,
   source_path TEXT CHECK ((source_path IS NULL) = (source_host IS NULL)),
   CHECK ((width IS NULL) = (height IS NULL))
+) STRICT;
+";
+
+const CONVERSATION_V2: &str = r"
+CREATE TABLE nodes (
+  id               TEXT PRIMARY KEY,
+  -- The agent's number, 0 for the root; null for a side question's node,
+  -- which is no agent and has its row in side_questions.
+  number           INTEGER UNIQUE CHECK (number >= 0),
+  parent_id        TEXT REFERENCES nodes (id) ON DELETE CASCADE,
+  description      TEXT NOT NULL,
+  profile          TEXT,
+  -- The instructions the node's profile added to its system prompt; null
+  -- when it added none, or the node has its parent's prompt.
+  instructions     TEXT,
+  round            INTEGER NOT NULL CHECK (round >= 1),
+  started_at       INTEGER NOT NULL,
+  can_spawn        INTEGER NOT NULL CHECK (can_spawn IN (0, 1)),
+  closed_phase     TEXT CHECK (closed_phase IN ('completed', 'aborted', 'error')),
+  closed_at        INTEGER,
+  failure          TEXT,
+  delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
+  -- The session's checkpoint state as JSON, with whether a Stop holds its
+  -- waiting input until the user's next action.
+  -- nodes.state: checkpoint state format 9
+  state            TEXT NOT NULL,
+  output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
+  -- The number of the agent the node was forked from; null for one that
+  -- was not forked.
+  forked_from      INTEGER CHECK (forked_from >= 1),
+  -- A child's own working directory on the primary Host, and where the
+  -- conversation worked when it was set: the primary Host's device, null
+  -- for a Cloud not made yet, and the conversation's directory then. The
+  -- child works there while the conversation still does, and in the
+  -- conversation's directory otherwise. All null for the root, which works
+  -- in the conversation's. Their reader refuses a row that sets some of
+  -- them only, since a migration adds no table CHECK.
+  cwd              TEXT CHECK (cwd <> ''),
+  cwd_device       TEXT,
+  cwd_under        TEXT CHECK (cwd_under <> ''),
+  -- The Context its profile chose, in tokens, which its sessions use in
+  -- place of the user's limit; null for the user's limit.
+  context_limit    INTEGER CHECK (context_limit >= 1),
+  -- The row number of the current path's last block, the current leaf;
+  -- null while the path holds no row of the node's own
+  -- (message-editing.md § Versions).
+  leaf             INTEGER CHECK (leaf >= 0),
+  -- The row a cut of the path left off its end that no row has replaced
+  -- yet: the next row written at the path's end replaces it. Null when the
+  -- path's end is no cut, or an edit or Regenerate cut it, whose next row
+  -- is a version of its own.
+  cut              INTEGER CHECK (cut >= 0),
+  -- The id of the parent's call block that started this child, so the
+  -- child belongs to the branch that call is on; null for the root and for
+  -- a child stored before versions existed, which is on every path.
+  started_by       TEXT,
+  -- The model selection a child's rounds run on, the one owner of it: the
+  -- checkpoint's is only what its history was last requested with. Null for
+  -- the root, whose model the conversation's record holds, and for a side
+  -- question, which keeps its checkpoint's. Its reader refuses a row that
+  -- is a child without one, since a migration adds no table CHECK.
+  -- nodes.model: model selection, as in checkpoint state format 9
+  model            TEXT,
+  CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
+  CHECK (failure IS NULL OR closed_phase = 'error')
+) STRICT;
+-- One root per tree.
+CREATE UNIQUE INDEX nodes_root ON nodes ((parent_id IS NULL)) WHERE parent_id IS NULL;
+CREATE INDEX nodes_children ON nodes (parent_id, number);
+
+-- Each side question (comments-and-ask.md § Side questions), by its node, a
+-- child of the root without a number: the root's text block its history
+-- ends at, the character offsets of the asked words in the block's
+-- rendered text, the words, the question, when it was asked, the title the
+-- small model wrote, null until it wrote one, and whether its card is
+-- folded. A side question about a picture (comments-and-ask.md § Images)
+-- has the picture, a media source as JSON, its place among the block's
+-- pictures as its offsets and its alt text as its words. The tree store
+-- writes the row with its node; the title and the fold are the backend's.
+CREATE TABLE side_questions (
+  node_id      TEXT PRIMARY KEY REFERENCES nodes (id) ON DELETE CASCADE,
+  block_id     TEXT NOT NULL CHECK (block_id <> ''),
+  start_offset INTEGER NOT NULL CHECK (start_offset >= 0),
+  end_offset   INTEGER NOT NULL CHECK (end_offset > start_offset),
+  quote        TEXT NOT NULL CHECK (quote <> ''),
+  picture      TEXT CHECK (json_valid(picture)),
+  question     TEXT NOT NULL CHECK (question <> ''),
+  asked_at     INTEGER NOT NULL,
+  title        TEXT CHECK (title <> ''),
+  folded       INTEGER NOT NULL DEFAULT 0 CHECK (folded IN (0, 1))
+) STRICT, WITHOUT ROWID;
+CREATE INDEX side_questions_in_order ON side_questions (asked_at, node_id);
+
+-- The next number of each sequence the model sees in the conversation: a
+-- number is advanced past in its own transaction before it is given out,
+-- so a crash leaves a gap and never gives a number twice.
+CREATE TABLE sequences (
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'agent', 'tab', 'attachment', 'device')),
+  next INTEGER NOT NULL CHECK (next >= 1)
+) STRICT;
+
+-- A node's transcript is a tree of rows (message-editing.md § Versions):
+-- `idx` is a row's number, its place in the order the node's rows were
+-- written, which no other row is ever given. A row is never deleted.
+--
+-- A row is a record (`records.rs`): the block's JSON with each of its
+-- contents named by a marker, compressed with zstd and the dictionary
+-- `dictionary` names, null for none. The columns before the body are
+-- what queries read, written from the block and never differing from it.
+CREATE TABLE blocks (
+  record         INTEGER PRIMARY KEY,
+  node_id        TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  idx            INTEGER NOT NULL CHECK (idx >= 0),
+  -- The row before it on its path; null for a path's first row.
+  follows        INTEGER CHECK (follows < idx),
+  -- The row it was written in place of, when the session's own rewrite (a
+  -- retry, an unwind, a compaction inside a turn) began a branch with it;
+  -- it is then of that row's version. Null for every other row.
+  replaces       INTEGER CHECK (replaces < idx),
+  -- The block's format; a release reads each format it knows.
+  -- blocks.body: transcript block format 16
+  format         INTEGER NOT NULL,
+  type           TEXT NOT NULL,
+  id             TEXT NOT NULL,
+  -- A user block's turn.
+  turn_id        TEXT,
+  -- The command a shell call's view names.
+  command        TEXT,
+  -- A context block's source.
+  source         TEXT,
+  -- A tool call's status.
+  status         TEXT,
+  -- Whether a text is one a Fork may end at.
+  forkable       INTEGER NOT NULL CHECK (forkable IN (0, 1)),
+  -- Where command reports arrived.
+  placement      TEXT,
+  created_at     TEXT,
+  outside_turn   INTEGER NOT NULL CHECK (outside_turn IN (0, 1)),
+  resumed        INTEGER NOT NULL CHECK (resumed IN (0, 1)),
+  summary_tokens INTEGER,
+  dictionary     INTEGER REFERENCES dictionaries (id),
+  body           BLOB NOT NULL,
+  UNIQUE (node_id, idx)
+) STRICT;
+-- A page of a transcript is read by its requests, which start at its user
+-- blocks; a block is found by its id, and the call that started a command
+-- by the command its view names (web-api-conversations.md § Conversation history).
+CREATE INDEX blocks_by_type ON blocks (node_id, type, idx);
+CREATE INDEX blocks_by_id ON blocks (id);
+CREATE INDEX blocks_by_command ON blocks (command) WHERE command IS NOT NULL;
+-- The rows that follow a row: its versions and the branches the session's
+-- rewrites left; and the rows that do not follow the row written before
+-- them, where a place may hold versions.
+CREATE INDEX blocks_by_follows ON blocks (node_id, follows);
+CREATE INDEX blocks_branching ON blocks (node_id, follows) WHERE follows IS NOT idx - 1;
+CREATE INDEX blocks_carrying ON blocks (node_id, replaces) WHERE replaces IS NOT NULL;
+-- Each content a row's record names, so a content is removed once nothing
+-- names it, and never while something does.
+CREATE TABLE block_contents (
+  record  INTEGER NOT NULL REFERENCES blocks (record) ON DELETE CASCADE,
+  content INTEGER NOT NULL REFERENCES contents (id),
+  PRIMARY KEY (record, content)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX block_contents_by_content ON block_contents (content);
+-- Each node's current path as runs of consecutive row numbers: the run at
+-- path position `start` holds the rows `first` to `first + length - 1`.
+-- Derived from the rows and the node's leaf, and written with the leaf in
+-- the same transaction, so a page of the path reads an index range.
+-- A node that starts where another node's path is, a side question, has
+-- first runs whose rows are `source`'s: they stay `source`'s, and the
+-- database refuses to delete `source` while a run names it. Null for a run
+-- of the node's own rows.
+CREATE TABLE path_runs (
+  node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  start   INTEGER NOT NULL CHECK (start >= 0),
+  first   INTEGER NOT NULL CHECK (first >= 0),
+  length  INTEGER NOT NULL CHECK (length >= 1),
+  source  TEXT REFERENCES nodes (id),
+  PRIMARY KEY (node_id, start)
+) STRICT, WITHOUT ROWID;
+-- Each blob a block names, as a medium or a side of an edit, by the block's
+-- node and index; written with the block in the same checkpoint and gone
+-- with it, so what names a blob is found without reading a block. A
+-- share's check of a blob and the collection of the user's namespace read
+-- it (`storage.md` § Retention).
+CREATE TABLE block_blobs (
+  node_id TEXT NOT NULL,
+  idx     INTEGER NOT NULL,
+  blob    TEXT NOT NULL,
+  PRIMARY KEY (node_id, idx, blob),
+  FOREIGN KEY (node_id, idx) REFERENCES blocks (node_id, idx) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+CREATE INDEX block_blobs_by_blob ON block_blobs (blob);
+-- Each attachment a block's text delivers as an attachment block, by the block's
+-- node and index; written with the block like block_blobs, so a share lists
+-- the attachments it shows without reading a block (`storage.md`).
+CREATE TABLE block_attachments (
+  node_id    TEXT NOT NULL,
+  idx        INTEGER NOT NULL,
+  attachment INTEGER NOT NULL CHECK (attachment >= 1),
+  PRIMARY KEY (node_id, idx, attachment),
+  FOREIGN KEY (node_id, idx) REFERENCES blocks (node_id, idx) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+-- Each share's list (`sharing.md` § Storage and routes): what it shows, by
+-- the share's token and the position in it, from 0: a message or a text of
+-- the root's transcript, by the row that holds it, its node and index, or,
+-- with neither, by the share's copy in share_blocks at the same token and
+-- position; or, with `steps`, a run of that many steps not shared. Every
+-- read of a share goes through its list. The share's control record says
+-- the token is valid; rows of a token it no longer has are never read.
+CREATE TABLE share_entries (
+  token    TEXT NOT NULL,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  node_id  TEXT,
+  idx      INTEGER CHECK (idx >= 0),
+  steps    INTEGER CHECK (steps >= 1),
+  CHECK ((node_id IS NULL) = (idx IS NULL)),
+  CHECK (steps IS NULL OR node_id IS NULL),
+  PRIMARY KEY (token, position)
+) STRICT;
+-- The entries that name a transcript row, for a block found by its id or
+-- its type and for a write that replaces the row.
+CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
+-- A share's copies of the texts still being written when its list was
+-- made, as they stood then, by the token and their position on the list,
+-- as records like the rows' (`blocks`).
+CREATE TABLE share_blocks (
+  copy       INTEGER PRIMARY KEY,
+  token      TEXT NOT NULL,
+  idx        INTEGER NOT NULL CHECK (idx >= 0),
+  -- share_blocks.body: transcript block format 16
+  format     INTEGER NOT NULL,
+  type       TEXT NOT NULL,
+  id         TEXT NOT NULL,
+  dictionary INTEGER REFERENCES dictionaries (id),
+  body       BLOB NOT NULL,
+  UNIQUE (token, idx)
+) STRICT;
+CREATE INDEX share_blocks_by_id ON share_blocks (id);
+-- Each content a share's copy names, as block_contents for a row.
+CREATE TABLE share_contents (
+  copy    INTEGER NOT NULL REFERENCES share_blocks (copy) ON DELETE CASCADE,
+  content INTEGER NOT NULL REFERENCES contents (id),
+  PRIMARY KEY (copy, content)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX share_contents_by_content ON share_contents (content);
+-- Each blob a share's copies name, by the token.
+CREATE TABLE share_blobs (
+  token TEXT NOT NULL,
+  blob  TEXT NOT NULL,
+  PRIMARY KEY (token, blob)
+) STRICT, WITHOUT ROWID;
+-- Each attachment a share's text names that existed when its list was
+-- made, copied from `attachments`; its blob stays shared with the
+-- conversation's.
+CREATE TABLE share_attachments (
+  token      TEXT NOT NULL,
+  number     INTEGER NOT NULL CHECK (number >= 1),
+  name       TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size       INTEGER NOT NULL CHECK (size >= 0),
+  width      INTEGER CHECK (width >= 1),
+  height     INTEGER CHECK (height >= 1),
+  blob       TEXT NOT NULL,
+  CHECK ((width IS NULL) = (height IS NULL)),
+  PRIMARY KEY (token, number)
+) STRICT;
+
+-- Each ended command's whole output: stored as a blob, with the bytes at
+-- its end the backend does not have and why; or not stored, and why; and
+-- the title of the call that started it, empty for a row written before
+-- rows kept it.
+CREATE TABLE command_outputs (
+  command_id     TEXT PRIMARY KEY,
+  ended_at       INTEGER NOT NULL,
+  -- How it ended, a JSON object: its exit code, stopped, or with its Host's
+  -- connection; null for a row a release before 0.1.21 wrote.
+  -- command_outputs.ending: command ending format 2
+  ending         TEXT,
+  blob           TEXT,
+  missing_bytes  INTEGER CHECK (missing_bytes >= 0),
+  missing_reason TEXT,
+  not_stored     TEXT,
+  title          TEXT NOT NULL DEFAULT '',
+  CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
+  CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
+  CHECK (missing_bytes IS NULL OR blob IS NOT NULL)
+) STRICT;
+
+-- Each command that runs, until its end writes its command_outputs row in
+-- the same transaction: the node that ran it, its device, its job's id on
+-- that device, the call that started it, when it started, how far each
+-- node that looked at it has seen its output, a JSON object of each node's
+-- bytes of stdout and stderr by the node's id, the title of the call that
+-- started it, whether that call started it as a service, and the call's
+-- script, which the pages' view of it carries with its title (rendering.md
+-- § Frame protocol).
+CREATE TABLE running_commands (
+  command_id  TEXT PRIMARY KEY,
+  node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  device_id   TEXT NOT NULL,
+  job_id      TEXT NOT NULL,
+  tool_use_id TEXT NOT NULL,
+  started_at  INTEGER NOT NULL,
+  -- running_commands.places: command places format 1
+  places      TEXT NOT NULL,
+  title       TEXT NOT NULL DEFAULT '',
+  -- The turn whose shell call started it; null for a command recorded
+  -- before records kept it.
+  turn_id     TEXT,
+  -- What it starts once its Host is back, while its start waits for it and
+  -- was never sent; null once sent. running_commands.unsent: unsent start
+  -- format 1.
+  unsent      TEXT,
+  script      TEXT NOT NULL DEFAULT '',
+  service     INTEGER NOT NULL DEFAULT 0 CHECK (service IN (0, 1))
+) STRICT;
+CREATE INDEX running_commands_of_node ON running_commands (node_id);
+
+-- Each attachment of the conversation, one the user sent or one the agent
+-- uploaded, by its number in the conversation's attachment sequence: the
+-- file's name, the media type read from its bytes, its size, an image's or a
+-- video's width and height in pixels when its header gives them, its
+-- blob in the owner's namespace, and the node of the agent whose
+-- `demi attachment upload` stored it, a side question's included, null for
+-- a file the user sent or uploaded themselves; only that agent's replies,
+-- and those of the agents forked from it, show it (`file-previews.md`
+-- § Attachment blocks). An upload also keeps the file it was uploaded from:
+-- the device the command ran on and the file's full path as that Host
+-- writes it, both null for a file the user sent and for an upload stored
+-- before uploads kept them.
+-- A row never changes; a Fork's seed copies the rows, and the blobs stay
+-- shared.
+CREATE TABLE attachments (
+  number      INTEGER PRIMARY KEY CHECK (number >= 1),
+  name        TEXT NOT NULL,
+  media_type  TEXT NOT NULL,
+  size        INTEGER NOT NULL CHECK (size >= 0),
+  width       INTEGER CHECK (width >= 1),
+  height      INTEGER CHECK (height >= 1),
+  blob        TEXT NOT NULL,
+  node_id     TEXT,
+  source_host TEXT,
+  source_path TEXT CHECK ((source_path IS NULL) = (source_host IS NULL)),
+  CHECK ((width IS NULL) = (height IS NULL))
+) STRICT;
+
+-- Each content of the conversation (`contents.rs`): bytes a block holds,
+-- once, under the SHA-256 of their bytes, compressed with zstd. A content
+-- never changes; it is removed once no record names it.
+CREATE TABLE contents (
+  id    INTEGER PRIMARY KEY,
+  hash  BLOB NOT NULL UNIQUE CHECK (length(hash) = 32),
+  bytes BLOB NOT NULL
+) STRICT;
+
+-- The zstd dictionary the records are compressed with, trained on the
+-- conversation's own records once it has enough; records written before
+-- it have none. A dictionary never changes.
+CREATE TABLE dictionaries (
+  id    INTEGER PRIMARY KEY,
+  bytes BLOB NOT NULL
 ) STRICT;
 ";
