@@ -13,7 +13,8 @@ import {
   type ShortcutsPatch,
 } from '../api/generated/web-api'
 import { useProduct, type Answer, type ProductChange } from './product'
-import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
+import { shortcutSet } from '@demicodes/web-ui/ui/shortcut'
 import { appThemeStore } from '@demicodes/web-ui/theme/appTheme'
 import { resolveLanguage } from '@demicodes/web-ui/i18n/languages'
 import { DEFAULT_SEND_WHILE_RUNNING } from '@demicodes/web-ui/agent/send-way'
@@ -31,14 +32,16 @@ function withPatch(preferences: Preferences, patch: PreferencesPatch): Preferenc
     ...preferences,
     ...fields,
     appearance: { ...preferences.appearance, ...appearance },
-    shortcuts: { ...preferences.shortcuts },
+    shortcuts: { mac: { ...preferences.shortcuts.mac }, pc: { ...preferences.shortcuts.pc } },
   }
-  for (const [id, keys] of Object.entries(shortcuts ?? {})) {
-    const key = id as keyof ShortcutsPatch
-    if (keys === null) {
-      delete next.shortcuts[key]
-    } else if (keys !== undefined) {
-      next.shortcuts[key] = keys
+  for (const set of ['mac', 'pc'] as const) {
+    for (const [id, keys] of Object.entries(shortcuts?.[set] ?? {})) {
+      const key = id as keyof ShortcutsPatch
+      if (keys === null) {
+        delete next.shortcuts[set][key]
+      } else if (keys !== undefined) {
+        next.shortcuts[set][key] = keys
+      }
     }
   }
   // Null goes back to Automatic, which is no stored choice.
@@ -67,7 +70,10 @@ function mergePatch(patch: PreferencesPatch, later: PreferencesPatch): Preferenc
     merged.appearance = { ...patch.appearance, ...later.appearance }
   }
   if (patch.shortcuts || later.shortcuts) {
-    merged.shortcuts = { ...patch.shortcuts, ...later.shortcuts }
+    merged.shortcuts = {
+      mac: { ...patch.shortcuts?.mac, ...later.shortcuts?.mac },
+      pc: { ...patch.shortcuts?.pc, ...later.shortcuts?.pc },
+    }
   }
   return merged
 }
@@ -192,10 +198,11 @@ export const usePreferences = defineStore('preferences', () => {
     fontSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
     ...product.snapshot?.preferences.appearance,
   }))
+  /** The shortcuts of the page's set: the user's keys, or the set's defaults. */
   const keys = computed(() =>
-    APP_SHORTCUTS.map((binding) => ({
+    appShortcuts().map((binding) => ({
       ...binding,
-      keys: product.snapshot?.preferences.shortcuts[binding.id] ?? binding.keys,
+      keys: product.snapshot?.preferences.shortcuts[shortcutSet()][binding.id] ?? binding.keys,
     })),
   )
 

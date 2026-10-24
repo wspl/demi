@@ -21,7 +21,7 @@ import { inDevelopment } from '../ui/disabled'
 import { t as uiText } from '../locales/text'
 import { t as cloudText } from '../cloud/locales/text'
 import { t } from './locales/text'
-import { APP_SHORTCUTS, shortcutAction } from './shortcuts'
+import { appShortcuts, shortcutAction } from './shortcuts'
 import type { SettingsGroupId, SettingsNavGroup, SettingsNavItem, UserRole } from './types'
 
 /** The words a section or a setting is found by, which the catalogue keeps as a comma-separated list. */
@@ -168,7 +168,7 @@ export function settingsSections(): SettingsNavGroup[] {
           keyboard: true,
           keywords: words(t('sections.keyboard.keywords')),
           settings: [
-            ...APP_SHORTCUTS.map((shortcut) => ({ label: shortcutAction(shortcut.id) })),
+            ...appShortcuts().map((shortcut) => ({ label: shortcutAction(shortcut.id) })),
             { label: t('keyboard.resetAll') },
           ],
         },

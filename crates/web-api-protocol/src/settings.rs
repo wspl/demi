@@ -100,7 +100,8 @@ pub struct Appearance {
     pub font_size: Option<u8>,
 }
 
-/// Keyboard shortcut overrides: each a key sequence the web app reads.
+/// One set's keyboard shortcut overrides: each a key sequence the web app reads,
+/// written in the set's notation.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Shortcuts {
@@ -142,7 +143,7 @@ pub struct Shortcuts {
     pub search: Option<String>,
 }
 
-/// A change to the shortcut overrides: a key sequence sets one, `null`
+/// A change to one set's shortcut overrides: a key sequence sets one, `null`
 /// removes it, and an absent one stays as saved.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -179,6 +180,41 @@ pub struct ShortcutsPatch {
     #[schemars(with = "Option<String>")]
     #[garde(skip)]
     pub search: Option<Option<String>>,
+}
+
+/// The two sets of keyboard shortcuts: a page uses the Mac's on macOS and the
+/// PC's on Windows and Linux. A key sequence is written in its set's notation,
+/// `⇧⌘O` in the Mac's and `Ctrl+Shift+O` in the PC's, and a change to one set
+/// leaves the other as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShortcutSets {
+    #[garde(dive)]
+    pub mac: Shortcuts,
+    #[garde(dive)]
+    pub pc: Shortcuts,
+}
+
+/// A change to the shortcut sets: each set's change, if any.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShortcutSetsPatch {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ShortcutsPatch")]
+    #[garde(dive)]
+    pub mac: Option<ShortcutsPatch>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ShortcutsPatch")]
+    #[garde(dive)]
+    pub pc: Option<ShortcutsPatch>,
 }
 
 /// Where a new project lives: the user's Cloud or one of their devices.
@@ -327,7 +363,7 @@ pub struct Preferences {
     #[garde(dive)]
     pub appearance: Appearance,
     #[garde(dive)]
-    pub shortcuts: Shortcuts,
+    pub shortcuts: ShortcutSets,
     /// The model settings a new conversation outside a project starts with,
     /// as the user last chose them there; existing conversations keep their
     /// own.
@@ -585,9 +621,9 @@ pub struct PreferencesPatch {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "ShortcutsPatch")]
+    #[schemars(with = "ShortcutSetsPatch")]
     #[garde(dive)]
-    pub shortcuts: Option<ShortcutsPatch>,
+    pub shortcuts: Option<ShortcutSetsPatch>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

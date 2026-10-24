@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import { settingsSections } from '@demicodes/web-ui/settings/sections'
@@ -289,6 +290,9 @@ const selectedTitle = computed(() => {
           :conversations="listed"
           :active-id="activeId"
           :automations="{ count: unread, open: view.kind === 'list' || view.kind === 'automation' }"
+          :new-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys"
+          :search-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'search')?.keys"
+          :settings-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'settings')?.keys"
           @select="select"
           @create="productWould('Open a New Conversation')"
           @search="productWould('Open the Search Window')"

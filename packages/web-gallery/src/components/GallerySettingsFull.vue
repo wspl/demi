@@ -22,7 +22,7 @@ import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import SettingsDeveloper from '@demicodes/web-ui/settings/SettingsDeveloper.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
-import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import { PageScope, settingsPage } from '@demicodes/web-ui/plugins/page'
@@ -288,7 +288,7 @@ function rebind(id: string, keys: string) {
 
 function resetShortcuts() {
   for (const binding of s.value.keys) {
-    binding.keys = APP_SHORTCUTS.find((shortcut) => shortcut.id === binding.id)?.keys ?? binding.keys
+    binding.keys = appShortcuts().find((shortcut) => shortcut.id === binding.id)?.keys ?? binding.keys
   }
 }
 </script>

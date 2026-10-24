@@ -122,7 +122,8 @@
     "shortcuts": "ショートカット",
     "resetAll": "すべてのショートカットをリセット",
     "reset": "リセット",
-    "typesText": "{keys} は文字入力になります。⌘ または ⌃ を加えてください。",
+    "typesTextMac": "{keys} は文字入力になります。⌘ または ⌃ を加えてください。",
+    "typesTextPc": "{keys} は文字入力になります。Ctrl を加えてください。",
     "taken": "{keys} はすでに「{action}」に使われています。",
     "actions": {
       "new": "新しいチャット",

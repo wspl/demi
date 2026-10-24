@@ -123,6 +123,8 @@ impl ReadBlob for NoBlobs {
 ///   its package on a Host reported of a conversation and a detach applied at
 ///   once instead of waiting, as an agent's did, for its conversation's work
 ///   to end.
+/// - 0.1.65's, which 0.1.64 shipped too, before the shortcuts came in a Mac
+///   set and a PC set.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -298,11 +300,15 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.63.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_63),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.65.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_65),
+        },
     ],
 };
 
-/// From 0.1.63's control schema, which 0.1.49 to 0.1.62 shipped too, to the
-/// current one.
+/// From 0.1.63's control schema, which 0.1.49 to 0.1.62 shipped too, to
+/// 0.1.65's.
 ///
 /// - A plugin keeps what its package on a Host last reported of a
 ///   conversation (`plugin_reports`), which its page reads at once; nothing
@@ -343,6 +349,16 @@ CREATE TABLE plugin_reports (
   reported_at     INTEGER NOT NULL,
   PRIMARY KEY (plugin_id, conversation_id, device_id)
 ) STRICT;
+";
+
+/// From 0.1.65's control schema, which 0.1.64 shipped too, to the current one.
+///
+/// - The saved shortcuts are the Mac's set, since all of them are written in
+///   its notation; the PC's set starts empty, at its defaults.
+const CONTROL_FROM_0_1_65: &str = "
+UPDATE user_preferences
+   SET preferences = json_set(preferences, '$.shortcuts', json_object('mac', json_extract(preferences, '$.shortcuts'), 'pc', json_object()))
+ WHERE json_type(preferences, '$.shortcuts') = 'object';
 ";
 
 /// From 0.1.48's control schema, which 0.1.46 and 0.1.47 shipped too, to the
@@ -4258,6 +4274,9 @@ CREATE TABLE passkey_challenges (
 ) STRICT;
 CREATE INDEX passkey_challenges_expiry ON passkey_challenges (expires_at);
 
+-- user_preferences.preferences: preferences format 2, the `Preferences` of
+-- the web contract, whose shortcuts are two sets, `mac` and `pc`, each of
+-- overrides in its own notation (format 1 held one set).
 CREATE TABLE user_preferences (
   user_id     TEXT PRIMARY KEY REFERENCES users (id),
   preferences TEXT NOT NULL

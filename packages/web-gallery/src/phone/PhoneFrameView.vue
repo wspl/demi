@@ -13,7 +13,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import { useCallTerminals } from '@demicodes/web-ui/agent/terminals'
-import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import ChoosePasswordWizard from '@demicodes/web-ui/auth/ChoosePasswordWizard.vue'
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import { deviceReportKey } from '@demicodes/web-ui/auth/device-unlock'
@@ -285,8 +285,9 @@ onMounted(async () => {
     >
       <template #sidebar>
         <AppSidebar
-          :new-shortcut="APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys"
-          :search-shortcut="APP_SHORTCUTS.find((shortcut) => shortcut.id === 'search')?.keys"
+          :new-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys"
+          :search-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'search')?.keys"
+          :settings-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'settings')?.keys"
           :account="demoAccount"
           :projects="projects"
           :conversations="conversations"

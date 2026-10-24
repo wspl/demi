@@ -1,5 +1,5 @@
-import { isMacOS } from '@tiptap/core'
 import { ATTACHMENT_MARK } from '../markdown/user-markdown'
+import { matchesShortcut, shortcutFor } from '../ui/shortcut'
 import { t } from './locales/text'
 
 /** Where a message of the list stands: kept by the server, or on its way there. */
@@ -37,15 +37,12 @@ export function savedLabel(count: number): string {
   return t('composer.saved.count', { count })
 }
 
-/**
- * The key that saves the message for later, ⌘S on macOS and Ctrl+S elsewhere.
- */
+/** The key that saves the message for later, in the page's set. */
 export function saveForLaterKeys(): string {
-  return isMacOS() ? '⌘S' : 'Ctrl+S'
+  return shortcutFor({ mac: '⌘S', pc: 'Ctrl+S' })
 }
 
 /** Whether a key press is the Save for Later shortcut. */
-export function asksSaveForLater(event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): boolean {
-  const modifier = isMacOS() ? event.metaKey : event.ctrlKey
-  return modifier && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's'
+export function asksSaveForLater(event: KeyboardEvent): boolean {
+  return matchesShortcut(event, saveForLaterKeys())
 }

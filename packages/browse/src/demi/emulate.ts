@@ -1,7 +1,8 @@
-// `demi.emulate({ viewport, scale, theme, device, locale, timeZone })`: sets
-// the browser's viewport, pixel ratio, theme, a phone Playwright knows
-// (`device: 'iPhone 15'`), locale or time zone, for the pages as they are,
-// without reloading them.
+// `demi.emulate({ viewport, scale, theme, device, locale, timeZone, platform })`:
+// sets the browser's viewport, pixel ratio, theme, a phone Playwright knows
+// (`device: 'iPhone 15'`), locale, time zone or the system the page reads from
+// its navigator (`platform: 'windows'`), for the pages as they are, without
+// reloading them.
 //
 // - What a call leaves out stays as it was, and `reset` starts from the
 //   defaults.
@@ -31,6 +32,7 @@ export interface EmulateOptions {
   device?: string
   locale?: string
   timeZone?: string
+  platform?: 'mac' | 'windows' | 'linux'
   reset?: boolean
 }
 
@@ -53,6 +55,7 @@ export async function emulate(tool: Owner, options: EmulateOptions): Promise<Scr
   change.device = options.device ?? change.device
   change.locale = options.locale ?? change.locale
   change.timezone = options.timeZone ?? change.timezone
+  change.platform = options.platform ?? change.platform
   let screen: Screen
   try {
     screen = screenOf(change)

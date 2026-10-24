@@ -122,7 +122,8 @@
     "shortcuts": "단축키",
     "resetAll": "모든 단축키 재설정",
     "reset": "재설정",
-    "typesText": "{keys} 키만으로는 텍스트가 입력됩니다. ⌘ 또는 ⌃를 함께 사용하십시오.",
+    "typesTextMac": "{keys} 키만으로는 텍스트가 입력됩니다. ⌘ 또는 ⌃를 함께 사용하십시오.",
+    "typesTextPc": "{keys} 키만으로는 텍스트가 입력됩니다. Ctrl 키를 함께 사용하십시오.",
     "taken": "{keys} 단축키는 이미 “{action}”에 사용 중입니다.",
     "actions": {
       "new": "새 대화",

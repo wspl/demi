@@ -229,7 +229,7 @@ import { galleryTerminals, leftRunningCommand, runningRunCommand, steppedRunComm
 import { demoDeviceStart } from '../fixtures/device-installation'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
-import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
 import { useGalleryTerminalChips } from '../terminal-chips'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
@@ -3785,8 +3785,9 @@ onBeforeUnmount(() => {
             >
               <template #sidebar>
                 <AppSidebar
-                  :new-shortcut="APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys"
-                  :search-shortcut="APP_SHORTCUTS.find((shortcut) => shortcut.id === 'search')?.keys"
+                  :new-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys"
+                  :search-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'search')?.keys"
+                  :settings-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'settings')?.keys"
                   @search="frameSearchOpen = true"
                   :account="demoAccount"
                   :projects="panelProjects"

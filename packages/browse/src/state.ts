@@ -24,6 +24,7 @@ export const emulationSchema = z.object({
   device: z.string().optional(),
   locale: z.string().optional(),
   timezone: z.string().optional(),
+  platform: z.enum(['mac', 'windows', 'linux']).optional(),
 })
 export type Emulation = z.infer<typeof emulationSchema>
 

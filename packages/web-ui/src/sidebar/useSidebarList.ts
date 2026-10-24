@@ -1,5 +1,6 @@
 import { computed, ref, type Ref } from 'vue'
 import { activeRow } from '../ui/active-row'
+import { matchesShortcut, shortcutFor, withCommandKey } from '../ui/shortcut'
 import {
   conversationIds,
   conversationIdsBetween,
@@ -7,6 +8,7 @@ import {
   stepEntry,
   type ListEntry
 } from './list-model'
+import { pinKeys } from './selection-menu'
 
 export interface SidebarListActions {
   open: (id: string) => void
@@ -22,7 +24,7 @@ export interface SidebarListActions {
  * Pointer:
  *
  * - A click selects and opens.
- * - ⌘/Ctrl-click toggles.
+ * - A click with the command key toggles (`withCommandKey`).
  * - Shift-click ranges over rows.
  *
  * Keyboard:
@@ -31,10 +33,10 @@ export interface SidebarListActions {
  * - Space toggles.
  * - Enter opens (or folds a project).
  * - ←/→ fold and unfold.
- * - ⌘A selects all.
+ * - ⌘A (Ctrl+A on a PC) selects all; ⌘↑ and ⌘↓ go to the ends.
  * - Esc collapses the selection to the open conversation.
  * - F2 renames.
- * - ⌘⇧P pins.
+ * - `pinKeys` pins.
  *
  * Focus shows only after keyboard use: Tab into the list or a key in it.
  */
@@ -104,7 +106,7 @@ export function useSidebarList(
       rangeTo(id)
       return
     }
-    if (event.metaKey || event.ctrlKey) {
+    if (withCommandKey(event)) {
       toggle(id)
       return
     }
@@ -142,13 +144,13 @@ export function useSidebarList(
   }
 
   function onKeydown(event: KeyboardEvent): void {
-    const meta = event.metaKey || event.ctrlKey
+    const command = withCommandKey(event)
     const focused = focusedEntry()
     const handled = (() => {
       switch (event.key) {
         case 'ArrowDown':
           focusEntry(
-            meta
+            command
               ? entries.value[entries.value.length - 1]
               : stepEntry(entries.value, focusedId.value, 1),
             event.shiftKey
@@ -156,7 +158,7 @@ export function useSidebarList(
           return true
         case 'ArrowUp':
           focusEntry(
-            meta
+            command
               ? entries.value[0]
               : stepEntry(entries.value, focusedId.value, -1),
             event.shiftKey
@@ -200,19 +202,15 @@ export function useSidebarList(
           if (focused?.kind === 'conversation')
             actions.rename(focused.id)
           return focused?.kind === 'conversation'
-        case 'a':
-        case 'A':
-          if (!meta)
-            return false
-          selectAll()
-          return true
-        case 'p':
-        case 'P':
-          if (!meta || !event.shiftKey || selected.value.size === 0)
-            return false
-          actions.togglePin([...selected.value])
-          return true
         default:
+          if (matchesShortcut(event, shortcutFor({ mac: '⌘A', pc: 'Ctrl+A' }))) {
+            selectAll()
+            return true
+          }
+          if (matchesShortcut(event, pinKeys()) && selected.value.size > 0) {
+            actions.togglePin([...selected.value])
+            return true
+          }
           return false
       }
     })()

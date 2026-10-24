@@ -1,10 +1,12 @@
 import { messageFileTarget } from '../../markdown/filePath'
 import type { MessageFiles } from '../../markdown/types'
+import { withCommandKey } from '../../ui/shortcut'
 
 /**
  * A click on a user message's link: in the conversation a web link opens as a
  * link does and a Host file opens in the File view; in the composer,
- * `editable`, a click places the cursor and ⌘/Ctrl+click opens either. /
+ * `editable`, a click places the cursor and a click with the command key
+ * (`withCommandKey`) opens either.
  */
 export function followMessageLink(event: MouseEvent, editable: boolean, files: MessageFiles | undefined): void {
   const link = event.target instanceof Element ? event.target.closest('a[data-link]') : null
@@ -17,7 +19,7 @@ export function followMessageLink(event: MouseEvent, editable: boolean, files: M
     return
   }
   event.preventDefault()
-  if (editable && !event.metaKey && !event.ctrlKey) {
+  if (editable && !withCommandKey(event)) {
     return
   }
   if (kind === 'web') {

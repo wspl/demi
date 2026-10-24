@@ -1,7 +1,7 @@
-import { isMacOS } from '@tiptap/core'
 import { watch } from 'vue'
 import type { SessionPhase } from '@demicodes/protocol'
 import { t } from '../locales/text'
+import { shortcutFor, withCommandKey } from '../ui/shortcut'
 import type { TitleText } from '../ui/ui-text'
 
 /**
@@ -127,12 +127,11 @@ export function agentWorks(phase: SessionPhase, sent: readonly MessageOnItsWay[]
 }
 
 /**
- * The key that sends a message the other way, ⌘⏎ on macOS and Ctrl+Enter
- * elsewhere: the composer's keymap reads Mod-Enter, which tiptap binds to ⌘
- * on macOS and to Ctrl elsewhere by the same test.
+ * The key that sends a message the other way, in the page's set: the
+ * composer's keymap binds the same keys (`MessageKeys`).
  */
 export function otherWayKeys(): string {
-  return isMacOS() ? '⌘⏎' : 'Ctrl+Enter'
+  return shortcutFor({ mac: '⌘⏎', pc: 'Ctrl+Enter' })
 }
 
 /**
@@ -187,9 +186,9 @@ export function useSendOnceLoaded(options: {
 }
 
 /**
- * Whether a click on the send button asks for the other way: ⌘-click on macOS,
- * Ctrl-click elsewhere, as the key does.
+ * Whether a click on the send button asks for the other way: a click with the
+ * command key the key holds.
  */
 export function clickAsksOtherWay(event: MouseEvent): boolean {
-  return isMacOS() ? event.metaKey : event.ctrlKey
+  return withCommandKey(event)
 }

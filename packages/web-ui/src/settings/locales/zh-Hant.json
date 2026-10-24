@@ -122,7 +122,8 @@
     "shortcuts": "鍵盤快速鍵",
     "resetAll": "重設所有快速鍵",
     "reset": "重設",
-    "typesText": "{keys} 會輸入文字。請加上 ⌘ 或 ⌃。",
+    "typesTextMac": "{keys} 會輸入文字。請加上 ⌘ 或 ⌃。",
+    "typesTextPc": "{keys} 會輸入文字。請加上 Ctrl。",
     "taken": "{keys} 已用於「{action}」。",
     "actions": {
       "new": "新對話",

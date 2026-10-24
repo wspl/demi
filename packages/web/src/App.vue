@@ -366,6 +366,7 @@ useAppShortcuts(
           :automations="{ count: automations.unread, open: automationsOpen }"
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
           :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"
+          :settings-shortcut="resources.keys.find((binding) => binding.id === 'settings')?.keys"
           @search="searchOpen = true"
           @retry-list="conversations.reloadList"
           @reorder="reorder"

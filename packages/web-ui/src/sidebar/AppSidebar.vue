@@ -71,6 +71,8 @@ const props = defineProps<{
   newShortcut?: string
   /** The keys Search conversations has in the keyboard settings, which Search shows; none when it has none. */
   searchShortcut?: string
+  /** The keys Settings has in the keyboard settings, which the account menu shows; none when it has none. */
+  settingsShortcut?: string
   /**
    * Deletes a project once the user confirmed it, which archives its
    * conversations; its row works until it settles.
@@ -750,6 +752,7 @@ function selectProjectConversations(project: SidebarProject): void {
       <SidebarAccountRow
         :account="account"
         :on-sign-out="onSignOut"
+        :settings-shortcut="settingsShortcut"
         @open-settings="emit('openSettings')"
       />
       <!-- A page that is itself on a phone has no phone to hand the account to. -->

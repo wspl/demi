@@ -1,7 +1,13 @@
 import { Archive, ArrowRight, ChevronsDownUp, ChevronsUpDown, Copy, ListChecks, Pin, PinOff, SquarePen, TextCursorInput, Trash2 } from '@lucide/vue'
 import type { ContextMenuEntry, ContextMenuGroup } from '../ui/context-menu'
+import { namedKeyCap, shortcutFor } from '../ui/shortcut'
 import { t } from './locales/text'
 import type { SidebarConversation } from './types'
+
+/** The keys that pin or unpin the selected conversations in the list (`useSidebarList`), which the menu shows. */
+export function pinKeys(): string {
+  return shortcutFor({ mac: '⇧⌘P', pc: 'Ctrl+Shift+P' })
+}
 
 /** What the conversations' commands do; the one who offers them supplies it. */
 export interface SelectionActions {
@@ -38,7 +44,7 @@ export function selectionEntries(
   const first: ContextMenuEntry[] = []
   if (single) {
     if (!shown)
-      first.push({ icon: ArrowRight, label: t('selection.open'), shortcut: '↵', run: () => actions.open(single.id) })
+      first.push({ icon: ArrowRight, label: t('selection.open'), shortcut: namedKeyCap('Enter'), run: () => actions.open(single.id) })
     first.push(
       { icon: TextCursorInput, label: t('selection.rename'), shortcut: 'F2', run: () => actions.rename(single.id) },
       { icon: Copy, label: t('selection.copyId'), run: () => actions.copyId(single.id) },
@@ -50,7 +56,7 @@ export function selectionEntries(
       label: allPinned
         ? (count > 1 ? t('selection.unpinMany', { count }) : t('selection.unpin'))
         : (count > 1 ? t('selection.pinMany', { count }) : t('selection.pin')),
-      shortcut: '⌘⇧P',
+      shortcut: pinKeys(),
       run: () => actions.pin(ids, !allPinned),
     },
     { icon: Archive, label: count > 1 ? t('selection.archiveMany', { count }) : t('selection.archive'), run: () => actions.archive(ids) },
@@ -69,7 +75,7 @@ export function projectEntries(
   return [
     [
       { icon: SquarePen, label: t('projectMenu.newHere'), run: actions.create },
-      { icon: state.folded ? ChevronsUpDown : ChevronsDownUp, label: state.folded ? t('projectMenu.unfold') : t('projectMenu.fold'), shortcut: '↵', run: actions.toggleFold },
+      { icon: state.folded ? ChevronsUpDown : ChevronsDownUp, label: state.folded ? t('projectMenu.unfold') : t('projectMenu.fold'), shortcut: namedKeyCap('Enter'), run: actions.toggleFold },
       { icon: ListChecks, label: t('projectMenu.select'), disabled: state.count === 0, run: actions.selectAll },
     ],
     // Asks before the project is deleted (`ProjectDeleteDialog`).

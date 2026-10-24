@@ -1,7 +1,7 @@
 // What `demi.emulate` sets (browse.md § What `demi` adds), as the DevTools
 // protocol applies it to a page as it is, without reloading it: the screen's
-// size, pixel ratio and touch, a phone's user agent, the theme, the locale and
-// the time zone.
+// size, pixel ratio and touch, a phone's user agent, the system the page reads
+// from its navigator, the theme, the locale and the time zone.
 //
 // The server's own session with each page holds these overrides, which the
 // browser drops when that session ends. A server that attaches to a page applies
@@ -41,6 +41,13 @@ export function screenOf(emulation: Emulation): Screen {
   }
 }
 
+/** What a page reads of its system from `navigator.platform` and the user agent's first parenthesis. */
+const PLATFORMS = {
+  mac: { platform: 'MacIntel', system: 'Macintosh; Intel Mac OS X 10_15_7' },
+  windows: { platform: 'Win32', system: 'Windows NT 10.0; Win64; x64' },
+  linux: { platform: 'Linux x86_64', system: 'X11; Linux x86_64' },
+}
+
 /**
  * Applies `emulation` to the page of `session`; `nativeUserAgent` is the
  * browser's own, which a page that no longer emulates a phone gets back.
@@ -54,9 +61,13 @@ export async function applyEmulation(session: CDPSession, emulation: Emulation, 
     mobile: screen.mobile,
   })
   await session.send('Emulation.setTouchEmulationEnabled', { enabled: screen.touch, maxTouchPoints: screen.touch ? 5 : 1 })
+  const system = emulation.platform === undefined ? undefined : PLATFORMS[emulation.platform]
+  const userAgent = screen.userAgent ?? nativeUserAgent
   await session.send('Emulation.setUserAgentOverride', {
-    userAgent: screen.userAgent ?? nativeUserAgent,
+    userAgent: system ? userAgent.replace(/\([^)]*\)/, `(${system.system})`) : userAgent,
     acceptLanguage: emulation.locale,
+    // An empty platform keeps the browser's own.
+    platform: system?.platform ?? '',
   })
   // An empty value takes each override back.
   await session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: emulation.theme ?? '' }] })

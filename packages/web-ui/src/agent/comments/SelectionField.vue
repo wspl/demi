@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { X } from '@lucide/vue'
-import { isMacOS } from '@tiptap/core'
 import { useFieldScrollbars } from '../../composables/useFieldScrollbars'
 import Button from '../../ui/Button.vue'
 import IconButton from '../../ui/IconButton.vue'
+import { withCommandKey } from '../../ui/shortcut'
 import Tooltip from '../../ui/Tooltip.vue'
 import type { SentenceText } from '../../ui/ui-text'
 import { t as shared } from '../../locales/text'
@@ -108,8 +108,7 @@ function onKeydown(event: KeyboardEvent): void {
     return
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
-    const mod = isMacOS() ? event.metaKey : event.ctrlKey
-    if (mod) {
+    if (withCommandKey(event)) {
       if (props.send)
         act('send')
     } else

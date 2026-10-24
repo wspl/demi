@@ -17,6 +17,7 @@ import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { WEB_LINK_REL, isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
 import { codeColor, codeRuns, codeTextColor, typedCodeRuns } from '../../markdown/highlight'
 import { bareUrls, closesFence, fenceInfo, typedFormat } from '../../markdown/user-markdown'
+import { shortcutSet } from '../../ui/shortcut'
 import AttachmentNodeView from './AttachmentNodeView.vue'
 import { readCapsule } from './capsules'
 import ImageNodeView from './ImageNodeView.vue'
@@ -390,7 +391,9 @@ const MessageKeys = Extension.create<MessageKeyOptions>({
         return true
       },
       'Shift-Enter': ({ editor }) => lineEnd(editor) || editor.commands.setHardBreak(),
-      'Mod-Enter': ({ editor }) => {
+      // The keys `otherWayKeys` shows: ⌘ on a Mac and Ctrl on a PC by the
+      // page's set, never by the library's own `Mod`.
+      [shortcutSet() === 'mac' ? 'Meta-Enter' : 'Ctrl-Enter']: ({ editor }) => {
         this.options.submit(!inCode(editor.state))
         return true
       },
