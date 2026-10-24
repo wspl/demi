@@ -119,6 +119,10 @@ pub struct RawElement {
     pub focused: Option<bool>,
     /// A secure field: its value is never read.
     pub secure: bool,
+    /// A field's hint. An empty Android field says its hint as its text, so
+    /// one whose text is its hint, which reads as no value, holds either
+    /// nothing or the hint's words.
+    pub hint: Option<String>,
     /// A key of the software keyboard, which `inspect` shows as one
     /// Keyboard element unless asked for its keys.
     pub keyboard_key: bool,

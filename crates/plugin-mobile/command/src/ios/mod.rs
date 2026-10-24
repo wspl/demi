@@ -469,6 +469,7 @@ impl From<Element> for RawElement {
             selected: element.selected,
             focused: element.focused,
             secure: element.secure,
+            hint: None,
             keyboard_key: element.keyboard_key,
             children: element.children.into_iter().map(Into::into).collect(),
         }

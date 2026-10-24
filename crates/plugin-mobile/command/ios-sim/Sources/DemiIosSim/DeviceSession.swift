@@ -136,6 +136,7 @@ final class DeviceSession: @unchecked Sendable {
     let session = DeviceSession(
       simulator: simulator, output: output, hid: hid, attachment: attachment, portraitPoints: points)
     session.follow()
+    await session.skipKeyboardTutorials()
     do {
       // The device is held upright, as a phone picked up is.
       try await session.orient(.portrait)
@@ -445,6 +446,19 @@ final class DeviceSession: @unchecked Sendable {
     // The display turns about half a second after the device; one that has
     // not turned within twice that keeps its orientation.
     await screenShows(turn, within: 1.5)
+  }
+
+  /// Turns off the keyboard's swipe-to-type introduction, which covers the
+  /// keyboard the first time it shows, as a person does with a tap.
+  private func skipKeyboardTutorials() async {
+    do {
+      try await simulator.preferences.apply(
+        .preference(
+          name: "DidShowContinuousPathIntroduction", value: "true", type: "bool",
+          domain: "com.apple.keyboard.preferences"))
+    } catch {
+      log("the keyboard's introduction stays on: \(describe(error))")
+    }
   }
 
   func appearance() async throws -> String {

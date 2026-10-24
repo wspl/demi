@@ -16,7 +16,7 @@ use demi_command_package_mobile_protocol::mobile::{
     Appearance, AppearanceChoice, AppearanceResult, CloseResult, Direction, ElementRef,
     InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
     MobilePlatform, RecordAction, RecordInput, RecordTarget, Rotation, RotateResult,
-    ScreenshotResult, SwipeResult, TapResult, TypeResult, WAIT_SECONDS, WaitResult,
+    ScreenshotResult, SwipeResult, TapResult, TypeResult, TypedField, WAIT_SECONDS, WaitResult,
 };
 use demi_live_view_protocol::LivePoint;
 use demi_shared_recording::{Answer, Library, Reading, started};
@@ -25,10 +25,9 @@ use crate::{
     devices::{Devices, OpenDevice},
     driver::{Button, KeyPress, Points},
     error::MobileError,
-    keys,
     refs::Listed,
     scale::Scale,
-    text, tree,
+    text, tree, typing,
 };
 
 /// A settled picture: no new frame from the device for this long. Neither
@@ -286,30 +285,35 @@ pub async fn run(
                     None => None,
                 };
                 let characters = input.text.chars().count();
-                match &target {
+                let typed = match &target {
                     Some((_, listed)) if replace => {
                         let at = listed.frame.centre();
                         acting(&open, call, at, open.device.set_value(at, &input.text)).await?;
+                        None
                     }
                     Some((_, listed)) => {
                         let at = listed.frame.centre();
                         acting(&open, call, at, open.device.tap(at, 0.0)).await?;
-                        keys::enter(&open.device, &input.text).await?;
+                        Some(typing::type_text(&open.device, &input.text).await?)
                     }
-                    None => keys::enter(&open.device, &input.text).await?,
-                }
-                let element = target.map(|(reference, listed)| summary(reference, &listed));
-                let verb = if replace { "Set" } else { "Typed" };
-                let text = match &element {
-                    Some(element) => format!("{verb} {characters} characters into {}.\n", text::summary(element)),
-                    None => format!("{verb} {characters} characters.\n"),
+                    None => Some(typing::type_text(&open.device, &input.text).await?),
+                };
+                let (fields, text) = match &typed {
+                    Some(typed) => typed_text(&open, characters, typed),
+                    None => {
+                        let (reference, listed) = target.expect("--replace names its field");
+                        let element = summary(reference, &listed);
+                        let text = format!("Set {characters} characters into {}.\n", text::summary(&element));
+                        (vec![TypedField { element, holds: None }], text)
+                    }
                 };
                 Outcome::result(
                     TypeResult {
                         device: open.handle.clone(),
                         characters,
                         replaced: replace,
-                        element,
+                        fields,
+                        set: typed.is_some_and(|typed| typed.keyed.is_some()),
                     },
                     text,
                 )
@@ -515,6 +519,63 @@ fn summary(reference: ElementRef, listed: &Listed) -> demi_command_package_mobil
         role: listed.role.clone(),
         label: listed.label.clone(),
     }
+}
+
+/// The fields `typed` went into, each with a reference, and what `type`
+/// says of them.
+fn typed_text(open: &OpenDevice, characters: usize, typed: &typing::Typed) -> (Vec<TypedField>, String) {
+    let fields: Vec<TypedField> = {
+        let mut refs = open.refs.lock().expect("the refs are intact");
+        typed
+            .fields
+            .iter()
+            .map(|field| {
+                let listed = Listed {
+                    role: field.role.clone(),
+                    label: field.label.clone(),
+                    identifier: field.identifier.clone(),
+                    frame: field.frame,
+                };
+                TypedField {
+                    element: summary(refs.add(listed.clone()), &listed),
+                    holds: (typed.checked && !field.secure).then(|| field.text.clone()),
+                }
+            })
+            .collect()
+    };
+    let mut text = match fields.as_slice() {
+        [] => format!(
+            "Typed {characters} characters; the screen's tree names no focused field, though the keyboard shows, so they were not checked"
+        ),
+        [field] => format!("Typed {characters} characters into {}", text::summary(&field.element)),
+        fields => {
+            let held: Vec<String> = fields
+                .iter()
+                .map(|field| text::quoted(field.holds.as_deref().unwrap_or_default()))
+                .collect();
+            format!("Typed {characters} characters into {} fields: {}", fields.len(), held.join(", "))
+        }
+    };
+    if let Some(keyed) = &typed.keyed {
+        text.push_str(&format!("; the keys left {}, so it set the text directly", text::quoted(keyed)));
+    }
+    if let [field] = fields.as_slice()
+        && let Some(holds) = &field.holds
+    {
+        text.push_str(&format!("; it holds {}", text::quoted(holds)));
+    }
+    if typed.gone {
+        text.push_str("; the field is gone since, as the app acted on the text");
+    }
+    if typed.fields.iter().any(|field| field.secure) {
+        text.push_str("; a password field's text cannot be read, so it was not checked");
+    }
+    if let Some(acted) = typed.acted {
+        let key = if acted == '\n' { "Enter" } else { "Tab" };
+        text.push_str(&format!("; {key} and what follows it went in unchecked, as they act on the app"));
+    }
+    text.push_str(".\n");
+    (fields, text)
 }
 
 /// The point under screenshot pixel `x`, `y`.

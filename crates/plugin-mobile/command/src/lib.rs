@@ -55,6 +55,7 @@ mod refs;
 mod scale;
 mod text;
 mod tree;
+mod typing;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
