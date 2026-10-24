@@ -124,7 +124,9 @@ const bubble = computed(() => {
   return {
     content: [{ type: 'text' as const, text: message.content }],
     brief: message.content,
-    sender: name === null ? null : { name, go: origin ? revealOrigin(origin) : undefined },
+    sender: name === null
+      ? null
+      : { name, go: origin ? revealOrigin(origin) : undefined, conversation: message.sender?.conversation != null },
   }
 })
 

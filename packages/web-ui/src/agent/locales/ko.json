@@ -42,6 +42,7 @@
       "fromMain": "{agent}의 메시지",
       "mainAgent": "메인 에이전트",
       "fromAgent": "에이전트의 메시지",
+      "fromConversation": "대화의 메시지",
       "finished": "에이전트가 작업을 마쳤습니다",
       "failed": "에이전트가 실패했습니다",
       "stopped": "에이전트가 중지되었습니다",
@@ -98,7 +99,8 @@
       "recall": "회수",
       "recalled": "메시지 회수됨",
       "notDelivered": "이 메시지를 전달하지 못했습니다.",
-      "fromSchedule": "일정"
+      "fromSchedule": "일정",
+      "fromConversation": "대화"
     },
     "assistant": {
       "fork": "포크",

@@ -42,6 +42,7 @@
       "fromMain": "來自{agent}的訊息",
       "mainAgent": "主智慧體",
       "fromAgent": "來自智慧體的訊息",
+      "fromConversation": "來自對話的訊息",
       "finished": "智慧體已完成",
       "failed": "智慧體失敗",
       "stopped": "智慧體已停止",
@@ -98,7 +99,8 @@
       "recall": "收回",
       "recalled": "訊息已收回",
       "notDelivered": "此訊息未能送達。",
-      "fromSchedule": "排程"
+      "fromSchedule": "排程",
+      "fromConversation": "對話"
     },
     "assistant": {
       "fork": "分岔",

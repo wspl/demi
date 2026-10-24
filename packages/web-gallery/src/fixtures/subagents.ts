@@ -562,7 +562,7 @@ export const BUBBLES_ROOT = 'gallery-bubbles'
  */
 function agentSays(
   id: string,
-  sender: { id: string, number: number, description: string },
+  sender: { id: string, number: number, description: string, conversation?: { id: string, title: string } },
   recipient: string,
   createdAt: string,
   content: string,
@@ -584,6 +584,13 @@ const NOTES = { id: 'ag-notes', number: 3, description: 'Tidy the release notes'
 const REVIEW = { id: 'ag-review', number: 4, description: 'Review the notes' }
 const LINKS = { id: 'ag-links', number: 5, description: 'Check the links' }
 const MAIN = { id: BUBBLES_ROOT, number: 0, description: 'root session' }
+/** The main agent of another conversation of the user, which messages this one. */
+const COORDINATOR = {
+  id: 'gallery-coordinate',
+  number: 0,
+  description: 'root session',
+  conversation: { id: 'gallery-coordinate', title: 'Coordinate the release' },
+}
 
 /**
  * Tidy the release notes' transcript: its brief, its work, a message from the
@@ -684,5 +691,17 @@ export function bubblesMainBlocks(): Block[] {
     text('bubbles-started', ago(195_000), 'Tidy the release notes and Review the notes are at work. I asked the tidy to keep the Upgrading heading.'),
     ...inRun(agentSays('bubbles-from-notes', NOTES, BUBBLES_ROOT, ago(180_000), 'I will keep the Upgrading heading.', 'ag-notes-ack')),
     text('bubbles-text', ago(90_000), 'The release notes are tidied, and the review found one broken table, now fixed.'),
+    agentSays(
+      'bubbles-from-coordinator',
+      COORDINATOR,
+      BUBBLES_ROOT,
+      ago(60_000),
+      'The checkout fix is merged. Check that the release notes mention it.',
+      'coordinate-send',
+    ),
+    ...inRun(
+      shell('bubbles-answer', ago(40_000), 'Tell Coordinate the release the notes mention the fix', 'Sent to “Coordinate the release”', 'completed', 'demi conversation send gallery-coordinate'),
+    ),
+    text('bubbles-answered', ago(35_000), 'The notes already mention the checkout fix; I told Coordinate the release.'),
   ])
 }

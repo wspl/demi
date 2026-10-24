@@ -742,7 +742,10 @@ fn item(reader: &Reader, at: usize, block: &Block) -> Option<Shown> {
         Block::AgentMessage(message) => {
             let when = reader.when(message.created_at);
             let from = match &message.message.sender {
-                Some(sender) => format!("agent {}", sender.number),
+                Some(sender) => match &sender.conversation {
+                    Some(conversation) => format!("conversation {} agent {}", conversation.id, sender.number),
+                    None => format!("agent {}", sender.number),
+                },
                 None => "Demi".to_owned(),
             };
             let kind = match &message.message.event {

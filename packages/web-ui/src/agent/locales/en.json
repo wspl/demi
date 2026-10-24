@@ -42,6 +42,7 @@
       "fromMain": "Message from {agent}",
       "mainAgent": "main agent",
       "fromAgent": "Message from agent",
+      "fromConversation": "Message from conversation",
       "finished": "Agent finished",
       "failed": "Agent failed",
       "stopped": "Agent stopped",
@@ -98,7 +99,8 @@
       "recall": "Recall",
       "recalled": "Message Recalled",
       "notDelivered": "This message was not delivered.",
-      "fromSchedule": "Schedule"
+      "fromSchedule": "Schedule",
+      "fromConversation": "Conversation"
     },
     "assistant": {
       "fork": "Fork",

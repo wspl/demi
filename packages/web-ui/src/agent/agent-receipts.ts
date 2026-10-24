@@ -4,6 +4,7 @@ import { homePath } from '../files/paths'
 import { codeText } from '../infra/errors'
 import { hostAction, reachAction, useCredentialAction, wordedActions } from '../permissions/types'
 import { around, t } from './locales/text'
+import { conversationTitle } from './conversation-title'
 import { agentName } from './subagents'
 
 /**
@@ -58,8 +59,12 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
       return plain(t('transcript.receipt.moveFailed', {
         reason: (event.code ? codeText(event.code) : null) ?? event.reason,
       }))
-    // A message from the main agent reaches one of its children.
+    // A message from another conversation of the user, from the main agent
+    // to one of its children, or between agents of the tree.
     case 'message':
+      if (message.sender?.conversation) {
+        return { notice: t('transcript.receipt.fromConversation'), title: senderName(message), inline: false, after: '', tag: null }
+      }
       return message.sender?.number === 0 ? mainAgentMessage() : named(t('transcript.receipt.fromAgent'))
     case 'completion':
       switch (event.outcome) {
@@ -88,10 +93,11 @@ export function receivedAsBubble(block: Pick<Extract<Block, { type: 'agent_messa
 
 /**
  * The name above a message's bubble, as a group chat names its members: none
- * for the main agent's, which reads as the brief does.
+ * for the main agent's, which reads as the brief does; another conversation's
+ * title for a message from there, whichever of its agents sent it.
  */
 export function bubbleName(message: AgentMessage): string | null {
-  return message.sender?.number === 0 ? null : senderName(message)
+  return message.sender?.number === 0 && !message.sender.conversation ? null : senderName(message)
 }
 
 /**
@@ -121,16 +127,22 @@ function permissionAction(event: Extract<AgentMessage['event'], { type: 'permiss
   return (categories.length || host.length ? wordedActions(categories, host) : null) ?? event.action
 }
 
-/** The agent a message names (`agentName`); none sent no named message. */
+/**
+ * The sender a message names: the agent (`agentName`), or the conversation it
+ * came from by its title then; none sent no named message.
+ */
 function senderName(message: AgentMessage): string {
   const sender = message.sender
+  if (sender?.conversation) {
+    return conversationTitle(sender.conversation.title ?? null)
+  }
   return sender ? agentName(sender.description, sender.number) : ''
 }
 
 /**
- * Where a receipt came from: the sender's transcript, null for the
- * conversation's own (the root, agent 0), and the block of it the receipt
- * names, if any.
+ * Where a receipt came from: the sender's conversation, null for this one;
+ * its transcript, null for the conversation's own (the root, agent 0); and the
+ * block of it the receipt names, if any.
  *
  * The named block is:
  *
@@ -139,6 +151,7 @@ function senderName(message: AgentMessage): string {
  * - a failed child's failure record
  */
 export interface ReceiptOrigin {
+  conversationId: string | null
   node: string | null
   blockId: string | null
 }
@@ -149,7 +162,11 @@ export function receiptOrigin(message: AgentMessage): ReceiptOrigin | null {
   if (!sender) {
     return null
   }
-  return { node: sender.number === 0 ? null : sender.id, blockId: message.origin ?? null }
+  return {
+    conversationId: sender.conversation?.id ?? null,
+    node: sender.number === 0 ? null : sender.id,
+    blockId: message.origin ?? null,
+  }
 }
 
 /**

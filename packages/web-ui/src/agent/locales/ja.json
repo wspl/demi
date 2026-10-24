@@ -42,6 +42,7 @@
       "fromMain": "{agent}からのメッセージ",
       "mainAgent": "メインエージェント",
       "fromAgent": "エージェントからのメッセージ",
+      "fromConversation": "チャットからのメッセージ",
       "finished": "エージェントが完了しました",
       "failed": "エージェントが失敗しました",
       "stopped": "エージェントが停止しました",
@@ -98,7 +99,8 @@
       "recall": "取り消す",
       "recalled": "メッセージを取り消しました",
       "notDelivered": "このメッセージは配信されませんでした。",
-      "fromSchedule": "スケジュール"
+      "fromSchedule": "スケジュール",
+      "fromConversation": "チャット"
     },
     "assistant": {
       "fork": "分岐",

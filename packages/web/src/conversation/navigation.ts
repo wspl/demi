@@ -52,12 +52,12 @@ export function useConversationNavigation() {
   }
 
   /**
-   * Shows the conversation a search found, scrolled to the message that
-   * matched, which is marked for a moment; at its end when only its title
-   * matched.
+   * Shows the conversation scrolled to the block of its agent `node` (null for
+   * its main agent), which is marked for a moment, as a search's match or a
+   * message from there asks; at its end without a block.
    */
-  function openFound(id: string, blockId: string | null): void {
-    conversations.reveal = blockId === null ? null : { conversationId: id, node: null, blockId }
+  function openAt(id: string, node: string | null, blockId: string | null): void {
+    conversations.reveal = blockId === null ? null : { conversationId: id, node, blockId }
     open(id)
   }
 
@@ -117,5 +117,5 @@ export function useConversationNavigation() {
     create(await resources.createProject(draft))
   }
 
-  return { open, openFound, create, replaceWithNew, reopenNew, showsNewConversation, createProject }
+  return { open, openAt, create, replaceWithNew, reopenNew, showsNewConversation, createProject }
 }
