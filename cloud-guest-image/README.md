@@ -67,6 +67,10 @@ The script takes these options:
 - `--work` names the directory where the script builds the tree. The default is
   `/var/tmp/demi-cloud-root`. The script removes the tree after a successful
   build.
+- `--packages` names a directory where the build keeps the Ubuntu packages it
+  downloads, so the next build with the same directory downloads only the
+  packages that changed. The directory holds the packages the last build used,
+  and apt checks each against the archive's index before it uses it.
 - `--mirror` names an Ubuntu mirror other than the official one, such as
   `https://archive.ubuntu.com/ubuntu` on a builder whose only way out is HTTPS.
 - `--ca FILE` names the bundle that holds the authority of a proxy that

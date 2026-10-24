@@ -45,6 +45,14 @@
 # The script's downloads, the container image and the packages, go through the
 # builder's HTTPS proxy.
 #
+# With --packages, the Ubuntu packages the build downloads are kept in that
+# directory between builds, so a build downloads only the packages that changed
+# since the last one and does not depend on the mirror's speed for the rest. The
+# directory holds the packages the build used, and none of the superseded
+# versions. apt checks every kept file against the hashes of the archive's index
+# before it uses one, so the directory is not trusted: a file that does not match
+# is downloaded again.
+#
 # The image holds the filesystem assembly only, done at build time, with native
 # binaries from the machine's cross tools. No guest kernel, bootloader or
 # hypervisor configuration is here, and neither is runtime OCI policy, mounts,
@@ -52,7 +60,7 @@
 # belong to the machine manager and the backend.
 #
 # Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR --files DIR
-#          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
+#          --output DIR [--work DIR] [--packages DIR] [--mirror URL] [--ca FILE]
 #
 # apt inside the tree runs with a cleared environment. A builder that reaches
 # the mirror only through an HTTPS proxy sets https_proxy, which apt there then
@@ -68,11 +76,13 @@ release=""
 files=""
 output=""
 work=/var/tmp/demi-cloud-root
+packages=""
 mirror=""
 ca=""
 usage() {
   echo 'usage: build.sh --xtask PATH --release DIR --files DIR' >&2
-  echo '         --output DIR [--work DIR] [--mirror URL] [--ca FILE]' >&2
+  echo '         --output DIR [--work DIR] [--packages DIR] [--mirror URL]' >&2
+  echo '         [--ca FILE]' >&2
   exit 2
 }
 while [ "$#" -gt 0 ]; do
@@ -83,6 +93,7 @@ while [ "$#" -gt 0 ]; do
     --files) files=$2 ;;
     --output) output=$2 ;;
     --work) work=$2 ;;
+    --packages) packages=$2 ;;
     --mirror) mirror=$2 ;;
     --ca) ca=$2 ;;
     *) echo "unknown argument: $1" >&2; usage ;;
@@ -157,9 +168,18 @@ in_chroot() {
   chroot "$work" /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     DEBIAN_FRONTEND=noninteractive HOME=/root "$@"
 }
+# Where apt inside the tree keeps the packages it downloads. Not apt's default,
+# /var/cache/apt/archives: the container image's docker-clean setting deletes
+# every package there after each dpkg run.
+archives=/var/cache/demi-packages
+apt_options=(-o "Dir::Cache::Archives=$archives")
+mkdir -p "$work$archives/partial"
+if [ -n "$packages" ]; then
+  mkdir -p "$packages"
+  find "$packages" -maxdepth 1 -name '*.deb' -exec cp -p -t "$work$archives" {} +
+fi
 # What apt inside the tree needs of the caller's network: its HTTPS proxy and
 # the certificate bundle --ca names.
-apt_options=()
 if [ -n "${https_proxy:-}" ]; then
   apt_options+=(-o "Acquire::https::Proxy=$https_proxy")
 fi
@@ -189,6 +209,15 @@ in_chroot apt-get "${apt_options[@]}" update
 in_chroot apt-get "${apt_options[@]}" full-upgrade -y --no-install-recommends
 in_chroot apt-get "${apt_options[@]}" install -y --no-install-recommends \
   $(grep -v '^#' "$here/rootfs/packages.txt") tini
+# The packages this build used, kept for the next one: autoclean drops the
+# versions the archive's index no longer offers, so the directory does not grow
+# by every update.
+if [ -n "$packages" ]; then
+  in_chroot apt-get "${apt_options[@]}" autoclean
+  rm -f "$packages"/*.deb
+  find "$work$archives" -maxdepth 1 -name '*.deb' -exec cp -p -t "$packages" {} +
+fi
+rm -rf "$work$archives"
 in_chroot apt-get clean
 rm -rf "$work/var/lib/apt/lists/"*
 
