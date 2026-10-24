@@ -115,9 +115,11 @@ export interface ConversationRuntimeOptions {
   draft?: () => number | undefined
   /**
    * What the page shows already of the agents and the nodes, as from a copy on
-   * disk, which a client that holds nothing follows from with no read.
+   * disk, which a client that holds nothing follows from with no read. The
+   * opening waits for it, so a copy still being read is followed from too;
+   * `attempt` aborts when the attempt it is for ends, which ends the wait.
    */
-  holding?: () => ConversationHeld | undefined
+  holding?: (attempt: AbortSignal) => ConversationHeld | undefined | Promise<ConversationHeld | undefined>
   /**
    * Whether the page shows the transcript before the session opens, as from
    * what it kept on disk: without, a first opening shows the pane loading
@@ -695,7 +697,13 @@ export class ConversationRuntime {
     const disconnect = () => client.disconnect(asError(attempt.signal.reason))
     attempt.signal.addEventListener('abort', disconnect, { once: true })
     this.attempting = true
+    // An attempt released before it opens leaves the client alone: the
+    // client it shares may be another attempt's by now.
+    let opening = false
     try {
+      const holding = await this.options.holding?.(attempt.signal)
+      attempt.signal.throwIfAborted()
+      opening = true
       // The nodes the page shows now, whose latest pages the open reads.
       const root = this.options.state.id
       const named = this.shownNodes()
@@ -704,7 +712,7 @@ export class ConversationRuntime {
         nodes: named,
         held: (node) => (node === root ? heldEdge(this.options.state.history) : this.options.held?.(node)),
         draft: this.options.draft?.(),
-        holding: this.options.holding?.(),
+        holding,
         signal: attempt.signal,
       })
       attempt.signal.throwIfAborted()
@@ -724,7 +732,9 @@ export class ConversationRuntime {
       this.options.state.lastError = null
       return client
     } catch (error) {
-      client.disconnect(asError(error))
+      if (opening) {
+        client.disconnect(asError(error))
+      }
       throw error
     } finally {
       this.attempting = false

@@ -1,6 +1,6 @@
 import { computed, markRaw, reactive, type Raw, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { SerialQueue, deferred, isAbortError, moveBefore } from '@demicodes/utils'
+import { SerialQueue, deferred, delay, isAbortError, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
@@ -131,6 +131,15 @@ import {
   type SavedWrite,
   type SavedFile,
 } from './drafts'
+
+/**
+ * How long a session's first connection waits for the conversation's copy on
+ * disk, to follow from it with no read. The web browser's storage answers in
+ * tens of milliseconds; one that has not answered by then is stuck, as when a
+ * tab that never lets go blocks rebuilding the database, and reading from the
+ * backend is faster than waiting for it.
+ */
+const COPY_WAIT_MS = 1_000
 
 /**
  * A new conversation whose draft holds nothing yet, no character and no
@@ -1521,12 +1530,15 @@ export const useConversations = defineStore('conversations', () => {
         conversation.load = 'ready'
         return
       }
+      // The session's first connection waits for the copy, which it follows
+      // from with no read when the page still shows it.
+      let disk: Promise<void> = Promise.resolve()
       if (madeHere.delete(conversation.id)) {
         // Its record is what the page created: no transcript yet, the
         // metadata its answer brought, and the composer's draft.
         conversation.load = 'ready'
       } else {
-        void showFromDisk(conversation, signal).catch(() => {})
+        disk = showFromDisk(conversation, signal).catch(() => {})
       }
       // The saved list and the hosts come with the metadata, the disk's now
       // and the socket's as it arrives.
@@ -1535,7 +1547,7 @@ export const useConversations = defineStore('conversations', () => {
         await openWithoutSession(conversation, signal)
         return
       }
-      await startSession(conversation, entry)
+      await startSession(conversation, entry, disk)
     } catch (error) {
       if (!signal.aborted) {
         failOpening(conversation, error)
@@ -1698,6 +1710,7 @@ export const useConversations = defineStore('conversations', () => {
   async function startSession(
     conversation: Conversation,
     entry: CachedConversation,
+    disk: Promise<void> = Promise.resolve(),
   ): Promise<void> {
     const { signal } = entry.controller
     if (conversation.archived) {
@@ -1710,7 +1723,15 @@ export const useConversations = defineStore('conversations', () => {
     const runtime = new ConversationRuntime({
       state: conversation,
       client: createConversationClient(streamUrl(conversation.id), clientOptions(conversation.id), () => archiving.get(conversation.id)),
-      holding: () => takeShownCopy(conversation, signal),
+      holding: async (attempt) => {
+        const waited = new AbortController()
+        try {
+          await Promise.race([disk, delay(COPY_WAIT_MS, AbortSignal.any([attempt, waited.signal]))])
+        } finally {
+          waited.abort()
+        }
+        return attempt.aborted ? undefined : takeShownCopy(conversation, signal)
+      },
       nodes: () => sideNodes(conversation),
       held: (node) => {
         const record = conversation.subagents.find((agent) => agent.id === node) ?? conversation.sides.find((side) => side.id === node)
