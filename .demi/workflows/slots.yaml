@@ -1,7 +1,6 @@
 name: Parallel Conversations
 instructions: |
   The user runs several conversations at once, one per slot. You are one of them: you work in one slot, one item at a time, yourself.
-  Report to the user once a step is done, with its whole result; never a part of it while the rest is still coming.
 
   Slots and the board
   - Six slots, `../demi-slots/1` to `../demi-slots/6`, each a git worktree with its own warm build. Slot n uses ports 33n0–33n9 and 189n0–189n9. Your slot is the one the user names, or one the board shows idle.
