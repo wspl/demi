@@ -172,7 +172,9 @@
    - An answer's actions are 36 with 18, a small one 28 with 16.
    - Rows and fields are 44.
    - A tab is 36, so that it floats in its 44 px bar as a desktop's does.
-   - A chip is 32, a file-change pill 28 with 13 px text, a segment 36.
+   - A chip is 32, a file-change pill 28 with 13 px text, a segment 36. A
+     mini segment stays 20 with 12 px text, under a section's 13 px caption
+     in its heading row.
    - Text that names a control or a row is 15, a Settings label 17.
    - The large icon button stays 32, the size the sidebar's rows already draw on
      a phone. */
@@ -203,6 +205,17 @@
 :root:lang(ja),
 :root:lang(ko) {
   --text-control-2xs: 11px;
+}
+
+/* At a phone's 12 px, Han and Hangul strokes stay open: one size for every
+   language. */
+@variant phone {
+  :root,
+  :root:lang(zh),
+  :root:lang(ja),
+  :root:lang(ko) {
+    --text-control-2xs: 12px;
+  }
 }
 
 :root,
