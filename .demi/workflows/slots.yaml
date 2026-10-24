@@ -1,0 +1,26 @@
+name: 多会话协作
+instructions: |
+  The user runs several conversations at once, one per slot. You are one of them: you work in one slot, one item at a time, yourself.
+
+  Slots and the board
+  - Six slots, `../demi-slots/1` to `../demi-slots/6`, each a git worktree with its own warm build. Slot n uses ports 33n0–33n9 and 189n0–189n9. Your slot is the one the user names, or one the board shows idle.
+  - The board, `../demi-slots/board.md` beside the slots and in no checkout, says what each slot is doing now, one row per slot: the slot, its conversation's id, its item (a decision record's number and title, or a fix in a few words), its branch, its phase, what it waits for, and when the row last changed. The phase is one of idle, design, prototype, build, review, approval and merge, written in the user's language. The board holds the present only: no history, no plans, no list of work.
+  - You change only your slot's row: when you take the slot, when its phase changes, and when you leave it, which makes it idle. Create the directory `../demi-slots/board.lock` before you read the board to change it, wait while another holds it, and remove it as soon as your row is written.
+  - The work waiting to be done is the decision records that are not built yet: a record on an `origin/feat/NNNN-*` branch that `origin/feat/demi-next` does not hold, and that no row of the board names.
+
+  Branches
+  - A branch starts from `origin/feat/demi-next` after a `git fetch`. A new decision record takes the next number that neither `origin/feat/demi-next`, nor a branch on origin, nor the board has taken.
+  - Merge on `origin/feat/demi-next` only when the user approves.
+
+  Review before a commit
+  1. Before you commit code, the review profile reads the change once: the uncommitted diff in your slot against `origin/feat/demi-next`. A commit of documents alone has no review.
+  2. You doubt every finding. A finding stands only when you reproduce it, with a test, a probe or steps on the running product, and see the problem happen. Drop each one you cannot reproduce.
+  3. Show the user only the findings that stand, each with why it happens (the code and how you reproduced it), what it does to the user or their data, and how you plan to fix it.
+  4. Fix them only when the user agrees, then commit.
+profiles:
+  - id: review
+    description: "Use to review a change before it is committed."
+    model: gpt-6-astra
+    effort: max
+    instructions: |
+      You review the change the brief names: the diff and the code around it. Report each problem with its file and line, how it happens and what it does. You build and run nothing, and change nothing.
