@@ -405,6 +405,7 @@ async fn edit_of(
         content: Some(vec![EditContent::Content(UserContentBlock::Text {
             text: replacement.to_owned(),
         })]),
+        comments: None,
         digest: format!("{operation}:{replacement}"),
     }
 }
@@ -660,3 +661,72 @@ fn lost() -> ReportEvent {
     }
 }
 
+
+/// A comment on the first words of the reply `reply`.
+fn comment_on(reply: &str, id: &str, text: &str) -> demi_shared_types::MessageComment {
+    demi_shared_types::MessageComment {
+        id: id.to_owned(),
+        block_id: BlockId::try_from(reply).unwrap(),
+        start: 0,
+        end: 8,
+        at: 0,
+        quote: "The test".to_owned(),
+        picture: None,
+        text: text.to_owned(),
+    }
+}
+
+/// The comments of the user block of the turn `turn`.
+async fn comments_of(session: &AgentSession, turn: &str) -> Vec<demi_shared_types::MessageComment> {
+    session
+        .history()
+        .await
+        .unwrap()
+        .blocks
+        .into_iter()
+        .find_map(|block| match block {
+            Block::User(user) if user.turn_id.as_str() == turn => Some(user.comments),
+            _ => None,
+        })
+        .expect("the turn has a user block")
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_edit_gives_its_version_the_comments_it_carries_and_keeps_them_without_any() {
+    let answer = |text: &str| Turn::Events(vec![event::text(text), event::response(0, 0)]);
+    let provider = ScriptedRuntime::new([answer("one"), answer("two"), answer("three")]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let first = comment_on("reply", "c1", "Check the prompt too.");
+    let second = comment_on("reply", "c2", "Name the test after it.");
+    session
+        .send_message(demi_shared_types::QueuedMessage {
+            id: turn("t1"),
+            content: Vec::new(),
+            comments: vec![first, second.clone()],
+            schedule: None,
+        })
+        .unwrap()
+        .await
+        .unwrap();
+
+    // The edit drops the first comment and rewords the second.
+    let reworded = demi_shared_types::MessageComment {
+        text: "Name the test after the request.".to_owned(),
+        ..second
+    };
+    let mut edit = edit_of(&session, "t1", "op1", "Look again.").await;
+    edit.comments = Some(vec![reworded.clone()]);
+    let edited = session.edit_and_send(edit).await.unwrap().turn_id;
+    session.settled().await;
+    assert_eq!(comments_of(&session, edited.as_str()).await, [reworded.clone()]);
+
+    // An edit that carries none keeps the edited message's.
+    let again = session
+        .edit_and_send(edit_of(&session, edited.as_str(), "op2", "Once more.").await)
+        .await
+        .unwrap()
+        .turn_id;
+    session.settled().await;
+    assert_eq!(comments_of(&session, again.as_str()).await, [reworded]);
+}

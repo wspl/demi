@@ -29,6 +29,8 @@ const props = defineProps<{
   quote?: string
   /** It stands in the reply, under the line of its words. */
   inline?: boolean
+  /** It can be read but not changed, such as while the message is sent. */
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -66,7 +68,7 @@ function save(text: string): void {
         <Check :size="ICON_PX.in24" aria-hidden="true" />
         {{ t('comments.sent') }}
       </span>
-      <div v-else class="flex shrink-0 items-center">
+      <div v-else-if="!readonly" class="flex shrink-0 items-center">
         <Tooltip :content="shared('common.delete')">
           <IconButton :icon="Trash2" size="sm" variant="ghost" :aria-label="shared('common.delete')" @click="emit('delete')" />
         </Tooltip>

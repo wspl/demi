@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { wholeHistory, type HeldBlock } from '@demicodes/web-ui/agent/history'
-import { onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { deferred, type Deferred } from '@demicodes/utils'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
+import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import GalleryComposer from './GalleryComposer.vue'
 import {
   EditRejectedError,
+  changeEditComments,
+  editComments,
   regenerateMessage,
   submitMessageEdit,
   type MessageEditHost,
   type MessageEditState,
 } from '@demicodes/web-ui/agent/message-editing'
-import type { Block, UserContentBlock } from '@demicodes/protocol'
+import type { Block, MessageComment, UserContentBlock } from '@demicodes/protocol'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import { demoImageUrl, demoModel } from '../fixtures/blocks'
 import { galleryUploads } from '../fixtures/upload-sweep'
@@ -72,6 +76,11 @@ function write(block: Block, follows: string | null): void {
 }
 
 const messageEdit = ref<MessageEditState | null>(null)
+/**
+ * The comments waiting in the draft, made on the replies' words, which the
+ * replies show beside the ones the messages sent.
+ */
+const waiting = ref<MessageComment[]>([])
 type Outcome = 'accept' | 'hold' | 'reject' | 'disconnect'
 
 const outcome = ref<Outcome>('accept')
@@ -87,8 +96,19 @@ const completion = shallowRef<Deferred<void> | null>(null)
 /** The stand-in for the backend's uploads, which an edit sends its added files through. */
 const uploads = galleryUploads()
 
-function userBlock(id: string, content: UserContentBlock[]): Block {
-  return { type: 'user', id, turnId: id, createdAt: new Date().toISOString(), model: demoModel, content, preamble: null }
+function userBlock(id: string, content: UserContentBlock[], comments: MessageComment[] = []): Block {
+  return {
+    type: 'user', id, turnId: id, createdAt: new Date().toISOString(), model: demoModel, content, preamble: null,
+    ...(comments.length > 0 ? { comments } : {}),
+  }
+}
+
+/** Two comments on the words of `reply`, as the message an edit opens sent them with its text. */
+function testComments(reply: string): MessageComment[] {
+  return [
+    { id: `${reply}-c2`, blockId: reply, start: 0, end: 15, at: 0, quote: 'The test checks', text: 'Name the test after the request it checks.' },
+    { id: `${reply}-c1`, blockId: reply, start: 16, end: 49, at: 16, quote: 'the request received by the model', text: 'Check the system prompt too.' },
+  ]
 }
 
 function replyBlock(id: string, text: string): Block {
@@ -105,6 +125,7 @@ function reset(): void {
     return
   }
   messageEdit.value = null
+  waiting.value = []
   const run = revision.value
   rows.value = []
   leaf.value = null
@@ -114,7 +135,8 @@ function reset(): void {
   write(replyBlock(`reply-${run}-1a`, 'Which part should the tests cover?'), `user-${run}-1a`)
   write(userBlock(`user-${run}-1`, [{ type: 'text', text: 'Add a test.' }]), `reply-${run}-0`)
   write(replyBlock(`reply-${run}-1`, 'The test checks the request received by the model.'), `user-${run}-1`)
-  // The message an edit opens: its file a capsule where it was put.
+  // The message an edit opens: its file a capsule where it was put, and its
+  // comments the pill by the paperclip.
   write(userBlock(`user-${run}-2`, [
     { type: 'text', text: 'Review the result against ' },
     { type: 'image', source: { type: 'url', url: demoImageUrl } },
@@ -123,7 +145,7 @@ function reset(): void {
       mediaType: 'image/png', sizeBytes: 48211, sha256: 'e'.repeat(64),
     },
     { type: 'text', text: ', and keep the **padding** as it is.' },
-  ]), `reply-${run}-1`)
+  ], testComments(`reply-${run}-1`)), `reply-${run}-1`)
   write(replyBlock(`reply-${run}-2a`, 'The padding matches; the result is ready.'), `user-${run}-2`)
   write(replyBlock(`reply-${run}-2`, 'The result is ready for review.'), `user-${run}-2`)
   showPath()
@@ -181,7 +203,8 @@ const editHost: MessageEditHost = {
     } else {
       // The new version of the message beside the old one, and its turn.
       // As the backend would record it: each added file's upload becomes its attachment record.
-      write(userBlock(request.operationId, uploads.received(request.content)), target.follows)
+      const comments = request.comments ?? (target.block.type === 'user' ? target.block.comments ?? [] : [])
+      write(userBlock(request.operationId, uploads.received(request.content), comments), target.follows)
       write(replyBlock(`reply-${request.operationId}`, 'This reply follows the edited message. The old version stays, ‹ 1/2 › under it.'), request.operationId)
     }
     showPath()
@@ -190,6 +213,26 @@ const editHost: MessageEditHost = {
       throw new Error('Connection closed before edit confirmation')
     }
   },
+}
+
+const commenting: ReplyCommenting = {
+  get waiting() {
+    return waiting.value
+  },
+  add: (comment) => (waiting.value = [...waiting.value, comment]),
+  edit: (id, text) => (waiting.value = waiting.value.map((each) => (each.id === id ? { ...each, text } : each))),
+  remove: (id) => (waiting.value = waiting.value.filter((each) => each.id !== id)),
+}
+
+/** The comments the pill lists: the shown edit's, else the draft's, as the product's composer chooses. */
+const sentEdit = computed(() => messageEdit.value?.kind === 'message' && messageEdit.value.phase !== 'regenerating' ? messageEdit.value : null)
+const carried = computed(() => (sentEdit.value ? editComments(sentEdit.value) : waiting.value))
+
+/** Changes the shown edit's comments by `change`, as the product's composer does. */
+function changeComments(change: Parameters<typeof changeEditComments>[1]): void {
+  if (messageEdit.value?.kind === 'message') {
+    messageEdit.value = changeEditComments(messageEdit.value, change)
+  }
 }
 
 onBeforeUnmount(() => {
@@ -212,6 +255,7 @@ onBeforeUnmount(() => {
     <div class="flex h-[32rem] overflow-hidden rounded-xl border border-line">
       <ChatSession @show-subagent="() => {}"
         :conversation="session" has-provider
+        :commenting="commenting"
         :edit-version="{ epoch: 'gallery-editing', revision }"
         :message-edit="messageEdit"
         @update:message-edit="messageEdit = $event"
@@ -225,7 +269,26 @@ onBeforeUnmount(() => {
             v-model:message-edit="messageEdit"
             :upload="uploads.upload"
             @submit-edit="submitMessageEdit(editHost)"
-          />
+          >
+            <!-- The edit's own comments, as the product's composer lists them. -->
+            <template v-if="carried.length > 0" #carried>
+              <WaitingComments
+                v-if="sentEdit"
+                :comments="carried"
+                :readonly="sentEdit.phase !== 'editing'"
+                @edit="(id, text) => changeComments((comments) => comments.map((each) => (each.id === id ? { ...each, text } : each)))"
+                @remove="(id) => changeComments((comments) => comments.filter((each) => each.id !== id))"
+                @clear="changeComments(() => [])"
+              />
+              <WaitingComments
+                v-else
+                :comments="carried"
+                @edit="commenting.edit"
+                @remove="commenting.remove"
+                @clear="waiting = []"
+              />
+            </template>
+          </GalleryComposer>
         </template>
       </ChatSession>
     </div>

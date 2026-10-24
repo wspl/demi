@@ -43,7 +43,8 @@ use demi_conversation_socket_protocol::{
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
-    BlobRef, Block, BlockId, DocumentSource, MediaSource, NodeId, OperationId, UserBlock, UserContentBlock,
+    BlobRef, Block, BlockId, DocumentSource, MediaSource, MessageComment, NodeId, OperationId, UserBlock,
+    UserContentBlock,
 };
 use tokio::sync::watch;
 
@@ -74,6 +75,9 @@ pub struct EditSubmission {
     /// The new version's content; none for Regenerate, which keeps the
     /// message as it is and makes a new version of its answer.
     pub content: Option<Vec<EditContent>>,
+    /// The new version's comments, in place of the edited message's; none
+    /// keeps the edited message's, as Regenerate does.
+    pub comments: Option<Vec<MessageComment>>,
     pub digest: String,
 }
 
@@ -298,9 +302,9 @@ impl Candidate {
             Some(content) => {
                 let content = Self::content(target, content)?;
                 let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
-                // A new version is the user's own, whoever sent the first, and keeps
-                // the comments sent with the first.
-                candidate.push_user(turn.clone(), &model, content, target.comments.clone(), preamble, None);
+                // A new version is the user's own, whoever sent the first.
+                let comments = submission.comments.clone().unwrap_or_else(|| target.comments.clone());
+                candidate.push_user(turn.clone(), &model, content, comments, preamble, None);
                 candidate.blocks().to_vec()
             }
             // The message stays, and the new answer follows it.

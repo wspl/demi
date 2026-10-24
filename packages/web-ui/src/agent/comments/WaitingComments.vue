@@ -23,6 +23,11 @@ import CommentItem from './CommentItem.vue'
 const props = defineProps<{
   /** The waiting comments, in the order the conversation reads them. */
   comments: readonly MessageComment[]
+  /**
+   * They can be read but not changed, as an edit's while it is sent: the pill
+   * has no ×, and the list no Edit or Delete.
+   */
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -50,7 +55,8 @@ function remove(id: string): void {
   <span ref="pill" data-waiting-comments class="btn-solid inline-flex h-chip select-none items-center rounded-full text-chrome text-fg-body">
     <button
       type="button"
-      class="inline-flex h-full items-center gap-1.5 rounded-l-full pl-2.5 pr-1.5 hover:text-fg-emphasis"
+      class="inline-flex h-full items-center gap-1.5 rounded-l-full pl-2.5 hover:text-fg-emphasis"
+      :class="readonly ? 'rounded-r-full pr-2.5' : 'pr-1.5'"
       :aria-expanded="open"
       @mousedown.prevent
       @click="open = !open"
@@ -58,7 +64,7 @@ function remove(id: string): void {
       <MessageCircleMore :size="ICON_PX.in24" class="text-[var(--comment-ink)]" aria-hidden="true" />
       {{ t('comments.count', { count: comments.length }, comments.length) }}
     </button>
-    <Tooltip :content="t('comments.remove', {}, comments.length)">
+    <Tooltip v-if="!readonly" :content="t('comments.remove', {}, comments.length)">
       <IconButton
         :icon="X"
         size="xs"
@@ -90,6 +96,7 @@ function remove(id: string): void {
         :key="comment.id"
         :text="comment.text"
         :sent="false"
+        :readonly="readonly"
         :quote="comment.quote"
         @save="emit('edit', comment.id, $event)"
         @delete="remove(comment.id)"

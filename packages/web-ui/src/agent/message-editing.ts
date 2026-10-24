@@ -7,6 +7,7 @@ import {
   type Block,
   type ClientContent,
   type EditRequest,
+  type MessageComment,
   type SessionPhase,
   type Version,
 } from '@demicodes/protocol'
@@ -110,8 +111,8 @@ export function editContent(state: MessageEditState): MessageEditContent[] {
 }
 
 /**
- * The edit of a message with its content as it was sent. Only a `user` block
- * is a message the user can edit.
+ * The edit of a message with its content and comments as it was sent. Only a
+ * `user` block is a message the user can edit.
  */
 export function unchangedEditRequest(block: Block, version: Version): MessageEditRequest {
   if (block.type !== 'user') {
@@ -122,6 +123,7 @@ export function unchangedEditRequest(block: Block, version: Version): MessageEdi
     targetBlockId: block.id,
     version: { ...version },
     content: plainCopy(block.content),
+    comments: plainCopy(block.comments ?? []),
   }
 }
 
@@ -138,6 +140,28 @@ export function beginMessageEdit(block: Block, version: Version): SentMessageEdi
 }
 
 /**
+ * The comments a sent message's edit carries while it is shown, which its
+ * composer lists; none for a saved message's edit, or for a Regenerate, which
+ * shows no editor.
+ */
+export function editComments(state: MessageEditState | null): readonly MessageComment[] {
+  return state?.kind === 'message' && state.phase !== 'regenerating' ? state.request.comments ?? [] : []
+}
+
+/** `state` with its comments changed by `change`, while it is being edited. */
+export function changeEditComments(
+  state: SentMessageEdit,
+  change: (comments: readonly MessageComment[]) => MessageComment[],
+): SentMessageEdit {
+  if (state.phase !== 'editing') {
+    return state
+  }
+  const next = plainCopy(state)
+  next.request.comments = change(next.request.comments ?? [])
+  return next
+}
+
+/**
  * Opens the editor on the message saved for later `savedId`, holding
  * `content`; one without text gets an empty line to type in.
  */
@@ -150,7 +174,7 @@ export function beginSavedEdit(savedId: string, content: MessageEditContent[]): 
 }
 
 export function editHasContent(state: MessageEditState): boolean {
-  return editContent(state).some((part) => part.type !== 'text' || part.text.trim())
+  return editComments(state).length > 0 || editContent(state).some((part) => part.type !== 'text' || part.text.trim())
 }
 
 /** The web app exposes editing only for the latest explicit user submission. */

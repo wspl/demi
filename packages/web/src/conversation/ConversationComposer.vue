@@ -8,6 +8,7 @@ import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
 import { inReadingOrder } from '@demicodes/web-ui/agent/comments/comments'
+import { changeEditComments, editComments } from '@demicodes/web-ui/agent/message-editing'
 import { refusedForSize } from '@demicodes/web-ui/agent/session-status'
 
 import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
@@ -119,6 +120,28 @@ const waitingComments = computed(() =>
   inReadingOrder(props.conversation.comments, latestBlocks(props.conversation.history).map((block) => block.id)),
 )
 const commenting = computed(() => store.commenting(props.conversation))
+
+/**
+ * The edit of a sent message the composer shows, whose own comments the pill
+ * lists in place of the draft's; none while no such edit is shown.
+ */
+const sentEdit = computed(() => {
+  const edit = props.conversation.messageEdit
+  return edit?.kind === 'message' && edit.phase !== 'regenerating' ? edit : null
+})
+/** The comments the pill lists: the shown edit's, else the draft's. */
+const carriedComments = computed(() => {
+  if (sentEdit.value) {
+    return editComments(sentEdit.value)
+  }
+  return props.conversation.messageEdit?.kind === 'saved' ? [] : waitingComments.value
+})
+/** Changes the shown edit's comments by `change`. */
+function changeEdit(change: Parameters<typeof changeEditComments>[1]): void {
+  if (sentEdit.value) {
+    props.conversation.messageEdit = changeEditComments(sentEdit.value, change)
+  }
+}
 
 /** What the model holds of the user's and the project's instructions, which the context card lists. */
 const instructions = computed(() => loadedInstructions(latestBlocks(props.conversation.history), props.conversation.instructions))
@@ -300,9 +323,18 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @compact="store.compact(conversation)"
       @open-instruction="card.openInstruction"
     >
-      <template v-if="waitingComments.length > 0" #carried>
+      <template v-if="carriedComments.length > 0" #carried>
         <WaitingComments
-          :comments="waitingComments"
+          v-if="sentEdit"
+          :comments="carriedComments"
+          :readonly="sentEdit.phase !== 'editing'"
+          @edit="(id, text) => changeEdit((comments) => comments.map((each) => (each.id === id ? { ...each, text } : each)))"
+          @remove="(id) => changeEdit((comments) => comments.filter((each) => each.id !== id))"
+          @clear="changeEdit(() => [])"
+        />
+        <WaitingComments
+          v-else
+          :comments="carriedComments"
           @edit="(id, text) => commenting.edit(id, text)"
           @remove="commenting.remove($event)"
           @clear="store.clearComments(conversation)"
