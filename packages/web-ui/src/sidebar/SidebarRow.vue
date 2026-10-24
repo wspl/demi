@@ -45,18 +45,19 @@ const shownTitle = computed(() => conversationTitle(props.conversation.title))
 // The row's end holds, in the flow, the marks: the pin, the bolt and the device's
 // mark, each in a box as wide as its glyph (14, 14 and 16px), 6px from the row's
 // end. They are marks, not buttons. Every glyph at the row's end, mark or button,
-// stands 10px from the next, as two side-by-side 24px buttons' 14px glyphs do, so
-// the spacing does not change where the buttons meet the marks.
+// stands 6px from the next, as two side-by-side 20px buttons' 14px glyphs do, so
+// the spacing does not change where the buttons meet the marks, and a row with
+// several marks keeps most of its title.
 //
 // Marks and buttons rest in one grey, the ghost button's resting `text-fg-muted`,
 // whatever color the row's text takes. Only the button under the pointer darkens
 // and shows its fill, as Finder's eject button does, and a mark never changes on
 // hover.
 //
-// The actions are 24px buttons, side by side, whose 14px glyphs sit 5px inside
+// The actions are 20px buttons, side by side, whose 14px glyphs sit 3px inside
 // them:
 //
-// - Archive stands over the pin's glyph, or with its glyph 10px left of the
+// - Archive stands over the pin's glyph, or with its glyph 6px left of the
 //   first mark when the row is not pinned.
 // - Unpin stands left of Archive.
 // - The title clears the actions by a margin that leaves 12px before the first
@@ -65,10 +66,10 @@ const shownTitle = computed(() => conversationTitle(props.conversation.title))
 // A phone row shows no actions, since a tap meant to open the row could land on
 // one. Its long press opens its menu, which holds them, so its title and pin stay
 // put, and its marks keep their 32px boxes.
-const MARK_GAP_PX = 10
+const MARK_GAP_PX = 6
 const END_INSET_PX = 6
-/** A small icon button (`IconButton` `sm`) is 24px with its glyph centered. */
-const BUTTON_INSET_PX = (24 - ICON_PX.in24) / 2
+/** An extra-small icon button (`IconButton` `xs`) is 20px with its glyph centered. */
+const BUTTON_INSET_PX = (20 - ICON_PX.in24) / 2
 
 /** The widths of the marks that stay on hover, the device's and the bolt, from the row's end. */
 const stayingMarks = computed(() => [
@@ -89,7 +90,7 @@ const titleMargin = computed(() => {
   // holds it back, and Archive's glyph, the gap and the 12px remain the same way; with no
   // mark only the row's end does.
   const margin = props.conversation.pinned || stayingMarks.value.length
-    ? { hover: 'group-hover/row:mr-7', menu: 'mr-7' }
+    ? { hover: 'group-hover/row:mr-6', menu: 'mr-6' }
     : { hover: 'group-hover/row:mr-[26px]', menu: 'mr-[26px]' }
   return props.menuOpen ? margin.menu : margin.hover
 })
@@ -145,7 +146,7 @@ const rowClass = computed(() => [
     >{{ shownTitle }}</Tooltip>
     <!-- The pin's glyph and the device's mark end the row, in the flow, so the title never reaches
          them. The mark stays on hover; the pin gives its place to Archive. -->
-    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.automations?.length)" class="flex shrink-0 items-center gap-2.5 phone:gap-0.5">
+    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.automations?.length)" class="flex shrink-0 items-center gap-1.5 phone:gap-0.5">
       <span
         v-if="conversation.pinned"
         class="pointer-events-none flex h-6 w-3.5 items-center justify-center text-fg-muted transition-opacity phone:size-8"
@@ -176,7 +177,8 @@ const rowClass = computed(() => [
       <Tooltip v-if="conversation.pinned" :content="t('row.unpin')" class="flex items-center">
         <IconButton
           :icon="PinOff"
-          size="sm"
+          size="xs"
+          :icon-size="ICON_PX.in24"
           variant="ghost"
           :aria-label="t('row.unpin')"
           @click.stop="emit('unpin')"
@@ -185,7 +187,8 @@ const rowClass = computed(() => [
       <Tooltip :content="t('row.archive')" class="flex items-center">
         <IconButton
           :icon="Archive"
-          size="sm"
+          size="xs"
+          :icon-size="ICON_PX.in24"
           variant="ghost"
           :aria-label="t('row.archive')"
           :disabled="conversation.status === 'active'"
