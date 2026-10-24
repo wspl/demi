@@ -67,7 +67,7 @@ import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { createConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
 import { SessionError } from '@demicodes/conversation-client'
-import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
+import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, HeldTranscript, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
 import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, logReadFailed, readResponse } from '../api/client'
 import { readSaved } from '../api/saved'
 import type { z } from 'zod'
@@ -1269,8 +1269,14 @@ export const useConversations = defineStore('conversations', () => {
    * the one before it.
    */
   const earlyReads = new Map<string, EarlyReads>()
-  /** What the page shows of a conversation from its copy on disk, which its first connection follows from. */
-  const shownCopies = new Map<string, ConversationHeld>()
+  /**
+   * What each opening shows of its conversation from the copy on disk, with
+   * the transcript shown, which its client follows from while the page shows
+   * that transcript still; null once the client opened without it. An
+   * opening is named by its cache entry's signal, so what it kept goes with
+   * the entry.
+   */
+  const shownCopies = new WeakMap<AbortSignal, { held: ConversationHeld, transcript: HeldTranscript } | null>()
   /** Conversations whose record this page just created, which their opening does not read back. */
   const madeHere = new Set<string>()
 
@@ -1587,16 +1593,14 @@ export const useConversations = defineStore('conversations', () => {
       }
       // What the copy shows is followed from the versions it holds, with no
       // read, when its transcript was vouched for by a stream.
-      if (root.transcript.version) {
-        shownCopies.set(conversation.id, {
-          agents: { version: copy.agents.version, entries: copy.agents.entries },
-          nodes: { [conversation.id]: root.transcript.version },
+      if (root.transcript.version && !shownCopies.has(signal)) {
+        shownCopies.set(signal, {
+          held: {
+            agents: { version: copy.agents.version, entries: copy.agents.entries },
+            nodes: { [conversation.id]: root.transcript.version },
+          },
+          transcript: root.transcript,
         })
-        pageLog.info('copy.followed', {
-          blocks: latestBlocks(root.transcript).length,
-          revision: root.transcript.version.revision,
-          epoch: root.transcript.version.epoch,
-        }, conversation.id)
       }
     }
     if (copy) {
@@ -1660,6 +1664,33 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
+   * What a client that opens the conversation follows from with no read: its
+   * copy on disk, taken once, while the page shows it still. A copy that
+   * shows after the client opened, or that the backend's data or a later
+   * copy replaced, holds versions the page no longer shows, and following
+   * from them would add what the page holds again.
+   */
+  function takeShownCopy(conversation: Conversation, signal: AbortSignal): ConversationHeld | undefined {
+    const shown = shownCopies.get(signal)
+    shownCopies.set(signal, null)
+    if (!shown) {
+      return undefined
+    }
+    const version = shown.held.nodes[conversation.id]!
+    const agents = conversation.agentsHeld
+    const held = shown.held.agents?.version
+    const showing = toRaw(conversation.history) === shown.transcript
+      && agents !== null && held !== undefined && agents.epoch === held.epoch && agents.revision === held.revision
+    pageLog.info(showing ? 'copy.followed' : 'copy.unfollowed', {
+      blocks: latestBlocks(shown.transcript).length,
+      revision: version.revision,
+      epoch: version.epoch,
+      ...(showing ? {} : { shown_length: conversation.history.length, shown_revision: conversation.history.version?.revision ?? null }),
+    }, conversation.id)
+    return showing ? shown.held : undefined
+  }
+
+  /**
    * Starts the session of a conversation, unless it is archived, and
    * connects it; `made` is a connection made before the opening, which the
    * first attempt takes.
@@ -1676,12 +1707,10 @@ export const useConversations = defineStore('conversations', () => {
     // page made or one restored from the archive, stays shown while its
     // socket connects, even with no block yet.
     const shownBefore = conversation.load === 'ready'
-    const holding = shownCopies.get(conversation.id)
-    shownCopies.delete(conversation.id)
     const runtime = new ConversationRuntime({
       state: conversation,
       client: createConversationClient(streamUrl(conversation.id), clientOptions(conversation.id), () => archiving.get(conversation.id)),
-      holding: () => holding,
+      holding: () => takeShownCopy(conversation, signal),
       nodes: () => sideNodes(conversation),
       held: (node) => {
         const record = conversation.subagents.find((agent) => agent.id === node) ?? conversation.sides.find((side) => side.id === node)
@@ -4102,7 +4131,6 @@ export const useConversations = defineStore('conversations', () => {
     pendingChanges.value = []
     cache.clear()
     earlyReads.clear()
-    shownCopies.clear()
     restoringLocalDrafts.value = false
     madeHere.clear()
     deliveries = new SerialQueue()
