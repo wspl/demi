@@ -263,7 +263,7 @@
         "marked-cjk-friendly": "0.1.2",
         "marked-gfm-heading-id": "^4.1.4",
         "material-icon-theme": "^5.38.1",
-        "overlayscrollbars": "^2.16.0",
+        "overlayscrollbars": "2.16.0",
         "overlayscrollbars-vue": "^0.5.10",
         "partial-json": "^0.1.7",
         "pinia": "^3.0.3",
