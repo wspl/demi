@@ -10,8 +10,8 @@ import { t } from '../locales/text'
 /**
  * Side questions on a reply's words. Each is a side conversation from the
  * conversation's history through the asked reply. Its card shows each question
- * and its final answer under the block holding the words, and folds into a mark
- * in the margin.
+ * and its final answer under the line the words end on, and folds to its
+ * header.
  */
 
 /** A side question as the transcript shows it. */
@@ -79,12 +79,13 @@ export interface ReplyAsking {
    */
   stop: (id: string) => void
   /**
-   * × on a question still on its first answer ([`unanswered`]): the backend
-   * stops it and deletes it with its card, as if it had not been asked.
+   * Delete, in the card's menu of a question still on its first answer
+   * ([`unanswered`]): the backend stops it and deletes it with its card, as if
+   * it had not been asked.
    */
   remove: (id: string) => void
   /**
-   * × folds the card into the margin's mark; the mark or the words open it
+   * The header or its chevron folds the card to its header and opens it
    * again.
    */
   fold: (id: string, folded: boolean) => void
@@ -103,8 +104,8 @@ export interface ReplyAsking {
 }
 
 /**
- * The side question's first answer is still being made: × deletes it rather
- * than folding it.
+ * The side question's first answer is still being made: its card's menu offers
+ * Delete.
  */
 export function unanswered(question: ShownSideQuestion): boolean {
   const { turns } = cardContent(question)

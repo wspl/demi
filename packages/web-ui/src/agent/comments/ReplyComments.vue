@@ -1,43 +1,39 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { MessageCircleQuestionMark, MessageSquare, MessageSquarePlus } from '@lucide/vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { MessageCircleQuestionMark, MessageSquarePlus } from '@lucide/vue'
 import type { MediaSource, MessageComment } from '@demicodes/protocol'
-import Popover from '../../ui/Popover.vue'
-import Tooltip from '../../ui/Tooltip.vue'
-import { appOverlayStore } from '../../overlay/appOverlay'
 import { usePhone } from '../../ui/phone'
-import { readSelection, selectedText, type ContextMenuEntry, type ResolvedSelection, type SelectionFieldActions } from '../../ui/context-menu'
+import { selectedText, type ContextMenuEntry, type ResolvedSelection, type SelectionFieldActions } from '../../ui/context-menu'
 import { chooseWay, openPictureField, pictureField } from './selection-field'
 import { t } from '../locales/text'
 import { reportError } from '../../infra/errors'
-import { anchorOf, liveOf, pictureAnchor, pictureOf, pictureQuote, rangeHas, rangeOf, staticOf, type TextAnchor } from './anchors'
+import { anchorOf, pictureAnchor, pictureOf, pictureQuote, rangeOf, type TextAnchor } from './anchors'
 import { pictureSource, useKeepPicture } from './pictures'
 import type { MarkedComment, ReplyCommenting } from './comments'
 import { publishMarks, type MarkKind } from './highlights'
+import { aroundPlaces, clearPlaces, createPlace, placeRemarks, PLACE_ATTRIBUTE, type Remark } from './lines'
 import CommentItem from './CommentItem.vue'
 import AskCard from './AskCard.vue'
-import { cardContent, pageToRead, readKey, unanswered, type ReplyAsking, type ShownSideQuestion } from './asks'
+import { cardContent, pageToRead, readKey, unanswered, type ReplyAsking } from './asks'
 
 /**
- * The comments and side questions on a transcript's replies, drawn over the
- * list `root` holds.
+ * The comments and side questions on a transcript's replies
+ * (`docs/decisions/0092-a-remark-stands-under-its-line.md`).
  *
- * A comment is drawn as:
+ * - A comment's words are tinted and underlined yellow, a sent one dimmer, and
+ *   its box stands under the line they end on, its text always shown.
+ * - A side question's words are purple, and its card stands under their line,
+ *   open or folded to its header.
+ * - A comment or a side question on a picture outlines the picture in its
+ *   color, its box or card under the picture's line.
  *
- * - its text tinted and underlined, a sent one dimmer
- * - a comment mark in the reply's right margin at its line
- * - the card that shows a comment once its words or its mark are clicked
+ * Each box and card is teleported into a place of its own in the reply
+ * (`lines.ts`). A reply is found by its text block's id (`data-reply-text`), so
+ * the places follow the rows the list draws as it scrolls. A row it does not
+ * draw shows none.
  *
- * A side question is drawn as its words in purple, and its card set into the
- * reply after the block holding the words' end, folded into a purple mark in
- * the margin.
- *
- * A comment or a side question on a picture outlines the picture in its color,
- * its margin mark at the picture's top.
- *
- * A reply is found by its text block's id (`data-reply-text`), so the marks
- * follow the rows the list draws as it scrolls. A row it does not draw shows
- * none.
+ * A phone takes no remark on a selection or a picture: it shows the ones made
+ * elsewhere.
  */
 const props = defineProps<{
   /** The element the list's rows stand in, which this layer covers. */
@@ -52,29 +48,7 @@ const props = defineProps<{
   asking?: ReplyAsking
 }>()
 
-/** Where something stands over the list, from its top left corner. */
-interface Spot {
-  top: number
-  left: number
-}
-
-interface MarkerGroup {
-  key: string
-  top: number
-  height: number
-  comments: MarkedComment[]
-  /** The folded side questions at the line. */
-  asks: ShownSideQuestion[]
-}
-
-const CARD_WIDTH = 300
-
 const phone = usePhone()
-const width = ref(0)
-/**
- * Too narrow for a margin: each line's marks collapse into a mark at its end.
- */
-const narrow = computed(() => width.value > 0 && width.value < 640)
 
 const marked = computed<MarkedComment[]>(() => [
   ...props.sent.map((comment) => ({ ...comment, sent: true })),
@@ -132,6 +106,9 @@ const keepPicture = useKeepPicture()
  * stays. None for a selection outside the reply's rendered text.
  */
 function selectionTools(reply: { blockId: string; root: HTMLElement }, selected: ResolvedSelection, streaming: () => boolean): ContextMenuEntry[] {
+  // A phone takes no remark on a selection or a picture.
+  if (phone.value)
+    return []
   const at = reply.root.querySelector<HTMLElement>('.markdown-body')
   const anchor = at ? anchorOf(at, selected.range) : null
   if (!at || !anchor)
@@ -158,6 +135,9 @@ function selectionTools(reply: { blockId: string; root: HTMLElement }, selected:
  * question's card.
  */
 function pictureTools(reply: { blockId: string; root: HTMLElement }, image: HTMLImageElement, streaming: () => boolean): ContextMenuEntry[] {
+  // A phone takes no remark on a selection or a picture.
+  if (phone.value)
+    return []
   const at = reply.root.querySelector<HTMLElement>('.markdown-body')
   const anchor = at ? pictureAnchor(at, image) : null
   if (!anchor)
@@ -225,6 +205,8 @@ function fieldActions(blockId: string, anchor: TextAnchor & { at: number }, quot
  * selection outside the reply's rendered text.
  */
 function selectionField(reply: { blockId: string; root: HTMLElement }, selected: ResolvedSelection, streaming: () => boolean): SelectionFieldActions | null {
+  if (phone.value)
+    return null
   const at = reply.root.querySelector<HTMLElement>('.markdown-body')
   const anchor = at ? anchorOf(at, selected.range) : null
   if (!at || !anchor)
@@ -234,48 +216,33 @@ function selectionField(reply: { blockId: string; root: HTMLElement }, selected:
 
 defineExpose({ selectionTools, selectionField, pictureTools })
 
-// --- The card: the comments whose words or mark were clicked. The pointer
-// resting on them shows nothing, as a comment in a document editor does not.
+// --- Each box's and card's place in its reply.
 
-const card = shallowRef<{ ids: string[]; spot: Spot } | null>(null)
-const cardComments = computed(() => marked.value.filter((comment) => card.value?.ids.includes(comment.id)))
-const cardEl = ref<HTMLElement>()
+/** The place of each comment (`comment:<id>`) and side question (`ask:<id>`). */
+const places = new Map<string, HTMLElement>()
 
-function showCard(ids: string[], spot: Spot): void {
-  card.value = { ids, spot }
-}
-
-function closeCard(): void {
-  card.value = null
-}
-
-/** A line's comments as a sheet, on a phone. */
-const sheet = shallowRef<{ ids: string[]; anchor: HTMLElement } | null>(null)
-const sheetComments = computed(() => marked.value.filter((comment) => sheet.value?.ids.includes(comment.id)))
-
-function remove(id: string): void {
-  props.commenting.remove(id)
-  if (card.value) {
-    const ids = card.value.ids.filter((each) => each !== id)
-    card.value = ids.length > 0 ? { ...card.value, ids } : null
+function placeOf(key: string): HTMLElement {
+  let place = places.get(key)
+  if (!place) {
+    place = createPlace()
+    places.set(key, place)
   }
-  if (sheet.value) {
-    const ids = sheet.value.ids.filter((each) => each !== id)
-    sheet.value = ids.length > 0 ? { ...sheet.value, ids } : null
+  return place
+}
+
+/** Lets go of the places whose comment or side question went. */
+function prune(keys: ReadonlySet<string>): void {
+  for (const [key, place] of places) {
+    if (!keys.has(key)) {
+      place.remove()
+      places.delete(key)
+    }
   }
 }
 
-// --- Side questions: each card in the reply, folded into the margin's mark, or
-// opened again.
+// --- Side questions: each card under its line, open or folded to its header.
 
 const questions = computed(() => props.asking?.questions ?? [])
-/**
- * Each card's place in its reply, an element set after the block holding the
- * end of its words.
- */
-const hosts = new Map<string, HTMLElement>()
-/** The side question under the pointer, whose words deepen. */
-const hoveredAsk = ref<string | null>(null)
 /** Each card's Reply field, open or not, and what it holds. */
 const replies = ref<Record<string, { open: boolean; text: string }>>({})
 /** The reads of the cards' transcripts asked for, each once (`readKey`). */
@@ -283,109 +250,6 @@ const asked = new Set<string>()
 
 function replyOf(id: string): { open: boolean; text: string } {
   return (replies.value[id] ??= { open: false, text: '' })
-}
-
-function hostOf(id: string): HTMLElement {
-  let host = hosts.get(id)
-  if (!host) {
-    host = document.createElement('div')
-    host.dataset.askHost = ''
-    // The card's words are not the reply's, which anchors count.
-    host.dataset.noAnchor = ''
-    hosts.set(id, host)
-  }
-  return host
-}
-
-/**
- * The reply's block that holds the end of `range`: a direct child of its
- * rendered text.
- */
-function blockOf(at: HTMLElement, range: Range): Element | null {
-  let node: Node | null = range.endContainer
-  while (node && node.parentNode !== at)
-    node = node.parentNode
-  return node instanceof Element ? node : null
-}
-
-/**
- * Sets each card after the block holding the end of its words, once its row is
- * drawn and unless it is folded. The cards of one block follow it in the order
- * they were asked. A card already in its place is not touched, so a measurement
- * that finds them placed changes nothing, and the list's mutation observer,
- * which measures again, comes to rest.
- */
-function placeHosts(placed: readonly { question: ShownSideQuestion; range: Range | null }[]): void {
-  const after = new Map<Element, HTMLElement[]>()
-  for (const { question, range } of placed) {
-    const host = hostOf(question.id)
-    const at = replyRoot(question.blockId)
-    const block = range && at ? blockOf(at, range) : null
-    if (question.folded || !block) {
-      if (host.isConnected)
-        host.remove()
-      continue
-    }
-    after.set(block, [...after.get(block) ?? [], host])
-  }
-  for (const [block, inOrder] of after) {
-    let previous: Element = block
-    for (const host of inOrder) {
-      if (previous.nextElementSibling !== host)
-        previous.after(host)
-      previous = host
-    }
-  }
-}
-
-/** The nearest element above `element` that scrolls its content up and down. */
-function scrollParent(element: HTMLElement | null): HTMLElement | null {
-  for (let at = element?.parentElement ?? null; at; at = at.parentElement) {
-    if (/(auto|scroll)/.test(getComputedStyle(at).overflowY))
-      return at
-  }
-  return null
-}
-
-/**
- * Folds a card keeping the reader's line where it is. The asked line stays put
- * while it is in view; scrolled off above, it comes to the top of the view
- * rather than the text below jumping under the reader.
- */
-async function fold(question: ShownSideQuestion): Promise<void> {
-  const scroller = scrollParent(props.root)
-  const view = scroller?.getBoundingClientRect()
-  const before = liveRange(question)?.getBoundingClientRect().top
-  props.asking?.fold(question.id, true)
-  await nextTick()
-  measure()
-  const after = liveRange(question)?.getBoundingClientRect().top
-  if (!scroller || !view || before === undefined || after === undefined)
-    return
-  const target = before < view.top ? view.top + 16 : before
-  scroller.scrollTop += after - target
-}
-
-/** × on a card: deletes a question still on its first answer, else folds it. */
-function close(question: ShownSideQuestion): void {
-  if (unanswered(question))
-    props.asking?.remove(question.id)
-  else
-    void fold(question)
-}
-
-/**
- * The words or the margin's mark clicked: the card, open again, comes into view
- * and takes the focus.
- */
-async function reveal(question: ShownSideQuestion): Promise<void> {
-  if (question.folded)
-    props.asking?.fold(question.id, false)
-  await nextTick()
-  measure()
-  const card = hosts.get(question.id)?.querySelector<HTMLElement>('[data-ask-card]')
-  card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  card?.focus({ preventScroll: true })
 }
 
 // Each card reads what it needs of its transcript, each first question and
@@ -401,100 +265,64 @@ watch(questions, (shown) => {
   }
 }, { immediate: true })
 
-// --- Layout: the marks and the margin's comment marks.
+// --- Layout: the places, the marks and the pictures' outlines.
 
 const layer = ref<HTMLElement>()
-const markers = shallowRef<MarkerGroup[]>([])
 /**
  * The outline of each picture a comment, a side question or the comment field
  * stands on, over the list.
  */
 const outlines = shallowRef<{ key: string; kind: MarkKind; top: number; left: number; width: number; height: number }[]>([])
-/** Each mark's live range, for the pointer to find it. */
-/**
- * Each mark's words, static (`liveOf`): a move of the list in the page leaves
- * them where they are.
- */
-let hits: { id: string; range: StaticRangeInit }[] = []
-let askHits: { id: string; range: StaticRangeInit }[] = []
 const owner = Symbol('reply-comments')
-
-/**
- * Under the range's last line, its left edge kept inside the list for a card
- * `cardWidth` wide.
- */
-function spotUnder(words: Range | StaticRangeInit, base: DOMRect, cardWidth: number): Spot {
-  const range = liveOf(words) ?? document.createRange()
-  const rects = [...range.getClientRects()]
-  const first = rects[0] ?? range.getBoundingClientRect()
-  const last = rects.at(-1) ?? first
-  const room = base.width - Math.min(cardWidth, base.width - 16) - 8
-  return { top: last.bottom - base.top + 6, left: Math.max(8, Math.min(first.left - base.left, room)) }
-}
+/** The list's width the places were set at: another wraps the lines again. */
+let placedWidth = 0
 
 function measure(): void {
   const base = props.root?.getBoundingClientRect()
   if (!base)
     return
-  width.value = base.width
-  const ranges: Record<MarkKind, Range[]> = { 'comment': [], 'comment-sent': [], 'comment-active': [], 'comment-selection': [], 'ask': [], 'ask-active': [] }
-  const nextHits: typeof hits = []
-  const nextAskHits: typeof askHits = []
-  const groups: MarkerGroup[] = []
-  const line = (range: Range) => {
-    const rects = [...range.getClientRects()].filter((rect) => rect.width > 0)
-    const rect = (narrow.value ? rects.at(-1) : rects[0]) ?? range.getBoundingClientRect()
-    return { top: rect.top - base.top, height: rect.height }
+  if (base.width !== placedWidth) {
+    clearPlaces(places.values())
+    placedWidth = base.width
   }
-  // A picture's mark stands at its top, a line's height.
-  const at = (range: Range, picture: unknown) => {
-    if (!picture)
-      return line(range)
-    return { top: range.getBoundingClientRect().top - base.top, height: 20 }
+  const keys = new Set<string>()
+  const remark = (key: string, item: Placed): Remark => {
+    keys.add(key)
+    return { place: placeOf(key), root: replyRoot(item.blockId), range: () => heldRange(item) }
   }
+  const remarks = [
+    ...marked.value.map((comment) => remark(`comment:${comment.id}`, comment)),
+    ...questions.value.map((question) => remark(`ask:${question.id}`, question)),
+  ]
+  prune(keys)
+  placeRemarks(remarks)
+  // Read once the places are set: placing split and joined the words' text.
+  const ranges: Record<MarkKind, Range[]> = { 'comment': [], 'comment-sent': [], 'comment-selection': [], 'ask': [] }
   const nextOutlines: typeof outlines.value = []
   const outline = (key: string, kind: MarkKind, range: Range) => {
     const rect = range.getBoundingClientRect()
     nextOutlines.push({ key, kind, top: rect.top - base.top, left: rect.left - base.left, width: rect.width, height: rect.height })
   }
-  const groupAt = (spot: { top: number; height: number }) => {
-    let group = groups.find((each) => Math.abs(each.top - spot.top) < 6)
-    if (!group) {
-      group = { key: `${Math.round(spot.top)}`, ...spot, comments: [], asks: [] }
-      groups.push(group)
-    }
-    return group
-  }
-  const open = card.value?.ids ?? sheet.value?.ids ?? []
   for (const comment of marked.value) {
     // A block that no longer holds the text or the picture it quotes shows no
-    // mark.
+    // mark, and no box.
     const range = heldRange(comment)
     if (!range)
       continue
-    const kind = open.includes(comment.id) ? 'comment-active' : comment.sent ? 'comment-sent' : 'comment'
+    const kind = comment.sent ? 'comment-sent' : 'comment'
     if (comment.picture)
       outline(comment.id, kind, range)
     else
-      ranges[kind].push(range)
-    nextHits.push({ id: comment.id, range: staticOf(range) })
-    groupAt(at(range, comment.picture)).comments.push(comment)
+      ranges[kind].push(...aroundPlaces(range))
   }
-  // As a comment's: words or a picture the block no longer holds show no mark,
-  // and no card.
-  const placed = questions.value.map((question) => ({ question, range: heldRange(question) }))
-  placeHosts(placed)
-  for (const { question, range } of placed) {
+  for (const question of questions.value) {
+    const range = heldRange(question)
     if (!range)
       continue
-    const kind = question.id === hoveredAsk.value ? 'ask-active' : 'ask'
     if (question.picture)
-      outline(question.id, kind, range)
+      outline(question.id, 'ask', range)
     else
-      ranges[kind].push(range)
-    nextAskHits.push({ id: question.id, range: staticOf(range) })
-    if (question.folded)
-      groupAt(at(range, question.picture)).asks.push(question)
+      ranges.ask.push(...aroundPlaces(range))
   }
   // The picture the page's one comment field is open on.
   const opened = pictureField.value
@@ -503,9 +331,6 @@ function measure(): void {
     range.selectNode(opened.image)
     outline('field', 'comment-selection', range)
   }
-  hits = nextHits
-  askHits = nextAskHits
-  markers.value = groups.sort((a, b) => a.top - b.top)
   outlines.value = nextOutlines
   publishMarks(owner, ranges)
 }
@@ -520,136 +345,71 @@ function schedule(): void {
   }
 }
 
-// --- The pointer on the marks.
-
-const pointing = ref(false)
-
-function hitsAt(x: number, y: number) {
-  return hits.filter((hit) => rangeHas(hit.range, x, y))
-}
-
-function askAt(x: number, y: number): ShownSideQuestion | undefined {
-  const hit = askHits.find((each) => rangeHas(each.range, x, y))
-  return hit && questions.value.find((question) => question.id === hit.id)
-}
-
-function onPointerMove(event: PointerEvent): void {
-  if (event.pointerType === 'touch' || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card]'))
+/**
+ * Copy of a selection that crosses a box or a card copies the reply's words
+ * alone, as the selection's menu does: the boxes stand in the text but are none
+ * of it.
+ */
+function copyWords(event: ClipboardEvent): void {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !event.clipboardData)
     return
-  const asking = askAt(event.clientX, event.clientY)
-  hoveredAsk.value = asking?.id ?? null
-  pointing.value = asking !== undefined
-}
-
-function onPointerLeave(): void {
-  pointing.value = false
-  hoveredAsk.value = null
-}
-
-function onClick(event: MouseEvent): void {
-  // A picture's click opens it in the viewer, as anywhere; its card shows under
-  // the pointer and from its mark.
-  if (readSelection() !== null || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card], a, button, img'))
+  const range = selection.getRangeAt(0)
+  const crossed = [...places.values()].filter((place) => place.isConnected && range.intersectsNode(place))
+  if (crossed.length === 0 || crossed.some((place) => place.contains(range.commonAncestorContainer)))
     return
-  const asking = askAt(event.clientX, event.clientY)
-  if (asking) {
-    void reveal(asking)
-    return
-  }
-  const over = hitsAt(event.clientX, event.clientY)
-  if (over.length === 0)
-    return
-  const ids = over.map((hit) => hit.id)
-  if (phone.value)
-    sheet.value = { ids, anchor: event.target as HTMLElement }
-  else
-    showCard(ids, spotUnder(over[0]!.range, props.root!.getBoundingClientRect(), CARD_WIDTH))
+  const html = document.createElement('div')
+  html.append(range.cloneContents())
+  for (const place of html.querySelectorAll(`[${PLACE_ATTRIBUTE}]`))
+    place.remove()
+  event.clipboardData.setData('text/plain', selectedText(range))
+  event.clipboardData.setData('text/html', html.innerHTML)
+  event.preventDefault()
 }
 
-/** The card closes when a press lands outside it and its text. */
-function onDocumentPointerDown(event: PointerEvent): void {
-  const target = event.target as Element
-  if (card.value && !cardEl.value?.contains(target) && !target.closest('[data-comment-marker]')
-    && hitsAt(event.clientX, event.clientY).length === 0)
-    closeCard()
-}
-
-function onDocumentKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && !event.defaultPrevented && card.value)
-    closeCard()
-}
-
-function markerSpot(event: MouseEvent): Spot {
-  const base = props.root!.getBoundingClientRect()
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  return { top: rect.bottom - base.top + 4, left: Math.max(8, rect.right - base.left - CARD_WIDTH) }
-}
-
-function onMarker(group: MarkerGroup, event: MouseEvent): void {
-  const ids = group.comments.map((comment) => comment.id)
-  if (phone.value)
-    sheet.value = { ids, anchor: event.currentTarget as HTMLElement }
-  else
-    showCard(ids, markerSpot(event))
+/** A change inside a box or a card, as an answer streaming, moves no words. */
+function insidePlace(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement
+  return element?.closest(`[${PLACE_ATTRIBUTE}]`) != null
 }
 
 // The root comes and goes with the list: everything that follows it, its
-// rows' changes and sizes and the pointer on it, is released with it.
+// rows' changes and sizes, is released with it.
 watch(() => props.root, (root, _before, onCleanup) => {
   if (!root)
     return
-  const listeners = new AbortController()
   // This layer stands in the root too: its own changes move no reply.
   const mutations = new MutationObserver((records) => {
-    if (records.some((record) => !layer.value?.contains(record.target)))
+    if (records.some((record) => !layer.value?.contains(record.target) && !insidePlace(record.target)))
       schedule()
   })
   // A row the list moves changes its style; a reply that streams, its text.
   mutations.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] })
   const sizes = new ResizeObserver(schedule)
   sizes.observe(root)
-  root.addEventListener('pointermove', onPointerMove, { signal: listeners.signal })
-  root.addEventListener('pointerleave', onPointerLeave, { signal: listeners.signal })
-  root.addEventListener('click', onClick, { signal: listeners.signal })
-  document.addEventListener('pointerdown', onDocumentPointerDown, { capture: true, signal: listeners.signal })
-  document.addEventListener('keydown', onDocumentKeydown, { signal: listeners.signal })
+  root.addEventListener('copy', copyWords)
+  placedWidth = 0
   schedule()
   onCleanup(() => {
-    listeners.abort()
     mutations.disconnect()
     sizes.disconnect()
+    root.removeEventListener('copy', copyWords)
   })
 }, { immediate: true })
 
-watch([marked, pictureField, card, sheet, narrow, questions, hoveredAsk], schedule)
-watch(pointing, (now) => props.root?.classList.toggle('cursor-pointer', now))
+watch([marked, pictureField, questions], schedule)
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(frame)
   publishMarks(owner, null)
-  for (const host of hosts.values())
-    host.remove()
-  hosts.clear()
+  for (const place of places.values())
+    place.remove()
+  places.clear()
 })
-
-// A side question that left the list, as a branch switch hides it, takes its
-// place in the reply with it.
-watch(questions, (shown) => {
-  for (const [id, host] of hosts) {
-    if (!shown.some((question) => question.id === id)) {
-      host.remove()
-      hosts.delete(id)
-    }
-  }
-})
-
-const countLabel = (count: number) => t('comments.count', { count }, count)
 </script>
 
 <template>
-  <!--
-    What stands over the replies: the margin's comment marks and the card.
-  -->
+  <!-- What stands over the replies: the pictures' outlines. -->
   <div ref="layer" data-reply-comments class="pointer-events-none absolute inset-0 z-20">
     <div
       v-for="frame in outlines"
@@ -659,61 +419,27 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
       :class="`picture-outline-${frame.kind}`"
       :style="{ top: `${frame.top}px`, left: `${frame.left}px`, width: `${frame.width}px`, height: `${frame.height}px` }"
     />
-    <div
-      v-for="group in markers"
-      :key="group.key"
-      class="pointer-events-auto absolute flex items-center gap-0.5"
-      :class="narrow ? 'right-0.5' : 'right-1.5'"
-      :style="{ top: `${group.top + group.height / 2 - 10}px` }"
-    >
-      <button
-        v-if="group.comments.length > 0"
-        type="button"
-        data-comment-marker
-        class="comment-marker inline-flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-full px-1 text-[11px] leading-none"
-        :class="group.comments.some((comment) => !comment.sent) ? '' : 'comment-marker-sent'"
-        :aria-label="countLabel(group.comments.length)"
-        @click="onMarker(group, $event)"
-      >
-        <MessageSquare :size="12" aria-hidden="true" />
-        <span v-if="group.comments.length > 1 && !narrow">{{ group.comments.length }}</span>
-      </button>
-      <Tooltip v-for="question in group.asks" :key="question.id" :content="t('ask.expand')">
-        <button
-          type="button"
-          data-ask-marker
-          class="ask-marker inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] leading-none"
-          :aria-label="t('ask.expand')"
-          @click="reveal(question)"
-        >
-          <MessageCircleQuestionMark :size="12" aria-hidden="true" />
-        </button>
-      </Tooltip>
-    </div>
-
-    <div
-      v-if="card && cardComments.length > 0"
-      ref="cardEl"
-      data-comment-card
-      class="overlay-shell pointer-events-auto absolute flex flex-col gap-1 rounded-lg px-2.5 py-1.5"
-      :style="{ top: `${card.spot.top}px`, left: `${card.spot.left}px`, width: `min(${CARD_WIDTH}px, calc(100% - 16px))` }"
-    >
-      <CommentItem
-        v-for="comment in cardComments"
-        :key="comment.id"
-        :text="comment.text"
-        :sent="comment.sent"
-        @save="commenting.edit(comment.id, $event)"
-        @delete="remove(comment.id)"
-      />
-    </div>
   </div>
 
-  <!-- Each side question's card, in its place in the reply. -->
+  <!-- Each comment's box, under its line in the reply. -->
+  <Teleport v-for="comment in marked" :key="comment.id" :to="placeOf(`comment:${comment.id}`)">
+    <CommentItem
+      class="my-2"
+      inline
+      :text="comment.text"
+      :sent="comment.sent"
+      @save="commenting.edit(comment.id, $event)"
+      @delete="commenting.remove(comment.id)"
+    />
+  </Teleport>
+
+  <!-- Each side question's card, under its line in the reply. -->
   <template v-if="asking">
-    <Teleport v-for="question in questions" :key="question.id" :to="hostOf(question.id)">
+    <Teleport v-for="question in questions" :key="question.id" :to="placeOf(`ask:${question.id}`)">
       <AskCard
-        v-if="!question.folded"
+        class="my-2"
+        :folded="question.folded"
+        :deletable="unanswered(question)"
         :title="question.title"
         :turns="cardContent(question).turns"
         :failure="cardContent(question).failure"
@@ -725,30 +451,11 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
         @ask="asking.followUp(question.id, $event)"
         @retry="asking.retry(question.id)"
         @stop="asking.stop(question.id)"
-        @collapse="close(question)"
+        @collapse="asking.fold(question.id, true)"
+        @expand="asking.fold(question.id, false)"
+        @delete="asking.remove(question.id)"
         @open-full="asking.openFull?.(question.id)"
       />
     </Teleport>
   </template>
-
-  <Popover
-    v-if="sheet"
-    is-open
-    :overlay-store="appOverlayStore"
-    :anchor-el="sheet.anchor"
-    sheet
-    @close="sheet = null"
-  >
-    <div class="flex w-full flex-col gap-3 p-3">
-      <CommentItem
-        v-for="comment in sheetComments"
-        :key="comment.id"
-        :text="comment.text"
-        :sent="comment.sent"
-        :quote="comment.quote"
-        @save="commenting.edit(comment.id, $event)"
-        @delete="remove(comment.id)"
-      />
-    </div>
-  </Popover>
 </template>

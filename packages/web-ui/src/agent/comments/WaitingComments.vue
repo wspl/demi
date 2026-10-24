@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { MessageSquare, X } from '@lucide/vue'
+import { MessageCircleMore, X } from '@lucide/vue'
 import type { MessageComment } from '@demicodes/protocol'
 import IconButton from '../../ui/IconButton.vue'
 import Popover from '../../ui/Popover.vue'
@@ -12,13 +12,13 @@ import { t } from '../locales/text'
 import CommentItem from './CommentItem.vue'
 
 /**
- * The comments waiting in the draft, as the composer shows them inside its box:
- * a round-ended pill as tall as the composer's own buttons, a comment mark, *2
- * Comments* and a ghost ×, which removes them all.
+ * The comments waiting in the draft, as the composer shows them by its
+ * paperclip: a round-ended pill as tall as the composer's own buttons, the
+ * comment's mark, *2 Comments* and a ghost ×, which removes them all.
  *
  * A click on the pill lists them, each its quoted text and its comment, with
  * Edit and Delete: by the pill on the desktop, as a sheet on a phone. The
- * composer's `context` slot holds the pill.
+ * composer's `carried` slot holds the pill.
  */
 const props = defineProps<{
   /** The waiting comments, in the order the conversation reads them. */
@@ -55,7 +55,7 @@ function remove(id: string): void {
       @mousedown.prevent
       @click="open = !open"
     >
-      <MessageSquare :size="ICON_PX.in24" class="text-[var(--comment-ink)]" aria-hidden="true" />
+      <MessageCircleMore :size="ICON_PX.in24" class="text-[var(--comment-ink)]" aria-hidden="true" />
       {{ t('comments.count', { count: comments.length }, comments.length) }}
     </button>
     <Tooltip :content="t('comments.remove', {}, comments.length)">

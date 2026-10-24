@@ -3,8 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import { stackAbove } from '../../overlay/stacking'
 import { usePhone } from '../../ui/phone'
+import { aroundPlaces } from './lines'
 import { shortcutSet } from '../../ui/shortcut'
-import Sheet from '../../ui/Sheet.vue'
 import {
   selectedLinesBounds,
   selectionFieldOffer,
@@ -15,56 +15,40 @@ import {
 import { rangeHas } from './anchors'
 import { publishMarks } from './highlights'
 import SelectionField from './SelectionField.vue'
-import SelectionFieldQuote from './SelectionFieldQuote.vue'
-import { t } from '../locales/text'
-import { chosenWay, closePictureField, pictureField, quoteOfRange, type FieldWay } from './selection-field'
+import { chosenWay, closePictureField, pictureField, type FieldWay } from './selection-field'
 
 /**
  * The page's one comment field, which the app mounts once at its root
- * (`docs/decisions/0054-a-selection-opens-a-comment-field.md`). It stands by
+ * (`docs/decisions/0092-a-remark-stands-under-its-line.md`). It stands by
  * what is open for it:
  *
  * - the page's selection, while it holds one object's own text and the object
  *   offers a field for it (`selectionField`)
  * - a picture a menu's Comment or Ask opened it on (`pictureField`)
  *
- * Placement:
+ * It is centered under the selected lines, or the picture, once the mouse that
+ * drags the selection is released, and above them where there is no room
+ * under them. A phone opens no field: a selection there is the system's.
  *
- * - On the desktop it is centered above the selected lines, or the picture, once
- *   the mouse that drags the selection is released.
- * - On a phone it opens in the app's bottom `Sheet` without a scrim, clear of the
- *   system's menu by the selection. The page stays usable: the selection's
- *   handles still extend it and the field follows, and an action takes the
- *   selection as it is then. The sheet's first line quotes it, as it is now,
- *   in one line with an ellipsis, a picture or other media in it said as the
- *   media text, and ends in the field's ✕; a picture's comment quotes that
- *   alone. The desktop's field quotes nothing. It stands over the page's
- *   message field entirely, chips and all, never leaving half of it showing.
- *
- * The focus:
- *
- * - On the desktop the field takes the focus as it opens, so a key typed after
- *   the selection, an input method's composition included, starts in it: an
- *   input method works only in a focused field, and a key that arrives with the
- *   focus elsewhere has already been taken as a letter. The focus in a field
- *   ends the selection on the page, so the selection is kept for it: its words
- *   are painted as selected and Cmd-C copies them.
- * - On a phone it takes the focus, and the keyboard comes, only when the field
- *   is tapped, or when a menu chose it.
+ * The field takes the focus as it opens, so a key typed after the selection,
+ * an input method's composition included, starts in it: an input method works
+ * only in a focused field, and a key that arrives with the focus elsewhere has
+ * already been taken as a letter. The focus in a field ends the selection on
+ * the page, so the selection is kept for it: its words are painted as selected
+ * and Cmd-C copies them.
  *
  * A right-click on the selected words puts the selection back on the page while
  * their menu is open, which reads it, and the field takes the focus again as the
  * menu closes.
  *
- * Closing: Escape, ✕, a click elsewhere and another selection close it and drop
+ * Closing: Escape, a click elsewhere and another selection close it and drop
  * what was typed. Another selection is one that keeps neither end of the one the
  * field opened for. A press on the page decides nothing until it is released, so
  * the field stays as it is while words are clicked again and again: a click on
  * the selected words leaves it, and a click that selects the same words or
  * extends them leaves it in place, as a double or triple click does; one that
  * clears the selection elsewhere closes it, and a drag stands it aside until it
- * ends. On a phone a swipe down on the sheet or Back closes it, and so does a tap
- * on the page that clears the selection; a touch that becomes a scroll is no tap.
+ * ends.
  *
  * It steps aside while a context menu is open, the one control for the selection
  * then, and comes back as the menu closes, with what was typed.
@@ -98,8 +82,6 @@ const focusWanted = ref(false)
 let dismissed: Range | null = null
 
 const floating = ref<HTMLElement>()
-/** The sheet's content on a phone. */
-const sheet = ref<HTMLElement>()
 const box = ref<InstanceType<typeof SelectionField>>()
 const text = ref('')
 
@@ -125,7 +107,7 @@ function open(): void {
   text.value = ''
   focused.value = false
   busy.value = false
-  focusWanted.value = !phone.value || pictureField.value !== null
+  focusWanted.value = true
 }
 
 /**
@@ -141,7 +123,8 @@ function read(released?: { x: number; y: number; onText: boolean }): void {
   // The selection is the field's own text then.
   if (focused.value && !released)
     return
-  const now = selectionFieldOffer()
+  // A phone's selection is the system's alone.
+  const now = phone.value ? null : selectionFieldOffer()
   const held = selection.value
   if (!now) {
     if (held && released) {
@@ -186,9 +169,6 @@ function closeAll(): void {
   closePictureField()
   focused.value = false
   busy.value = false
-  // The system's handles go with the field.
-  if (phone.value)
-    window.getSelection()?.removeAllRanges()
 }
 
 async function done(action: 'comment' | 'ask' | 'send', words: string): Promise<void> {
@@ -232,21 +212,11 @@ const listeners = new AbortController()
 onMounted(() => {
   const { signal } = listeners
   document.addEventListener('selectionchange', () => read(), { signal })
-  /** A touch that may still be a tap: one that becomes a scroll is cancelled and is none. */
-  let tap: { x: number; y: number } | null = null
   document.addEventListener('pointerdown', (event) => {
     // The menu is the one control for the selection while it is open.
     if (shownContextMenu.value !== null)
       return
     const target = event.target as Node
-    if (phone.value) {
-      const inside = sheet.value?.closest('[role="dialog"]')?.contains(target) ?? false
-      // The focus a tap gives the field clears the page's selection: the field holds it from the touch on.
-      if (inside && (target as Element).tagName === 'TEXTAREA')
-        focused.value = true
-      tap = !inside && event.isPrimary && event.pointerType === 'touch' ? { x: event.clientX, y: event.clientY } : null
-      return
-    }
     const inside = floating.value?.contains(target) ?? false
     // A right-click, or a control-click on a Mac, opens a menu and presses nothing.
     if (event.button === 2 || (event.button === 0 && event.ctrlKey && shortcutSet() === 'mac')) {
@@ -275,18 +245,12 @@ onMounted(() => {
   }, { capture: true, signal })
   document.addEventListener('pointerup', (event) => {
     dragging.value = false
-    const pressed = tap
-    tap = null
     const released = press ? { x: event.clientX, y: event.clientY, onText: press.onText } : undefined
     press = null
-    // The focus in the field ended the selection on the page, so a tap on the page elsewhere is what clears it then.
-    if (phone.value && pressed && Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) < 10 && (focused.value || pictureField.value))
-      closeAll()
     read(released)
   }, { capture: true, signal })
   // The press ends without a release when the system takes it over, as for dragging text, or the window loses it.
   const endPress = () => {
-    tap = null
     dragging.value = false
     if (press) {
       press = null
@@ -314,7 +278,7 @@ onBeforeUnmount(() => {
 const marks = Symbol('selection-field')
 watch([focused, selection], ([now, held]) => {
   if (now && held) {
-    publishMarks(marks, { 'comment': [], 'comment-sent': [], 'comment-active': [], 'comment-selection': [held.range], 'ask': [], 'ask-active': [] })
+    publishMarks(marks, { 'comment': [], 'comment-sent': [], 'comment-selection': aroundPlaces(held.range), 'ask': [] })
   } else
     publishMarks(marks, null)
 })
@@ -348,25 +312,24 @@ watch(menuOpen, (menu) => {
     focusWanted.value = true
 })
 
-/** What the phone's field quotes, as the selection is now: a picture is the media text alone. */
-const quote = computed(() => {
-  if (pictureField.value)
-    return t('comments.media')
-  return selection.value ? quoteOfRange(selection.value.range) : ''
+// A page that turns a phone's closes the field: a selection there is the system's.
+watch(phone, (now) => {
+  if (now)
+    closeAll()
 })
 
-const shown = computed(() => current.value !== null && !dragging.value)
+const shown = computed(() => current.value !== null && !dragging.value && !phone.value)
 
 const reference = computed(() => {
   const now = current.value
-  if (!now || phone.value)
+  if (!now)
     return null
   return { contextElement: now.element, getBoundingClientRect: now.rect }
 })
 
 const { floatingStyles, isPositioned } = useFloating(reference, floating, {
   open: shown,
-  placement: 'top',
+  placement: 'bottom',
   strategy: 'fixed',
   middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
   whileElementsMounted: autoUpdate,
@@ -374,7 +337,7 @@ const { floatingStyles, isPositioned } = useFloating(reference, floating, {
 const z = stackAbove()
 
 // A field drawn hidden, as before it is placed or while a menu is open, takes no focus.
-watch([focusWanted, box, menuOpen, () => isPositioned.value || phone.value], async ([wanted, field, menu, drawn]) => {
+watch([focusWanted, box, menuOpen, () => isPositioned.value], async ([wanted, field, menu, drawn]) => {
   if (!wanted || !field || menu || !drawn)
     return
   await nextTick()
@@ -384,48 +347,12 @@ watch([focusWanted, box, menuOpen, () => isPositioned.value || phone.value], asy
   focusWanted.value = false
 }, { flush: 'post' })
 
-/**
- * The height that covers the message field of the page, chips and all, from its
- * top to the bottom of what is visible: the sheet stands over it entirely, and
- * the message field comes back as it closes. It is measured as the sheet opens
- * and when the message field changes its size, or the keyboard changes what is
- * visible; nothing runs between.
- */
-const cover = ref(0)
-function measureCover(shell: Element | null): void {
-  const viewport = window.visualViewport
-  const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight
-  // A margin for the outline and the shadow of the message field.
-  cover.value = shell ? Math.max(0, Math.ceil(bottom - shell.getBoundingClientRect().top + 8)) : 0
-}
-watch(() => shown.value && phone.value, (now, _before, onCleanup) => {
-  if (!now)
-    return
-  const shell = document.querySelector('[data-composer-shell]')
-  const measure = () => measureCover(shell)
-  measure()
-  const observer = new ResizeObserver(measure)
-  if (shell)
-    observer.observe(shell)
-  const viewport = window.visualViewport
-  viewport?.addEventListener('resize', measure)
-  viewport?.addEventListener('scroll', measure)
-  window.addEventListener('resize', measure)
-  onCleanup(() => {
-    observer.disconnect()
-    viewport?.removeEventListener('resize', measure)
-    viewport?.removeEventListener('scroll', measure)
-    window.removeEventListener('resize', measure)
-  })
-}, { immediate: true })
-
 const placement = computed(() => ({ ...floatingStyles.value, visibility: isPositioned.value ? undefined : 'hidden' } as const))
 
 /** What the field takes, wherever it stands. */
 const fieldBindings = computed(() => ({
   'modelValue': text.value,
   'onUpdate:modelValue': (words: string) => (text.value = words),
-  'phone': phone.value,
   'ask': !!current.value?.actions.ask,
   'send': !!current.value?.actions.send,
   'way': way.value,
@@ -443,13 +370,7 @@ function onFocusin(event: FocusEvent): void {
 </script>
 
 <template>
-  <Sheet v-if="phone" modeless :min-height="cover" :open="shown && !menuOpen" @close="closeAll">
-    <div ref="sheet" class="px-3 pb-3" data-selection-field-layer @focusin="onFocusin">
-      <SelectionFieldQuote :quote="quote" @close="closeAll" />
-      <SelectionField :key="opening" ref="box" v-bind="fieldBindings" />
-    </div>
-  </Sheet>
-  <Teleport v-else to="body">
+  <Teleport to="body">
     <div
       v-if="shown && current"
       ref="floating"

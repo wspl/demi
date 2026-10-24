@@ -3528,20 +3528,20 @@ onBeforeUnmount(() => {
       <GallerySection title="Edit and Resend" note="Shared editor, durable confirmation and recovery states. Regenerate in the last answer’s footer sends the last message again unchanged, without opening the editor: its answer dims until the outcome, which the buttons choose as for a save; a lost confirmation opens the editor with Retry, a conflict opens it with the message. Up Arrow in the empty composer opens the editor on the last message, whose first line says Editing message, right above the message. An edited message shows its versions under it, and a regenerated answer in its footer: the arrows show the version before and after, and wait while an edit is sent.">
         <GalleryMessageEditing />
       </GallerySection>
-      <GallerySection title="Comments" note="Two comments waiting in the draft: each marks its text yellow, with a comment mark in the reply's margin, and the composer shows 2 Comments inside its box. Clicking a marked text or its mark shows the comment with Delete and Edit; pointing at them shows nothing, and the pointer stays the text cursor. Select other words of the reply, write a comment in the field above them and press Return to add it; while a reply is still being written, its buttons say to wait. The pill lists the waiting comments, each with its quote, and × removes them all. Send sends them with the typed text, or alone.">
+      <GallerySection title="Comments" note="Two comments waiting in the draft: each marks its words yellow, and its box stands under the line they end on, the rest of the paragraph going on under it: the comment's yellow mark, its text, always shown, and Delete and Edit; Edit edits it in place. The composer stays on one line, with 2 Comments by the paperclip. Select other words of the reply, write a comment in the field under them and press Return to add it; while a reply is still being written, its buttons say to wait. Make the frame narrower or wider: the lines wrap again and each box moves under its new line. The pill lists the waiting comments, each with its quote, and × removes them all. Send sends them with the typed text, or alone.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryComments seed="waiting" />
         </div>
       </GallerySection>
-      <GallerySection title="Sent Comments" note="A message sent with two comments: its bubble shows each quoted text as a quote, its comment under it, then the typed text, and the reply keeps their marks, dimmer; their card says Sent. A share's page shows the same bubble and no marks.">
+      <GallerySection title="Sent Comments" note="A message sent with two comments: its bubble shows each quoted text as a quote, its comment under it, then the typed text, and the reply keeps their marks and boxes, dimmer, each box saying Sent. A share's page shows the same bubble and no marks.">
         <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
           <GalleryComments seed="sent" />
         </div>
       </GallerySection>
-      <GallerySection title="Selection Field" note="The one field a remark on a part of a reply is written in: a selection opens it at once, above the words on the desktop, with Send, Ask and Comment under it, and the right-click menu's Comment and Ask and a picture's Comment and Ask open the same field. Select words in any reply of this page to try it live: the field has the focus as it opens, so the first key typed goes into it, an input method's composition included, while the selection stays, painted as selected, and ⌘C copies it. Return presses the chosen action, Comment unless the menu's Ask chose it, ⌘Return (Control-Return elsewhere) presses Send, and Shift-Return starts a new line. With no words Return, Comment and Ask shake the field once and Send is dimmed. ✕, Escape, a click elsewhere or a new selection closes it and drops what was typed. On a phone it opens in the bottom sheet, which has no scrim: the page stays usable, the selection’s handles still extend it, and the keyboard comes when the field is tapped. The sheet’s first line quotes the selection as it is now, in one line with an ellipsis, a picture in it said as [Media], and ends in the field’s ✕; a picture’s comment quotes [Media] alone. A swipe down on the sheet, or a tap on the page that clears the selection, closes it and drops what was typed. Each pinned state says what the product would do.">
+      <GallerySection title="Selection Field" note="The one field a remark on a part of a reply is written in: a capsule of one line under the selection, centered on it, and above it only where there is no room under it. It holds the words, a gray round Ask and a blue round Comment, and the right-click menu's Comment and Ask and a picture's Comment and Ask open the same field. Select words in any reply of this page to try it live: the field has the focus as it opens, so the first key typed goes into it, an input method's composition included, while the selection stays, painted as selected, and ⌘C copies it. Return presses the blue button, Comment unless the menu's Ask chose it, which swaps the two. While ⌘ is held (Control elsewhere), the blue button turns into Send, an up arrow, and ⌘Return sends the quote and the words to the main agent now; its tooltip says so. Shift-Return starts a new line, and words past the line move the buttons under them. With no words Return and the buttons shake the field once. Escape, a click elsewhere or a new selection closes it and drops what was typed. A phone opens no field. Each pinned state says what the product would do.">
         <GallerySelectionFieldBoxes />
       </GallerySection>
-      <GallerySection title="Comment on a Picture" note="A picture in the reply takes a comment from its menu (right-click, or a long press on a phone): Copy Image and Save Image, then Comment, Ask and Send to Conversation. Comment and Ask open the page's comment field above the picture, which is outlined while it is open. The comment outlines the picture yellow and puts its mark in the margin at the picture's top; pointing at the picture or the mark shows the comment. It points at the picture by its block and its place among the block's pictures, and keeps the picture itself as its quote.">
+      <GallerySection title="Comment on a Picture" note="A picture in the reply takes a comment from its right-click menu: Copy Image and Save Image, then Comment, Ask and Send to Conversation. Comment and Ask open the page's comment field under the picture, which is outlined while it is open. The comment outlines the picture yellow, and its box stands under the line that holds the picture. It points at the picture by its block and its place among the block's pictures, and keeps the picture itself as its quote. A phone's long press offers no Comment or Ask.">
         <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
           <GalleryComments seed="picture-waiting" />
         </div>
@@ -3551,17 +3551,17 @@ onBeforeUnmount(() => {
           <GalleryComments seed="picture-sent" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask" note="A side question on a reply's words, live from scratch: select words of the reply, write a question in the field above them and choose Ask. The words turn purple with a purple underline, and a card opens under their block on the page's background, its border the line color: a purple question mark, the title in secondary text, Ask until the small model's title arrives, and two ghost icon buttons, ↗ Open Full Conversation and × Collapse; then the question in bold and one status line while the answer is made, the step it runs, and the short answer. The conversation's own agent never learns of it. Hovering the words deepens them. The answers are scripted.">
+      <GallerySection title="Ask" note="A side question on a reply's words, live from scratch: select words of the reply, write a question in the field under them and choose Ask. The words turn purple with a purple underline, and a card opens under the line they end on, on the page's background, its border the line color: a purple question mark, the title in secondary text, Ask until the small model's title arrives, and two ghost icon buttons, ↗ Open Full Conversation and a chevron that folds it; then the question in bold and one status line while the answer is made, the step it runs, and the short answer. The conversation's own agent never learns of it. The answers are scripted.">
         <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="live" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Asking" note="Just asked: the card is titled Ask until the small model's title arrives, and its one status line says it thinks, with a square Stop in the header before ↗. × deletes the question with its card, as if it had not been asked, and ↗ opens the side conversation.">
+      <GallerySection title="Ask · Asking" note="Just asked: the card is titled Ask until the small model's title arrives, and its one status line says it thinks, with a square Stop in the header before ↗. Delete in the card's right-click menu deletes the question with its card, as if it had not been asked, and ↗ opens the side conversation.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="asking" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Working" note="Titled, while it works: the one status line names the step it runs, never the steps themselves, with a square Stop in the header before ↗, which ends the answer where it is and goes with it; × deletes the question with its card, since its first answer is not made; ↗ shows them all in the subagent window.">
+      <GallerySection title="Ask · Working" note="Titled, while it works: the one status line names the step it runs, never the steps themselves, with a square Stop in the header before ↗, which ends the answer where it is and goes with it; Delete in the card's menu deletes the question with its card, since its first answer is not made; ↗ shows them all in the subagent window.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="working" />
         </div>
@@ -3586,7 +3586,7 @@ onBeforeUnmount(() => {
           <GalleryAsks seed="follow-up" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Folded" note="× folded the card into a purple question mark in the reply's right margin at the asked line; a click on the mark or on the purple words opens the card again, scrolled into view.">
+      <GallerySection title="Ask · Folded" note="The chevron, or a click on the header, folded the card to its header alone, under the asked line: the purple mark, the title, ↗ and a chevron pointing down. The header stands where it stood in the open card; a click on it or on the chevron opens the card again.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="folded" />
         </div>
@@ -3596,15 +3596,15 @@ onBeforeUnmount(() => {
           <GalleryAsks seed="failed" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask on a Picture" note="Ask from a picture's menu starts a side question whose first message carries the picture as its quote: the picture is outlined in purple and the card opens under it; ↗ shows the picture and the question as the side conversation's first message.">
+      <GallerySection title="Ask on a Picture" note="Ask from a picture's menu starts a side question whose first message carries the picture as its quote: the picture is outlined in purple and the card opens under the line that holds it; ↗ shows the picture and the question as the side conversation's first message.">
         <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="picture" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask on a Phone" note="On a phone the selection's field opens in the bottom sheet without a scrim, with Send, Ask and Comment; the card spans the reply's width, and ↗ opens the side conversation full screen. Each phone is live.">
+      <GallerySection title="Ask on a Phone" note="A phone shows the side questions asked elsewhere, each card under its line, spanning the reply's width; ↗ opens the side conversation full screen, and a selection opens no field. Each phone is live.">
         <div class="flex flex-wrap gap-8">
           <GalleryPhoneFrame path="/asks-frame" scene="answered" label="An answered side question" active />
-          <GalleryPhoneFrame path="/asks-frame" scene="folded" label="Folded into the margin" active />
+          <GalleryPhoneFrame path="/asks-frame" scene="folded" label="Folded to its header" active />
         </div>
       </GallerySection>
       <GallerySection

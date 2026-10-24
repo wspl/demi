@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowUpRight, MessageCircleQuestionMark, Square, X } from '@lucide/vue'
+import { ArrowUpRight, ChevronDown, ChevronUp, MessageCircleQuestionMark, Square, Trash2 } from '@lucide/vue'
 import type { Block, ProviderFailureFacts } from '@demicodes/protocol'
 import Button from '../../ui/Button.vue'
 import { ICON_PX } from '../../ui/icon-metrics'
@@ -12,10 +12,11 @@ import Tooltip from '../../ui/Tooltip.vue'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import ErrorBlock from '../blocks/ErrorBlock.vue'
 import { t } from '../locales/text'
+import { t as shared } from '../../locales/text'
 import type { CardTurn } from './asks'
 
 /**
- * A side question's card, set into the reply after the block it asks about.
+ * A side question's card, set into the reply under the line its words end on.
  *
  * - Each question is in bold, with its short answer.
  * - While the question works, one status line stands in place of the steps. A
@@ -23,8 +24,10 @@ import type { CardTurn } from './asks'
  * - A square Stop at the header's end, before ↗, ends a working question; the
  *   turn keeps what it answered, under a muted Stopped, and the focus moves to
  *   Reply.
- * - × at the card's corner folds it into the margin. Open Full Conversation,
- *   beside it, shows every step in the subagent window.
+ * - The chevron at the card's corner, or a click on its header, folds it to
+ *   the header alone, which stands where it stood, and opens it again. Open
+ *   Full Conversation, beside it, shows every step in the subagent window.
+ * - A question still on its first answer is deleted from the card's menu.
  * - Reply opens a field for a follow-up.
  *
  * Only the header's icon is purple.
@@ -36,6 +39,10 @@ const props = defineProps<{
   /** The record the last turn failed with, and what the backend knows of it. */
   failure?: Extract<Block, { type: 'error' }> | null
   failureFacts?: ProviderFailureFacts | null
+  /** Folded to its header. */
+  folded?: boolean
+  /** It can be deleted, from its menu: its question is still on its first answer. */
+  deletable?: boolean
 }>()
 
 /**
@@ -50,6 +57,8 @@ const emit = defineEmits<{
   retry: []
   stop: []
   collapse: []
+  expand: []
+  delete: []
   openFull: []
 }>()
 
@@ -106,7 +115,18 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown,
 
 // The card is a place of its own in the reply: text selected in it is copied,
 // never asked about or commented on again.
-const menu: ContextMenuDeclaration = { entries: () => [], text: true, selectionEntries: () => [] }
+const menu: ContextMenuDeclaration = {
+  entries: () => props.deletable ? [[{ icon: Trash2, label: shared('common.delete'), danger: true, run: () => emit('delete') }]] : [],
+  text: true,
+  selectionEntries: () => [],
+}
+
+function toggle(): void {
+  if (props.folded)
+    emit('expand')
+  else
+    emit('collapse')
+}
 
 defineExpose({ element: root, failed: () => props.failure != null })
 </script>
@@ -118,12 +138,17 @@ defineExpose({ element: root, failed: () => props.failure != null })
     tabindex="-1"
     data-ask-card
     data-no-anchor
-    class="ask-card rounded-xl border border-[var(--ask-border)] p-3 text-conversation outline-none focus-visible:ring-2 focus-visible:ring-[var(--ask-border)]"
+    class="ask-card rounded-xl border border-[var(--ask-border)] text-conversation outline-none focus-visible:ring-2 focus-visible:ring-[var(--ask-border)]"
+    :class="folded ? 'py-1.5 pl-3 pr-1.5' : 'p-3'"
+    :data-ask-folded="folded || undefined"
   >
     <!--
-      The header: what the side conversation is about, and its two actions.
+      The header: what the side conversation is about, and its actions. A click
+      on it folds the card or opens it. Folded, it stands where it stood in the
+      open card: the open card's padding less the header's pull on every side
+      but the left.
     -->
-    <div class="-mr-1.5 -mt-1.5 mb-1.5 flex items-center gap-1.5">
+    <div class="flex items-center gap-1.5" :class="folded ? '' : '-mr-1.5 -mt-1.5 mb-1.5'" data-ask-header @click="toggle">
       <MessageCircleQuestionMark :size="ICON_PX.in24" class="shrink-0 text-[var(--ask-ink)]" aria-hidden="true" />
       <span class="min-w-0 flex-1 truncate text-detail text-fg-muted">{{ title ?? t('ask.ask') }}</span>
       <!--
@@ -131,16 +156,23 @@ defineExpose({ element: root, failed: () => props.failure != null })
         none, so nothing moves when it goes.
       -->
       <Tooltip v-if="working" :content="t('ask.stop')">
-        <IconButton :icon="Square" size="sm" variant="ghost" :aria-label="t('ask.stop')" @click="stop" />
+        <IconButton :icon="Square" size="sm" variant="ghost" :aria-label="t('ask.stop')" @click.stop="stop" />
       </Tooltip>
       <Tooltip :content="t('ask.openFull')">
-        <IconButton :icon="ArrowUpRight" size="sm" variant="ghost" :aria-label="t('ask.openFull')" @click="emit('openFull')" />
+        <IconButton :icon="ArrowUpRight" size="sm" variant="ghost" :aria-label="t('ask.openFull')" @click.stop="emit('openFull')" />
       </Tooltip>
-      <Tooltip :content="t('ask.collapse')">
-        <IconButton :icon="X" size="sm" variant="ghost" :aria-label="t('ask.collapse')" @click="emit('collapse')" />
+      <Tooltip :content="folded ? t('ask.expand') : t('ask.collapse')">
+        <IconButton
+          :icon="folded ? ChevronDown : ChevronUp"
+          size="sm"
+          variant="ghost"
+          :aria-label="folded ? t('ask.expand') : t('ask.collapse')"
+          :aria-expanded="!folded"
+          @click.stop="toggle"
+        />
       </Tooltip>
     </div>
-    <div class="flex flex-col gap-3">
+    <div v-if="!folded" class="flex flex-col gap-3">
       <div v-for="(turn, index) in turns" :key="index" class="flex flex-col gap-1">
         <!--
           A div, not a p: the reply around the card spaces its own paragraphs.
@@ -174,7 +206,7 @@ defineExpose({ element: root, failed: () => props.failure != null })
         @cancel="cancel"
       />
     </div>
-    <div v-if="!replying && !failure && !working" class="mt-2.5 flex items-center">
+    <div v-if="!folded && !replying && !failure && !working" class="mt-2.5 flex items-center">
       <!--
         Its label reads at the card's size, the reply's, as the question and
         answer do.

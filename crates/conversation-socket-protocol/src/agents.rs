@@ -68,9 +68,9 @@ pub struct AgentEntry {
     #[schemars(with = "Nullable<QueuedMessage>")]
     #[garde(dive)]
     pub starting: Option<QueuedMessage>,
-    /// The agent was deleted, as the user's × deletes a side question still on
-    /// its first answer: a page that holds it drops it, and the whole `agents`
-    /// frame no longer lists it. Absent otherwise.
+    /// The agent was deleted, as the user's Delete deletes a side question
+    /// still on its first answer: a page that holds it drops it, and the whole
+    /// `agents` frame no longer lists it. Absent otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub deleted: bool,
@@ -171,7 +171,7 @@ pub struct SideQuestion {
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub title: Option<String>,
-    /// Whether its card is folded into the margin's mark.
+    /// Whether its card is folded to its header.
     #[garde(skip)]
     pub folded: bool,
     #[garde(skip)]

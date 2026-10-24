@@ -1,42 +1,43 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import { X } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useElementSize } from '@vueuse/core'
+import { ArrowUp, MessageCircleMore, MessageCircleQuestionMark } from '@lucide/vue'
 import { useFieldScrollbars } from '../../composables/useFieldScrollbars'
-import Button from '../../ui/Button.vue'
 import IconButton from '../../ui/IconButton.vue'
 import { withCommandKey } from '../../ui/shortcut'
 import Tooltip from '../../ui/Tooltip.vue'
 import type { SentenceText } from '../../ui/ui-text'
-import { t as shared } from '../../locales/text'
 import { t } from '../locales/text'
+import { otherWayKeys } from '../send-way'
 import type { FieldWay } from './selection-field'
 
 /**
- * The one field a remark on a part of a reply is written in, with its actions
- * under it (`docs/decisions/0054-a-selection-opens-a-comment-field.md`).
+ * The one field a remark on a part of a reply is written in
+ * (`docs/decisions/0092-a-remark-stands-under-its-line.md`): a capsule of one
+ * line holding the words, a gray round button and a blue one.
  *
- * - **Comment** comments on the selection, **Ask** asks a side question about
- *   it, and **Send** sends the quote and the words to the main agent now. An
- *   action the page does not offer has no button.
- * - Return presses the chosen action, Comment unless a menu's Ask chose it,
- *   and ⌘Return (Control-Return elsewhere) presses Send; Shift-Return starts a
- *   new line.
- * - With no words, Return, Comment and Ask shake the field once, and Send is
- *   dimmed.
- * - ✕ and Escape in the field close it (`close`); its owner also closes it for
- *   a press elsewhere or a new selection. On a phone the ✕ stands at the end
- *   of the sheet's quote (`SelectionFieldQuote.vue`), and the field has none;
- *   the sheet is its surface, so it draws no shell of its own there.
+ * - The blue button is the chosen way, Comment unless a menu's Ask chose it,
+ *   and Return presses it; the gray one is the other way. An Ask the page does
+ *   not offer leaves the blue Comment alone.
+ * - While the set's command key is held, ⌘ on a Mac and Control elsewhere, the
+ *   blue button sends the quote and the words to the main agent now, and
+ *   ⌘Return (Control-Return) does, where the page offers Send. Its tooltip
+ *   names that key, as the message field's send button names its other way.
+ * - Shift-Return starts a new line. Words that outgrow the line, or hold a
+ *   new line, open the capsule into a box: the words above, the buttons under
+ *   them at the right, as the message field does.
+ * - With no words, Return and the buttons shake the field once.
+ * - Escape closes it (`close`); its owner also closes it for a press elsewhere
+ *   or a new selection.
  *
  * The owner takes the focus into it (`focus`) and keeps the page's selection
  * for it, so a key typed after the selection, an input method's composition
  * included, starts in the field.
  */
 const props = defineProps<{
-  phone?: boolean
   /** Whether the page offers Ask; without it the field has no Ask button. */
   ask?: boolean
-  /** Whether the page offers Send; without it the field has no Send button. */
+  /** Whether the page offers Send, which the held command key turns the blue button into. */
   send?: boolean
   /** The action Return presses. */
   way?: FieldWay
@@ -44,6 +45,8 @@ const props = defineProps<{
   unavailable?: SentenceText | null
   /** An action is under way, as a picture being kept: nothing acts meanwhile. */
   busy?: boolean
+  /** The command key, pinned as held, for a gallery's specimen; the field follows the keyboard otherwise. */
+  held?: boolean
 }>()
 
 const text = defineModel<string>({ default: '' })
@@ -55,12 +58,59 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const root = ref<HTMLElement>()
 const field = ref<HTMLTextAreaElement>()
 const frame = ref<HTMLElement>()
+const buttons = ref<HTMLElement>()
+const ruler = ref<HTMLElement>()
 const shaking = ref(false)
 const empty = computed(() => text.value.trim() === '')
-const chosen = computed<FieldWay>(() => props.way ?? 'comment')
 const blocked = computed(() => !!props.unavailable || props.busy === true)
+/** The blue button's way; the gray one is the other. */
+const chosen = computed<FieldWay>(() => props.way === 'ask' && props.ask ? 'ask' : 'comment')
+
+/** The set's command key is down while the field has the focus. */
+const commandDown = ref(false)
+const sending = computed(() => !!props.send && (props.held || commandDown.value))
+
+function track(event: KeyboardEvent): void {
+  commandDown.value = withCommandKey(event)
+}
+function release(): void {
+  commandDown.value = false
+}
+onMounted(() => {
+  window.addEventListener('keydown', track, true)
+  window.addEventListener('keyup', track, true)
+  window.addEventListener('blur', release)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', track, true)
+  window.removeEventListener('keyup', track, true)
+  window.removeEventListener('blur', release)
+})
+
+const { width } = useElementSize(root)
+/**
+ * The words outgrow the line the buttons leave them, or hold a line break. The
+ * line is measured at the one-line shape's width in both shapes: the field's
+ * width less the buttons', which stand in the field either way, so the shape
+ * does not flip as it changes.
+ */
+const open = computed(() => {
+  void width.value
+  const words = text.value
+  if (words.includes('\n'))
+    return true
+  const box = root.value
+  if (!box || !buttons.value || !ruler.value)
+    return false
+  const style = getComputedStyle(box)
+  const line = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    - buttons.value.offsetWidth - (parseFloat(style.columnGap) || 0)
+  ruler.value.textContent = words
+  return ruler.value.offsetWidth > line
+})
 
 // It grows to a few lines and scrolls past them with the app's scrollbar.
 useFieldScrollbars(field, frame, () => text.value)
@@ -88,9 +138,7 @@ function act(way: 'comment' | 'ask' | 'send'): void {
     return
   const words = text.value.trim()
   if (words === '') {
-    // Send is dimmed with no words, so it never gets here.
-    if (way !== 'send')
-      void shake()
+    void shake()
     return
   }
   if (way === 'comment')
@@ -101,6 +149,11 @@ function act(way: 'comment' | 'ask' | 'send'): void {
     emit('send', words)
 }
 
+/** The blue button: the chosen way, or Send while the command key is held. */
+function primary(event?: MouseEvent): void {
+  act(props.send && (sending.value || (event && withCommandKey(event))) ? 'send' : chosen.value)
+}
+
 function onKeydown(event: KeyboardEvent): void {
   // Safari ends a composition with an Enter whose `isComposing` is already false
   // and whose key code is 229: it confirms the words, and sends nothing.
@@ -108,11 +161,11 @@ function onKeydown(event: KeyboardEvent): void {
     return
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
-    if (withCommandKey(event)) {
+    if (withCommandKey(event) || sending.value) {
       if (props.send)
         act('send')
     } else
-      act(chosen.value === 'ask' && props.ask ? 'ask' : 'comment')
+      act(chosen.value)
   } else if (event.key === 'Escape') {
     event.preventDefault()
     event.stopPropagation()
@@ -120,80 +173,83 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
-/** A press on the actions keeps the focus where it is. */
+/** A press on the buttons keeps the focus where it is. */
 function keep(event: Event): void {
   event.preventDefault()
 }
+
+const label = (way: FieldWay) => way === 'ask' ? t('ask.ask') : t('comments.comment')
+const other = computed<FieldWay>(() => chosen.value === 'ask' ? 'comment' : 'ask')
+const primaryLabel = computed(() => sending.value ? t('composer.send') : label(chosen.value))
+/** As the message field's send button: the way, and the key that sends instead. */
+const primaryTip = computed(() => props.send && !sending.value
+  ? t('composer.sendOtherWay', { way: label(chosen.value), keys: otherWayKeys(), other: t('composer.send').toLowerCase() })
+  : primaryLabel.value)
+const primaryIcon = computed(() => sending.value ? ArrowUp : chosen.value === 'ask' ? MessageCircleQuestionMark : MessageCircleMore)
+const otherIcon = computed(() => other.value === 'ask' ? MessageCircleQuestionMark : MessageCircleMore)
 </script>
 
 <template>
   <div
+    ref="root"
     data-selection-field
-    class="flex max-w-[calc(100vw-1rem)] flex-col gap-1.5"
-    :class="[phone ? 'w-full' : 'overlay-shell w-[340px] rounded-[14px] p-2', { 'selection-field-shake': shaking }]"
+    class="selection-field overlay-shell grid w-[400px] max-w-[calc(100vw-1rem)] items-center gap-x-1.5 py-1.5 pl-3.5 pr-1.5"
+    :class="[open ? 'selection-field-open gap-y-1 rounded-[20px] pt-2' : 'rounded-full', { 'selection-field-shake': shaking }]"
     @animationend="shaking = false"
   >
-    <div class="flex items-start gap-1">
-      <div ref="frame" class="relative flex min-w-0 flex-1">
-        <textarea
-          ref="field"
-          v-model="text"
-          data-overlayscrollbars-initialize
-          rows="1"
-          :placeholder="t('comments.placeholder')"
-          :aria-label="t('comments.placeholder')"
-          class="max-h-32 min-h-7 min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-chrome leading-5 text-fg outline-none [field-sizing:content] placeholder:text-fg-subtle"
-          @keydown="onKeydown"
-        />
-      </div>
-      <Tooltip v-if="!phone" :content="shared('common.close')">
+    <span ref="ruler" aria-hidden="true" class="pointer-events-none invisible absolute whitespace-pre text-chrome leading-5" />
+    <div ref="frame" class="relative flex min-w-0 [grid-area:words]">
+      <textarea
+        ref="field"
+        v-model="text"
+        data-overlayscrollbars-initialize
+        rows="1"
+        :placeholder="t('comments.placeholder')"
+        :aria-label="t('comments.placeholder')"
+        class="max-h-32 min-h-7 min-w-0 flex-1 resize-none bg-transparent py-1 text-chrome leading-5 text-fg outline-none [field-sizing:content] placeholder:text-fg-subtle"
+        @keydown="onKeydown"
+      />
+    </div>
+    <div ref="buttons" class="flex items-center gap-1.5 justify-self-end [grid-area:buttons]">
+      <Tooltip v-if="ask" :content="blocked ? unavailable ?? label(other) : label(other)">
         <IconButton
-          :icon="X"
-          size="sm"
+          :icon="otherIcon"
           variant="ghost"
-          :aria-label="shared('common.close')"
+          circle
+          :disabled="blocked"
+          :disabled-reason="unavailable ?? undefined"
+          :aria-label="label(other)"
           @mousedown="keep"
-          @click="emit('close')"
+          @click="act(other)"
         />
       </Tooltip>
-    </div>
-    <div class="flex flex-wrap items-center justify-end gap-1.5">
-      <Button
-        v-if="send"
-        size="sm"
-        :disabled="empty || blocked"
-        :disabled-reason="empty ? undefined : unavailable ?? undefined"
-        @mousedown="keep"
-        @click="act('send')"
-      >
-        {{ t('composer.send') }}
-      </Button>
-      <Button
-        v-if="ask"
-        size="sm"
-        :variant="chosen === 'ask' ? 'primary' : 'default'"
-        :disabled="blocked"
-        :disabled-reason="unavailable ?? undefined"
-        @mousedown="keep"
-        @click="act('ask')"
-      >
-        {{ t('ask.ask') }}
-      </Button>
-      <Button
-        size="sm"
-        :variant="chosen === 'comment' || !ask ? 'primary' : 'default'"
-        :disabled="blocked"
-        :disabled-reason="unavailable ?? undefined"
-        @mousedown="keep"
-        @click="act('comment')"
-      >
-        {{ t('comments.comment') }}
-      </Button>
+      <Tooltip :content="blocked ? unavailable ?? primaryTip : primaryTip">
+        <IconButton
+          :icon="primaryIcon"
+          variant="accent"
+          circle
+          data-selection-field-primary
+          :disabled="blocked"
+          :disabled-reason="unavailable ?? undefined"
+          :aria-label="primaryLabel"
+          @mousedown="keep"
+          @click="primary($event)"
+        />
+      </Tooltip>
     </div>
   </div>
 </template>
 
 <style scoped>
+.selection-field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "words buttons";
+}
+
+.selection-field-open {
+  grid-template-areas: "words words" ". buttons";
+}
+
 .selection-field-shake {
   animation: selection-field-shake 0.32s ease-out;
 }

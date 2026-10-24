@@ -744,7 +744,8 @@ export function readSelection(): SelectionReading | null {
  * The text of `range` as the page copies it, quotes it and checks a quote against
  * it: its characters as they are drawn, by the rules of `innerText`. Whitespace
  * collapses as its style collapses it, a block starts and ends a line, a paragraph
- * with a blank line, and a picture gives none.
+ * with a blank line, and a picture gives none, nor an element within marked
+ * `data-no-anchor`.
  */
 export function selectedText(range: Range): string {
   const parts: ({ text: string; collapsible: boolean } | number)[] = []
@@ -777,7 +778,8 @@ export function selectedText(range: Range): string {
         text(node)
         continue
       }
-      if (!(node instanceof Element) || isPicture(node))
+      // What stands in the text but is none of it, as a remark's box in a reply.
+      if (!(node instanceof Element) || isPicture(node) || node.hasAttribute('data-no-anchor'))
         continue
       const style = styleOf(node)
       if (style.display === 'none')

@@ -41,8 +41,8 @@ pub struct SideFollowUp {
     pub text: String,
 }
 
-/// `PATCH /conversations/:id/side-questions/:sideId`: folds its card into
-/// the margin's mark, or opens it again.
+/// `PATCH /conversations/:id/side-questions/:sideId`: folds its card to
+/// its header, or opens it again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SideQuestionPatch {

@@ -125,11 +125,11 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
   }
 
   /**
-   * × folds the card into the margin's mark, the mark opens it again: at
-   * once, and the writes go one at a time, so the backend ends with the
-   * user's latest choice, and neither an earlier write's answer nor a read
-   * of the list changes what the card shows meanwhile. A refused last write
-   * goes back to what the backend last confirmed.
+   * The card's header folds the card and opens it again: at once, and the
+   * writes go one at a time, so the backend ends with the user's latest
+   * choice, and neither an earlier write's answer nor a read of the list
+   * changes what the card shows meanwhile. A refused last write goes back to
+   * what the backend last confirmed.
    */
   async function fold(conversation: SideHolder, id: string, folded: boolean): Promise<void> {
     const side = sideOf(conversation, id)
@@ -179,9 +179,9 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
   }
 
   /**
-   * × on a question still on its first answer: its card is gone at once, and
-   * the backend stops it and deletes it; a refused deletion brings the card
-   * back.
+   * Delete on a question still on its first answer: its card is gone at
+   * once, and the backend stops it and deletes it; a refused deletion brings
+   * the card back.
    */
   async function remove(conversation: SideHolder, id: string): Promise<void> {
     const side = sideOf(conversation, id)

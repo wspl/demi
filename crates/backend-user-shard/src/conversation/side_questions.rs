@@ -185,7 +185,7 @@ impl Shard {
     }
 
     /// Folds the card of the side question `side` of the user's
-    /// conversation `id` into the margin's mark, or opens it again.
+    /// conversation `id` to its header, or opens it again.
     pub async fn fold_side(&self, id: ConversationId, side: NodeId, folded: bool) -> Result<SideQuestion, SideRefusal> {
         let record = self.side_conversation(&id, false).await?;
         let folded = {
