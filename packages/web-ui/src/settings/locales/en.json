@@ -122,7 +122,8 @@
     "shortcuts": "Shortcuts",
     "resetAll": "Reset all shortcuts",
     "reset": "Reset",
-    "typesText": "{keys} types text. Add ⌘ or ⌃.",
+    "typesTextMac": "{keys} types text. Add ⌘ or ⌃.",
+    "typesTextPc": "{keys} types text. Add Ctrl.",
     "taken": "{keys} is already used by {action}.",
     "actions": {
       "new": "New conversation",

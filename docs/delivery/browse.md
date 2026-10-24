@@ -207,9 +207,10 @@ The following helpers cover the remaining needs of a check:
   - A list that keeps the focus and marks a row by `aria-activedescendant` is
     read at that row.
 - **Conditions.** `demi.emulate({ viewport, scale, theme, device, locale,
-  timeZone })` applies to the page as it is, without reloading it, and returns
-  after the page has drawn a frame under them. The theme reaches the gallery's
-  own setting too.
+  timeZone, platform })` applies to the page as it is, without reloading it, and
+  returns after the page has drawn a frame under them. The theme reaches the
+  gallery's own setting too. `platform` (`'mac'`, `'windows'` or `'linux'`) is
+  the system the page reads from `navigator.platform` and its user agent.
   - The conditions are the slot's, kept for its later calls and every page of
     it.
   - The tool is their one owner. A script's `page.setViewportSize` and

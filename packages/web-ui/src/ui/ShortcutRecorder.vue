@@ -4,15 +4,16 @@ import Button from './Button.vue'
 import KeyCap from './KeyCap.vue'
 import { t as shared } from '../locales/text'
 import { t } from './locales/text'
-import { shortcutKeyCap, shortcutModifiers } from './shortcut'
+import { formatShortcut, shortcutModifiers } from './shortcut'
 
 /**
  * A shortcut shown as key caps, with a Change button that records a new one in place.
  *
  * - While recording, the button stays pressed and the caps show whatever is held
  *   right now.
- * - A key pressed with its modifiers commits. Escape, losing focus or clicking
- *   Change again cancels.
+ * - A key pressed with its modifiers commits, written in the page's set (`shortcut.ts`);
+ *   on a PC, a key pressed with the Windows key commits nothing. Escape, losing focus
+ *   or clicking Change again cancels.
  * - Nothing else changes shape.
  */
 const props = defineProps<{
@@ -47,10 +48,10 @@ function onKeydown(event: KeyboardEvent) {
     stop()
     return
   }
-  const cap = shortcutKeyCap(event)
-  held.value = shortcutModifiers(event) + cap
-  if (cap) {
-    emit('update:modelValue', held.value)
+  const keys = formatShortcut(event)
+  held.value = keys || shortcutModifiers(event)
+  if (keys) {
+    emit('update:modelValue', keys)
     stop()
   }
 }

@@ -30,7 +30,7 @@ import { settingsSections as productSections } from '@demicodes/web-ui/settings/
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused } from '@demicodes/web-ui/sidebar/refused-toast'
 import { dismissToast } from '@demicodes/web-ui/infra/toast'
-import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -66,11 +66,12 @@ providePageHost(
 const pluginOn = (plugin: string) =>
   settings.plugins.some((entry) => entry.id === plugin && entry.enabled)
 /** New's keys as the keyboard settings set them by default. */
-const newShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys
-const searchShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'search')?.keys
-const sidebarShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'sidebar')?.keys
+const newShortcut = appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys
+const searchShortcut = appShortcuts().find((shortcut) => shortcut.id === 'search')?.keys
+const sidebarShortcut = appShortcuts().find((shortcut) => shortcut.id === 'sidebar')?.keys
+const settingsShortcut = appShortcuts().find((shortcut) => shortcut.id === 'settings')?.keys
 // The Expanded specimen's own sidebar shortcut, as the product's shortcut flips the frame.
-useAppShortcuts(() => true, () => APP_SHORTCUTS, {
+useAppShortcuts(() => true, appShortcuts, {
   sidebar: () => {
     sidebarCollapsed.value = !sidebarCollapsed.value
   },
@@ -579,6 +580,7 @@ onBeforeUnmount(() => {
             :section-entries="sectionEntries"
             :new-shortcut="newShortcut"
             :search-shortcut="searchShortcut"
+            :settings-shortcut="settingsShortcut"
             @search="productWould('Open the Search Window')"
             @reorder="reorder"
             @select="select"
@@ -671,6 +673,7 @@ onBeforeUnmount(() => {
                 v-model:folded-groups="foldGroups"
                 :new-shortcut="newShortcut"
                 :search-shortcut="searchShortcut"
+                :settings-shortcut="settingsShortcut"
                 :account="demoAccount"
                 :projects="fixedProjects"
                 :conversations="foldConversations"
@@ -709,6 +712,7 @@ onBeforeUnmount(() => {
               <AppSidebar
                 :new-shortcut="newShortcut"
                 :search-shortcut="searchShortcut"
+                :settings-shortcut="settingsShortcut"
                 :account="demoAccount"
                 :projects="[]"
                 :conversations="hoverConversations"
@@ -754,6 +758,7 @@ onBeforeUnmount(() => {
                 v-model:collapsed-projects="markFolded"
                 :new-shortcut="newShortcut"
                 :search-shortcut="searchShortcut"
+                :settings-shortcut="settingsShortcut"
                 :account="demoAccount"
                 :projects="markProjectList"
                 :conversations="markConversations"
@@ -794,6 +799,7 @@ onBeforeUnmount(() => {
               <AppSidebar
                 :new-shortcut="newShortcut"
                 :search-shortcut="searchShortcut"
+                :settings-shortcut="settingsShortcut"
                 :account="demoAccount"
                 :projects="[]"
                 :conversations="statusConversations"
@@ -839,6 +845,7 @@ onBeforeUnmount(() => {
               :section-entries="specimen.entries"
               :new-shortcut="newShortcut"
               :search-shortcut="searchShortcut"
+              :settings-shortcut="settingsShortcut"
               @search="productWould('Open the Search Window')"
               @create="productWould('Start a New Conversation')"
               @add-project="productWould('Add a Project')"
@@ -861,6 +868,7 @@ onBeforeUnmount(() => {
             <AppSidebar
               :new-shortcut="newShortcut"
               :search-shortcut="searchShortcut"
+              :settings-shortcut="settingsShortcut"
               @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
@@ -888,6 +896,7 @@ onBeforeUnmount(() => {
             <AppSidebar
               :new-shortcut="newShortcut"
               :search-shortcut="searchShortcut"
+              :settings-shortcut="settingsShortcut"
               @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
@@ -910,6 +919,7 @@ onBeforeUnmount(() => {
             <AppSidebar
               :new-shortcut="newShortcut"
               :search-shortcut="searchShortcut"
+              :settings-shortcut="settingsShortcut"
               @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
@@ -944,6 +954,7 @@ onBeforeUnmount(() => {
             <AppSidebar
               :new-shortcut="newShortcut"
               :search-shortcut="searchShortcut"
+              :settings-shortcut="settingsShortcut"
               @search="productWould('Open the Search Window')"
               :account="specimen.account"
               :projects="[]"

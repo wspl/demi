@@ -67,7 +67,7 @@ fn canonical(locale: BrowserLocale) -> Result<BrowserLocale, LocaleError> {
 ///
 /// - A field the patch holds replaces the saved one. The lists of hidden
 ///   entries and models replace it whole.
-/// - A `null` shortcut removes that override.
+/// - A `null` shortcut removes that override; a set's change leaves the other set as it is.
 /// - A `null` small model goes back to Automatic.
 /// - A context limit changes that one model's.
 /// - Everything the patch leaves out stays.
@@ -79,16 +79,21 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
         saved.accent = appearance.accent.or(saved.accent);
         saved.font_size = appearance.font_size.or(saved.font_size);
     }
-    if let Some(shortcuts) = patch.shortcuts {
-        let saved = &mut preferences.shortcuts;
-        for (change, override_) in [
-            (shortcuts.new, &mut saved.new),
-            (shortcuts.sidebar, &mut saved.sidebar),
-            (shortcuts.settings, &mut saved.settings),
-            (shortcuts.search, &mut saved.search),
+    if let Some(sets) = patch.shortcuts {
+        for (change, saved) in [
+            (sets.mac, &mut preferences.shortcuts.mac),
+            (sets.pc, &mut preferences.shortcuts.pc),
         ] {
-            if let Some(keys) = change {
-                *override_ = keys;
+            let Some(change) = change else { continue };
+            for (change, override_) in [
+                (change.new, &mut saved.new),
+                (change.sidebar, &mut saved.sidebar),
+                (change.settings, &mut saved.settings),
+                (change.search, &mut saved.search),
+            ] {
+                if let Some(keys) = change {
+                    *override_ = keys;
+                }
             }
         }
     }

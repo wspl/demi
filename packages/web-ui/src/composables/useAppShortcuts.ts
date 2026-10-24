@@ -1,12 +1,11 @@
 import { isFocusedElementEditable, useEventListener } from '@vueuse/core'
-import { hasCommandModifier } from '../settings/shortcuts'
-import { matchesShortcut } from '../ui/shortcut'
+import { holdsCommandModifier, matchesShortcut } from '../ui/shortcut'
 
 /**
  * Binds configured application actions for the lifetime of the owning
  * surface or effect scope. The focused control has the keys first, as in
  * every desktop app: a key it used, such as ⌘B for bold in the composer, runs
- * no shortcut, and in a field a shortcut without ⌘ or ⌃ never runs, since
+ * no shortcut, and in a field a shortcut without ⌘ or ⌃ (Ctrl on a PC) never runs, since
  * those keys type.
  */
 export function useAppShortcuts(
@@ -26,7 +25,7 @@ export function useAppShortcuts(
     if (!action) {
       return
     }
-    if (isFocusedElementEditable() && !hasCommandModifier(binding.keys)) {
+    if (isFocusedElementEditable() && !holdsCommandModifier(binding.keys)) {
       return
     }
     event.preventDefault()

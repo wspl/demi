@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
-import { isMacOS } from '@tiptap/core'
 import { stackAbove } from '../../overlay/stacking'
 import { usePhone } from '../../ui/phone'
+import { shortcutSet } from '../../ui/shortcut'
 import Sheet from '../../ui/Sheet.vue'
 import {
   selectedLinesBounds,
@@ -249,7 +249,7 @@ onMounted(() => {
     }
     const inside = floating.value?.contains(target) ?? false
     // A right-click, or a control-click on a Mac, opens a menu and presses nothing.
-    if (event.button === 2 || (event.button === 0 && event.ctrlKey && isMacOS())) {
+    if (event.button === 2 || (event.button === 0 && event.ctrlKey && shortcutSet() === 'mac')) {
       if (!inside && focused.value)
         restoreSelection()
       return

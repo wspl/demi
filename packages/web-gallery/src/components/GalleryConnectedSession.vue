@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
@@ -150,6 +151,7 @@ function detach(id: string): void {
         <div class="w-48 p-3">
           <SidebarAccount
             :account="{ id: 'new', name: '', email: 'new@example.com' }"
+            :settings-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'settings')?.keys"
             @open-settings="productWould('Open Settings')"
             @sign-out="productWould('Sign Out')"
           />

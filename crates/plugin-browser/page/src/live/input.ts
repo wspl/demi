@@ -11,10 +11,18 @@ export function inputMessage(tab: string, input: ViewerInput): LiveViewerMessage
   return { type: 'input', tab, input }
 }
 
+/**
+ * Whether a key is the viewer's editing shortcut for `letter`, ⌘ on a Mac and
+ * Control elsewhere: a Mac's Control+V, say, is the page's key.
+ */
+export function editingKey(event: KeyInput, letter: 'c' | 'v' | 'x', platform: 'mac' | 'windows' | 'linux' | 'other'): boolean {
+  const command = platform === 'mac' ? event.metaKey : event.ctrlKey && !event.getModifierState('AltGraph')
+  return command && event.key.toLowerCase() === letter
+}
+
 /** Keys the viewer's own web browser keeps: its paste reaches the page as a paste. */
-export function localKey(event: KeyInput): boolean {
-  const shortcut = (event.ctrlKey || event.metaKey) && !event.getModifierState('AltGraph')
-  return shortcut && event.key.toLowerCase() === 'v'
+export function localKey(event: KeyInput, platform: 'mac' | 'windows' | 'linux' | 'other'): boolean {
+  return editingKey(event, 'v', platform)
 }
 
 /** What a browser's own shortcut does in the panel, rather than in the page. */

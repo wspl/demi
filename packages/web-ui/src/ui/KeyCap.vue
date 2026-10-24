@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { shortcutCaps } from './shortcut'
 
-/** A key combination as separate caps: "⌘⇧P" or "ctrl+k" both render one cap per key. */
+/** A shortcut of the page's set as separate caps, one per key. */
 const props = defineProps<{
   keys: string
 }>()
 
-const caps = computed(() => {
-  if (props.keys.includes('+'))
-    return props.keys.split('+').map((key) => key.trim()).filter(Boolean)
-  return Array.from(props.keys)
-})
+const caps = computed(() => shortcutCaps(props.keys))
 </script>
 
 <template>

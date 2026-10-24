@@ -50,6 +50,7 @@ import { hostGlyph } from '@demicodes/web-ui/devices/device-glyphs'
 import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { vendorGlyph } from '@demicodes/web-ui/ui/vendor-glyphs'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
+import { namedKeyCap, shortcutFor } from '@demicodes/web-ui/ui/shortcut'
 
 const { view } = useGalleryView()
 
@@ -385,13 +386,13 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               <MenuItem
                 :icon="Pencil"
                 label="Rename"
-                shortcut="↵"
+                :shortcut="namedKeyCap('Enter')"
                 @select="productWould('Rename')"
               />
               <MenuItem
                 :icon="Copy"
                 label="Duplicate"
-                shortcut="⌘D"
+                :shortcut="shortcutFor({ mac: '⌘D', pc: 'Ctrl+D' })"
                 @select="productWould('Duplicate')"
               />
               <MenuDivider />
@@ -639,14 +640,14 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           </GallerySpecimen>
           <GallerySpecimen variant="shortcuts · columns">
             <Menu :autofocus="false">
-              <MenuItem :icon="Pencil" label="Rename" shortcut="↵" @select="productWould('Rename')" />
+              <MenuItem :icon="Pencil" label="Rename" :shortcut="namedKeyCap('Enter')" @select="productWould('Rename')" />
               <MenuItem
                 :icon="Copy"
                 label="Duplicate Conversation"
-                shortcut="⌘D"
+                :shortcut="shortcutFor({ mac: '⌘D', pc: 'Ctrl+D' })"
                 @select="productWould('Duplicate Conversation')"
               />
-              <MenuItem :icon="Pin" label="Pin" shortcut="⌘⇧P" @select="productWould('Pin')" />
+              <MenuItem :icon="Pin" label="Pin" :shortcut="shortcutFor({ mac: '⇧⌘P', pc: 'Ctrl+Shift+P' })" @select="productWould('Pin')" />
               <MenuItem :icon="Archive" label="Archive" @select="productWould('Archive')" />
             </Menu>
           </GallerySpecimen>
@@ -795,8 +796,8 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               <template #trigger>Menu</template>
               <template #content="{ close }">
                 <Menu @click="close">
-                  <MenuItem :icon="Pencil" label="Rename" shortcut="↵" @select="productWould('Rename')" />
-                  <MenuItem :icon="Copy" label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
+                  <MenuItem :icon="Pencil" label="Rename" :shortcut="namedKeyCap('Enter')" @select="productWould('Rename')" />
+                  <MenuItem :icon="Copy" label="Duplicate" :shortcut="shortcutFor({ mac: '⌘D', pc: 'Ctrl+D' })" @select="productWould('Duplicate')" />
                   <MenuDivider />
                   <MenuItem
                     label="Delete"
@@ -855,8 +856,8 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               <template #trigger>Menu</template>
               <template #content="{ close }">
                 <Menu @click="close">
-                  <MenuItem :icon="Pencil" label="Rename" shortcut="↵" @select="productWould('Rename')" />
-                  <MenuItem :icon="Copy" label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
+                  <MenuItem :icon="Pencil" label="Rename" :shortcut="namedKeyCap('Enter')" @select="productWould('Rename')" />
+                  <MenuItem :icon="Copy" label="Duplicate" :shortcut="shortcutFor({ mac: '⌘D', pc: 'Ctrl+D' })" @select="productWould('Duplicate')" />
                 </Menu>
               </template>
             </Dropdown>

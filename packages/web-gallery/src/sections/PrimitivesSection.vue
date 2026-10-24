@@ -47,6 +47,7 @@ import { productWould } from '../product-would'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 
 const { view } = useGalleryView()
 /**
@@ -109,7 +110,7 @@ const query = ref('session cookie')
 const emptyQuery = ref('')
 const secret = ref('sk-ant-api03-example-not-a-real-key')
 const accountPassword = ref('correct horse battery')
-const shortcut = ref('⌘K')
+const shortcut = ref(appShortcuts().find((binding) => binding.id === 'search')?.keys ?? '')
 const swatch = ref('blue')
 const tokens = ref<number | null>(200_000)
 const noTokens = ref<number | null>(null)

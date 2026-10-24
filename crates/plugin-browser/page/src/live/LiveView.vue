@@ -11,7 +11,7 @@ import type { LiveSession, LiveStream } from './session'
 import type { KeptPicture } from './tabs'
 import { viewerClipboard } from './clipboard'
 import { clientPlatform, composingKey } from '@demicodes/utils'
-import { inputMessage, localKey, shortcutKeys } from './input'
+import { editingKey, inputMessage, localKey, shortcutKeys } from './input'
 import { BLANK_PAGE, cursorAt, panelRect, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
@@ -171,13 +171,13 @@ function key(event: KeyboardEvent, action: 'down' | 'up'): void {
   }
   // DOM event fields are prototype getters; copying an event drops modifiers.
   // Paste is the viewer's own: the field's paste event carries its clipboard.
-  if (localKey(event)) {
+  if (localKey(event, platform)) {
     return
   }
   if (action === 'down') {
     committed = undefined
     // A copy here is the viewer's own: its clipboard takes what the tab copies.
-    if ((event.ctrlKey || event.metaKey) && !event.getModifierState('AltGraph') && /^[cx]$/i.test(event.key)) {
+    if (editingKey(event, 'c', platform) || editingKey(event, 'x', platform)) {
       viewerClipboard.expect()
     }
   }

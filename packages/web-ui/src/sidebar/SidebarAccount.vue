@@ -27,6 +27,8 @@ const props = defineProps<{
   account: SidebarAccount;
   /** Signs this browser out; the row works until the page goes to the sign-in page. */
   onSignOut?: Action;
+  /** The keys Settings has in the keyboard settings, which its item shows; none when it has none. */
+  settingsShortcut?: string;
 }>();
 
 const emit = defineEmits<{
@@ -90,7 +92,7 @@ const displayName = computed(() =>
         <MenuItem
           :icon="Settings"
           :label="t('account.settings')"
-          shortcut="⌘,"
+          :shortcut="settingsShortcut"
           @select="
             close();
             emit('openSettings');

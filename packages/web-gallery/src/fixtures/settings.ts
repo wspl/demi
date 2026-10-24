@@ -2,7 +2,7 @@ import { createSmallModelState } from './small-model'
 import { macAddress } from './exposed-ports'
 import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
-import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import type {
@@ -1207,7 +1207,7 @@ export function createSettingsState() {
     ] satisfies SettingsArchivedConversation[],
     deviceProjects: galleryDeviceProjects(),
     // The product's shortcuts with their own keys: the gallery changes them as the product does.
-    keys: APP_SHORTCUTS.map((shortcut): SettingsKeyBinding => ({ ...shortcut })),
+    keys: appShortcuts().map((shortcut): SettingsKeyBinding => ({ ...shortcut })),
     data: {
       telemetry: true,
     },

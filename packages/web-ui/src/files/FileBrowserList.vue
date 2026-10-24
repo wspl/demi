@@ -12,6 +12,7 @@ import {
 import { useTypeSelect } from '../composables/useTypeSelect'
 import { focusedByKeyboard } from '../ui/active-row'
 import { focusByPage } from '../ui/focus-by-page'
+import { matchesShortcut, shortcutFor, type ShortcutSetId } from '../ui/shortcut'
 import HighlightText from '../ui/HighlightText.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -37,7 +38,8 @@ import type {
  * The detail view: sortable columns over the rows of one directory.
  *
  * - A click selects, a double click or Enter opens a folder or confirms a file.
- * - The arrows move the selection, Backspace goes up.
+ * - The arrows move the selection. Backspace, or ↑ with ⌥ or ⌘ (Alt on a PC, as in
+ *   Explorer), goes up; ← and → with them go back and forward.
  * - Typing a name selects the first row that starts with it (`useTypeSelect`),
  *   Backspace then taking back a letter.
  * - In directory mode files are shown but cannot be picked, nor reached by typing.
@@ -45,6 +47,14 @@ import type {
 /** An entry with the glyph its place on the tree earns, when it earns one. */
 export interface FileBrowserRow extends FileBrowserEntry {
   icon?: string
+}
+
+const GO_UP = { mac: ['⌥↑', '⌘↑'], pc: ['Alt+Up'] }
+const GO_BACK = { mac: ['⌥←', '⌘←'], pc: ['Alt+Left'] }
+const GO_FORWARD = { mac: ['⌥→', '⌘→'], pc: ['Alt+Right'] }
+
+function pressed(event: KeyboardEvent, keys: Record<ShortcutSetId, string[]>): boolean {
+  return shortcutFor(keys).some((each) => matchesShortcut(event, each))
 }
 
 const props = defineProps<{
@@ -191,17 +201,15 @@ function onKeydown(event: KeyboardEvent) {
     event.preventDefault()
     return
   }
-  const modifier = event.altKey || event.metaKey
-  if (event.key === 'ArrowDown') moveSelection(1)
+  if (event.key === 'Backspace' || pressed(event, GO_UP)) emit('up')
+  else if (pressed(event, GO_BACK)) emit('back')
+  else if (pressed(event, GO_FORWARD)) emit('forward')
+  else if (event.key === 'ArrowDown') moveSelection(1)
   else if (event.key === 'ArrowUp') moveSelection(-1)
   else if (event.key === 'Home') moveSelection(-props.entries.length)
   else if (event.key === 'End') moveSelection(props.entries.length)
   else if (event.key === 'Enter' && selectedIndex.value >= 0)
     activate(props.entries[selectedIndex.value]!)
-  else if (event.key === 'Backspace' || (event.key === 'ArrowUp' && modifier))
-    emit('up')
-  else if (event.key === 'ArrowLeft' && modifier) emit('back')
-  else if (event.key === 'ArrowRight' && modifier) emit('forward')
   else return
   event.preventDefault()
 }

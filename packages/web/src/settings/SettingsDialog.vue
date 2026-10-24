@@ -14,7 +14,8 @@ import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { settingsSections, withUsersSection } from '@demicodes/web-ui/settings/sections'
-import { APP_SHORTCUTS, isAppShortcut } from '@demicodes/web-ui/settings/shortcuts'
+import { appShortcuts, isAppShortcut } from '@demicodes/web-ui/settings/shortcuts'
+import { shortcutSet } from '@demicodes/web-ui/ui/shortcut'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
@@ -375,12 +376,12 @@ async function openConversation(id: string): Promise<void> {
 
 function rebind(id: string, keys: string): void {
   if (isAppShortcut(id)) {
-    preferences.update({ shortcuts: { [id]: keys } })
+    preferences.update({ shortcuts: { [shortcutSet()]: { [id]: keys } } })
   }
 }
 function resetShortcuts(): void {
   preferences.update({
-    shortcuts: Object.fromEntries(APP_SHORTCUTS.map((shortcut) => [shortcut.id, null])),
+    shortcuts: { [shortcutSet()]: Object.fromEntries(appShortcuts().map((shortcut) => [shortcut.id, null])) },
   })
 }
 </script>
