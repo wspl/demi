@@ -17,7 +17,7 @@
 # embeds the runner and the command packages of a server release, taken from the
 # release's files, and publishes the verified root archive and manifest. It runs
 # a Linux build of `xtask` for the builder's architecture, cross-compiled by the
-# developer's machine or, in the release workflow, built by the runner for
+# developer's machine or, in the build workflow, built by the runner for
 # itself. On a Linux builder the one Cargo selection's `target/debug/xtask`
 # works too, since the release's files are local and it downloads nothing.
 #

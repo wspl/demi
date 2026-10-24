@@ -1,16 +1,23 @@
 # Restores the job's compiled Rust dependencies and saves them when the job
-# ends.
+# ends, only if the dependencies changed.
 #
-# - Each job keeps its own entry, since each builds other targets or programs. A
-#   release changes Cargo.lock, so an entry is restored from the job's previous
-#   release and only what changed compiles again.
-# - The workspace's own crates are not kept: every release changes their
-#   version, so none would be reused. The vendored crates, which are path
+# - Each job keeps its own entry, since each builds other targets or programs.
+#   The job restores the newest entry of its own, so only what changed compiles
+#   again.
+# - The workspace's own crates are not kept. The vendored crates, which are path
 #   dependencies, are kept.
-# - A job that fails keeps what it compiled too.
-# - The repository's cache holds up to 50 GB, paid beyond the free 10 GB, and
-#   keeps an entry for 90 days after its last use, so an entry survives the time
-#   between releases.
+# - Only a job that succeeds saves: one that fails or is cancelled holds an
+#   incomplete entry, which a later job with the same fingerprint would restore
+#   and never replace.
+# - The repository's cache holds up to 50 GB, paid beyond the free 10 GB, so an
+#   entry of about 1 GB per job is saved only when the dependencies changed:
+#   Cargo.lock's packages from a registry or git, the vendored crates, the root
+#   Cargo.toml's profiles, patches and workspace dependencies, the toolchain and
+#   Cargo's configuration. rust-cache's own key covers every workspace crate's
+#   manifest, so an entry it considers new, after a crate gains a dependency
+#   that Cargo.lock already holds, is the same dependencies again. The entry
+#   holds the fingerprint of the dependencies it was saved for, and a job that
+#   restores an entry with its own fingerprint saves nothing.
 name: Rust cache
 description: Restores and saves the job's compiled Rust dependencies.
 inputs:
@@ -35,5 +42,36 @@ runs:
         workspaces: |
           crates -> ../target
           crates -> ../.cache/native-target
-        # A build that fails keeps what it compiled for the next run.
-        cache-on-failure: true
+        cache-directories: .cache/rust-dependencies
+        # Read again when the job ends, after the step below has set it.
+        save-if: ${{ steps.dependencies.outputs.save }}
+    - id: dependencies
+      shell: bash
+      run: |
+        directory=.cache/rust-dependencies
+        # The lock's packages with a source: the workspace's own crates and the
+        # vendored ones have none, and a change to a crate of the workspace is no
+        # change to the dependencies. The vendored crates are path dependencies
+        # that compile with them, so their sources count; so do the root
+        # manifest's tables that change how a dependency compiles.
+        fingerprint=$(
+          {
+            awk '
+              function flush() { if (has_source) printf "%s", block; block = ""; has_source = 0 }
+              /^\[\[package\]\]/ { flush() }
+              { block = block $0 "\n" }
+              /^source = / { has_source = 1 }
+              END { flush() }' Cargo.lock
+            awk '/^\[/ { in_table = ($0 ~ /^\[(profile|patch|workspace\.dependencies)[].]/) } in_table' Cargo.toml
+            git ls-files -s vendor
+            cat rust-toolchain.toml
+            [ ! -f .cargo/config.toml ] || cat .cargo/config.toml
+          } | git hash-object --stdin
+        )
+        if [ "$(cat "$directory/fingerprint" 2>/dev/null)" = "$fingerprint" ]; then
+          echo save=false >> "$GITHUB_OUTPUT"
+        else
+          mkdir -p "$directory"
+          echo "$fingerprint" > "$directory/fingerprint"
+          echo save=true >> "$GITHUB_OUTPUT"
+        fi

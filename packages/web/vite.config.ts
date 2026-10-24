@@ -32,17 +32,16 @@ function webBuild(): Plugin {
 }
 
 /**
- * The Demi version the page shows at Settings › About: the workspace version
- * in `Cargo.toml`, which every program of the same checkout carries
- * (`demi_shared_artifacts::WORKSPACE_VERSION`).
+ * The Demi version the page shows at Settings › About: the build version,
+ * which is the `Cargo.toml` version of this checkout and the one every program
+ * of the checkout carries (`demi_shared_artifacts::BUILD_VERSION`).
  */
-function workspaceVersion(): string {
+function buildVersion(): string {
   const manifest = readFileSync(resolve(import.meta.dirname, '../../Cargo.toml'), 'utf8')
-  // The `version` line of the `[workspace.package]` table, as the release
-  // workflow reads it.
+  // The `version` line of the `[workspace.package]` table.
   const version = /^\[workspace\.package\]$[^[]*?^version = "([^"]+)"$/m.exec(manifest)?.[1]
   if (!version)
-    throw new Error('Cargo.toml names no workspace version')
+    throw new Error('Cargo.toml names no version in [workspace.package]')
   return version
 }
 
@@ -150,7 +149,7 @@ export default defineConfig({
   // during development only.
   envDir: resolve(import.meta.dirname, '../..'),
   envPrefix: ['VITE_', 'DEMI_DEV_'],
-  define: { 'import.meta.env.DEMI_VERSION': JSON.stringify(workspaceVersion()) },
+  define: { 'import.meta.env.DEMI_VERSION': JSON.stringify(buildVersion()) },
   build: {
     // The npm packages the bundle holds, each with its license and the
     // text of its license file, from the bundle's own module graph:

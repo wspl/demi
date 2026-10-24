@@ -20,8 +20,8 @@
 //! recorder's snapshots and journal in `command-sdk`, and `xtask`'s release
 //! packaging.
 //!
-//! The crate also owns `WORKSPACE_VERSION`, the version in `Cargo.toml` that
-//! every program and package reports.
+//! The crate also owns `BUILD_VERSION`, the version every program and package
+//! reports.
 
 mod archive;
 mod coding;
@@ -51,11 +51,12 @@ pub use publish::{
     publish_directory,
 };
 pub use release::{ReleaseFile, ReleaseRecord, publish_release};
-/// The workspace version this build carries, which every program reports
-/// and a server release is named by: `Cargo.toml`'s, which a deploy too
-/// commits before its build (`upgrades.md` § A development build on a
-/// server).
-pub const WORKSPACE_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The build version, which every program reports and a server release is
+/// named by: the `[workspace.package]` version of the `Cargo.toml` the build
+/// compiled. The build workflow writes the commit's own version there before it
+/// compiles (`.github/actions/stamp-version`); a developer's build keeps the
+/// committed workspace version.
+pub const BUILD_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The HTTP client the downloads take, so a caller names it without a
 /// dependency of its own; `client` makes the one every download uses.

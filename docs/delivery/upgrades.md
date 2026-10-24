@@ -61,7 +61,7 @@ Host it serves, follows that release.
 
 Nothing negotiates versions. The backend, the machine manager, the web app,
 the runners and the command programs of a deployment are always built from one
-workspace version, so none of the wires between them needs to accept another
+build version, so none of the wires between them needs to accept another
 version. The few things that do cross from one release to the next are listed
 in [What crosses releases](#what-crosses-releases), and each has a rule.
 
@@ -324,34 +324,48 @@ published release. Pages reload into the new web app, the user's paired
 devices replace their runners, and Clouds wake with the new programs, exactly
 as after an upgrade. Nothing is compiled on the developer's machine.
 
-Every deploy is a version of its own, the next patch version after the
-workspace's: `0.1.22` after `0.1.21`. The repository then always says which
-version a server runs. In a clean checkout of the branch:
+Every commit of the branch has a version of its own: `0.1.` and the number of
+commits in its history, `0.1.4213` for a commit with 4,213 commits behind it.
+The same commit always has the same version, and a later commit a higher one.
+Nothing is committed to deploy, and versions skip numbers between releases.
+
+Every push to `feat/demi-next` builds everything a release publishes, for every
+target, and publishes nothing (`.github/workflows/build.yml`). A deploy asks
+for the build of the newest pushed commit to be published as a pre-release, and
+waits for that. The commit and its version are worked out first, so every later
+step names them, and a version that has a release already, because that commit
+was deployed before, is not published again:
 
 ```sh
-git pull --ff-only
-version=0.1.22   # the next patch after Cargo.toml's [workspace.package] version
-sed -i "/^\[workspace.package\]/,/^\[/s/^version = .*/version = \"$version\"/" Cargo.toml
-cargo update --workspace --offline   # Cargo.lock names each crate's version
-git commit --quiet -m "chore: release $version" Cargo.toml Cargo.lock
-git push
+git fetch origin feat/demi-next
+commit=$(git rev-parse FETCH_HEAD)
+version=0.1.$(git rev-list --count "$commit")
+if ! gh release view "v$version" > /dev/null 2>&1; then
+  run=$(gh workflow run release.yml --ref feat/demi-next -f commit="$commit" -f prerelease=true)
+  gh run watch --exit-status "${run##*/}"
+  gh release view "v$version" > /dev/null
+fi
 ```
 
-Then build the pre-release and wait for it:
+`gh workflow run` prints the URL of the run it started, which `gh run watch`
+takes by its number. Each command that fails stops the deploy: no server is
+touched until the pre-release exists.
 
-```sh
-gh workflow run release.yml --ref feat/demi-next -f prerelease=true
-gh run watch --exit-status "$(gh run list --workflow release.yml --limit 1 \
-  --json databaseId --jq '.[0].databaseId')"
-```
+The release finds that commit's build and publishes its files as a GitHub
+pre-release, `v$version` (`.github/workflows/release.yml`):
 
-The run's commit, which `gh run watch` shows, must be the one just pushed.
-The workflow builds every target, the server releases, the Cloud images and
-the web app, as for any release (`.github/workflows/release.yml`), and
-publishes them as a GitHub pre-release, `v0.1.22`. A pre-release is never the
-latest release, which `releases/latest` gives, so the installer and
-`demi-server upgrade` without a version never return one: only a deploy
-installs one, until it is published. A run that fails touches no server.
+- A build that finished takes the release a few minutes.
+- A build that is running or waiting is waited for. Of the pushes that arrive
+  while a build runs, only the newest waits, so the commit of a busy hour may
+  never have been built.
+- A commit with no build, because a newer push took its place, because it failed
+  or because its files were kept for a day and are gone or will be within two
+  hours, is built by the release itself, which takes as long as a build does.
+
+A pre-release is never the latest release, which `releases/latest` gives, so the
+installer and `demi-server upgrade` without a version never return one: only a
+deploy installs one, until it is published. A run that fails touches no server.
+A release refuses a version that has a release already.
 
 Then move the server, the SSH host that `DEMI_DEPLOY_HOST` names in the
 developer's `.env`. It must already run Demi
@@ -370,7 +384,7 @@ the database copies, the switch and the return on failure are an upgrade's.
 
 - **Publishing it.** To publish a deployed version the user is content with,
   turn its pre-release into the latest release on GitHub with
-  `gh release edit v0.1.22 --prerelease=false --latest`. The files users
+  `gh release edit "v$version" --prerelease=false --latest`. The files users
   install are then the ones the server ran, built once. Every version is kept,
   published or not.
 - **Data.** A deploy that changes a schema migrates the server's databases as

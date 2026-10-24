@@ -250,7 +250,7 @@ struct Server {
 impl ServerHandler for Server {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("demi", demi_shared_artifacts::WORKSPACE_VERSION))
+            .with_server_info(Implementation::new("demi", demi_shared_artifacts::BUILD_VERSION))
     }
 
     async fn list_tools(

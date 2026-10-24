@@ -24,14 +24,12 @@
 //!
 //! # Versions
 //!
-//! A command package, the backend and the machine manager carry the workspace
-//! version, and a published version is immutable: packaging different artifacts
-//! needs a new workspace version, or, for a developer's release, removing its
+//! A command package, the backend and the machine manager carry the build version, and a published version is immutable: packaging different artifacts
+//! needs a new build version, or, for a developer's release, removing its
 //! directory first.
 //!
-//! Only the release workflow names a package with the workspace version itself.
-//! Any other packaging gives it a development version, the workspace version
-//! with build metadata naming its artifacts, `0.1.3+dev.<12 hex digits of the
+//! Only the build workflow names a package with the build version itself.
+//! Any other packaging gives it a development version, the build version with build metadata naming its artifacts, `0.1.3+dev.<12 hex digits of the
 //! SHA-256 over the package's targets and their executables' SHA-256s>`.
 //! Packaging the same programs again gives the same version. A rebuilt program
 //! gives a new one, which a store that holds the earlier build publishes beside
@@ -118,15 +116,15 @@ impl Caches {
 /// How a command package is versioned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Versioning {
-    /// The workspace version itself: only the release workflow's packaging.
+    /// The build version itself: only the build workflow's packaging.
     Published,
-    /// The workspace version with build metadata naming its artifacts.
+    /// The build version with build metadata naming its artifacts.
     Development,
 }
 
 /// One release to package: the executable, the targets it carries, the
 /// Cargo target directory the build wrote, the release directory, and the
-/// workspace version the build carries, which names a command package and
+/// build version the build carries, which names a command package and
 /// the backend's and the machine manager's releases.
 pub struct Spec<'a> {
     pub executable: Executable,
@@ -150,7 +148,7 @@ pub fn run(options: Options) -> Result<(), Error> {
             output: &output,
             caches: &options.caches,
             versioning: Versioning::Development,
-            version: demi_shared_artifacts::WORKSPACE_VERSION,
+            version: demi_shared_artifacts::BUILD_VERSION,
         };
         package(&spec, &cancel).await
     })??;
@@ -473,7 +471,7 @@ pub async fn development_package(
             cancel,
         )
         .await?;
-    let version = built.version(Versioning::Development, demi_shared_artifacts::WORKSPACE_VERSION)?;
+    let version = built.version(Versioning::Development, demi_shared_artifacts::BUILD_VERSION)?;
     command_package(output, id, &version, operations, built, cancel).await?;
     Ok(())
 }
@@ -511,7 +509,7 @@ async fn command_package(
 }
 
 /// A backend or machine manager release's record: the executable, the
-/// workspace version it carries, and each target's file.
+/// build version it carries, and each target's file.
 #[derive(Serialize)]
 struct ExecutableRelease<'a> {
     executable: &'a str,

@@ -1,0 +1,18 @@
+# The version of the commit the job checked out: `0.1.` and the number of
+# commits in the commit's history, `0.1.4213` for a commit with 4,213 commits
+# behind it. The same commit always has the same version, and a later commit on
+# a branch always a higher one. The series, 0.1, moves only by editing it here.
+# The checkout must hold the whole history of commits, not their files
+# (`fetch-depth: 0`, `filter: tree:0`).
+name: Version
+description: Names the checked out commit's version.
+outputs:
+  version:
+    description: The commit's version, 0.1.<commits>.
+    value: ${{ steps.version.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      run: echo "version=0.1.$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"

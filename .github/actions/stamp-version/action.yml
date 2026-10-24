@@ -1,0 +1,41 @@
+# Writes the build version, `0.1.<commit count>`, into the checkout's Cargo.toml
+# and Cargo.lock, so every program the job builds reports it. The workspace
+# version, the one committed in Cargo.toml, never changes: a build writes its own
+# here, after the Rust cache is restored, and commits nothing.
+#
+# The lock names each workspace crate by version too, and `--locked` refuses a
+# lock that disagrees with the manifests. The crates in Cargo.lock without a
+# source, whose version is the workspace's, are the workspace's own; the vendored
+# crates, which have no source either, have versions of their own.
+name: Stamp version
+description: Sets the build version in Cargo.toml and Cargo.lock.
+inputs:
+  version:
+    description: The version the job's programs report.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        committed=$(awk '/^\[/ { in_table = ($0 == "[workspace.package]") } in_table && /^version = / { gsub(/^version = "|"$/, ""); print; exit }' Cargo.toml)
+        awk -v version="$VERSION" '
+          /^\[/ { in_table = ($0 == "[workspace.package]") }
+          in_table && /^version = / { print "version = \"" version "\""; next }
+          { print }' Cargo.toml > Cargo.toml.stamped
+        mv Cargo.toml.stamped Cargo.toml
+        awk -v old="$committed" -v new="$VERSION" '
+          function flush(  i) {
+            if (!has_source && version_line > 0 && lines[version_line] == "version = \"" old "\"")
+              lines[version_line] = "version = \"" new "\""
+            for (i = 1; i <= n; i++) print lines[i]
+            n = 0; has_source = 0; version_line = 0
+          }
+          /^\[\[package\]\]/ { flush() }
+          { lines[++n] = $0 }
+          /^version = / && !version_line { version_line = n }
+          /^source = / { has_source = 1 }
+          END { flush() }' Cargo.lock > Cargo.lock.stamped
+        mv Cargo.lock.stamped Cargo.lock

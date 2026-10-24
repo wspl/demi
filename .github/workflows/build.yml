@@ -1,0 +1,398 @@
+# Builds everything a release publishes, and publishes nothing.
+#
+# Starting it:
+#
+# - A push to `feat/demi-next` starts it, so the branch's newest commit is
+#   built by the time a release or a deploy asks for it (release.yml).
+# - A manual start on a branch, `gh workflow run build.yml --ref <branch>`,
+#   builds the branch's newest commit.
+# - release.yml calls it for a commit it finds no finished build of, with the
+#   commit.
+#
+# The version of a build is `0.1.<commits>`, the number of commits in the
+# commit's history (`.github/actions/version`). It is written into Cargo.toml and
+# Cargo.lock of each job's checkout (`.github/actions/stamp-version`), never
+# committed, so the same commit always builds the same version and no commit
+# exists only to change a number.
+#
+# No build is cancelled: one that runs finishes. Of the pushes that arrive while
+# one runs, only the newest waits and takes the place of the one that waited
+# before, so the branch's newest commit is always built, and a commit pushed in a
+# busy hour may never be. A call from release.yml waits for no other build.
+#
+# Each platform's targets build natively on the newest free standard runner of
+# that platform, one target's group of programs per job, so no runner compiles
+# two targets or two groups one after the other, and every step is a command of
+# the repository: the workflow only orders them and carries files between jobs.
+# A job waits only for the files it uses.
+#
+#   programs (12 jobs) -+-> server release amd64: root, files, image
+#   server (2 jobs) ----+
+#   web ----------------+-> server release arm64: root, files, image
+#
+# No job compiles or compresses what another already did: a command-program job
+# packages its programs, which compresses them, and a runner job compresses its
+# runner, and the server release jobs reuse those copies.
+#
+# The build's artifacts are kept one day: the files are what a release publishes,
+# and storage is billed by the hour. A release that finds them gone builds again.
+#
+# The build runs no check: developers run them, and release acceptance runs the
+# shared Rust suite on each platform that ships a feature.
+name: Build
+
+on:
+  push:
+    branches: [feat/demi-next]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      commit:
+        description: The commit to build, when it is not the one the caller runs at.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# In a call, `github.workflow` names the caller, and every call has a group of
+# its own, so it never waits for, or replaces, a build of a push.
+concurrency:
+  group: ${{ github.workflow == 'Build' && format('build-{0}', github.ref) || format('call-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Cargo judges a source file by its checksum rather than its mtime, which a
+  # fresh checkout sets to the checkout's time: by mtime, every vendored crate
+  # restored from the previous build's cache compiled again. The unstable flag
+  # only lets Cargo accept the setting, so both are needed. These are in the
+  # workflow, not .cargo/config.toml, so a developer's builds keep mtimes.
+  #
+  # A build script's `rerun-if-changed` files are still compared by time, so a
+  # vendored crate's build script watches no file of the repository: it names
+  # its inputs as compiled sources (`include_str!`, `include!`), or watches
+  # environment variables, as uucore and sed do. Restoring times from commits
+  # was rejected, since a change committed before the cached build would be
+  # missed.
+  CARGO_UNSTABLE_CHECKSUM_FRESHNESS: true
+  CARGO_BUILD_FINGERPRINT: content
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-26.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          fetch-depth: 0
+          filter: tree:0
+      - id: version
+        uses: ./.github/actions/version
+
+  # Each target's programs in two jobs, the runner and the command programs,
+  # so no runner compiles two targets or two groups one after the other.
+  programs:
+    name: ${{ matrix.group }} ${{ matrix.target }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Every job's result in one run: any failure stops the release anyway,
+      # at the server release that needs them all.
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc
+        group: [runner, commands]
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-26
+          - target: x86_64-apple-darwin
+            runner: macos-26
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-26.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-26.04-arm
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+            msvc: amd64
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            msvc: arm64
+          - group: runner
+            packages: --package demi-runner
+          - group: commands
+            # demi-mobile's iOS helper is built on the aarch64-apple-darwin
+            # job, with that runner's Xcode (`crates/plugin-mobile/command/src/ios/mod.rs`).
+            packages: --package demi-file --package demi-fetch --package demi-browser --package demi-claude-code --package demi-mobile
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+      - uses: ./.github/actions/native-tools
+        with:
+          msvc: ${{ matrix.msvc }}
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: ${{ matrix.target }}-${{ matrix.group }}
+      - uses: ./.github/actions/stamp-version
+        with:
+          version: ${{ needs.version.outputs.version }}
+      # xtask builds alone here, without its developer features, which leaves
+      # out the commands that only a developer runs, `contracts` and `dev`, and
+      # with them the backend they compile.
+      - name: Build
+        if: runner.os != 'Windows'
+        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
+      # Not in bash: Git's /usr/bin/link comes before MSVC's link.exe there.
+      - name: Build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
+      # Demi's own certificate, the same in every release, so macOS keeps
+      # the user's grants to the runner across updates
+      # (`crates/runner/src/autostart.rs`). Signed
+      # before packaging, which hashes the program as it ships.
+      - name: Sign the runner
+        if: runner.os == 'macOS' && matrix.group == 'runner'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
+          PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          secret=$(openssl rand -hex 16)
+          security create-keychain -p "$secret" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$secret" "$keychain"
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$PASSWORD" -T /usr/bin/codesign -f pkcs12
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$secret" "$keychain" > /dev/null
+          # codesign looks for an identity only in the search list, and
+          # finds a self-signed one, which no trust setting vouches for,
+          # only by its hash.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          runner=".cache/native-target/${{ matrix.target }}/release/demi-runner"
+          codesign --force --sign 250817EDB3EADABE250D5271ABB40DBD8B5984E9 --keychain "$keychain" --identifier sh.demi.runner --timestamp=none "$runner"
+          codesign --verify -R='identifier "sh.demi.runner" and certificate root = H"250817edb3eadabe250d5271abb40dbd8b5984e9"' "$runner"
+          security delete-keychain "$keychain"
+      # Packaging compresses each program into the cache, by its SHA-256,
+      # where the server release finds the copies made, so it compresses
+      # none itself; what packaging publishes is thrown away.
+      - name: Compress the programs
+        run: |
+          for argument in ${{ matrix.packages }}; do
+            [ "$argument" != --package ] || continue
+            cargo run --locked --package xtask --no-default-features -- native package \
+              --package "$argument" --target ${{ matrix.target }} \
+              --output "$RUNNER_TEMP/packages/$argument" --compressed compressed
+          done
+      - uses: ./.github/actions/collect-programs
+        with:
+          name: native-${{ matrix.target }}-${{ matrix.group }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: compressed-${{ matrix.target }}-${{ matrix.group }}
+          path: compressed
+          retention-days: 1
+      # The server release of this architecture, which builds its image too,
+      # runs the xtask this job built rather than compiling its own.
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux' && matrix.group == 'runner'
+        with:
+          name: xtask-${{ matrix.target }}
+          path: target/debug/xtask
+          retention-days: 1
+
+  server:
+    name: server ${{ matrix.target }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-26.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-26.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+      - uses: ./.github/actions/native-tools
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: ${{ matrix.target }}
+      - uses: ./.github/actions/stamp-version
+        with:
+          version: ${{ needs.version.outputs.version }}
+      - name: Build
+        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} --package demi-backend --package demi-machine-manager --package demi-server
+      - uses: ./.github/actions/collect-programs
+        with:
+          name: native-${{ matrix.target }}-server
+
+  web:
+    name: Web app
+    needs: version
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+      # The Bun that `packageManager` in package.json names, the one
+      # developers use: a newer Bun on GitHub, whose ICU words a date
+      # differently, changes nothing until the version is raised there.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      # The contracts the packages are built from compile the workspace.
+      - uses: ./.github/actions/rust-cache
+      - uses: ./.github/actions/stamp-version
+        with:
+          version: ${{ needs.version.outputs.version }}
+      - run: bun install --frozen-lockfile
+      # The packages the web app imports are built first, as their dist/.
+      - run: bun run build
+      # The release's third-party notices, written into the built web app,
+      # whose server releases carry them at their roots
+      # (`crates/xtask/src/notices.rs`).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      - run: bun xtask notices --web packages/web/dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web
+          path: packages/web/dist
+          retention-days: 1
+
+  # Each Linux architecture's server release in one job: its root, the
+  # release's files, and the Cloud image built from them, so an
+  # architecture's image starts as soon as its own root is assembled. A
+  # matrix job cannot wait for one leg of another matrix, which is why the
+  # image is not a job of its own. Both legs assemble the release's files
+  # from the same executables and compressed copies; publish checks they
+  # are the same and publishes one copy.
+  server-release:
+    name: Server release ${{ matrix.arch }}
+    needs: [version, programs, server, web]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-26.04
+            target: x86_64-unknown-linux-musl
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+            target: aarch64-unknown-linux-musl
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      # For the image build script and its pins.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          path: ${{ runner.temp }}/native
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: compressed-*
+          path: compressed
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: web
+          path: ${{ runner.temp }}/web
+      - uses: actions/download-artifact@v8
+        with:
+          name: xtask-${{ matrix.target }}
+          path: ${{ runner.temp }}/xtask
+      - name: Gather the executables
+        run: |
+          chmod +x "$RUNNER_TEMP/xtask/xtask"
+          mkdir -p native-target
+          for archive in "$RUNNER_TEMP"/native/native-*.tar; do
+            tar -xf "$archive" -C native-target
+          done
+      # The release's files are the ones the release offers at its download
+      # location.
+      - name: Assemble the root and the release's files
+        run: |
+          mkdir -p dist/server
+          "$RUNNER_TEMP/xtask/xtask" server-release --publish --output "$RUNNER_TEMP/root" \
+            --files files --downloads "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/" \
+            --server ${{ matrix.target }} --web "$RUNNER_TEMP/web" \
+            --artifacts native-target --compressed compressed
+          tar --zstd -cf "dist/server/demi-$VERSION-server-linux-${{ matrix.arch }}.tar.zst" \
+            -C "$RUNNER_TEMP/root" .
+          cp "native-target/${{ matrix.target }}/release/demi-server" \
+            "dist/server/demi-server-${{ matrix.target }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: server-${{ matrix.arch }}
+          path: dist/server
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: files-${{ matrix.arch }}
+          path: files
+          retention-days: 1
+      # The Ubuntu packages the build downloads are kept between builds, so a
+      # build downloads only what Ubuntu changed since the last one, and a slow
+      # mirror costs only that. A cache entry is never overwritten: the key
+      # names the set of packages, and the build saves an entry only when the
+      # set is not the restored one's.
+      - id: packages
+        name: Restore the Ubuntu packages
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/packages
+          key: ubuntu-packages-${{ matrix.arch }}
+          restore-keys: ubuntu-packages-${{ matrix.arch }}-
+      # The build's apt fetches from the Ubuntu mirror in GitHub's own
+      # network, which the runner itself uses, rather than from across the
+      # internet, where one release's build waited four minutes on stalled
+      # downloads; the image still names Ubuntu's archive.
+      - id: image
+        name: Build the image
+        run: |
+          sudo bash cloud-guest-image/rootfs/build.sh \
+            --xtask "$RUNNER_TEMP/xtask/xtask" \
+            --release "$RUNNER_TEMP/root" \
+            --files "$PWD/files" \
+            --work "$RUNNER_TEMP/work" \
+            --packages "$RUNNER_TEMP/packages" \
+            --output "$RUNNER_TEMP/out/image" \
+            --mirror http://azure.archive.ubuntu.com/ubuntu
+          mkdir -p dist/image
+          tar -cf "dist/image/demi-$VERSION-image-linux-${{ matrix.arch }}.tar" -C "$RUNNER_TEMP/out" image
+          echo "key=ubuntu-packages-${{ matrix.arch }}-$(ls "$RUNNER_TEMP/packages" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: Save the Ubuntu packages
+        if: steps.packages.outputs.cache-matched-key != steps.image.outputs.key
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/packages
+          key: ${{ steps.image.outputs.key }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.arch }}
+          path: dist/image
+          retention-days: 1

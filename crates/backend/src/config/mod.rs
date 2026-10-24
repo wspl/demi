@@ -114,7 +114,7 @@ impl std::str::FromStr for StunUrls {
 #[derive(clap::Parser)]
 #[command(
     name = "demi-backend",
-    version = demi_shared_artifacts::WORKSPACE_VERSION,
+    version = demi_shared_artifacts::BUILD_VERSION,
     about = "The Demi product server"
 )]
 pub struct Config {

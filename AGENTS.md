@@ -24,7 +24,7 @@ contributors start with CONTRIBUTING.md. -->
 - Every build shares one copy of the dependencies; no build compiles them again for another selection ([Testing](docs/delivery/testing.md) § Running).
 - Whoever builds runs `bun xtask sweep` in that checkout when the work is done, so old build products do not fill the disk.
 - Keep test binaries few, as `ARCHITECTURE.md` § Test binaries says.
-- A development build builds only the targets of the Hosts in use; all six targets are for a published release (`.github/workflows/release.yml`).
+- A development build builds only the targets of the Hosts in use; all six targets are for a published release (`.github/workflows/build.yml`).
 - Do not run `cargo fmt` or `cargo clippy`, and do not add them to any check: neither is part of this project's validation.
 - The compiler is the only hard constraint on how code and text are written. A convention (naming, capitalization, layout, style) is written down in `ARCHITECTURE.md`, an entry comment or the gallery and followed; never enforce one with a lint, a script or a test.
 

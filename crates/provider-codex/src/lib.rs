@@ -155,7 +155,7 @@ impl CodexProvider {
     ) -> Self {
         let user_agent = format!(
             "demi-codex-provider/{} ({}; {})",
-            demi_shared_artifacts::WORKSPACE_VERSION,
+            demi_shared_artifacts::BUILD_VERSION,
             std::env::consts::OS,
             std::env::consts::ARCH
         );
