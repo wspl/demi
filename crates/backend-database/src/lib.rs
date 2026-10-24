@@ -146,6 +146,7 @@ pub mod sidebar;
 mod sqlite;
 pub mod subagents;
 pub mod tree;
+pub mod update;
 pub mod usage;
 pub mod web_sessions;
 pub mod workspaces;

@@ -119,7 +119,7 @@ pub(crate) struct Split {
 
 /// The JSON document of `block`. Its entries are raw JSON text, which only
 /// text carries across, so the document is parsed from the block's text.
-fn document(block: &Block) -> Value {
+pub(crate) fn document(block: &Block) -> Value {
     serde_json::from_str(&to_json(block)).expect("JSON just written parses")
 }
 
@@ -358,50 +358,62 @@ impl<'c> Codec<'c> {
     }
 
     fn join(&self, value: &mut Value) -> Result<(), StorageError> {
-        match value {
-            Value::String(text) if text.starts_with(MARK) => *value = self.marked(text)?,
-            Value::Array(items) => items.iter_mut().try_for_each(|item| self.join(item))?,
-            Value::Object(fields) => fields.values_mut().try_for_each(|field| self.join(field))?,
-            _ => {}
-        }
-        Ok(())
+        join_with(value, &mut |hash| contents::read(self.connection, hash))
     }
+}
 
-    /// The value a marker stands for, or the string a marked one is.
-    fn marked(&self, marker: &str) -> Result<Value, StorageError> {
-        let rest = &marker[MARK.len_utf8()..];
-        let mut kind = rest.chars();
-        let Some(kind) = kind.next() else {
-            return Err(corrupt("a marker of no kind".into()));
-        };
-        if kind == MARK {
-            return Ok(Value::String(rest.to_owned()));
+/// `value` with each marker replaced by what it stands for, whose content
+/// `read` gives by its hash.
+pub(crate) fn join_with(
+    value: &mut Value,
+    read: &mut impl FnMut(&Hash) -> Result<Vec<u8>, StorageError>,
+) -> Result<(), StorageError> {
+    match value {
+        Value::String(text) if text.starts_with(MARK) => *value = marked(text, read)?,
+        Value::Array(items) => items.iter_mut().try_for_each(|item| join_with(item, read))?,
+        Value::Object(fields) => fields.values_mut().try_for_each(|field| join_with(field, read))?,
+        _ => {}
+    }
+    Ok(())
+}
+
+/// The value a marker stands for, or the string a marked one is.
+fn marked(
+    marker: &str,
+    read: &mut impl FnMut(&Hash) -> Result<Vec<u8>, StorageError>,
+) -> Result<Value, StorageError> {
+    let rest = &marker[MARK.len_utf8()..];
+    let mut kind = rest.chars();
+    let Some(kind) = kind.next() else {
+        return Err(corrupt("a marker of no kind".into()));
+    };
+    if kind == MARK {
+        return Ok(Value::String(rest.to_owned()));
+    }
+    let rest = &rest[kind.len_utf8()..];
+    let hash = rest
+        .get(..64)
+        .and_then(Hash::from_hex)
+        .ok_or_else(|| corrupt("a marker names no hash".into()))?;
+    let bytes = read(&hash)?;
+    let text = |bytes: Vec<u8>| String::from_utf8(bytes).map_err(|_| corrupt(format!("the content {} is not text", hash.hex())));
+    match kind {
+        'c' => Ok(Value::String(text(bytes)?)),
+        'b' => Ok(Value::String(STANDARD.encode(bytes))),
+        'j' => serde_json::from_slice(&bytes).map_err(|error| corrupt(format!("the content {} is not JSON: {error}", hash.hex()))),
+        's' => {
+            let whole = text(bytes)?;
+            let mut parts = rest.get(65..).unwrap_or_default().splitn(3, ':');
+            let range = parts
+                .next()
+                .and_then(|from| from.parse::<usize>().ok())
+                .zip(parts.next().and_then(|to| to.parse::<usize>().ok()));
+            let piece = range
+                .and_then(|(from, to)| whole.get(from..to))
+                .ok_or_else(|| corrupt("a piece lies outside its content".into()))?;
+            Ok(Value::String(format!("{piece}{}", parts.next().unwrap_or_default())))
         }
-        let rest = &rest[kind.len_utf8()..];
-        let hash = rest
-            .get(..64)
-            .and_then(Hash::from_hex)
-            .ok_or_else(|| corrupt("a marker names no hash".into()))?;
-        let bytes = contents::read(self.connection, &hash)?;
-        let text = |bytes: Vec<u8>| String::from_utf8(bytes).map_err(|_| corrupt(format!("the content {} is not text", hash.hex())));
-        match kind {
-            'c' => Ok(Value::String(text(bytes)?)),
-            'b' => Ok(Value::String(STANDARD.encode(bytes))),
-            'j' => serde_json::from_slice(&bytes).map_err(|error| corrupt(format!("the content {} is not JSON: {error}", hash.hex()))),
-            's' => {
-                let whole = text(bytes)?;
-                let mut parts = rest.get(65..).unwrap_or_default().splitn(3, ':');
-                let range = parts
-                    .next()
-                    .and_then(|from| from.parse::<usize>().ok())
-                    .zip(parts.next().and_then(|to| to.parse::<usize>().ok()));
-                let piece = range
-                    .and_then(|(from, to)| whole.get(from..to))
-                    .ok_or_else(|| corrupt("a piece lies outside its content".into()))?;
-                Ok(Value::String(format!("{piece}{}", parts.next().unwrap_or_default())))
-            }
-            _ => Err(corrupt(format!("a marker of the kind {kind:?}, which this release does not know"))),
-        }
+        _ => Err(corrupt(format!("a marker of the kind {kind:?}, which this release does not know"))),
     }
 }
 
@@ -482,6 +494,79 @@ pub(crate) fn insert_split(
             |row| row.get(0),
         )?;
     name_contents(transaction, "block_contents", "record", record, &named)
+}
+
+/// A content of a record a conversion prepared: compressed by the row that
+/// held it first, or as it is for a row that found it claimed, which the
+/// writer compresses when the first one has not been written before it.
+pub(crate) enum PreparedContent {
+    Compressed(Vec<u8>),
+    Claimed(Vec<u8>),
+}
+
+/// A record a conversion prepared away from the database: its columns, its
+/// body compressed with the dictionary, and its contents.
+pub(crate) struct Prepared {
+    pub columns: Columns,
+    pub body: Vec<u8>,
+    pub contents: Vec<(Hash, PreparedContent)>,
+}
+
+/// Writes the row `idx` of `node` for the record `prepared`, compressed
+/// with `dictionary`, with the contents it names.
+pub(crate) fn insert_prepared(
+    connection: &Connection,
+    node: &str,
+    idx: i64,
+    follows: Option<i64>,
+    replaces: Option<i64>,
+    dictionary: Option<i64>,
+    prepared: Prepared,
+) -> Result<(), StorageError> {
+    let mut named = BTreeSet::new();
+    for (hash, content) in &prepared.contents {
+        let id = match contents::id_of(connection, hash)? {
+            Some(id) => id,
+            None => match content {
+                PreparedContent::Compressed(stored) => contents::insert_stored(connection, hash, stored)?,
+                PreparedContent::Claimed(bytes) => contents::put(connection, hash, bytes)?,
+            },
+        };
+        named.insert(id);
+    }
+    let c = &prepared.columns;
+    let record: i64 = connection
+        .prepare_cached(
+            "INSERT INTO blocks (node_id, idx, follows, replaces, format, type, id, turn_id, command, source,
+               status, forkable, placement, created_at, outside_turn, resumed, summary_tokens, dictionary, body)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+             RETURNING record",
+        )?
+        .query_row(
+            params![
+                node,
+                idx,
+                follows,
+                replaces,
+                FORMAT,
+                c.kind,
+                c.id,
+                c.turn_id,
+                c.command,
+                c.source,
+                c.status,
+                c.forkable,
+                c.placement,
+                c.created_at,
+                c.outside_turn,
+                c.resumed,
+                c.summary_tokens,
+                dictionary,
+                prepared.body
+            ],
+            |row| row.get(0),
+        )?;
+    name_contents(connection, "block_contents", "record", record, &named)
 }
 
 /// Replaces the block of the row `idx` of `node` by `block`; the contents

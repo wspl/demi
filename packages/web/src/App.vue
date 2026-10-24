@@ -8,6 +8,7 @@ import { errorCode, reportError } from '@demicodes/web-ui/infra/errors'
 import { t as sidebarText } from '@demicodes/web-ui/sidebar/locales/text'
 import { t as authText } from './auth/locales/text'
 import { reloadFor, reloadPage } from '@demicodes/web-ui/infra/build-reload'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
@@ -20,6 +21,8 @@ import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import SelectionFieldHost from '@demicodes/web-ui/agent/comments/SelectionFieldHost.vue'
 import { APP_BAR_PX } from '@demicodes/web-ui/ui/app-bar'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
+import UpdatingScreen from '@demicodes/web-ui/ui/UpdatingScreen.vue'
+import { update } from './state/update'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideKeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
@@ -65,7 +68,11 @@ const updateFailed = ref(false)
 watch(
   () => product.newBuild,
   (newer) => {
-    if (newer !== null && !reloadFor(newer, reloadPage)) {
+    if (newer === null) {
+      return
+    }
+    pageLog.info('build.differs', { page: import.meta.env.DEMI_WEB_BUILD ?? null, served: newer })
+    if (!reloadFor(newer, reloadPage)) {
       updateFailed.value = true
     }
   },
@@ -476,5 +483,8 @@ useAppShortcuts(
   <SelectionFieldHost />
   <ToastHost :below="APP_BAR_PX" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
+  <Teleport to="body">
+    <UpdatingScreen v-if="update" :progress="update.progress" />
+  </Teleport>
   <MediaViewer :viewer="mediaViewer" />
 </template>

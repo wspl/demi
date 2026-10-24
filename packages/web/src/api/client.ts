@@ -4,6 +4,7 @@ import { httpStatusLine, isAbortError } from '@demicodes/utils'
 import { coded, environmental, errorFields } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
+import { noteUpdating } from '../state/update'
 
 // Every control operation is an ordinary HTTP request: one answer, a status and an
 // error the caller can show, visible in the network panel and the backend's log, and
@@ -216,8 +217,8 @@ const AWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
  *
  * - no answer came (no network, no connection, no answer in time);
  * - a proxy in front of the backend said it is away;
- * - the backend said it is shutting down and did not do the request
- *   (`crates/backend/src/backend.rs`).
+ * - the backend said it is shutting down, starting or updating its data, and
+ *   did not do the request (`crates/backend/src/backend.rs`).
  *
  * Every other answer of the backend's own carries its `{ code, message }` body, so an
  * error with another code is the backend's answer, whatever its status.
@@ -233,8 +234,11 @@ export function unreachable(error: unknown): boolean {
   if (!(error instanceof ApiError)) {
     return false
   }
-  return error.code === null ? AWAY_STATUSES.has(error.status) : error.code === 'backend_closing'
+  return error.code === null ? AWAY_STATUSES.has(error.status) : AWAY_CODES.has(error.code)
 }
+
+/** What the backend answers while it does not serve, which `unreachable` counts as away. */
+const AWAY_CODES = new Set<string>(['backend_closing', 'backend_starting', 'updating'])
 
 /** `error`, marked as the environment's when the backend could not be reached (`unreachable`). */
 function reachedOrNot(error: unknown): unknown {
@@ -373,7 +377,11 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'on
     return response
   }
 
-  throw reachedOrNot(apiError(response.status, await response.text(), response.headers, response.statusText))
+  const error = apiError(response.status, await response.text(), response.headers, response.statusText)
+  if (error.code === 'updating') {
+    noteUpdating()
+  }
+  throw reachedOrNot(error)
 }
 
 /**

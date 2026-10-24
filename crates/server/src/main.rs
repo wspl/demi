@@ -53,6 +53,7 @@ mod gvisor;
 mod journal;
 mod layout;
 mod moving;
+mod progress;
 mod runners;
 mod services;
 mod settings;

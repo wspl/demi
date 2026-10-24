@@ -153,7 +153,12 @@ fn shared_page_policy(token: &str, public: Option<&url::Url>) -> String {
     let routes = public
         .and_then(|public| public.join(&format!("api/shares/{encoded}")).ok())
         .map(|route| format!("{route} {route}/"));
-    let connect = routes.as_deref().unwrap_or("'none'");
+    // And `GET /api/update`, which the page asks while the backend updates.
+    let update = public.and_then(|public| public.join("api/update").ok());
+    let connect = match (&routes, &update) {
+        (Some(routes), Some(update)) => format!("{routes} {update}"),
+        _ => "'none'".to_owned(),
+    };
     let media = routes.as_deref().map(|routes| format!("{routes} ")).unwrap_or_default();
     format!(
         "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \

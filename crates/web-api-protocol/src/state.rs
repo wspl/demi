@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use demi_shared_types::MAX_SAFE_INTEGER;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -278,4 +279,39 @@ pub enum SyncEvent {
     Heartbeat,
     /// The answer to the page's `{ ping: id }`, sent at once.
     Pong { id: u32 },
+}
+
+/// `GET /update`, which the backend answers without a session, before it
+/// serves anything else too: whether it migrates its data for a new
+/// release, and how far it is. It names no conversation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum UpdateState {
+    /// It serves, or starts with nothing to migrate.
+    None,
+    /// It migrates its data and serves nothing else until it is done.
+    Updating {
+        /// What it migrates now.
+        step: UpdateStep,
+        /// The conversations done, of `conversations`.
+        conversations_done: u32,
+        conversations: u32,
+        /// The bytes of the databases done, of `bytes`.
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        bytes_done: u64,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        bytes: u64,
+        /// The seconds the rest takes; none until a rate is known.
+        left_seconds: Option<u32>,
+    },
+}
+
+/// What an update migrates now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateStep {
+    /// The accounts, settings and the list of conversations, first.
+    Control,
+    /// Each conversation's own database.
+    Conversations,
 }

@@ -3353,6 +3353,7 @@ dependencies = [
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-cli",
+ "demi-web-api-protocol",
  "dotenvy",
  "jiff",
  "rustix",

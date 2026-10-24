@@ -284,7 +284,12 @@ journal, `/opt/demi/server/upgrade.json`, before it takes the step:
    consistent.
 4. Point `current` at the new release and copy its units into place.
 5. Start the manager, then the backend, and wait for each to report ready.
-   The backend migrates the control database before it reports ready.
+   The backend listens at once, migrates the control database and migrates
+   or converts every conversation database, and only then reports ready
+   (`crates/backend-http/src/update.rs`). Until then it answers every page
+   with the update's progress, which each page shows over the app, and
+   `demi-server` prints it, `Updating conversations: 41 of 73 (2.7 GB of
+   6.6 GB), about 3 minutes left`.
 6. Remove the journal, then every release and snapshot other than the new
    release and the one it replaced.
 

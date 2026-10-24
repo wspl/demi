@@ -9,6 +9,7 @@ import { productWould } from '../product-would'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
+import UpdatingScreen from '@demicodes/web-ui/ui/UpdatingScreen.vue'
 import GalleryContextMenus from '../components/GalleryContextMenus.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import FloatingWindow from '@demicodes/web-ui/ui/FloatingWindow.vue'
@@ -1323,6 +1324,40 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           <GalleryOverlayWell size="wide">
             <GallerySpecimen variant="could not be updated">
               <UpdateFailedScreen @reload="productWould('Reload the Page')" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Updating Demi"
+        note="Over the whole app while Demi updates its data for a new release, from the first answer that says so until Demi serves again; then the page loads itself in the new build. Under the bar: what Demi updates now, the accounts and settings first, then the conversations, one of how many; the bytes done of how many; and the time left once Demi can estimate it, rounded to minutes as macOS Software Update gives it. Until Demi first says how far it is, the bar moves and nothing is written under it; afterwards the screen keeps what Demi last said while it cannot be reached. Nothing on it acts."
+      >
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="accounts and settings, estimating">
+              <UpdatingScreen :progress="{ step: 'control', conversationsDone: 0, conversations: 73, bytesDone: 0, bytes: 7088059392, leftSeconds: null }" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="conversations, minutes left">
+              <UpdatingScreen :progress="{ step: 'conversations', conversationsDone: 41, conversations: 73, bytesDone: 2899102924, bytes: 7088059392, leftSeconds: 185 }" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="conversations, under a minute">
+              <UpdatingScreen :progress="{ step: 'conversations', conversationsDone: 70, conversations: 73, bytesDone: 6591895552, bytes: 7088059392, leftSeconds: 20 }" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="before Demi says">
+              <UpdatingScreen :progress="null" />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>

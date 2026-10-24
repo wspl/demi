@@ -84,6 +84,7 @@ mod streams;
 mod subagents;
 mod sync;
 mod transfer;
+mod update;
 mod usage;
 mod users;
 mod workspaces;
@@ -181,29 +182,85 @@ pub fn runner_socket(path: &Path) -> io::Result<Option<UnixListener>> {
     Ok(Some(listener))
 }
 
+/// The network listener of a backend that does not serve yet: it answers
+/// what [`update`] does until [`Listening::open`] gives it every route.
+pub struct Listening {
+    local_addr: SocketAddr,
+    routes: Arc<std::sync::RwLock<Router>>,
+    closing: CancellationToken,
+    connections: CancellationToken,
+    stop: CancellationToken,
+    serving: JoinHandle<()>,
+}
+
 impl Edge {
-    /// Serves the network at `address`, the runner routes on
+    /// Listens at `address` before the backend opens its data, answering the
+    /// progress of `update`, the web app's files and 503 to the rest. A
+    /// share's page names the backend at `public_url`.
+    pub async fn listen(
+        address: SocketAddr,
+        public_url: Option<&url::Url>,
+        web_directory: Option<PathBuf>,
+        update: Arc<demi_backend_database::update::Update>,
+    ) -> io::Result<Listening> {
+        let tcp = TcpListener::bind(address).await?.tap_io(listener::without_delay);
+        let local_addr = tcp.local_addr()?;
+        let public = demi_backend_runners::public_url::PublicUrl::default();
+        public.listening(public_url, local_addr);
+        let routes = Arc::new(std::sync::RwLock::new(update::routes(update, web_directory, public)));
+        let closing = CancellationToken::new();
+        let connections = CancellationToken::new();
+        let stop = CancellationToken::new();
+        let listener = EdgeListener::new(tcp, closing.clone(), connections.clone());
+        let serving = {
+            let routes = routes.clone();
+            tokio::spawn(listener::serve(listener, stop.clone(), move |peer, request| {
+                // Nothing panics while it holds the lock.
+                let app = routes.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+                respond(app, peer, request)
+            }))
+        };
+        Ok(Listening {
+            local_addr,
+            routes,
+            closing,
+            connections,
+            stop,
+            serving,
+        })
+    }
+}
+
+impl Listening {
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    /// Serves every route on the listener, the runner routes on
     /// `runner_socket` when there is one ([`runner_socket`]), and the
     /// management socket's requests on `manage_socket` when there is one
     /// ([`manage_socket`]).
-    pub async fn start(
-        address: SocketAddr,
+    pub fn open(
+        self,
         runner_socket: Option<UnixListener>,
         manage_socket: Option<UnixListener>,
         state: AppState,
         web_directory: Option<PathBuf>,
-    ) -> io::Result<Self> {
-        let tcp = TcpListener::bind(address).await?.tap_io(listener::without_delay);
-        let local_addr = tcp.local_addr()?;
+    ) -> Edge {
+        let Self {
+            local_addr,
+            routes,
+            closing,
+            connections,
+            stop,
+            serving,
+        } = self;
         // Before the first request: a Cloud's boot and a local store's
         // downloads name this URL.
         state
             .services
             .public_url
             .listening(state.site.public_url.as_ref(), local_addr);
-        let closing = CancellationToken::new();
-        let connections = CancellationToken::new();
-        let stop = CancellationToken::new();
         let serving_runners = runner_socket.map(|socket| {
             let socket = socket.tap_io(listener::within_one_sandbox_read);
             let listener = EdgeListener::new(socket, closing.clone(), connections.clone());
@@ -214,14 +271,9 @@ impl Edge {
         });
         let serving_management = manage_socket
             .map(|socket| tokio::spawn(manage::serve(socket, state.clone(), stop.clone())));
-        let listener = EdgeListener::new(tcp, closing.clone(), connections.clone());
         let app = router(state.clone(), closing.clone(), web_directory);
-        let serving = tokio::spawn(listener::serve(
-            listener,
-            stop.clone(),
-            move |peer, request| respond(app.clone(), peer, request),
-        ));
-        Ok(Self {
+        *routes.write().unwrap_or_else(std::sync::PoisonError::into_inner) = app;
+        Edge {
             local_addr,
             closing,
             connections,
@@ -229,9 +281,19 @@ impl Edge {
             serving,
             serving_runners,
             serving_management,
-        })
+        }
     }
 
+    /// Stops listening, for a start that failed before it served.
+    pub async fn close(self) -> io::Result<()> {
+        self.closing.cancel();
+        self.connections.cancel();
+        self.stop.cancel();
+        self.serving.await.map_err(io::Error::other)
+    }
+}
+
+impl Edge {
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
     }
@@ -275,6 +337,14 @@ pub struct AppState {
     pub services: Arc<Services>,
     pub shards: Shards,
     pub site: Arc<Site>,
+    /// The update before this start, which `GET /api/update` says is over.
+    pub update: Arc<demi_backend_database::update::Update>,
+}
+
+impl FromRef<AppState> for Arc<demi_backend_database::update::Update> {
+    fn from_ref(state: &AppState) -> Self {
+        state.update.clone()
+    }
 }
 
 impl FromRef<AppState> for Arc<Services> {
@@ -634,6 +704,7 @@ fn runners_and_downloads() -> Router<AppState> {
             get(install::native_artifact),
         )
         .route("/api/runner", get(runners::socket))
+        .route("/api/update", get(update::read))
         .method_not_allowed_fallback(no_route)
 }
 

@@ -25,6 +25,16 @@
     "title": "This Page Could Not Be Updated",
     "body": "Demi has a newer version. Reloading still shows the old one."
   },
+  "updating": {
+    "title": "Updating Demi",
+    "control": "Updating accounts and settings",
+    "conversations": "Updating conversations: {done} of {count}",
+    "bytes": "{done} of {all}",
+    "estimating": "Estimating time remaining…",
+    "underAMinute": "Less than a minute remaining",
+    "minutesLeft": "About {count} minute remaining | About {count} minutes remaining",
+    "body": "Demi opens by itself when the update is done."
+  },
   "startingScreen": {
     "connecting": "Connecting to Demi…",
     "loading": "Loading Demi…",

@@ -58,6 +58,11 @@ impl Settings {
             .map(PathBuf::from)
     }
 
+    /// Where the backend listens, when the configuration says.
+    pub fn backend_listen(&self) -> Option<std::net::SocketAddr> {
+        self.value("DEMI_BACKEND_LISTEN")?.parse().ok()
+    }
+
     /// The configuration file's text: one `NAME="value"` per line, which
     /// systemd's environment files and `read` both read.
     pub fn file(&self) -> String {
