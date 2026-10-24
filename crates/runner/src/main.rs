@@ -513,6 +513,22 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             &executable,
         ),
     };
+    // An installation from before runs its runner from its release's
+    // directory: the runner links itself to the installation's one path and
+    // starts from there (`crates/runner/src/update.rs`). One that cannot, such
+    // as while an installer holds the installation, runs where it is and
+    // tries again at its next start.
+    let mut unsettled = None;
+    if let Some(installed) = installed.as_ref().filter(|_| !removing) {
+        match installed.settle().await {
+            Ok(Some(successor)) => {
+                successor.start()?;
+                return Ok(0);
+            }
+            Ok(None) => {}
+            Err(error) => unsettled = Some(error),
+        }
+    }
     // A managed guest is never paired, so nobody removes its runner; one that
     // `uninstall` runs is being removed.
     let removal = (boot.is_none() && !removing)
@@ -581,6 +597,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     let _control_watch = demi_runner_process::steps::watch_control_loop();
     if let Some(reason) = unresolved {
         tracing::warn!(event = "runner.environment_own", %reason, "the device environment is the runner's own");
+    }
+    if let Some(error) = unsettled {
+        tracing::warn!(event = "runner.unsettled", %error, "the runner runs from its release's directory");
     }
     // Every job and stream shares this process's open files; without the raise the runner still works, waiting sooner.
     #[cfg(unix)]

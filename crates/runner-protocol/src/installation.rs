@@ -24,6 +24,48 @@
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
 
+/// The launcher an installer writes as `run` in an installation, which its
+/// service registration runs: it starts the installation's runner, the file
+/// [`RUNNER`](crate::release::RUNNER) in its directory (`.exe` on Windows),
+/// with the backend and the release the installation records. Every release
+/// runs from that one file, so the system tells one program across updates,
+/// as a Mac's privacy permissions need: they follow a program's path. The
+/// runner writes the launcher too, when it brings an installation from before
+/// to this layout (`crates/runner/src/update.rs`).
+pub const LAUNCHER_SH: &str = r#"#!/bin/sh
+set -eu
+state=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+IFS= read -r backend < "$state/backend-url"
+IFS= read -r release < "$state/release-id"
+export DEMI_HOME="$state" DEMI_RELEASE_ID="$release"
+action=${1:-run}
+[ "$#" -eq 0 ] || shift
+exec "$state/demi-runner" "$action" --backend "$backend" "$@"
+"#;
+
+/// The launcher an installer writes as `run.ps1` on Windows, as `LAUNCHER_SH`.
+pub const LAUNCHER_PS1: &str = r#"param(
+  [ValidateSet('run', 'start', 'status', 'drain', 'uninstall')][string]$Action = 'run',
+  [Parameter(ValueFromRemainingArguments)][string[]]$Rest = @()
+)
+$ErrorActionPreference = 'Stop'
+$demiState = $PSScriptRoot
+$demiBackend = [IO.File]::ReadAllText((Join-Path $demiState 'backend-url')).Trim()
+$demiRelease = [IO.File]::ReadAllText((Join-Path $demiState 'release-id')).Trim()
+$demiPreviousHome = $env:DEMI_HOME
+$demiPreviousRelease = $env:DEMI_RELEASE_ID
+try {
+  $env:DEMI_HOME = $demiState
+  $env:DEMI_RELEASE_ID = $demiRelease
+  & (Join-Path $demiState 'demi-runner.exe') $Action --backend $demiBackend @Rest
+  $demiExit = $LASTEXITCODE
+} finally {
+  $env:DEMI_HOME = $demiPreviousHome
+  $env:DEMI_RELEASE_ID = $demiPreviousRelease
+}
+exit $demiExit
+"#;
+
 /// The directories under the user's home that hold every installation.
 pub const ROOT: [&str; 2] = [".demi", "runner"];
 

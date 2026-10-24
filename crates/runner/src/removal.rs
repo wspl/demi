@@ -95,6 +95,8 @@ const RUNNER_ENTRIES: &[&str] = &[
     "artifacts",
     "backend-url",
     "commands",
+    "demi-runner",
+    "demi-runner.exe",
     "install.lock",
     "jobs",
     "log",
