@@ -155,7 +155,8 @@ const stopTaking = watch(
 )
 const stopForgetting = onSessionExpired((over) => {
   const user = session.user
-  if (over && user) {
+  // A sign-out forgets the account itself, once the backend took it.
+  if (over && user && !session.leaving) {
     void forgetAccount(user.id).catch((error: unknown) => pageLog.warn('account_data.forget_failed', errorFields(error)))
   }
 })
@@ -201,7 +202,8 @@ const stopIdentity = watch(
   { immediate: true },
 )
 const stopExpiry = onSessionExpired(() => {
-  if (!session.signedIn) {
+  // A session that ends because the account signs out is not one that expired.
+  if (!session.signedIn || session.leaving) {
     return
   }
   conversations.saveDrafts()

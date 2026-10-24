@@ -295,8 +295,6 @@ async function removeProject(id: string) {
 async function signOut(): Promise<void> {
   try {
     await useSession().signOut()
-    // A new document releases account-scoped stores, sockets and draft data.
-    window.location.replace('/login')
   } catch (error) {
     reportError(authText('login.signOutFailed'), error, { site: 'login.signOutFailed', userVisible: true })
   }

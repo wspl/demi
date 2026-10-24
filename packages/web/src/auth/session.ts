@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import { defineStore } from 'pinia'
 import { coded, errorFields, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
@@ -84,7 +85,14 @@ async function setupNeeded(signal?: AbortSignal): Promise<boolean> {
 }
 
 export const useSession = defineStore('session', {
-  state: () => ({ current: { status: 'checking' } as SessionState }),
+  state: () => ({
+    current: { status: 'checking' } as SessionState,
+    /**
+     * Whether the account is signing out, from the product or from the
+     * choice of its password alike, until the page loads itself again.
+     */
+    leaving: false,
+  }),
   getters: {
     signedIn: (state) => state.current.status === 'signedIn',
     user: (state) =>
@@ -242,25 +250,40 @@ export const useSession = defineStore('session', {
         this.current = { status: 'signedIn', user: { ...this.current.user, choosesPassword: false } }
       }
     },
+    /**
+     * Signs the account out, then forgets its data and loads the page again
+     * at the sign-in page, which releases its account-scoped stores, sockets
+     * and drafts. The page shows what it showed meanwhile: the backend ends
+     * the session at once, but the browser holds its answer back while it
+     * clears its cache, and what the ended session is refused meanwhile is
+     * the sign-out's doing, never the session expiring (`leaving`).
+     */
     async signOut(): Promise<void> {
-      // While the session can still say so: what comes for the account
-      // after it signed out never reaches this browser.
-      await unsubscribeOnSignOut()
+      const { current } = this
+      if (current.status !== 'signedIn' && current.status !== 'choosingPassword') {
+        return
+      }
+      this.leaving = true
       try {
+        // While the session can still say so: what comes for the account
+        // after it signed out never reaches this browser.
+        await unsubscribeOnSignOut()
         await apiRequest('/auth/logout', { method: 'POST' })
       } catch (error) {
         if (!(error instanceof ApiError && error.code === 'unauthenticated')) {
+          this.leaving = false
           throw error
         }
       }
-      // Signed out first, so that the page stops following the account and no
-      // request the ended session makes reads as the session expiring; then
-      // forgotten before the page loads itself again, which could cut it
-      // short. What stays is forgotten when another account signs in.
-      const { current } = this
-      const userId = current.status === 'signedIn' || current.status === 'choosingPassword' ? current.user.id : null
+      // Forgotten before the page loads itself again, which could cut it
+      // short; what stays is forgotten when another account signs in.
+      await forgetAccount(current.user.id).catch((cause: unknown) => pageLog.warn('account_data.forget_failed', errorFields(cause)))
+      // Signed out before the page goes, so that what it still does for the
+      // account stops, and nothing it waits for, such as an upload, asks
+      // to keep the page.
       this.current = { status: 'signedOut' }
-      await (userId ? forgetAccount(userId) : Promise.resolve()).catch((cause: unknown) => pageLog.warn('account_data.forget_failed', errorFields(cause)))
+      await nextTick()
+      window.location.replace('/login')
     },
   },
 })
