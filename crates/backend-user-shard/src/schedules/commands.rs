@@ -1,10 +1,10 @@
 //! The product's `demi schedule` group.
 //!
-//! The agent lists and shows the schedules of the conversation it works in,
-//! creates, changes and deletes them with the user's Manage Schedules, and runs
-//! one now. It acts on this conversation's schedules only, and its permission is
-//! the one guard: a schedule it makes wakes the agent, the one that made it
-//! included.
+//! The agent lists, shows, creates, changes and deletes the schedules of the
+//! conversation it works in, and runs one now. It acts on this conversation's
+//! schedules only, which is what guards it: a schedule wakes no one but this
+//! conversation's agent, as a command's end does, so it asks for no
+//! permission.
 
 use std::rc::{Rc, Weak};
 
@@ -31,13 +31,6 @@ use crate::conversation::organize::{failed, verb};
 use crate::shard::Shard;
 use crate::shard::credential_commands::print_json;
 
-/// The permission category of `create`, `edit` and `delete`.
-pub(crate) const MANAGE: &str = "schedule.manage";
-
-const MANAGE_ACTION: &str = "manage schedules";
-
-const MANAGE_DESCRIPTION: &str = "Manage Schedules lets the agents of this conversation create, change and delete the schedules that wake it, at a time, when a command's output changes, or when a URL is called.";
-
 const SUMMARY: &str = "This conversation's schedules, which wake it: once, on a repeating cycle with tasks in it, every interval, by cron, when a command's output changes, or when a URL is called. List, show, create, change, run now and delete them.";
 
 /// The group's entry in the model's capability index.
@@ -45,10 +38,10 @@ const ENTRY: &str = "Wakes this conversation once, on a repeating cycle, every i
 
 const LIST_SUMMARY: &str = "List this conversation's schedules: id, whether it is on, its trigger's kind, its next and last run, and its name; show gives the timing and the tasks.";
 const SHOW_SUMMARY: &str = "Show one schedule: its trigger, a repeat's tasks with their ids, its prompt, state and latest runs; a URL trigger's address.";
-const CREATE_SUMMARY: &str = "Create a schedule, on at once, with the message each run sends on stdin. One trigger: --repeat with --task-at for its first task, --at, --every, --cron, --watch with --every for a change, or --url. Needs the user's permission.";
-const EDIT_SUMMARY: &str = "Change the parts the options name and keep the others. --repeat changes a repeat's cycle and keeps its tasks; another trigger option replaces the trigger. A repeat's task: --task picks one by its id (the only one by default) for --task-at, --holidays and stdin; --add-task adds one; --delete-task removes one. Without tasks, stdin replaces the message. --paused pauses it, --on turns it on. Needs the user's permission.";
+const CREATE_SUMMARY: &str = "Create a schedule, on at once, with the message each run sends on stdin. One trigger: --repeat with --task-at for its first task, --at, --every, --cron, --watch with --every for a change, or --url.";
+const EDIT_SUMMARY: &str = "Change the parts the options name and keep the others. --repeat changes a repeat's cycle and keeps its tasks; another trigger option replaces the trigger. A repeat's task: --task picks one by its id (the only one by default) for --task-at, --holidays and stdin; --add-task adds one; --delete-task removes one. Without tasks, stdin replaces the message. --paused pauses it, --on turns it on.";
 const RUN_SUMMARY: &str = "Run a schedule now, whatever its timing, its limit or whether it is paused; --task picks a repeat's task when it has several.";
-const DELETE_SUMMARY: &str = "Delete a schedule and its runs' records. Needs the user's permission.";
+const DELETE_SUMMARY: &str = "Delete a schedule and its runs' records.";
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -138,7 +131,6 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
     };
     GroupBuilder::new("schedule", SUMMARY)
         .index_entry(ENTRY)
-        .permission(MANAGE, MANAGE_ACTION, MANAGE_DESCRIPTION)
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
@@ -155,7 +147,6 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
         )
         .leaf(
             parts(LeafBuilder::rpc("create", CREATE_SUMMARY).input::<PartsArgs>())
-                .permission(MANAGE)
                 .json_output::<Shown>()
                 .bind(TypedRpc::new(verb(shard.clone(), create))),
         )
@@ -169,7 +160,6 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("on", "Turn it on.")
                 .describe("new-secret", "Make a new secret for a URL trigger and print it once; the old one stops working at once.")
                 .positionals(["id"])
-                .permission(MANAGE)
                 .json_output::<Shown>()
                 .bind(TypedRpc::new(verb(shard.clone(), edit))),
         )
@@ -186,7 +176,6 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<IdArgs>()
                 .describe("id", "The schedule's id.")
                 .positionals(["id"])
-                .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard, delete))),
         )
 }
