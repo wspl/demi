@@ -129,7 +129,9 @@
       "new": "新对话",
       "search": "搜索对话",
       "sidebar": "切换侧边栏",
-      "settings": "打开设置"
+      "settings": "打开设置",
+      "searchFiles": "在文件中搜索",
+      "findHere": "查找"
     }
   },
   "notifications": {

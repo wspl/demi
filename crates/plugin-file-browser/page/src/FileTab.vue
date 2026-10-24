@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { FileView, PaneReading, treeLayout, usePage, usePaneReady, type TabUpdate } from '@demicodes/plugin-sdk'
-import { fileView, locateFolder, shownPath, showDirectory, showFile, showMode, treeShown, type FileData } from './data'
+import { fileView, locateFolder, searchShown, shownPath, showDirectory, showFile, showMode, treeShown, type FileData } from './data'
 
 /**
  * The File view of one conversation: one file of its Host beside the Host's
@@ -28,9 +28,9 @@ usePaneReady(() => workspace.value !== null)
 /** The directory the view was opened for, whose tree it shows: the conversation's unless a child's link opened it. */
 const root = computed(() => props.data.root ?? workspace.value?.root ?? '/')
 
-/** A file picked in the tree or a link in a document, in the directory the view was opened for. */
-function open(path: string): void {
-  emit('update', showFile(props.data, path, undefined, props.data.root))
+/** A file picked in the tree, a link in a document or one Search in Files found, at its line, in the directory the view was opened for. */
+function open(path: string, line?: number): void {
+  emit('update', showFile(props.data, path, line, props.data.root))
 }
 
 /** A directory the tree's caption chose among the conversation's agents'. */
@@ -59,6 +59,14 @@ watch([() => props.data.tree, view], ([tree, shown]) => {
   }
   emit('update', treeShown(props.data), { replace: true })
   void shown.showInTree()
+}, { immediate: true, flush: 'post' })
+// Search in Files: once the view is there, its field floats over it, focused.
+watch([() => props.data.search, view], ([search, shown]) => {
+  if (!search || !shown) {
+    return
+  }
+  emit('update', searchShown(props.data), { replace: true })
+  shown.showSearch()
 }, { immediate: true, flush: 'post' })
 </script>
 

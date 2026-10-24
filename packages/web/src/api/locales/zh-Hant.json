@@ -9,6 +9,7 @@
     "notRepository": "它不在 Git 儲存庫中。",
     "other": "主機沒有回應。",
     "conversationBusy": "對話正在更換主機。",
-    "selectDevice": "請選取已連線的裝置。"
+    "selectDevice": "請選取已連線的裝置。",
+    "searchCut": "搜尋在完成前中斷了。"
   }
 }

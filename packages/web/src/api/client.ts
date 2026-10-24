@@ -281,6 +281,12 @@ interface ApiRequestOptions extends RequestInit {
   /** For a request whose work is known to take longer than most, such as starting the conversation browser on a Cloud. */
   timeoutMs?: number
   /**
+   * For an answer that streams for as long as its work runs, such as a
+   * search's: the deadline holds until the answer starts, and its body is
+   * read until the caller's signal aborts.
+   */
+  streams?: boolean
+  /**
    * False for a request that must not wait for the backend: one by which the
    * page learns whether it still reaches the backend, as the
    * synchronization channel's own question after it could not connect.
@@ -335,18 +341,25 @@ export async function apiRequest(
 
 /** One try of a request, with its own deadline. */
 async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'onUnreachable'>): Promise<Response> {
-  const { timeoutMs, ...request } = options
-  const timeout = AbortSignal.timeout(timeoutMs ?? REQUEST_TIMEOUT_MS)
+  const { timeoutMs, streams, ...request } = options
+  const deadline = new AbortController()
+  const timer = setTimeout(
+    () => deadline.abort(new DOMException('The request timed out.', 'TimeoutError')),
+    timeoutMs ?? REQUEST_TIMEOUT_MS,
+  )
   const signal = options.signal
-    ? AbortSignal.any([options.signal, timeout])
-    : timeout
+    ? AbortSignal.any([options.signal, deadline.signal])
+    : deadline.signal
   const response = await fetch(apiUrl(path), {
     ...request,
     credentials: 'same-origin',
     signal,
   }).catch((error: unknown) => {
+    clearTimeout(timer)
     throw reachedOrNot(error)
   })
+  if (streams)
+    clearTimeout(timer)
   // An answer without content, a 204: Chrome counts a request whose answer the
   // page never reads as aborted (net::ERR_ABORTED), though the backend answered
   // it, and a caller of an answer without content has nothing to read. It is

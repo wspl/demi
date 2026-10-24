@@ -8,7 +8,8 @@
     "copyPath": "경로 복사",
     "clear": "지우기",
     "dismiss": "닫기",
-    "openFile": "파일 열기"
+    "openFile": "파일 열기",
+    "search": "파일에서 검색"
   },
   "reading": "읽는 중…",
   "gone": "더 이상 없습니다.",
@@ -226,5 +227,14 @@
     "previous": "이전",
     "next": "다음",
     "none": "열린 사진이나 동영상이 없습니다."
+  },
+  "search": {
+    "title": "파일에서 검색",
+    "placeholder": "파일 검색",
+    "searching": "검색 중…",
+    "nothing": "결과 없음",
+    "failed": "파일을 검색할 수 없습니다.",
+    "results": "파일",
+    "limited": "찾은 파일 중 처음 {count}개를 표시합니다. 더 입력하여 범위를 좁히세요."
   }
 }

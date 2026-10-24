@@ -8,7 +8,8 @@
     "copyPath": "複製路徑",
     "clear": "清除",
     "dismiss": "關閉",
-    "openFile": "開啟檔案"
+    "openFile": "開啟檔案",
+    "search": "在檔案中搜尋"
   },
   "reading": "正在讀取…",
   "gone": "它已不存在。",
@@ -226,5 +227,14 @@
     "previous": "上一個",
     "next": "下一個",
     "none": "沒有開啟的圖片或影片。"
+  },
+  "search": {
+    "title": "在檔案中搜尋",
+    "placeholder": "搜尋檔案",
+    "searching": "正在搜尋…",
+    "nothing": "沒有結果",
+    "failed": "無法搜尋檔案。",
+    "results": "檔案",
+    "limited": "僅顯示找到的前 {count} 個檔案。輸入更多內容以縮小範圍。"
   }
 }

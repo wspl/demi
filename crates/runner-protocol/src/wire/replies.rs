@@ -42,6 +42,8 @@ pub enum FsResult {
     WriteFile(String),
     Look(Vec<Looked>),
     ReadFiles(Vec<FileRead>),
+    /// The search started; what it finds follows in the pipe.
+    Search,
     WriteDirectory,
     RemoveAll,
     Exists(bool),
@@ -71,6 +73,7 @@ impl FsResult {
             Self::WriteFile(_) => "writeFile",
             Self::Look(_) => "look",
             Self::ReadFiles(_) => "readFiles",
+            Self::Search => "search",
             Self::WriteDirectory => "writeDirectory",
             Self::RemoveAll => "removeAll",
             Self::Exists(_) => "exists",
@@ -148,7 +151,8 @@ impl Serialize for FsOk {
             | FsResult::Directory(name) => {
                 reply.serialize_field("result", name)?;
             }
-            FsResult::WriteDirectory
+            FsResult::Search
+            | FsResult::WriteDirectory
             | FsResult::RemoveAll
             | FsResult::Mkdir
             | FsResult::Rm
@@ -220,6 +224,7 @@ impl ReplyResult for FsResult {
             "writeFile" => Self::WriteFile(map.next_value()?),
             "look" => Self::Look(map.next_value()?),
             "readFiles" => Self::ReadFiles(map.next_value()?),
+            "search" => none(map, Self::Search)?,
             "writeDirectory" => none(map, Self::WriteDirectory)?,
             "removeAll" => none(map, Self::RemoveAll)?,
             "exists" => Self::Exists(map.next_value()?),

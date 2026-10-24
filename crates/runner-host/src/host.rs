@@ -86,6 +86,7 @@ impl HostServer {
             Inbound::FsWriteFile { .. } => return self.files.write(message, &self.default_cwd),
             Inbound::FsDownloadFile { .. } => return self.files.download(message, &self.default_cwd),
             Inbound::FsLook { .. } => return self.files.look(message, &self.default_cwd),
+            Inbound::FsSearch { .. } => return self.files.search(message, &self.default_cwd),
             Inbound::FsReadFiles { .. } => {
                 return self.files.read_files(message, &self.default_cwd);
             }

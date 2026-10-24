@@ -199,6 +199,8 @@ const startNote = computed(() => start.value?.phase === 'ready'
 
 /** The image or video shown, whose read Retry repeats. */
 const preview = ref<InstanceType<typeof FilePreview> | null>(null)
+// The editor loads apart, so its type is what it exposes.
+const editor = ref<{ reveal(line: number): void } | null>(null)
 
 /** Retry under a broken link's sentence: its folder, which said so, and the file, as the view reads it. */
 async function retryLink(): Promise<void> {
@@ -372,7 +374,13 @@ function download(): void {
     downloadUrl(props.source.contents.url(props.path, { download: true }), baseName(props.path))
 }
 
-defineExpose({ readOpenedLink })
+/** Shows the line the file was opened at again, its source over a Preview chosen since, as opening it there did. */
+function revealLine(line: number): void {
+  sourceForLine.value = true
+  editor.value?.reveal(line)
+}
+
+defineExpose({ readOpenedLink, revealLine })
 </script>
 
 <template>
@@ -428,6 +436,7 @@ defineExpose({ readOpenedLink })
     <div v-else-if="editorShown && path" class="relative h-full">
       <CodeEditor
         v-if="editorReady"
+        ref="editor"
         :key="path"
         class="h-full"
         :path="path"

@@ -90,6 +90,8 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
                 (change.sidebar, &mut saved.sidebar),
                 (change.settings, &mut saved.settings),
                 (change.search, &mut saved.search),
+                (change.search_files, &mut saved.search_files),
+                (change.find, &mut saved.find),
             ] {
                 if let Some(keys) = change {
                     *override_ = keys;

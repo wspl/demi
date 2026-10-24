@@ -6,7 +6,8 @@ import { holdsCommandModifier, matchesShortcut } from '../ui/shortcut'
  * surface or effect scope. The focused control has the keys first, as in
  * every desktop app: a key it used, such as ⌘B for bold in the composer, runs
  * no shortcut, and in a field a shortcut without ⌘ or ⌃ (Ctrl on a PC) never runs, since
- * those keys type.
+ * those keys type. An action that answers `false` declined the keys, which then
+ * do what they do without it, as ⌘F finds in the browser's page.
  */
 export function useAppShortcuts(
   enabled: () => boolean,
@@ -14,7 +15,7 @@ export function useAppShortcuts(
     id: string
     keys: string
   }[],
-  actions: Record<string, () => void>,
+  actions: Record<string, () => void | boolean>,
 ): void {
   function handle(event: KeyboardEvent): void {
     if (!enabled() || event.defaultPrevented) {
@@ -28,8 +29,8 @@ export function useAppShortcuts(
     if (isFocusedElementEditable() && !holdsCommandModifier(binding.keys)) {
       return
     }
-    event.preventDefault()
-    action()
+    if (action() !== false)
+      event.preventDefault()
   }
   useEventListener(window, 'keydown', handle)
 }

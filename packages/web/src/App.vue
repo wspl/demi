@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -307,6 +308,19 @@ async function signOut(): Promise<void> {
   }
 }
 const phone = usePhone()
+/**
+ * Where the user last pressed or moved the focus, which Find finds in: Files,
+ * another view of the work panel, or the conversations.
+ */
+const findArea = ref<'files' | 'panel' | 'conversations'>('conversations')
+function noteFindArea(event: Event): void {
+  const target = event.target instanceof Element ? event.target : null
+  findArea.value = target?.closest('[data-file-view]')
+    ? 'files'
+    : target?.closest('[data-work-panel]') ? 'panel' : 'conversations'
+}
+useEventListener(window, 'pointerdown', noteFindArea, { capture: true })
+useEventListener(window, 'focusin', noteFindArea, { capture: true })
 /** The bindings from the keyboard settings, by the action each one names. */
 const actions: Record<string, () => void> = {
   new: () => create(null),
@@ -321,6 +335,22 @@ const actions: Record<string, () => void> = {
       resources.sidebarCollapsed = !resources.sidebarCollapsed
   },
   settings: () => void settingsAddress.open(),
+  // The shown conversation's Files, with Search in Files over it.
+  searchFiles,
+  // Another view of the work panel keeps the keys, for the browser to find in the page.
+  find: () => {
+    if (findArea.value === 'panel')
+      return false
+    if (findArea.value === 'files')
+      searchFiles()
+    else
+      searchOpen.value = true
+  },
+}
+function searchFiles(): void {
+  const conversationId = activeId.value
+  if (conversationId !== null && work.canOpen('file'))
+    work.openIn(conversationId, { intent: 'file', payload: { path: '', search: true } })
 }
 useAppShortcuts(
   () => resources.signedIn,

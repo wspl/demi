@@ -66,6 +66,14 @@ watch([view, () => props.line], ([built, line]) => {
   if (built && line)
     revealLine(built, line)
 })
+
+defineExpose({
+  /** Shows `line` again, as a new `line` does, for the line it already shows. */
+  reveal(line: number): void {
+    if (view.value)
+      revealLine(view.value, line)
+  },
+})
 </script>
 
 <template>

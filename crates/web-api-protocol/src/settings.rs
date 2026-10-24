@@ -141,6 +141,26 @@ pub struct Shortcuts {
     #[schemars(with = "String")]
     #[garde(skip)]
     pub search: Option<String>,
+    /// Searching the names and the text of the conversation's files, in
+    /// Files.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub search_files: Option<String>,
+    /// Finding where the user is: Search in Files in Files, the
+    /// conversations' search elsewhere.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub find: Option<String>,
 }
 
 /// A change to one set's shortcut overrides: a key sequence sets one, `null`
@@ -180,6 +200,22 @@ pub struct ShortcutsPatch {
     #[schemars(with = "Option<String>")]
     #[garde(skip)]
     pub search: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub search_files: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub find: Option<Option<String>>,
 }
 
 /// The two sets of keyboard shortcuts: a page uses the Mac's on macOS and the

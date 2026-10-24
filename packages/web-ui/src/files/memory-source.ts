@@ -10,6 +10,10 @@
  * - A source given an upload rate takes uploads at that rate, each landing as a
  *   file of its size; without one it takes no uploads.
  * - Directories are made and entries deleted at once.
+ * - A search finds what the Host's would: the files whose name or text holds
+ *   the text, letter case aside, each with its first line that does. The
+ *   tree holds no ignore files, so files that `.gitignore` leaves out are
+ *   none.
  *
  * The source keeps what it read as the product's does (`keptSource`), with the
  * subscriptions a simulated Host's watch answers (`SimulatedWatch`):
@@ -33,6 +37,7 @@ import {
   type FileBrowserSource,
   type FileBrowserPlatform,
   type FileContents,
+  type FileSearchRange,
 } from './types'
 import { joinPath, normalizePath, parentPath, resolveHostPath } from './paths'
 import { WatchChannel, type OpenWatchLink, type ReadAt, type Subject, type WatchLinkHandlers } from './watch-channel'
@@ -63,6 +68,42 @@ export interface MemoryLink {
 }
 
 export type MemoryNode = MemoryFile | MemoryDirectory | MemoryLink
+
+/** The most UTF-16 code units a result shows of its line, and of them before its first match, as the Host's. */
+const LINE_UNITS = 240
+const LEAD_UNITS = 40
+
+/** Where `text` holds what `expression` finds, as ranges. */
+function rangesIn(text: string, expression: RegExp): FileSearchRange[] {
+  return [...text.matchAll(expression)].map((match) => ({ start: match.index, end: match.index + match[0].length }))
+}
+
+/** The first line of `content` that holds what `expression` finds, as the Host's search shows it; none when none does. */
+function firstLine(content: string, expression: RegExp): { number: number, text: string, matches: FileSearchRange[] } | null {
+  // A lone CR ends a line too, as the editor that opens it counts lines.
+  const lines = content.split(/\r\n|\r|\n/)
+  const index = lines.findIndex((line) => rangesIn(line, expression).length > 0)
+  if (index < 0)
+    return null
+  const line = lines[index]!
+  const first = rangesIn(line, expression)[0]!.start
+  const from = Math.min(line.length - line.trimStart().length, first)
+  const cutBefore = line.length - from > LINE_UNITS && first - from > LEAD_UNITS
+  const start = cutBefore ? first - LEAD_UNITS : from
+  const end = Math.min(line.length, start + LINE_UNITS)
+  const prefix = cutBefore ? '…' : ''
+  return {
+    number: index + 1,
+    text: `${prefix}${line.slice(start, end)}${end < line.length ? '…' : ''}`,
+    // The matches of the whole line, cut to what shows, so a match longer than that still shows marked.
+    matches: rangesIn(line, expression)
+      .filter((range) => range.end > start && range.start < end)
+      .map((range) => ({
+        start: Math.max(range.start, start) - start + prefix.length,
+        end: Math.min(range.end, end) - start + prefix.length,
+      })),
+  }
+}
 
 /** How many links a path may pass before it counts as a loop, as Linux counts them. */
 const MAX_LINK_HOPS = 40
@@ -487,6 +528,40 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
       if (parent.failure)
         throw new FileBrowserError(parent.failure.kind, parent.failure.message)
       delete parent.children[name]
+    },
+    async *search(directory, text, signal) {
+      await wait()
+      if (options.offline)
+        throw new FileBrowserError('offline')
+      const start = lookup(directory)
+      if (!start || start.kind !== 'directory')
+        throw new FileBrowserError('not-found', `No such directory: ${normalizePath(directory)}`)
+      // The text as it is, letter case aside, as the Host finds it.
+      const expression = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+      let files = 0
+      // A link is not followed, and `.git` is left out, as the Host's walk does.
+      const walk = function* (folder: MemoryDirectory, at: string): Generator<[string, MemoryFile]> {
+        for (const [name, child] of Object.entries(folder.children)) {
+          const path = at === '' ? name : `${at}/${name}`
+          if (child.kind === 'directory' && !child.failure && name !== '.git')
+            yield* walk(child, path)
+          else if (child.kind === 'file')
+            yield [path, child]
+        }
+      }
+      for (const [path, file] of walk(start, '')) {
+        const name = rangesIn(baseName(path), expression)
+        // The text of a file Files would not show whole is not searched, as on the Host.
+        const line = file.content === undefined || file.size > TEXT_FILE_BYTES ? null : firstLine(file.content, expression)
+        if (name.length === 0 && line === null)
+          continue
+        if (latencyMs > 0)
+          await delay(latencyMs, signal)
+        signal.throwIfAborted()
+        files += 1
+        yield { type: 'file' as const, path, name, line }
+      }
+      yield { type: 'end' as const, files, limitReached: false }
     },
     ...(uploadRate === undefined ? {} : { upload: uploadAt(uploadRate) }),
   }

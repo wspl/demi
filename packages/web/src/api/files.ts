@@ -20,7 +20,9 @@ import {
   type CreateDirectory,
   type DirectoryEntry,
   type LinkTarget,
+  type SearchRequest,
 } from './generated/web-api'
+import { searchEvents } from './file-search'
 import { uploadBytes } from './uploads'
 import { t } from './locales/text'
 import type { Device } from '../state/types'
@@ -212,6 +214,8 @@ export interface FileRoutes {
   upload?: string
   /** Deletes a file or a directory with `DELETE`. */
   remove?: string
+  /** Searches the text of the files under a directory with `POST`. */
+  search?: string
 }
 
 /**
@@ -220,7 +224,15 @@ export interface FileRoutes {
  */
 export function conversationFileRoutes(conversationId: string): Required<FileRoutes> {
   const base = `/conversations/${encodeURIComponent(conversationId)}/fs`
-  return { directory: base, lists: `${base}/lists`, text: `${base}/file`, raw: `${base}/raw`, upload: `${base}/raw`, remove: base }
+  return {
+    directory: base,
+    lists: `${base}/lists`,
+    text: `${base}/file`,
+    raw: `${base}/raw`,
+    upload: `${base}/raw`,
+    remove: base,
+    search: `${base}/search`,
+  }
 }
 
 /** What the page keeps of each Host's files, by its device: every conversation on a Host shares it. */
@@ -352,6 +364,7 @@ export function fileReads(
     raw: rawEndpoint,
     upload: uploadEndpoint,
     remove: removeEndpoint,
+    search: searchEndpoint,
   } = endpoints
   const listOne: ListOne = async (path) => {
     if (!endpoint) {
@@ -426,6 +439,26 @@ export function fileReads(
             } catch (error) {
               browserError(error)
             }
+          },
+        }
+      : {}),
+    ...(searchEndpoint
+      ? {
+          async *search(root: string, text: string, signal: AbortSignal) {
+            let response: Response
+            try {
+              response = await apiRequest(searchEndpoint, {
+                method: 'POST',
+                signal,
+                streams: true,
+                ...jsonBody({ root, query: { text } } satisfies SearchRequest),
+              })
+            } catch (error) {
+              browserError(error)
+            }
+            if (!response.body)
+              throw new FileBrowserError('other', t('files.searchCut'))
+            yield* searchEvents(response.body)
           },
         }
       : {}),

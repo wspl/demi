@@ -35,12 +35,14 @@ use demi_runner_direct::{
 use demi_runner_host::{
     files::{open_read, write_file},
     fs,
+    search::Search,
     subscriptions::{Report, Subscriptions},
     watches::Watches,
 };
 use demi_runner_jobs::commands::streams::{StreamOpener, StreamRefusal, StreamStart};
 use demi_runner_protocol::{
     direct::{ChannelError, ChannelErrorCode},
+    search::SearchQuery,
     files::{
         DirectoryEntry, Effect, FileWatchMessage, FileWatchRequest, FsFailure, PageSubscriptions,
         Subject, protected_path,
@@ -292,6 +294,19 @@ impl Operations for HostOperations {
                 .await
                 .map_err(failed)?;
             Ok(())
+        })
+    }
+
+    fn search(&self, scope: Scope, root: String, query: SearchQuery) -> Answer<ByteStream> {
+        let cancel = self.closed.clone();
+        Box::pin(async move {
+            let root = resolve(&scope.cwd, &root).map_err(failed)?;
+            let search = tokio::task::spawn_blocking(move || Search::new(&root, &query))
+                .await
+                .map_err(|error| failed(io::Error::other(error)))?
+                .map_err(failed)?;
+            let lines: ByteStream = Box::pin(search.run(cancel.child_token()));
+            Ok(lines)
         })
     }
 

@@ -9,6 +9,7 @@
     "notRepository": "它不在 Git 存储库中。",
     "other": "主机没有响应。",
     "conversationBusy": "对话正在更换主机。",
-    "selectDevice": "请选择已连接的设备。"
+    "selectDevice": "请选择已连接的设备。",
+    "searchCut": "搜索在完成前中断了。"
   }
 }

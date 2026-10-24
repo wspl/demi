@@ -129,7 +129,9 @@
       "new": "새 대화",
       "search": "대화 검색",
       "sidebar": "사이드바 전환",
-      "settings": "설정 열기"
+      "settings": "설정 열기",
+      "searchFiles": "파일에서 검색",
+      "findHere": "찾기"
     }
   },
   "notifications": {

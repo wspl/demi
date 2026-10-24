@@ -138,7 +138,7 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 62;
+pub const VERSION: u32 = 63;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);

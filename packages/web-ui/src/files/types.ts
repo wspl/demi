@@ -176,7 +176,35 @@ export interface FileBrowserSource {
    * upload then cannot replace a folder.
    */
   remove?(path: string, signal?: AbortSignal): Promise<void>
+  /**
+   * Searches the names and the text of the files under `root`, an absolute
+   * path, for `text`, letter case aside, and yields what it finds as the Host
+   * finds it (`FileSearchEvent`). Aborting `signal` stops the search on the
+   * Host. Absent when the source cannot search; Files then offers no search.
+   */
+  search?(root: string, text: string, signal: AbortSignal): AsyncIterable<FileSearchEvent>
 }
+
+/** A part of a text, in UTF-16 code units, as a string is sliced. */
+export interface FileSearchRange {
+  start: number
+  end: number
+}
+
+/**
+ * What a search yields (`crates/runner-protocol/src/search.rs`): a file
+ * whose name or text holds what was searched for, by its path relative to
+ * the root, with where its name holds it and the first line of its text that
+ * does; or how the search ended.
+ */
+export type FileSearchEvent =
+  | {
+    type: 'file'
+    path: string
+    name: FileSearchRange[]
+    line: { number: number, text: string, matches: FileSearchRange[] } | null
+  }
+  | { type: 'end', files: number, limitReached: boolean }
 
 export interface FileUploadOptions {
   replace: boolean

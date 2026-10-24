@@ -59,7 +59,7 @@ use demi_runner_process::{
 };
 use demi_runner_protocol::wire::{self, Inbound, ReadAt};
 
-use crate::{fs::error_code, git::GitService};
+use crate::{fs::error_code, git::GitService, search::Search};
 
 /// What one read of the file hands to the upload.
 const CHUNK_BYTES: usize = 64 * 1024;
@@ -173,6 +173,51 @@ impl FileTransfers {
                 return;
             }
             let result = pipes.put(&output.url, framed(opened), &transfer).await;
+            report_pipe(&reply, output.id, result);
+        });
+        Ok(())
+    }
+
+    /// `fs_search`: answered once the root is a directory, then what the
+    /// search finds into the output pipe, until it ends or the pipe closes
+    /// (`crates/runner-host/src/search.rs`).
+    pub fn search(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsSearch { id, root, query, output } = message else {
+            return Err(io::Error::other("not a search"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let root = resolve(default_cwd, &root);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let search = match root {
+                Ok(root) => tokio::task::spawn_blocking(move || Search::new(&root, &query))
+                    .await
+                    .unwrap_or_else(|error| Err(io::Error::other(error))),
+                Err(error) => Err(error),
+            };
+            let search = match search {
+                Ok(search) => search,
+                Err(error) => {
+                    send(&reply, fs_error(id, read_at, &error));
+                    report_pipe(&reply, output.id, Err(error));
+                    return;
+                }
+            };
+            let started = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id,
+                read_at,
+                result: wire::FsResult::Search,
+            }));
+            if !send(&reply, started) {
+                return;
+            }
+            let result = pipes.put(&output.url, search.run(transfer.clone()), &transfer).await;
+            // The search stops with its lines, whose reader is gone.
+            transfer.cancel();
             report_pipe(&reply, output.id, result);
         });
         Ok(())

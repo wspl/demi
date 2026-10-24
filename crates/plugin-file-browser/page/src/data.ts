@@ -35,6 +35,11 @@ export const fileDataSchema = z.object({
    * the tree with the file selected and in view, once, and drops it.
    */
   tree: z.literal(true).optional(),
+  /**
+   * Search in Files was asked for: the view floats its field, focused,
+   * once, and drops it, keeping the file it shows.
+   */
+  search: z.literal(true).optional(),
 })
 export type FileData = z.infer<typeof fileDataSchema>
 
@@ -98,6 +103,8 @@ export function showMode(data: FileData, mode: 'preview' | 'source'): FileData {
 
 /** The view showing `path` as the `file` intent asks: in the tree too when `tree`, as Show in Files asks. */
 export function openFile(data: FileData, payload: IntentPayloads['file']): FileData {
+  if (payload.search)
+    return { ...data, search: true }
   const shown = showFile(data, payload.path, payload.line, payload.root)
   return payload.tree ? { ...shown, tree: true } : shown
 }
@@ -105,6 +112,12 @@ export function openFile(data: FileData, payload: IntentPayloads['file']): FileD
 /** The view as it is once its tree showed the file Show in Files asked for. */
 export function treeShown(data: FileData): FileData {
   const { tree: _shown, ...rest } = data
+  return rest
+}
+
+/** The view as it is once it floated the field Search in Files asked for. */
+export function searchShown(data: FileData): FileData {
+  const { search: _shown, ...rest } = data
   return rest
 }
 
@@ -140,6 +153,8 @@ export const filePlace = definePlace({
       ...(place.folder === undefined ? {} : { folder: place.folder }),
       // Show in Files is asked of the file it was asked for.
       ...(current.tree && current.path === path ? { tree: true as const } : {}),
+      // Search in Files is asked of the view whatever file it shows.
+      ...(current.search ? { search: true as const } : {}),
     }
   },
 })

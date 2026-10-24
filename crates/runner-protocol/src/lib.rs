@@ -27,6 +27,7 @@ pub mod image;
 pub mod installation;
 pub mod manifest;
 pub mod release;
+pub mod search;
 pub mod values;
 pub mod wire;
 

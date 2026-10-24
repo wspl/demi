@@ -240,6 +240,7 @@ function reorder(from: number, to: number): void {
 
 <template>
   <aside
+    data-work-panel
     class="flex h-full min-w-0 flex-col overflow-hidden bg-surface text-fg"
     :class="phone ? 'pb-[var(--safe-bottom)]' : 'border-l border-line'"
   >

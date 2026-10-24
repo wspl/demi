@@ -6,6 +6,7 @@ import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileContent from './FileContent.vue'
+import FileSearch from './FileSearch.vue'
 import FileTree from './FileTree.vue'
 import TreeFrame from './TreeFrame.vue'
 import { TREE_WIDTH } from './file-view'
@@ -36,7 +37,12 @@ import type { FileBrowserSource, FileDirectory } from './types'
  *
  * Files dropped on the tree, or uploaded from its menu, list under it until
  * cleared (`FileTree`).
+ *
+ * A source that searches offers Search in Files in the tree's caption, which
+ * floats a field over the view (`FileSearch`); a file it opens shows at the
+ * line it was found at.
  */
+
 const props = defineProps<{
   source: FileBrowserSource
   /** The workspace: the tree's root, and where a relative path typed into the crumb row starts. */
@@ -60,7 +66,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  open: [path: string]
+  /** A file to show, and the line to open it at, from Search in Files. */
+  open: [path: string, line?: number]
   back: []
   forward: []
   /** The tree's caption chose another of `directories`. */
@@ -103,7 +110,32 @@ async function showInTree(): Promise<void> {
   treeView.value?.reveal(path, false)
 }
 
-defineExpose({ showInTree })
+/** Whether Search in Files floats over the view. */
+const searching = ref(false)
+
+const searchField = ref<InstanceType<typeof FileSearch> | null>(null)
+
+/** Search in Files: its field, focused, or focused again while it shows. */
+function showSearch(): void {
+  if (!props.source.search)
+    return
+  if (searching.value)
+    searchField.value?.focus()
+  else
+    searching.value = true
+}
+
+/** A file Search in Files found: shown, at its line, the field and a tree over the file put away. */
+function openFound(path: string, line: number | null): void {
+  searching.value = false
+  frame.value?.dismiss()
+  // The file shown at that line already is scrolled to it again: nothing the owner holds changes.
+  if (line !== null && path === props.path && line === props.line)
+    content.value?.revealLine(line)
+  emit('open', path, line ?? undefined)
+}
+
+defineExpose({ showInTree, showSearch })
 
 // A file the tree opened, whose link the tree has just read again.
 let openedFromTree: string | null = null
@@ -191,53 +223,59 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" tree="files">
-    <template #header>
-      <!-- Back and Forward move through the files this view has shown. -->
-      <div class="flex shrink-0 items-center">
-        <Tooltip :content="t('actions.back')">
-          <IconButton :icon="ArrowLeft" variant="ghost" :aria-label="t('actions.back')" :disabled="!canBack" @click="emit('back')" />
-        </Tooltip>
-        <Tooltip :content="t('actions.forward')">
-          <IconButton :icon="ArrowRight" variant="ghost" :aria-label="t('actions.forward')" :disabled="!canForward" @click="emit('forward')" />
-        </Tooltip>
-      </div>
-      <!-- Crumbs open menus of what lies beside them: another file is a pick away. -->
-      <FileBrowserAddressBar
-        class="ml-2 min-w-0 flex-1"
-        mode="browse"
-        :path="path ?? root"
-        :base="root"
-        :source="source"
-        :leaf="path ? 'file' : 'directory'"
-        @navigate="go"
-        @open="openHere($event)"
-      />
-    </template>
-    <template #default="{ overlap }">
-      <FileContent
-        ref="content"
-        v-model:mode="mode"
-        :source="source"
-        :root="root"
-        :path="path"
-        :line="line"
-        :overlap="overlap"
-        @open="openHere($event)"
-      />
-    </template>
-    <template #tree>
-      <FileTree
-        ref="treeView"
-        :source="source"
-        :root="root"
-        :root-name="rootName"
-        :directories="directories"
-        :home="source.home"
-        :selected="located ?? path"
-        @open="openFromTree"
-        @switch="emit('switchDirectory', $event)"
-      />
-    </template>
-  </TreeFrame>
+  <!-- Search in Files floats over the whole view. -->
+  <div data-file-view class="relative flex h-full min-h-0 min-w-0 flex-col">
+    <TreeFrame ref="frame" class="min-h-0 flex-1" v-model:open="tree" v-model:width="treeWidth" tree="files">
+      <template #header>
+        <!-- Back and Forward move through the files this view has shown. -->
+        <div class="flex shrink-0 items-center">
+          <Tooltip :content="t('actions.back')">
+            <IconButton :icon="ArrowLeft" variant="ghost" :aria-label="t('actions.back')" :disabled="!canBack" @click="emit('back')" />
+          </Tooltip>
+          <Tooltip :content="t('actions.forward')">
+            <IconButton :icon="ArrowRight" variant="ghost" :aria-label="t('actions.forward')" :disabled="!canForward" @click="emit('forward')" />
+          </Tooltip>
+        </div>
+        <!-- Crumbs open menus of what lies beside them: another file is a pick away. -->
+        <FileBrowserAddressBar
+          class="ml-2 min-w-0 flex-1"
+          mode="browse"
+          :path="path ?? root"
+          :base="root"
+          :source="source"
+          :leaf="path ? 'file' : 'directory'"
+          @navigate="go"
+          @open="openHere($event)"
+        />
+      </template>
+      <template #default="{ overlap }">
+        <FileContent
+          ref="content"
+          v-model:mode="mode"
+          :source="source"
+          :root="root"
+          :path="path"
+          :line="line"
+          :overlap="overlap"
+          @open="openHere($event)"
+        />
+      </template>
+      <template #tree>
+        <FileTree
+          ref="treeView"
+          :source="source"
+          :root="root"
+          :root-name="rootName"
+          :directories="directories"
+          :home="source.home"
+          :selected="located ?? path"
+          :searchable="source.search !== undefined"
+          @open="openFromTree"
+          @switch="emit('switchDirectory', $event)"
+          @search="showSearch"
+        />
+      </template>
+    </TreeFrame>
+    <FileSearch v-if="searching" ref="searchField" :source="source" :root="root" @close="searching = false" @open="openFound" />
+  </div>
 </template>

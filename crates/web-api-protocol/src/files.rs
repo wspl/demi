@@ -5,6 +5,7 @@ pub use demi_runner_protocol::files::{
     DirectoryEntry, FileWatchMessage, FileWatchRequest, MAX_OUTSIDE_SUBSCRIPTIONS,
     MAX_PAGE_SUBSCRIPTIONS, PageSubscription, RefusedReason, SubscriptionKind,
 };
+pub use demi_runner_protocol::search::{FoundLine, SearchLine, SearchQuery, TextRange};
 pub use demi_runner_protocol::wire::{GitBranches, GitCommit, GitLog};
 use demi_runner_protocol::wire::GitChanges;
 use demi_shared_types::Nullable;
@@ -147,6 +148,19 @@ pub enum ListedDirectory {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ListedDirectories {
     pub lists: Vec<ListedDirectory>,
+}
+
+/// `POST .../fs/search`: a search of the text of the files under `root`, the
+/// conversation's working directory without one. The answer is the search's
+/// lines, one [`SearchLine`] of JSON per line, as the Host finds them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct SearchRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub root: Option<AbsolutePath>,
+    #[garde(dive)]
+    pub query: SearchQuery,
 }
 
 /// `POST .../fs { path }`: a directory to make, with its parents.

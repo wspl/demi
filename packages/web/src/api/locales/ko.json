@@ -9,6 +9,7 @@
     "notRepository": "Git 리포지토리에 있지 않습니다.",
     "other": "호스트가 응답하지 않았습니다.",
     "conversationBusy": "대화의 호스트를 변경하는 중입니다.",
-    "selectDevice": "연결된 기기를 선택하십시오."
+    "selectDevice": "연결된 기기를 선택하십시오.",
+    "searchCut": "검색이 끝나기 전에 멈췄습니다."
   }
 }

@@ -19,7 +19,7 @@ import FileView from '@demicodes/web-ui/files/FileView.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
 import { uploadsOf, type FileUploads, type UploadClash, type UploadItem, type UploadPlacement } from '@demicodes/web-ui/files/file-uploads'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { LINKS, SHOTS_DIR, TREE_ROOT, TREE_SELECTED, failingSource, linksSource, offlineSource, rowsSource, screenshotsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
+import { LINKS, SHOTS_DIR, TREE_ROOT, TREE_SELECTED, failingSource, limitedSearchSource, linksSource, offlineSource, rowsSource, screenshotsSource, searchSource, searchingSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
@@ -315,6 +315,16 @@ const treeDirectoryPick = ref<string | null>(null)
 const linksTree = linksSource()
 const linksTreeSelected = ref<string | null>(LINKS.deep)
 const linkFiles = linksSource()
+const searchFiles = searchSource()
+const limitedSearchFiles = limitedSearchSource()
+const searchingFiles = searchingSource()
+/** Each search specimen's file shown and its line, as its view opened them. */
+const searchShown = reactive<Record<'live' | 'limited' | 'searching', { path: string | null, line: number | null }>>({
+  live: { path: null, line: null },
+  limited: { path: null, line: null },
+  searching: { path: null, line: null },
+})
+const searchViews: Record<'live' | 'limited' | 'searching', InstanceType<typeof FileView> | null> = { live: null, limited: null, searching: null }
 const linkFilePath = ref<string>(LINKS.file)
 const missingLinks = linksSource()
 const missingLinkPath = ref<string>(LINKS.missing)
@@ -539,6 +549,42 @@ onMounted(() => {
             />
           </div>
         </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Search"
+        note="The magnifier in the tree's caption, or Search in Files, ⇧⌘F, which the buttons stand in for, floats a field over Files, as the conversations' search floats over the app. Typing searches once it pauses, for the text as it is, letter case aside: retry finds every file here. Files whose name holds it list first, the text marked in the name, then files whose text holds it, with the first line that does under the name, marked there; the minified bundle's one long line shows the part around its match. ↑ and ↓ move the selection, Return or a click opens the file, at that line for a line, and Escape or a click outside closes the field. A search that reaches its limit says so under the list; one that runs says Searching… until it finds something, and stops when the field closes."
+      >
+        <div class="flex flex-wrap gap-6">
+          <GallerySpecimen
+            v-for="[kind, variant, source] in ([
+              ['live', 'search · typing searches, Return opens', searchFiles],
+              ['limited', 'a search that reached its limit', limitedSearchFiles],
+              ['searching', 'a search that runs', searchingFiles],
+            ] as const)"
+            :key="kind"
+            :variant="variant"
+            wide
+          >
+            <div class="flex flex-col gap-2">
+              <div class="flex flex-wrap gap-1">
+                <Button size="sm" @click="searchViews[kind]?.showSearch()">Search in Files</Button>
+              </div>
+              <div class="gallery-frame flex h-[24rem] overflow-hidden">
+                <FileView
+                  :ref="(view) => { searchViews[kind] = view as InstanceType<typeof FileView> | null }"
+                  class="w-full"
+                  :source="source"
+                  :root="TREE_ROOT"
+                  :path="searchShown[kind].path"
+                  :line="searchShown[kind].line"
+                  @open="(path: string, line?: number) => { searchShown[kind].path = path; searchShown[kind].line = line ?? null }"
+                  @back="productWould('Show the File Before')"
+                  @forward="productWould('Show the File After')"
+                />
+              </div>
+            </div>
+          </GallerySpecimen>
+        </div>
       </GallerySection>
       <GallerySection
         title="Symbolic Links"

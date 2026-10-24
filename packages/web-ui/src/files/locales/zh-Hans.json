@@ -8,7 +8,8 @@
     "copyPath": "复制路径",
     "clear": "清除",
     "dismiss": "关闭",
-    "openFile": "打开文件"
+    "openFile": "打开文件",
+    "search": "在文件中搜索"
   },
   "reading": "正在读取…",
   "gone": "它已不存在。",
@@ -226,5 +227,14 @@
     "previous": "上一个",
     "next": "下一个",
     "none": "没有打开的图片或视频。"
+  },
+  "search": {
+    "title": "在文件中搜索",
+    "placeholder": "搜索文件",
+    "searching": "正在搜索…",
+    "nothing": "无结果",
+    "failed": "无法搜索文件。",
+    "results": "文件",
+    "limited": "仅显示找到的前 {count} 个文件。输入更多内容以缩小范围。"
   }
 }

@@ -3,7 +3,7 @@ import { usePaneReady } from '../agent/pane-ready'
 import { errorMessage } from '../infra/errors'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, watch } from 'vue'
-import { ChevronDown, RefreshCw, Upload } from '@lucide/vue'
+import { ChevronDown, RefreshCw, Search, Upload } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import type { ContextMenuDeclaration } from '../ui/context-menu'
 import { useFileDrop } from '../composables/useFileDrop'
@@ -60,7 +60,8 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  *   could not be listed, or listed again, wears a red dot on its icon and tells
  *   why on hover.
  * - The control at the caption's end lists every open directory again, turning
- *   while they load.
+ *   while they load. A `searchable` tree has Search in Files before it, which
+ *   asks the host to search (`search`).
  * - Given `directories` the caption is a menu of them and the directory shown,
  *   each once, its chevron at its right, the one shown checked; choosing one
  *   asks the host to show it (`switch`). With one directory the caption is plain
@@ -102,11 +103,14 @@ const props = defineProps<{
    * root's for the empty space: for a specimen of the drop state.
    */
   dropping?: string
+  /** Offers Search in Files in the caption. */
+  searchable?: boolean
 }>()
 
 const emit = defineEmits<{
   open: [path: string]
   switch: [directory: string]
+  search: []
 }>()
 
 const icons = useIconPx()
@@ -699,7 +703,10 @@ defineExpose({
         <span class="flex-1" />
       </template>
       <template #captionTrailing>
-        <Tooltip :content="t('actions.refresh')" class="ml-2 shrink-0">
+        <Tooltip v-if="searchable" :content="t('actions.search')" class="ml-2 shrink-0">
+          <IconButton :icon="Search" size="xs" variant="ghost" :aria-label="t('actions.search')" @click="emit('search')" />
+        </Tooltip>
+        <Tooltip :content="t('actions.refresh')" :class="searchable ? 'shrink-0' : 'ml-2 shrink-0'">
           <IconButton
             :icon="RefreshCw"
             size="xs"

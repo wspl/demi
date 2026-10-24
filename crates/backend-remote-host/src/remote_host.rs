@@ -17,6 +17,7 @@ use demi_host_interface::{
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
     SymbolicLink, WhenExists, WholeOutput, WriteOptions,
 };
+use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::{
     self, FsResult, GitBranches, GitChanges, GitCommit, GitLog, GitResult, Inbound, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
     WireBytes,
@@ -561,6 +562,26 @@ impl RemoteHost {
             return Err(mismatch());
         };
         split_reads(reader, reads, paths.len(), limit).await
+    }
+
+    /// Searches the names and the text of the files under `root`
+    /// (`crates/runner-host/src/search.rs`): its lines as the search writes
+    /// them, once the Host found the directory. Dropping the reader stops the
+    /// search.
+    pub async fn search(&self, root: &str, query: SearchQuery) -> Result<PipeReader, HostError> {
+        let link = self.link()?;
+        let _lease = self.admit()?;
+        let (answer, reader) = answered(&link, Expected::Fs("search"), |id, output| Inbound::FsSearch {
+            id,
+            root: root.to_owned(),
+            query,
+            output,
+        })
+        .await?;
+        let Answer::Fs(FsResult::Search, _) = answer else {
+            return Err(mismatch());
+        };
+        Ok(reader)
     }
 
     /// Looks at several paths with one request (`crates/runner-host/src/lib.rs`): each answers what is there, in the order of `paths`.

@@ -11,6 +11,10 @@ import type { SettingsKeyBinding } from './types'
  * - New conversation is ⇧⌘O, as in ChatGPT: ⌘N is the browser's new window, which a
  *   page never receives.
  * - Search is ⌘K, as in Slack, Linear and ChatGPT.
+ * - Search in files is ⇧⌘F, as in VS Code and Zed.
+ * - Find is ⌘F, and finds where the user is, as VS Code's finds in the part that
+ *   has the focus: Search in files in Files, the conversations' search elsewhere.
+ *   A text with a find of its own, as a file's, finds there first.
  * - The sidebar is ⌘\, as in Notion, whose editor keeps ⌘B for bold and ⇧⌘S for
  *   strikethrough as the composer does: the focused composer takes its keys first, so
  *   a sidebar shortcut on either would never run while it has the focus.
@@ -21,12 +25,16 @@ const APP_SHORTCUTS = {
     { id: 'search', keys: '⌘K' },
     { id: 'sidebar', keys: '⌘\\' },
     { id: 'settings', keys: '⌘,' },
+    { id: 'searchFiles', keys: '⇧⌘F' },
+    { id: 'find', keys: '⌘F' },
   ],
   pc: [
     { id: 'new', keys: 'Ctrl+Shift+O' },
     { id: 'search', keys: 'Ctrl+K' },
     { id: 'sidebar', keys: 'Ctrl+\\' },
     { id: 'settings', keys: 'Ctrl+,' },
+    { id: 'searchFiles', keys: 'Ctrl+Shift+F' },
+    { id: 'find', keys: 'Ctrl+F' },
   ],
 } as const
 
@@ -48,6 +56,11 @@ export function shortcutAction(id: string): SentenceText {
       return t('keyboard.actions.sidebar')
     case 'settings':
       return t('keyboard.actions.settings')
+    case 'searchFiles':
+      return t('keyboard.actions.searchFiles')
+    case 'find':
+      // Its text is findHere: vue-i18n's key paths leave out a key named find.
+      return t('keyboard.actions.findHere')
     default:
       return id
   }

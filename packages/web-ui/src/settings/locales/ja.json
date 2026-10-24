@@ -129,7 +129,9 @@
       "new": "新しいチャット",
       "search": "チャットを検索",
       "sidebar": "サイドバーを切り替える",
-      "settings": "設定を開く"
+      "settings": "設定を開く",
+      "searchFiles": "ファイルを検索",
+      "findHere": "検索"
     }
   },
   "notifications": {
