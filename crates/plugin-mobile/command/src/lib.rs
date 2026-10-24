@@ -53,6 +53,7 @@ mod operations;
 mod pictures;
 mod refs;
 mod scale;
+mod target;
 mod text;
 mod tree;
 mod typing;

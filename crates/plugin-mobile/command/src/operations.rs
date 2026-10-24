@@ -13,10 +13,10 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::mobile::{
-    Appearance, AppearanceChoice, AppearanceResult, CloseResult, Direction, ElementRef,
+    Appearance, AppearanceChoice, ElementSummary, AppearanceResult, CloseResult, Direction, ElementRef,
     InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
     MobilePlatform, RecordAction, RecordInput, RecordTarget, Rotation, RotateResult,
-    ScreenshotResult, SwipeResult, TapResult, TypeResult, TypedField, WAIT_SECONDS, WaitResult,
+    FIND_SECONDS, ScreenshotResult, SwipeResult, TapResult, TypeResult, TypedField, WAIT_SECONDS, WaitResult,
 };
 use demi_live_view_protocol::LivePoint;
 use demi_shared_recording::{Answer, Library, Reading, started};
@@ -27,6 +27,7 @@ use crate::{
     error::MobileError,
     refs::Listed,
     scale::Scale,
+    target::{self, Selector, Target},
     text, tree, typing,
 };
 
@@ -210,12 +211,12 @@ pub async fn run(
             (MobileOperation::Tap(input), Some(open)) => {
                 let scale = Scale::of(&open.device.screen().borrow());
                 let (at, element) = match input.at.as_slice() {
-                    [reference] => {
-                        let listed = listed(&open, reference)?;
+                    [target] => {
+                        let listed = element(&open, target, input.timeout).await?;
                         (listed.1.frame.centre(), Some(listed))
                     }
                     [x, y] => (point(&scale, x, y)?, None),
-                    _ => return Err(MobileError::Usage("tap takes an element ref, or x and y".into())),
+                    _ => return Err(MobileError::Usage("tap takes an element, or x and y".into())),
                 };
                 let seconds = if input.long == Some(true) { LONG_PRESS_SECONDS } else { 0.0 };
                 acting(&open, call, at, open.device.tap(at, seconds)).await?;
@@ -237,8 +238,8 @@ pub async fn run(
             (MobileOperation::Swipe(input), Some(open)) => {
                 let scale = Scale::of(&open.device.screen().borrow());
                 let (from, to, element) = match input.at.as_slice() {
-                    [reference, direction] => {
-                        let (reference, listed) = listed(&open, reference)?;
+                    [target, direction] => {
+                        let (reference, listed) = element(&open, target, input.timeout).await?;
                         let direction: Direction = direction.parse().map_err(|_| {
                             MobileError::Usage(format!("{direction:?} is not up, down, left or right"))
                         })?;
@@ -248,7 +249,7 @@ pub async fn run(
                     [x1, y1, x2, y2] => (point(&scale, x1, y1)?, point(&scale, x2, y2)?, None),
                     _ => {
                         return Err(MobileError::Usage(
-                            "swipe takes x1 y1 x2 y2, or an element ref and up, down, left or right".into(),
+                            "swipe takes x1 y1 x2 y2, or an element and up, down, left or right".into(),
                         ));
                     }
                 };
@@ -278,7 +279,7 @@ pub async fn run(
             (MobileOperation::Type(input), Some(open)) => {
                 let replace = input.replace == Some(true);
                 let target = match &input.into {
-                    Some(reference) => Some(listed(&open, reference.as_str())?),
+                    Some(target) => Some(element(&open, target, input.timeout).await?),
                     None if replace => {
                         return Err(MobileError::Usage("--replace sets a field's text: name it with --into".into()));
                     }
@@ -501,16 +502,25 @@ fn unsettled(call: &Call<'_>) -> String {
     )
 }
 
+/// The element `target` names, with its ref: a ref's, as the last inspect
+/// listed it, or the one a `text=` or `id=` finds once it is there, waiting
+/// at most `timeout` seconds.
+async fn element(open: &OpenDevice, target: &str, timeout: Option<u64>) -> Result<(ElementRef, Listed), MobileError> {
+    match Target::parse(target)? {
+        Target::Ref(reference) => listed(open, reference),
+        Target::Find(selector) => {
+            target::find(open, &selector, Duration::from_secs(timeout.unwrap_or(FIND_SECONDS))).await
+        }
+    }
+}
+
 /// The element `reference` names in the device's last inspect.
-fn listed(open: &OpenDevice, reference: &str) -> Result<(ElementRef, Listed), MobileError> {
-    let reference: ElementRef = reference
-        .parse()
-        .map_err(|error: String| MobileError::Usage(error))?;
+fn listed(open: &OpenDevice, reference: ElementRef) -> Result<(ElementRef, Listed), MobileError> {
     let refs = open.refs.lock().expect("the refs are intact");
-    refs.get(&reference)
-        .cloned()
-        .map(|listed| (reference.clone(), listed))
-        .ok_or(MobileError::StaleRef(reference))
+    match refs.get(&reference) {
+        Some(listed) => Ok((reference, listed.clone())),
+        None => Err(MobileError::StaleRef(reference)),
+    }
 }
 
 fn summary(reference: ElementRef, listed: &Listed) -> demi_command_package_mobile_protocol::mobile::ElementSummary {
@@ -661,35 +671,64 @@ async fn wait(
     open: &OpenDevice,
     input: demi_command_package_mobile_protocol::mobile::WaitInput,
 ) -> Result<Outcome, MobileError> {
+    let started = Instant::now();
+    let seconds = input.timeout.unwrap_or(WAIT_SECONDS);
+    let timeout = Duration::from_secs(seconds);
+    let waited = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let found = |element: ElementSummary| {
+        let text = format!("Found {}.\n", text::summary(&element));
+        Outcome::result(
+            WaitResult {
+                device: open.handle.clone(),
+                element: Some(element),
+                waited_ms: waited(),
+            },
+            text,
+        )
+    };
+    /// What `wait` reads the tree for until it holds.
     enum Until {
-        Text(String),
-        Element(ElementRef, Listed),
-        Gone(ElementRef, Listed),
+        /// Any element shows the text.
+        Shows(Selector),
+        /// The element a ref names is there, or is gone.
+        Listed { reference: ElementRef, listed: Listed, gone: bool },
+        /// No element matches.
+        NoneMatches(Selector),
     }
     let until = match (input.text, input.element, input.gone) {
-        (Some(text), None, None) => Until::Text(text),
-        (None, Some(reference), None) => {
-            let (reference, listed) = listed(open, reference.as_str())?;
-            Until::Element(reference, listed)
-        }
-        (None, None, Some(reference)) => {
-            let (reference, listed) = listed(open, reference.as_str())?;
-            Until::Gone(reference, listed)
-        }
+        (Some(text), None, None) => Until::Shows(Selector::Text(text)),
+        (None, Some(target), None) => match Target::parse(&target)? {
+            Target::Ref(reference) => {
+                let (reference, listed) = listed(open, reference)?;
+                Until::Listed { reference, listed, gone: false }
+            }
+            // As tap finds it: the only match, on the screen, enabled and
+            // settled.
+            Target::Find(selector) => {
+                let (reference, listed) = target::find(open, &selector, timeout).await?;
+                return found(summary(reference, &listed));
+            }
+        },
+        (None, None, Some(target)) => match Target::parse(&target)? {
+            Target::Ref(reference) => {
+                let (reference, listed) = listed(open, reference)?;
+                Until::Listed { reference, listed, gone: true }
+            }
+            Target::Find(selector) => Until::NoneMatches(selector),
+        },
         _ => {
             return Err(MobileError::Usage(
                 "wait takes one of --text, --element and --gone".into(),
             ));
         }
     };
-    let started = Instant::now();
-    let seconds = input.timeout.unwrap_or(WAIT_SECONDS);
-    let deadline = started + Duration::from_secs(seconds);
+    let deadline = started + timeout;
     let timed_out = || {
         let what = match &until {
-            Until::Text(text) => format!("no element shows {}", text::quoted(text)),
-            Until::Element(reference, _) => format!("{reference} did not appear"),
-            Until::Gone(reference, _) => format!("{reference} is still there"),
+            Until::Shows(selector) => format!("no element {}", selector.said(true)),
+            Until::Listed { reference, gone: false, .. } => format!("{reference} did not appear"),
+            Until::Listed { reference, gone: true, .. } => format!("{reference} is still there"),
+            Until::NoneMatches(selector) => format!("an element that {} is still there", selector.said(true)),
         };
         MobileError::Timeout(format!("after {seconds} s {what}"))
     };
@@ -701,53 +740,42 @@ async fn wait(
             return Err(timed_out());
         };
         let raw = raw?;
-        let found = match &until {
-            Until::Text(text) => tree::find(&raw, &|element| {
-                [&element.label, &element.value]
-                    .into_iter()
-                    .flatten()
-                    .any(|shown| shown.contains(text.as_str()))
-            })
-            .map(|element| Some(element.clone())),
-            Until::Element(_, listed) => tree::find(&raw, &|element| listed.matches(element))
-                .map(|element| Some(element.clone())),
-            Until::Gone(_, listed) => match tree::find(&raw, &|element| listed.matches(element)) {
-                Some(_) => None,
-                None => Some(None),
-            },
-        };
-        if let Some(found) = found {
-            let waited_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-            let element = match (&until, found) {
-                (Until::Element(reference, listed), _) => Some(summary(reference.clone(), listed)),
-                (Until::Text(_), Some(element)) => Some(demi_command_package_mobile_protocol::mobile::ElementSummary {
-                    r#ref: {
-                        let mut refs = open.refs.lock().expect("the refs are intact");
-                        refs.add(Listed {
-                            role: element.role.clone(),
-                            label: element.label.clone(),
-                            identifier: element.identifier.clone(),
-                            frame: element.frame,
-                        })
-                    },
-                    role: element.role,
-                    label: element.label,
-                }),
-                _ => None,
-            };
-            let text = match (&until, &element) {
-                (Until::Gone(reference, _), _) => format!("{reference} is gone.\n"),
-                (_, Some(element)) => format!("Found {}.\n", text::summary(element)),
-                (_, None) => "Found it.\n".to_owned(),
-            };
-            return Outcome::result(
-                WaitResult {
-                    device: open.handle.clone(),
-                    element,
-                    waited_ms,
-                },
-                text,
-            );
+        match &until {
+            Until::Shows(selector) => {
+                if let Some(element) = selector.matches(&raw).first() {
+                    let (reference, listed) = target::referenced(open, element);
+                    return found(summary(reference, &listed));
+                }
+            }
+            Until::Listed { reference, listed, gone } => {
+                let there = tree::find(&raw, &|element| listed.matches(element)).is_some();
+                match (there, gone) {
+                    (true, false) => return found(summary(reference.clone(), listed)),
+                    (false, true) => {
+                        return Outcome::result(
+                            WaitResult {
+                                device: open.handle.clone(),
+                                element: None,
+                                waited_ms: waited(),
+                            },
+                            format!("{reference} is gone.\n"),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            Until::NoneMatches(selector) => {
+                if selector.matches(&raw).is_empty() {
+                    return Outcome::result(
+                        WaitResult {
+                            device: open.handle.clone(),
+                            element: None,
+                            waited_ms: waited(),
+                        },
+                        format!("No element {} now.\n", selector.said(true)),
+                    );
+                }
+            }
         }
         if Instant::now() + WAIT_INTERVAL > deadline {
             return Err(timed_out());
