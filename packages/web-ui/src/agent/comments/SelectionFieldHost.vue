@@ -3,7 +3,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import { stackAbove } from '../../overlay/stacking'
 import { usePhone } from '../../ui/phone'
-import { aroundPlaces } from './lines'
 import { shortcutSet } from '../../ui/shortcut'
 import {
   selectedLinesBounds,
@@ -13,7 +12,7 @@ import {
   type SelectionFieldOffer,
 } from '../../ui/context-menu'
 import { rangeHas } from './anchors'
-import { publishMarks } from './highlights'
+import { heldSelection } from '../../ui/drawn-selection'
 import SelectionField from './SelectionField.vue'
 import { chosenWay, closePictureField, pictureField, type FieldWay } from './selection-field'
 
@@ -34,8 +33,8 @@ import { chosenWay, closePictureField, pictureField, type FieldWay } from './sel
  * an input method's composition included, starts in it: an input method works
  * only in a focused field, and a key that arrives with the focus elsewhere has
  * already been taken as a letter. The focus in a field ends the selection on
- * the page, so the selection is kept for it: its words are painted as selected
- * and Cmd-C copies them.
+ * the page, so the selection is kept for it: its words are drawn as selected
+ * (`heldSelection`) and Cmd-C copies them.
  *
  * A right-click on the selected words puts the selection back on the page while
  * their menu is open, which reads it, and the field takes the focus again as the
@@ -271,16 +270,18 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   listeners.abort()
-  publishMarks(marks, null)
+  heldSelection.value = null
 })
 
-// The focus in the field ends the selection on the page; its words keep the selection's color.
-const marks = Symbol('selection-field')
-watch([focused, selection], ([now, held]) => {
-  if (now && held) {
-    publishMarks(marks, { 'comment': [], 'comment-sent': [], 'comment-selection': aroundPlaces(held.range), 'ask': [] })
+// The focus in the field ends the selection on the page, which keeps drawing it;
+// a picture a menu opened the field on is drawn as selected too.
+watch([focused, selection, pictureField], ([now, held, picture]) => {
+  if (picture) {
+    const range = document.createRange()
+    range.selectNode(picture.image)
+    heldSelection.value = range
   } else
-    publishMarks(marks, null)
+    heldSelection.value = now && held ? held.range : null
 })
 
 // A reply that renders its text again collapses the selection in Chrome without a
