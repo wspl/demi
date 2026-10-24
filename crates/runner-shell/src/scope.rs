@@ -661,6 +661,15 @@ impl FileControl for Scope {
 }
 
 impl ExecutionHost for Scope {
+    fn utility_control(
+        &self,
+        attributes: &brush_core::execution_host::ChildAttributes,
+    ) -> Option<Arc<dyn uucore::context::Control>> {
+        Some(Arc::new(UtilityControl {
+            scope: self.clone(),
+            attributes: child_attributes(attributes),
+        }))
+    }
     fn map_path(
         &self,
         path: &Path,

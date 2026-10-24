@@ -226,9 +226,10 @@ fn execute_utility(
         let scope = scope(context.shell)?;
         // The utility's files and the programs it starts get the umask and
         // limits of the shell that ran it (`crates/runner-shell/src/process_builtins.rs`).
-        let attributes = crate::scope::child_attributes(context.shell.child_attributes());
         #[cfg(unix)]
-        let umask = attributes
+        let umask = context
+            .shell
+            .child_attributes()
             .umask
             .unwrap_or_else(demi_runner_process::process::umask);
         // Windows has no mask: a job's own applies to nothing there.
@@ -241,10 +242,10 @@ fn execute_utility(
                 .filter(|(fd, _)| *fd > 2)
                 .map(|(fd, file)| Ok((fd, Arc::new(native_file(file)?))))
                 .collect::<Result<_, brush_core::Error>>()?,
-            control: Some(Arc::new(crate::scope::UtilityControl {
-                scope: scope.clone(),
-                attributes,
-            })),
+            control: brush_core::execution_host::ExecutionHost::utility_control(
+                &scope,
+                context.shell.child_attributes(),
+            ),
             live_input: is_live(&stdin, &env)?,
             umask,
             cwd: context.shell.working_dir().to_owned(),

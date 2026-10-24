@@ -146,6 +146,16 @@ pub trait ExecutionHost: Any + Send + Sync {
     }
     /// Tells the host that a builtin starts, which runs in the shell's process.
     fn builtin_started(&self) {}
+    /// What a builtin that runs uucore's own code, as `printf` formats with it,
+    /// opens, reads and writes through, as the host's own utilities do, so that
+    /// its writes to a file are recorded as theirs are; `attributes` are its
+    /// shell's. With none, it opens, reads and writes its files directly.
+    fn utility_control(
+        &self,
+        _attributes: &ChildAttributes,
+    ) -> Option<Arc<dyn uucore::context::Control>> {
+        None
+    }
     /// What runs the file `script`, with `path` the `PATH` the command starts under: a program
     /// or a builtin of the host when the system cannot execute the file by itself, as Windows
     /// cannot a script, or when the host runs it in place of what the system would start. With
