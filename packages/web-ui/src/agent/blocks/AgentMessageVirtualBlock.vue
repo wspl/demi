@@ -75,8 +75,9 @@ const props = defineProps<{
 /**
  * Whether a run's row, or the row of a step that runs under it, is open. The
  * list keeps it by the name of the block the row shows (`useOpenRuns`), so a
- * step opened while it runs is still open as the run it starts. Other rows
- * ignore it.
+ * step opened while it runs is still open as the run it starts in its place;
+ * a thinking's row, which goes once it is written, leaves the run folded.
+ * Other rows ignore it.
  */
 const runOpen = defineModel<boolean>('open', { default: false })
 
