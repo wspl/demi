@@ -124,6 +124,9 @@ const spinsInGutter = computed(
   () => running.value && showGutter.value && (checkLeading.value || !isChoice.value || props.loading === true)
 )
 const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
+// A row without a gutter that can work keeps its spinner's room at its end while it
+// rests, so the menu's columns never widen when its work starts.
+const spinsAtEnd = computed(() => (props.operation !== undefined || props.loading !== undefined) && !showGutter.value)
 // The suffix column only exists when something renders in it, so empty rows add no width.
 const hasActions = computed(() => slots.actions != null)
 const hasSuffix = computed(
@@ -133,7 +136,7 @@ const hasSuffix = computed(
     showTrailingCheck.value ||
     showsSubmenu.value ||
     !!props.shortcut ||
-    (running.value && !showGutter.value)
+    spinsAtEnd.value
 )
 
 const triggerRef = ref<HTMLElement | null>(null)
@@ -339,7 +342,7 @@ const toneClass = computed(() => {
         </span>
         <slot v-else name="suffix">
           <span
-            v-if="showTrailingCheck || (running && !showGutter)"
+            v-if="showTrailingCheck || (running && spinsAtEnd && !shortcut)"
             class="flex size-3.5 shrink-0 items-center justify-center"
           >
             <IndeterminateSpinner v-if="running && !spinsInGutter" :size="14" class="text-fg-muted" />
@@ -355,12 +358,18 @@ const toneClass = computed(() => {
           >
             <ChevronRight :size="ICON_PX.in28" />
           </span>
+          <!-- A row's spinner turns over its shortcut, which keeps its width; a phone,
+               which shows no shortcut, keeps the spinner's own. -->
           <span
             v-else-if="shortcut"
-            class="shrink-0 text-right text-[11px] text-fg-subtle phone:hidden"
+            class="grid shrink-0 items-center justify-items-end text-right text-[11px] text-fg-subtle"
           >
-            {{ shortcut }}
+            <span class="col-start-1 row-start-1 phone:hidden" :class="running && spinsAtEnd ? 'invisible' : ''">{{ shortcut }}</span>
+            <span v-if="spinsAtEnd" class="col-start-1 row-start-1 flex size-3.5 items-center justify-center">
+              <IndeterminateSpinner v-if="running" :size="14" class="text-fg-muted" />
+            </span>
           </span>
+          <span v-else-if="spinsAtEnd" class="flex size-3.5 shrink-0" />
         </slot>
       </span>
     </div>

@@ -109,8 +109,8 @@ const emit = defineEmits<{
 
 // The row works while an operation on its target runs, whichever control
 // started it, a dialog since closed included (`operations.ts`): a spinner
-// stands before its controls, and its accessory, such as its ··· menu, stays
-// for the menu to be opened again.
+// stands before its controls, in room the row keeps while it rests, and its
+// accessory, such as its ··· menu, stays for the menu to be opened again.
 const working = provideRowTarget(() => props.target)
 </script>
 
@@ -184,8 +184,10 @@ const working = provideRowTarget(() => props.target)
     <!-- The controls keep their own width beside the text, which wraps before they drop.
          Dropped, they take the whole line (they are the only item on it, so their grow is all of it)
          and a field stretches across it. An inset row never drops. -->
-      <!-- A row with no controls shows its work at its end, before its accessory. -->
-      <RowSpinner v-if="working && !$slots.default" class="ml-auto self-center" />
+      <!-- A row with no controls shows its work at its end, before its accessory. A row
+           with a target keeps the spinner's room while it rests, so nothing moves when
+           its work starts. -->
+      <RowSpinner v-if="target !== undefined && !$slots.default" :working="working" class="ml-auto self-center" />
       <div
         v-if="$slots.default"
         @click="isolateControls && $event.stopPropagation()"
@@ -198,7 +200,7 @@ const working = provideRowTarget(() => props.target)
         disabled ? 'pointer-events-none' : '',
       ]"
       >
-        <RowSpinner v-if="working" />
+        <RowSpinner v-if="target !== undefined" :working="working" />
         <slot />
       </div>
       <div v-if="below()" class="order-last min-w-0 basis-full" :class="faded ? 'opacity-60' : ''">
