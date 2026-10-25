@@ -122,7 +122,7 @@ pub use messages::{
 };
 pub use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
 pub use pipe_frames::{
-    CALL_OUTPUT_ROUTE, PIPE_DATA_BYTES, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeEnd, PipeFrame, PipeFrameDecoder,
+    CALL_OUTPUT_ROUTE, PIPE_DATA_BYTES, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeEnd, PipeFrame, PipeMove, PipePath, PipeSink, moved_frame, PipeFrameDecoder,
     PipeFrameError, decode_message, encode_data, end_frame, idle_frame,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};

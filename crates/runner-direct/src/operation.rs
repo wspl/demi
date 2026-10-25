@@ -124,6 +124,11 @@ pub trait Operations: Send + Sync + 'static {
     /// its Connect To; refused when this runner connects no forward of that
     /// id whose other end is `from`.
     fn forward(&self, forward: String, from: String) -> Answer<crate::Forwarded>;
+    /// The channel the runner of `from` opened for pipe `pipe`, whose sink
+    /// this runner is, carrying its bytes from `at` on
+    /// (`crates/runner-process/src/pipes/moves.rs`). A channel no reader of
+    /// the pipe takes closes.
+    fn pipe(&self, from: String, pipe: String, at: u64, channel: crate::PairChannel);
 }
 
 /// What the other side sends on a channel after its header.
@@ -144,7 +149,7 @@ pub(crate) enum Input {
 pub(crate) fn text_input(kind: crate::channel::Kind, data: &[u8]) -> Option<Input> {
     use crate::channel::Kind;
     match kind {
-        Kind::Write | Kind::Forward => serde_json::from_slice::<WriteEnd>(data)
+        Kind::Write | Kind::Pair => serde_json::from_slice::<WriteEnd>(data)
             .ok()
             .filter(|end| end.end)
             .map(|_| Input::End),

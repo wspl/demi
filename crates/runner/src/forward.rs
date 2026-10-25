@@ -6,7 +6,8 @@
 //! - As a forward's Listen On, the runner listens on `127.0.0.1` only,
 //!   announces whether it listens and its connections on each path as they
 //!   change, and carries each connection direct, as a channel of the pair's
-//!   peer, or through the relay, as a pair of pipes.
+//!   peer, or through the relay, as a pair of pipes, which move to the
+//!   peer once it is up and back when it fails.
 //! - As a Connect To, it opens the connection to the forward's address for each
 //!   connection the other runner's channel or the backend's pipes bring.
 //!
@@ -17,19 +18,21 @@
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_runner_direct::{Dial, Direct, ForwardChannel, PairPeer, Pairs, Path, PeerLink, connect_target};
+use demi_runner_direct::{Pairs, Path, connect_target};
 use demi_runner_process::pipes::{PipeClient, report_pipe};
-use demi_runner_protocol::direct::{DialRefusal, StunUrl};
-use demi_runner_protocol::forward::{DEADLINE, Forward, ForwardRunState, PairReason};
-use demi_runner_protocol::wire::{self, Inbound, Outbound, PipeRef};
+use demi_runner_protocol::direct::StunUrl;
+use demi_runner_protocol::forward::{DEADLINE, Forward, ForwardRunState};
+use demi_runner_protocol::pairs::{PairHeader, PairReason};
+use demi_runner_protocol::wire::{Inbound, Outbound, PipePath, PipeRef};
 use futures_util::StreamExt as _;
-use futures_util::future::BoxFuture;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, watch};
+
+use crate::pairs::{Backend, Pairing, Replies, RunnerDial};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
@@ -59,55 +62,6 @@ impl Listed {
 /// the Connect To.
 pub type ForwardList = watch::Receiver<Arc<Vec<Listed>>>;
 
-/// What the backend answers to a request of the runner's, by its id.
-#[derive(Clone, Default)]
-struct Replies(Arc<Mutex<HashMap<String, oneshot::Sender<Inbound>>>>);
-
-impl Replies {
-    fn wait(&self, id: &str) -> oneshot::Receiver<Inbound> {
-        let (answer, answered) = oneshot::channel();
-        self.0.lock().expect("the replies are whole").insert(id.to_owned(), answer);
-        answered
-    }
-
-    /// Stops waiting for the reply to `id`.
-    fn forget(&self, id: &str) {
-        self.0.lock().expect("the replies are whole").remove(id);
-    }
-
-    /// Hands `reply` to what waits for it; one nobody waits for is passed
-    /// over.
-    fn answer(&self, id: &str, reply: Inbound) {
-        if let Some(waiting) = self.0.lock().expect("the replies are whole").remove(id) {
-            // The connection that asked may have gone.
-            let _ = waiting.send(reply);
-        }
-    }
-}
-
-/// The connection's way to the backend.
-#[derive(Clone)]
-struct Backend {
-    control: mpsc::UnboundedSender<wire::Frame>,
-    closed: CancellationToken,
-}
-
-impl Backend {
-    /// Sends `message`; false once the connection's writer ended.
-    fn send(&self, message: &Outbound) -> bool {
-        let frame = match wire::encode(message) {
-            Ok(frame) => frame,
-            Err(error) => {
-                // The runner's own messages always encode; one that does
-                // not is not sent, and its connection is refused.
-                tracing::warn!(event = "reply.encode_failed", what = "forward", %error, "a forward's message was not encoded");
-                return true;
-            }
-        };
-        self.control.send(frame).is_ok()
-    }
-}
-
 /// The runner's forwards on one connection; dropping it ends every
 /// listener and connection.
 pub struct Forwarding {
@@ -130,35 +84,20 @@ pub fn forward_list() -> (watch::Sender<Arc<Vec<Listed>>>, ForwardList) {
 }
 
 impl Forwarding {
-    /// The forwards of the connection whose messages go to `control` until
-    /// `closed`, with `direct`'s peers and `pipes` for the relay; what the
-    /// backend lists goes to `listed`.
-    pub fn new(
-        listed: watch::Sender<Arc<Vec<Listed>>>,
-        direct: Direct,
-        pipes: PipeClient,
-        control: mpsc::UnboundedSender<wire::Frame>,
-        closed: CancellationToken,
-    ) -> Self {
+    /// The forwards of the connection whose pairs `pairing` keeps, with
+    /// `pipes` for the relay; what the backend lists goes to `listed`.
+    pub fn new(listed: watch::Sender<Arc<Vec<Listed>>>, pairing: Arc<Pairing>, pipes: PipeClient) -> Self {
         let (events, received) = mpsc::unbounded_channel();
-        let replies = Replies::default();
-        let backend = Backend { control, closed };
-        let (stun, stunned) = watch::channel(Vec::new());
-        let pairs = Pairs::new(RunnerDial {
-            direct,
-            backend: backend.clone(),
-            replies: replies.clone(),
-            stun: stunned,
-        });
+        let replies = pairing.replies.clone();
         let serving = Serving {
             events: received,
             sender: events.clone(),
             listed,
-            stun,
             listeners: HashMap::new(),
-            pairs: Arc::new(pairs),
-            backend,
+            pairs: pairing.pairs().clone(),
+            backend: pairing.backend.clone(),
             replies: replies.clone(),
+            pairing,
             pipes,
             tasks: JoinSet::new(),
             generations: 0,
@@ -184,10 +123,7 @@ impl Forwarding {
                 input,
                 output,
             },
-            Inbound::ForwardOpened { ref id, .. }
-            | Inbound::ForwardRefused { ref id, .. }
-            | Inbound::DirectDialed { ref id, .. }
-            | Inbound::DirectDialRefused { ref id, .. } => {
+            Inbound::ForwardOpened { ref id, .. } | Inbound::ForwardRefused { ref id, .. } => {
                 let id = id.clone();
                 self.replies.answer(&id, message);
                 return Ok(());
@@ -224,8 +160,8 @@ struct Serving {
     events: mpsc::UnboundedReceiver<Event>,
     sender: mpsc::UnboundedSender<Event>,
     listed: watch::Sender<Arc<Vec<Listed>>>,
-    stun: watch::Sender<Vec<StunUrl>>,
     listeners: HashMap<String, Listener>,
+    pairing: Arc<Pairing>,
     pairs: Arc<Pairs<RunnerDial>>,
     backend: Backend,
     replies: Replies,
@@ -313,7 +249,7 @@ impl Serving {
     /// connections; a new one, or a new generation, listens; and the pairs
     /// whose other runner came online try a peer again.
     async fn forwards(&mut self, forwards: Vec<Forward>, stun: Vec<StunUrl>) {
-        self.stun.send_replace(stun);
+        self.pairing.stun(stun);
         let before = self.listed.borrow().clone();
         let mut listed = Vec::with_capacity(forwards.len());
         for forward in forwards {
@@ -504,6 +440,27 @@ impl Counted {
     }
 }
 
+impl Counted {
+    /// The connection's bytes now go `direct` or through the relay.
+    fn moved(&mut self, direct: bool) {
+        if direct == self.direct {
+            return;
+        }
+        // A forwarding that ended counts nothing.
+        let _ = self.counted.send(Event::Counted {
+            forward: self.forward.clone(),
+            direct: self.direct,
+            opened: false,
+        });
+        let _ = self.counted.send(Event::Counted {
+            forward: self.forward.clone(),
+            direct,
+            opened: true,
+        });
+        self.direct = direct;
+    }
+}
+
 impl Drop for Counted {
     fn drop(&mut self) {
         // A forwarding that ended counts nothing.
@@ -573,7 +530,10 @@ impl Accepting {
         if !forward.peer_online {
             return;
         }
-        match self.pairs.path(&forward.peer, &forward.id, forward.direct).await {
+        let header = PairHeader::Forward {
+            forward: forward.id.clone(),
+        };
+        match self.pairs.path(&forward.peer, header, forward.direct).await {
             Path::Direct(channel, _reserved) => {
                 let _counted = Counted::new(self, true);
                 channel.splice(tcp).await;
@@ -595,8 +555,8 @@ impl Accepting {
                     // closes at once.
                     return;
                 };
-                let _counted = Counted::new(self, false);
-                relay(tcp, input, output, &self.pipes, &self.backend, &self.cancel).await;
+                let counted = Counted::new(self, false);
+                relay(tcp, input, output, &self.pipes, &self.backend, &self.cancel, Some(counted)).await;
             }
         }
     }
@@ -605,7 +565,8 @@ impl Accepting {
 /// Carries `tcp` through the relay: what it reads goes into `output`, what
 /// `input` carries is written to it. Either side's clean end ends only its
 /// own direction, as TCP's half-close does; a failure of either, or `ended`,
-/// ends both at once. Each pipe's end is reported as every pipe's is.
+/// ends both at once. Each pipe's end is reported as every pipe's is. A
+/// Listen On's `counted` follows the path its output's bytes go.
 async fn relay(
     tcp: TcpStream,
     input: PipeRef,
@@ -613,6 +574,7 @@ async fn relay(
     pipes: &PipeClient,
     backend: &Backend,
     ended: &CancellationToken,
+    counted: Option<Counted>,
 ) {
     let (reader, mut writer) = tcp.into_split();
     let failed = ended.child_token();
@@ -623,11 +585,21 @@ async fn relay(
             () = gone.cancelled() => {}
         }
     };
+    let (path, mut moves) = watch::channel(PipePath::Relay);
+    // The count lasts as long as the connection, past its output's end.
+    let following = async move {
+        let mut counted = counted?;
+        while moves.changed().await.is_ok() {
+            let direct = *moves.borrow_and_update() == PipePath::Direct;
+            counted.moved(direct);
+        }
+        Some(counted)
+    };
     let sending = async {
         let body = tokio_util::io::ReaderStream::new(reader);
         let sent = tokio::select! {
             () = stopped => Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "the connection ended")),
-            sent = pipes.stream(&output.url, body, &failed) => sent,
+            sent = pipes.stream_on(&output, body, &failed, Some(path)) => sent,
         };
         if sent.is_err() {
             failed.cancel();
@@ -636,7 +608,7 @@ async fn relay(
     };
     let receiving = async {
         let received = async {
-            let mut body = pipes.get(&input.url, failed.clone()).await?;
+            let mut body = pipes.get(&input, failed.clone()).await?;
             while let Some(chunk) = body.next().await {
                 writer.write_all(&chunk?).await?;
             }
@@ -653,7 +625,7 @@ async fn relay(
         }
         received
     };
-    let (sent, received) = tokio::join!(sending, receiving);
+    let (sent, received, _counted) = tokio::join!(sending, receiving, following);
     report_pipe(&backend.control, output.id, sent);
     report_pipe(&backend.control, input.id, received);
 }
@@ -677,15 +649,15 @@ async fn connect_relayed(
         ),
     };
     match connected {
-        Ok(tcp) => relay(tcp, input, output, &pipes, &backend, &ended).await,
+        Ok(tcp) => relay(tcp, input, output, &pipes, &backend, &ended, None).await,
         Err(error) => {
             tracing::debug!(event = "forwarded_connection.connect_failed", %error, "a forwarded connection could not connect");
             let failed = futures_util::stream::once(async move { Err::<Bytes, _>(error) });
             let cancel = backend.closed.child_token();
-            let sent = pipes.stream(&output.url, failed, &cancel).await;
+            let sent = pipes.stream(&output, failed, &cancel).await;
             report_pipe(&backend.control, output.id, sent);
             // Taken and dropped: the Listen On runner's bytes go nowhere.
-            let received = pipes.get(&input.url, cancel).await.map(drop);
+            let received = pipes.get(&input, cancel).await.map(drop);
             report_pipe(&backend.control, input.id, received);
         }
     }
@@ -699,120 +671,4 @@ pub fn connect_target_of(list: &ForwardList, forward: &str, from: &str) -> Optio
         .iter()
         .find(|listed| listed.forward.id == forward && listed.forward.peer == from)
         .and_then(|listed| Some((listed.forward.connect.clone()?, listed.ended.clone())))
-}
-
-/// Makes peers with the runners at the other end of this runner's forwards,
-/// introduced by the backend, this runner offering.
-struct RunnerDial {
-    direct: Direct,
-    backend: Backend,
-    replies: Replies,
-    stun: watch::Receiver<Vec<StunUrl>>,
-}
-
-/// A connected peer with another runner.
-#[derive(Clone)]
-struct RunnerPeer {
-    link: PeerLink,
-    peer: String,
-    direct: Direct,
-}
-
-impl PairPeer for RunnerPeer {
-    type Channel = ForwardChannel;
-
-    fn open(&self, forward: String) -> BoxFuture<'static, Option<ForwardChannel>> {
-        let link = self.link.clone();
-        Box::pin(async move { link.open(&forward).await })
-    }
-
-    fn ended(&self) -> BoxFuture<'static, Option<PairReason>> {
-        let link = self.link.clone();
-        Box::pin(async move { link.ended().await })
-    }
-
-    fn close(&self) {
-        self.direct.close(&self.peer);
-    }
-}
-
-impl Dial for RunnerDial {
-    type Peer = RunnerPeer;
-
-    fn dial(&self, device: String) -> BoxFuture<'static, Result<RunnerPeer, Option<PairReason>>> {
-        let direct = self.direct.clone();
-        let backend = self.backend.clone();
-        let replies = self.replies.clone();
-        let stun = self.stun.borrow().clone();
-        Box::pin(async move {
-            let peer = uuid::Uuid::new_v4().simple().to_string();
-            let dialing = direct
-                .dial(peer.clone(), stun)
-                .await
-                .map_err(|_| Some(PairReason::Busy))?;
-            let id = uuid::Uuid::new_v4().simple().to_string();
-            let answered = replies.wait(&id);
-            let offer = Outbound::DirectDial {
-                id,
-                peer: peer.clone(),
-                device,
-                sdp: dialing.sdp,
-            };
-            if !backend.send(&offer) {
-                direct.close(&peer);
-                return Err(None);
-            }
-            let reason = match answered.await {
-                Ok(Inbound::DirectDialed { sdp, .. }) => {
-                    direct.answered(&peer, sdp);
-                    None
-                }
-                Ok(Inbound::DirectDialRefused { code, message, .. }) => {
-                    tracing::debug!(event = "forward.pair_missing", code = ?code, reason = %message, "the backend did not introduce a pair");
-                    Some(match code {
-                        DialRefusal::Busy => Some(PairReason::Busy),
-                        DialRefusal::InvalidOffer | DialRefusal::Unavailable => None,
-                    })
-                }
-                _ => Some(None),
-            };
-            if let Some(reason) = reason {
-                direct.close(&peer);
-                return Err(reason);
-            }
-            // The candidates this side finds after its offer go to the
-            // other runner, and the peer's end to the backend, which
-            // closes the other side.
-            let link = dialing.link;
-            let mut candidates = dialing.candidates;
-            let told = backend.clone();
-            let ended = link.clone();
-            let ending = peer.clone();
-            tokio::spawn(async move {
-                loop {
-                    tokio::select! {
-                        found = candidates.recv() => match found {
-                            Some(candidate) => {
-                                let found = Outbound::DirectCandidate { peer: ending.clone(), candidate };
-                                if !told.send(&found) {
-                                    return;
-                                }
-                            }
-                            None => break,
-                        },
-                        _ = ended.ended() => break,
-                    }
-                }
-                ended.ended().await;
-                told.send(&Outbound::DirectClosed { peer: ending });
-            });
-            match link.connected().await {
-                Ok(()) => Ok(RunnerPeer { link, peer, direct }),
-                Err(reason) => {
-                    direct.close(&peer);
-                    Err(reason)
-                }
-            }
-        })
-    }
 }

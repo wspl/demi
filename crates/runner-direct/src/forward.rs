@@ -1,4 +1,4 @@
-//! A forwarded TCP connection over a data channel of a peer between two runners
+//! A forwarded TCP connection over a channel of a pair's peer
 //! (`crates/runner-direct/src/pairs.rs`).
 //!
 //! - The Listen On runner opens the channel with the forward's header.
@@ -10,45 +10,17 @@
 
 use bytes::BytesMut;
 use demi_runner_protocol::direct::{MESSAGE_BYTES, WriteEnd};
-use demi_runner_protocol::forward::{DEADLINE, ForwardHeader};
+use demi_runner_protocol::forward::DEADLINE;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-use str0m::channel::ChannelId;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::operation::{Input, Operations, Output};
-
-/// A forwarded connection's channel, as a byte stream both ways.
-pub struct ForwardChannel {
-    pub(crate) input: mpsc::UnboundedReceiver<Input>,
-    pub(crate) output: mpsc::Sender<Output>,
-    pub(crate) took: Took,
-    /// Cancelled once the channel goes.
-    pub(crate) cancel: CancellationToken,
-    /// Closes the channel at once, cancelled when the connection ends
-    /// before both its sides ended cleanly.
-    pub(crate) abort: CancellationToken,
-}
-
-/// Where a consumer says how many bytes it took, which its channel grants
-/// back to the other side.
-#[derive(Clone)]
-pub(crate) struct Took {
-    pub(crate) id: ChannelId,
-    pub(crate) sender: mpsc::UnboundedSender<(ChannelId, usize)>,
-}
-
-impl Took {
-    fn report(&self, bytes: usize) {
-        // A peer that ended grants nothing more.
-        let _ = self.sender.send((self.id, bytes));
-    }
-}
+use crate::pair_channel::PairChannel;
 
 /// The one line a forwarded connection ends with, written when it is
 /// dropped, whichever way it ends, a cancelled one included.
@@ -91,8 +63,8 @@ impl Drop for Ending {
     }
 }
 
-impl ForwardChannel {
-    /// Carries `tcp`'s bytes both ways until both sides ended, either side
+impl PairChannel {
+    /// Carries `tcp`'s bytes both ways, as a forwarded connection's channel, until both sides ended, either side
     /// failed or the channel went; then the channel closes.
     pub async fn splice(self, tcp: TcpStream) {
         let Self {
@@ -101,6 +73,7 @@ impl ForwardChannel {
             took,
             cancel,
             abort,
+            granted: _,
         } = self;
         // A connection that ends otherwise than by both sides' clean end,
         // here or by its caller going, closes its channel at once, rather
@@ -224,17 +197,16 @@ pub async fn give_up_on<T>(
     }
 }
 
-/// Carries out a forwarded connection that the runner of `from` opened:
+/// Carries out a connection of `forward` that the runner of `from` opened:
 /// the runner connects as the forward's Connect To, and the channel carries
 /// the connection; a refused one closes the channel at once, as a refused
 /// TCP connection does.
 pub(crate) async fn serve(
     operations: Arc<dyn Operations>,
     from: String,
-    header: ForwardHeader,
-    channel: ForwardChannel,
+    forward: String,
+    channel: PairChannel,
 ) {
-    let ForwardHeader::Forward { forward } = header;
     // A channel that goes while the target is connected to ends the try.
     let gone = channel.cancel.clone();
     let connected = tokio::select! {

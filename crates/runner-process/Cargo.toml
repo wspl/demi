@@ -25,6 +25,7 @@ process-wrap.workspace = true
 # HTTP/1.1.
 reqwest = { workspace = true, features = ["http2", "rustls", "stream"] }
 serde.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 # Stream pipes, which the runner sends over a WebSocket (`crates/runner-host/src/lib.rs`).

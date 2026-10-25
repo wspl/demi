@@ -46,6 +46,26 @@
 //! The runner's HTTP client speaks HTTP/2 where the edge offers it, so a
 //! concurrent pipe costs no new connection, which through a proxy and a TLS
 //! edge costs two or three round trips.
+//!
+//! # A pipe between two devices
+//!
+//! A pipe whose source and sink are two runners that may talk directly moves
+//! its bytes to the pair's direct channel and back
+//! (`crates/runner-process/src/pipes/moves.rs`). Its relay legs stay for as
+//! long as it lasts and carry its start, its end, its failure and its moves:
+//!
+//! - The backend tells the source its sink's device in a [`PipeSink`] text
+//!   message on the source's WebSocket.
+//! - The source says each move in a [`PipeMove`] text message, after the last
+//!   byte it sent the old way.
+//! - The sink reads each move as a [`PipeFrame::Moved`] frame, which names the
+//!   source's device from the backend's record of the pipe, in order with the
+//!   data frames.
+//!
+//! A move counts bytes from the pipe's first: the bytes from `at` on come the
+//! new way. A move back to the relay may name a byte the sink holds already,
+//! since the source sends again what the sink did not confirm; the sink drops
+//! what it holds.
 
 use std::time::Duration;
 
@@ -73,6 +93,9 @@ pub const PIPE_SESSION_MESSAGE_BYTES: usize = PIPE_DATA_BYTES + 64;
 const DATA: u8 = 0x01;
 const IDLE: u8 = 0x02;
 const END: u8 = 0x03;
+const MOVED: u8 = 0x04;
+/// The most bytes of a moved frame's map: a device id and a position.
+const PIPE_MOVED_BYTES: usize = 1024;
 /// A frame's type byte and its length.
 const HEAD_BYTES: usize = 5;
 
@@ -88,6 +111,46 @@ pub enum PipeFrame {
     Idle,
     /// The pipe's end.
     End(PipeEnd),
+    /// The pipe's bytes from `at` on come over `to`; `source` is the device
+    /// of the pipe's source, whose direct channel a move there names.
+    Moved { to: PipePath, at: u64, source: String },
+}
+
+/// The way a pipe between two devices carries its bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PipePath {
+    /// Through the backend, as every pipe starts.
+    Relay,
+    /// The direct channel between the two runners.
+    Direct,
+}
+
+/// A stream pipe's source's move, in a text message on its WebSocket: its
+/// bytes from `at` on go over `to`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PipeMove {
+    pub to: PipePath,
+    pub at: u64,
+}
+
+/// What the backend tells a stream pipe's source in a text message on its
+/// WebSocket: the device its sink is, once the sink is a runner the source's
+/// may talk directly with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PipeSink {
+    pub sink: String,
+}
+
+/// A moved frame's map.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MovedRecord {
+    to: PipePath,
+    at: u64,
+    source: String,
 }
 
 /// An end frame's map: `{ ok: true }` or `{ ok: false, cause }`.
@@ -108,6 +171,8 @@ pub enum PipeFrameError {
     TooLong { length: usize, limit: usize },
     #[error("an invalid pipe end frame: {0}")]
     InvalidEnd(String),
+    #[error("an invalid pipe moved frame: {0}")]
+    InvalidMoved(String),
 }
 
 /// Appends `bytes` to `frames` as data frames of at most
@@ -141,6 +206,21 @@ pub fn end_frame(end: &PipeEnd) -> Bytes {
     let map = rmp_serde::to_vec_named(&record).expect("an end record encodes");
     let mut frame = BytesMut::with_capacity(HEAD_BYTES + map.len());
     frame.put_u8(END);
+    frame.put_u32(map.len() as u32);
+    frame.put_slice(&map);
+    frame.freeze()
+}
+
+/// The moved frame of a move to `to` at byte `at` of `source`'s pipe.
+pub fn moved_frame(to: PipePath, at: u64, source: &str) -> Bytes {
+    let record = MovedRecord {
+        to,
+        at,
+        source: source.to_owned(),
+    };
+    let map = rmp_serde::to_vec_named(&record).expect("a moved record encodes");
+    let mut frame = BytesMut::with_capacity(HEAD_BYTES + map.len());
+    frame.put_u8(MOVED);
     frame.put_u32(map.len() as u32);
     frame.put_slice(&map);
     frame.freeze()
@@ -186,6 +266,7 @@ impl PipeFrameDecoder {
             }
             DATA => PIPE_DATA_BYTES,
             END => PIPE_END_BYTES,
+            MOVED => PIPE_MOVED_BYTES,
             kind => return Err(PipeFrameError::UnknownType(kind)),
         };
         if self.buffer.len() < HEAD_BYTES {
@@ -203,6 +284,11 @@ impl PipeFrameDecoder {
         let body = self.buffer.split_to(length).freeze();
         if kind == DATA {
             return Ok(Some(PipeFrame::Data(body)));
+        }
+        if kind == MOVED {
+            let MovedRecord { to, at, source } = rmp_serde::from_slice(&body)
+                .map_err(|error| PipeFrameError::InvalidMoved(error.to_string()))?;
+            return Ok(Some(PipeFrame::Moved { to, at, source }));
         }
         let record: EndRecord = rmp_serde::from_slice(&body)
             .map_err(|error| PipeFrameError::InvalidEnd(error.to_string()))?;

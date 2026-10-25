@@ -38,12 +38,17 @@
 //! The Listen On runner listens on `127.0.0.1` only, so only programs on that
 //! Host connect.
 //!
-//! - A connection takes the path chosen when it opens and keeps it: direct while
-//!   the pair's peer is connected and neither Host's route is Relay Only, the
-//!   relay otherwise, and always the relay when an end is a Cloud, which runs
-//!   beside the backend.
-//! - A failed peer ends the connections it carried, as TCP connections end when
-//!   a network drops, and their programs connect again.
+//! - A connection opens direct while the pair's peer is connected and neither
+//!   Host's route is Relay Only, the relay otherwise, and always the relay
+//!   when an end is a Cloud, which runs beside the backend.
+//! - A connection on the relay moves to the pair's peer once it is up, and
+//!   back to the relay when the peer fails, losing no byte
+//!   (`crates/runner-process/src/pipes/moves.rs`).
+//! - A failed peer ends the connections that opened on it, as TCP connections
+//!   end when a network drops, and their programs connect again.
+//! - Either runner may open the pair's peer, for a forward between them or
+//!   for a pipe between them that may go direct; the backend introduces them
+//!   only then.
 //! - A forward that is turned off, removed, or changed in where it listens or
 //!   connects ends its listener and open connections, and new ones follow the
 //!   change.
@@ -65,7 +70,6 @@ use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{DirectAnswer, ForwardEvent, Link, PeerEvent};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, DialRefusal, Introduced, OfferRefusal};
 use demi_runner_protocol::forward::{DEADLINE, Forward, ForwardRunState};
-use demi_web_api_protocol::devices::{DeviceKind, DeviceRoute};
 use demi_web_api_protocol::ids::{DeviceId, PortForwardId};
 use demi_web_api_protocol::port_forwards::{PortForwardDto, PortForwardPatch};
 use tokio_util::sync::CancellationToken;
@@ -120,15 +124,6 @@ fn change_of(patch: PortForwardPatch) -> PortForwardChange {
             enabled: patch.enabled,
         }
     }
-}
-
-/// Whether the runners of two devices may talk directly: neither is a
-/// Cloud, which runs beside the backend, and neither's route is Relay Only
-/// (`crates/runner-direct/src/pairs.rs`).
-fn may_talk_directly(one: &DeviceRecord, other: &DeviceRecord) -> bool {
-    [one, other]
-        .iter()
-        .all(|device| device.kind == DeviceKind::User && device.route != DeviceRoute::Server)
 }
 
 impl Shard {
@@ -275,7 +270,7 @@ impl Shard {
                 }
                 let peer = if listens { connect } else { &record.listen_device };
                 let direct = match (find(&record.listen_device), find(connect)) {
-                    (Some(listen), Some(connect)) => may_talk_directly(listen, connect),
+                    (Some(listen), Some(connect)) => listen.may_talk_directly(connect),
                     _ => false,
                 };
                 Some(Forward {
@@ -359,9 +354,13 @@ impl Shard {
         let Some(link) = self.devices().link(&device) else {
             return;
         };
-        let records = match self.services().control.port_forwards(self.user().clone()).await {
-            Ok(records) => records,
-            Err(error) => {
+        let (records, devices) = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
+            (Ok(records), Ok(devices)) => (records, devices),
+            (Err(error), _) => {
+                link.forward_opened(id, Err(error.to_string()));
+                return;
+            }
+            (_, Err(error)) => {
                 link.forward_opened(id, Err(error.to_string()));
                 return;
             }
@@ -383,6 +382,15 @@ impl Shard {
         // Both runners have the forward's deadline to open both pipes.
         let up = self.pipes().mint_within(Some(device.as_str()), Some(connect.as_str()), DEADLINE);
         let down = self.pipes().mint_within(Some(connect.as_str()), Some(device.as_str()), DEADLINE);
+        // The relay's connection moves to the pair's direct channel once it
+        // is up, as the forward's own connections open on it.
+        let find = |id: &DeviceId| devices.iter().find(|record| record.id == *id);
+        if let (Some(one), Some(two)) = (find(&device), find(&connect))
+            && one.may_talk_directly(two)
+        {
+            up.may_go_direct();
+            down.may_go_direct();
+        }
         other.forward_connect(record.id.as_str(), up.wire_ref(), down.wire_ref());
         link.forward_opened(id, Ok((down.wire_ref(), up.wire_ref())));
     }
@@ -405,14 +413,21 @@ impl Shard {
         let allowed = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
             (Ok(records), Ok(devices)) => {
                 let find = |id: &DeviceId| devices.iter().find(|device| device.id == *id);
-                let forwarded = records.iter().any(|record| {
-                    record.enabled && record.listen_device == device && record.connect_device.as_ref() == Some(&other)
-                });
+                // Either runner opens the pair's peer, for a forward between
+                // them or for a pipe that may go direct.
+                let between = |one: &DeviceId, two: &DeviceId| {
+                    records
+                        .iter()
+                        .any(|record| record.enabled && record.listen_device == *one && record.connect_device.as_ref() == Some(two))
+                };
+                let linked = between(&device, &other)
+                    || between(&other, &device)
+                    || self.pipes().link_direct(device.as_str(), other.as_str());
                 let direct = match (find(&device), find(&other)) {
-                    (Some(one), Some(two)) => may_talk_directly(one, two),
+                    (Some(one), Some(two)) => one.may_talk_directly(two),
                     _ => false,
                 };
-                forwarded && direct
+                linked && direct
             }
             _ => false,
         };

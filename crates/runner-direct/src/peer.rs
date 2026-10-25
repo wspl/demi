@@ -1,7 +1,6 @@
 //! One peer (`crates/runner-direct/src/lib.rs`): a WebRTC connection the
-//! backend introduced, with a page that offered, with another runner that
-//! offered, or with another runner this one offers to
-//! (`crates/runner-direct/src/pairs.rs`).
+//! backend introduced, with a page that offered, or with another runner,
+//! whichever of the two offered (`crates/runner-direct/src/pairs.rs`).
 //!
 //! Whichever role it has, a peer:
 //!
@@ -23,7 +22,7 @@ use demi_runner_protocol::direct::{
     CONNECT_TIMEOUT, ChannelError, ChannelErrorCode, ChannelHeader, Introduction, MAX_CHANNELS,
     PROBE_LABEL, QUEUE_BYTES, StunUrl, VIDEO_QUEUE_BYTES, VideoOpened,
 };
-use demi_runner_protocol::forward::{ForwardHeader, PairReason, PairSide};
+use demi_runner_protocol::pairs::{PairHeader, PairReason, PairSide};
 use garde::Validate;
 use str0m::change::{SdpAnswer, SdpOffer, SdpPendingOffer};
 use str0m::channel::{ChannelConfig, ChannelData, ChannelId};
@@ -37,8 +36,8 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::channel::{Channel, Kind, Phase};
-use crate::forward::{ForwardChannel, Took};
+use crate::channel::{Channel, Credit, Kind, Phase};
+use crate::pair_channel::{PairChannel, Took};
 use crate::gathering::{self, Gathering};
 use crate::operation::{
     self, Input as ChannelInput, OUTPUT_MESSAGES, Operations, Output, VideoEnds, refusal,
@@ -67,8 +66,8 @@ const DATAGRAM_BYTES: usize = 2048;
 /// Datagrams received that wait for the peer's loop: a peer at full speed must
 /// not hold them in memory without end.
 const DATAGRAMS: usize = 1024;
-/// The label of a channel that carries a forwarded connection.
-const FORWARD_LABEL: &str = "forward";
+/// The label of a pair's channel, which its header says the work of.
+const PAIR_LABEL: &str = "pair";
 
 /// The time str0m reads, which is tokio's clock, so a paused clock pauses
 /// a peer too.
@@ -88,14 +87,14 @@ pub(crate) enum Behaviour {
         /// and `video` channels, without SCTP's congestion window.
         live: bool,
     },
-    /// Forwarded connections that the runner of `device` opens, which this
-    /// runner connects as their forwards' Connect To.
+    /// The pair's channels the runner of `device` opens: forwarded
+    /// connections this runner connects as their forwards' Connect To, and
+    /// the bytes of pipes whose sink this runner is. This runner opens its
+    /// own on the same peer.
     Runner {
         operations: Arc<dyn Operations>,
         device: String,
     },
-    /// Nothing: this side offered, and opens every channel itself.
-    Offerer,
 }
 
 /// Where a peer is: connecting, connected, or ended, with why a direct
@@ -116,7 +115,7 @@ pub(crate) struct LocalOpen {
     pub(crate) input: mpsc::UnboundedSender<ChannelInput>,
     pub(crate) output: mpsc::Receiver<Output>,
     pub(crate) cancel: CancellationToken,
-    pub(crate) credit: bool,
+    pub(crate) credit: Option<Credit>,
     /// Closes the channel at once (`Channel::abort_on`).
     pub(crate) abort: Option<CancellationToken>,
     /// The channel's id, once str0m gave it one, for its consumer's grants.
@@ -153,6 +152,8 @@ pub(crate) struct Signals {
     /// The channels this side opens.
     pub(crate) local: mpsc::UnboundedReceiver<LocalOpen>,
     pub(crate) status: watch::Sender<PeerStatus>,
+    /// How many channels the peer has open, for the runner's pairs.
+    pub(crate) channels: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 /// Why no peer was made.
@@ -249,11 +250,13 @@ impl Peer {
         Ok((peer, answer.to_sdp_string()))
     }
 
-    /// Offers a new peer, whose channels this side opens; the other side's
-    /// answer arrives as [`Remote::Answer`] once it serves.
+    /// Offers a new peer to another runner, whose channels are what
+    /// `behaviour` says; the other side's answer arrives as
+    /// [`Remote::Answer`] once it serves.
     pub(crate) async fn offer(
         addresses: Vec<Ipv4Addr>,
         provider: Arc<CryptoProvider>,
+        behaviour: Behaviour,
         stun: Vec<StunUrl>,
     ) -> Result<(Self, String), OfferError> {
         let (mut rtc, sockets) = bind(addresses, provider, false).await?;
@@ -267,7 +270,7 @@ impl Peer {
         let peer = Self {
             rtc,
             sockets,
-            behaviour: Behaviour::Offerer,
+            behaviour,
             stun,
             offered: Some(pending),
             remote_public: false,
@@ -290,6 +293,7 @@ impl Peer {
             found,
             mut local,
             status,
+            channels,
         } = signals;
         let crossing = !stun.is_empty();
         let mut remote_open = true;
@@ -324,13 +328,14 @@ impl Peer {
         let began = Instant::now();
         let kind = match &served.behaviour {
             Behaviour::Page { .. } => "page",
+            Behaviour::Runner { .. } if offered.is_some() => "offerer",
             Behaviour::Runner { .. } => "runner",
-            Behaviour::Offerer => "offerer",
         };
         let mut setup_ms = None;
         let mut tried = 0u32;
         let give_up = began + CONNECT_TIMEOUT;
         let end = loop {
+            channels.store(served.channels.len(), std::sync::atomic::Ordering::Relaxed);
             let timeout = match served.drain(&mut rtc, &sockets).await {
                 Ok(Some(timeout)) => timeout,
                 Ok(None) => break failed("connection_closed", None),
@@ -718,10 +723,7 @@ impl Served {
                 self.probes.insert(id);
             }
             Event::ChannelOpen(id, _) => {
-                if matches!(self.behaviour, Behaviour::Offerer) {
-                    // The side that offered opens every channel itself.
-                    rtc.direct_api().close_data_channel(id);
-                } else if self.channels.len() >= MAX_CHANNELS {
+                if self.channels.len() >= MAX_CHANNELS {
                     let busy = ChannelError::new(
                         ChannelErrorCode::Busy,
                         503,
@@ -855,17 +857,17 @@ impl Served {
             }
             Behaviour::Runner { operations, device } => {
                 let header = (!data.binary)
-                    .then(|| serde_json::from_slice::<ForwardHeader>(&data.data).ok())
+                    .then(|| serde_json::from_slice::<PairHeader>(&data.data).ok())
                     .flatten()
                     .filter(|header| header.validate().is_ok());
                 let Some(header) = header else {
-                    // A channel that is no forwarded connection's carries
-                    // nothing between runners.
+                    // A channel with no pair's header carries nothing
+                    // between runners.
                     channel.phase = Phase::Closing;
                     return;
                 };
                 let abort = CancellationToken::new();
-                let forwarded = ForwardChannel {
+                let opened = PairChannel {
                     input: inputs,
                     output: outputs,
                     took: Took {
@@ -874,17 +876,24 @@ impl Served {
                     },
                     cancel,
                     abort: abort.clone(),
+                    granted: None,
                 };
-                self.tasks.spawn(crate::forward::serve(
-                    operations.clone(),
-                    device.clone(),
-                    header,
-                    forwarded,
-                ));
-                channel.run(Kind::Forward, input, output, true);
+                match header {
+                    PairHeader::Forward { forward } => {
+                        self.tasks.spawn(crate::forward::serve(
+                            operations.clone(),
+                            device.clone(),
+                            forward,
+                            opened,
+                        ));
+                    }
+                    PairHeader::Pipe { pipe, at } => {
+                        operations.pipe(device.clone(), pipe, at, opened);
+                    }
+                }
+                channel.run(Kind::Pair, input, output, true);
                 channel.abort_on(abort);
             }
-            Behaviour::Offerer => channel.phase = Phase::Closing,
         }
     }
 
@@ -936,33 +945,40 @@ pub(crate) fn probe_config() -> ChannelConfig {
     }
 }
 
-/// A channel this side opens for a forwarded connection of `forward`,
-/// credited, whose first message is its header.
-pub(crate) fn forward_open(
-    forward: &str,
-) -> (LocalOpen, tokio::sync::oneshot::Receiver<(ChannelId, mpsc::UnboundedSender<(ChannelId, usize)>)>, mpsc::UnboundedReceiver<ChannelInput>, mpsc::Sender<Output>, CancellationToken, CancellationToken) {
-    let header = ForwardHeader::Forward {
-        forward: forward.to_owned(),
-    };
-    let header = serde_json::to_string(&header).expect("a header serializes");
+/// A channel this side opens on a pair's peer, credited, whose first
+/// message is `header`; the watch counts the other side's grants.
+#[allow(clippy::type_complexity)]
+pub(crate) fn pair_open(
+    header: &PairHeader,
+) -> (
+    LocalOpen,
+    tokio::sync::oneshot::Receiver<(ChannelId, mpsc::UnboundedSender<(ChannelId, usize)>)>,
+    mpsc::UnboundedReceiver<ChannelInput>,
+    mpsc::Sender<Output>,
+    CancellationToken,
+    CancellationToken,
+    watch::Receiver<u64>,
+) {
+    let header = serde_json::to_string(header).expect("a header serializes");
     let (input, inputs) = mpsc::unbounded_channel();
     let (outputs, output) = mpsc::channel(OUTPUT_MESSAGES);
     let (id, named) = tokio::sync::oneshot::channel();
+    let (granted, granting) = watch::channel(0);
     let cancel = CancellationToken::new();
     let abort = CancellationToken::new();
     let open = LocalOpen {
         config: ChannelConfig {
-            label: FORWARD_LABEL.into(),
+            label: PAIR_LABEL.into(),
             ..Default::default()
         },
-        kind: Kind::Forward,
+        kind: Kind::Pair,
         first: Some(Output::Text(header)),
         input,
         output,
         cancel: cancel.clone(),
-        credit: true,
+        credit: Some(Credit::new(Some(granted))),
         abort: Some(abort.clone()),
         id,
     };
-    (open, named, inputs, outputs, cancel, abort)
+    (open, named, inputs, outputs, cancel, abort, granting)
 }

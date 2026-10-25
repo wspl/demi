@@ -21,6 +21,12 @@
 //! before its handler decides whether it reads and writes them or hands them to
 //! a job elsewhere. A pipe whose ends have not both arrived within the arrival
 //! window fails.
+//!
+//! A pipe between two devices whose runners may talk directly, as its minter
+//! says ([`Pipe::may_go_direct`]), moves its bytes to their direct channel and
+//! back (`crates/runner-protocol/src/wire/pipe_frames.rs`): its record tells the
+//! source's stream pipe its sink's device, and carries the source's moves to the
+//! sink in order with its bytes, naming the source's device from the record.
 
 use std::{
     cell::{Cell, RefCell},
@@ -34,7 +40,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_runner_protocol::wire::{self, PipeRef};
+use demi_runner_protocol::wire::{self, PipePath, PipeRef};
 use futures_util::{Stream, StreamExt, stream::BoxStream};
 use tokio::{
     sync::{mpsc, watch},
@@ -72,17 +78,39 @@ struct Slot {
     source_arrived: bool,
     sink_arrived: bool,
     /// The byte channel's ends, until the ends that use them arrive.
-    sender: Option<mpsc::Sender<Bytes>>,
+    sender: Option<mpsc::Sender<Piece>>,
     /// How long its ends have to arrive; none for a pipe of a call, which
     /// the call bounds.
     arrival: Option<Duration>,
-    receiver: Option<mpsc::Receiver<Bytes>>,
+    receiver: Option<mpsc::Receiver<Piece>>,
+    /// Whether its two ends' runners may talk directly, once both are
+    /// devices.
+    direct: bool,
+    /// The sink's device the source's stream pipe is told, once the pipe
+    /// may move to the direct channel.
+    sink_told: Arc<watch::Sender<Option<String>>>,
     /// Whether the pipe outlives its device's connection, as a call's does.
     survives: bool,
     /// Whether its device reads it over a WebSocket that resumes.
     resumable: bool,
     core: Arc<Core>,
     deadline: watch::Sender<Option<Instant>>,
+}
+
+/// What a pipe carries from its source to its sink.
+#[derive(Debug)]
+enum Piece {
+    Bytes(Bytes),
+    /// The source's bytes from `at` on go over `to`; `source` is its device.
+    Moved { to: PipePath, at: u64, source: Arc<str> },
+}
+
+/// What a device's source sends besides its end.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourceMessage {
+    Bytes(Bytes),
+    /// Its bytes from `at` on go over `to`.
+    Moved { to: PipePath, at: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,6 +324,8 @@ impl Pipes {
                 sink_arrived: false,
                 sender: Some(sender),
                 receiver: Some(receiver),
+                direct: false,
+                sink_told: Arc::new(watch::Sender::new(None)),
                 core: core.clone(),
                 deadline,
                 arrival,
@@ -362,6 +392,21 @@ impl Pipes {
                 core: slot.core.clone(),
                 abandoned: "source HTTP request disconnected",
             },
+            device: device.into(),
+            sink: slot.sink_told.subscribe(),
+        })
+    }
+
+    /// Whether a pipe between the runners of `one` and `other` that may go
+    /// direct is open: what lets the backend introduce the two to each
+    /// other.
+    pub fn link_direct(&self, one: &str, other: &str) -> bool {
+        let one = End::Device(one.into());
+        let other = End::Device(other.into());
+        self.0.slots.borrow().values().any(|slot| {
+            slot.direct
+                && slot.core.is_open()
+                && ((slot.source == one && slot.sink == other) || (slot.source == other && slot.sink == one))
         })
     }
 
@@ -497,6 +542,17 @@ impl Pipes {
 }
 
 impl Slot {
+    /// Tells the source its sink, once both ends are two devices that may
+    /// talk directly.
+    fn tell_sink(&mut self) {
+        if let (End::Device(source), End::Device(sink)) = (&self.source, &self.sink)
+            && self.direct
+            && source != sink
+        {
+            self.sink_told.send_replace(Some(sink.clone()));
+        }
+    }
+
     /// The arrival window runs while an end is missing: it stops once both
     /// arrived, and starts again when an end is named anew.
     fn update_deadline(&mut self) {
@@ -636,6 +692,7 @@ impl Pipe {
             slot.sink = End::Device(device.into());
             slot.sink_arrived = false;
             slot.update_deadline();
+            slot.tell_sink();
             Ok(())
         })
     }
@@ -650,8 +707,20 @@ impl Pipe {
             slot.source = End::Device(device.into());
             slot.source_arrived = false;
             slot.update_deadline();
+            slot.tell_sink();
             Ok(())
         })
+    }
+
+    /// The pipe's two ends, devices whose runners may talk directly, may
+    /// move its bytes to their direct channel: the minter knows the
+    /// devices, and the policy that lets them.
+    pub fn may_go_direct(&self) {
+        let _ = self.pipes.with_slot(&self.id, |slot| {
+            slot.direct = true;
+            slot.tell_sink();
+            Ok(())
+        });
     }
 
     /// Ends the pipe for both ends; its readers and writer see `reason`.
@@ -697,15 +766,27 @@ enum Abandoned {
 
 /// The sink's side of a pipe. Dropping it before the end drains the pipe.
 pub struct PipeReader {
-    receiver: mpsc::Receiver<Bytes>,
+    receiver: mpsc::Receiver<Piece>,
     core: Arc<Core>,
     ended: bool,
     abandoned: Abandoned,
 }
 
 impl PipeReader {
-    /// The next chunk; none at the source's end.
+    /// The next chunk; none at the source's end. A reader in this process
+    /// is never a device's sink, so no source's move reaches it.
     pub async fn next(&mut self) -> Option<Result<Bytes, PipeFailure>> {
+        loop {
+            match self.next_piece().await? {
+                Ok(Piece::Bytes(bytes)) => return Some(Ok(bytes)),
+                Ok(Piece::Moved { .. }) => {}
+                Err(failure) => return Some(Err(failure)),
+            }
+        }
+    }
+
+    /// The next piece; none at the source's end.
+    async fn next_piece(&mut self) -> Option<Result<Piece, PipeFailure>> {
         if self.ended {
             return None;
         }
@@ -717,7 +798,7 @@ impl PipeReader {
                 Some(Err(failure))
             }
             chunk = self.receiver.recv() => match chunk {
-                Some(bytes) => Some(Ok(bytes)),
+                Some(piece) => Some(Ok(piece)),
                 None => {
                     self.ended = true;
                     // A writer fails the pipe before it lets go of its end.
@@ -773,7 +854,7 @@ impl Drop for PipeReader {
 /// [`PipeWriter::end`] fails the pipe, so a sink never takes a cut stream for
 /// a whole one.
 pub struct PipeWriter {
-    sender: Option<mpsc::Sender<Bytes>>,
+    sender: Option<mpsc::Sender<Piece>>,
     core: Arc<Core>,
     abandoned: &'static str,
 }
@@ -781,17 +862,21 @@ pub struct PipeWriter {
 impl PipeWriter {
     /// Writes a chunk once the sink has taken the one before.
     pub async fn write(&mut self, bytes: Bytes) -> Result<(), PipeFailure> {
-        let Some(sender) = &self.sender else {
-            return Err(self.core.stopped());
-        };
         if bytes.is_empty() {
             return Ok(());
         }
+        self.send(Piece::Bytes(bytes)).await
+    }
+
+    async fn send(&mut self, piece: Piece) -> Result<(), PipeFailure> {
+        let Some(sender) = &self.sender else {
+            return Err(self.core.stopped());
+        };
         let failed = self.core.failed();
         tokio::select! {
             biased;
             failure = failed => Err(failure),
-            sent = sender.send(bytes) => sent.map_err(|_| self.core.stopped()),
+            sent = sender.send(piece) => sent.map_err(|_| self.core.stopped()),
         }
     }
 
@@ -905,7 +990,7 @@ impl SinkState {
         let over = self.reader.core.done();
         let next = tokio::select! {
             biased;
-            chunk = self.reader.next() => chunk,
+            chunk = self.reader.next_piece() => chunk,
             outcome = over => {
                 self.reader.ended = true;
                 self.ended = true;
@@ -914,7 +999,8 @@ impl SinkState {
             }
         };
         match next {
-            Some(Ok(bytes)) => bytes
+            Some(Ok(Piece::Moved { to, at, source })) => vec![wire::moved_frame(to, at, &source)],
+            Some(Ok(Piece::Bytes(bytes))) => bytes
                 .chunks(wire::PIPE_DATA_BYTES)
                 .map(|part| {
                     let mut frames = bytes::BytesMut::new();
@@ -938,20 +1024,31 @@ impl SinkState {
 /// WebSocket, for the edge to feed.
 pub struct DeviceSource {
     writer: PipeWriter,
+    device: Arc<str>,
+    sink: watch::Receiver<Option<String>>,
 }
 
 impl DeviceSource {
-    /// Forwards the source's bytes into the pipe to their end, and resolves
-    /// with the pipe's outcome, which is the source's answer: drained, even when
-    /// the sink stopped early, or failed, also mid-body. Dropping the future
-    /// before its end fails the pipe: the request went away.
+    /// The sink's device, once the pipe may move to the two runners' direct
+    /// channel; the edge tells the source.
+    pub fn sink(&self) -> watch::Receiver<Option<String>> {
+        self.sink.clone()
+    }
+
+    /// Forwards the source's bytes and moves into the pipe to their end, and
+    /// resolves with the pipe's outcome, which is the source's answer: drained,
+    /// even when the sink stopped early, or failed, also mid-body. A move of a
+    /// pipe that may not go direct fails it. Dropping the future before its end
+    /// fails the pipe: the request went away.
     pub async fn pump<S, E>(self, body: S) -> Result<(), PipeFailure>
     where
-        S: Stream<Item = Result<Bytes, E>>,
+        S: Stream<Item = Result<SourceMessage, E>>,
         E: Display,
     {
         let core = self.writer.core.clone();
         let mut writer = self.writer;
+        let device = self.device;
+        let sink = self.sink;
         let over = core.done();
         tokio::pin!(body, over);
         loop {
@@ -964,8 +1061,22 @@ impl DeviceSource {
             };
             match chunk {
                 None => break,
-                Some(Ok(bytes)) => {
+                Some(Ok(SourceMessage::Bytes(bytes))) => {
                     if writer.write(bytes).await.is_err() {
+                        return core.done().await;
+                    }
+                }
+                Some(Ok(SourceMessage::Moved { to, at })) => {
+                    if sink.borrow().is_none() {
+                        writer.fail("a pipe that may not go direct cannot move");
+                        return core.done().await;
+                    }
+                    let moved = Piece::Moved {
+                        to,
+                        at,
+                        source: device.clone(),
+                    };
+                    if writer.send(moved).await.is_err() {
                         return core.done().await;
                     }
                 }
@@ -1011,7 +1122,7 @@ impl DeviceSink {
             let over = reader.core.done();
             let next = tokio::select! {
                 biased;
-                chunk = reader.next() => chunk,
+                chunk = reader.next_piece() => chunk,
                 outcome = over => {
                     reader.ended = true;
                     return Some((wire::end_frame(&outcome.map_err(|failure| failure.reason().to_owned())), None));
@@ -1021,11 +1132,12 @@ impl DeviceSink {
                 }
             };
             Some(match next {
-                Some(Ok(bytes)) => {
+                Some(Ok(Piece::Bytes(bytes))) => {
                     let mut frames = bytes::BytesMut::new();
                     wire::encode_data(&bytes, &mut frames);
                     (frames.freeze(), Some(reader))
                 }
+                Some(Ok(Piece::Moved { to, at, source })) => (wire::moved_frame(to, at, &source), Some(reader)),
                 Some(Err(failure)) => (wire::end_frame(&Err(failure.reason().to_owned())), None),
                 None => (wire::end_frame(&Ok(())), None),
             })

@@ -107,6 +107,7 @@ mod forward;
 mod git;
 mod host_log;
 mod management;
+mod pairs;
 mod registration;
 mod removal;
 mod start;

@@ -106,6 +106,15 @@ impl DeviceRecord {
     pub fn is_host_of(&self, user: &UserId) -> bool {
         self.user == *user && self.machine != Some(ManagedMachine::ClaudeCode)
     }
+
+    /// Whether its runner and `other`'s may talk directly: neither is a
+    /// Cloud, which runs beside the backend, and neither's route is Relay
+    /// Only (`crates/runner-direct/src/pairs.rs`).
+    pub fn may_talk_directly(&self, other: &DeviceRecord) -> bool {
+        [self, other]
+            .iter()
+            .all(|device| device.kind == DeviceKind::User && device.route != DeviceRoute::Server)
+    }
 }
 
 /// A managed device's machine (`crates/backend-cloud/src/lib.rs`): each

@@ -28,7 +28,9 @@ use axum_extra::headers::{Authorization, Range};
 use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
-use demi_backend_remote_host::{DeviceSource, PipeRefusal, accept_call_sink, accept_stream_pipe, offer_response};
+use demi_backend_remote_host::{
+    DeviceSource, PipeRefusal, SourceMessage, accept_call_sink, accept_stream_pipe, offer_response,
+};
 use demi_runner_protocol::release::{
     RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER, UpdateExecutable,
 };
@@ -165,7 +167,8 @@ pub(super) async fn put(
         Ok(source) => source,
         Err(refusal) => return *refusal,
     };
-    match source.pump(body.into_data_stream()).await {
+    let body = body.into_data_stream().map(|chunk| chunk.map(SourceMessage::Bytes));
+    match source.pump(body).await {
         Ok(()) => (StatusCode::OK, "drained").into_response(),
         Err(failure) => (StatusCode::CONFLICT, failure.reason().to_owned()).into_response(),
     }

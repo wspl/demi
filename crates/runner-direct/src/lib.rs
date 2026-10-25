@@ -1,5 +1,5 @@
-//! The runner's side of direct channels, with a page or with another runner (a
-//! port forward).
+//! The runner's side of direct channels, with a page or with another runner of
+//! the user's (a port forward, or a pipe between the two).
 //!
 //! The crate handles:
 //!
@@ -8,7 +8,8 @@
 //! - ICE, DTLS and SCTP through str0m;
 //! - each channel's work: a page's operation, whose header and answer this
 //!   crate handles and which the runner carries out through [`Operations`], or
-//!   a forwarded TCP connection, a byte stream both ways ([`ForwardChannel`]).
+//!   a pair's channel, a byte stream both ways ([`PairChannel`]): a forwarded
+//!   TCP connection, or a pipe's bytes.
 //!
 //! Every channel goes through one flow control.
 //!
@@ -91,9 +92,10 @@
 //! since a peer at full speed fills a core. The runner drives them through
 //! [`Direct`], and runs [`DirectDriver`] on that thread.
 //!
-//! A pair of runners keeps its peer as [`Pairs`] says: made at the pair's first
-//! connection, closed a minute after its last, and tried again on the direct
-//! channel's schedule while the pair is on the relay.
+//! A pair of runners keeps one peer as [`Pairs`] says, whichever runner offered
+//! it: made at the pair's first connection, closed a minute after its last,
+//! and tried again on the direct channel's schedule while the pair is on the
+//! relay. Both runners open channels on it.
 //!
 //! # Boundaries
 //!
@@ -106,19 +108,21 @@ mod channel;
 mod forward;
 mod gathering;
 mod operation;
+mod pair_channel;
 mod pairs;
 mod peer;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use demi_runner_protocol::direct::{Introduced, MAX_PEERS, OfferRefusal, StunUrl};
-use demi_runner_protocol::forward::PairReason;
+use demi_runner_protocol::pairs::{PairHeader, PairReason};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 pub use addresses::{Addresses, offered};
-pub use forward::{ForwardChannel, Forwarded, connect_target, give_up_on};
+pub use forward::{Forwarded, connect_target, give_up_on};
+pub use pair_channel::{ChannelGone, PairChannel, Received};
 pub use operation::{
     Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
     StreamRequest, WatchStream,
@@ -137,11 +141,12 @@ pub struct Direct {
 }
 
 /// A runner's answer to an offer: its SDP, and the candidates it finds
-/// after, such as the address a STUN server saw it at, until the peer ends.
-#[derive(Debug)]
+/// after, such as the address a STUN server saw it at, until the peer ends,
+/// and the peer, on which a runner's peer opens channels too.
 pub struct Answered {
     pub sdp: String,
     pub candidates: mpsc::UnboundedReceiver<String>,
+    pub link: PeerLink,
 }
 
 /// A runner's offer to another runner: its SDP, the candidates it finds
@@ -161,15 +166,22 @@ pub struct Refused {
     pub message: String,
 }
 
-/// A peer this runner offered: it opens the peer's channels, and hears
-/// where the peer is.
+/// A peer with another runner, whichever offered it: this runner opens
+/// channels on it, and hears where the peer is.
 #[derive(Clone)]
 pub struct PeerLink {
     local: mpsc::UnboundedSender<LocalOpen>,
     status: watch::Receiver<PeerStatus>,
+    /// The channels open on the peer now, whichever side opened them.
+    channels: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl PeerLink {
+    /// Whether the peer carries a channel, one either side opened.
+    pub fn carries(&self) -> bool {
+        self.channels.load(std::sync::atomic::Ordering::Relaxed) > 0
+    }
+
     /// Where the peer is now, and from now on.
     pub fn status(&self) -> watch::Receiver<PeerStatus> {
         self.status.clone()
@@ -204,18 +216,19 @@ impl PeerLink {
         }
     }
 
-    /// Opens a channel for a connection of forward `forward`; none once the
-    /// peer ended.
-    pub async fn open(&self, forward: &str) -> Option<ForwardChannel> {
-        let (open, named, input, output, cancel, abort) = peer::forward_open(forward);
+    /// Opens a channel that carries what `header` says; none once the peer
+    /// ended.
+    pub async fn open(&self, header: &PairHeader) -> Option<PairChannel> {
+        let (open, named, input, output, cancel, abort, granted) = peer::pair_open(header);
         self.local.send(open).ok()?;
         let (id, sender) = named.await.ok()?;
-        Some(ForwardChannel {
+        Some(PairChannel {
             input,
             output,
-            took: forward::Took { id, sender },
+            took: pair_channel::Took { id, sender },
             cancel,
             abort,
+            granted: Some(granted),
         })
     }
 }
@@ -230,6 +243,7 @@ enum Command {
     },
     Dial {
         peer: String,
+        device: String,
         stun: Vec<StunUrl>,
         dialing: oneshot::Sender<Result<Dialing, Refused>>,
     },
@@ -300,12 +314,12 @@ impl Direct {
         answered.await.map_err(|_| gone())?
     }
 
-    /// Offers a new peer `peer` to another runner, which asks the STUN
-    /// servers `stun` for its public addresses; the other runner's answer
-    /// arrives through [`Direct::answered`].
-    pub async fn dial(&self, peer: String, stun: Vec<StunUrl>) -> Result<Dialing, Refused> {
+    /// Offers a new peer `peer` to the runner of `device`, which asks the
+    /// STUN servers `stun` for its public addresses; the other runner's
+    /// answer arrives through [`Direct::answered`].
+    pub async fn dial(&self, peer: String, device: String, stun: Vec<StunUrl>) -> Result<Dialing, Refused> {
         let (dialing, dialed) = oneshot::channel();
-        let command = Command::Dial { peer, stun, dialing };
+        let command = Command::Dial { peer, device, stun, dialing };
         self.commands.send(command).map_err(|_| gone())?;
         dialed.await.map_err(|_| gone())?
     }
@@ -414,13 +428,12 @@ impl DirectDriver {
                             }
                         };
                         generation += 1;
-                        // An answering peer opens no channel of its own.
-                        let (candidates, _, _) = self.serve(&mut served, &mut tasks, peer, made, generation);
+                        let (candidates, link) = self.serve(&mut served, &mut tasks, peer, made, generation);
                         // A side that went before its answer has a peer
                         // that gives up.
-                        let _ = answer.send(Ok(Answered { sdp, candidates }));
+                        let _ = answer.send(Ok(Answered { sdp, candidates, link }));
                     }
-                    Some(Command::Dial { peer, stun, dialing }) => {
+                    Some(Command::Dial { peer, device, stun, dialing }) => {
                         if let Some(replaced) = served.remove(&peer) {
                             replaced.cancel.cancel();
                         }
@@ -432,7 +445,11 @@ impl DirectDriver {
                             }));
                             continue;
                         }
-                        let (made, sdp) = match Peer::offer(self.addresses.current(), provider.clone(), stun).await {
+                        let behaviour = Behaviour::Runner {
+                            operations: self.operations.clone(),
+                            device,
+                        };
+                        let (made, sdp) = match Peer::offer(self.addresses.current(), provider.clone(), behaviour, stun).await {
                             Ok(made) => made,
                             Err(error) => {
                                 // The runner that asked may have gone.
@@ -441,10 +458,10 @@ impl DirectDriver {
                             }
                         };
                         generation += 1;
-                        let (candidates, local, status) = self.serve(&mut served, &mut tasks, peer, made, generation);
+                        let (candidates, link) = self.serve(&mut served, &mut tasks, peer, made, generation);
                         // The runner that asked may have gone; its peer
                         // then gives up unanswered.
-                        let _ = dialing.send(Ok(Dialing { sdp, candidates, link: PeerLink { local, status } }));
+                        let _ = dialing.send(Ok(Dialing { sdp, candidates, link }));
                     }
                     Some(Command::Remote { peer, said }) => {
                         if let Some(served) = served.get(&peer) {
@@ -491,16 +508,13 @@ impl DirectDriver {
         peer: String,
         made: Peer,
         generation: u64,
-    ) -> (
-        mpsc::UnboundedReceiver<String>,
-        mpsc::UnboundedSender<LocalOpen>,
-        watch::Receiver<PeerStatus>,
-    ) {
+    ) -> (mpsc::UnboundedReceiver<String>, PeerLink) {
         let cancel = CancellationToken::new();
         let (remote, heard) = mpsc::unbounded_channel();
         let (found, candidates) = mpsc::unbounded_channel();
         let (local, opened) = mpsc::unbounded_channel();
         let (status, watching) = watch::channel(PeerStatus::Connecting);
+        let channels = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         served.insert(
             peer.clone(),
             Served {
@@ -514,12 +528,18 @@ impl DirectDriver {
             found,
             local: opened,
             status,
+            channels: channels.clone(),
         };
         tasks.spawn(async move {
             made.serve(cancel, signals).await;
             (peer, generation)
         });
-        (candidates, local, watching)
+        let link = PeerLink {
+            local,
+            status: watching,
+            channels,
+        };
+        (candidates, link)
     }
 }
 

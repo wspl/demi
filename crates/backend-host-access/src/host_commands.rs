@@ -21,7 +21,8 @@
 //! commands. Its standard input and output are the calling command's. A script
 //! read from stdin leaves the job none. The relayed pipes' far ends become the
 //! job's device, so the bytes flow between the two devices through the
-//! backend's pipes, never through a runner socket. Like the agent's own jobs,
+//! backend's pipes, never through a runner socket, and move to the two
+//! runners' direct channel when they may talk directly. Like the agent's own jobs,
 //! its admission installs the user's Host directories there before it starts
 //! and tells the shard when it ended.
 //!
@@ -386,6 +387,13 @@ impl HostNames {
                 DeviceKind::User => device.name.clone(),
             })
             .unwrap_or_else(|| id.to_string())
+    }
+
+    /// Whether the runners of Hosts `one` and `other` may talk directly; not
+    /// when either is gone.
+    fn may_talk_directly(&self, one: &str, other: &str) -> bool {
+        let find = |id: &str| self.0.iter().find(|device| device.id.as_str() == id);
+        find(one).zip(find(other)).is_some_and(|(one, other)| one.may_talk_directly(other))
     }
 }
 
@@ -948,6 +956,17 @@ async fn run_on_host(
     stdout
         .source_from(device)
         .map_err(|error| error.to_string())?;
+    // Between two devices whose runners may talk directly, the bytes move to
+    // their direct channel once it is up.
+    if invocation.host != device {
+        let names = host_names(shard).await.map_err(|error| error.to_string())?;
+        if names.may_talk_directly(&invocation.host, device) {
+            stdout.may_go_direct();
+            if let Some(stdin) = &stdin {
+                stdin.may_go_direct();
+            }
+        }
+    }
     let withdrawal = Rc::new(Withdrawal::default());
     // The admission's waits end with the call.
     let cancel = CancellationToken::new();
