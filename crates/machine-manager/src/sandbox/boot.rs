@@ -190,7 +190,7 @@ impl Sandbox {
         core.network.attach(&self.slot).await?;
         let spec = oci::spec(&oci::Boot {
             directory: &self.directory,
-            namespace: &self.slot.namespace(),
+            namespace: &core.network.namespace_file(&self.slot),
             cgroup: core.config.limits.map(|limits| oci::Cgroup {
                 name: self.record.id.as_str(),
                 limits: limits.of(machine),

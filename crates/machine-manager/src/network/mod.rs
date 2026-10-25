@@ -132,6 +132,18 @@ mod linux {
             .await
         }
 
+        /// Mounts the directory of the slots' namespace files, private to
+        /// the manager's mount namespace; once, after the saved namespace is
+        /// pinned and before the first attach.
+        pub async fn mount_namespace_directory(&self) -> Result<(), NetworkError> {
+            Ok(blocking::run(netns::mount_directory).await?)
+        }
+
+        /// The file that holds `slot`'s network namespace.
+        pub fn namespace_file(&self, slot: &Slot) -> PathBuf {
+            netns::path(&slot.namespace())
+        }
+
         /// Checks that the pool overlaps no host route, changing nothing.
         pub async fn check(&self) -> Result<(), NetworkError> {
             let routes =
