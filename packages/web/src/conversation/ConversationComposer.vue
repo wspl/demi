@@ -13,7 +13,8 @@ import { refusedForSize } from '@demicodes/web-ui/agent/session-status'
 
 import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
-import { savedPreview, type SavedRow } from '@demicodes/web-ui/agent/saved'
+import { savedParts, type SavedRow } from '@demicodes/web-ui/agent/saved'
+import type { DraftFile } from '../api/generated/web-api'
 import { turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor, hostDeviceOptions, moveLock, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -83,10 +84,13 @@ const savedRows = computed<SavedRow[]>(() => {
   const shown = record.shown.value?.saved ?? []
   const kept = new Set(record.read.value?.saved.map((message) => message.id))
   const queued = (id: string) => props.conversation.savedWrites.findLast((write) => write.id === id)
-  const row = (id: string, text: string, files: unknown[], state: SavedRow['state']): SavedRow => (
-    { id, preview: savedPreview(text), attachmentCount: files.length, state }
-  )
-  // A saved message's row shows its first line, which its opening holds.
+  const row = (id: string, text: string, files: DraftFile[], state: SavedRow['state'], cut = false): SavedRow => {
+    const { capsules } = store.savedMessage(props.conversation, { text, files })
+    return { id, parts: savedParts(text, capsules, cut), state }
+  }
+  // A saved message's row shows its opening, the start of its text, with its
+  // files where their marks stand; an opening shorter than the message ends
+  // in an ellipsis, the files past it after.
   return [
     // A save the page lists no more, as one whose write failed, still stands.
     ...props.conversation.savedWrites
@@ -97,7 +101,7 @@ const savedRows = computed<SavedRow[]>(() => {
       const write = queued(message.id)
       return write
         ? row(message.id, write.text, write.files, 'saving')
-        : row(message.id, message.opening, message.files, kept.has(message.id) ? 'saved' : 'saving')
+        : row(message.id, message.opening, message.files, kept.has(message.id) ? 'saved' : 'saving', message.length > [...message.opening].length)
     }),
   ]
 })

@@ -1,35 +1,45 @@
 import { ATTACHMENT_MARK } from '../markdown/user-markdown'
 import { matchesShortcut, shortcutFor } from '../ui/shortcut'
 import { t } from './locales/text'
+import type { MessageCapsule } from './message-editor/capsules'
 
 /** Where a message of the list stands: kept by the server, or on its way there. */
 export type SavedRowState = 'saved' | 'saving'
 
+/** A run of a saved message's row: text, or a file as its capsule. */
+export type SavedPart = { text: string } | { capsule: MessageCapsule }
+
 /**
  * One message saved for later as the list under the composer shows it: the
- * message's first line and how many files it carries. The list shows no time.
+ * message on one line, each file as its capsule where it stands, as the
+ * composer shows it. The list shows no time.
  */
 export interface SavedRow {
   id: string
-  /** The message as one line, as `savedPreview` builds it. */
-  preview: string
-  attachmentCount: number
+  /** The message as `savedParts` lays it on one line. */
+  parts: SavedPart[]
   state: SavedRowState
 }
 
 /**
- * A saved message's row text: its first line that holds anything, without
- * its files, which the row's count stands for. A file between words leaves
- * one space; one before a punctuation mark or at a line's end leaves none.
+ * A saved message on one line: its lines trimmed and joined by a space, the
+ * blank ones dropped, and each mark of `markdown` as the capsule of the file
+ * it stands for, in order. Files without a mark follow the text, as a stored
+ * message's do (`storedMessageContent`). `markdown` may be the start of the
+ * message alone (`cut`), as the server lists it: an ellipsis then ends it,
+ * before the files whose marks lie past it.
  */
-export function savedPreview(markdown: string): string {
-  const marks = new RegExp(`[ \\t]*${ATTACHMENT_MARK}+[ \\t]*`, 'gu')
-  const text = markdown.replace(marks, (found: string, offset: number, whole: string) => {
-    const next = whole[offset + found.length] ?? '\n'
-    const previous = whole[offset - 1] ?? '\n'
-    return /[\s.,;:!?)\]]/u.test(next) || previous === '\n' ? '' : ' '
-  })
-  return text.split('\n').map((line) => line.trim()).find((line) => line !== '') ?? ''
+export function savedParts(markdown: string, capsules: readonly MessageCapsule[], cut = false): SavedPart[] {
+  const line = markdown.split('\n').map((text) => text.trim()).filter((text) => text !== '').join(' ')
+  const texts = line.split(ATTACHMENT_MARK)
+  return [
+    ...texts.flatMap((text, index): SavedPart[] => {
+      const capsule = index > 0 ? capsules[index - 1] : undefined
+      return [...(capsule ? [{ capsule }] : []), ...(text ? [{ text }] : [])]
+    }),
+    ...(cut ? [{ text: ' …' }] : []),
+    ...capsules.slice(texts.length - 1).map((capsule) => ({ capsule })),
+  ]
 }
 
 /** The entry's text under the composer: `1 Saved`, `3 Saved`. */
