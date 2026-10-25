@@ -43,15 +43,17 @@ final class Output: @unchecked Sendable {
     write(.blob, payload)
   }
 
-  /// A capture's picture: its header, then the H.264 Annex B bytes.
+  /// A capture's picture: its header, then the H.264 Annex B bytes. The
+  /// flags say a key frame (1) and a picture coded again at the module's
+  /// asking (2).
   func video(
-    capture: UInt32, sequence: UInt32, key: Bool, timestamp: Double, width: Int, height: Int,
+    capture: UInt32, sequence: UInt32, key: Bool, repeated: Bool, timestamp: Double, width: Int, height: Int,
     _ bytes: Data
   ) {
     var payload = Data(capacity: 24 + bytes.count)
     payload.appendBigEndian(capture)
     payload.appendBigEndian(sequence)
-    payload.append(key ? 1 : 0)
+    payload.append((key ? 1 : 0) | (repeated ? 2 : 0))
     payload.append(contentsOf: [0, 0, 0])
     payload.appendBigEndian(timestamp.bitPattern)
     payload.appendBigEndian(UInt16(clamping: width))

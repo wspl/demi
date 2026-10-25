@@ -144,6 +144,7 @@ unsafe extern "C" {
     static kVTProfileLevel_H264_High_AutoLevel: CFStringRef;
     static kVTEncodeFrameOptionKey_ForceKeyFrame: CFStringRef;
     static kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: CFStringRef;
+    static kVTVideoEncoderSpecification_EnableLowLatencyRateControl: CFStringRef;
     fn VTCompressionSessionCreate(
         allocator: CFTypeRef,
         width: i32,
@@ -264,25 +265,46 @@ impl VideoToolbox {
                 (kCVPixelBufferIOSurfacePropertiesKey, surface.0),
             ])
         };
-        // SAFETY: as above.
-        let specification = unsafe { dictionary(&[(kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder, kCFBooleanTrue)]) };
-        let mut session: CFTypeRef = ptr::null();
-        // SAFETY: the dictionaries are valid for the call, and `refcon` is a
-        // pointer the callback only reads while the session lives.
-        let status = unsafe {
-            VTCompressionSessionCreate(
-                ptr::null(),
-                settings.width as i32,
-                settings.height as i32,
-                CODEC_H264,
-                specification.0,
-                attributes.0,
-                ptr::null(),
-                callback,
-                refcon.cast_mut().cast(),
-                &mut session,
-            )
+        // A bit rate's encoder takes the low-latency rate control, as
+        // Chrome's real-time encoder does: it spends a still picture's
+        // repeats and a scroll's frames better at the same rate. An encoder
+        // without it opens without it.
+        let low_latency: &[bool] = match settings.rate {
+            Rate::Bitrate { .. } => &[true, false],
+            Rate::Quality => &[false],
         };
+        let mut session: CFTypeRef = ptr::null();
+        let mut status = NO_ERROR;
+        for &low_latency in low_latency {
+            // SAFETY: as above.
+            let specification = unsafe {
+                let hardware = (kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder, kCFBooleanTrue);
+                if low_latency {
+                    dictionary(&[hardware, (kVTVideoEncoderSpecification_EnableLowLatencyRateControl, kCFBooleanTrue)])
+                } else {
+                    dictionary(&[hardware])
+                }
+            };
+            // SAFETY: the dictionaries are valid for the call, and `refcon` is
+            // a pointer the callback only reads while the session lives.
+            status = unsafe {
+                VTCompressionSessionCreate(
+                    ptr::null(),
+                    settings.width as i32,
+                    settings.height as i32,
+                    CODEC_H264,
+                    specification.0,
+                    attributes.0,
+                    ptr::null(),
+                    callback,
+                    refcon.cast_mut().cast(),
+                    &mut session,
+                )
+            };
+            if status == NO_ERROR && !session.is_null() {
+                break;
+            }
+        }
         let this = Self {
             session: Owned(session),
             output,

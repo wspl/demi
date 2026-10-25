@@ -7,8 +7,12 @@
 //! delivery tells the stream how far the page's frames reach and whether one
 //! more may come, and the stream takes the least of its viewers'. An encoded
 //! frame is never dropped, since later frames are coded against it.
+//!
+//! The rate control's probes (`probe`) go between the pictures: padding
+//! chunks of the viewer's generation, spread over the probe's span at its
+//! rate.
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Duration};
 
 use bytes::Bytes;
 use tokio::time::Instant;
@@ -22,6 +26,15 @@ use crate::{
     writer::{ModuleMessage, Writer},
 };
 
+/// A chunk waiting for its time.
+struct Paced {
+    at: Instant,
+    id: ChunkId,
+    bytes: Bytes,
+    /// The last chunk of the probe it is padding of.
+    ends_probe: bool,
+}
+
 /// The frames a viewer's page has, and the path they take.
 pub struct Delivery {
     /// Counts the picture sequences the page was told about.
@@ -32,8 +45,8 @@ pub struct Delivery {
     /// The newest capture sequence seen.
     last: u32,
     rate: Rate,
-    /// Chunks waiting for their time, in order: when, which, the bytes.
-    paced: VecDeque<(Instant, ChunkId, Bytes)>,
+    /// Chunks waiting for their time, in order.
+    paced: VecDeque<Paced>,
     /// The bytes of `paced`.
     queued: usize,
     /// The last frame's bytes: the guess at the next one's.
@@ -41,6 +54,8 @@ pub struct Delivery {
     applied: Option<(u32, u32, f64)>,
     /// The pace the stream was last told.
     told: Option<(u32, u32, u32)>,
+    /// The source of the pictures, which a probe's padding names too.
+    source: Option<SourceId>,
 }
 
 impl Default for Delivery {
@@ -62,6 +77,7 @@ impl Delivery {
             frame_bytes: 0,
             applied: None,
             told: None,
+            source: None,
         }
     }
 
@@ -115,6 +131,7 @@ impl Delivery {
         if frame.sequence <= self.last {
             return;
         }
+        self.source = Some(source.clone());
         // A frame the viewer never had breaks the pictures after it.
         if self.last != 0 && frame.sequence != self.last + 1 && !frame.key {
             self.lost(stream);
@@ -134,35 +151,68 @@ impl Delivery {
         let now = Instant::now();
         let interval = std::time::Duration::from_secs_f64(1.0 / f64::from(self.rate.fps()));
         // A frame's chunks follow the ones before them.
-        let start = self.paced.back().map_or(now, |(at, _, _)| (*at).max(now));
+        let start = self.paced.back().map_or(now, |paced| paced.at.max(now));
         let count = chunks.len() as u32;
         self.frame_bytes = 0;
         for (index, chunk) in (0..).zip(chunks) {
             let at = start + interval * u32::from(index) / count;
             self.frame_bytes += chunk.len();
             self.queued += chunk.len();
-            self.paced
-                .push_back((at, (self.generation, frame.sequence, index), chunk));
+            self.paced.push_back(Paced {
+                at,
+                id: (self.generation, frame.sequence, index, false),
+                bytes: chunk,
+                ends_probe: false,
+            });
         }
         self.pace(stream);
     }
 
+    /// Queues the probes the rate control planned after what waits, each
+    /// chunk at its time for the probe's rate.
+    fn probe(&mut self) {
+        let Some(source) = self.source.clone() else {
+            return;
+        };
+        let now = Instant::now();
+        while let Some(probe) = self.rate.next_probe() {
+            let chunks = u16::try_from(probe.chunks).unwrap_or(u16::MAX);
+            let bytes = probe.bytes.as_bytes_usize() / usize::from(chunks);
+            let spacing = Duration::from_secs_f64(bytes as f64 * 8.0 / probe.target.as_f64().max(1.0));
+            let start = self.paced.back().map_or(now, |paced| paced.at.max(now));
+            for index in 0..chunks {
+                let chunk = frames::padding(&source, self.generation, probe.id, index, chunks, bytes);
+                self.queued += chunk.len();
+                self.paced.push_back(Paced {
+                    at: start + spacing * u32::from(index),
+                    id: (self.generation, probe.id, index, true),
+                    bytes: chunk,
+                    ends_probe: index + 1 == chunks,
+                });
+            }
+        }
+    }
+
     /// When the next chunk is due; none while none waits.
     pub fn due(&self) -> Option<Instant> {
-        self.paced.front().map(|(at, _, _)| *at)
+        self.paced.front().map(|paced| paced.at)
     }
 
     /// Hands the chunks that are due to `writer`.
     pub fn release<M: ModuleMessage>(&mut self, writer: &Writer<M>) {
         let now = Instant::now();
-        while let Some((at, _, _)) = self.paced.front()
-            && *at <= now
+        while let Some(paced) = self.paced.front()
+            && paced.at <= now
         {
-            let (_, id, chunk) = self.paced.pop_front().expect("a chunk is due");
-            self.queued -= chunk.len();
-            self.rate.sent(id, chunk.len(), now.into_std());
-            writer.video(chunk);
+            let paced = self.paced.pop_front().expect("a chunk is due");
+            self.queued -= paced.bytes.len();
+            self.rate.sent(paced.id, paced.bytes.len(), now.into_std());
+            if paced.ends_probe {
+                self.rate.probe_sent(paced.id.1, now.into_std());
+            }
+            writer.video(paced.bytes);
         }
+        self.probe();
     }
 
     /// The page's decoder could not decode a frame of `generation`.
@@ -176,6 +226,7 @@ impl Delivery {
     /// The page acknowledged `acks` in one message.
     pub fn acknowledged<L>(&mut self, acks: &[ChunkAck], stream: Option<&StreamView<L>>) {
         self.rate.acknowledged(acks, Instant::now().into_std());
+        self.probe();
         self.encode(stream);
         self.pace(stream);
     }

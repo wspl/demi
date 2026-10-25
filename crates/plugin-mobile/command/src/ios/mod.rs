@@ -957,6 +957,10 @@ impl DeviceCapture for IosCapture {
     fn encoding(&self, bitrate: u32, fps: u32) {
         self.tell("captureEncoding", json!({ "bitrate": bitrate, "fps": fps }));
     }
+
+    fn repeat(&self) {
+        self.tell("captureRepeat", json!({}));
+    }
 }
 
 /// A recording the helper feeds, which stops as it is dropped.

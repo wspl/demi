@@ -81,6 +81,7 @@ pub fn chunks(source: &SourceId, generation: u32, frame: &EncodedFrame) -> Optio
             chunk,
             chunks,
             key: frame.key,
+            padding: false,
             timestamp: frame.timestamp,
             width: frame.width,
             height: frame.height,
@@ -104,4 +105,29 @@ pub fn chunks(source: &SourceId, generation: u32, frame: &EncodedFrame) -> Optio
             })
             .collect(),
     )
+}
+
+/// A padding chunk of `source` to the page, in the viewer's stream
+/// generation: chunk `chunk` of probe `probe`'s `chunks`, `bytes` long on
+/// the wire, at most [`CHUNK_BYTES`](demi_live_view_protocol::CHUNK_BYTES).
+pub fn padding(source: &SourceId, generation: u32, probe: u32, chunk: u16, chunks: u16, bytes: usize) -> Bytes {
+    let mut head = Vec::with_capacity(VideoHeader::BYTES);
+    VideoHeader {
+        source: source.clone(),
+        generation,
+        sequence: probe,
+        chunk,
+        chunks,
+        key: false,
+        padding: true,
+        timestamp: 0.0,
+        width: 0,
+        height: 0,
+    }
+    .write(&mut head);
+    let filler = bytes.saturating_sub(5 + head.len()).min(VideoHeader::CHUNK_DATA);
+    framed(VIDEO_FRAME, head.len() + filler, |out| {
+        out.extend_from_slice(&head);
+        out.resize(out.len() + filler, 0);
+    })
 }

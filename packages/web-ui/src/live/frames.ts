@@ -32,10 +32,14 @@ export interface LiveVideoFrame {
   data: Uint8Array
 }
 
-/** A chunk of a picture, as the Host sends it: its part of the frame's data, `chunk` of `chunks`. */
+/**
+ * A chunk of a picture, as the Host sends it: its part of the frame's data, `chunk` of `chunks`.
+ * A padding chunk is the Host's probe of the path, numbered by its probe, with no picture.
+ */
 export interface LiveVideoChunk extends LiveVideoFrame {
   chunk: number
   chunks: number
+  padding: boolean
 }
 
 /** The page's acknowledgement of one chunk, with when it received it, in milliseconds on its own clock. */
@@ -43,6 +47,7 @@ export interface LiveChunkAck {
   generation: number
   sequence: number
   chunk: number
+  padding: boolean
   received: number
 }
 
@@ -109,6 +114,7 @@ export function encodeAcks(acks: readonly LiveChunkAck[]): StreamBytes {
     view.setUint32(at, ack.generation)
     view.setUint32(at + 4, ack.sequence)
     view.setUint16(at + 8, ack.chunk)
+    view.setUint8(at + 10, ack.padding ? 1 : 0)
     view.setFloat64(at + 12, ack.received)
   })
   return framed(LIVE_ACK_FRAME, payload)
@@ -123,6 +129,7 @@ export function decodeAcks(payload: Uint8Array): LiveChunkAck[] {
       generation: view.getUint32(at),
       sequence: view.getUint32(at + 4),
       chunk: view.getUint16(at + 8),
+      padding: (view.getUint8(at + 10) & 1) === 1,
       received: view.getFloat64(at + 12),
     })
   }
@@ -172,7 +179,7 @@ export class LiveFrameAssembler {
       data.set(piece!, at)
       at += piece!.length
     }
-    const { chunk: _chunk, chunks: _chunks, ...header } = part.chunk
+    const { chunk: _chunk, chunks: _chunks, padding: _padding, ...header } = part.chunk
     this.whole.set(chunk.sequence, { frame: { ...header, data }, since: now })
     return this.release()
   }
@@ -320,6 +327,7 @@ function decodeFrame(frame: Uint8Array): LiveRawFrame {
       chunk: header.getUint16(fields + 8),
       chunks: header.getUint16(fields + 10),
       key: (header.getUint8(fields + 12) & 1) === 1,
+      padding: (header.getUint8(fields + 12) & 2) === 2,
       timestamp: header.getFloat64(fields + 16),
       width: header.getUint16(fields + 24),
       height: header.getUint16(fields + 26),

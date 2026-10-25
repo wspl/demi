@@ -164,6 +164,9 @@ final class Server: @unchecked Sendable {
     case "captureKeyFrame":
       session.captureKeyFrame(capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0))
       return ([:], nil)
+    case "captureRepeat":
+      session.captureRepeat(capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0))
+      return ([:], nil)
     case "captureAck":
       session.captureAck(
         capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0),
