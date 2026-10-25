@@ -164,11 +164,14 @@ async fn sign_in(
         show(next);
     }
     ran.map_err(|error| LoginError::Failed(error.0))?;
-    answered.await.unwrap_or_else(|_| {
+    let (id, account) = answered.await.unwrap_or_else(|_| {
         Err(LoginError::Failed(
             "The Claude sign-in ended without an answer".into(),
         ))
-    })
+    })?;
+    // The CLI fetched the account's feature flags as it signed in.
+    machine.state().flags.refreshed(&id);
+    Ok(account)
 }
 
 /// The sign-in on the machine `placement` stands for, whose account takes its
@@ -184,7 +187,7 @@ async fn sign_in_at(
     codes: mpsc::UnboundedReceiver<Secret>,
     stop: CancellationToken,
     abandoned: CancellationToken,
-) -> Result<NewAccount, LoginError> {
+) -> Result<(String, NewAccount), LoginError> {
     let stopped = || async {
         tokio::select! {
             () = stop.cancelled() => {}
@@ -340,14 +343,14 @@ fn link(line: &str) -> Option<String> {
 
 /// The account the CLI's sign-in wrote into its directory `config`, which
 /// becomes the account's directory: its ID and email, read from the CLI's
-/// `.claude.json`, and nothing of its tokens.
+/// `.claude.json`, and nothing of its tokens; with its id.
 ///
 /// The account's id is the one it has among `pool`'s accounts, or the one a new
 /// account gets.
 async fn signed_in(
     config: Box<dyn ConfigDir>,
     pool: &dyn CredentialPool,
-) -> Result<NewAccount, LoginError> {
+) -> Result<(String, NewAccount), LoginError> {
     let read = async {
         let bytes = config.read(CONFIG).await.map_err(|error| {
             LoginError::Failed(format!("Claude Code wrote no {CONFIG}: {error}"))
@@ -382,8 +385,11 @@ async fn signed_in(
             "Claude Code's sign-in could not become the account's: {error}"
         ))
     })?;
-    Ok(NewAccount {
-        label,
-        secret: None,
-    })
+    Ok((
+        id,
+        NewAccount {
+            label,
+            secret: None,
+        },
+    ))
 }

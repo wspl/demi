@@ -1,8 +1,13 @@
 //! The SDK MCP channel: Demi's MCP server for one CLI process, an rmcp server
 //! in local mode on the user's shard, reached through an in-memory transport.
 //!
-//! The run passes it each MCP message the CLI sends in a control request and
-//! writes its replies back. A `tools/call` waits for the agent's result, which
+//! Before the CLI starts, the provider makes the handshake the CLI's client
+//! would make, `initialize` and the first `tools/list`, and hands the CLI the
+//! answers as the server's manifest, so that its first turn finds the tools
+//! connected (`crates/provider-claude-code/src/live.rs`). After that, the run
+//! passes the server each MCP message the CLI sends in a control request and
+//! writes its replies back; a handshake the CLI makes again, as when it
+//! declined the manifest, is answered as any message. A `tools/call` waits for the agent's result, which
 //! a later run delivers. rmcp handles each request on its own task, so `ping`
 //! and `tools/list` are answered meanwhile.
 //!
@@ -33,7 +38,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -42,8 +47,8 @@ use futures_channel::mpsc;
 use futures_util::StreamExt as _;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ClientJsonRpcMessage, ContentBlock,
-    Implementation, JsonRpcMessage, ListToolsResult, PaginatedRequestParams, RequestId,
-    ServerCapabilities, ServerConfig, ServerJsonRpcMessage, ServerResult, Tool,
+    Implementation, JsonRpcMessage, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
+    RequestId, ServerCapabilities, ServerConfig, ServerJsonRpcMessage, ServerResult, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer, serve_server_with_ct};
 use rmcp::{ErrorData as McpError, ServerHandler};
@@ -51,7 +56,47 @@ use tokio::sync::oneshot;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tokio_util::task::AbortOnDropHandle;
 
+use crate::input::Manifest;
 use crate::output::tool_name;
+
+/// The MCP protocol version the CLI's client asks for, which a manifest's
+/// `initialize` result must name: rmcp's newest, until a CLI asks for another.
+///
+/// A CLI declines a manifest of another version and makes its handshake over
+/// the control channel instead, whose `initialize` names the version it wants,
+/// so only the first process of a CLI that asks for another races its tools.
+pub(crate) struct ClientProtocol(Mutex<ProtocolVersion>);
+
+impl Default for ClientProtocol {
+    fn default() -> Self {
+        Self(Mutex::new(ProtocolVersion::LATEST))
+    }
+}
+
+impl ClientProtocol {
+    fn lock(&self) -> std::sync::MutexGuard<'_, ProtocolVersion> {
+        // The version stays whole whatever panicked while it was held.
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn get(&self) -> ProtocolVersion {
+        self.lock().clone()
+    }
+
+    /// Keeps `asked`, the version of an `initialize` the CLI sent.
+    pub(crate) fn asked(&self, asked: &ProtocolVersion) {
+        let mut kept = self.lock();
+        if *kept != *asked {
+            tracing::info!(
+                event = "claude_code_mcp.protocol_learned",
+                was = %*kept,
+                now = %asked,
+                "Claude Code asked for another MCP protocol version, which its next manifests name"
+            );
+            *kept = asked.clone();
+        }
+    }
+}
 
 /// Where a `tools/call` names the model's own tool-use id.
 const TOOL_USE_ID: &str = "claudecode/toolUseId";
@@ -136,6 +181,80 @@ impl Mcp {
         }
     }
 
+    /// Makes the handshake the CLI's client would make with the server, asking
+    /// for `protocol`: its `initialize`, the `initialized` notification and the
+    /// first `tools/list`, whose answers the CLI takes as the server's manifest.
+    ///
+    /// It comes before any message of the CLI's, which it would otherwise
+    /// read in place of their replies.
+    pub(crate) async fn manifest(&mut self, protocol: &ProtocolVersion) -> Result<Manifest, String> {
+        let initialize_result = self
+            .ask(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "demi-initialize",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": protocol,
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": "demi",
+                        "version": demi_shared_artifacts::BUILD_VERSION,
+                    },
+                },
+            }))
+            .await?;
+        self.send(serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+        }))?;
+        let tools_list_result = self
+            .ask(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "demi-tools-list",
+                "method": "tools/list",
+            }))
+            .await?;
+        Ok(Manifest {
+            initialize_result,
+            tools_list_result,
+        })
+    }
+
+    /// Sends the server `request` and reads until its result.
+    async fn ask(&mut self, request: serde_json::Value) -> Result<serde_json::Value, String> {
+        let id = serde_json::from_value::<RequestId>(request["id"].clone())
+            .map_err(|error| format!("The MCP request has no id: {error}"))?;
+        self.send(request)?;
+        loop {
+            match self.from_server.next().await {
+                Some(JsonRpcMessage::Response(response)) if response.id == id => {
+                    return serde_json::to_value(&response.result).map_err(|error| error.to_string());
+                }
+                Some(JsonRpcMessage::Error(error)) if error.id.as_ref() == Some(&id) => {
+                    return Err(format!("The SDK MCP server refused its handshake: {}", error.error.message));
+                }
+                // Nothing else is asked yet, so nothing else is answered.
+                Some(_) => {}
+                None => return Err(self.ended()),
+            }
+        }
+    }
+
+    /// Sends the server `message`, which Demi wrote.
+    fn send(&self, message: serde_json::Value) -> Result<(), String> {
+        let message = serde_json::from_value::<ClientJsonRpcMessage>(message)
+            .map_err(|error| format!("The MCP message cannot be read: {error}"))?;
+        self.to_server
+            .unbounded_send(message)
+            .map_err(|_| self.ended())
+    }
+
+    /// Why the server ended.
+    fn ended(&self) -> String {
+        let reason = self.board.borrow().failure.clone();
+        reason.unwrap_or_else(|| "the SDK MCP server ended".into())
+    }
+
     /// Makes `tools` the ones `tools/list` answers.
     pub(crate) fn offer(&self, tools: Arc<[ToolDefinition]>) {
         self.board.borrow_mut().tools = tools;
@@ -156,8 +275,7 @@ impl Mcp {
             _ => None,
         };
         if self.to_server.unbounded_send(message).is_err() {
-            let reason = self.board.borrow().failure.clone();
-            return Err(reason.unwrap_or_else(|| "the SDK MCP server ended".into()));
+            return Err(self.ended());
         }
         match request {
             Some(id) => {

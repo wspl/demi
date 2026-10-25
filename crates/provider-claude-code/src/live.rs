@@ -12,7 +12,7 @@
 //! sign-in stops the account for a minute.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -31,18 +31,20 @@ use futures_channel::mpsc;
 use futures_util::future::{LocalBoxFuture, Shared as SharedFuture};
 use futures_util::stream::LocalBoxStream;
 use futures_util::{FutureExt as _, StreamExt as _};
-use rmcp::model::{ClientJsonRpcMessage, ServerJsonRpcMessage};
+use rmcp::model::{
+    ClientJsonRpcMessage, ClientRequest, JsonRpcMessage, ProtocolVersion, ServerJsonRpcMessage,
+};
 use serde::Deserialize as _;
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 use tokio_util::io::StreamReader;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply};
+use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, Manifest, McpReply};
 use crate::mcp::{self, Mcp, McpEvent};
 use crate::mirror::Mirror;
 use crate::output::{ControlRequestLine, LastCall, Line, Replaced, Streaming};
-use crate::placement::{CliSite, ConfigDir, Placed, Placement};
+use crate::placement::{CliSite, CliWork, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
 use crate::timing::{StartTiming, Took};
 use crate::{FAMILY, Shared, cli};
@@ -344,6 +346,11 @@ impl LiveCli {
             .await?
         };
         let session_build = building.elapsed();
+        // The account whose probe the start may run.
+        let probed = match &account.work {
+            CliWork::Account { account, .. } => Some(account.clone()),
+            CliWork::Login => None,
+        };
         let args = cli::args(request, &file.id.to_string());
         let start = Arc::new(move |site: &CliSite| {
             // The spawn request, its environment and arguments, is never
@@ -363,6 +370,9 @@ impl LiveCli {
             .map_err(|error| ProviderFailure::no_answer(error.0))?;
         if let Some(version) = account.handed_over {
             shared.auth.handed_over(version).await;
+        }
+        if let Some(id) = &probed {
+            shared.refresh_flags(id);
         }
         let Process {
             output,
@@ -433,6 +443,11 @@ impl LiveCli {
         })
     }
 
+    /// The node whose session the process serves.
+    pub(crate) fn node(&self) -> &str {
+        &self.log.node
+    }
+
     /// A run that started at `at` takes the process: its first call
     /// started with it.
     pub(crate) fn run_started(&mut self, at: Timestamp) {
@@ -492,28 +507,39 @@ impl LiveCli {
         &mut self,
         request: &InferenceRequest,
     ) -> Result<(), ProviderFailure> {
-        if self.mcp.is_some() {
-            let initializing = tokio::time::Instant::now();
-            self.initialize(&request.system_prompt).await?;
-            if let Some(started) = &mut self.started {
-                started.initialize = Some(initializing.elapsed());
-            }
+        let initializing = tokio::time::Instant::now();
+        self.initialize(&request.system_prompt).await?;
+        if let Some(started) = &mut self.started {
+            started.initialize = Some(initializing.elapsed());
         }
         self.sent = Sent::of(&request.items);
         Ok(())
     }
 
-    /// Sends `initialize` and reads until the CLI's answer.
+    /// Sends `initialize`, which the CLI waits for before anything else, and
+    /// reads until the CLI's answer.
     ///
-    /// The CLI may start its MCP handshake meanwhile, so control requests are
-    /// answered as they come. Any other line, such as the `system` line the CLI
-    /// prints first, is kept for the run.
+    /// A process that offers tools declares its MCP server with the handshake's
+    /// answers, its manifest. A CLI that declines it makes its handshake over
+    /// the control channel meanwhile, so control requests are answered as they
+    /// come. Any other line, such as the `system` line the CLI prints first, is
+    /// kept for the run.
     async fn initialize(&mut self, system_prompt: &str) -> Result<(), ProviderFailure> {
+        let protocol = self.shared.mcp_protocol();
+        let manifest = match &mut self.mcp {
+            Some(mcp) => Some(mcp.manifest(&protocol).await.map_err(failure)?),
+            None => None,
+        };
+        let (servers, manifests): (&[&str], BTreeMap<&str, &Manifest>) = match &manifest {
+            Some(manifest) => (&[MCP_SERVER], BTreeMap::from([(MCP_SERVER, manifest)])),
+            None => (&[], BTreeMap::new()),
+        };
         let request_id = uuid::Uuid::new_v4().to_string();
         let request = Input::ControlRequest {
             request_id: &request_id,
             request: ControlRequest::Initialize {
-                sdk_mcp_servers: [MCP_SERVER],
+                sdk_mcp_servers: servers,
+                sdk_mcp_server_manifests: manifests,
                 system_prompt,
             },
         };
@@ -531,6 +557,9 @@ impl LiveCli {
                 {
                     let response = line.response.expect("the answer was matched");
                     if response.subtype.as_deref() == Some("success") {
+                        if manifest.is_some() {
+                            self.note_manifest(response.response.as_ref(), &protocol);
+                        }
                         self.pending.append(&mut kept);
                         return Ok(());
                     }
@@ -566,6 +595,26 @@ impl LiveCli {
                 Next::Cancelled => unreachable!("advancing watches no token"),
             }
         }
+    }
+
+    /// Logs a manifest the CLI did not keep, as its answer to `initialize`
+    /// says (`sdk_mcp_manifests_parked`); the CLI then makes the handshake over
+    /// the control channel, and its first turn may offer no tools.
+    fn note_manifest(&self, answer: Option<&serde_json::Value>, protocol: &ProtocolVersion) {
+        let outcome = answer
+            .and_then(|answer| answer.get("sdk_mcp_manifests_parked"))
+            .and_then(|parked| parked.get(MCP_SERVER))
+            .and_then(serde_json::Value::as_str);
+        if outcome == Some("parked") {
+            return;
+        }
+        tracing::warn!(
+            event = "claude_code_mcp.manifest_declined",
+            node = self.log.node,
+            outcome = outcome.unwrap_or("unanswered"),
+            protocol = %protocol,
+            "Claude Code did not keep the MCP server's manifest, and makes its handshake over the control channel"
+        );
     }
 
     /// What the process does next, unless `cancel` is cancelled first.
@@ -736,7 +785,19 @@ impl LiveCli {
             ) {
                 (Some(mcp), Some(MCP_SERVER), Some(message)) => {
                     match serde_json::from_value::<ClientJsonRpcMessage>(message) {
-                        Ok(message) => mcp.pass(&request_id, message),
+                        Ok(message) => {
+                            if let JsonRpcMessage::Request(request) = &message
+                                && let ClientRequest::InitializeRequest(initialize) = &request.request
+                            {
+                                if let Some(machine) = &self.shared.machine {
+                                    machine
+                                        .state()
+                                        .mcp_protocol
+                                        .asked(&initialize.params.protocol_version);
+                                }
+                            }
+                            mcp.pass(&request_id, message)
+                        }
                         Err(error) => Err(format!("The SDK MCP message cannot be read: {error}")),
                     }
                 }

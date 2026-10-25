@@ -52,7 +52,9 @@ use demi_host_interface::{HostError, Process, SpawnRequest};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use tokio_util::sync::CancellationToken;
 
-use crate::prepared::PreparedProcesses;
+use crate::idle::IdleProcesses;
+use crate::mcp::ClientProtocol;
+use crate::quota::FlagRefreshes;
 
 /// Where a new CLI process runs on the machine the placement chose.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,10 +195,9 @@ pub trait Placement {
     /// once; the machine wakes meanwhile when it is stopped.
     fn work(&self) -> WorkLease;
 
-    /// The processes prepared ahead on the placement's machine and not yet
-    /// used, which every placement of that machine shares
-    /// (`crates/provider-claude-code/src/prepared.rs`).
-    fn prepared(&self) -> Rc<PreparedProcesses>;
+    /// The idle processes of the placement's machine, which every placement
+    /// of that machine shares (`crates/provider-claude-code/src/idle.rs`).
+    fn idle(&self) -> Arc<IdleProcesses>;
 }
 
 /// A started CLI process and its own directory, with how long each step of
@@ -277,4 +278,20 @@ pub trait AccountMachine: Send + Sync {
     /// awaited first, and a start that waited fails with the removal
     /// (`crates/provider-claude-code/src/account.rs`).
     fn remove_account(&self, account: String) -> BoxFuture<'static, Result<(), StartError>>;
+
+    /// What the provider keeps of the machine for every provider of every
+    /// account.
+    fn state(&self) -> &MachineState;
+}
+
+/// What the provider keeps of the Claude Code machine across its providers,
+/// since each session's runtime builds a provider of its own.
+#[derive(Default)]
+pub struct MachineState {
+    /// When each account's feature flags were last fetched there
+    /// (`crates/provider-claude-code/src/quota.rs`).
+    pub(crate) flags: FlagRefreshes,
+    /// The MCP protocol version the machine's CLI asks for
+    /// (`crates/provider-claude-code/src/mcp.rs`).
+    pub(crate) mcp_protocol: ClientProtocol,
 }

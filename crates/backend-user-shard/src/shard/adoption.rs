@@ -339,6 +339,7 @@ impl Shard {
             identity: host_identity(&runner),
             kernel: runner.kernel.clone(),
             shell: runner.shell.clone(),
+            memory: runner.memory,
             pipes: self.pipes().clone(),
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
             ping: self.services().runners.ping,

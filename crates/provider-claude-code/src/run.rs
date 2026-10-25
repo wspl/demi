@@ -10,6 +10,11 @@
 //! It hands it back before the run's last event, since the agent stops reading
 //! a run at its failure. Every other end closes it, SIGTERM first.
 //!
+//! Once the session's action ends, the process is idle until the next run takes
+//! it, and takes a seat among its machine's idle processes, which may close it
+//! meanwhile (`crates/provider-claude-code/src/idle.rs`). The next run then
+//! starts a new one.
+//!
 //! When the next request is known but for its input, the runtime prepares its
 //! process ahead, and the request takes that one as a kept process when it is
 //! the request it was prepared for
@@ -51,6 +56,7 @@ use futures_util::stream::{self, Stream};
 
 use crate::Shared;
 use crate::failure::read_failure;
+use crate::idle::Kept;
 use crate::live::{LiveCli, Next};
 use crate::output::{Answered, ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
 use crate::placement::{Placement, WorkLease};
@@ -64,8 +70,11 @@ const UNAUTHORIZED: u16 = 401;
 pub(crate) struct ClaudeCodeRuntime {
     shared: Arc<Shared>,
     placement: Rc<dyn Placement>,
-    /// The process kept from the last run.
+    /// The process kept from the last run, while the session's action that
+    /// ran it goes on.
     live: Option<LiveCli>,
+    /// The process kept from the last run once its action ended, idle.
+    kept: Option<Kept>,
     /// The process prepared for the next request; a runtime that keeps a
     /// process prepares none.
     prepared: Option<Prepared>,
@@ -84,9 +93,16 @@ impl ClaudeCodeRuntime {
             shared,
             placement,
             live: None,
+            kept: None,
             prepared: None,
             action: None,
         }
+    }
+
+    /// The process kept from the last run, whether its action goes on or not;
+    /// none when there is none or its seat closed it.
+    fn take_kept(&mut self) -> Option<LiveCli> {
+        self.live.take().or_else(|| self.kept.take().and_then(Kept::take))
     }
 }
 
@@ -142,7 +158,7 @@ impl ProviderRuntime for ClaudeCodeRuntime {
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {
             self.action = None;
-            if let Some(live) = self.live.take() {
+            if let Some(live) = self.take_kept() {
                 live.close().await;
             }
             if let Some(prepared) = self.prepared.take() {
@@ -152,9 +168,12 @@ impl ProviderRuntime for ClaudeCodeRuntime {
     }
 
     /// The action ended, completed, failed or stopped: the machine is no
-    /// longer held for it.
+    /// longer held for it, and the process kept from its last run is idle.
     fn idle(&mut self) {
         self.action = None;
+        if let Some(live) = self.live.take() {
+            self.kept = Some(Kept::seat(&self.shared, &*self.placement, live));
+        }
     }
 
     fn prepares_ahead(&self) -> bool {
@@ -178,15 +197,19 @@ impl ProviderRuntime for ClaudeCodeRuntime {
                 }
                 tokio::task::spawn_local(prepared.close());
             }
-            let wanted = match (ahead, &self.live) {
-                (Ahead::Opened | Ahead::Chosen, None) => true,
-                (Ahead::Opened | Ahead::Chosen, Some(live)) => !live.continues(&request),
-                (Ahead::Ended, _) => false,
+            let continues = match (&self.live, &self.kept) {
+                (Some(live), _) => live.continues(&request),
+                (None, Some(kept)) => kept.continues(&request),
+                (None, None) => false,
+            };
+            let wanted = match ahead {
+                Ahead::Opened | Ahead::Chosen => !continues,
+                Ahead::Ended => false,
             };
             if !wanted || !answered(&request.items) {
                 return;
             }
-            if let Some(live) = self.live.take() {
+            if let Some(live) = self.take_kept() {
                 tokio::task::spawn_local(live.close());
             }
             tracing::debug!(
@@ -242,7 +265,7 @@ fn run(
             runtime.action = Some(runtime.placement.work());
         }
         {
-            let mut kept = runtime.live.take().map(|live| (live, Took::Kept));
+            let mut kept = runtime.take_kept().map(|live| (live, Took::Kept));
             if let Some(prepared) = runtime.prepared.take() {
                 if prepared.serves(&request) {
                     match cancel.run_until_cancelled(prepared.take()).await {

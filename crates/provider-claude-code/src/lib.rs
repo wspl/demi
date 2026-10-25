@@ -47,6 +47,7 @@ mod account;
 mod cli;
 mod failure;
 mod files;
+mod idle;
 mod input;
 mod live;
 mod login;
@@ -78,10 +79,10 @@ use futures_util::future::BoxFuture;
 
 pub use placement::{
     AccountMachine, AccountWork, CliSite, CliStart, CliStarter, CliSystem, CliWork, ConfigDir,
-    Handover, Placed, Placement, StartError, StartStage, StartSteps, WorkLease,
+    Handover, MachineState, Placed, Placement, StartError, StartStage, StartSteps, WorkLease,
 };
 pub use live::close_process;
-pub use prepared::PreparedProcesses;
+pub use idle::IdleProcesses;
 
 use crate::account::ClaudeAuth;
 use crate::login::ClaudeKit;
@@ -146,6 +147,43 @@ struct Shared {
     /// machine ([`ClaudeCodeProvider::login_accounts`]).
     accounts: Accounts<ClaudeKit>,
     models_dev: ModelsDevClient,
+    /// The Claude Code machine, and what the provider keeps of it; none for a
+    /// provider that cannot reach it, which cannot probe.
+    machine: Option<Arc<dyn AccountMachine>>,
+}
+
+impl Shared {
+    /// The MCP protocol version the machine's CLI asks for, as far as the
+    /// machine's processes told (`crates/provider-claude-code/src/mcp.rs`).
+    fn mcp_protocol(&self) -> rmcp::model::ProtocolVersion {
+        self.machine.as_ref().map_or(rmcp::model::ProtocolVersion::LATEST, |machine| {
+            machine.state().mcp_protocol.get()
+        })
+    }
+
+    /// Runs the usage probe of `account` in the background, as a process of
+    /// the account starts, when the flags it refreshes are due
+    /// (`crates/provider-claude-code/src/quota.rs`). Nothing waits for it.
+    fn refresh_flags(self: &Arc<Self>, account: &str) {
+        if !self
+            .machine
+            .as_ref()
+            .is_some_and(|machine| machine.state().flags.due(account))
+        {
+            return;
+        }
+        let shared = self.clone();
+        tokio::task::spawn_local(async move {
+            if let Err(error) = shared.quota.probe().await {
+                tracing::warn!(
+                    event = "claude_code_flags.refresh_failed",
+                    provider = %shared.id,
+                    %error,
+                    "the usage probe that refreshes Claude Code's feature flags failed; the next start after three hours runs another"
+                );
+            }
+        });
+    }
 }
 
 impl ClaudeCodeProvider {
@@ -161,7 +199,7 @@ impl ClaudeCodeProvider {
         let auth = Arc::new(ClaudeAuth::new(pool.clone(), config.account));
         let source = ClaudeQuota {
             auth: auth.clone(),
-            machine: config.machine,
+            machine: config.machine.clone(),
             entry: config.id.clone(),
         };
         let kit = ClaudeKit {
@@ -179,6 +217,7 @@ impl ClaudeCodeProvider {
                 quota: ProviderQuota::new(Box::new(source), snapshots, clock.clone()),
                 accounts: Accounts::new(pool, kit, clock),
                 models_dev,
+                machine: config.machine,
             }),
         }
     }
