@@ -1399,8 +1399,17 @@ html[data-theme="light"] .file-pill {
 }
 
 .drawn-selection-strip {
-  border-radius: 5px;
+  border-radius: 3px;
   background-color: rgb(59 130 246 / 0.42);
+}
+
+/* The window is not the active one: the system's unemphasized selection. */
+.drawn-selection-inactive .drawn-selection-strip {
+  background-color: rgb(70 70 70);
+}
+
+.drawn-selection-inactive .drawn-selection-picture {
+  outline-color: rgb(115 115 115);
 }
 
 .drawn-selection-picture {
@@ -1418,6 +1427,14 @@ html[data-theme="light"] .file-pill {
 
 [data-theme="light"] .drawn-selection-picture {
   outline-color: rgb(59 130 246);
+}
+
+[data-theme="light"] .drawn-selection-inactive .drawn-selection-strip {
+  background-color: rgb(220 220 220);
+}
+
+[data-theme="light"] .drawn-selection-inactive .drawn-selection-picture {
+  outline-color: rgb(180 180 180);
 }
 
 /* A comment's box or a side question's card stands in the reply under the line

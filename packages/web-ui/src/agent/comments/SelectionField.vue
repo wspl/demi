@@ -3,7 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { ArrowUp, MessageCircleMore, MessageCircleQuestionMark } from '@lucide/vue'
 import { useFieldScrollbars } from '../../composables/useFieldScrollbars'
+import FramedTextArea from '../../ui/FramedTextArea.vue'
 import IconButton from '../../ui/IconButton.vue'
+import { answerForPage } from '../../ui/page-keys'
 import { withCommandKey } from '../../ui/shortcut'
 import Tooltip from '../../ui/Tooltip.vue'
 import type { SentenceText } from '../../ui/ui-text'
@@ -12,8 +14,7 @@ import { otherWayKeys } from '../send-way'
 import type { FieldWay } from './selection-field'
 
 /**
- * The one field a remark on a part of a reply is written in
- * (`docs/decisions/0092-a-remark-stands-under-its-line.md`): a capsule of one
+ * The one field a remark on a part of a reply is written in: a capsule of one
  * line holding the words, a gray round button and a blue one.
  *
  * - The blue button is the chosen way, Comment unless a menu's Ask chose it,
@@ -27,12 +28,16 @@ import type { FieldWay } from './selection-field'
  *   new line, open the capsule into a box: the words above, the buttons under
  *   them at the right, as the message field does.
  * - With no words, Return and the buttons shake the field once.
- * - Escape closes it (`close`); its owner also closes it for a press elsewhere
- *   or a new selection.
+ * - Escape closes it (`close`); its owner also closes it when the selection
+ *   it stands for is gone.
  *
- * The owner takes the focus into it (`focus`) and keeps the page's selection
- * for it, so a key typed after the selection, an input method's composition
- * included, starts in the field.
+ * The owner takes the focus into it (`focus`), so a key typed after the
+ * selection, an input method's composition included, starts in the field. The
+ * words are typed in a frame of their own (`FramedTextArea.vue`), so the
+ * focus there leaves the page's selection the browser's. Until a field that
+ * stands for that selection (`pageKeys`) holds a word, the keys the page
+ * answers act on the page (`answerForPage`), and Copy copies the page's
+ * selection while the field selects none of its own.
  */
 const props = defineProps<{
   /** Whether the page offers Ask; without it the field has no Ask button. */
@@ -47,6 +52,8 @@ const props = defineProps<{
   busy?: boolean
   /** The command key, pinned as held, for a gallery's specimen; the field follows the keyboard otherwise. */
   held?: boolean
+  /** The field stands for the page's selection, which the keys the page answers act on while it holds no words; not for a picture. */
+  pageKeys?: boolean
 }>()
 
 const text = defineModel<string>({ default: '' })
@@ -59,7 +66,8 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement>()
-const field = ref<HTMLTextAreaElement>()
+const area = ref<InstanceType<typeof FramedTextArea>>()
+const field = computed(() => area.value?.field ?? undefined)
 const frame = ref<HTMLElement>()
 const buttons = ref<HTMLElement>()
 const ruler = ref<HTMLElement>()
@@ -118,11 +126,11 @@ useFieldScrollbars(field, frame, () => text.value)
 defineExpose({
   /** Takes the focus, the caret at the end of what is typed. */
   focus(): void {
-    field.value?.focus({ preventScroll: true })
+    area.value?.focus({ preventScroll: true })
   },
   /** Whether the focus is in the field. */
   get focused(): boolean {
-    return document.activeElement === field.value
+    return area.value?.focused ?? false
   },
 })
 
@@ -155,10 +163,25 @@ function primary(event?: MouseEvent): void {
 }
 
 function onKeydown(event: KeyboardEvent): void {
+  // The frame's keys reach no listener of the page's window.
+  track(event)
   // Safari ends a composition with an Enter whose `isComposing` is already false
   // and whose key code is 229: it confirms the words, and sends nothing.
   if (event.isComposing || event.keyCode === 229)
     return
+  const own = field.value
+  if (own && own.selectionStart === own.selectionEnd && withCommandKey(event) && event.key.toLowerCase() === 'c' && !event.shiftKey && !event.altKey) {
+    // Copy with nothing of the field's selected copies the page's selection, as the page would.
+    if (!window.getSelection()?.isCollapsed) {
+      event.preventDefault()
+      document.execCommand('copy')
+    }
+    return
+  }
+  if (props.pageKeys && text.value === '' && root.value && answerForPage(event, root.value)) {
+    event.preventDefault()
+    return
+  }
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     if (withCommandKey(event) || sending.value) {
@@ -199,15 +222,17 @@ const otherIcon = computed(() => other.value === 'ask' ? MessageCircleQuestionMa
   >
     <span ref="ruler" aria-hidden="true" class="pointer-events-none invisible absolute whitespace-pre text-chrome leading-5" />
     <div ref="frame" class="relative flex min-w-0 [grid-area:words]">
-      <textarea
-        ref="field"
+      <FramedTextArea
+        ref="area"
         v-model="text"
         data-overlayscrollbars-initialize
         rows="1"
         :placeholder="t('comments.placeholder')"
         :aria-label="t('comments.placeholder')"
-        class="max-h-32 min-h-7 min-w-0 flex-1 resize-none bg-transparent py-1 text-chrome leading-5 text-fg outline-none [field-sizing:content] placeholder:text-fg-subtle"
+        class="block max-h-32 min-h-7 resize-none bg-transparent py-1 text-chrome leading-5 text-fg outline-none [field-sizing:content] placeholder:text-fg-subtle"
         @keydown="onKeydown"
+        @keyup="track"
+        @blur="release"
       />
     </div>
     <div ref="buttons" class="flex items-center gap-1.5 justify-self-end [grid-area:buttons]">

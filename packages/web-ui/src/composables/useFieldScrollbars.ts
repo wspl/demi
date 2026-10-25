@@ -1,4 +1,4 @@
-import { onMounted, watch, type Ref } from 'vue'
+import { watch, type Ref } from 'vue'
 import { useOverlayScrollbars } from 'overlayscrollbars-vue'
 import { scrollbarsOptions, scrollbarsTarget } from '../ui/scrollbars'
 
@@ -18,8 +18,9 @@ export function useFieldScrollbars(
 ): void {
   const [initialize, scrollbars] = useOverlayScrollbars({ options: scrollbarsOptions('y') })
   watch(value, () => scrollbars()?.update(true), { flush: 'post' })
-  onMounted(() => {
-    if (field.value && frame.value)
-      initialize(scrollbarsTarget(field.value, frame.value))
-  })
+  // A field rendered after its owner, as one in a frame of its own, is taken once it is there.
+  watch([field, frame], ([element, slot]) => {
+    if (element && slot && !scrollbars())
+      initialize(scrollbarsTarget(element, slot))
+  }, { immediate: true, flush: 'post' })
 }
