@@ -25,6 +25,11 @@ Related reading:
   resource limits are on (the default). A host without them runs the manager
   with `DEMI_MANAGED_LIMITS=off`, and its Clouds then have no CPU, memory or
   PID limits.
+- No seccomp listener on the processes the system starts. gVisor intercepts
+  system calls with a seccomp listener of its own, and the kernel allows one
+  listener in a process's filters; a filter without one does not matter. WSL
+  installs one with `networkingMode=mirrored` in `.wslconfig`; its default,
+  `nat`, does not.
 
 An ordinary hardware-virtualized VPS provides these without exposing KVM. A
 restricted container sold as a VPS may not: check the facilities, not the

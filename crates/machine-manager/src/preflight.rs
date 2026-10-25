@@ -35,6 +35,10 @@ pub enum PreflightError {
     Filesystems(String, String),
     #[error("Cloud's gVisor sandbox does not run on this machine: {0}")]
     Runtime(ToolError),
+    #[error(
+        "Cloud's gVisor sandbox does not run on this machine: every process here starts below a seccomp listener, and gVisor cannot add the one it intercepts system calls with (WSL installs one with networkingMode=mirrored; networkingMode=nat in .wslconfig does not): {0}"
+    )]
+    InheritedSeccomp(ToolError),
     #[error(transparent)]
     Tool(#[from] ToolError),
     #[error(transparent)]
@@ -90,8 +94,50 @@ pub async fn probe_runtime(core: &Core) -> Result<(), PreflightError> {
         )
         .await;
     blocking::run(move |off| remove_tree(off, &state)).await?;
-    ran.map_err(PreflightError::Runtime)?;
+    if let Err(error) = ran {
+        // The sandbox's own failure only says that it ended.
+        let taken = blocking::run_on_new_thread("seccomp-probe", |_| Ok(listener_taken())).await?;
+        return Err(if taken {
+            PreflightError::InheritedSeccomp(error)
+        } else {
+            PreflightError::Runtime(error)
+        });
+    }
     Ok(())
+}
+
+/// Whether a seccomp filter this thread inherited has a listener, which
+/// keeps systrap from adding its own: the kernel allows one listener in a
+/// chain of filters. The thread asks for one on a filter that allows every
+/// call; a filter binds only the thread it is installed on, so it ends with
+/// the thread.
+fn listener_taken() -> bool {
+    let mut allow = [libc::sock_filter {
+        code: (libc::BPF_RET | libc::BPF_K) as u16,
+        jt: 0,
+        jf: 0,
+        k: libc::SECCOMP_RET_ALLOW,
+    }];
+    let program = libc::sock_fprog {
+        len: 1,
+        filter: allow.as_mut_ptr(),
+    };
+    // SAFETY: `program` and the filter it points to outlive the call, which
+    // only reads them.
+    let listener = unsafe {
+        libc::syscall(
+            libc::SYS_seccomp,
+            libc::SECCOMP_SET_MODE_FILTER,
+            libc::SECCOMP_FILTER_FLAG_NEW_LISTENER,
+            &program,
+        )
+    };
+    if listener >= 0 {
+        // SAFETY: the call returned this descriptor, and nothing else holds it.
+        unsafe { libc::close(listener as libc::c_int) };
+        return false;
+    }
+    io::Error::last_os_error().raw_os_error() == Some(libc::EBUSY)
 }
 
 /// Requires the configured runsc to report exactly the pinned version.
