@@ -93,16 +93,6 @@ export function rangeOf(root: HTMLElement, anchor: TextAnchor): Range | null {
   return null
 }
 
-/** Whether the point lies on one of `range`'s line boxes. */
-export function rangeHas(range: Range | StaticRangeInit, x: number, y: number): boolean {
-  const live = liveOf(range)
-  for (const rect of live?.getClientRects() ?? []) {
-    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
-      return true
-  }
-  return false
-}
-
 /**
  * The anchor of the first place `text` stands in `root`'s own text, as a
  * gallery specimen names what it marks.

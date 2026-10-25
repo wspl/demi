@@ -7,12 +7,13 @@ import { isPicture, PICTURE } from './context-menu'
  * on it does (`DrawnSelection.vue`):
  *
  * ```text
- *   Uploads fail on slow     ╭─────────────────────╮
- *   connections              │because the client   │  a strip per line,
- *                            ╰─────────────────────╯  4px apart, its words
- *   ╭──────────────────────────────────────╮          3px in from each end
- *   │request runs under the same timeout   │
- *   ╰──────────────────────────────────────╯
+ *   Uploads fail on slow     ╭───────────────────╮
+ *   connections              │because the client │  a strip per line, 4px
+ *                            ╰───────────────────╯  apart, from its first
+ *   ╭────────────────────────────────────╮          selected letter to its
+ *   │request runs under the same timeout │          last, and a space more
+ *   ╰────────────────────────────────────╯          where the selection
+ *                                                   goes on past the line
  *    ┏━━━━━━━━━━┓
  *    ┃ picture  ┃  a picture or a file card: an outline
  *    ┗━━━━━━━━━━┛
@@ -20,14 +21,15 @@ import { isPicture, PICTURE } from './context-menu'
  *
  * A line's pieces, as inline code, a link or bold words, merge into one
  * strip; the lines of two blocks, as two paragraphs or two table cells, do
- * not. Only the painting is the list's: the selection is still the
+ * not. A line the selection goes on past ends a space's width after its last
+ * letter, where the browser draws the line's end as selected. Only the painting is the list's: the selection is still the
  * browser's, which copies, drags and opens its menu.
  */
 
 /**
- * The range the page keeps drawn as selected while the browser's selection
- * is gone: the words a comment field has the focus for, or the picture a
- * menu opened one on. Null when there is none.
+ * A range the page draws as selected though the browser's selection is not
+ * on it: the picture a menu opened a comment field on, which the browser does
+ * not select. Null when there is none.
  */
 export const heldSelection = shallowRef<Range | null>(null)
 
@@ -56,8 +58,6 @@ export interface DrawnShapes {
 
 export const NO_SHAPES: DrawnShapes = { strips: [], pictures: [] }
 
-/** How far a strip reaches past its line's first and last letter. */
-const PAD = 3
 /** The space between the strips of two lines. */
 const GAP = 4
 /** How far a picture's outline reaches out of its box: `.drawn-selection-picture`'s offset and width. */
@@ -71,6 +71,8 @@ interface Line {
   height: number
   left: number
   right: number
+  /** The font of the line's last letter, which the width of the space at its end is measured in. */
+  font: string
 }
 
 /**
@@ -127,6 +129,7 @@ export function selectionShapes(range: Range, root: HTMLElement): DrawnShapes {
     const block = blockOf(parent)
     const blockStyle = style(block)
     const height = Number.parseFloat(blockStyle.lineHeight) || Number.parseFloat(blockStyle.fontSize) * 1.2
+    const font = style(parent).font
     for (const rect of part.getClientRects()) {
       if (rect.width < 1)
         continue
@@ -134,9 +137,12 @@ export function selectionShapes(range: Range, root: HTMLElement): DrawnShapes {
       const line = lines.find((other) => other.block === block && Math.abs(other.mid - mid) < height / 2)
       if (line) {
         line.left = Math.min(line.left, rect.left)
-        line.right = Math.max(line.right, rect.right)
+        if (rect.right >= line.right) {
+          line.right = rect.right
+          line.font = font
+        }
       } else {
-        lines.push({ block, mid, height, left: rect.left, right: rect.right })
+        lines.push({ block, mid, height, left: rect.left, right: rect.right, font })
       }
     }
   }
@@ -172,9 +178,11 @@ export function selectionShapes(range: Range, root: HTMLElement): DrawnShapes {
   }
   const relative = (box: DOMRect): DrawnBox => ({ top: box.top - base.top, left: box.left - base.left, width: box.width, height: box.height })
 
+  const last = lastLine(range, lines)
   const strips: DrawnBox[] = []
   for (const line of lines) {
-    const strip = new DOMRect(line.left - PAD, line.mid - line.height / 2 + GAP / 2, line.right - line.left + PAD * 2, line.height - GAP)
+    const right = line === last ? line.right : line.right + spaceWidth(line.font)
+    const strip = new DOMRect(line.left, line.mid - line.height / 2 + GAP / 2, right - line.left, line.height - GAP)
     const clip = clipOf(line.block)
     const shown = clip ? intersect(clip, strip) : strip
     if (shown.width > 0 && shown.height > 0)
@@ -195,6 +203,41 @@ export function selectionShapes(range: Range, root: HTMLElement): DrawnShapes {
     drawn.push({ ...relative(box), radius: Number.parseFloat(style(picture).borderTopLeftRadius) || 0, clip: inset })
   }
   return { strips, pictures: drawn }
+}
+
+/**
+ * The line the selection ends in, which it does not go on past: the one its
+ * last selected letter stands on. None when it ends before a block's first
+ * letter, as a triple click's does, which goes on past every line.
+ */
+function lastLine(range: Range, lines: Line[]): Line | null {
+  const { endContainer, endOffset } = range
+  if (!(endContainer instanceof Text) || endOffset === 0)
+    return null
+  const letter = document.createRange()
+  letter.setStart(endContainer, endOffset - 1)
+  letter.setEnd(endContainer, endOffset)
+  const box = [...letter.getClientRects()].at(-1)
+  if (!box)
+    return null
+  const mid = box.top + box.height / 2
+  return lines.find((line) => Math.abs(line.mid - mid) < line.height / 2 && box.right <= line.right + 1 && box.left >= line.left - 1) ?? null
+}
+
+let measure: CanvasRenderingContext2D | null = null
+const spaces = new Map<string, number>()
+
+/** The width of a space in `font`. */
+function spaceWidth(font: string): number {
+  let width = spaces.get(font)
+  if (width === undefined) {
+    measure ??= document.createElement('canvas').getContext('2d')
+    if (measure)
+      measure.font = font
+    width = measure?.measureText(' ').width ?? 0
+    spaces.set(font, width)
+  }
+  return width
 }
 
 function intersect(a: DOMRect, b: DOMRect): DOMRect {

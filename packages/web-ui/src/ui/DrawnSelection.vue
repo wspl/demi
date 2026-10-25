@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { inTextField } from './context-menu'
 import { heldSelection, NO_SHAPES, selectionShapes, type DrawnShapes } from './drawn-selection'
 import { usePhone } from './phone'
@@ -11,7 +11,10 @@ import { usePhone } from './phone'
  * keeps the system's selection, which comes with its own handles.
  *
  * The layer stands over the rows and blends into them, so the words and the
- * backgrounds under a strip keep their colors.
+ * backgrounds under a strip keep their colors. While the window is not the
+ * active one, it draws the system's unemphasized selection, as the browser
+ * does; a frame of the page's with the focus, such as the comment field's,
+ * leaves the window active.
  */
 const props = defineProps<{
   /** The element the list's rows stand in, which this layer covers. */
@@ -21,6 +24,19 @@ const props = defineProps<{
 const phone = usePhone()
 const layer = ref<HTMLElement>()
 const shapes = shallowRef<DrawnShapes>(NO_SHAPES)
+const active = ref(true)
+
+// The focus moving into a frame of the page's blurs the window first: the page still has it once that is done.
+const follow = () => setTimeout(() => (active.value = document.hasFocus()))
+onMounted(() => {
+  active.value = document.hasFocus()
+  window.addEventListener('focus', follow)
+  window.addEventListener('blur', follow)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', follow)
+  window.removeEventListener('blur', follow)
+})
 
 /** The browser's selection, unless it is collapsed or in a text field, which paints its own. */
 function browserSelection(): Range | null {
@@ -90,7 +106,7 @@ onBeforeUnmount(() => cancelAnimationFrame(frame))
 </script>
 
 <template>
-  <div ref="layer" data-drawn-selection-layer aria-hidden="true" class="drawn-selection pointer-events-none absolute inset-0 z-20">
+  <div ref="layer" data-drawn-selection-layer aria-hidden="true" class="drawn-selection pointer-events-none absolute inset-0 z-20" :class="{ 'drawn-selection-inactive': !active }">
     <div
       v-for="(strip, index) in shapes.strips"
       :key="`strip:${index}`"
