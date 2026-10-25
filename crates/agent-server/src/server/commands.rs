@@ -61,11 +61,11 @@ const LIST_SUMMARY: &str = "List the agents of this conversation's tree from the
 /// The `--profile` option's description, which names no profile: the help
 /// is rendered once per tree, and the profiles change with the user's
 /// settings.
-const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles. Without it the child inherits your model, prompt, Host and commands; `demi agent profiles list` lists the profiles, with when to use each, that may fit the task better.";
+const PROFILE_OPTION: &str = "The name of a profile `demi agent profiles list` lists, with when to use each. Required while the conversation runs a project's workflow; otherwise, without it the child inherits your model, prompt, Host and commands.";
 
 /// The `--profile` option's description of a resume, which names no profile
 /// for the reason [`PROFILE_OPTION`]'s does not.
-const RESUME_PROFILE_OPTION: &str = "The name of one of the user's subagent profiles to go on with. Without it the child goes on with the profile it runs on; `demi agent profiles list` lists the profiles, with when to use each.";
+const RESUME_PROFILE_OPTION: &str = "The name of a profile `demi agent profiles list` lists, with when to use each, to go on with. Without it the child goes on with the profile it runs on.";
 
 const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state and recent tool titles with durations; for an archived one, how and when it closed, with the reason if it failed. Idle (s), the seconds since its last event, and Execution for (s) tell motion from stall. Omits what it said, tool outputs, file contents, and older turns: its last line is the history read that prints its latest blocks. Several ids show each in order; --json takes one.";
 

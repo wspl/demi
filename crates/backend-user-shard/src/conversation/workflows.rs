@@ -86,7 +86,7 @@ impl ProjectWorkflows {
 
     /// Why the workflow `id` cannot be used: its directory cannot, it does
     /// not read, or it is gone; none while it can.
-    fn unavailable(&self, id: &str) -> Option<String> {
+    pub(crate) fn unavailable(&self, id: &str) -> Option<String> {
         if let Some(reason) = &self.unavailable {
             return Some(reason.clone());
         }

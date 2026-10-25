@@ -7,8 +7,11 @@
 //! - the project's `AGENTS.md` or `CLAUDE.md` file and `.demi/instructions.md`
 //!   of each directory from the repository's root down to the node's working
 //!   directory;
-//! - for the root, the instructions of the workflow the conversation chose
-//!   (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//! - for the root, the workflow the conversation chose
+//!   (`crates/backend-user-shard/src/conversation/workflows.rs`): its
+//!   instructions, and its profiles as the only subagents the root can spawn,
+//!   so that work none of them is for stays the root's own without a spawn
+//!   failing first.
 //!
 //! # Design choices
 //!
@@ -29,7 +32,7 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext};
+use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext, WORKFLOW_EXTENSION};
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::kept::Found;
 use demi_backend_host_access::plugin_files::ReadFilesError;
@@ -64,13 +67,13 @@ pub(crate) struct ProjectFile {
     text: String,
 }
 
-/// A workflow's name, file and instructions, which the root reads while
-/// the conversation uses it.
+/// A workflow's name, file, and its instructions with its profiles, which
+/// the root reads while the conversation uses it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct WorkflowText {
     name: String,
     path: String,
-    instructions: String,
+    text: String,
 }
 
 /// The product's instructions source, asked after the execution context.
@@ -84,8 +87,10 @@ impl Instructions {
     }
 }
 
-/// The instructions of the workflow `id` the conversation chose, the
-/// worktree's with `worktree`, as the shard holds its workflows; none when it has none or cannot be used.
+/// The instructions and profiles of the workflow `id` the conversation
+/// chose, the worktree's with `worktree`, as the shard holds its workflows,
+/// or that it spawns nothing while it cannot be used, as its spawns fail;
+/// none before the shard holds them.
 async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str, worktree: bool) -> Option<WorkflowText> {
     let found = match shard.kept_workflows(conversation, worktree).await {
         Ok(KeptWorkflows::Found(found)) => found,
@@ -95,16 +100,38 @@ async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str, w
             return None;
         }
     };
-    if found.unavailable.is_some() {
-        return None;
+    let file = found.files.iter().find(|file| file.id == id);
+    if let Some(reason) = found.unavailable(id) {
+        let path = file.map(|file| file.path.clone()).or_else(|| {
+            found.directory.as_ref().map(|directory| format!("{directory}/{id}{WORKFLOW_EXTENSION}"))
+        });
+        return Some(WorkflowText {
+            name: id.to_owned(),
+            path: path.unwrap_or_default(),
+            text: format!("You can spawn no subagents while this workflow cannot be used: {reason}."),
+        });
     }
-    let file = found.files.iter().find(|file| file.id == id)?;
-    let workflow = file.read.as_ref().ok()?;
-    let instructions = workflow.instructions.clone().filter(|text| !text.trim().is_empty())?;
+    let file = file.expect("an available workflow is listed");
+    let workflow = file.read.as_ref().ok().expect("an available workflow reads");
+    let mut text = workflow
+        .instructions
+        .as_deref()
+        .map(str::trim_end)
+        .filter(|instructions| !instructions.trim().is_empty())
+        .map(|instructions| format!("{instructions}\n\n"))
+        .unwrap_or_default();
+    if workflow.profiles.is_empty() {
+        text.push_str("You can spawn no subagents.");
+    } else {
+        text.push_str("The only subagents you can spawn, with demi agent spawn --profile <id>:");
+        for profile in &workflow.profiles {
+            text.push_str(&format!("\n- {}: {}", profile.id, profile.description));
+        }
+    }
     Some(WorkflowText {
         name: workflow.name.clone(),
         path: file.path.clone(),
-        instructions,
+        text,
     })
 }
 
@@ -134,7 +161,7 @@ impl ContextSource for Instructions {
                 .await
                 .map_err(|error| format!("the working directory cannot be read: {error}"))?;
             let conversation = conversation_of(node.root);
-            // The workflow's instructions are the root's alone. Its
+            // The workflow's element is the root's alone. Its
             // discovery and the files' start together, so their first
             // searches share one hold.
             let chosen = if node.node == node.root {
@@ -280,9 +307,9 @@ pub(crate) async fn search_instructions(
     })
 }
 
-/// The block for `personal`, `files` and the chosen `workflow`'s
-/// instructions, which join it as an element of their own after the
-/// project's files; none when all are empty.
+/// The block for `personal`, `files` and the chosen `workflow`, which
+/// joins it as an element of its own after the project's files; none when
+/// there is nothing.
 fn render(
     personal: &str,
     files: &[ProjectFile],
@@ -305,7 +332,7 @@ fn render(
             name: workflow.name.clone(),
             path: workflow.path.clone(),
         };
-        (entry, workflow.instructions.trim_end())
+        (entry, workflow.text.as_str())
     });
     for (entry, body) in personal.into_iter().chain(files).chain(workflow) {
         text.push_str("\n\n");
