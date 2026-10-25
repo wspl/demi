@@ -3,8 +3,8 @@
 //! executable.
 //!
 //! The artifact module makes the catalog at startup from the server release's
-//! `commands/`. An executable enters the store when the backend stores ahead
-//! for the targets of its Hosts, or else the first time a runner asks for it. A
+//! `commands/`. An executable enters the store the first time a runner asks
+//! for it, copied from the release's `files/` ([`crate::sourcing`]). A
 //! runner then downloads it from S3 through a URL signed for five minutes or,
 //! with a local store, from this backend, which serves the stored object at
 //! `/native-artifacts/<sha256>`. The runner executables are sourced the same
@@ -25,21 +25,19 @@
 //! a failure. The other questions a runner asks, such as a conversation's
 //! numbers, are answered from what the backend holds.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::Method;
 use demi_backend_remote_host::{ArtifactResolver, CommandCatalog};
 use demi_command_protocol::{
-    ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor, TARGETS,
+    ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor,
 };
 use demi_runner_protocol::manifest::ManifestError;
-use demi_backend_database::control::ControlService;
-use demi_runner_protocol::release::{RUNNER, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file};
-use demi_runner_protocol::wire::RunnerPlatform;
+use demi_runner_protocol::release::{FILES, RUNNER, RunnerRelease, compressed_file};
 use futures_util::future::LocalBoxFuture;
 use object_store::signer::Signer;
 use object_store::{GetOptions, GetRange, GetResult, ObjectStore, ObjectStoreExt as _};
@@ -100,22 +98,6 @@ pub struct Artifacts {
     signer: Option<Arc<dyn Signer>>,
     /// Each package executable, by SHA-256.
     executables: HashMap<String, ReleaseArtifact>,
-    /// The targets whose executables are stored ahead.
-    ahead: Mutex<Ahead>,
-    /// Wakes the worker that stores ahead when a target joins the queue.
-    queued: tokio::sync::Notify,
-}
-
-/// The targets the backend stores the release's package executables
-/// ahead for (`crates/backend-runners/src/publication.rs`).
-#[derive(Default)]
-struct Ahead {
-    /// Each target foreseen: queued, being stored or stored. A target whose
-    /// storing failed leaves it, so the next Host of the target that pairs
-    /// or wakes stores it again.
-    foreseen: HashSet<String>,
-    /// The foreseen targets the worker has not taken yet, in order.
-    queue: VecDeque<String>,
 }
 
 impl Artifacts {
@@ -128,20 +110,6 @@ impl Artifacts {
             sourcing,
             signer,
             executables,
-            ahead: Mutex::default(),
-            queued: tokio::sync::Notify::new(),
-        }
-    }
-
-    /// The next foreseen target to store for, once one is queued.
-    async fn next_target(&self) -> String {
-        loop {
-            if let Some(target) = self.ahead.lock().expect("the targets are intact").queue.pop_front() {
-                return target;
-            }
-            // A target queued since the check left a permit, which this
-            // takes at once.
-            self.queued.notified().await;
         }
     }
 
@@ -248,27 +216,6 @@ impl NativeCatalog {
         }
     }
 
-    /// Makes sure the store holds the runner executable `artifact` of
-    /// `target`, a runner release's, as its compressed copy, taking it from
-    /// the release's files when it does not (`crates/backend-http/src/install.rs`).
-    pub async fn source_runner(
-        &self,
-        target: &str,
-        artifact: &PackageArtifact,
-        cancel: &CancellationToken,
-    ) -> Result<(), String> {
-        let artifacts = self
-            .artifacts
-            .as_ref()
-            .ok_or("this backend loaded no server release")?;
-        let wanted = ReleaseArtifact {
-            file: compressed_file(RUNNER, target),
-            artifact: artifact.clone(),
-            encoded: true,
-        };
-        artifacts.sourcing.ensure(&wanted, cancel).await
-    }
-
     /// The stored runner executable `artifact` of `target`, its compressed
     /// copy in the content coding, from its byte `from` on, sourced first
     /// when the store lacks it: from this backend's release, or from the
@@ -303,7 +250,7 @@ impl NativeCatalog {
     /// `root`, which an upgrade announced as next
     /// (`crates/server/src/main.rs`): its record from the root's
     /// `runners/`, and its executables sourced into this backend's
-    /// store from the files the root's `release.json` names.
+    /// store from the root's `files/`.
     pub async fn next_release(&self, release: &str, root: &Path) -> Result<NextRelease, String> {
         let artifacts = self
             .artifacts
@@ -315,157 +262,8 @@ impl NativeCatalog {
             .await?
             .filter(|record| record.release == release)
             .ok_or_else(|| format!("{} holds no runner release {release}", root.display()))?;
-        let server = root.join(SERVER_RELEASE);
-        let server = tokio::fs::read(&server)
-            .await
-            .map_err(|error| format!("{}: {error}", server.display()))
-            .and_then(|bytes| {
-                ServerRelease::decode(&bytes).map_err(|error| format!("{}: {error}", server.display()))
-            })?;
-        let sourcing = Sourcing::new(artifacts.sourcing.store().clone(), server.location())
-            .map_err(|error| error.to_string())?;
+        let sourcing = Sourcing::new(artifacts.sourcing.store().clone(), root.join(FILES));
         Ok(NextRelease::new(record, sourcing))
-    }
-
-    /// Stores ahead the package executables of each of `targets` that was
-    /// not foreseen before: the targets of the Hosts this backend knows,
-    /// as it starts, and the target of a Host that pairs or wakes
-    /// (`crates/backend-runners/src/publication.rs`). `store_ahead` stores them, in the background.
-    pub fn foresee<'a>(&self, targets: impl IntoIterator<Item = &'a str>) {
-        let Some(artifacts) = &self.artifacts else {
-            return;
-        };
-        let mut ahead = artifacts.ahead.lock().expect("the targets are intact");
-        let mut queued = false;
-        for target in targets {
-            if ahead.foreseen.insert(target.to_owned()) {
-                ahead.queue.push_back(target.to_owned());
-                queued = true;
-            }
-        }
-        drop(ahead);
-        if queued {
-            artifacts.queued.notify_one();
-        }
-    }
-
-    /// Stores, one artifact at a time, every package executable of the
-    /// release for each target `foresee` queues, until `cancel`. A need of
-    /// an artifact being stored shares its fetch. A failure is logged and
-    /// stops nothing: the next need of the artifact fetches it again, as
-    /// the next foreseeing of its target does.
-    pub async fn store_ahead(&self, cancel: &CancellationToken) {
-        let Some(artifacts) = &self.artifacts else {
-            return;
-        };
-        loop {
-            let target = tokio::select! {
-                () = cancel.cancelled() => return,
-                target = artifacts.next_target() => target,
-            };
-            let mut stored = true;
-            for descriptor in &self.packages {
-                let Some(wanted) = descriptor
-                    .targets
-                    .get(&target)
-                    .and_then(|artifact| artifacts.executables.get(&artifact.sha256))
-                else {
-                    continue;
-                };
-                match artifacts.sourcing.ensure(wanted, cancel).await {
-                    Ok(()) => tracing::info!(
-                        event = "native_package.stored",
-                        package = %descriptor.id,
-                        target = %target,
-                        "the package executable is in the store"
-                    ),
-                    Err(_) if cancel.is_cancelled() => return,
-                    Err(error) => {
-                        stored = false;
-                        tracing::warn!(
-                            event = "native_package.store_failed",
-                            package = %descriptor.id,
-                            target = %target,
-                            %error,
-                            "the package executable was not stored ahead"
-                        );
-                    }
-                }
-            }
-            if !stored {
-                artifacts
-                    .ahead
-                    .lock()
-                    .expect("the targets are intact")
-                    .foreseen
-                    .remove(&target);
-            }
-        }
-    }
-
-    /// Foresees the targets of the systems of the paired devices `control`
-    /// lists: the target its runner runs on when it reported its
-    /// architecture, and each of the system's targets before it did. A
-    /// failure to list them is logged: each device's next connection
-    /// foresees its target.
-    pub async fn foresee_paired(&self, control: &ControlService) {
-        match control.paired_systems().await {
-            Ok(systems) => {
-                for system in systems {
-                    let arch = system.os.as_ref().map(|os| os.arch.as_str());
-                    self.foresee(system_targets(system.platform, arch));
-                }
-            }
-            Err(error) => tracing::warn!(
-                event = "paired_systems.list_failed",
-                error = &error as &dyn std::error::Error,
-                "the paired devices' systems cannot be listed"
-            ),
-        }
-    }
-
-    /// Sources the runner executables of the current release in `runners`,
-    /// a server release's `runners/`, for the targets of the systems of the
-    /// paired devices `control` lists, one after another, so that an update
-    /// never waits on the release's origin (`crates/backend-http/src/install.rs`). The device records name a system, not a target, so each
-    /// of the system's targets is sourced. A failure is logged: a runner's
-    /// update sources its executable again.
-    pub async fn source_paired_runners(
-        &self,
-        runners: &Path,
-        control: &ControlService,
-        cancel: &CancellationToken,
-    ) {
-        let release = match read_runner_release(&runners.join("manifest.json"), RunnerRelease::decode).await {
-            Ok(Some(release)) => release,
-            Ok(None) => return,
-            Err(error) => {
-                tracing::warn!(event = "runner_release.read_failed", %error, "the runner release to source cannot be read");
-                return;
-            }
-        };
-        let platforms: Vec<RunnerPlatform> = match control.paired_systems().await {
-            Ok(systems) => systems.into_iter().map(|system| system.platform).collect(),
-            Err(error) => {
-                tracing::warn!(
-                    event = "paired_systems.list_failed",
-                    error = &error as &dyn std::error::Error,
-                    "the paired devices' systems cannot be listed"
-                );
-                return;
-            }
-        };
-        for (target, artifact) in &release.targets {
-            if !platforms.iter().any(|platform| runs(*platform, target)) {
-                continue;
-            }
-            match self.source_runner(target, artifact, cancel).await {
-                Ok(()) => tracing::info!(event = "runner_executable.stored", target = %target, "the runner executable is in the store"),
-                Err(error) => {
-                    tracing::warn!(event = "runner_executable.source_failed", target = %target, %error, "the runner executable was not sourced")
-                }
-            }
-        }
     }
 
     /// The loaded package `id`.
@@ -484,28 +282,6 @@ impl NativeCatalog {
             })
         })
     }
-}
-
-/// Whether a runner for `target` runs on a device of `platform`.
-fn runs(platform: RunnerPlatform, target: &str) -> bool {
-    match platform {
-        RunnerPlatform::Darwin => target.contains("apple-darwin"),
-        RunnerPlatform::Win32 => target.contains("windows"),
-        RunnerPlatform::Linux => target.contains("linux"),
-    }
-}
-
-/// The targets a Host of `platform` may run: the one of `arch`, the
-/// processor architecture as Rust names it, when it is known, and else each
-/// of the platform's.
-pub fn system_targets(
-    platform: RunnerPlatform,
-    arch: Option<&str>,
-) -> impl Iterator<Item = &'static str> {
-    TARGETS.iter().copied().filter(move |target| {
-        runs(platform, target)
-            && arch.is_none_or(|arch| target.split('-').next() == Some(arch))
-    })
 }
 
 /// One thread's resolver: the release's artifacts, sourced on demand, at

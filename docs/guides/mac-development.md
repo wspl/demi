@@ -34,7 +34,6 @@ bun xtask native build \
   --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 bun xtask server-release --output .cache/release-<build> \
-  --files .cache/release-<build>-files \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
 

@@ -168,14 +168,6 @@ pub struct HomeSettled {
     pub saved: Vec<ConversationId>,
 }
 
-/// A paired device's system: its platform, and the operating system its
-/// runner last reported, none before its runner first connected.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PairedSystem {
-    pub platform: RunnerPlatform,
-    pub os: Option<OperatingSystem>,
-}
-
 /// What a change of a device sets: each field that is present.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceChange {
@@ -337,33 +329,6 @@ impl ControlService {
                 )?);
             }
             Ok(users)
-        })
-        .await
-    }
-
-    /// The systems of every user's paired devices, each once: the systems
-    /// whose runners this backend serves, and whose targets the commands it
-    /// stores ahead are for.
-    pub async fn paired_systems(&self) -> Result<Vec<PairedSystem>, StorageError> {
-        self.call(move |connection, _| {
-            let mut statement = connection
-                .prepare_cached("SELECT DISTINCT platform, os FROM devices WHERE kind = 'user'")?;
-            let mut rows = statement.query([])?;
-            let mut systems = Vec::new();
-            while let Some(row) = rows.next()? {
-                systems.push(PairedSystem {
-                    platform: decode(
-                        "devices",
-                        "platform",
-                        row.get::<_, String>("platform")?.parse::<RunnerPlatform>(),
-                    )?,
-                    os: match row.get::<_, Option<String>>("os")? {
-                        Some(text) => Some(json("devices", "os", &text)?),
-                        None => None,
-                    },
-                });
-            }
-            Ok(systems)
         })
         .await
     }

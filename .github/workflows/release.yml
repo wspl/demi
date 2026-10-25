@@ -178,12 +178,6 @@ jobs:
           pattern: image-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v8
-        with:
-          run-id: ${{ needs.find.outputs.run-id || github.run_id }}
-          github-token: ${{ github.token }}
-          pattern: files-*
-          path: ${{ runner.temp }}/files
       # Each executable's debug file for each target, which the release
       # publishes beside its assets and no device downloads.
       - uses: actions/download-artifact@v8
@@ -192,11 +186,6 @@ jobs:
           github-token: ${{ github.token }}
           pattern: symbols-*
           path: ${{ runner.temp }}/symbols
-      # Each architecture's server release assembled the release's files,
-      # which both roots' manifests name: one copy is published, so the two
-      # must be the same file for file.
-      - name: Check that both architectures' files are the same
-        run: diff --recursive "$RUNNER_TEMP/files/files-amd64" "$RUNNER_TEMP/files/files-arm64"
       # A version is published once, so a release that lacks an asset is
       # never published: `demi-server upgrade` needs a server release and an
       # image for the architecture it runs on.
@@ -211,7 +200,14 @@ jobs:
             dist/demi-server-{x86_64,aarch64}-unknown-linux-musl; do
             [ -s "$file" ] || { echo "missing: $file" >&2; missing=1; }
           done
-          [ -n "$(ls -A "$RUNNER_TEMP/files/files-amd64")" ] || { echo "missing: the release's files" >&2; missing=1; }
+          # A build from before a server release held its programs names
+          # them as assets of their own, which no release publishes now.
+          for archive in dist/demi-"$VERSION"-server-linux-{amd64,arm64}.tar.zst; do
+            [ ! -s "$archive" ] || tar --zstd -tf "$archive" ./files/ > /dev/null 2>&1 || {
+              echo "missing: files/ in $archive, built before a release held its programs: publish a newer commit" >&2
+              missing=1
+            }
+          done
           directories=$(find "$RUNNER_TEMP/symbols" -mindepth 1 -maxdepth 1 -type d | wc -l)
           [ "$directories" -eq "$SYMBOLS" ] || {
             echo "missing: debug files: $directories of $SYMBOLS artifacts downloaded" >&2
@@ -223,13 +219,11 @@ jobs:
           exit "$missing"
       - name: Publish the release
         run: |
-          cp "$RUNNER_TEMP"/files/files-amd64/* dist/
           cp "$RUNNER_TEMP"/symbols/*/* dist/
           # The release's licenses, notice and third-party notices, as
           # assets, from the root of a server release.
           tar --zstd -xf "dist/demi-$VERSION-server-linux-amd64.tar.zst" -C dist \
             ./LICENSE ./LICENSE-DEMI ./NOTICE ./THIRD-PARTY-NOTICES
-          sed "s/@VERSION@/$VERSION/" crates/server/install.sh > dist/install.sh
           cd dist
           sha256sum demi-* > SHA256SUMS
           # A pre-release is never the latest release, which the installer

@@ -183,8 +183,8 @@ impl Upgrades {
         };
         self.changed();
         let found = releases::newest(match channel {
-            UpgradeChannel::Beta => Channel::Published,
-            UpgradeChannel::Canary => Channel::Every,
+            UpgradeChannel::Beta => Channel::Beta,
+            UpgradeChannel::Canary => Channel::Canary,
         })
         .await;
         let at = self.clock.now();

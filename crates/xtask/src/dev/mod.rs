@@ -43,7 +43,7 @@
 //! the levels the log keeps.
 //!
 //! The server release beside the data directory is assembled anew on each run
-//! and holds only `commands/` and `release.json`, with a release of each
+//! and holds only `commands/` and `files/`, with a release of each
 //! command program the build made for this machine's target only. They make the
 //! operations of `demi.file`, `demi.browser` and the others available on the
 //! Cloud and on a paired device of this target (the conversation browser works
@@ -80,7 +80,6 @@
 //!      --package demi-browser --package demi-claude-code --package demi-mobile \
 //!      --package demi-backend --package demi-machine-manager
 //!    bun xtask server-release --output /opt/demi/dev-<build> \
-//!      --files /opt/demi/dev-<build>-files \
 //!      --target x86_64-unknown-linux-musl --server x86_64-unknown-linux-musl
 //!    ```
 //!
@@ -130,7 +129,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use demi_command_protocol::testing::built_program;
-use demi_runner_protocol::release::ServerRelease;
+use demi_runner_protocol::release::FILES;
 use demi_web_api_protocol::auth::SetupStatus;
 use demi_web_api_protocol::providers::ProviderAnswer;
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop, ProcessGroup};
@@ -465,7 +464,7 @@ async fn seed_data(
 /// Assembles under `root` the server release the backend publishes and
 /// serves: a development release of each command program the build made,
 /// for this machine's target, its descriptor in the root's `commands/` and
-/// its compressed copy among the release's files, and nothing else, since
+/// its compressed copy in the root's `files/`, and nothing else, since
 /// Vite serves the page and the scripted manager starts its runners
 /// itself. Each run assembles it anew from the programs built now. Answers
 /// the root.
@@ -473,24 +472,20 @@ async fn release_root(root: &Path) -> Result<PathBuf, Error> {
     // Never cancelled: an interrupt drops the whole session instead.
     let cancel = CancellationToken::new();
     let release = root.join("release");
-    let files = root.join("files");
+    let files = release.join(FILES);
     let packaged = root.join("packages");
-    for directory in [&release, &files, &packaged] {
+    for directory in [&release, &packaged] {
         if tokio::fs::try_exists(directory).await? {
             tokio::fs::remove_dir_all(directory).await?;
         }
     }
-    tokio::fs::create_dir_all(&release).await?;
+    tokio::fs::create_dir_all(&files).await?;
     for command in Executable::COMMANDS {
         let name = command.name();
         let package = packaged.join(name);
         development_package(command, built_program(name), &package, &cancel).await?;
         native::split(&package, command, &release, &files, &cancel).await?;
     }
-    let record = ServerRelease {
-        files: files.to_string_lossy().into_owned(),
-    };
-    native::write_server_release(&release, &record).await?;
     Ok(release)
 }
 

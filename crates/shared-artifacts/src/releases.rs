@@ -2,7 +2,8 @@
 //! offers an administrator: the newest of a channel, and a release's assets.
 //!
 //! Every release is tagged `v<version>`. A published one is GitHub's
-//! *latest*; a pre-release, which a deploy publishes, never is.
+//! *latest* in turn; a pre-release, which a deploy publishes, never is. Demi
+//! has no stable channel yet: what it publishes is a beta.
 
 use semver::Version;
 
@@ -15,10 +16,11 @@ const PAGE: usize = 100;
 /// Which releases count as the newest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Channel {
-    /// The latest published release.
-    Published,
-    /// Every release, the pre-releases included.
-    Every,
+    /// The releases Demi publishes: GitHub's latest.
+    Beta,
+    /// Every release, a deploy's pre-releases included, the newest builds
+    /// first.
+    Canary,
 }
 
 /// How many redirects a request for a release's asset follows: GitHub sends
@@ -36,7 +38,7 @@ struct Release {
 /// published yet, or none is tagged `v<version>`.
 pub async fn newest(channel: Channel) -> std::io::Result<Option<Version>> {
     match channel {
-        Channel::Every => {
+        Channel::Canary => {
             let mut tags = Vec::new();
             for page in 1.. {
                 let releases: Vec<Release> = github(&format!("releases?per_page={PAGE}&page={page}"))
@@ -50,7 +52,7 @@ pub async fn newest(channel: Channel) -> std::io::Result<Option<Version>> {
             }
             Ok(highest(tags.iter().map(String::as_str)))
         }
-        Channel::Published => {
+        Channel::Beta => {
             let Some(latest) = github::<Release>("releases/latest").await? else {
                 return Ok(None);
             };

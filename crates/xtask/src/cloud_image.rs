@@ -3,7 +3,7 @@
 //! image's architecture, with an `xtask` built for that architecture.
 //!
 //! Into the Ubuntu tree the script made, it installs, from a server release and
-//! its files:
+//! the files in its `files/`:
 //!
 //! - The runner and its `demi` alias that the runner release names.
 //! - Each command package's executable under its content-addressed path, each
@@ -81,12 +81,9 @@ pub struct Options {
     root: PathBuf,
     /// The server release whose runner and command packages the image
     /// embeds: the runner its `runners/manifest.json` names, and every
-    /// package in its `commands/`.
+    /// package in its `commands/`, their programs from its `files/`.
     #[arg(long, value_name = "DIRECTORY")]
     release: PathBuf,
-    /// The directory of the release's files, which hold the programs.
-    #[arg(long, value_name = "DIRECTORY")]
-    files: PathBuf,
     /// The release directory to publish, a new one for every build.
     #[arg(long, value_name = "DIRECTORY")]
     output: PathBuf,
@@ -151,7 +148,7 @@ async fn package(
     let packages = installed_packages(&root).await?;
     let ubuntu = ubuntu_release(&root).await?;
     let release = std::path::absolute(&options.release)?;
-    let files = std::path::absolute(&options.files)?;
+    let files = release.join(demi_runner_protocol::release::FILES);
     let (runner, runner_artifact) = runner_release(&release.join("runners"), target).await?;
     let mut releases: Vec<(String, PackageDescriptor, PackageArtifact)> = Vec::new();
     for (executable, directory) in command_packages(&release.join("commands")).await? {

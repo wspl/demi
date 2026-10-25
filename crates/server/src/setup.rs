@@ -115,10 +115,10 @@ pub struct Options {
     /// The release to set up [default: this demi-server's].
     #[arg(long)]
     version: Option<Version>,
-    /// Set up the newest release, pre-releases included, instead of this
+    /// Sets up the newest release of a channel instead of this
     /// demi-server's.
-    #[arg(long, conflicts_with = "version")]
-    prerelease: bool,
+    #[command(flatten)]
+    channel: crate::Channels,
     /// A directory holding the release's assets instead of the GitHub
     /// releases.
     #[arg(long, value_name = "DIRECTORY", hide = true)]
@@ -177,8 +177,10 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
     let version = match &options.version {
         Some(version) => version.clone(),
-        None if options.prerelease => runtime.block_on(fetch::newest(&source, true))?,
-        None => crate::own_version(),
+        None => match options.channel.chosen() {
+            Some(channel) => runtime.block_on(fetch::newest(&source, channel))?,
+            None => crate::own_version(),
+        },
     };
 
     step("Checking the machine");

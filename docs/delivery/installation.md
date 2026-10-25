@@ -18,7 +18,7 @@ reverse proxy on the same machine that serves `demi.example.com` over HTTPS
 and forwards to port 3271:
 
 ```sh
-curl -fsSL https://demi.sh/install.sh | sudo bash
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 # no terminal: prints the guide; the agent reads it and runs
 sudo demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
@@ -27,26 +27,27 @@ When a person runs the first command in a terminal, the command asks for the
 domain, the mode and the listening address instead, and sets the server up
 with the answers.
 
-`https://demi.sh/install.sh` redirects to
-`https://github.com/wspl/demi/releases/latest/download/install.sh`, the latest
-release's `install.sh`. Either address installs the same release.
+Demi has no stable release yet, so the command names a channel, as
+Settings › Updates does ([From Settings](upgrades.md#from-settings)), or a
+version:
 
-A deploy's pre-releases are never the latest
-([A development build on a server](upgrades.md#a-development-build-on-a-server)).
-Two options install another release:
+- `--beta` installs the newest release Demi publishes, GitHub's latest
+  release. While Demi has published none, it says so and installs nothing.
+- `--canary` installs the newest build, a deploy's pre-releases included
+  ([A development build on a server](upgrades.md#a-development-build-on-a-server)).
+- `--version <version>` installs that release.
 
-- `--prerelease` installs the newest release, pre-releases included.
-- Any release's own `install.sh` installs that release.
-
-The following commands show both options:
+The following commands show the three:
 
 ```sh
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --prerelease
-curl -fsSL https://github.com/wspl/demi/releases/download/v0.1.22/install.sh | sudo bash
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --version 0.1.22
 ```
 
-While no release is published, the first address answers 404 and only the
-second works.
+Without any of them, `install.sh` installs nothing and prints the first two
+commands. The server's channel in Settings › Updates starts at Beta however
+it was installed.
 
 `setup` takes these steps:
 
@@ -68,18 +69,19 @@ Cloud. There is no uninstall.
 
 ## The bootstrap
 
-`install.sh` is an asset of every release, beside `demi-server-<target>` for
-the two Linux targets (`.github/workflows/release.yml`). It takes one parameter
-of its own, `--prerelease`, and does only what a shell must:
+`install.sh` is one script for every release, `crates/server/install.sh`:
+`https://demi.sh/install.sh` redirects to it on the repository's branch that
+releases are published from. It takes the channel or the version as its own
+parameters, and does only what a shell must:
 
 1. Checks that it runs as root on Linux.
 2. Picks the target from the machine's architecture.
-3. Downloads that `demi-server` and the release's `SHA256SUMS` from the release
-   it came from, or with `--prerelease` from the newest release, pre-releases
-   included, and checks the one against the other.
+3. Finds the newest release of the channel, unless a version was given, and
+   downloads that release's `demi-server` for the target and its
+   `SHA256SUMS`, and checks the one against the other.
 4. Installs `demi-server` as `/usr/local/bin/demi-server`.
-5. Runs `demi-server setup` with the parameters it was given
-   (`bash -s -- <parameters>`). Its input is the session's terminal,
+5. Runs `demi-server setup` with the release's version and the other
+   parameters it was given (`bash -s -- <parameters>`). Its input is the session's terminal,
    `/dev/tty`, when there is one, because its own input is the script.
 
 On a machine that has a Demi server already, `install.sh` changes nothing and
@@ -106,7 +108,7 @@ answer comes close, so `setup` decides by it, as the following table shows:
 
 `--no-input` makes a run with a terminal behave as one without. An agent
 that already knows the parameters passes them to the first command, as
-`bash -s -- --domain …`, and `setup` runs at once.
+`bash -s -- --canary --domain …`, and `setup` runs at once.
 
 ## Parameters
 
@@ -126,7 +128,7 @@ The following table lists the parameters:
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
 | `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`. `setup` refuses a machine without the cgroup v2 controllers unless the value is `off`. |
 | `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
-| `--prerelease` | Set up the newest release, pre-releases included, instead of the running `demi-server`'s. Not with `--version`. |
+| `--beta`, `--canary` | Set up the newest release of the channel instead of the running `demi-server`'s. Not with `--version`. |
 | `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution `setup` does not know ([Distributions](#distributions)). |
 | `--no-input` | Never ask, as without a terminal ([A person or an agent](#a-person-or-an-agent)). |
 

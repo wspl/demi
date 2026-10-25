@@ -2,27 +2,29 @@
 //! the first time something needs an artifact of the server release, it is made
 //! available. Three things need one: a runner asking where a package's
 //! executable downloads from, an installer asking for a runner executable, and
-//! the backend storing ahead for the targets of its Hosts.
+//! a paired device downloading the next release's runner ahead of an update.
 //!
-//! The artifact is taken from the store when it is there. Otherwise it is taken
-//! from the release's files, a directory on this machine or an HTTPS location,
-//! checked against the size and SHA-256 the release's records give, and stored.
+//! The artifact is taken from the store when it is there. Otherwise it is copied
+//! from the release's files, the root's `files/`, which the release brought
+//! with it, checked against the size and SHA-256 the release's records give,
+//! and stored. Nothing is downloaded: the copy takes milliseconds, so nothing is
+//! stored ahead of a need.
 //!
 //! Needs of one artifact wait for each other, so they share one fetch. A fetch
 //! that failed or was abandoned leaves nothing stored, and the next need tries
 //! again.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use demi_command_protocol::PackageArtifact;
-use demi_runner_protocol::release::FilesLocation;
 use demi_shared_artifacts::Digest;
 use object_store::ObjectStore;
 use tokio_util::sync::CancellationToken;
 
-use crate::publication::{PublicationError, blob, in_place, put_immutable};
+use crate::publication::{blob, in_place, put_immutable};
 
 /// An artifact of the release: the file of the release's files that holds
 /// it, what it stands for, and whether the file is its compressed copy,
@@ -34,36 +36,23 @@ pub struct ReleaseArtifact {
     pub encoded: bool,
 }
 
-/// How much larger than what it decodes to a compressed copy may be: zstd
-/// adds a little to bytes it cannot compress. A file past it is not the one
-/// named, and is not read without end.
-const ENCODED_MARGIN: u64 = 1 << 20;
-
-/// How many redirects a download of a release's file follows: a server that
-/// redirects in a loop would otherwise never answer.
-const REDIRECTS: usize = 10;
-
 /// The store and the release's files it takes artifacts from.
 pub struct Sourcing {
     store: Arc<dyn ObjectStore>,
-    files: FilesLocation,
-    client: demi_shared_artifacts::Client,
+    /// The release's files, its root's `files/`.
+    files: PathBuf,
     /// One turn per artifact, by SHA-256. A digest keeps its entry: the
     /// release names a few dozen artifacts.
     turns: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl Sourcing {
-    pub fn new(store: Arc<dyn ObjectStore>, files: FilesLocation) -> Result<Self, PublicationError> {
-        let client = demi_shared_artifacts::download_client().map_err(|error| {
-            PublicationError::Files(format!("no client for the release's files: {error}"))
-        })?;
-        Ok(Self {
+    pub fn new(store: Arc<dyn ObjectStore>, files: PathBuf) -> Self {
+        Self {
             store,
             files,
-            client,
             turns: Mutex::default(),
-        })
+        }
     }
 
     /// The store, which holds every artifact once it was sourced.
@@ -127,48 +116,10 @@ impl Sourcing {
 
     /// The bytes of `wanted`'s file, unchecked.
     async fn fetch(&self, wanted: &ReleaseArtifact, cancel: &CancellationToken) -> Result<Bytes, String> {
-        match &self.files {
-            FilesLocation::Directory(directory) => {
-                let path = directory.join(&wanted.file);
-                tokio::select! {
-                    () = cancel.cancelled() => Err(abandoned()),
-                    read = tokio::fs::read(&path) => read.map(Bytes::from).map_err(|error| error.to_string()),
-                }
-            }
-            FilesLocation::Url(base) => {
-                let url = base.join(&wanted.file).map_err(|error| error.to_string())?;
-                let limit = if wanted.encoded {
-                    wanted.artifact.size.saturating_add(ENCODED_MARGIN)
-                } else {
-                    wanted.artifact.size
-                };
-                tracing::info!(event = "release_file.download_started", file = %wanted.file, "downloading a file of the server release");
-                let started = std::time::Instant::now();
-                // GitHub serves a release's files through a redirect to
-                // short-lived storage; the caller checks what arrives
-                // against the release's record.
-                let request = demi_shared_artifacts::Download {
-                    limit,
-                    redirects: REDIRECTS,
-                    ..demi_shared_artifacts::Download::new(url.as_str())
-                };
-                let downloaded = demi_shared_artifacts::download_bytes(&self.client, request, cancel)
-                    .await
-                    .map_err(|error| error.to_string())
-                    .and_then(|(received, bytes)| {
-                        received.plain().map_err(|error| error.to_string())?;
-                        Ok(Bytes::from(bytes))
-                    });
-                tracing::info!(
-                    event = "release_file.download_ended",
-                    file = %wanted.file,
-                    outcome = if downloaded.is_ok() { "downloaded" } else { "failed" },
-                    bytes = downloaded.as_ref().ok().map(|bytes| bytes.len() as u64),
-                    ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-                    "a file of the server release was downloaded"
-                );
-                downloaded
-            }
+        let path = self.files.join(&wanted.file);
+        tokio::select! {
+            () = cancel.cancelled() => Err(abandoned()),
+            read = tokio::fs::read(&path) => read.map(Bytes::from).map_err(|error| error.to_string()),
         }
     }
 }

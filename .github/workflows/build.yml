@@ -26,9 +26,9 @@
 # the repository: the workflow only orders them and carries files between jobs.
 # A job waits only for the files it uses.
 #
-#   programs (12 jobs) -+-> server release amd64: root, files, image
+#   programs (12 jobs) -+-> server release amd64: root, image
 #   server (2 jobs) ----+
-#   web ----------------+-> server release arm64: root, files, image
+#   web ----------------+-> server release arm64: root, image
 #
 # No job compiles or compresses what another already did: a command-program job
 # packages its programs, which compresses them, and a runner job compresses its
@@ -279,13 +279,11 @@ jobs:
           path: packages/web/dist
           retention-days: 1
 
-  # Each Linux architecture's server release in one job: its root, the
-  # release's files, and the Cloud image built from them, so an
-  # architecture's image starts as soon as its own root is assembled. A
-  # matrix job cannot wait for one leg of another matrix, which is why the
-  # image is not a job of its own. Both legs assemble the release's files
-  # from the same executables and compressed copies; publish checks they
-  # are the same and publishes one copy.
+  # Each Linux architecture's server release in one job: its root, whose
+  # files/ holds every target's programs, and the Cloud image built from it,
+  # so an architecture's image starts as soon as its own root is assembled.
+  # A matrix job cannot wait for one leg of another matrix, which is why the
+  # image is not a job of its own.
   server-release:
     name: Server release ${{ matrix.arch }}
     needs: [version, programs, server, web]
@@ -332,13 +330,10 @@ jobs:
           for archive in "$RUNNER_TEMP"/native/native-*.tar; do
             tar -xf "$archive" -C native-target
           done
-      # The release's files are the ones the release offers at its download
-      # location.
-      - name: Assemble the root and the release's files
+      - name: Assemble the root
         run: |
           mkdir -p dist/server
           "$RUNNER_TEMP/xtask/xtask" server-release --publish --output "$RUNNER_TEMP/root" \
-            --files files --downloads "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/" \
             --server ${{ matrix.target }} --web "$RUNNER_TEMP/web" \
             --artifacts native-target --compressed compressed
           tar --zstd -cf "dist/server/demi-$VERSION-server-linux-${{ matrix.arch }}.tar.zst" \
@@ -349,11 +344,6 @@ jobs:
         with:
           name: server-${{ matrix.arch }}
           path: dist/server
-          retention-days: 1
-      - uses: actions/upload-artifact@v7
-        with:
-          name: files-${{ matrix.arch }}
-          path: files
           retention-days: 1
       # The Ubuntu packages the build downloads are kept between builds, so a
       # build downloads only what Ubuntu changed since the last one, and a slow
@@ -377,7 +367,6 @@ jobs:
           sudo bash cloud-guest-image/rootfs/build.sh \
             --xtask "$RUNNER_TEMP/xtask/xtask" \
             --release "$RUNNER_TEMP/root" \
-            --files "$PWD/files" \
             --work "$RUNNER_TEMP/work" \
             --packages "$RUNNER_TEMP/packages" \
             --output "$RUNNER_TEMP/out/image" \

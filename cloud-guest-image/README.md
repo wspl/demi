@@ -35,7 +35,6 @@ runner. Use `x86_64-unknown-linux-musl` for amd64.
 ```sh
 bun xtask native build --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
 bun xtask server-release --output .cache/release-<build> \
-  --files .cache/release-<build>-files \
   --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
 cargo zigbuild --release --locked -p xtask \
   --target aarch64-unknown-linux-musl --target-dir .cache/native-target
@@ -49,7 +48,7 @@ curl, jq, GNU tar, and util-linux installed:
 ```sh
 sudo bash cloud-guest-image/rootfs/build.sh \
   --xtask .cache/native-target/aarch64-unknown-linux-musl/release/xtask \
-  --release .cache/release-<build> --files .cache/release-<build>-files \
+  --release .cache/release-<build> \
   --output <root on the builder>/image
 ```
 
@@ -58,10 +57,8 @@ sudo bash cloud-guest-image/rootfs/build.sh \
 The script takes these options:
 
 - `--release` names the server release whose runner and command packages the
-  image embeds.
-- `--files` names the directory of that release's files. The build takes the
-  image target's programs from it and checks each against the release's
-  manifests.
+  image embeds. The build takes the image target's programs from its `files/`
+  and checks each against the release's manifests.
 - `--output` names a new directory on a Linux filesystem. A release is
   immutable, so every build publishes a new one.
 - `--work` names the directory where the script builds the tree. The default is

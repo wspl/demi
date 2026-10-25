@@ -51,19 +51,17 @@ fn image_asset(version: &Version, architecture: &str) -> String {
     format!("demi-{version}-image-linux-{architecture}.tar")
 }
 
-/// The newest release `source` offers. On GitHub that is the latest
-/// release, which is never a pre-release, or with `prerelease` the highest
-/// version among all the repository's releases, a deploy's pre-releases
-/// included (`upgrades.md` § The upgrade). A directory's newest is its
-/// highest version either way.
-pub async fn newest(source: &Source, prerelease: bool) -> io::Result<Version> {
+/// The newest release of `channel` that `source` offers (`upgrades.md` §
+/// The upgrade). A directory's newest is its highest version, whatever the
+/// channel.
+pub async fn newest(source: &Source, channel: Channel) -> io::Result<Version> {
     match source {
-        Source::GitHub => {
-            let channel = if prerelease { Channel::Every } else { Channel::Published };
-            releases::newest(channel).await?.ok_or_else(|| {
-                io::Error::other(format!("{} has no release to upgrade to", releases::REPOSITORY))
+        Source::GitHub => releases::newest(channel).await?.ok_or_else(|| {
+            io::Error::other(match channel {
+                Channel::Beta => "Demi has published no beta release yet: --canary takes the newest build",
+                Channel::Canary => "Demi has no release yet",
             })
-        }
+        }),
         Source::Directory(directory) => {
             let architecture = architecture()?;
             let suffix = format!("-server-linux-{architecture}.tar.zst");

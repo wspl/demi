@@ -49,10 +49,15 @@ You need the following:
 - A domain name, served over HTTPS in front of the server
   ([HTTPS setup](docs/delivery/installation.md#https)).
 
-Then run this command on the server:
+Demi has no stable release yet, so the command names a channel: Beta, the
+releases Demi publishes, or Canary, every build first. Run one of these
+commands on the server:
 
 ```sh
-curl -fsSL https://demi.sh/install.sh | sudo bash
+# Beta
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+# Canary
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```
 
 The installer asks a few questions and sets Demi up. After it finishes:
