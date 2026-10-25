@@ -127,7 +127,7 @@ pub use editing::{
 pub use retry::RetryPolicy;
 pub use window::{LatestPage, latest_page};
 pub use runtime::{
-    CallCommand, CommandLook, NewContext, PromptLayer, RunningWork, SeenContext, SendNowArrival, SessionRuntime, StartedCommand, SystemPrompt,
+    Arrival, Arrived, CallCommand, CommandLook, NewContext, PromptLayer, RunningWork, SeenContext, SessionRuntime, StartedCommand, SystemPrompt,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
 };
 
@@ -570,6 +570,9 @@ pub(crate) struct SessionShared {
     /// What ends a shell call's window early: the user's send now
     /// (`crates/agent-tools/src/lib.rs`).
     send_now: watch::Sender<bool>,
+    /// How many inputs arrived, which move a shell call's command to the
+    /// background once it has run a while (`crates/agent-tools/src/lib.rs`).
+    arrivals: watch::Sender<u64>,
     /// Wakes the worker when an action starts.
     work: Rc<Notify>,
     /// Wakes the persister when a change makes a save due.
@@ -594,14 +597,19 @@ impl SessionShared {
     /// asked for: wakes the worker or the persister, publishes the
     /// session's status, and delivers the change's events.
     fn update<R>(&self, change: impl FnOnce(&mut SessionCore) -> R) -> R {
-        let (result, effects, send_now) = {
+        let (result, effects, send_now, arrivals) = {
             let mut core = self.core.borrow_mut();
             let result = change(&mut core);
-            (result, core.take_effects(), core.send_now_pending())
+            (result, core.take_effects(), core.send_now_pending(), core.arrivals())
         };
         self.send_now.send_if_modified(|published| {
             let changed = *published != send_now;
             *published = send_now;
+            changed
+        });
+        self.arrivals.send_if_modified(|published| {
+            let changed = *published != arrivals;
+            *published = arrivals;
             changed
         });
         if effects.wake_worker {
@@ -867,12 +875,14 @@ impl AgentSession {
         let span = core.span.clone();
         let status = core.status();
         let send_now = core.send_now_pending();
+        let arrivals = core.arrivals();
         let shared = Rc::new(SessionShared {
             core: RefCell::new(core),
             bus: EventBus::default(),
             persist_gate: SerialGate::new(),
             status: watch::Sender::new(status),
             send_now: watch::Sender::new(send_now),
+            arrivals: watch::Sender::new(arrivals),
             work: Rc::new(Notify::new()),
             persist_wake: Rc::new(Notify::new()),
             runtime_returned: Notify::new(),
