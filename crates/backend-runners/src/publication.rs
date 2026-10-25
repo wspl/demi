@@ -20,9 +20,7 @@ use std::path::{Path as FilePath, PathBuf};
 use bytes::Bytes;
 use demi_backend_blobs::store::Objects;
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
-use demi_runner_protocol::release::{
-    FilesLocation, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file,
-};
+use demi_runner_protocol::release::{RunnerRelease, compressed_file};
 use object_store::path::Path;
 use object_store::{
     Attribute, Attributes, GetOptions, ObjectStore, PutMode, PutOptions, PutPayload,
@@ -71,10 +69,6 @@ pub enum PublicationError {
     Commands { directory: PathBuf, reason: String },
     #[error("the native release in {} cannot be published: {reason}", directory.display())]
     Release { directory: PathBuf, reason: String },
-    #[error("the server release's files cannot be reached: {0}")]
-    Files(String),
-    #[error("the server release's record {} cannot be read: {reason}", path.display())]
-    Record { path: PathBuf, reason: String },
     #[error("an immutable native artifact object differs from the one in place: {0}")]
     Conflict(String),
     #[error("the native store's object {key} is not valid: {reason}")]
@@ -87,31 +81,16 @@ pub enum PublicationError {
     Cancelled,
 }
 
-/// Where the files of the server release whose root is `release` are, as
-/// its `release.json` says.
-pub async fn release_files(release: &FilePath) -> Result<FilesLocation, PublicationError> {
-    let path = release.join(SERVER_RELEASE);
-    let unreadable = |reason: String| PublicationError::Record {
-        path: path.clone(),
-        reason,
-    };
-    let record = tokio::fs::read(&path)
-        .await
-        .map_err(|error| unreadable(error.to_string()))?;
-    let record = ServerRelease::decode(&record).map_err(|error| unreadable(error.to_string()))?;
-    Ok(record.location())
-}
-
 /// Publishes the releases in `commands`, a server release's `commands/`,
 /// into `objects`, and makes the catalog of them, which the conversations'
-/// commands bind to and whose executables come from `files`, the release's
-/// files. Then it records server release `version`, whose runner release is
+/// commands bind to and whose executables come from `files`, the root's
+/// `files/`. Then it records server release `version`, whose runner release is
 /// `runners`, and removes the packages of older releases
 /// ([`crate::retention`]). The backend accepts requests only once this
 /// completed; `cancel` interrupts it.
 pub async fn publish_native(
     commands: &FilePath,
-    files: FilesLocation,
+    files: PathBuf,
     version: &str,
     runners: Option<&RunnerRelease>,
     objects: &Objects,
@@ -145,7 +124,7 @@ pub async fn publish_native(
             executables.entry(artifact.sha256.clone()).or_insert(wanted);
         }
     }
-    let sourcing = Sourcing::new(objects.store.clone(), files)?;
+    let sourcing = Sourcing::new(objects.store.clone(), files);
     let artifacts = Artifacts::new(sourcing, objects.signer.clone(), executables);
     tracing::info!(
         event = "command_packages.published",

@@ -54,7 +54,7 @@ use std::path::{Path, PathBuf};
 
 use demi_command_protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
 use demi_runner_protocol::release::{
-    COMPRESSED_SUFFIX, RUNNER, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file,
+    COMPRESSED_SUFFIX, RUNNER, RunnerRelease, compressed_file,
 };
 use demi_shared_artifacts::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
 use serde::Serialize;
@@ -380,13 +380,6 @@ pub async fn split(
         let file = files.join(compressed_file(executable.name(), target));
         place(&release.join(target).join(copy), &file, cancel).await?;
     }
-    Ok(())
-}
-
-/// Writes `record` as the `release.json` of the server release root at
-/// `root`.
-pub async fn write_server_release(root: &Path, record: &ServerRelease) -> Result<(), Error> {
-    tokio::fs::write(root.join(SERVER_RELEASE), self::record(record)?).await?;
     Ok(())
 }
 

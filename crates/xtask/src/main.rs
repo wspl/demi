@@ -37,10 +37,9 @@
 //! server-release    one server release for a Linux target: the backend, the
 //!    |                manager, the web app, the packages' manifests, and the
 //!    |                release's files, each program for each target
-//!    +-- the release and its files --> the Cloud image build (`cloud_image`)
-//!    +-- the release ----------------> a Linux server, whose backend takes each
-//!                                      program from the files when a Host first
-//!                                      needs it
+//!    +-- the release --> the Cloud image build (`cloud_image`)
+//!    +-- the release --> a Linux server, whose backend takes each program
+//!                        from the files when a Host first needs it
 //! ```
 //!
 //! Every Rust check selects the same thing, the whole workspace: Cargo unifies

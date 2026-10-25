@@ -21,7 +21,7 @@ Related reading:
 An image release is the `image/` directory of a server release
 (`crates/xtask/src/server_release.rs`). It is built from that release's runner
 and command packages, whose programs for the image's target it takes from the
-release's files. A published release carries the image release as an asset of
+release's `files/`. A published release carries the image release as an asset of
 its own per architecture (`.github/workflows/release.yml`).
 
 Build amd64 and arm64 separately. Native executable targets are

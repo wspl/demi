@@ -18,7 +18,7 @@ mod package;
 
 #[cfg(all(unix, feature = "developer"))]
 pub use package::development_package;
-pub use package::{Caches, Spec, Versioning, package, split, write_server_release};
+pub use package::{Caches, Spec, Versioning, package, split};
 
 use std::path::{Path, PathBuf};
 

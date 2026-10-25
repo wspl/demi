@@ -18,7 +18,6 @@ use demi_backend_plugins::Lost;
 use demi_backend_remote_host::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
 use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
-use demi_backend_runners::native::system_targets;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, Resume, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -327,13 +326,6 @@ impl Shard {
         }
         let hello_instance = hello.instance;
         let home = runner.identity.home_dir.clone();
-        // A Host of a target not stored for yet has its package executables
-        // stored ahead of its first command (`crates/backend-runners/src/publication.rs`).
-        let native = &self.services().native;
-        match &runner.native_target {
-            Some(target) => native.foresee([target.as_str()]),
-            None => native.foresee(system_targets(runner.platform, Some(&runner.os.arch))),
-        }
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
             identity: host_identity(&runner),

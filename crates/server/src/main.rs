@@ -77,6 +77,7 @@ use semver::Version;
 use tokio_util::sync::CancellationToken;
 
 use demi_runner_protocol::release::UpgradeNotice;
+use demi_shared_artifacts::releases::Channel;
 
 use crate::{journal::Journal, layout::Layout, notices::Notices, services::Systemd, settings::Settings};
 
@@ -91,21 +92,48 @@ struct Cli {
     root: PathBuf,
 }
 
+/// Why a command that takes the newest release needs a channel: Demi has
+/// published no stable release, so none is the default.
+pub(crate) const NO_STABLE: &str =
+    "Demi has no stable release yet: choose a channel, --beta for the releases Demi publishes or --canary for every build";
+
+/// The channel whose newest release a command takes, one at most.
+#[derive(clap::Args)]
+#[group(multiple = false)]
+pub(crate) struct Channels {
+    /// The newest of the releases Demi publishes, each a beta.
+    #[arg(long, conflicts_with = "version")]
+    beta: bool,
+    /// The newest build, a deploy's pre-releases included.
+    #[arg(long, conflicts_with = "version")]
+    canary: bool,
+}
+
+impl Channels {
+    /// The channel named, none when neither is.
+    pub(crate) fn chosen(&self) -> Option<Channel> {
+        match (self.beta, self.canary) {
+            (true, _) => Some(Channel::Beta),
+            (_, true) => Some(Channel::Canary),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Action {
     /// Sets this Linux machine up as a Demi server.
     #[command(long_about = setup::GUIDE)]
     Setup(setup::Options),
-    /// Moves the server to a newer release: the newest published one, or
-    /// the one named.
+    /// Moves the server to a newer release: the one named, or the newest of
+    /// a channel.
     Upgrade {
         version: Option<Version>,
-        /// Moves to the newest release, pre-releases included.
-        #[arg(long, conflicts_with = "version")]
-        prerelease: bool,
+        #[command(flatten)]
+        channel: Channels,
         /// Moves to the version the backend's request file names, as
         /// `demi-upgrade.service` asks.
-        #[arg(long, hide = true, conflicts_with_all = ["version", "prerelease", "from"])]
+        #[arg(long, hide = true, conflicts_with_all = ["version", "beta", "canary", "from"])]
         requested: bool,
         /// A directory holding the release's assets instead of the
         /// repository's GitHub releases.
@@ -235,7 +263,7 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
         return Err(hand_over(layout, &journal.to, "resume").into());
     }
     match command {
-        Action::Upgrade { version, prerelease, from, requested } => {
+        Action::Upgrade { version, channel, from, requested } => {
             let version = match (version, requested) {
                 (_, true) => match requested_version(layout)? {
                     Some(version) => Some(version),
@@ -246,7 +274,7 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
                 },
                 (version, false) => version,
             };
-            upgrade(layout, version, prerelease, from)
+            upgrade(layout, version, channel.chosen(), from)
         }
         Action::Rollback { yes } => rollback(layout, yes),
         Action::Move => {
@@ -283,7 +311,7 @@ impl std::error::Error for moving::Failure {}
 fn upgrade(
     layout: &Layout,
     version: Option<Version>,
-    prerelease: bool,
+    channel: Option<Channel>,
     from: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = match from {
@@ -295,9 +323,12 @@ fn upgrade(
         .enable_all()
         .build()?;
     let cancel = CancellationToken::new();
-    let version = match version {
-        Some(version) => version,
-        None => runtime.block_on(fetch::newest(&source, prerelease))?,
+    let version = match (version, channel, &source) {
+        (Some(version), _, _) => version,
+        (None, Some(channel), _) => runtime.block_on(fetch::newest(&source, channel))?,
+        // A directory's newest is its highest version, of no channel.
+        (None, None, fetch::Source::Directory(_)) => runtime.block_on(fetch::newest(&source, Channel::Canary))?,
+        (None, None, fetch::Source::GitHub) => return Err(NO_STABLE.into()),
     };
     if version == current {
         println!("The server runs {version} already");

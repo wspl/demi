@@ -1,16 +1,18 @@
 #!/bin/sh
-# Installs demi-server of Demi @VERSION@ and goes on into its setup
-# (docs/delivery/installation.md § The bootstrap):
+# Installs demi-server of the release a channel names, or of the version
+# given, and goes on into its setup (docs/delivery/installation.md § The
+# bootstrap):
 #
-#   curl -fsSL https://demi.sh/install.sh | sudo bash
+#   curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
 #
-# Parameters after `bash -s --` go to `demi-server setup`, but for
-# `--prerelease`, which installs the newest release, pre-releases included,
-# instead of this one. At a terminal, setup asks for what is missing; without
-# one, as an agent runs it, it prints its guide.
+# Demi has no stable release yet, so the script takes no default: `--beta`
+# installs the newest release Demi publishes, `--canary` the newest build, a
+# deploy's pre-releases included, and `--version <version>` that release.
+# The other parameters go to `demi-server setup`. At a terminal, setup asks
+# for what is missing; without one, as an agent runs it, it prints its
+# guide.
 set -eu
 repository=wspl/demi
-version=@VERSION@
 fail() {
   echo "install.sh: $1" >&2
   exit 1
@@ -36,19 +38,52 @@ newest() {
     sort -k1,1n -k2,2n -k3,3n -k4,4n -k5,5 | tail -n 1 | cut -d' ' -f5
 }
 
-prerelease=
+# The tag of the repository's latest release, the newest Demi published,
+# without its v; nothing while Demi has published none, which GitHub answers
+# with 404. Any other failure, such as GitHub's limit on requests, stops the
+# script with its reason.
+latest() {
+  answer=$(curl -sS -w '\n%{http_code}' -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/$repository/releases/latest") ||
+    fail 'GitHub could not be asked for the newest beta release'
+  status=$(printf '%s\n' "$answer" | tail -n 1)
+  case "$status" in
+    200) ;;
+    404) return 0 ;;
+    *) fail "GitHub answered $status when asked for the newest beta release" ;;
+  esac
+  printf '%s\n' "$answer" | grep -o '"tag_name": *"v[^"]*"' | sed 's/.*"v\([^"]*\)"$/\1/'
+}
+
+channel=
+version=
+# Whether --version was given, and whether its value is still to come.
 versioned=
+awaited=
 for parameter do
   shift
+  if [ -n "$awaited" ]; then
+    version=$parameter
+    awaited=
+    continue
+  fi
   case "$parameter" in
-    --prerelease) prerelease=1 ;;
-    *)
-      case "$parameter" in --version | --version=*) versioned=1 ;; esac
-      set -- "$@" "$parameter"
+    --beta | --canary)
+      [ -z "$channel" ] || fail 'choose one channel: --beta or --canary'
+      channel=${parameter#--}
       ;;
+    --version=*) version=${parameter#--version=} versioned=1 ;;
+    --version) versioned=1 awaited=1 ;;
+    *) set -- "$@" "$parameter" ;;
   esac
 done
-[ -z "$prerelease" ] || [ -z "$versioned" ] || fail '--prerelease installs the newest release: give it or --version, not both'
+[ -z "$versioned" ] || [ -n "$version" ] || fail '--version names a version, such as --version 0.1.22'
+[ -z "$channel" ] || [ -z "$versioned" ] || fail "--$channel installs the newest release of its channel: give it or --version, not both"
+if [ -z "$channel" ] && [ -z "$versioned" ]; then
+  fail 'Demi has no stable release yet: choose a channel.
+  The releases Demi publishes:  curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+  The newest build:             curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary'
+fi
 [ "$(uname -s)" = Linux ] || fail 'Demi servers run on Linux'
 [ "$(id -u)" = 0 ] || fail 'run as root: curl ... | sudo bash'
 case "$(uname -m)" in
@@ -60,11 +95,17 @@ if [ -e /opt/demi/current ] && [ ! -e /opt/demi/server/setup ]; then
   echo 'This machine is a Demi server already: `demi-server upgrade` moves it to a later release.'
   exit 0
 fi
-if [ -n "$prerelease" ]; then
-  version=$(newest)
-  [ -n "$version" ] || fail "$repository has no release tagged v<version>"
-  set -- "$@" --version "$version"
-fi
+case "$channel" in
+  beta)
+    version=$(latest)
+    [ -n "$version" ] || fail 'Demi has published no beta release yet: --canary installs the newest build'
+    ;;
+  canary)
+    version=$(newest)
+    [ -n "$version" ] || fail "$repository has no release tagged v<version>"
+    ;;
+esac
+set -- "$@" --version "$version"
 base="https://github.com/$repository/releases/download/v$version"
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT

@@ -53,7 +53,7 @@ use demi_backend_blobs::store as objects;
 use demi_backend_runners::install::{RunnerReleases, read_runner_release};
 use demi_backend_runners::native::NativeCatalog;
 use demi_runner_protocol::release::RunnerRelease;
-use demi_backend_runners::publication::{PublicationError, publish_native, release_files};
+use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_clouds;
@@ -95,12 +95,6 @@ pub struct Backend {
     resets: AbortOnDropHandle<()>,
     /// Announces each ledger row to its conversation's pages.
     usage: AbortOnDropHandle<()>,
-    /// Sources the runner executables of the paired devices' systems
-    /// (`crates/backend-http/src/install.rs`); a close ends it.
-    runners: Option<AbortOnDropHandle<()>>,
-    /// Stores the package executables ahead for the targets of the Hosts
-    /// (`crates/backend-runners/src/publication.rs`); a close ends it.
-    ahead: AbortOnDropHandle<()>,
     /// Logs the backend's resources every minute (`crate::sampling`).
     sampling: AbortOnDropHandle<()>,
 }
@@ -281,15 +275,15 @@ async fn take_up_stopped_clouds(
 }
 
 /// Publishes the command packages of the server release whose root is
-/// `release`: its `commands/`, whose executables come from the files its
-/// `release.json` names, into the object store `config` names, before the
+/// `release`: its `commands/`, whose executables come from its `files/`,
+/// into the object store `config` names, before the
 /// backend that serves them starts (`crates/backend-runners/src/publication.rs`); `cancel` interrupts it.
 pub async fn publish_commands(
     config: &BackendConfig,
     release: &std::path::Path,
     cancel: &tokio_util::sync::CancellationToken,
 ) -> Result<NativeCatalog, StartError> {
-    let files = release_files(release).await?;
+    let files = release.join(demi_runner_protocol::release::FILES);
     let objects = objects::open(&config.data_dir, &config.storage).await?;
     let commands = release.join("commands");
     let runners = read_runner_release(&release.join("runners/manifest.json"), RunnerRelease::decode)
@@ -508,28 +502,6 @@ impl Backend {
         // does not stop the start: a conversation not indexed here is
         // indexed by its next change.
         start_step("search_index", index_at_start(&services.control, &shards.shards())).await;
-        let runners = services.runner_releases.root().map(|releases| {
-            let releases = releases.to_owned();
-            let services = services.clone();
-            AbortOnDropHandle::new(tokio::spawn(async move {
-                // The handle's drop aborts the task, which drops its need.
-                let cancel = tokio_util::sync::CancellationToken::new();
-                services
-                    .native
-                    .source_paired_runners(&releases, &services.control, &cancel)
-                    .await;
-            }))
-        });
-        services.native.foresee(services.cloud.target());
-        let ahead = {
-            let services = services.clone();
-            AbortOnDropHandle::new(tokio::spawn(async move {
-                // The handle's drop aborts the task, which drops its need.
-                let cancel = tokio_util::sync::CancellationToken::new();
-                let native = &services.native;
-                tokio::join!(native.foresee_paired(&services.control), native.store_ahead(&cancel));
-            }))
-        };
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),
@@ -585,8 +557,6 @@ impl Backend {
             statuses,
             resets,
             usage,
-            runners,
-            ahead,
             sampling,
         })
     }
@@ -617,10 +587,6 @@ impl Backend {
         drop(self.statuses);
         drop(self.resets);
         drop(self.usage);
-        // A runner or package executable still being sourced is no longer
-        // needed.
-        drop(self.runners);
-        drop(self.ahead);
         drop(self.sampling);
         self.services.cloud.machines.close().await;
         if let Err(error) = self.edge.close().await {

@@ -10,7 +10,7 @@ the following command, or a master or an administrator clicks **Update Now**
 in Settings › Updates ([From Settings](#from-settings)):
 
 ```sh
-sudo demi-server upgrade
+sudo demi-server upgrade --beta
 ```
 
 `demi-server` takes these steps:
@@ -170,10 +170,13 @@ A server upgrades from any release in the history to any later one directly.
 
 `demi-server upgrade` takes the release to move to in one of three ways:
 
-- Without a version, it moves to the newest published release.
-- With `--prerelease`, it moves to the newest release, a deploy's
-  pre-releases included.
+- With `--beta`, it moves to the newest release Demi published.
+- With `--canary`, it moves to the newest release, a deploy's pre-releases
+  included.
 - With a version, as in `demi-server upgrade 0.2.0`, it moves to that one.
+
+Demi has no stable release yet, so with none of them it moves nowhere and
+says to choose a channel.
 
 The newest release is the highest version among the repository's releases
 tagged `v<version>`. `releases/latest` gives it for published releases, and
@@ -354,7 +357,8 @@ to the master and administrators.
    every page shows the update's screen until the new release serves.
 
 The units come with the release, as the services' units do. A server on an
-earlier release gets them with one `sudo demi-server upgrade`. Without them,
+earlier release gets them with one `sudo demi-server upgrade` to a release
+that has them. Without them,
 or on a developer's machine, Settings has no Updates.
 
 `journalctl -u demi-upgrade` shows what an update from Settings did.
@@ -406,9 +410,9 @@ pre-release, `v$version` (`.github/workflows/release.yml`):
   or because its files were kept for a day and are gone or will be within two
   hours, is built by the release itself, which takes as long as a build does.
 
-A pre-release is never the latest release, which `releases/latest` gives, so the
-installer and `demi-server upgrade` without a version never return one: only a
-deploy installs one, until it is published. A run that fails touches no server.
+A pre-release is never the latest release, which `releases/latest` gives, so
+Beta never offers one: Canary does, from the installer's `--canary`,
+`demi-server upgrade --canary` and Settings › Updates, until it is published. A run that fails touches no server.
 A release refuses a version that has a release already.
 
 Then move the server, the SSH host that `DEMI_DEPLOY_HOST` names in the

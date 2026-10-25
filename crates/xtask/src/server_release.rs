@@ -3,8 +3,8 @@
 //!
 //! A server release is one directory per version and Linux target, its root, in
 //! which the backend and the machine manager find everything they serve,
-//! publish or run, with the release's files beside it. For example, 0.1.3 for
-//! x86_64:
+//! publish or run, the release's files in its `files/` among them. For
+//! example, 0.1.3 for x86_64:
 //!
 //! ```text
 //! /opt/demi/releases/0.1.3/
@@ -17,21 +17,19 @@
 //!   commands/demi-file/           one command package release per directory,
 //!   commands/demi-browser/        its descriptor
 //!   ...
-//!   release.json                  where the release's files are
 //!   image/                        the Cloud image release of the architecture
-//!
-//! the release's files:
-//!   demi-runner-x86_64-unknown-linux-musl.zst   a runner executable's
-//!   demi-runner-x86_64-pc-windows-msvc.exe.zst  compressed copy, per target
-//!   demi-file-x86_64-unknown-linux-musl.zst     a command program's
-//!   ...                                         compressed copy, per target
+//!   files/                        the release's files:
+//!     demi-runner-x86_64-unknown-linux-musl.zst   a runner executable's
+//!     demi-runner-x86_64-pc-windows-msvc.exe.zst  compressed copy, per target
+//!     demi-file-x86_64-unknown-linux-musl.zst     a command program's
+//!     ...                                         compressed copy, per target
 //! ```
 //!
-//! `release.json` names where the files are: for a published release, the
-//! GitHub release that offers them; for a developer's, the directory they lie
-//! in. The backend takes each program from there the first time a Host needs
-//! it, so a server downloads the Windows programs only when a Windows laptop
-//! pairs.
+//! The release's files are the programs of every target the release has, so a
+//! server that installed or updated to it needs nothing more to give any Host
+//! its programs: the backend copies each into its store the first time a Host
+//! needs it. They stay compressed, as the Hosts download them: the server runs
+//! none of them, and compressed they take about a quarter of the disk.
 //!
 //! What reads the root:
 //!
@@ -58,13 +56,11 @@
 //! are the ones packaging checked.
 //!
 //! The root is assembled in a stage beside it and renamed into place, so it
-//! exists whole or not at all, and is never changed in place. The files
-//! directory may already hold this build's files, as when the build's other
-//! Linux root was assembled into it, and a file in place must then be the same.
+//! exists whole or not at all, and is never changed in place.
 
 use std::path::{Path, PathBuf};
 
-use demi_runner_protocol::release::ServerRelease;
+use demi_runner_protocol::release::FILES;
 use tokio_util::sync::CancellationToken;
 
 use crate::native::{self, Caches, Executable, Spec, Versioning};
@@ -111,14 +107,6 @@ pub struct Options {
     /// The root to assemble, a directory that does not exist yet.
     #[arg(long, value_name = "DIRECTORY")]
     pub(crate) output: PathBuf,
-    /// The directory of the release's files, which may hold this build's
-    /// files already.
-    #[arg(long, value_name = "DIRECTORY")]
-    pub(crate) files: PathBuf,
-    /// The HTTPS URL the files will be published at, which release.json
-    /// names [default: the files directory].
-    #[arg(long, value_name = "URL")]
-    pub(crate) downloads: Option<String>,
     /// A target of the runner and the command packages; repeat for several
     /// [default: all six].
     #[arg(long = "target", value_name = "TRIPLE", value_parser = native::target)]
@@ -155,8 +143,6 @@ pub enum Error {
     NoNotices(PathBuf),
     #[error("{} has no parent directory to assemble it beside", .0.display())]
     NoParent(PathBuf),
-    #[error("the release's record is invalid: {0}")]
-    Record(String),
     #[error("copying the web app failed: {0}")]
     Copy(#[from] fs_extra::error::Error),
     #[error(transparent)]
@@ -171,8 +157,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     Ok(())
 }
 
-/// Assembles the root and the files `options` name and returns the root's
-/// path.
+/// Assembles the root `options` names and returns its path.
 pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathBuf, Error> {
     let output = std::path::absolute(&options.output)?;
     if tokio::fs::try_exists(&output).await? {
@@ -196,20 +181,11 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
         }
         None => None,
     };
-    let files = std::path::absolute(&options.files)?;
-    let record = ServerRelease {
-        files: match &options.downloads {
-            Some(url) => url.clone(),
-            None => files.to_string_lossy().into_owned(),
-        },
-    };
-    garde::Validate::validate(&record).map_err(|report| Error::Record(report.to_string()))?;
     let parent = output
         .parent()
         .ok_or_else(|| Error::NoParent(output.clone()))?
         .to_owned();
     tokio::fs::create_dir_all(&parent).await?;
-    tokio::fs::create_dir_all(&files).await?;
     let name = output
         .file_name()
         .ok_or_else(|| Error::NoParent(output.clone()))?
@@ -219,6 +195,8 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
     // becomes the root.
     let stage = staged(&parent, format!(".{name}-stage-")).await?;
     let packaged = staged(&parent, format!(".{name}-packages-")).await?;
+    let files = stage.path().join(FILES);
+    tokio::fs::create_dir(&files).await?;
     let artifacts = native::artifacts(options.artifacts.as_deref())?;
     let versioning = if options.publish {
         Versioning::Published
@@ -240,7 +218,6 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
         println!("{}", native::package(&spec, cancel).await?);
         native::split(&release, executable, stage.path(), &files, cancel).await?;
     }
-    native::write_server_release(stage.path(), &record).await?;
     for (name, text) in LEGAL {
         tokio::fs::write(stage.path().join(name), text).await?;
     }

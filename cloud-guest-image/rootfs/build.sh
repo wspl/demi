@@ -59,7 +59,7 @@
 # networking, device credentials, lifecycle or backend configuration, which
 # belong to the machine manager and the backend.
 #
-# Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR --files DIR
+# Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR
 #          --output DIR [--work DIR] [--packages DIR] [--mirror URL] [--ca FILE]
 #
 # apt inside the tree runs with a cleared environment. A builder that reaches
@@ -73,14 +73,13 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 xtask=""
 release=""
-files=""
 output=""
 work=/var/tmp/demi-cloud-root
 packages=""
 mirror=""
 ca=""
 usage() {
-  echo 'usage: build.sh --xtask PATH --release DIR --files DIR' >&2
+  echo 'usage: build.sh --xtask PATH --release DIR' >&2
   echo '         --output DIR [--work DIR] [--packages DIR] [--mirror URL]' >&2
   echo '         [--ca FILE]' >&2
   exit 2
@@ -90,7 +89,6 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --xtask) xtask=$2 ;;
     --release) release=$2 ;;
-    --files) files=$2 ;;
     --output) output=$2 ;;
     --work) work=$2 ;;
     --packages) packages=$2 ;;
@@ -100,7 +98,7 @@ while [ "$#" -gt 0 ]; do
   esac
   shift 2
 done
-[ -n "$xtask" ] && [ -n "$release" ] && [ -n "$files" ] && [ -n "$output" ] || usage
+[ -n "$xtask" ] && [ -n "$release" ] && [ -n "$output" ] || usage
 [ -x "$xtask" ] || { echo "no xtask executable at $xtask" >&2; exit 2; }
 [ -z "$ca" ] || [ -f "$ca" ] || { echo "no certificate bundle at $ca" >&2; exit 2; }
 # A release is immutable: every build publishes a new one.
@@ -257,5 +255,5 @@ rm -f "$work/etc/machine-id" "$work/var/lib/dbus/machine-id"
 touch "$work/etc/resolv.conf"
 # The second stage prints the release's base version.
 "$xtask" cloud-image package --root "$work" --release "$release" \
-  --files "$files" --output "$output"
+  --output "$output"
 rm -rf "$work"

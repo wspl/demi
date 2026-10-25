@@ -6,9 +6,8 @@
 //!
 //! - A runner release directory's `manifest.json` holds it.
 //! - A Cloud image manifest embeds it to name its runner.
-//! - Beside it, a server release's own record, `release.json`, says where the
-//!   release's files are and the name of each file
-//!   (`crates/xtask/src/server_release.rs`).
+//! - Beside it, a server release's `files/` holds each target's executable
+//!   under the name the record gives it (`crates/xtask/src/server_release.rs`).
 //! - The release check before a runner's socket opens, and the backend's
 //!   management socket, which an upgrade's next release asks
 //!   (`crates/server/src/main.rs`), are the one part of the connection every
@@ -109,78 +108,13 @@ impl RunnerRelease {
     }
 }
 
-/// A server release's record, the root's `release.json`: where the
-/// release's files are, an HTTPS URL or an absolute directory on the
-/// backend's machine (`crates/backend-runners/src/publication.rs`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct ServerRelease {
-    #[garde(custom(files_location))]
-    pub files: String,
-}
-
-/// The name of a server release's record in its root.
-pub const SERVER_RELEASE: &str = "release.json";
+/// The directory of a server release's root that holds the release's files:
+/// the compressed copy of each runner and command program for each target,
+/// which the backend gives the Hosts (`crates/xtask/src/server_release.rs`).
+pub const FILES: &str = "files";
 
 /// The runner's executable, as a release's files name it.
 pub const RUNNER: &str = "demi-runner";
-
-/// Where a server release's files are.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FilesLocation {
-    /// A URL that each file's name is appended to.
-    Url(url::Url),
-    Directory(PathBuf),
-}
-
-impl ServerRelease {
-    /// Decodes a record's JSON and checks its values.
-    pub fn decode(bytes: &[u8]) -> Result<Self, ReleaseError> {
-        let release: Self = serde_json::from_slice(bytes)?;
-        garde::Validate::validate(&release)
-            .map_err(|report| ReleaseError::Invalid(report.to_string().trim_end().to_owned()))?;
-        Ok(release)
-    }
-
-    /// Where the files are. A URL's path ends with `/`, so a file's name
-    /// joins it as the last segment.
-    pub fn location(&self) -> FilesLocation {
-        match url::Url::parse(&self.files) {
-            Ok(mut url) => {
-                if !url.path().ends_with('/') {
-                    let path = format!("{}/", url.path());
-                    url.set_path(&path);
-                }
-                FilesLocation::Url(url)
-            }
-            Err(_) => FilesLocation::Directory(PathBuf::from(&self.files)),
-        }
-    }
-}
-
-/// A garde rule: an HTTPS URL without credentials, a query or a fragment,
-/// or an absolute path.
-fn files_location(value: &str, _: &()) -> garde::Result {
-    match url::Url::parse(value) {
-        Ok(url) => {
-            let plain = url.scheme() == "https"
-                && url.username().is_empty()
-                && url.password().is_none()
-                && url.query().is_none()
-                && url.fragment().is_none();
-            if !plain {
-                return Err(garde::Error::new(
-                    "the release's files are at an HTTPS URL without credentials, a query or a fragment",
-                ));
-            }
-            Ok(())
-        }
-        Err(_) if std::path::Path::new(value).is_absolute() => Ok(()),
-        Err(_) => Err(garde::Error::new(
-            "the release's files are at an HTTPS URL or an absolute directory",
-        )),
-    }
-}
 
 /// The name of `executable`'s file for `target` among a release's files,
 /// such as `demi-runner-aarch64-apple-darwin` or
@@ -307,7 +241,7 @@ impl UpgradeNotice {
 
 /// The management socket's one request, a line of JSON: the runner release the
 /// next server release installs, and that release's root, whose `runners/`
-/// holds its record and whose `release.json` says where its executables are.
+/// holds its record and whose `files/` its executables.
 ///
 /// The backend has its connected paired devices' runners download the release
 /// ahead and answers a [`PrefetchProgress`] line each time one of them moves
