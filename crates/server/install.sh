@@ -105,7 +105,13 @@ case "$channel" in
     [ -n "$version" ] || fail "$repository has no release tagged v<version>"
     ;;
 esac
-set -- "$@" --version "$version"
+# A channel goes on to setup, which takes the same newest release and starts
+# Settings › Updates on that channel.
+if [ -n "$channel" ]; then
+  set -- "$@" "--$channel"
+else
+  set -- "$@" --version "$version"
+fi
 base="https://github.com/$repository/releases/download/v$version"
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT

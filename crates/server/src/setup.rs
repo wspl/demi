@@ -14,6 +14,7 @@ use std::{
     process::Command,
 };
 
+use demi_shared_artifacts::releases::{self, Channel};
 use demi_shared_artifacts::{Mode as Publish, Permissions, Publication};
 use semver::Version;
 use tokio_util::sync::CancellationToken;
@@ -153,8 +154,8 @@ struct Choices {
 pub enum Outcome {
     SetUp,
     /// A required choice was missing and nothing could ask for it: the
-    /// guide is the answer.
-    Guide,
+    /// guide is the answer, with the parameters still missing.
+    Guide { missing: Vec<&'static str> },
 }
 
 pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Result<Outcome, Box<dyn std::error::Error>> {
@@ -165,11 +166,22 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     // Asked for nothing: the guide, whoever runs it.
     let asking = io::stdin().is_terminal() && !options.no_input;
     let Some(choices) = choices(&mut options, asking)? else {
-        return Ok(Outcome::Guide);
+        let missing = [
+            (options.domain.is_none(), "--domain <NAME>"),
+            (options.mode.is_none(), "--mode <shared|isolated>"),
+            (options.listen.is_none(), "--listen <ADDRESS:PORT>"),
+        ];
+        return Ok(Outcome::Guide {
+            missing: missing
+                .into_iter()
+                .filter(|(absent, _)| *absent)
+                .map(|(_, parameter)| parameter)
+                .collect(),
+        });
     };
     crate::require_root(layout)?;
     let _lock = crate::lock(layout)?;
-    let settings = configuration(&choices, &options)?;
+    let mut settings = configuration(&choices, &options)?;
     let source = match &options.from {
         Some(directory) => fetch::Source::Directory(std::path::absolute(directory)?),
         None => fetch::Source::GitHub,
@@ -182,6 +194,19 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
             None => crate::own_version(),
         },
     };
+    let channel = match (options.channel.chosen(), &options.from) {
+        (Some(channel), _) => channel,
+        // A developer's build is a pre-release.
+        (None, Some(_)) => Channel::Canary,
+        (None, None) => runtime.block_on(releases::channel_of(&version))?,
+    };
+    settings.add(
+        UPGRADE_CHANNEL,
+        match channel {
+            Channel::Beta => "beta",
+            Channel::Canary => "canary",
+        },
+    );
 
     step("Checking the machine");
     let manager = machine()?;
@@ -337,6 +362,11 @@ fn configuration(choices: &Choices, options: &Options) -> Result<Settings, Box<d
     }
     Ok(Settings::new(variables))
 }
+
+/// The setting of the channel Settings › Updates starts on
+/// (`crates/backend/src/config/mod.rs`).
+const UPGRADE_CHANNEL: &str = "DEMI_UPGRADE_CHANNEL";
+
 
 /// A package manager of the distributions `setup` offers
 /// (`installation.md` § Distributions).

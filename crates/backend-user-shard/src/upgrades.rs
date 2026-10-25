@@ -95,13 +95,14 @@ impl Upgrades {
     /// after. Without `request` it offers none and checks nothing.
     pub async fn start(
         request: Option<PathBuf>,
+        installed: UpgradeChannel,
         control: ControlService,
         sync: SyncRegistry,
         update: Arc<Update>,
         clock: Arc<dyn Clock>,
     ) -> Result<Arc<Self>, StorageError> {
         let channel = match request {
-            Some(_) => control.upgrade_channel().await?,
+            Some(_) => control.upgrade_channel(installed).await?,
             None => UpgradeChannel::Beta,
         };
         let upgrades = Arc::new(Self {

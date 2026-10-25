@@ -64,6 +64,7 @@ use std::sync::Arc;
 use demi_backend_database::server_log::ServerLog;
 use demi_web_api_protocol::devices::{NotAStunUrl, StunUrl};
 use demi_shared_types::{Clock, SystemClock};
+use demi_web_api_protocol::server_upgrade::UpgradeChannel;
 use demi_web_api_protocol::settings::InstanceMode;
 use tracing_subscriber::filter::Targets;
 use url::Url;
@@ -189,6 +190,16 @@ pub struct Config {
         value_name = "DEMI_UPGRADE_REQUEST"
     )]
     pub upgrade_request: Option<PathBuf>,
+    /// The channel the installation came from, which Settings › Updates
+    /// starts on until an administrator chooses another: `beta` or `canary`
+    #[arg(
+        long,
+        env = "DEMI_UPGRADE_CHANNEL",
+        value_name = "DEMI_UPGRADE_CHANNEL",
+        default_value = "beta",
+        value_parser = upgrade_channel
+    )]
+    pub upgrade_channel: UpgradeChannel,
     /// Where the one object store lives: `local`, the data directory, or `s3`
     #[arg(
         long,
@@ -411,6 +422,7 @@ impl Config {
         config.runner_socket = Some(self.runner_socket.clone());
         config.manage_socket = Some(self.manage_socket.clone());
         config.upgrade_request = self.upgrade_request.clone();
+        config.upgrade_channel = self.upgrade_channel;
         config.storage = self.storage()?;
         // A root serves the parts it holds: a developer's has no web app,
         // which Vite serves instead.
@@ -469,6 +481,8 @@ pub struct BackendConfig {
     /// (`crates/backend-user-shard/src/upgrades.rs`); none offers no
     /// updates, as on a developer's machine.
     pub upgrade_request: Option<PathBuf>,
+    /// The channel Settings › Updates starts on.
+    pub upgrade_channel: UpgradeChannel,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
     /// Who configures providers.
@@ -556,6 +570,7 @@ impl BackendConfig {
             runner_socket: None,
             manage_socket: None,
             upgrade_request: None,
+            upgrade_channel: UpgradeChannel::Beta,
             address,
             mode,
             web_directory: None,
@@ -590,4 +605,9 @@ impl BackendConfig {
             stun: Vec::new(),
         }
     }
+}
+
+/// `DEMI_UPGRADE_CHANNEL`'s value.
+fn upgrade_channel(value: &str) -> Result<UpgradeChannel, String> {
+    value.parse().map_err(|_| format!("{value} is no channel: beta or canary"))
 }

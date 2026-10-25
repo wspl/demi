@@ -20,7 +20,7 @@ and forwards to port 3271:
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 # no terminal: prints the guide; the agent reads it and runs
-sudo demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
+sudo demi-server setup --canary --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
 
 When a person runs the first command in a terminal, the command asks for the
@@ -46,8 +46,11 @@ curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --version 0.1.22
 ```
 
 Without any of them, `install.sh` installs nothing and prints the first two
-commands. The server's channel in Settings › Updates starts at Beta however
-it was installed.
+commands. The server's channel in Settings › Updates starts on the one it
+was installed from: Canary after `--canary`, Beta after `--beta`, and for
+`--version` the channel whose releases include that version. `setup` writes
+it into the configuration as `DEMI_UPGRADE_CHANNEL`, and an administrator's
+choice in Settings replaces it.
 
 `setup` takes these steps:
 
@@ -80,7 +83,7 @@ parameters, and does only what a shell must:
    downloads that release's `demi-server` for the target and its
    `SHA256SUMS`, and checks the one against the other.
 4. Installs `demi-server` as `/usr/local/bin/demi-server`.
-5. Runs `demi-server setup` with the release's version and the other
+5. Runs `demi-server setup` with the channel, or the version, and the other
    parameters it was given (`bash -s -- <parameters>`). Its input is the session's terminal,
    `/dev/tty`, when there is one, because its own input is the script.
 
@@ -104,7 +107,7 @@ answer comes close, so `setup` decides by it, as the following table shows:
 | `setup` runs | With every required parameter | Without |
 | --- | --- | --- |
 | With a terminal | Sets the server up, asking nothing | Asks for each missing parameter, offering the defaults of the optional ones, then sets the server up |
-| Without a terminal, as an agent runs it | Sets the server up | Prints the guide, `--help`, and exits with 0: the guide is the answer, not a failure |
+| Without a terminal, as an agent runs it | Sets the server up | Prints the guide, `--help`, then the command to run again: this run's parameters followed by the missing ones. Exits with 0: the guide is the answer, not a failure |
 
 `--no-input` makes a run with a terminal behave as one without. An agent
 that already knows the parameters passes them to the first command, as
