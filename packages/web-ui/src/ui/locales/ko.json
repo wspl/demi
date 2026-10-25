@@ -25,6 +25,16 @@
     "title": "이 페이지를 업데이트할 수 없습니다",
     "body": "Demi의 새 버전이 있습니다. 페이지를 새로 고쳐도 이전 버전이 표시됩니다."
   },
+  "updating": {
+    "title": "Demi 업데이트 중",
+    "control": "계정 및 설정 업데이트 중",
+    "conversations": "대화 업데이트 중: {count}개 중 {done}개",
+    "bytes": "{all} 중 {done}",
+    "estimating": "남은 시간 계산 중…",
+    "underAMinute": "1분 미만 남음",
+    "minutesLeft": "약 {count}분 남음",
+    "body": "업데이트가 끝나면 Demi가 자동으로 열립니다."
+  },
   "startingScreen": {
     "connecting": "Demi에 연결하는 중…",
     "loading": "Demi 불러오는 중…",

@@ -25,6 +25,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use hashlink::LruCache;
 use rusqlite::{Connection, OpenFlags};
 
+use super::update::{self, Update};
 use super::{StorageError, convert, schema, sqlite};
 
 /// The most writer connections open at once.
@@ -185,14 +186,18 @@ impl ConversationStores {
         .map(|_| ())
     }
 
-    /// The conversations whose databases hold the schema of whole blocks,
-    /// which [`convert`](Self::convert) turns into the current one, the most
-    /// recently written first.
-    pub async fn unconverted(&self) -> Result<Vec<ConversationId>, StorageError> {
+    /// The conversations whose databases have an earlier form, with the
+    /// sizes of their files, the largest first.
+    async fn due(&self) -> Result<Vec<(ConversationId, u64)>, StorageError> {
         let directory = self.0.directory.clone();
         tokio::task::spawn_blocking(move || {
             let mut found = Vec::new();
-            for entry in std::fs::read_dir(&directory)? {
+            let entries = match std::fs::read_dir(&directory) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(found),
+                Err(error) => return Err(error.into()),
+            };
+            for entry in entries {
                 let entry = entry?;
                 let path = entry.path();
                 if path.extension().is_none_or(|extension| extension != "sqlite") {
@@ -204,41 +209,51 @@ impl ConversationStores {
                 let Ok(id) = ConversationId::try_from(id.to_owned()) else {
                     continue;
                 };
-                if schema::schema_fit(&path, schema::DatabaseKind::Conversation)? != schema::SchemaFit::Current {
-                    found.push((entry.metadata()?.modified()?, id));
+                let size = update::due_bytes(&path, schema::DatabaseKind::Conversation)?;
+                if size > 0 {
+                    found.push((id, size));
                 }
             }
-            found.sort_by(|(left, _), (right, _)| right.cmp(left));
-            Ok(found.into_iter().map(|(_, id)| id).collect())
+            found.sort_by(|(_, left), (_, right)| right.cmp(left));
+            Ok(found)
         })
         .await?
     }
 
-    /// Converts each conversation's database of an earlier form, one at a
-    /// time, the most recently written first, until none is left or the
-    /// databases close. One that fails to convert stays as it was, and its
+    /// Gives every conversation's database of an earlier form the current
+    /// one before the backend serves, one at a time, the largest first, and
+    /// tells `update` how far it is. One that fails stays as it was, and its
     /// next open tries again.
-    pub async fn convert_all(&self) {
-        let unconverted = match self.unconverted().await {
-            Ok(unconverted) => unconverted,
+    pub async fn prepare(&self, update: Arc<Update>) {
+        let due = match self.due().await {
+            Ok(due) => due,
             Err(error) => {
                 tracing::warn!(event = "conversation.conversions_failed", error = &error as &dyn std::error::Error, "the conversations to convert could not be listed");
                 return;
             }
         };
-        for conversation in unconverted {
-            match self.convert(&conversation).await {
+        for (conversation, size) in due {
+            let progress: Progress = {
+                let update = update.clone();
+                Arc::new(move |share| update.within(size, share))
+            };
+            match self.bring_current(&conversation, progress).await {
                 Ok(()) => {}
                 Err(StorageError::Closed) => return,
-                // `convert_if_due` logged why.
+                // `convert_if_due` or the migration logged why.
                 Err(_) => {}
             }
+            update.finished(size);
         }
     }
 
     /// Gives the conversation's database the current schema, converting or
     /// migrating one of an earlier release's, as its next open would.
     pub async fn convert(&self, conversation: &ConversationId) -> Result<(), StorageError> {
+        self.bring_current(conversation, Arc::new(|_| {})).await
+    }
+
+    async fn bring_current(&self, conversation: &ConversationId, progress: Progress) -> Result<(), StorageError> {
         let db = self.db(conversation);
         let turn = self.0.opening.acquire(db.file.clone()).await;
         if db.open_writer()?.is_some() {
@@ -251,12 +266,23 @@ impl ConversationStores {
                 blobs: &*blobs,
                 conversation,
             };
-            convert::convert_if_due(&path, &blobs)
+            convert::convert_if_due(&path, &blobs, &*progress)?;
+            if !path.try_exists()? {
+                return Ok(());
+            }
+            let mut connection = Connection::open_with_flags(
+                &path,
+                OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )?;
+            migrate(&mut connection, &path, &blobs)
         })
         .await
         .map(|_| ())
     }
 }
+
+/// What a conversion tells of the share of a file it has done.
+type Progress = Arc<dyn Fn(f64) + Send + Sync>;
 
 impl Stores {
     fn lock(&self) -> MutexGuard<'_, Writers> {
@@ -387,7 +413,7 @@ async fn open_writer(
                 blobs: &*blobs,
                 conversation,
             };
-            convert::convert_if_due(&path, &blobs)
+            convert::convert_if_due(&path, &blobs, &|_| {})
         })
         .await?
         .1
@@ -491,7 +517,7 @@ where
         Cold::Stale(work) => work,
     };
     // The file is there: removing it takes the opening turn too.
-    convert::convert_if_due(path, blobs)?;
+    convert::convert_if_due(path, blobs, &|_| {})?;
     let mut connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,

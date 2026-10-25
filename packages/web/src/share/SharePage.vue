@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, watch, watchEffect } from 'vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
+import UpdatingScreen from '@demicodes/web-ui/ui/UpdatingScreen.vue'
 import SharedConversation from '@demicodes/web-ui/share/SharedConversation.vue'
 import SharedLinkMissing from '@demicodes/web-ui/share/SharedLinkMissing.vue'
 import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
@@ -15,6 +16,7 @@ import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import { lookupAttachment } from '../api/attachments'
+import { update } from '../state/update'
 import type { SharedConversation as Share } from '../api/generated/web-api'
 import { EMPTY_SHARE, createShareReads, readShare, shareBlobUrl, sharePath } from './reads'
 
@@ -123,4 +125,7 @@ watchEffect(() => {
     @retry-load="retry"
   />
   <MediaViewer :viewer="mediaViewer" />
+  <Teleport to="body">
+    <UpdatingScreen v-if="update" :progress="update.progress" />
+  </Teleport>
 </template>

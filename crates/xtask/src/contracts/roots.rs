@@ -143,6 +143,7 @@ pub fn web() -> Vec<Root> {
         sends::<sessions::HandoffRequest>(),
         sends::<sessions::HandoffSpend>(),
         receives::<state::ProductState>(),
+        receives::<state::UpdateState>(),
         receives::<state::SyncEvent>(),
         sends::<state::PageMessage>(),
         receives::<settings::Settings>(),

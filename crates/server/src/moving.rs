@@ -23,6 +23,7 @@ use crate::{
     gvisor,
     journal::{Data, Journal, Step},
     layout::{Layout, UNITS},
+    progress,
     runners,
     services::Services,
     settings::Settings,
@@ -185,7 +186,14 @@ pub fn carry_out(layout: &Layout, services: &dyn Services, mut journal: Journal)
                 services.reload()?;
             }
             Step::Starting => {
-                if let Err((unit, reason)) = start_all(services) {
+                // The backend reports ready once its data is up to date,
+                // which may take minutes: meanwhile it says how far it is.
+                let watch = settings.backend_listen().map(progress::Watch::start);
+                let started = start_all(services);
+                if let Some(watch) = watch {
+                    watch.stop();
+                }
+                if let Err((unit, reason)) = started {
                     let log = services.log(unit);
                     // A rollback that does not start stays, for the next run
                     // to try again: its release is the one to return to.

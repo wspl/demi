@@ -183,6 +183,22 @@ impl ApiError {
         )
     }
 
+    pub(crate) fn backend_starting() -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorCode::BackendStarting,
+            "The backend is starting",
+        )
+    }
+
+    pub(crate) fn updating() -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorCode::Updating,
+            "The backend is updating its data for a new release",
+        )
+    }
+
     pub(crate) fn no_route(method: &Method, path: &str) -> Self {
         Self::new(
             StatusCode::NOT_FOUND,

@@ -247,6 +247,12 @@ pub enum CloseError {
 }
 
 impl Storage {
+    /// The bytes of the databases in `data_dir` that the next start
+    /// migrates or converts; none when all have the current form.
+    pub fn due(data_dir: &Path) -> Result<Option<demi_backend_database::update::Due>, StorageError> {
+        demi_backend_database::update::due(&data_dir.join(CONTROL_DATABASE), &data_dir.join(CONVERSATION_DATABASES))
+    }
+
     /// The databases in `data_dir`, beside the object store `objects`; an
     /// earlier control database's sealed values are migrated under `vault`.
     pub async fn open(
@@ -340,11 +346,6 @@ impl Services {
         let clock = providers.clock.clone();
         let returning = Arc::new(Returning::take(&control).await?);
         let edge = tokio::runtime::Handle::current();
-        // The conversations stored before their rows named their contents
-        // convert in the background; an open of one not converted yet
-        // converts it first.
-        let converting = conversations.clone();
-        edge.spawn(async move { converting.convert_all().await });
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder()
             .build()

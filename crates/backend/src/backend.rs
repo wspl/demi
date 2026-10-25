@@ -44,7 +44,7 @@
 use std::fmt;
 use std::io;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -58,7 +58,8 @@ use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
-use demi_backend_http::{AppState, Edge, Site, WebBuildError, manage_socket, runner_socket, web_build};
+use demi_backend_database::update::Update;
+use demi_backend_http::{AppState, Edge, Listening, Site, WebBuildError, manage_socket, runner_socket, web_build};
 use demi_backend_user_shard::conversation::cost::follow_usage;
 use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
 use demi_backend_user_shard::conversation::{
@@ -317,14 +318,27 @@ impl Backend {
                 path: data_dir.clone(),
                 source,
             })?;
-        let secret = match &config.instance_secret {
-            Some(secret) => secret.clone(),
-            None => InstanceSecret::load_or_create(&data_dir).await?,
+        // The listener answers before the data is ready: while a new release
+        // migrates or converts it, every page shows how far it is.
+        let update = Arc::new(Update::default());
+        let listening = Edge::listen(
+            config.address,
+            config.public_url.as_ref(),
+            config.web_directory.clone(),
+            update.clone(),
+        )
+        .await
+        .map_err(|source| StartError::Listen {
+            address: config.address,
+            source,
+        })?;
+        let opened = Self::open_storage(&config, &data_dir, &update).await;
+        let (storage, secret) = match opened {
+            Ok(opened) => opened,
+            // The listener goes with the process, which a failed start ends.
+            Err(error) => return Err(error),
         };
-        // The object store: the data directory or the S3 bucket.
-        let objects = objects::open(&data_dir, &config.storage).await?.store;
-        let storage = Storage::open(&data_dir, config.clock.clone(), objects, secret.vault_key()).await?;
-        let started = Self::serve(config, storage.clone(), &secret).await;
+        let started = Self::serve(config, storage.clone(), &secret, listening, update).await;
         if started.is_err() {
             for failure in storage.close().await {
                 tracing::error!(
@@ -338,10 +352,49 @@ impl Backend {
         started
     }
 
+    /// Opens the data, migrating and converting what an earlier release left,
+    /// as `update` tells.
+    async fn open_storage(
+        config: &BackendConfig,
+        data_dir: &Path,
+        update: &Arc<Update>,
+    ) -> Result<(Storage, InstanceSecret), StartError> {
+        let due = {
+            let data_dir = data_dir.to_owned();
+            tokio::task::spawn_blocking(move || Storage::due(&data_dir))
+                .await
+                .map_err(|error| StartError::Storage(StorageError::from(error)))??
+        };
+        if let Some(due) = due {
+            tracing::info!(event = "update.started", bytes = due.all, "the backend updates its data before it serves");
+            update.begin(due);
+        }
+        let secret = match &config.instance_secret {
+            Some(secret) => secret.clone(),
+            None => InstanceSecret::load_or_create(data_dir).await?,
+        };
+        // The object store: the data directory or the S3 bucket.
+        let objects = objects::open(data_dir, &config.storage).await?.store;
+        let storage = Storage::open(data_dir, config.clock.clone(), objects, secret.vault_key()).await?;
+        if due.is_some() {
+            update.control_finished();
+            let started = std::time::Instant::now();
+            storage.conversations.prepare(update.clone()).await;
+            tracing::info!(
+                event = "update.ended",
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                "the backend's data is up to date"
+            );
+        }
+        Ok((storage, secret))
+    }
+
     async fn serve(
         config: BackendConfig,
         storage: Storage,
         secret: &InstanceSecret,
+        listening: Listening,
+        update: Arc<Update>,
     ) -> Result<Self, StartError> {
         let providers = ProviderSetup {
             families: config.families,
@@ -478,6 +531,7 @@ impl Backend {
                 public_url: config.public_url,
                 origin_dropped: AtomicBool::new(false),
             }),
+            update: update.clone(),
         };
         let runner_socket = match config.runner_socket.as_deref().map(runner_socket).transpose() {
             Ok(socket) => socket.flatten(),
@@ -501,25 +555,8 @@ impl Backend {
                 });
             }
         };
-        let edge = match Edge::start(
-            config.address,
-            runner_socket,
-            manage_socket,
-            state,
-            config.web_directory,
-        )
-        .await
-        {
-            Ok(edge) => edge,
-            Err(source) => {
-                shards.close().await;
-                services.close_providers().await;
-                return Err(StartError::Listen {
-                    address: config.address,
-                    source,
-                });
-            }
-        };
+        update.ready();
+        let edge = listening.open(runner_socket, manage_socket, state, config.web_directory);
         // The machine manager settles what an earlier backend left in the
         // background: no page waits for it, and a manager that starts late is
         // tried until it answers.

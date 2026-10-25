@@ -25,6 +25,16 @@
     "title": "无法更新此页面",
     "body": "Demi 有新版本。重新加载后仍显示旧页面。"
   },
+  "updating": {
+    "title": "正在更新 Demi",
+    "control": "正在更新账户和设置",
+    "conversations": "正在更新对话：第 {done} 个，共 {count} 个",
+    "bytes": "{done}，共 {all}",
+    "estimating": "正在估算剩余时间…",
+    "underAMinute": "剩余不到 1 分钟",
+    "minutesLeft": "大约还需 {count} 分钟",
+    "body": "更新完成后，Demi 会自动打开。"
+  },
   "startingScreen": {
     "connecting": "正在连接到 Demi…",
     "loading": "正在加载 Demi…",

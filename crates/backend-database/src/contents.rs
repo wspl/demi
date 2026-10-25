@@ -47,8 +47,13 @@ pub(crate) fn put(transaction: &Connection, hash: &Hash, bytes: &[u8]) -> Result
     if let Some(id) = id_of(transaction, hash)? {
         return Ok(id);
     }
-    let stored = zstd::bulk::compress(bytes, LEVEL)?;
-    Ok(transaction
+    insert_stored(transaction, hash, &zstd::bulk::compress(bytes, LEVEL)?)
+}
+
+/// Writes the content `hash`, already compressed as `stored`, which the
+/// database does not hold yet; answers its id.
+pub(crate) fn insert_stored(connection: &Connection, hash: &Hash, stored: &[u8]) -> Result<i64, StorageError> {
+    Ok(connection
         .prepare_cached("INSERT INTO contents (hash, bytes) VALUES (?1, ?2) RETURNING id")?
         .query_row(params![hash.as_slice(), stored], |row| row.get(0))?)
 }

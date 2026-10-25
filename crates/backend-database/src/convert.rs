@@ -4,26 +4,37 @@
 //!
 //! ```text
 //! <id>.sqlite             the old file, read and never written
-//!      |  stream its rows, one at a time, a few hundred to a transaction
+//!      |  stream its rows; every core parses, splits, checks and
+//!      |  compresses them; one thread writes them in order, a few
+//!      |  hundred to a transaction
 //!      v
-//! <id>.sqlite.converting  the new file: each row read back and compared
-//!      |  rename, once every row compared equal
+//! <id>.sqlite.converting  the new file
+//!      |  rename, once every row is written
 //!      v
 //! <id>.sqlite             the new file
 //! ```
+//!
+//! Each row is checked before it is written: its record joined with the
+//! contents it names, held in memory, reads as the block it came from, and
+//! its compressed body decompresses to the record. The bytes in flight are
+//! bounded by a few rows per core.
 //!
 //! The old file stays as it was until the rename replaces it, so an upgrade's
 //! snapshot holds it by a hard link, and a conversion that stops at any step
 //! starts over from it. Every row, every node and every path stay as they
 //! were: only how a row is stored changes.
 
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path as FilePath, PathBuf};
+use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use demi_shared_types::Block;
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 
 use super::columns::json;
-use super::records::{self, Codec, Stored};
+use super::contents::{self, Hash, LEVEL};
+use super::records::{self, Codec, Prepared, PreparedContent};
 use super::schema::{self, LegacyForm, ReadBlob};
 use super::{StorageError, sqlite};
 
@@ -33,6 +44,16 @@ const ROWS_PER_TRANSACTION: usize = 500;
 
 /// How many rows the dictionary is trained on, spread over the file.
 const SAMPLES: i64 = 3000;
+
+/// How many rows wait between the conversion's threads, per core: enough
+/// that no core waits for work.
+const IN_FLIGHT: usize = 16;
+
+/// How many bytes of old rows the conversion holds between reading them and
+/// writing them, as each is held a few times over while it is prepared:
+/// a file of large rows, or one large row the writer waits for, would hold
+/// gigabytes without it. A row larger than this goes through alone.
+const HELD_BYTES: usize = 64 << 20;
 
 /// The tables copied as they are, in an order their foreign keys accept,
 /// before the rows.
@@ -59,8 +80,9 @@ pub(crate) fn converting(path: &FilePath) -> PathBuf {
 /// Converts the database at `path` when its rows hold whole blocks: as it
 /// is when it has a form this build converts ([`schema::legacy_form`]), else
 /// after migrating it to [`schema::LEGACY_CONVERSATION`]. The caller holds
-/// the file's opening turn, and no connection has it open.
-pub(crate) fn convert_if_due(path: &FilePath, blobs: &dyn ReadBlob) -> Result<(), StorageError> {
+/// the file's opening turn, and no connection has it open. `progress` hears
+/// the share of the rows done, from 0 to 1, as they are written.
+pub(crate) fn convert_if_due(path: &FilePath, blobs: &dyn ReadBlob, progress: &(dyn Fn(f64) + Sync)) -> Result<(), StorageError> {
     if !path.try_exists()? {
         return Ok(());
     }
@@ -86,7 +108,7 @@ pub(crate) fn convert_if_due(path: &FilePath, blobs: &dyn ReadBlob) -> Result<()
     let database = path.file_name().map(|name| name.to_string_lossy().into_owned());
     tracing::info!(event = "conversation.conversion_started", database, "a conversation's database converts");
     let started = std::time::Instant::now();
-    let converted = convert(path, form);
+    let converted = convert(path, form, progress);
     if converted.is_err() {
         // The new file is not the database yet: it goes, so a conversion
         // that failed, as on a full disk, leaves no space taken.
@@ -113,9 +135,9 @@ pub(crate) fn convert_if_due(path: &FilePath, blobs: &dyn ReadBlob) -> Result<()
     converted.map(|_| ())
 }
 
-/// Writes the new file beside `path`, compares it and renames it over
+/// Writes the new file beside `path`, checks it and renames it over
 /// `path`; answers how many rows it converted.
-fn convert(path: &FilePath, form: LegacyForm) -> Result<u64, StorageError> {
+fn convert(path: &FilePath, form: LegacyForm, progress: &(dyn Fn(f64) + Sync)) -> Result<u64, StorageError> {
     let target = converting(path);
     remove_with_logs(&target)?;
     let legacy = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
@@ -128,7 +150,8 @@ fn convert(path: &FilePath, form: LegacyForm) -> Result<u64, StorageError> {
     new.pragma_update(None, "foreign_keys", true)?;
     schema::CONVERSATION.apply(&mut new, &target, &schema::NoBlobs)?;
     new.execute("ATTACH DATABASE ?1 AS legacy", [path.to_string_lossy()])?;
-    {
+    let dictionary = dictionary(&legacy, form)?;
+    let dictionary = {
         let transaction = new.transaction()?;
         for table in COPIED {
             // By the legacy table's columns: a column the new one added
@@ -139,12 +162,18 @@ fn convert(path: &FilePath, form: LegacyForm) -> Result<u64, StorageError> {
         if form == LegacyForm::AutomationNames {
             schema::name_schedules(&transaction, "nodes", "state")?;
         }
-        if let Some(dictionary) = dictionary(&legacy, form)? {
-            transaction.execute("INSERT INTO dictionaries (bytes) VALUES (?1)", [dictionary])?;
-        }
+        let dictionary = match dictionary {
+            Some(bytes) => {
+                let id: i64 = transaction.query_row("INSERT INTO dictionaries (bytes) VALUES (?1) RETURNING id", [&bytes], |row| row.get(0))?;
+                Some((id, bytes))
+            }
+            None => None,
+        };
         transaction.commit()?;
-    }
-    let rows = convert_rows(&legacy, &mut new, form)?;
+        dictionary
+    };
+    let reader = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+    let rows = convert_rows(reader, &mut new, form, dictionary.as_ref(), progress)?;
     {
         let transaction = new.transaction()?;
         for table in ["block_blobs", "block_attachments"] {
@@ -179,60 +208,358 @@ fn convert(path: &FilePath, form: LegacyForm) -> Result<u64, StorageError> {
     Ok(rows)
 }
 
-/// A dictionary trained on records of rows spread over the old file.
+/// A dictionary trained on records of rows spread over the old file, each
+/// row sampled once. The rows are read in order and split on every core;
+/// only their records' bodies, a few kilobytes each, are kept.
 fn dictionary(legacy: &Connection, form: LegacyForm) -> Result<Option<Vec<u8>>, StorageError> {
     let last: Option<i64> = legacy.query_row("SELECT max(rowid) FROM blocks", [], |row| row.get(0))?;
     let Some(last) = last.filter(|last| *last >= records::DICTIONARY_AFTER) else {
         return Ok(None);
     };
-    let mut statement = legacy.prepare("SELECT block FROM blocks WHERE rowid >= ?1 ORDER BY rowid LIMIT 1")?;
-    let mut samples = Vec::new();
-    for at in 0..SAMPLES {
-        let text: Option<String> = statement.query_row([last * at / SAMPLES], |row| row.get(0)).optional()?;
-        if let Some(text) = text {
-            let block = legacy_block("blocks", &text, form)?;
-            samples.push(records::split(&block)?.body);
-        }
-    }
-    Ok(records::train(&samples))
+    let workers = workers();
+    let samples = std::thread::scope(|scope| {
+        let (texts_out, texts_in) = mpsc::sync_channel::<String>(IN_FLIGHT * workers);
+        let texts_in = Arc::new(Mutex::new(texts_in));
+        let splitting: Vec<_> = (0..workers)
+            .map(|_| {
+                let texts_in = texts_in.clone();
+                scope.spawn(move || {
+                    let mut bodies = Vec::new();
+                    loop {
+                        let text = texts_in.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                        let Ok(text) = text else {
+                            return Ok::<_, StorageError>(bodies);
+                        };
+                        bodies.push(records::split(&legacy_block("blocks", &text, form)?)?.body);
+                    }
+                })
+            })
+            .collect();
+        drop(texts_in);
+        let read = (|| {
+            let mut statement = legacy.prepare("SELECT rowid, block FROM blocks WHERE rowid >= ?1 ORDER BY rowid LIMIT 1")?;
+            let mut previous = None;
+            for at in 0..SAMPLES {
+                let row: Option<(i64, String)> =
+                    statement.query_row([last * at / SAMPLES], |row| Ok((row.get(0)?, row.get(1)?))).optional()?;
+                let Some((rowid, text)) = row else {
+                    continue;
+                };
+                if previous == Some(rowid) {
+                    continue;
+                }
+                previous = Some(rowid);
+                if texts_out.send(text).is_err() {
+                    break;
+                }
+            }
+            Ok::<_, StorageError>(())
+        })();
+        drop(texts_out);
+        let bodies = splitting
+            .into_iter()
+            .map(|part| part.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)))
+            .collect::<Result<Vec<_>, _>>()?;
+        read?;
+        Ok::<_, StorageError>(bodies)
+    })?;
+    Ok(records::train(&samples.concat()))
 }
 
-/// Writes a record for each row of the old file, compares it with the row,
-/// and answers how many it wrote.
-fn convert_rows(legacy: &Connection, new: &mut Connection, form: LegacyForm) -> Result<u64, StorageError> {
-    let mut rows = legacy.prepare("SELECT node_id, idx, block, follows, replaces FROM blocks NOT INDEXED ORDER BY rowid")?;
+/// How many threads prepare rows: one per core the process may use.
+fn workers() -> usize {
+    std::thread::available_parallelism().map_or(1, usize::from)
+}
+
+/// The bytes of the rows read and not yet written, which the reader waits
+/// on while they would pass [`HELD_BYTES`].
+#[derive(Default)]
+struct Window {
+    held: Mutex<(usize, bool)>,
+    changed: Condvar,
+}
+
+impl Window {
+    /// Waits until a row of `bytes` fits, and answers false once the writer
+    /// has stopped.
+    fn admit(&self, bytes: usize) -> bool {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        while held.0 > 0 && held.0 + bytes > HELD_BYTES && !held.1 {
+            held = self.changed.wait(held).unwrap_or_else(PoisonError::into_inner);
+        }
+        held.0 += bytes;
+        !held.1
+    }
+
+    /// A row of `bytes` was written.
+    fn release(&self, bytes: usize) {
+        self.held.lock().unwrap_or_else(PoisonError::into_inner).0 -= bytes;
+        self.changed.notify_all();
+    }
+
+    /// The writer stopped: the reader waits no more.
+    fn close(&self) {
+        self.held.lock().unwrap_or_else(PoisonError::into_inner).1 = true;
+        self.changed.notify_all();
+    }
+}
+
+/// Closes the window as the writer stops, however it stops.
+struct Closing<'a>(&'a Window);
+
+impl Drop for Closing<'_> {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
+/// A row of the old file, numbered in the order it is written.
+struct OldRow {
+    at: u64,
+    rowid: i64,
+    node: String,
+    idx: i64,
+    follows: Option<i64>,
+    replaces: Option<i64>,
+    text: String,
+}
+
+/// A row ready to be written.
+struct ReadyRow {
+    at: u64,
+    /// The old row's size, which the window holds until it is written.
+    held: usize,
+    rowid: i64,
+    node: String,
+    idx: i64,
+    follows: Option<i64>,
+    replaces: Option<i64>,
+    record: Prepared,
+}
+
+/// The contents some row prepared so far: a later row that holds one again
+/// leaves it uncompressed, since the writer finds it written.
+#[derive(Default)]
+struct Claims(Mutex<HashSet<Hash>>);
+
+impl Claims {
+    /// Whether this call is the first to claim `hash`.
+    fn claim(&self, hash: Hash) -> bool {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner).insert(hash)
+    }
+}
+
+/// Writes a record for each row of the old file, and answers how many it
+/// wrote.
+///
+/// ```text
+/// reader ──rows──► one worker per core ──ready rows──► writer (this thread)
+/// ```
+///
+/// The reader reads the rows in order, the workers prepare them in any
+/// order, and the writer writes them in their order, so a row's index and
+/// its place among its node's rows are the old file's. A window bounds the
+/// bytes between the reader and the writer, the rows the writer holds while
+/// it waits for an earlier one included.
+fn convert_rows(
+    legacy: Connection,
+    new: &mut Connection,
+    form: LegacyForm,
+    dictionary: Option<&(i64, Vec<u8>)>,
+    progress: &(dyn Fn(f64) + Sync),
+) -> Result<u64, StorageError> {
+    let last: i64 = legacy.query_row("SELECT coalesce(max(rowid), 0) FROM blocks", [], |row| row.get(0))?;
+    let workers = workers();
+    let claims = Claims::default();
+    let window = Window::default();
+    std::thread::scope(|scope| {
+        let (rows_out, rows_in) = mpsc::sync_channel::<OldRow>(IN_FLIGHT * workers);
+        let (ready_out, ready_in) = mpsc::sync_channel::<Result<ReadyRow, StorageError>>(IN_FLIGHT * workers);
+        let window = &window;
+        let reader = scope.spawn(move || read_rows(&legacy, &rows_out, window));
+        // Each worker holds the rows' receiver, so once all have ended the
+        // reader's next send fails and it ends too.
+        let rows_in = Arc::new(Mutex::new(rows_in));
+        for _ in 0..workers {
+            let (rows_in, ready_out, claims) = (rows_in.clone(), ready_out.clone(), &claims);
+            scope.spawn(move || prepare_rows(&rows_in, &ready_out, form, dictionary.map(|(_, bytes)| bytes.as_slice()), claims));
+        }
+        drop((rows_in, ready_out));
+        let written = write_rows(new, ready_in, window, dictionary.map(|(id, _)| *id), last, progress);
+        // A writer that stopped dropped what feeds it, so the workers and the
+        // reader end; its failure is the one to answer.
+        let read = reader.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+        let written = written?;
+        read?;
+        Ok(written)
+    })
+}
+
+/// Sends every row of the old file, in order, as the window takes it, until
+/// the rows end or the writer stops.
+fn read_rows(legacy: &Connection, out: &SyncSender<OldRow>, window: &Window) -> Result<(), StorageError> {
+    let mut rows = legacy.prepare("SELECT rowid, node_id, idx, block, follows, replaces FROM blocks NOT INDEXED ORDER BY rowid")?;
     let mut rows = rows.query([])?;
-    let mut written = 0u64;
+    let mut at = 0;
+    while let Some(row) = rows.next()? {
+        let old = OldRow {
+            at,
+            rowid: row.get(0)?,
+            node: row.get(1)?,
+            idx: row.get(2)?,
+            text: row.get(3)?,
+            follows: row.get(4)?,
+            replaces: row.get(5)?,
+        };
+        if !window.admit(old.text.len()) || out.send(old).is_err() {
+            return Ok(());
+        }
+        at += 1;
+    }
+    Ok(())
+}
+
+/// Prepares the rows it takes until they end or the writer stops.
+fn prepare_rows(
+    rows: &Mutex<Receiver<OldRow>>,
+    out: &SyncSender<Result<ReadyRow, StorageError>>,
+    form: LegacyForm,
+    dictionary: Option<&[u8]>,
+    claims: &Claims,
+) {
+    let compressor = match dictionary {
+        Some(bytes) => zstd::bulk::Compressor::with_dictionary(LEVEL, bytes),
+        None => zstd::bulk::Compressor::new(LEVEL),
+    };
+    let decompressor = match dictionary {
+        Some(bytes) => zstd::bulk::Decompressor::with_dictionary(bytes),
+        None => zstd::bulk::Decompressor::new(),
+    };
+    let (mut compressor, mut decompressor) = match (compressor, decompressor) {
+        (Ok(compressor), Ok(decompressor)) => (compressor, decompressor),
+        (Err(error), _) | (_, Err(error)) => {
+            let _ = out.send(Err(error.into()));
+            return;
+        }
+    };
     loop {
-        let transaction = new.transaction()?;
-        let codec = Codec::new(&transaction);
-        let mut batch = 0;
-        while batch < ROWS_PER_TRANSACTION {
-            let Some(row) = rows.next()? else {
-                break;
-            };
-            let (node, idx, text): (String, i64, String) = (row.get(0)?, row.get(1)?, row.get(2)?);
-            let (follows, replaces): (Option<i64>, Option<i64>) = (row.get(3)?, row.get(4)?);
+        let row = rows.lock().unwrap_or_else(PoisonError::into_inner).recv();
+        let Ok(row) = row else {
+            return;
+        };
+        let ready = prepare(&row.text, form, &mut compressor, &mut decompressor, claims).map(|record| ReadyRow {
+            at: row.at,
+            held: row.text.len(),
+            rowid: row.rowid,
+            node: row.node,
+            idx: row.idx,
+            follows: row.follows,
+            replaces: row.replaces,
+            record,
+        });
+        if out.send(ready).is_err() {
+            return;
+        }
+    }
+}
+
+/// The record of the old row `text`, checked: joined with its contents it
+/// reads as the block, and its compressed body decompresses to it.
+fn prepare(
+    text: &str,
+    form: LegacyForm,
+    compressor: &mut zstd::bulk::Compressor<'static>,
+    decompressor: &mut zstd::bulk::Decompressor<'static>,
+    claims: &Claims,
+) -> Result<Prepared, StorageError> {
+    let block = legacy_block("blocks", text, form)?;
+    let document = records::document(&block);
+    let split = records::split_document(document.clone())?;
+    let mut joined: serde_json::Value =
+        serde_json::from_slice(&split.body).map_err(|error| differs(format!("its record is not JSON: {error}")))?;
+    records::join_with(&mut joined, &mut |hash| {
+        split
+            .contents
+            .iter()
+            .find(|(held, _)| held == hash)
+            .map(|(_, bytes)| bytes.clone())
+            .ok_or_else(|| differs(format!("its record names the content {}, which it does not hold", hash.hex())))
+    })?;
+    if joined != document {
+        return Err(differs("its record does not read back as the block".into()));
+    }
+    let body = compressor.compress(&split.body)?;
+    if contents::decompress(&body, Some(decompressor))? != split.body {
+        return Err(differs("its compressed record does not decompress to it".into()));
+    }
+    let contents = split
+        .contents
+        .into_iter()
+        .map(|(hash, bytes)| {
+            Ok((
+                hash,
+                if claims.claim(hash) {
+                    PreparedContent::Compressed(zstd::bulk::compress(&bytes, LEVEL)?)
+                } else {
+                    PreparedContent::Claimed(bytes)
+                },
+            ))
+        })
+        .collect::<Result<_, StorageError>>()?;
+    Ok(Prepared {
+        columns: split.columns,
+        body,
+        contents,
+    })
+}
+
+/// Writes the ready rows in their order, a few hundred to a transaction,
+/// and answers how many it wrote.
+fn write_rows(
+    new: &mut Connection,
+    ready: Receiver<Result<ReadyRow, StorageError>>,
+    window: &Window,
+    dictionary: Option<i64>,
+    last: i64,
+    progress: &(dyn Fn(f64) + Sync),
+) -> Result<u64, StorageError> {
+    let _closing = Closing(window);
+    let mut waiting = BTreeMap::new();
+    let mut next = 0u64;
+    let mut transaction = new.transaction()?;
+    let mut batch = 0;
+    for row in ready {
+        let row = row?;
+        waiting.insert(row.at, row);
+        while let Some(row) = waiting.remove(&next) {
+            records::insert_prepared(&transaction, &row.node, row.idx, row.follows, row.replaces, dictionary, row.record)?;
+            window.release(row.held);
+            next += 1;
             batch += 1;
-            let block = legacy_block("blocks", &text, form)?;
-            records::insert(&transaction, &codec, &node, idx, follows, replaces, &block)?;
-            let stored = transaction
-                .prepare_cached("SELECT format, dictionary, body FROM blocks WHERE node_id = ?1 AND idx = ?2")?
-                .query_row(params![node, idx], |row| Stored::of(row, 0))?;
-            if codec.block("blocks", &stored)? != block {
-                return Err(StorageError::Corrupt {
-                    table: "blocks",
-                    column: "body",
-                    reason: format!("the row {idx} of node {node} does not read back as it was"),
-                });
+            if batch == ROWS_PER_TRANSACTION {
+                transaction.commit()?;
+                transaction = new.transaction()?;
+                batch = 0;
+                if last > 0 {
+                    progress(row.rowid as f64 / last as f64);
+                }
             }
-            written += 1;
         }
-        drop(codec);
-        transaction.commit()?;
-        if batch < ROWS_PER_TRANSACTION {
-            return Ok(written);
-        }
+    }
+    if !waiting.is_empty() {
+        return Err(differs("a row was not prepared".into()));
+    }
+    transaction.commit()?;
+    progress(1.0);
+    Ok(next)
+}
+
+/// A row whose record would not read back as it was.
+fn differs(reason: String) -> StorageError {
+    StorageError::Corrupt {
+        table: "blocks",
+        column: "body",
+        reason,
     }
 }
 
@@ -288,3 +615,4 @@ fn legacy_columns(connection: &Connection, table: &str) -> rusqlite::Result<Vec<
     let mut statement = connection.prepare(&format!("SELECT name FROM pragma_table_info('{table}', 'legacy')"))?;
     statement.query_map([], |row| row.get(0))?.collect()
 }
+

@@ -25,6 +25,16 @@
     "title": "このページを更新できませんでした",
     "body": "Demi の新しいバージョンがあります。再読み込みしても古いページが表示されます。"
   },
+  "updating": {
+    "title": "Demi をアップデート中",
+    "control": "アカウントと設定をアップデート中",
+    "conversations": "会話をアップデート中：{done} / {count}",
+    "bytes": "{done} / {all}",
+    "estimating": "残り時間を計算中…",
+    "underAMinute": "残り 1 分未満",
+    "minutesLeft": "残り約 {count} 分",
+    "body": "アップデートが終わると Demi が自動的に開きます。"
+  },
   "startingScreen": {
     "connecting": "Demi に接続中…",
     "loading": "Demi を読み込み中…",

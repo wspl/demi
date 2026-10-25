@@ -72,6 +72,11 @@ pub enum ErrorCode {
     InternalError,
     /// The backend is shutting down and starts no new work.
     BackendClosing,
+    /// The backend is starting and serves nothing yet but `GET /update`.
+    BackendStarting,
+    /// The backend migrates its data for a new release and serves nothing
+    /// yet but `GET /update`, which says how far it is.
+    Updating,
     /// Setup has created the master account already.
     AlreadySetUp,
     /// The email address and password, or the current password, do not match.

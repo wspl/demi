@@ -593,37 +593,48 @@ fn spawn_backend(
 }
 
 /// Waits until the backend answers `GET /api/setup`, failing when it exits
-/// first or does not answer within `START`. Each probe waits `PROBE` at
-/// most: a port another program holds may take the request and never
-/// answer it.
+/// first or answers nothing for `START`: a backend that says it updates its
+/// data, as on a copy of an earlier release's, answers, however long the
+/// update takes. Each probe waits `PROBE` at most: a port another program
+/// holds may take the request and never answer it.
 async fn answering(
     http: &reqwest::Client,
     origin: &str,
     backend: &mut dyn ChildWrapper,
 ) -> Result<(), Error> {
-    let probing = async {
-        loop {
-            let probe = http.get(format!("{origin}/api/setup")).timeout(PROBE);
-            if probe
-                .send()
-                .await
-                .is_ok_and(|answer| answer.status().is_success())
-            {
-                return;
+    let mut deadline = tokio::time::Instant::now() + START;
+    loop {
+        let probe = async {
+            let setup = http.get(format!("{origin}/api/setup")).timeout(PROBE).send().await;
+            if setup.is_ok_and(|answer| answer.status().is_success()) {
+                return Some(true);
             }
-            tokio::time::sleep(POLL).await;
+            let update = http.get(format!("{origin}/api/update")).timeout(PROBE).send().await;
+            let updating = match update {
+                Ok(answer) if answer.status().is_success() => answer.bytes().await.is_ok_and(|body| {
+                    serde_json::from_slice::<serde_json::Value>(&body)
+                        .is_ok_and(|state| state["state"] == "updating")
+                }),
+                _ => false,
+            };
+            updating.then_some(false)
+        };
+        tokio::select! {
+            answer = probe => match answer {
+                Some(true) => return Ok(()),
+                Some(false) => deadline = tokio::time::Instant::now() + START,
+                None => {}
+            },
+            status = backend.wait() => return Err(Error::Backend(format!(
+                "exited before it answered: {}",
+                status?
+            ))),
+            () = tokio::time::sleep_until(deadline) => return Err(Error::Backend(format!(
+                "did not answer within {} s",
+                START.as_secs()
+            ))),
         }
-    };
-    tokio::select! {
-        () = probing => Ok(()),
-        status = backend.wait() => Err(Error::Backend(format!(
-            "exited before it answered: {}",
-            status?
-        ))),
-        () = tokio::time::sleep(START) => Err(Error::Backend(format!(
-            "did not answer within {} s",
-            START.as_secs()
-        ))),
+        tokio::time::sleep(POLL).await;
     }
 }
 
