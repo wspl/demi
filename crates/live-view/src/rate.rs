@@ -14,9 +14,9 @@
 //!   seconds late. So the least of ten seconds drops the sample once a clean
 //!   one arrives. For the first ten seconds the round trip counts at most 300
 //!   ms.
-//! - There are no padding probes: the pictures keep the path busy. A rising
-//!   delay lowers the rate. A loss whose retransmission only delays a chunk
-//!   does not.
+//! - The rate control probes the path with padding (`probe`), since the
+//!   pictures alone rarely fill it. A rising delay lowers the rate. A loss
+//!   whose retransmission only delays a chunk does not.
 //! - Below what a picture needs, the sender lowers the frame rate first, then
 //!   the resolution.
 //! - Viewers of a source share its encoding, so the slowest decides. A blocked
@@ -32,7 +32,13 @@ use std::{
 
 use demi_live_view_protocol::{ChunkAck, VIDEO_MAX_BITRATE};
 
-use crate::bwe::{AckedPacket, Bitrate, DataSize, DelayBasedEstimate};
+use crate::{
+    bwe::{
+        AckedPacket, Bitrate, DataSize, DelayBasedEstimate,
+        probe::{ProbeCluster, ProbeEstimator},
+    },
+    probe::Probes,
+};
 
 /// Where the estimate starts, before the path said anything.
 pub(crate) const INITIAL_BITRATE: u32 = 5_000_000;
@@ -64,14 +70,17 @@ pub(crate) const SCALES: [f64; 3] = [1.0, 0.75, 0.5];
 const RETARGET: f64 = 0.1;
 
 /// A chunk as the viewer's page names it in its acknowledgement: generation,
-/// sequence and index.
-pub(crate) type ChunkId = (u32, u32, u16);
+/// sequence (a picture's, or a probe's for padding), index, and whether it
+/// is padding.
+pub(crate) type ChunkId = (u32, u32, u16, bool);
 
 struct Sent {
     at: Instant,
     bytes: usize,
     /// The order chunks went out in, which breaks ties of receive times.
     order: u64,
+    /// The probe it is padding of.
+    probe: Option<u32>,
 }
 
 pub(crate) struct Rate {
@@ -90,6 +99,8 @@ pub(crate) struct Rate {
     pixels: f64,
     rate: usize,
     scale: usize,
+    probes: Probes,
+    probe_estimator: ProbeEstimator,
 }
 
 impl Rate {
@@ -107,6 +118,8 @@ impl Rate {
             pixels: 0.0,
             rate: 0,
             scale: 0,
+            probes: Probes::default(),
+            probe_estimator: ProbeEstimator::default(),
         };
         rate.resize(pixels);
         rate
@@ -172,19 +185,38 @@ impl Rate {
         self.started.get_or_insert(now);
         self.sent += 1;
         let order = self.sent;
-        if let Some(replaced) = self.flight.insert(id, Sent { at: now, bytes, order }) {
+        let (_, sequence, _, padding) = id;
+        let probe = padding.then_some(sequence);
+        if !padding {
+            self.probes.picture(bytes, now, self.estimate.estimate());
+        }
+        if let Some(replaced) = self.flight.insert(id, Sent { at: now, bytes, order, probe }) {
             self.in_flight -= replaced.bytes;
         }
         self.in_flight += bytes;
     }
 
+    /// The next probe to send, which is measured from then on.
+    pub fn next_probe(&mut self) -> Option<ProbeCluster> {
+        let cluster = self.probes.take()?;
+        self.probe_estimator.start(cluster);
+        Some(cluster)
+    }
+
+    /// Probe `id`'s last chunk went at `now`.
+    pub fn probe_sent(&mut self, id: u32, now: Instant) {
+        self.probe_estimator.end(id, now);
+    }
+
     /// The page acknowledged `acks` in one message, which arrived at `now`.
     pub fn acknowledged(&mut self, acks: &[ChunkAck], now: Instant) {
         let mut acked = Vec::with_capacity(acks.len());
+        // What the latest probe among them measured.
+        let mut probed = None;
         for ack in acks {
             // A chunk acknowledged twice, or of a stream before this one, is
             // nothing the path still holds.
-            let Some(sent) = self.flight.remove(&(ack.generation, ack.sequence, ack.chunk)) else {
+            let Some(sent) = self.flight.remove(&(ack.generation, ack.sequence, ack.chunk, ack.padding)) else {
                 continue;
             };
             self.in_flight -= sent.bytes;
@@ -193,13 +225,19 @@ impl Rate {
                 .started
                 .is_none_or(|started| now.saturating_duration_since(started) < ROUND_TRIP_SPAN);
             self.round_trips.push_back((now, round_trip));
-            acked.push(AckedPacket {
+            let packet = AckedPacket {
                 seq_no: sent.order.into(),
                 size: DataSize::bytes(sent.bytes as i64),
                 local_send_time: sent.at,
                 remote_recv_time: self.page_time(ack.received, now),
                 local_recv_time: now,
-            });
+            };
+            if let Some(id) = sent.probe
+                && let Some(found) = self.probe_estimator.update(id, &packet)
+            {
+                probed = Some(found);
+            }
+            acked.push(packet);
         }
         while self
             .round_trips
@@ -209,8 +247,18 @@ impl Rate {
             self.round_trips.pop_front();
         }
         if !acked.is_empty() {
-            self.estimate.update(acked, now);
+            self.estimate.update(acked, probed.map(|(_, measured)| measured), now);
         }
+        if let Some((cluster, measured)) = probed {
+            tracing::debug!(
+                event = "live_view.probed",
+                target = cluster.target.as_u64(),
+                measured = measured.as_u64(),
+                "a live view's probe measured its path"
+            );
+            self.probes.result(&cluster, measured, now);
+        }
+        self.probe_estimator.handle_timeout(now);
         if now >= self.estimate.poll_timeout() {
             self.estimate.handle_timeout(now);
         }

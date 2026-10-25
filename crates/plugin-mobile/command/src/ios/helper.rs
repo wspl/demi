@@ -58,8 +58,9 @@ pub const PICTURE: u8 = 4;
 const MAX_FRAME: usize = 64 * 1024 * 1024;
 
 /// A video frame's header, big-endian: the capture (u32), the sequence
-/// (u32), flags (u8, 1 = key frame), three reserved bytes, the timestamp in
-/// microseconds (f64), the width and the height (u16 each).
+/// (u32), flags (u8, 1 = key frame, 2 = the picture coded again at the
+/// module's asking), three reserved bytes, the timestamp in microseconds
+/// (f64), the width and the height (u16 each).
 pub const HEADER_BYTES: usize = 24;
 
 /// A recording's picture's header, big-endian: the recording (u32), how many
@@ -363,7 +364,8 @@ async fn read(
                     let mut header = payload.split_to(HEADER_BYTES);
                     let capture = header.get_u32();
                     let sequence = header.get_u32();
-                    let key = header.get_u8() & 1 == 1;
+                    let flags = header.get_u8();
+                    let key = flags & 1 == 1;
                     header.advance(3);
                     let timestamp = header.get_f64();
                     let width = header.get_u16();
@@ -380,6 +382,7 @@ async fn read(
                         let _behind = sender.try_send(CaptureEvent::Frame(EncodedFrame {
                             sequence,
                             key,
+                            repeat: flags & 2 == 2,
                             timestamp,
                             width,
                             height,

@@ -26,6 +26,10 @@ final class Encoder: @unchecked Sendable {
   private var last: CFTimeInterval = 0
   private var pending = false
   private var forceKey = true
+  /// The screen drew since the last picture was encoded.
+  private var changed = true
+  /// The module asked for the picture once more.
+  private var repeatAsked = false
   private var sequence: UInt32 = 0
   /// Frames handed to the encoder, which numbers them in this order.
   private var submitted: UInt32 = 0
@@ -47,12 +51,21 @@ final class Encoder: @unchecked Sendable {
     self.session = session
     self.output = output
     self.interval = 1 / Double(max(1, fps))
+    // The low-latency rate control, as Chrome's real-time encoder uses it,
+    // spends a still picture's repeats and a scroll's frames better at the
+    // same bit rate; an encoder without it opens without it.
     var created: VTCompressionSession?
-    let status = VTCompressionSessionCreate(
-      allocator: nil, width: Int32(self.width), height: Int32(self.height), codecType: kCMVideoCodecType_H264,
-      encoderSpecification: [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true] as CFDictionary,
-      imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil,
-      compressionSessionOut: &created)
+    var status = noErr
+    for lowLatency in [true, false] {
+      var specification: [CFString: Any] = [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true]
+      if lowLatency { specification[kVTVideoEncoderSpecification_EnableLowLatencyRateControl] = true }
+      status = VTCompressionSessionCreate(
+        allocator: nil, width: Int32(self.width), height: Int32(self.height), codecType: kCMVideoCodecType_H264,
+        encoderSpecification: specification as CFDictionary,
+        imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil,
+        compressionSessionOut: &created)
+      if status == noErr { break }
+    }
     guard status == noErr, let created else {
       throw HelperError("the video encoder did not start (\(status))")
     }
@@ -82,6 +95,13 @@ final class Encoder: @unchecked Sendable {
   /// A new picture was drawn: encoded now, or once the frame interval
   /// passed, so the last picture of a change is always sent.
   func drawn() {
+    lock.withLock { changed = true }
+    schedule()
+  }
+
+  /// Encodes the screen now, or once the frame interval passed and the
+  /// windows have room.
+  private func schedule() {
     let wait = lock.withLock { () -> Double? in
       if stopped || pending { return nil }
       if submitted &- min(floor, submitted) >= window {
@@ -112,7 +132,16 @@ final class Encoder: @unchecked Sendable {
       if resume { waiting = false }
       return resume
     }
-    if resume { drawn() }
+    if resume { schedule() }
+  }
+
+  /// Codes the screen as it is once more, as a delta frame marked as a
+  /// repeat, as a new picture is: at once, or once the frame interval passed
+  /// and the windows have room. A screen that drew meanwhile is coded
+  /// unmarked.
+  func repeatPicture() {
+    lock.withLock { repeatAsked = true }
+    schedule()
   }
 
   func keyFrame() {
@@ -146,13 +175,16 @@ final class Encoder: @unchecked Sendable {
   /// Encodes the picture as it is now, on the encoder's queue.
   private func encode() {
     guard let session, let image = session.upright(), let pool,
-      let (compression, key) = lock.withLock({ () -> (VTCompressionSession, Bool)? in
+      let (compression, key, repeated) = lock.withLock({ () -> (VTCompressionSession, Bool, Bool)? in
         guard !stopped, let compression else { return nil }
         let key = forceKey
+        let repeated = repeatAsked && !changed && !key
         forceKey = false
+        changed = false
+        repeatAsked = false
         last = CACurrentMediaTime()
         submitted &+= 1
-        return (compression, key)
+        return (compression, key, repeated)
       })
     else { return }
     var created: CVPixelBuffer?
@@ -166,25 +198,38 @@ final class Encoder: @unchecked Sendable {
     let status = VTCompressionSessionEncodeFrame(
       compression, imageBuffer: buffer, presentationTimeStamp: CMTime(seconds: now, preferredTimescale: 1_000_000),
       duration: .invalid, frameProperties: properties, infoFlagsOut: nil
-    ) { [self] status, _, sample in
+    ) { [self] status, flags, sample in
+      // The low-latency rate control may drop a picture for its budget: it is
+      // offered again at the next interval, so the last picture of a change
+      // still goes, a key frame still a key frame, a repeat still a repeat,
+      // and it takes no number.
+      if status == noErr, sample == nil || flags.contains(.frameDropped) {
+        lock.withLock {
+          submitted &-= 1
+          if key { forceKey = true }
+          if repeated { repeatAsked = true } else { changed = true }
+        }
+        schedule()
+        return
+      }
       guard status == noErr, let sample else {
         fail("a frame did not encode (\(status))")
         return
       }
-      send(sample, timestamp: now)
+      send(sample, timestamp: now, repeated: repeated)
     }
     if status != noErr { fail("a frame did not encode (\(status))") }
   }
 
-  private func send(_ sample: CMSampleBuffer, timestamp: CFTimeInterval) {
+  private func send(_ sample: CMSampleBuffer, timestamp: CFTimeInterval, repeated: Bool) {
     let (bytes, key) = annexB(sample)
     let sequence = lock.withLock { () -> UInt32 in
       self.sequence &+= 1
       return self.sequence
     }
     output.video(
-      capture: capture, sequence: sequence, key: key, timestamp: timestamp * 1_000_000, width: width, height: height,
-      bytes)
+      capture: capture, sequence: sequence, key: key, repeated: repeated && !key, timestamp: timestamp * 1_000_000,
+      width: width, height: height, bytes)
   }
 
   private func fail(_ message: String) {

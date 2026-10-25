@@ -56,6 +56,7 @@ mod bwe;
 pub mod delivery;
 pub mod frames;
 pub mod input;
+mod probe;
 mod rate;
 pub mod stream;
 pub mod writer;

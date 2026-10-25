@@ -31,6 +31,8 @@ struct Asked {
     /// The newest picture not encoded yet.
     newest: Option<Arc<Picture>>,
     key_frame: bool,
+    /// The screen as it is is to be coded once more.
+    repeat: bool,
     encoding: Option<(u32, u32)>,
     /// The newest frame the viewers had, and how many more their windows
     /// have room for.
@@ -125,6 +127,10 @@ impl DeviceCapture for AndroidCapture {
     fn encoding(&self, bitrate: u32, fps: u32) {
         self.shared.ask(|asked| asked.encoding = Some((bitrate, fps)));
     }
+
+    fn repeat(&self) {
+        self.shared.ask(|asked| asked.repeat = true);
+    }
 }
 
 impl Drop for AndroidCapture {
@@ -172,7 +178,7 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, siz
     let mut force_key = true;
     let mut resizer = Resizer::new();
     loop {
-        let picture = {
+        let (picture, repeat) = {
             let mut asked = shared.asked.lock().expect("the capture's state is intact");
             loop {
                 if asked.stopped {
@@ -201,10 +207,15 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, siz
                 // The newest picture waits for room in the viewers' windows,
                 // replaced by any newer one.
                 let room = asked.room(sequence);
-                if asked.newest.is_some() && due.is_zero() && room {
-                    break asked.newest.take().expect("a picture is waiting");
+                // A repeat codes the last picture again, unless a newer one
+                // came, which is coded instead.
+                let waiting = asked.newest.is_some() || (asked.repeat && last.is_some());
+                if waiting && due.is_zero() && room {
+                    let repeat = std::mem::take(&mut asked.repeat) && asked.newest.is_none() && !force_key;
+                    let picture = asked.newest.take().or_else(|| last.clone()).expect("a picture is waiting");
+                    break (picture, repeat);
                 }
-                asked = if asked.newest.is_some() && room {
+                asked = if waiting && room {
                     shared.wake.wait_timeout(asked, due).expect("the capture's state is intact").0
                 } else {
                     shared.wake.wait(asked).expect("the capture's state is intact")
@@ -253,7 +264,11 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, siz
             // Skipped for the bit rate, or still in the encoder: the picture
             // is offered again at the next interval.
             shared.ask(|asked| {
-                asked.newest.get_or_insert(picture);
+                if repeat {
+                    asked.repeat = true;
+                } else {
+                    asked.newest.get_or_insert(picture);
+                }
             });
             continue;
         }
@@ -265,6 +280,7 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, siz
             let _behind = events.try_send(CaptureEvent::Frame(EncodedFrame {
                 sequence,
                 key: coded.key,
+                repeat: repeat && !coded.key,
                 timestamp: coded.time_us as f64,
                 width: width as u16,
                 height: height as u16,
@@ -278,6 +294,21 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, siz
 fn scaled(resizer: &mut Resizer, picture: &Picture, width: u32, height: u32) -> Result<Option<Image<'static>>, String> {
     if (picture.width, picture.height) == (width, height) {
         return Ok(None);
+    }
+    // A picture a pixel or two larger than the size wanted, which the even
+    // sides H.264 takes and the panel's rounding make, loses its edges, as
+    // many from each side: scaled instead, by a factor so near 1, every
+    // pixel of it would blur.
+    let near = |from: u32, to: u32| from.checked_sub(to).is_some_and(|extra| extra <= 2);
+    if near(picture.width, width) && near(picture.height, height) {
+        let row = width as usize * 4;
+        let stride = picture.width as usize * 4;
+        let first = ((picture.height - height) / 2) as usize * stride + ((picture.width - width) / 2) as usize * 4;
+        let mut cropped = vec![0; row * height as usize];
+        for (to, from) in cropped.chunks_exact_mut(row).zip(picture.rgba[first..].chunks(stride)) {
+            to.copy_from_slice(&from[..row]);
+        }
+        return Image::from_vec_u8(width, height, cropped, PixelType::U8x4).map(Some).map_err(|error| error.to_string());
     }
     let source = ImageRef::new(picture.width, picture.height, &picture.rgba, PixelType::U8x4).map_err(|error| error.to_string())?;
     let mut target = Image::new(width, height, PixelType::U8x4);

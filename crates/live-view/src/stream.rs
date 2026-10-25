@@ -18,6 +18,22 @@
 //! - Key frames are sent only when needed (a new viewer, a changed source or
 //!   size, or the page failing to decode), at most two a second, never on a
 //!   timer.
+//!
+//! # Still pictures
+//!
+//! A source sends a picture only when it changes, and an encoder codes each at
+//! the quality its budget allows then: a key frame, or the last picture of a
+//! scroll, can be coarse. Once a capture has sent nothing new for a frame
+//! interval, the stream has it code its picture again, one repeat at a time,
+//! each a frame interval after the one before came back, for
+//! [`REFINE_SPAN`]. Each repeat is coded against the one before, so the
+//! encoder spends its budget on what is still coarse; once nothing is, a
+//! repeat costs a hundred bytes or so. The source marks a repeat
+//! ([`EncodedFrame::repeat`]); any other frame is a new picture, whose own
+//! stillness starts the repeats again, so a picture that changes near the end
+//! of a span still gets a whole one. This is libwebrtc's zero-hertz screen
+//! share, which repeats until the frames' QP converges; a fixed span needs no
+//! QP and costs a few kilobytes more.
 
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 
@@ -38,6 +54,10 @@ const RETRY_LIMIT: Duration = Duration::from_secs(5);
 /// The least time between two key frames the viewers asked for: at most two
 /// in a second.
 const KEY_FRAME_SPACING: Duration = Duration::from_millis(500);
+/// How long a still picture is coded again: VideoToolbox brought a key frame
+/// of text from 37 to 42 dB within 15 repeats and to its best within 30, at
+/// 30 frames a second. Longer only sends repeats that change nothing.
+const REFINE_SPAN: Duration = Duration::from_secs(1);
 
 /// One encoded picture of a source: H.264 Annex B in
 /// [`VIDEO_CODEC`](demi_live_view_protocol::VIDEO_CODEC), with its size in
@@ -46,6 +66,8 @@ const KEY_FRAME_SPACING: Duration = Duration::from_millis(500);
 pub struct EncodedFrame {
     pub sequence: u32,
     pub key: bool,
+    /// The picture before, coded again at [`Capture::repeat`]'s asking.
+    pub repeat: bool,
     /// Microseconds on the source's clock.
     pub timestamp: f64,
     pub width: u16,
@@ -73,6 +95,11 @@ pub trait Capture: Send + 'static {
     fn ack(&self, sequence: u32, window: u32);
     fn key_frame(&self);
     fn encoding(&self, bitrate: u32, fps: u32);
+    /// Codes the picture the source shows now once more, as a delta frame
+    /// marked as a repeat, when the viewers' windows have room for it. A
+    /// picture that changed meanwhile, or a key frame, is coded instead,
+    /// unmarked.
+    fn repeat(&self);
 }
 
 /// Why a capture did not start.
@@ -345,6 +372,30 @@ struct Running<C, L> {
     encoding: (u32, u32),
     /// The newest frame's sequence.
     sequence: u32,
+    /// The repeats of a still picture, while they last.
+    refine: Option<Refine>,
+}
+
+/// The repeats of a still picture (module docs § Still pictures).
+struct Refine {
+    /// When they stop.
+    until: Instant,
+    /// When the next is asked for.
+    next: Instant,
+    /// One was asked for and has not come back.
+    asked: bool,
+}
+
+impl Refine {
+    /// After a new picture at `now`, the first repeat comes a frame
+    /// `interval` later, and the last [`REFINE_SPAN`] after that.
+    fn after(now: Instant, interval: Duration) -> Self {
+        Self {
+            until: now + interval + REFINE_SPAN,
+            next: now + interval,
+            asked: false,
+        }
+    }
 }
 
 impl<C, L: Clone> Running<C, L> {
@@ -454,6 +505,7 @@ async fn run<S: Source>(
                         scale,
                         encoding: (bitrate, fps),
                         sequence: 0,
+                        refine: None,
                     });
                 }
                 // The source changed meanwhile, which wakes the loop.
@@ -512,6 +564,11 @@ async fn run<S: Source>(
             && unavailable.is_none()
             && stopped.is_none()
             && !viewers.is_empty();
+        let refine = running
+            .as_ref()
+            .and_then(|running| running.refine.as_ref())
+            .filter(|refine| !refine.asked)
+            .map(|refine| refine.next);
         let event = async {
             match running.as_mut() {
                 Some(running) => running.capture.next().await,
@@ -589,6 +646,18 @@ async fn run<S: Source>(
                     key_frames.ask(Instant::now(), running.as_ref().map(|running| &running.capture));
                 }
             }
+            _ = tokio::time::sleep_until(refine.unwrap_or_else(Instant::now)), if refine.is_some() => {
+                if let Some(running) = &mut running
+                    && let Some(refine) = &mut running.refine
+                {
+                    if Instant::now() >= refine.until {
+                        running.refine = None;
+                    } else {
+                        refine.asked = true;
+                        running.capture.repeat();
+                    }
+                }
+            }
             _ = tokio::time::sleep_until(key_frames.due()), if key_frames.deferred => {
                 key_frames.ask(Instant::now(), running.as_ref().map(|running| &running.capture));
             }
@@ -617,6 +686,22 @@ async fn run<S: Source>(
                             }
                         }
                         running.sequence = frame.sequence;
+                        let now = Instant::now();
+                        let interval = Duration::from_secs_f64(1.0 / f64::from(running.encoding.1.max(1)));
+                        match &mut running.refine {
+                            // The repeat asked for came back: the next follows a
+                            // frame interval later.
+                            Some(refine) if frame.repeat => {
+                                if refine.asked {
+                                    refine.asked = false;
+                                    refine.next = now + interval;
+                                }
+                            }
+                            // One asked for before its span ended.
+                            None if frame.repeat => {}
+                            // A new picture: its own stillness starts the repeats.
+                            _ => running.refine = Some(Refine::after(now, interval)),
+                        }
                     }
                     failure = None;
                     ending.frames += 1;

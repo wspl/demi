@@ -246,6 +246,9 @@ pub trait DeviceCapture: Send + 'static {
     fn ack(&self, sequence: u32, window: u32);
     fn key_frame(&self);
     fn encoding(&self, bitrate: u32, fps: u32);
+    /// Codes the screen as it is once more, as a delta frame
+    /// (`demi_live_view::stream::Capture::repeat`).
+    fn repeat(&self);
 }
 
 /// What a driver tells of a boot it starts, which the device table records

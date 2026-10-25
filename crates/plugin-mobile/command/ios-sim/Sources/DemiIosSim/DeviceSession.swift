@@ -503,6 +503,10 @@ final class DeviceSession: @unchecked Sendable {
     lock.withLock { captures[capture] }?.keyFrame()
   }
 
+  func captureRepeat(capture: UInt32) {
+    lock.withLock { captures[capture] }?.repeatPicture()
+  }
+
   func captureAck(capture: UInt32, sequence: UInt32, window: UInt32, order: UInt64) {
     lock.withLock { captures[capture] }?.ack(sequence: sequence, window: window, order: order)
   }

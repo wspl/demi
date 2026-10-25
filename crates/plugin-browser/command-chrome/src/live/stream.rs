@@ -65,6 +65,10 @@ impl stream::Capture for Capture {
     fn encoding(&self, bitrate: u32, fps: u32) {
         Capture::encoding(self, bitrate, fps);
     }
+
+    fn repeat(&self) {
+        Capture::repeat(self);
+    }
 }
 
 impl stream::Source for TabSource {

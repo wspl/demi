@@ -84,10 +84,12 @@ pub struct Hub {
     tasks: TaskTracker,
 }
 
-/// The share of a device's screen pixels its pictures take: the largest
-/// any of its viewers has shown it at since its capture began, at most
-/// all of them; none until a viewer says.
-type Fit = Arc<watch::Sender<Option<f64>>>;
+/// The share of a device's screen pixels each of its viewers shows it at, at
+/// most all of them. Its pictures take the largest, so each viewer's panel
+/// shows them at its own pixels or scaled down from a larger panel's; none
+/// until a viewer says. A view says its size once it settled, so a drag of
+/// the panel's edge restarts no capture at every step.
+type Fit = Arc<watch::Sender<HashMap<u64, f64>>>;
 
 /// The share of a screen of `pixels` that a view showing it at `shown`
 /// device pixels needs, by the long sides, so a turn changes nothing.
@@ -107,15 +109,10 @@ fn bound(area: FrameArea, pixels: (u32, u32)) -> f64 {
     upright.max(turned).min(1.0)
 }
 
-/// Widens `fit` to `share` when it is larger: a panel that shrinks keeps
-/// the pictures it has, scaled down, rather than restarting them.
-fn widen(fit: &Fit, share: f64) {
-    fit.send_if_modified(|current| match current {
-        Some(current) if *current >= share => false,
-        _ => {
-            *current = Some(share);
-            true
-        }
+/// Viewer `viewer` shows the screen at `share` of its pixels.
+fn show(fit: &Fit, viewer: u64, share: f64) {
+    fit.send_if_modified(|shares| {
+        shares.insert(viewer, share) != Some(share)
     });
 }
 
@@ -126,7 +123,7 @@ impl Hub {
         let (handle, fit) = streams
             .entry(open.native_id.clone())
             .or_insert_with(|| {
-                let fit = Arc::new(watch::Sender::new(None));
+                let fit = Arc::new(watch::Sender::new(HashMap::new()));
                 let handle = StreamHandle::start(
                     DeviceSource {
                         open: open.clone(),
@@ -184,6 +181,10 @@ impl Capture for DeviceCaptureOf {
     fn encoding(&self, bitrate: u32, fps: u32) {
         self.0.encoding(bitrate, fps);
     }
+
+    fn repeat(&self) {
+        self.0.repeat();
+    }
 }
 
 /// `side` scaled, made even, which H.264's chroma needs.
@@ -207,8 +208,9 @@ impl Source for DeviceSource {
     fn layout(&mut self, scale: f64) -> (Layout, (u32, u32)) {
         let screen = *self.open.device.screen().borrow();
         let (width, height) = screen.pixels;
-        // Scaled to the panel's size before it is encoded.
-        let scale = scale * self.fit.borrow().unwrap_or(1.0);
+        // Scaled to the largest panel's size before it is encoded.
+        let share = self.fit.borrow().values().copied().reduce(f64::max).unwrap_or(1.0);
+        let scale = scale * share;
         (
             Layout {
                 orientation: screen.orientation,
@@ -221,7 +223,7 @@ impl Source for DeviceSource {
     /// Not before a viewer said the size it shows the screen at, so no
     /// capture starts at a size it is about to replace.
     fn capturable(&mut self) -> bool {
-        self.fit.borrow().is_some()
+        !self.fit.borrow().is_empty()
     }
 
     fn changed(&mut self, _stopped: bool) -> impl std::future::Future<Output = Change> + Send {
@@ -697,7 +699,7 @@ async fn view(
                             // The screen shows no larger than the area, which
                             // the capture fits until the view says its size.
                             if shown.is_none() {
-                                widen(&watched.fit, bound(laid, open.device.screen().borrow().pixels));
+                                show(&watched.fit, viewer, bound(laid, open.device.screen().borrow().pixels));
                             }
                         }
                     }
@@ -719,7 +721,7 @@ async fn view(
                         shown = Some((width, height));
                         if let Some(watched) = watched.as_ref() {
                             let pixels = open.device.screen().borrow().pixels;
-                            widen(&watched.fit, fit((width, height), pixels));
+                            show(&watched.fit, viewer, fit((width, height), pixels));
                         }
                     }
                 },
@@ -854,8 +856,8 @@ async fn look(
     let (handle, fit, stream) = hub.join(open, viewer);
     let pixels = open.device.screen().borrow().pixels;
     match (shown, area) {
-        (Some(shown), _) => widen(&fit, self::fit(shown, pixels)),
-        (None, Some(area)) => widen(&fit, bound(area, pixels)),
+        (Some(shown), _) => show(&fit, viewer, self::fit(shown, pixels)),
+        (None, Some(area)) => show(&fit, viewer, bound(area, pixels)),
         (None, None) => {}
     }
     if let Some((bitrate, fps, scale)) = delivery.applied() {
@@ -900,6 +902,9 @@ async fn unlook(
     writer: &Writer<LiveModuleMessage>,
 ) {
     let Some(previous) = watched.take() else { return };
+    previous.fit.send_modify(|shares| {
+        shares.remove(&viewer);
+    });
     hub.leave(open, &previous.handle, viewer);
     input.control(Item::Watch(None)).await;
     delivery.rewatch();

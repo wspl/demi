@@ -40,6 +40,11 @@ pub enum CaptureCommand {
     Keyframe {
         capture: u32,
     },
+    /// Encode the latest frame once more, as a delta frame, when the window
+    /// has room for it.
+    Repeat {
+        capture: u32,
+    },
     Encoding {
         capture: u32,
         bitrate: u32,
@@ -105,8 +110,8 @@ pub struct Changed {
 }
 
 /// An encoded frame's header, big-endian: the capture (u32), the sequence
-/// number (u32), flags (u8, 1 = key frame, 2 = the area that changed follows),
-/// three reserved bytes, the timestamp in microseconds (f64), the picture's
+/// number (u32), flags (u8, 1 = key frame, 2 = the area that changed follows,
+/// 4 = the picture coded again at the module's asking), three reserved bytes, the timestamp in microseconds (f64), the picture's
 /// width and height in pixels (u16 each), and the area that changed, x, y,
 /// width and height (u16 each), which a recording's pictures have and the
 /// live view's do not.
@@ -115,6 +120,8 @@ pub struct FrameHeader {
     pub capture: u32,
     pub sequence: u32,
     pub key: bool,
+    /// The picture before, coded again at the module's asking.
+    pub repeat: bool,
     pub timestamp: f64,
     pub width: u16,
     pub height: u16,
@@ -137,6 +144,7 @@ impl FrameHeader {
             capture: u32::from_be_bytes(field(0, 4).try_into().expect("four bytes")),
             sequence: u32::from_be_bytes(field(4, 8).try_into().expect("four bytes")),
             key: header[8] & 1 == 1,
+            repeat: header[8] & 4 == 4,
             timestamp: f64::from_be_bytes(field(12, 20).try_into().expect("eight bytes")),
             width: u16::from_be_bytes(field(20, 22).try_into().expect("two bytes")),
             height: u16::from_be_bytes(field(22, 24).try_into().expect("two bytes")),

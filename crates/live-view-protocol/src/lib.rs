@@ -151,13 +151,18 @@ impl TryFrom<&str> for SourceId {
 /// - the stream generation (u32);
 /// - the frame's sequence number (u32);
 /// - the chunk's index and the frame's chunk count (u16 each);
-/// - flags (u8, 1 = key frame);
+/// - flags (u8, 1 = key frame, 2 = padding);
 /// - three reserved bytes;
 /// - the frame's timestamp in microseconds (f64);
 /// - the picture's width and height in pixels (u16 each).
 ///
 /// Every chunk but a frame's last carries [`VideoHeader::CHUNK_DATA`] bytes of
 /// its data, so a chunk's index places its data in the frame.
+///
+/// A padding chunk carries no picture: the sender's probe of how much the
+/// path carries, which the page acknowledges and drops. Its sequence numbers
+/// probes, not pictures, and its acknowledgement says it is padding, so it
+/// never shares an ID with a picture's chunk.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoHeader {
     pub source: SourceId,
@@ -166,6 +171,7 @@ pub struct VideoHeader {
     pub chunk: u16,
     pub chunks: u16,
     pub key: bool,
+    pub padding: bool,
     pub timestamp: f64,
     pub width: u16,
     pub height: u16,
@@ -189,7 +195,7 @@ impl VideoHeader {
         bytes.extend_from_slice(&self.sequence.to_be_bytes());
         bytes.extend_from_slice(&self.chunk.to_be_bytes());
         bytes.extend_from_slice(&self.chunks.to_be_bytes());
-        bytes.push(u8::from(self.key));
+        bytes.push(u8::from(self.key) | u8::from(self.padding) << 1);
         bytes.extend_from_slice(&[0; 3]);
         bytes.extend_from_slice(&self.timestamp.to_be_bytes());
         bytes.extend_from_slice(&self.width.to_be_bytes());
@@ -219,6 +225,7 @@ impl VideoHeader {
             chunk: u16::from_be_bytes(bytes(8, 2).try_into().expect("two bytes")),
             chunks: u16::from_be_bytes(bytes(10, 2).try_into().expect("two bytes")),
             key: fields[12] & 1 == 1,
+            padding: fields[12] & 2 == 2,
             timestamp: f64::from_be_bytes(bytes(16, 8).try_into().expect("eight bytes")),
             width: u16::from_be_bytes(bytes(24, 2).try_into().expect("two bytes")),
             height: u16::from_be_bytes(bytes(26, 2).try_into().expect("two bytes")),
@@ -235,14 +242,15 @@ impl VideoHeader {
 
 /// The page's acknowledgement of one video chunk, big-endian: the stream
 /// generation and the frame's sequence number (u32 each), the chunk's index
-/// (u16), two reserved bytes, and when the page received the chunk, in
-/// milliseconds on a clock of the page's own (f64), whose differences alone
-/// mean anything.
+/// (u16), flags (u8, 1 = a padding chunk's), a reserved byte, and when the
+/// page received the chunk, in milliseconds on a clock of the page's own
+/// (f64), whose differences alone mean anything.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChunkAck {
     pub generation: u32,
     pub sequence: u32,
     pub chunk: u16,
+    pub padding: bool,
     pub received: f64,
 }
 
@@ -254,7 +262,7 @@ impl ChunkAck {
         bytes.extend_from_slice(&self.generation.to_be_bytes());
         bytes.extend_from_slice(&self.sequence.to_be_bytes());
         bytes.extend_from_slice(&self.chunk.to_be_bytes());
-        bytes.extend_from_slice(&[0; 2]);
+        bytes.extend_from_slice(&[u8::from(self.padding), 0]);
         bytes.extend_from_slice(&self.received.to_be_bytes());
     }
 
@@ -274,6 +282,7 @@ impl ChunkAck {
                     generation: u32::from_be_bytes(bytes(0, 4).try_into().expect("four bytes")),
                     sequence: u32::from_be_bytes(bytes(4, 4).try_into().expect("four bytes")),
                     chunk: u16::from_be_bytes(bytes(8, 2).try_into().expect("two bytes")),
+                    padding: entry[10] & 1 == 1,
                     received: f64::from_be_bytes(bytes(12, 8).try_into().expect("eight bytes")),
                 }
             })

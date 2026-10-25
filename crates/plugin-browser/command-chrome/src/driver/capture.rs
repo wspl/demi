@@ -532,6 +532,10 @@ impl Capture {
         self.command(CaptureCommand::Keyframe { capture: self.id });
     }
 
+    pub fn repeat(&self) {
+        self.command(CaptureCommand::Repeat { capture: self.id });
+    }
+
     pub fn encoding(&self, bitrate: u32, fps: u32) {
         self.command(CaptureCommand::Encoding {
             capture: self.id,
@@ -999,6 +1003,7 @@ fn frame(bytes: &Bytes) -> std::result::Result<Inbound, DecodeError> {
         Frame {
             sequence: header.sequence,
             key: header.key,
+            repeat: header.repeat,
             timestamp: header.timestamp,
             width: header.width,
             height: header.height,

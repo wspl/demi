@@ -19,7 +19,8 @@
 import { socket as address, codec } from './config.js';
 
 // A frame's header, big-endian: capture (u32), sequence (u32), flags (u8,
-// 1 = key frame, 2 = the area that changed follows), three reserved bytes,
+// 1 = key frame, 2 = the area that changed follows, 4 = the picture coded
+// again at the module's asking), three reserved bytes,
 // timestamp in microseconds (f64), width and height in pixels (u16 each), and
 // the area that changed, x, y, width and height (u16 each), which a
 // recording's pictures have.
@@ -86,7 +87,8 @@ function pack(chunk, state) {
   view.setUint32(4, ++state.sequence);
   const changed = state.changes?.get(chunk.timestamp);
   state.changes?.delete(chunk.timestamp);
-  view.setUint8(8, (chunk.type === 'key' ? 1 : 0) | (changed ? 2 : 0));
+  const repeat = state.repeats?.delete(chunk.timestamp);
+  view.setUint8(8, (chunk.type === 'key' ? 1 : 0) | (changed ? 2 : 0) | (repeat ? 4 : 0));
   view.setFloat64(12, chunk.timestamp);
   view.setUint16(20, sides.width);
   view.setUint16(22, sides.height);
@@ -269,7 +271,7 @@ function stop(id) {
 }
 
 // Reconfiguring the same sides keeps the stream: its next frame is a delta
-// frame, so a new budget or a still picture's refinement costs no key frame.
+// frame, so a new budget costs no key frame.
 //
 // The hardware encoder where the browser has one, as the recording's: a tab
 // scrolled for 20 seconds took 65% of a core to watch with the software encoder
@@ -280,26 +282,26 @@ function stop(id) {
 // ignores the budget. Measured on scrolling text at 1072 x 1824, it kept every
 // delta frame near 2 KiB and 39.7 dB PSNR at 20 and at 70 Mbps alike, while the
 // default mode spends the budget: 47 dB at 70 Mbps, 38 dB at 10.
-function configure(state, still) {
+function configure(state) {
   state.encoder.configure({
     codec,
     width: state.width,
     height: state.height,
-    framerate: still ? 1 : state.fps,
+    framerate: state.fps,
     bitrate: state.bitrate,
     bitrateMode: 'variable',
     latencyMode: 'realtime',
     hardwareAcceleration: 'prefer-hardware',
     avc: { format: 'annexb' },
   });
-  state.still = still;
 }
 
 // Encode the latest picture when any of these holds:
 //
 // - it changed;
 // - a key frame is due;
-// - it has stood still long enough to send once more at higher quality.
+// - the module asked for it once more, which a still picture is coded again
+//   for until the encoder has refined it.
 //
 // Encode only while the viewers' windows have room for it: the module says how
 // many frames past the newest they had may come, and a picture that comes
@@ -308,8 +310,7 @@ function encode(state) {
   if (!state.latest || state.sequence + state.encoding - state.ack >= state.window) return;
   if (socket.bufferedAmount > 1024 * 1024) return;
   if (performance.now() < state.nextEncode) return;
-  const refine = !state.settled && performance.now() - state.lastCaptureAt >= 500;
-  if (!state.dirty && !state.force && !refine) return;
+  if (!state.dirty && !state.force && !state.repeat) return;
   if (!state.encoder) {
     state.encoder = new VideoEncoder({
       output(chunk) {
@@ -328,19 +329,18 @@ function encode(state) {
   const width = even(state.sendWidth);
   const height = even(state.sendHeight);
   // The first picture, or the first at a new size, starts the encoding at its
-  // sides with a key frame. A still picture is encoded once more with a
-  // second's budget, and the next change goes back to the frame rate's.
+  // sides with a key frame.
   if (state.width !== width || state.height !== height) {
     state.width = width;
     state.height = height;
-    configure(state, refine);
+    configure(state);
     state.force = true;
-  } else if (state.still !== refine) {
-    configure(state, refine);
   }
   const visible = state.latest.visibleRect;
   const timestamp = Math.round(performance.now() * 1000);
   state.sides.set(timestamp, { width, height });
+  // Only a picture that neither changed nor is a key frame answers a repeat.
+  if (!state.dirty && !state.force) state.repeats.add(timestamp);
   const frame = new VideoFrame(state.latest, {
     timestamp,
     visibleRect: {
@@ -358,9 +358,9 @@ function encode(state) {
   } finally {
     frame.close();
   }
-  state.settled = refine;
   state.force = false;
   state.dirty = false;
+  state.repeat = false;
   state.nextEncode = Math.max(state.nextEncode + 1000 / state.fps, performance.now());
 }
 
@@ -380,12 +380,12 @@ function liveConsumer(message, source) {
     ack: 0,
     force: true,
     dirty: false,
-    settled: false,
-    still: false,
+    repeat: false,
+    // The timestamps of the pictures in the encoder that answer a repeat.
+    repeats: new Set(),
     latest: null,
     encoder: null,
     nextEncode: 0,
-    lastCaptureAt: 0,
     captured: 0,
     width: 0,
     height: 0,
@@ -398,8 +398,6 @@ function liveConsumer(message, source) {
     frame(frame) {
       state.latest?.close();
       state.latest = frame.clone();
-      state.lastCaptureAt = performance.now();
-      state.settled = false;
       state.dirty = true;
       state.captured++;
     },
@@ -724,12 +722,14 @@ socket.addEventListener('message', event => {
     case 'keyframe':
       if (state) state.force = true;
       break;
+    case 'repeat':
+      if (state) state.repeat = true;
+      break;
     case 'encoding':
       if (!state) break;
       state.bitrate = message.bitrate;
       state.fps = message.fps;
-      if (state.encoder) configure(state, state.still);
-      state.settled = false;
+      if (state.encoder) configure(state);
       break;
   }
 });

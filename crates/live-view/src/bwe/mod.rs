@@ -1,14 +1,17 @@
-//! The delay-based half of Google Congestion Control (GoogCC), ported from
-//! str0m 0.24.1's `src/bwe/` with its algorithm unchanged.
+//! The delay-based half of Google Congestion Control (GoogCC) and its probe
+//! estimator, ported from str0m 0.24.1's `src/bwe/` with their algorithm
+//! unchanged.
 //!
 //! The port holds the arrival groups, the trendline estimator, the AIMD rate
 //! control and the acknowledged bit rate estimator, which str0m ported from
-//! libwebrtc's `delay_based_bwe.cc`.
+//! libwebrtc's `delay_based_bwe.cc`, and the probe estimator, from its
+//! `probe_bitrate_estimator.cc`. When to probe is `live-view`'s own
+//! (`probe`).
 //!
 //! For each chunk the page acknowledged, it takes when the Host sent it, when
 //! the page received it and when the acknowledgement arrived. This is what
-//! str0m takes from a video track's TWCC feedback. There are no padding probes,
-//! so the estimate rises by the rate control's own increase.
+//! str0m takes from a video track's TWCC feedback. A probe's chunks are
+//! padding the page acknowledges like a picture's.
 //!
 //! Copyright 2022 Martin Algesten
 //!
@@ -44,6 +47,7 @@ mod acked_bitrate_estimator;
 mod average;
 mod delay;
 mod macros;
+pub mod probe;
 mod time;
 
 use acked_bitrate_estimator::AckedBitrateEstimator;
@@ -127,8 +131,7 @@ fn already_happened() -> Instant {
 }
 
 /// The delay-based estimate of what the path carries, as str0m's
-/// `SendSideBandwidthEstimator` keeps it without its loss controller and
-/// probes.
+/// `SendSideBandwidthEstimator` keeps it without its loss controller.
 pub struct DelayBasedEstimate {
     delay_controller: DelayController,
     acked_bitrate_estimator: AckedBitrateEstimator,
@@ -146,15 +149,16 @@ impl DelayBasedEstimate {
     }
 
     /// Takes in a batch of acknowledged chunks, as str0m takes a TWCC
-    /// report's, and answers the estimate.
-    pub fn update(&mut self, mut acked: Vec<AckedPacket>, now: Instant) -> Option<Bitrate> {
+    /// report's, with what a probe among them measured, and answers the
+    /// estimate. A probe's result becomes the estimate.
+    pub fn update(&mut self, mut acked: Vec<AckedPacket>, probe: Option<Bitrate>, now: Instant) -> Option<Bitrate> {
         acked.sort_by(AckedPacket::order_by_receive_time);
         for packet in &acked {
             self.acked_bitrate_estimator
                 .update(packet.remote_recv_time, packet.size);
         }
         let acked_bitrate = self.acked_bitrate_estimator.current_estimate();
-        self.delay_controller.update(&acked, acked_bitrate, None, now)
+        self.delay_controller.update(&acked, acked_bitrate, probe, now)
     }
 
     /// When [`Self::handle_timeout`] is due.
