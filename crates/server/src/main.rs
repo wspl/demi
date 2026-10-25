@@ -223,6 +223,17 @@ fn lock(layout: &Layout) -> Result<std::fs::File, Box<dyn std::error::Error>> {
     Ok(lock)
 }
 
+/// `argument` as a shell reads it back.
+fn quoted(argument: &str) -> String {
+    let plain = !argument.is_empty()
+        && argument.chars().all(|c| c.is_ascii_alphanumeric() || "-_./:=,@%+".contains(c));
+    if plain {
+        argument.to_owned()
+    } else {
+        format!("'{}'", argument.replace('\'', r"'\''"))
+    }
+}
+
 /// Requires root on a server; a test's layout under another root runs as
 /// anyone.
 fn require_root(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
@@ -235,12 +246,24 @@ fn require_root(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
 fn setup(layout: &Layout, options: setup::Options) -> Result<(), Box<dyn std::error::Error>> {
     match setup::run(layout, &Systemd, options)? {
         setup::Outcome::SetUp => Ok(()),
-        setup::Outcome::Guide => {
+        setup::Outcome::Guide { missing } => {
             let mut command = <Cli as clap::CommandFactory>::command();
             let setup = command
                 .find_subcommand_mut("setup")
                 .expect("setup is a subcommand");
             println!("{}", setup.render_long_help());
+            // The run's own parameters, such as the channel install.sh
+            // passed, go on into the next run.
+            let given = std::env::args().skip_while(|argument| argument != "setup").skip(1);
+            let command: Vec<String> = given
+                .map(|argument| quoted(&argument))
+                .chain(missing.iter().map(|parameter| parameter.to_string()))
+                .collect();
+            println!(
+                "\nThis run is missing {}. Run it again with them:\n  demi-server setup {}",
+                missing.join(", "),
+                command.join(" ")
+            );
             Ok(())
         }
     }

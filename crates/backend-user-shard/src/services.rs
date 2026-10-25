@@ -187,6 +187,9 @@ pub struct ServiceSettings {
     /// The file an administrator's update is requested in; none on a
     /// server that offers no updates.
     pub upgrade_request: Option<std::path::PathBuf>,
+    /// The channel Settings › Updates starts on until an administrator
+    /// chooses another.
+    pub upgrade_channel: demi_web_api_protocol::server_upgrade::UpgradeChannel,
     /// The backend's update state, which says when it stops for an update.
     pub update: Arc<demi_backend_database::update::Update>,
 }
@@ -360,6 +363,7 @@ impl Services {
         let sync = SyncRegistry::default();
         let upgrades = crate::upgrades::Upgrades::start(
             settings.upgrade_request.clone(),
+            settings.upgrade_channel,
             control.clone(),
             sync.clone(),
             settings.update.clone(),

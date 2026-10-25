@@ -591,7 +591,9 @@ fn spawn_backend(
         command
             .command_mut()
             .env(demi_runner_protocol::release::UPGRADE_REQUEST_ENV, updates.join("version"))
-            .env(demi_runner_protocol::release::MANAGE_SOCKET_ENV, updates.join("manage.sock"));
+            .env(demi_runner_protocol::release::MANAGE_SOCKET_ENV, updates.join("manage.sock"))
+            // A development build is a pre-release.
+            .env("DEMI_UPGRADE_CHANNEL", "canary");
     }
     if let Some(codex) = codex {
         command

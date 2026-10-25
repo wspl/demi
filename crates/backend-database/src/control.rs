@@ -394,10 +394,10 @@ impl ControlService {
         .await
     }
 
-    /// The channel the server's updates come from: Beta until an
-    /// administrator chose another.
-    pub async fn upgrade_channel(&self) -> Result<UpgradeChannel, StorageError> {
-        self.call(|connection, _| {
+    /// The channel the server's updates come from: `installed`, the
+    /// installation's, until an administrator chose another.
+    pub async fn upgrade_channel(&self, installed: UpgradeChannel) -> Result<UpgradeChannel, StorageError> {
+        self.call(move |connection, _| {
             let channel: Option<String> = connection
                 .query_row("SELECT upgrade_channel FROM server_settings WHERE id = 1", [], |row| row.get(0))
                 .optional()?;
@@ -407,7 +407,7 @@ impl ControlService {
                     column: "upgrade_channel",
                     reason: format!("{channel} is no channel"),
                 })?,
-                None => UpgradeChannel::Beta,
+                None => installed,
             })
         })
         .await

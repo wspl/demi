@@ -440,6 +440,7 @@ impl Backend {
             cloud: CloudServices::new(machines, config.cloud),
             lifecycle: config.lifecycle,
             upgrade_request: config.upgrade_request,
+            upgrade_channel: config.upgrade_channel,
             update: update.clone(),
         };
         let services = Services::start(storage.clone(), keys, providers, settings);

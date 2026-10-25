@@ -28,10 +28,22 @@ pub enum Channel {
 /// without end.
 pub const REDIRECTS: usize = 10;
 
-/// A release as GitHub's API describes it, of which only the tag matters.
+/// A release as GitHub's API describes it, of which only the tag and
+/// whether it is a pre-release matter.
 #[derive(serde::Deserialize)]
 struct Release {
     tag_name: String,
+    #[serde(default)]
+    prerelease: bool,
+}
+
+/// The channel whose releases include `version`: Canary for a pre-release,
+/// Beta for one Demi published.
+pub async fn channel_of(version: &Version) -> std::io::Result<Channel> {
+    let release = github::<Release>(&format!("releases/tags/v{version}"))
+        .await?
+        .ok_or_else(|| std::io::Error::other(format!("{REPOSITORY} has no release v{version}")))?;
+    Ok(if release.prerelease { Channel::Canary } else { Channel::Beta })
 }
 
 /// The newest release of `channel`, or none when it has none: no release is

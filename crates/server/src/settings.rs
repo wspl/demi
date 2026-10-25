@@ -17,6 +17,11 @@ impl Settings {
         Self { variables }
     }
 
+    /// Adds the setting `name`, which no other gives.
+    pub fn add(&mut self, name: &str, value: &str) {
+        self.variables.push((name.to_owned(), value.to_owned()));
+    }
+
     pub fn read(path: &Path) -> io::Result<Self> {
         let variables = dotenvy::from_path_iter(path)
             .map_err(|error| io::Error::other(format!("{}: {error}", path.display())))?
