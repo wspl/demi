@@ -81,14 +81,27 @@ Demi's features fall into four groups.
 - **Research**: Search the web and read pages, PDFs and documents.
 - **Real browser**: Demi drives Chrome to sign in, fill in forms and download
   files. Watch it in the side panel and take over at any time.
+- **Phone apps**: Demi drives iOS Simulators and Android Emulators to install,
+  run and test an app, and records the screen. Watch them in the side panel and
+  take over at any time.
 - **Files and data**: Work with documents, spreadsheets and images, and get the
   results back as attachments.
+- **Images, video and audio**: Make and edit images, and make videos, speech,
+  music and sound effects through the model providers you add.
 - **Share**: Share a conversation, or a single answer, as a read-only link.
+- **Comments and questions**: Select words in a reply to comment on them or ask
+  about them, without interrupting the task.
+- **Search**: Find any message in every conversation, or in the one you are
+  reading.
 
 ### Anywhere, on any machine
 
 - **Works in any browser**: Desktop, tablet or phone, with nothing to install.
+- **Five languages**: English, Simplified Chinese, Traditional Chinese, Japanese
+  and Korean.
 - **Always on**: Tasks keep running on the server after you close the tab.
+- **Notifications**: Get notified on your phone and computers when a task
+  finishes or needs you, even with Demi closed.
 - **One place for every conversation**: The server stores conversations
   instead of scattering them across the machines the agent worked on. Start on
   your laptop and continue on your phone, live.
@@ -103,6 +116,11 @@ Demi's features fall into four groups.
   example to build on a Mac and test on Windows.
 - **Switch machines mid-task**: Move a conversation between the cloud and your
   computers without starting over.
+- **Files on every machine**: Browse the files of the sandbox and each of your
+  computers, preview images, videos, audio, PDFs and Markdown, upload and
+  download, and search file names and text.
+- **Port forwarding**: Reach a port of one machine from another, and let your
+  server use a model that runs on your own computer, such as Ollama.
 
 ### Agent
 
@@ -114,6 +132,10 @@ Demi's features fall into four groups.
 - **Workflows**: Bundle a set of agent profiles with instructions for one kind
   of work. Keep workflows in a project's `.demi/workflows/`, pick one in the
   message box, and share them with your team through the repository.
+- **Schedules**: Wake a conversation once, on a repeating cycle, at intervals,
+  by cron, when a command's output changes or when a URL is called.
+- **Conversations work together**: A conversation sends messages to another and
+  reads other conversations' transcripts.
 - **Skills**: Install skills to teach Demi new tasks.
 - **Secure credentials**: Demi requests API keys and passwords through a
   secure form, and they never appear in the conversation.
@@ -126,6 +148,8 @@ Demi's features fall into four groups.
 - **Any API**: Anthropic, OpenAI, Gemini, or any compatible endpoint.
 - **Switch models any time**: Change the model or reasoning effort, even in the
   middle of a task.
+- **Usage and cost**: See how much of each subscription's limits is used and
+  when they reset, and what the work cost over the last hour, day or all time.
 - **Multi-user**: Each user has their own sandbox, devices and
   conversations, on the admin's subscriptions or their own.
 - **Admin tools**: Add users, manage roles, reset passwords and send phone
