@@ -308,7 +308,8 @@ impl Drop for Notices {
 /// Writes `bytes` whole to `path` in the backend's data directory, which its
 /// unprivileged user owns: the staged file is created anew and never through
 /// a link that user left in its place, and every user may read it, as the
-/// backend's user must, whatever this process's umask.
+/// backend's user must, even where the directory's default ACL would give a
+/// new file narrower modes.
 fn keep(path: &Path, bytes: &[u8]) -> io::Result<()> {
     use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
     let staged = path.with_extension("new");

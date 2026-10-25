@@ -165,6 +165,10 @@ fn main() -> ExitCode {
     // A panic leaves its report on standard error
     // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
+    // What this program writes, releases, units, snapshots and the update's
+    // record, is read by the services' own users, so its modes never follow
+    // the umask of the shell that ran it, as dpkg's do not.
+    rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o022));
     let cli = Cli::parse();
     let layout = Layout::new(cli.root.clone());
     let requested = matches!(cli.command, Action::Upgrade { requested: true, .. });
