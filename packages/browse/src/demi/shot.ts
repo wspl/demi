@@ -15,12 +15,14 @@
 //   page settles.
 //
 // Playwright's own screenshots go through a session of their own, which
-// drops the pixel ratio the tool emulates on its session with the slot's
-// page. So the browser's `capture` takes the slot's page. Any other page,
-// such as WebKit's, whose context Playwright made with the slot's screen,
-// is taken by Playwright, which has no zoom.
+// drops the pixel ratio the tool emulates on its session with a page until
+// the page loads again. So the browser's `capture` takes every page of the
+// slot's browser, and a script's `page.screenshot` or a locator's
+// `screenshot` there fails, naming this helper (`routeToShot`). Any other
+// page, such as WebKit's, whose context Playwright made with the slot's
+// screen, is taken by Playwright, which has no zoom.
 import { writeFileSync } from 'node:fs'
-import type { Locator, Page } from 'playwright'
+import type { ElementHandle, Locator, Page } from 'playwright'
 import { z } from 'zod'
 import { pngSize, shotPath, type Clip } from '../shots'
 import { Failure, type Tool } from '../tool'
@@ -54,9 +56,9 @@ export async function shot(tool: Tool, name: string | undefined, options: ShotOp
   if (options.page !== undefined && options.element !== undefined && page !== options.page.mainFrame().page()) {
     throw new Failure('demi.shot\'s element is on another page than its page')
   }
-  const own = page === slotPage
+  const own = routed.has(page)
   if (!own && options.zoom !== undefined) {
-    throw new Failure('demi.shot zooms only the slot\'s page: Playwright, which takes any other, renders no page magnified')
+    throw new Failure('demi.shot zooms only the pages of the slot\'s browser: Playwright, which takes any other, renders no page magnified')
   }
   if (!options.now) {
     await settle(page)
@@ -84,7 +86,7 @@ export async function shot(tool: Tool, name: string | undefined, options: ShotOp
   }
   const path = shotPath(tool.slot, name)
   writeFileSync(path, own
-    ? await tool.browser.capture({ clip, scale: options.zoom ?? 1, full: options.full })
+    ? await tool.browser.capture({ page, clip, scale: options.zoom ?? 1, full: options.full })
     // The caret stays as it shows, as in the slot's pictures.
     : await page.screenshot({ clip, fullPage: options.full, caret: 'initial' }))
   tool.wrote({ kind: 'shot', path, detail: pngSize(path) })
@@ -146,4 +148,61 @@ async function settle(page: Page): Promise<void> {
       await frame()
     }
   }, SETTLE_MS)
+}
+
+/** Marks the locator prototype `routeToShot` routed. */
+const ROUTED = Symbol('routed to demi.shot')
+
+/** The pages of the slot's browser, which only `demi.shot` takes. */
+const routed = new WeakSet<Page>()
+
+/** The failure of a Playwright screenshot of a page of the slot's browser (module comment). */
+const REFUSED = 'A Playwright screenshot of the slot\'s browser drops the page\'s pixel ratio until the page loads again: '
+  + 'take it with demi.shot(name, { page, element, region, full })'
+
+/** Whether the element handles' prototype is routed, or being routed. */
+let handlesRouted = false
+
+/**
+ * Makes `page.screenshot`, and the `screenshot` of every locator and element
+ * handle on `page`, fail with what to use instead (module comment).
+ */
+export function routeToShot(page: Page): void {
+  routed.add(page)
+  page.screenshot = () => Promise.reject(new Failure(REFUSED))
+  if (!handlesRouted) {
+    handlesRouted = true
+    // A page that closes as it opens leaves the routing to the next one.
+    routeHandles(page).catch(() => {
+      handlesRouted = false
+    })
+  }
+  // Every locator shares one prototype, which is routed once; one on another page, such as WebKit's, keeps its own.
+  const prototype = Object.getPrototypeOf(page.locator('html')) as Locator & { [ROUTED]?: true }
+  if (prototype[ROUTED]) {
+    return
+  }
+  const own = prototype.screenshot
+  prototype.screenshot = function (this: Locator, options) {
+    return routed.has(this.page()) ? Promise.reject(new Failure(REFUSED)) : own.call(this, options)
+  }
+  prototype[ROUTED] = true
+}
+
+/**
+ * Routes the prototype every element handle shares, which only a handle of
+ * a page's element reaches: the call makes one before its script can.
+ */
+async function routeHandles(page: Page): Promise<void> {
+  const handle = await page.evaluateHandle(() => document.documentElement)
+  const prototype = Object.getPrototypeOf(handle) as ElementHandle
+  await handle.dispose()
+  const own = prototype.screenshot
+  prototype.screenshot = async function (this: ElementHandle, options) {
+    const frame = await this.ownerFrame()
+    if (frame && routed.has(frame.page())) {
+      throw new Failure(REFUSED)
+    }
+    return own.call(this, options)
+  }
 }

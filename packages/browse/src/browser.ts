@@ -21,6 +21,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { chromium, type BrowserContext, type CDPSession, type Browser as PlaywrightBrowser, type Page } from 'playwright'
 import { routeToEmulate } from './demi/emulate'
+import { routeToShot } from './demi/shot'
 import { Failure } from './tool'
 import { applyEmulation } from './emulation'
 import { Logs } from './logs'
@@ -257,11 +258,13 @@ export class Browser {
     context.on('page', (page) => {
       // Before the script gets the page: `newPage` answers after this event.
       routeToEmulate(page, owner)
+      routeToShot(page)
       // A page that closes as it opens, such as a popup, needs no emulation.
       this.session(page, connection).catch(() => undefined)
     })
     for (const page of context.pages()) {
       routeToEmulate(page, owner)
+      routeToShot(page)
       await this.session(page, connection)
     }
     this.attached = connection
@@ -432,16 +435,18 @@ export class Browser {
   }
 
   /**
-   * Takes a PNG of the page through the server's own session, whose emulation survives the
-   * capture. A screenshot through another session, as Playwright's are, drops the pixel
-   * ratio the page emulates.
+   * Takes a PNG of a page of the slot's browser, the slot's page unless `page` names
+   * another, through the server's own session, whose emulation survives the capture. A
+   * screenshot through another session, as Playwright's are, drops the pixel ratio the
+   * page emulates until the page loads again.
    *
    * - `clip` is in CSS pixels of the viewport.
    * - `scale` multiplies the page's pixel ratio.
    * - `full` takes the whole page.
    */
-  async capture(options: { clip?: Clip, scale?: number, full?: boolean } = {}): Promise<Buffer> {
-    const session = await this.cdp()
+  async capture(options: { page?: Page, clip?: Clip, scale?: number, full?: boolean } = {}): Promise<Buffer> {
+    const page = options.page ?? await this.page()
+    const session = await this.session(page, await this.connection())
     const metrics = await session.send('Page.getLayoutMetrics')
     const viewport = metrics.cssVisualViewport
     let clip: Clip

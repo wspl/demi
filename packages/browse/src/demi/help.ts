@@ -26,7 +26,7 @@ what it returns, then the page's state; a call ends after ten minutes unless
                                          built serves the web app's build through vite preview
     demi.down(...servers)                stop those, or all and the browser; demi.down({ wipe: true }) also removes the data and the runner
     demi.stop()                          close the browser
-    demi.shot(name, { page, element, region, pad, zoom, full, now })   save a PNG at the page's real size, of page (such as demi.webkit()'s) or the slot's; answers its path
+    demi.shot(name, { page, element, region, pad, zoom, full, now })   save a PNG at the page's real size, of page (such as demi.webkit()'s) or the slot's; answers its path; the one way to picture the slot's browser, where page.screenshot fails
     demi.timeline(action, [0, 100, 1500], { region, name })      frames painted those ms after the action
     demi.frames(probe)                   run probe in the page at every frame it draws; .stop() answers what each read, with when
     demi.focusRings({ root, name, shots })   Tab through the page and focus what Tab skips; report each focus indicator an ancestor clips or an element covers, with px per side, and photograph it
