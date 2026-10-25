@@ -75,6 +75,9 @@ pub struct HostOperations {
     pub closed: CancellationToken,
     /// The forwards this runner is an end of, as the backend last said.
     pub forwards: crate::forward::ForwardList,
+    /// Where the pipe channels the other runners open wait for their
+    /// readers.
+    pub pipes: crate::pairs::InboundPipes,
 }
 
 /// An open direct stream as the backend knows it: reported open before it
@@ -436,6 +439,10 @@ impl Operations for HostOperations {
                 .map_err(|error| ChannelError::new(ChannelErrorCode::HostOperationFailed, 502, error.to_string()))?;
             Ok(demi_runner_direct::Forwarded { tcp, ended })
         })
+    }
+
+    fn pipe(&self, from: String, pipe: String, at: u64, channel: demi_runner_direct::PairChannel) {
+        self.pipes.arrived(from, pipe, at, channel, &self.control);
     }
 }
 

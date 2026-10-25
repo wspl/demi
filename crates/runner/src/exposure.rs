@@ -175,7 +175,7 @@ impl Serving {
         let streamed = futures_util::stream::unfold(read, |mut read| async move {
             read.recv().await.map(|chunk| (chunk, read))
         });
-        let piped = self.pipes.stream(&answer.url, streamed, &cancel);
+        let piped = self.pipes.stream(&answer, streamed, &cancel);
         let exchange = self.exchange(&id, &url, &method, &headers, body.as_ref(), chunks, &cancel, &seen);
         tokio::pin!(piped);
         let mut exchange = Box::pin(exchange);
@@ -210,7 +210,7 @@ impl Serving {
             ms = began.elapsed().as_millis() as u64,
             "a request to an exposed port ended"
         );
-        report_pipe(&self.control, answer.id, sent);
+        report_pipe(&self.control, answer.id.clone(), sent);
         if let Some(body) = body {
             report_pipe(&self.control, body.id, body_read);
         }
@@ -297,7 +297,7 @@ impl Serving {
         let map = end_to_end(&map);
         let mut request = self.http.request(method, url).headers(map);
         if let Some(body) = body {
-            let read = match self.pipes.get(&body.url, cancel.clone()).await {
+            let read = match self.pipes.get(&body, cancel.clone()).await {
                 Ok(read) => read,
                 Err(error) => {
                     let failed = io::Error::new(error.kind(), error.to_string());

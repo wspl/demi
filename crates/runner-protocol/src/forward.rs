@@ -1,7 +1,7 @@
 //! Port forwards between the user's Hosts (`crates/backend-user-shard/src/shard/port_forwards.rs`): what the
-//! backend tells each runner of the forwards it is an end of, what the
-//! Listen On runner announces of each, and a forwarded connection's channel
-//! when two runners talk directly.
+//! backend tells each runner of the forwards it is an end of, and what the
+//! Listen On runner announces of each. A forwarded connection's channel when
+//! two runners talk directly is a pair's ([`crate::pairs`]).
 
 use std::time::Duration;
 
@@ -9,24 +9,12 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::pairs::PairReason;
+
 /// How long a forwarded connection's target has to accept it, and its two
 /// relay pipes to both open, before the connection is closed as a refused
 /// one is (`crates/backend-user-shard/src/shard/port_forwards.rs`).
 pub const DEADLINE: Duration = Duration::from_secs(10);
-/// How long a pair's peer stays once the last connection between the pair
-/// ended (`crates/runner-direct/src/pairs.rs`).
-pub const PEER_IDLE: Duration = Duration::from_secs(60);
-
-/// The waits before each new attempt at a direct peer while a pair is on
-/// the relay: 1, 2 and 5 minutes, then every 10, as the page's
-/// (`packages/web/src/direct/index.ts`).
-pub const RETRY_WAITS: [Duration; 4] = [
-    Duration::from_secs(60),
-    Duration::from_secs(2 * 60),
-    Duration::from_secs(5 * 60),
-    Duration::from_secs(10 * 60),
-];
-
 /// The most characters of a Connect To address, `host:port`: a host name is at
 /// most 253 characters (RFC 1035) and a port five.
 pub const ADDRESS_CHARS: usize = 260;
@@ -74,52 +62,4 @@ pub enum ForwardRunState {
     },
     /// Another program, or another forward, holds the port.
     PortInUse,
-}
-
-/// Why a pair of runners talks through the relay although it may talk
-/// directly: the direct channel's reasons that two runners can meet
-/// (`packages/web-ui/src/devices/direct.ts`), the Listen On runner on the
-/// page's side and the Connect To runner on the device's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
-pub enum PairReason {
-    /// Every pair of addresses was checked and none answered, and both
-    /// found their public address.
-    Unreachable,
-    /// One side found no public address: its network blocks UDP or STUN.
-    Network { side: PairSide },
-    /// The Connect To runner keeps as many peers as it may.
-    Busy,
-    /// A connected peer failed.
-    Dropped,
-    /// Crossing networks is off and no local pair answered.
-    NotOffered,
-}
-
-/// A side of a pair, as the direct channel names a page's and a device's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub enum PairSide {
-    /// The Listen On runner, which offers as a page does.
-    Browser,
-    /// The Connect To runner, which answers as a device does.
-    Device,
-}
-
-/// The Listen On runner's first message on a forwarded connection's
-/// channel: the forward it belongs to.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
-#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ForwardHeader {
-    Forward {
-        #[garde(length(min = 1))]
-        forward: String,
-    },
-}
-
-/// A credit on a channel that grants it (`crates/runner-direct/src/channel.rs`): the receiver lets the sender send `grant` bytes more.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Grant {
-    pub grant: u32,
 }

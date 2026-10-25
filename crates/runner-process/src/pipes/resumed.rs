@@ -32,6 +32,7 @@ use tokio_tungstenite::tungstenite::{
 };
 use tokio_util::sync::CancellationToken;
 
+use super::moves::{self, Relayed};
 use super::{Attempt, PipeClient, RECONNECT_FOR, RECONNECT_PAUSE, cancelled, socket_error};
 
 /// How one connection of the pipe ended.
@@ -43,33 +44,35 @@ enum Ended {
 }
 
 impl PipeClient {
-    /// Reads the pipe at `path` to its end, through as many connections as it
-    /// takes: the bytes of its data frames, in order, once each. An end frame
-    /// with a cause is that cause's error; a pipe the backend no longer knows,
-    /// after a minute of asking, is a broken pipe.
+    /// Reads `pipe` to its end, through as many connections as it takes:
+    /// the bytes of its data frames, and of the direct channels its moves
+    /// name, in order, once each. An end frame with a cause is that cause's
+    /// error; a pipe the backend no longer knows, after a minute of asking,
+    /// is a broken pipe.
     pub async fn resumed(
         &self,
-        path: &str,
+        pipe: &wire::PipeRef,
         cancel: CancellationToken,
     ) -> io::Result<BoxStream<'static, io::Result<Bytes>>> {
         // A path that is no pipe's fails here, not after a minute.
-        self.url(path)?;
+        self.url(&pipe.url)?;
         let (sender, receiver) = mpsc::channel(1);
         let client = self.clone();
-        let path = path.to_owned();
+        let path = pipe.url.clone();
         tokio::spawn(async move {
             client.resume(&path, &sender, &cancel).await;
         });
-        Ok(futures_util::stream::unfold(receiver, |mut receiver| async move {
+        let relayed = futures_util::stream::unfold(receiver, |mut receiver| async move {
             receiver.recv().await.map(|item| (item, receiver))
         })
-        .boxed())
+        .boxed();
+        Ok(moves::follow(pipe.id.clone(), relayed, self.pairs()))
     }
 
     async fn resume(
         &self,
         path: &str,
-        sender: &mpsc::Sender<io::Result<Bytes>>,
+        sender: &mpsc::Sender<io::Result<Relayed>>,
         cancel: &CancellationToken,
     ) {
         let mut session = wire::Session::new();
@@ -116,7 +119,7 @@ impl PipeClient {
         &self,
         path: &str,
         session: &mut wire::Session,
-        sender: &mpsc::Sender<io::Result<Bytes>>,
+        sender: &mpsc::Sender<io::Result<Relayed>>,
         cancel: &CancellationToken,
         refused_since: &mut Option<tokio::time::Instant>,
     ) -> Result<Ended, Attempt> {
@@ -228,7 +231,14 @@ impl PipeClient {
                         .map_err(|error| Attempt::Refused(io::Error::new(io::ErrorKind::InvalidData, error)))?;
                     match frame {
                         PipeFrame::Data(bytes) => {
-                            if sender.send(Ok(bytes)).await.is_err() {
+                            if sender.send(Ok(Relayed::Bytes(bytes))).await.is_err() {
+                                close(&mut socket).await;
+                                return Ok(Ended::Dropped);
+                            }
+                            session.handled();
+                        }
+                        PipeFrame::Moved { to, at, source } => {
+                            if sender.send(Ok(Relayed::Moved { to, at, source })).await.is_err() {
                                 close(&mut socket).await;
                                 return Ok(Ended::Dropped);
                             }

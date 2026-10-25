@@ -12,19 +12,22 @@
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade, close_code};
 use axum::response::Response;
 use demi_runner_protocol::wire::{
-    self, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, Read, STREAM_PIPE_MESSAGE_BYTES, close_reason,
+    self, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeMove, PipeSink, Read, STREAM_PIPE_MESSAGE_BYTES,
+    close_reason,
 };
 use futures_util::{SinkExt as _, StreamExt as _};
 use std::{sync::Arc, time::Duration};
 
-use crate::{DeviceSource, SinkSession};
+use crate::{DeviceSource, SinkSession, SourceMessage};
 
 /// How long a runner has to say how many messages it delivered once its
 /// WebSocket opened.
 const OPENING: Duration = Duration::from_secs(15);
 
 /// Takes the upgrade of `source`'s stream pipe: its binary messages are the
-/// bytes, forwarded as the sink takes them.
+/// bytes, forwarded as the sink takes them, and its text messages its moves
+/// ([`PipeMove`]). A pipe that may move to the direct channel tells the runner
+/// its sink's device in a text message ([`PipeSink`]).
 ///
 /// - The runner's normal close frame ends the pipe.
 /// - Any other close, or a connection lost without one, fails the pipe.
@@ -42,11 +45,20 @@ pub fn accept_stream_pipe(upgrade: WebSocketUpgrade, source: DeviceSource) -> Re
 
 async fn relay(socket: WebSocket, source: DeviceSource) {
     let (mut to_runner, from_runner) = socket.split();
+    let mut sink = source.sink();
     let body = futures_util::stream::unfold(Some(from_runner), |reader| async move {
         let mut reader = reader?;
         loop {
             let failure = match reader.next().await {
-                Some(Ok(Message::Binary(bytes))) => return Some((Ok(bytes), Some(reader))),
+                Some(Ok(Message::Binary(bytes))) => {
+                    return Some((Ok(SourceMessage::Bytes(bytes)), Some(reader)));
+                }
+                Some(Ok(Message::Text(text))) => match serde_json::from_str::<PipeMove>(&text) {
+                    Ok(PipeMove { to, at }) => {
+                        return Some((Ok(SourceMessage::Moved { to, at }), Some(reader)));
+                    }
+                    Err(error) => format!("a stream pipe's text message is no move: {error}"),
+                },
                 Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
                 Some(Ok(Message::Close(None))) => return None,
                 Some(Ok(Message::Close(Some(frame)))) if frame.code == close_code::NORMAL => {
@@ -59,14 +71,40 @@ async fn relay(socket: WebSocket, source: DeviceSource) {
                 Some(Ok(Message::Close(Some(frame)))) => {
                     format!("the runner closed the stream pipe ({}): {}", frame.code, frame.reason)
                 }
-                Some(Ok(Message::Text(_))) => "a stream pipe carries binary messages".to_owned(),
                 Some(Err(error)) => error.to_string(),
                 None => "the stream pipe's connection ended without a close frame".to_owned(),
             };
             return Some((Err(failure), None));
         }
     });
-    let frame = match source.pump(body).await {
+    // The sink's device goes to the runner as soon as the pipe knows it, while
+    // the bytes flow.
+    let tell = async {
+        let mut told = None;
+        loop {
+            let device = sink.borrow_and_update().clone();
+            if let Some(device) = device
+                && told.as_ref() != Some(&device)
+            {
+                let text = serde_json::to_string(&PipeSink { sink: device.clone() })
+                    .expect("a pipe's sink encodes");
+                if to_runner.send(Message::Text(text.into())).await.is_err() {
+                    return;
+                }
+                told = Some(device);
+            }
+            if sink.changed().await.is_err() {
+                return;
+            }
+        }
+    };
+    let pumped = source.pump(body);
+    tokio::pin!(pumped);
+    let outcome = tokio::select! {
+        outcome = &mut pumped => outcome,
+        () = tell => pumped.await,
+    };
+    let frame = match outcome {
         Ok(()) => CloseFrame {
             code: close_code::NORMAL,
             reason: "drained".into(),

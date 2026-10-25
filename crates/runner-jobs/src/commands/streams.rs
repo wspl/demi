@@ -59,7 +59,7 @@ use demi_runner_process::{
     pipes::{PipeClient, report_pipe},
     tail::TailBuffer,
 };
-use demi_runner_protocol::wire::{self, ResidentErrorCode};
+use demi_runner_protocol::wire::{self, PipeRef, ResidentErrorCode};
 
 use crate::{commands::artifacts::StreamArtifacts, connection::ConnectionHandle};
 
@@ -173,7 +173,7 @@ impl ResidentStreams {
             let (uploads, uploaded) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
             let source = PipeSource {
                 pipes: pipes.clone(),
-                url: input.url.clone(),
+                pipe: input.clone(),
                 cancel: stream.clone(),
                 body: None,
                 pending: Bytes::new(),
@@ -183,7 +183,7 @@ impl ResidentStreams {
             });
             let (ended, upload) = tokio::join!(
                 opened.run(source, uploads, &stream),
-                pipes.stream(&output.url, body, &stream)
+                pipes.stream(&output, body, &stream)
             );
             if upload.is_err() || ended.input.is_err() {
                 stream.cancel();
@@ -562,7 +562,7 @@ impl StreamLog {
 /// protocol's record limit; the pipe opens at the first pull.
 struct PipeSource {
     pipes: PipeClient,
-    url: String,
+    pipe: PipeRef,
     cancel: CancellationToken,
     body: Option<BoxStream<'static, io::Result<Bytes>>>,
     pending: Bytes,
@@ -576,7 +576,7 @@ impl InputSource for PipeSource {
             Some(body) => body,
             None => self
                 .body
-                .insert(self.pipes.get(&self.url, self.cancel.clone()).await?),
+                .insert(self.pipes.get(&self.pipe, self.cancel.clone()).await?),
         };
         while self.pending.is_empty() {
             match body.next().await {

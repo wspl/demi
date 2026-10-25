@@ -158,6 +158,11 @@ struct Owner<'r> {
     /// The pages' peers the backend introduced on this connection
     /// (`crates/runner-direct/src/lib.rs`), which end with it.
     direct: Direct,
+    /// This runner's device, once the backend's hello names it.
+    own: Arc<std::sync::OnceLock<String>>,
+    /// This connection's pairs with the user's other runners, which end
+    /// with it.
+    pairing: Option<Arc<crate::pairs::Pairing>>,
     /// The user's port forwards on this connection, which end with it.
     forwarding: Option<crate::forward::Forwarding>,
     /// The backend's requests to exposed ports on this connection, which
@@ -193,8 +198,10 @@ pub async fn serve(
         transport.cancellation().child_token(),
     );
     let (listed, forwards) = crate::forward::forward_list();
+    let inbound = crate::pairs::InboundPipes::default();
     let operations = HostOperations {
         forwards,
+        pipes: inbound.clone(),
         home: registered.runner.identity.home_dir.clone(),
         watches: host.watches().clone(),
         streams: streams.opener(),
@@ -205,13 +212,18 @@ pub async fn serve(
     let (direct, driver) = demi_runner_direct::direct(Arc::new(operations), Addresses::Interfaces);
     // The peers' thread ends once the connection lets go of `direct`.
     driver.spawn()?;
-    let forwarding = crate::forward::Forwarding::new(
-        listed,
+    let own = Arc::new(std::sync::OnceLock::new());
+    let pairing = crate::pairs::Pairing::new(
         direct.clone(),
-        registered.pipes.clone(),
+        own.clone(),
+        inbound,
         transport.control.clone(),
         transport.cancellation(),
     );
+    // The pipes between two devices move to this connection's pairs while it
+    // lasts.
+    registered.pipes.set_pairs(Some(pairing.clone()));
+    let forwarding = crate::forward::Forwarding::new(listed, pairing.clone(), registered.pipes.clone());
     let exposure = crate::exposure::Exposure::new(
         registered.pipes.clone(),
         transport.control.clone(),
@@ -235,6 +247,8 @@ pub async fn serve(
         cached: registered.cached.clone(),
         revoke_asked: false,
         direct,
+        own,
+        pairing: Some(pairing),
         forwarding: Some(forwarding),
         exposure: Some(exposure),
         manifests: Manifests::default(),
@@ -388,6 +402,8 @@ impl Owner<'_> {
                 // conversation made since the backend listed them keeps the
                 // directory its first job makes.
                 let _hello = demi_runner_process::steps::step("hello", "backend");
+                // The pairs settle a glare by it (`crate::pairs`).
+                let _ = self.own.set(device_id.clone());
                 if let Err(error) = registered.scratch.keep_only(&conversations, &archived).await {
                     // The next connection tries again.
                     tracing::warn!(event = "scratch_directories.list_failed", %error, "the scratch directories could not be listed");
@@ -694,24 +710,48 @@ impl Owner<'_> {
             } => {
                 let direct = self.direct.clone();
                 let control = self.live.control.clone();
+                let pairing = self.pairing.clone();
                 self.work.spawn(async move {
+                    // Another runner's offer makes the pair's peer, unless
+                    // this runner's own peer with it stands
+                    // (`crates/runner-direct/src/pairs.rs`).
+                    let runner = match &introduction {
+                        demi_runner_protocol::direct::Introduced::Runner { device } => Some(device.clone()),
+                        demi_runner_protocol::direct::Introduced::Page { .. } => None,
+                    };
+                    let answers = match (&runner, &pairing) {
+                        (Some(device), Some(pairing)) => pairing.answers(device).await,
+                        _ => true,
+                    };
+                    let answered = if answers {
+                        direct.offer(peer.clone(), sdp, introduction, stun).await
+                    } else {
+                        Err(demi_runner_direct::Refused {
+                            code: demi_runner_protocol::direct::OfferRefusal::Busy,
+                            message: "this runner's own peer with that runner stands".into(),
+                        })
+                    };
                     // The answer goes first; the candidates the peer finds
                     // after it follow until the peer ends.
-                    let (reply, mut candidates) =
-                        match direct.offer(peer.clone(), sdp, introduction, stun).await {
-                            Ok(answered) => (
+                    let (reply, mut candidates) = match answered {
+                        Ok(answered) => {
+                            if let (Some(device), Some(pairing)) = (&runner, &pairing) {
+                                pairing.adopt(device, peer.clone(), answered.link);
+                            }
+                            (
                                 wire::Outbound::DirectAnswer { id, sdp: answered.sdp },
                                 Some(answered.candidates),
-                            ),
-                            Err(refused) => (
-                                wire::Outbound::DirectRefused {
-                                    id,
-                                    code: refused.code,
-                                    message: refused.message,
-                                },
-                                None,
-                            ),
-                        };
+                            )
+                        }
+                        Err(refused) => (
+                            wire::Outbound::DirectRefused {
+                                id,
+                                code: refused.code,
+                                message: refused.message,
+                            },
+                            None,
+                        ),
+                    };
                     if !send_control(&control, &reply) {
                         return Work::Done;
                     }
@@ -743,12 +783,16 @@ impl Owner<'_> {
             | Inbound::ForwardRetry { .. }
             | Inbound::ForwardConnect { .. }
             | Inbound::ForwardOpened { .. }
-            | Inbound::ForwardRefused { .. }
-            | Inbound::DirectDialed { .. }
-            | Inbound::DirectDialRefused { .. } => {
+            | Inbound::ForwardRefused { .. } => {
                 if let Some(forwarding) = &self.forwarding {
                     // Each of these is a forward's message.
                     let _ = forwarding.handle(message);
+                }
+            }
+            Inbound::DirectDialed { .. } | Inbound::DirectDialRefused { .. } => {
+                if let Some(pairing) = &self.pairing {
+                    // Each of these answers an offer of this runner's.
+                    let _ = pairing.handle(message);
                 }
             }
             Inbound::HttpRequest { .. } => {
@@ -979,6 +1023,8 @@ impl Owner<'_> {
         // went away (`crates/runner-direct/src/lib.rs`), and its
         // forwards end with the connection that told it of them.
         self.forwarding = None;
+        self.registered.pipes.set_pairs(None);
+        self.pairing = None;
         self.exposure = None;
         self.direct.close_all();
         tokio::join!(self.host.close(), self.streams.close(), self.volumes.close());

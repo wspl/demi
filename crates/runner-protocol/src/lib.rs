@@ -26,6 +26,7 @@ pub mod forward;
 pub mod image;
 pub mod installation;
 pub mod manifest;
+pub mod pairs;
 pub mod release;
 pub mod search;
 pub mod values;

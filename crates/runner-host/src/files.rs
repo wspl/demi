@@ -57,7 +57,7 @@ use demi_runner_process::{
     pipes::{PipeClient, report_pipe},
     private_files::{chmod, io_error},
 };
-use demi_runner_protocol::wire::{self, Inbound, ReadAt};
+use demi_runner_protocol::wire::{self, Inbound, PipeRef, ReadAt};
 
 use crate::{fs::error_code, git::GitService, search::Search};
 
@@ -252,7 +252,7 @@ impl FileTransfers {
                         files: &files,
                         directory_mode,
                     };
-                    written.from_pipe(&pipes, &input.url, &transfer).await
+                    written.from_pipe(&pipes, &input, &transfer).await
                 }
                 Err(error) => Err(error),
             };
@@ -351,7 +351,7 @@ impl FileTransfers {
         self.transfers.spawn(async move {
             let result = match target {
                 Ok(target) => {
-                    let body = pipes.get(&input.url, transfer.clone());
+                    let body = pipes.get(&input, transfer.clone());
                     write_file(body, &target, exists, &transfer).await
                 }
                 Err(error) => Err(error),
@@ -923,7 +923,7 @@ impl DirectoryWrite<'_> {
     async fn from_pipe(
         &self,
         pipes: &PipeClient,
-        url: &str,
+        pipe: &PipeRef,
         cancel: &CancellationToken,
     ) -> io::Result<()> {
         let (Some(parent), Some(name)) = (self.target.parent(), self.target.file_name()) else {
@@ -936,7 +936,7 @@ impl DirectoryWrite<'_> {
         let partial = parent.join(format!(".{}.partial", name.to_string_lossy()));
         crate::fs::remove_all(&partial, cancel).await?;
         fs::create_dir(&partial).await?;
-        let written = self.fill(&partial, pipes, url, cancel).await;
+        let written = self.fill(&partial, pipes, pipe, cancel).await;
         if let Err(error) = written {
             // The next write removes what this one leaves.
             if let Err(left) = crate::fs::remove_all(&partial, cancel).await {
@@ -964,10 +964,10 @@ impl DirectoryWrite<'_> {
         &self,
         partial: &Path,
         pipes: &PipeClient,
-        url: &str,
+        pipe: &PipeRef,
         cancel: &CancellationToken,
     ) -> io::Result<()> {
-        let body = pipes.get(url, cancel.clone()).await?;
+        let body = pipes.get(pipe, cancel.clone()).await?;
         let mut contents = tokio_util::io::StreamReader::new(body);
         let mut directories = std::collections::BTreeSet::new();
         for file in self.files {

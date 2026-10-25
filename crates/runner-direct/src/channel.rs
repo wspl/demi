@@ -1,26 +1,29 @@
 //! A data channel's reader and writer, with the one flow control every channel
-//! of a peer uses, a page's file operation's and a forwarded TCP connection's
-//! alike (`crates/runner-protocol/src/direct.rs`).
+//! of a peer uses, a page's file operation's and a pair's channel's alike
+//! (`crates/runner-protocol/src/direct.rs`).
 //!
 //! Outgoing: the channel takes its producer's next message only while its queue
 //! holds less than [`QUEUE_BYTES`], or a live view's `video` channel less than
 //! [`VIDEO_QUEUE_BYTES`], so a reader paces what it reads. A credited channel,
 //! a forwarded connection's, also sends a binary message only within the window
 //! the other side granted. The window starts at [`QUEUE_BYTES`] and grows by
-//! each `{ grant }` it receives.
+//! each `{ grant }` it receives, whose total its producer can watch: what the
+//! other side's consumer took, which a pipe's source never sends again.
 //!
 //! Incoming: what comes in goes to the channel's consumer as it arrives. A
 //! credited channel grants the other side what its consumer took, once the
-//! consumer says it took it, so nothing piles up in the runner.
+//! consumer says it took it, so nothing piles up in the runner. Once the other
+//! side's `{ end: true }` came, it grants whatever its consumer took at once,
+//! so the other side learns that everything arrived.
 
 use bytes::Bytes;
 use demi_runner_protocol::direct::QUEUE_BYTES;
 #[cfg(doc)]
 use demi_runner_protocol::direct::VIDEO_QUEUE_BYTES;
-use demi_runner_protocol::forward::Grant;
+use demi_runner_protocol::pairs::Grant;
 use str0m::Rtc;
 use str0m::channel::ChannelId;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::operation::{Input, Output};
@@ -40,9 +43,9 @@ pub(crate) enum Kind {
     Watch,
     /// Nothing more.
     Request,
-    /// A forwarded connection's bytes, its end as `{ end: true }`, and the
-    /// other side's grants.
-    Forward,
+    /// A pair's channel (`demi_runner_protocol::pairs`): bytes, their end as
+    /// `{ end: true }`, and the other side's grants.
+    Pair,
 }
 
 /// Where a channel is.
@@ -67,13 +70,20 @@ pub(crate) struct Credit {
     /// The bytes this side's consumer took and this side has not granted
     /// back yet.
     owed: usize,
+    /// The other side ended: what this side's consumer takes is granted at
+    /// once.
+    ended: bool,
+    /// Every byte the other side granted, for this side's producer.
+    granted: Option<watch::Sender<u64>>,
 }
 
 impl Credit {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(granted: Option<watch::Sender<u64>>) -> Self {
         Self {
             window: QUEUE_BYTES,
             owed: 0,
+            ended: false,
+            granted,
         }
     }
 }
@@ -147,14 +157,15 @@ impl Channel {
     }
 
     /// A channel this side opens, of `kind`, whose first message is
-    /// `first`, if any; credited when `credit`.
+    /// `first`, if any; credited when `credit` says so, with where the other
+    /// side's grants are counted.
     pub(crate) fn opening(
         kind: Kind,
         first: Option<Output>,
         input: mpsc::UnboundedSender<Input>,
         output: mpsc::Receiver<Output>,
         cancel: CancellationToken,
-        credit: bool,
+        credit: Option<Credit>,
     ) -> Self {
         Self {
             phase: Phase::Opening { kind, input },
@@ -162,7 +173,7 @@ impl Channel {
             output: Some(output),
             room: false,
             cancel,
-            credit: credit.then(Credit::new),
+            credit,
             queue: QUEUE_BYTES,
             abort: None,
             aborted: false,
@@ -215,7 +226,7 @@ impl Channel {
         self.phase = Phase::Running { kind, input };
         self.output = Some(output);
         self.room = true;
-        self.credit = credit.then(Credit::new);
+        self.credit = credit.then(|| Credit::new(None));
     }
 
     /// Keeps up to `bytes` queued on the channel rather than [`QUEUE_BYTES`].
@@ -247,17 +258,26 @@ impl Channel {
             return true;
         };
         let message = match (kind, binary) {
-            (Kind::Forward | Kind::Write | Kind::Stream, true) => {
+            (Kind::Pair | Kind::Write | Kind::Stream, true) => {
                 Some(Input::Bytes(Bytes::from(data)))
             }
-            (Kind::Forward, false) => {
+            (Kind::Pair, false) => {
                 if let (Some(credit), Ok(grant)) =
                     (&mut self.credit, serde_json::from_slice::<Grant>(&data))
                 {
                     credit.window += grant.grant as usize;
+                    if let Some(granted) = &credit.granted {
+                        granted.send_modify(|total| *total += u64::from(grant.grant));
+                    }
                     return true;
                 }
-                crate::operation::text_input(*kind, &data)
+                let input = crate::operation::text_input(*kind, &data);
+                if matches!(input, Some(Input::End))
+                    && let Some(credit) = &mut self.credit
+                {
+                    credit.ended = true;
+                }
+                input
             }
             (_, false) => crate::operation::text_input(*kind, &data),
             (Kind::Watch | Kind::Request, true) => None,
@@ -301,7 +321,7 @@ impl Channel {
         };
         let mut wrote = false;
         if let Some(credit) = &mut self.credit
-            && credit.owed >= GRANT_EVERY.min(QUEUE_BYTES)
+            && (credit.owed >= GRANT_EVERY.min(QUEUE_BYTES) || (credit.ended && credit.owed > 0))
         {
             let grant = Grant {
                 grant: u32::try_from(credit.owed).unwrap_or(u32::MAX),

@@ -621,7 +621,7 @@ impl JobConfig {
             pipe_tasks.spawn(async move {
                 // The read, which the job may stop before the backend
                 // answers it, and its body once answered.
-                let mut getting = std::pin::pin!(pipes.get(&reference.url, reading));
+                let mut getting = std::pin::pin!(pipes.get(&reference, reading));
                 let mut body = None;
                 // Whether the job stopped reading before the input's end.
                 let fed = async {
@@ -663,7 +663,7 @@ impl JobConfig {
                     // read's end for a cut response; the backend then ends
                     // the read, and what still arrives goes nowhere.
                     Ok(true) => {
-                        report_pipe(&output, reference.id, Ok(()));
+                        report_pipe(&output, reference.id.clone(), Ok(()));
                         // The pipe is over by the report; how its read ends
                         // tells nothing more.
                         let body = match body {
@@ -682,7 +682,7 @@ impl JobConfig {
                             _ = stopped.cancelled() => {}
                             _sent = input.send(ProcessInput::End) => {}
                         }
-                        report_pipe(&output, reference.id, result.map(|_| ()));
+                        report_pipe(&output, reference.id.clone(), result.map(|_| ()));
                     }
                 }
             });
@@ -700,7 +700,7 @@ impl JobConfig {
                 });
                 // A stream pipe: what the job prints must reach the backend
                 // as it prints it, however long it runs (`crates/runner/src/main.rs`).
-                let result = pipes.stream(&reference.url, stream, &cancel).await;
+                let result = pipes.stream(&reference, stream, &cancel).await;
                 report_pipe(&output, reference.id, result);
             });
             sender
