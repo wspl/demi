@@ -159,6 +159,11 @@ The following helpers show the page:
   covers only what the viewport shows: an element or a region that reaches
   past it fails, so shoot the parts the viewport shows or set a larger
   viewport with `demi.emulate({ viewport })`.
+  - It is the one way to take a picture of the slot's browser. A script's
+    `page.screenshot`, or the `screenshot` of a locator or an element handle
+    there, fails and names it, because a Playwright screenshot goes through
+    Playwright's own session, which drops the page's pixel ratio until the
+    page loads again.
 - `demi.timeline(action, [0, 100, 1500], { region })` runs the action and keeps
   the browser's frames painted nearest to those milliseconds after it, for the
   moments between a click and its result. A full screenshot takes about 100 ms
