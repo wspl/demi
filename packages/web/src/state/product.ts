@@ -20,6 +20,7 @@ import {
   type SyncFollowed,
   type VendorCatalog,
 } from '../api/generated/web-api'
+import { noteUpdating } from './update'
 import { LIST_ROUTES, isListPart, readStateSchema, type ListPart, type PageState, type ReadState, type Untagged } from './lists'
 
 /** The state as the page holds it, which a message or a write's answer replaces by part. */
@@ -33,7 +34,7 @@ const BACKEND_CLOSING = 1001
 const ABNORMAL_CLOSURE = 1006
 
 /** A message that carries one part of the product state, as a write's answer can. */
-export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'heartbeat' | 'pong' | 'synced' | 'stale' }>>
+export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'heartbeat' | 'pong' | 'synced' | 'stale' | 'update' }>>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
 export type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
@@ -168,6 +169,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'exposed_ports', exposedPorts: known(state.exposedPorts, part) }
     case 'models':
       return { type: 'models', models: known(state.models, part) }
+    case 'server_upgrade':
+      return { type: 'server_upgrade', upgrade: known(state.serverUpgrade ?? undefined, part) }
   }
   if (part.startsWith('plugin:')) {
     const plugin = part.slice('plugin:'.length)
@@ -190,7 +193,9 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
     case 'preferences':
       return { ...state, preferences: event.preferences }
     case 'user':
-      return { ...state, user: event.user }
+      // A user's channel never carries the server's updates: an account made
+      // a user drops what it held as an administrator.
+      return { ...state, user: event.user, serverUpgrade: event.user.role === 'user' ? null : state.serverUpgrade }
     case 'workspaces':
       return { ...state, workspaces: event.workspaces }
     case 'devices':
@@ -223,6 +228,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, exposedPorts: event.exposedPorts }
     case 'models':
       return { ...state, models: event.models }
+    case 'server_upgrade':
+      return { ...state, serverUpgrade: event.upgrade }
   }
 }
 
@@ -669,6 +676,12 @@ export const useProduct = defineStore('product', () => {
     if (event.type === 'synced') {
       // The state is current as of the version: the page follows it from there.
       slot.receive('version', (state) => ({ ...state, version: event.version }))
+      return
+    }
+    if (event.type === 'update') {
+      // The backend stops for an update of the server: the page shows the
+      // update's screen until the new release serves.
+      noteUpdating(event.state)
       return
     }
     if (event.type === 'stale') {

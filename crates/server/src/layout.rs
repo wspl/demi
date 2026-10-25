@@ -54,6 +54,12 @@ use semver::Version;
 /// The services, in the order they start; they stop in the reverse order.
 pub const UNITS: [&str; 2] = ["demi-machine-manager.service", "demi-backend.service"];
 
+/// The units that run an administrator's update: the path unit, which runs
+/// beside the services, and the service it starts. A release without them,
+/// as one before them, removes them.
+pub const UPGRADE_UNITS: [&str; 2] = [UPGRADE_PATH, "demi-upgrade.service"];
+pub const UPGRADE_PATH: &str = "demi-upgrade.path";
+
 pub struct Layout {
     root: PathBuf,
 }
@@ -117,6 +123,11 @@ impl Layout {
         self.state().join("upgrade.json")
     }
 
+    /// The file the backend writes an administrator's update to.
+    pub fn upgrade_request(&self) -> PathBuf {
+        self.at(demi_runner_protocol::release::UPGRADE_REQUEST)
+    }
+
     /// The version of the release `current` names.
     pub fn current_version(&self) -> io::Result<Version> {
         let target = std::fs::read_link(self.current())?;
@@ -157,17 +168,29 @@ impl Layout {
         Ok(versions)
     }
 
-    /// Copies `version`'s units into place for systemd.
+    /// Copies `version`'s units into place for systemd, and removes the
+    /// update's units when it has none.
     pub fn install_units(&self, version: &Version) -> io::Result<()> {
         let units = self.units();
         std::fs::create_dir_all(&units)?;
-        for unit in UNITS {
+        for unit in UNITS.into_iter().chain(UPGRADE_UNITS) {
             let source = self.release(version).join("systemd").join(unit);
+            if UPGRADE_UNITS.contains(&unit) && !source.exists() {
+                match std::fs::remove_file(units.join(unit)) {
+                    Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                    _ => continue,
+                }
+            }
             let staged = units.join(format!(".{unit}.new"));
             std::fs::copy(&source, &staged)?;
             std::fs::rename(&staged, units.join(unit))?;
         }
         sync_directory(&units)
+    }
+
+    /// Whether the update's units are in place.
+    pub fn upgrade_units(&self) -> bool {
+        self.units().join(UPGRADE_PATH).exists()
     }
 }
 

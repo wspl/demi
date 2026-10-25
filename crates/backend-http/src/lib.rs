@@ -84,6 +84,7 @@ mod streams;
 mod subagents;
 mod sync;
 mod transfer;
+mod server_upgrade;
 mod update;
 mod usage;
 mod users;
@@ -445,6 +446,11 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/providers/{id}/accounts/{credential}",
             delete(accounts::remove),
         )
+        .route("/server-upgrade", get(server_upgrade::read))
+        .route("/server-upgrade/channel", put(server_upgrade::set_channel))
+        .route("/server-upgrade/check", post(server_upgrade::check))
+        .route("/server-upgrade/run", post(server_upgrade::run))
+        .route("/server-upgrade/agents", get(server_upgrade::agents))
         .route("/users", get(users::list).post(users::create))
         .route("/users/{id}", patch(users::change))
         .route("/users/{id}/password", post(users::new_first_password))

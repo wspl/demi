@@ -196,7 +196,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     }
 
     step(&format!("Fetching Demi {version}"));
-    runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new()))?;
+    runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new(), &mut |_, _| {}))?;
     step("Fetching the gVisor runtime it pins");
     gvisor::of_release(layout, &version)?;
 
@@ -221,7 +221,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     step("Starting Demi");
     layout.point_at(&version)?;
     layout.install_units(&version)?;
-    services.reload()?;
+    services.reload(layout.upgrade_units())?;
     for unit in UNITS {
         services.start(unit).map_err(|error| format!("{unit} did not start: {error}\n{}", services.log(unit)))?;
     }

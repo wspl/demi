@@ -9,6 +9,36 @@
       "none": "謝辞はありません"
     }
   },
+  "updates": {
+    "title": "アップデート",
+    "description": "このサーバの Demi を、すべてのアカウントのためにアップデートします。",
+    "current": "Demi {version}",
+    "upToDate": "Demi は最新です",
+    "available": "Demi {version} を利用できます",
+    "youHave": "現在のバージョン：{version}",
+    "releaseNotes": "リリースノート",
+    "updateNow": "今すぐアップデート",
+    "checking": "アップデートを確認中…",
+    "checkFailed": "アップデートを確認できませんでした",
+    "lastChecked": "最終確認：{when}",
+    "neverChecked": "未確認",
+    "checkNow": "今すぐ確認",
+    "downloading": "Demi {version} をダウンロード中",
+    "downloaded": "{done} / {all}",
+    "speed": "{size}/秒",
+    "preparing": "Demi {version} を準備中…",
+    "restarting": "Demi を再起動中…",
+    "failed": "{version} にアップデートできませんでした。Demi は {running} に戻りました。",
+    "failedNoVersion": "アップデートできませんでした。Demi は {running} のままです。",
+    "channel": "アップデートチャンネル",
+    "channelDescription": "Canary は最新のビルドをいち早く受け取ります。まだ誰もサーバで試していないビルドです。",
+    "beta": "Beta",
+    "canary": "Canary",
+    "confirmTitle": "Demi を {version} にアップデートしますか？",
+    "confirmBody": "Demi が再起動し、数分間すべてのユーザが利用できなくなります。",
+    "confirmAgents": "{count} 個のエージェントが作業中です。アップデート後に再開します。",
+    "update": "アップデート"
+  },
   "account": {
     "title": "アカウント",
     "description": "名前、メールアドレス、サインインの設定。",
@@ -323,6 +353,9 @@
     "developer": {
       "keywords": "開発,デバッグ,トラブルシューティング",
       "errorsKeywords": "エラー,ログ,デバッグ,診断"
+    },
+    "updates": {
+      "keywords": "アップデート,更新,バージョン,リリース,canary,beta,ベータ"
     }
   },
   "changeEmail": {

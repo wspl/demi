@@ -94,6 +94,7 @@ impl Shard {
             .get()
             .expect("the backend listens before it serves a request")
             .url();
+        let server_upgrade = if user.role == Role::User { None } else { services.upgrades.snapshot() };
         Ok(ProductState {
             user,
             mode: services.mode,
@@ -117,6 +118,7 @@ impl Shard {
             plugin_states,
             web_build: services.web_build.clone(),
             mail: services.email.delivers(),
+            server_upgrade,
             run: services.run.clone(),
             version: Version {
                 epoch: version.epoch,
@@ -227,6 +229,19 @@ impl Shard {
                     users: list.users,
                 }
             }
+            Part::ServerUpgrade => {
+                // A user's channel never carries the server's updates.
+                if user.role == Role::User {
+                    return Ok(None);
+                }
+                let Some(upgrade) = self.services().upgrades.snapshot() else {
+                    return Ok(None);
+                };
+                SyncEvent::ServerUpgrade { upgrade }
+            }
+            Part::Update => SyncEvent::Update {
+                state: self.services().upgrades.update_state(),
+            },
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await?,
             },

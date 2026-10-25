@@ -315,6 +315,10 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.5409.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_5409),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5469.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_5469),
+        },
     ],
 };
 
@@ -580,8 +584,18 @@ CREATE TABLE workspace_worktrees (
 CREATE INDEX workspace_worktrees_path ON workspace_worktrees (path);
 ";
 
+/// From 0.1.5469's control schema, a development build's that a server
+/// keeps data of, to the current one: the server's own settings, which
+/// name the channel its updates come from.
+const CONTROL_FROM_0_1_5469: &str = "
+CREATE TABLE server_settings (
+  id              INTEGER PRIMARY KEY CHECK (id = 1),
+  upgrade_channel TEXT NOT NULL CHECK (upgrade_channel IN ('beta', 'canary'))
+) STRICT;
+";
+
 /// From 0.1.5409's control schema, a development build's that a server
-/// keeps data of, to the current one: a project's stored name goes, since its
+/// keeps data of, to 0.1.5469's: a project's stored name goes, since its
 /// directory names it; every project keeps its saved messages per
 /// conversation, as all did; and a saved message may be a project's, so the
 /// table is rebuilt with every message still its conversation's.
@@ -5540,6 +5554,14 @@ CREATE TABLE attachments (
   sha256     TEXT NOT NULL,
   snippet    TEXT,
   created_at INTEGER NOT NULL
+) STRICT;
+
+-- The server's own settings, which its master and administrators change:
+-- one row, absent until one is changed. `upgrade_channel` names the releases
+-- Settings › Updates offers.
+CREATE TABLE server_settings (
+  id              INTEGER PRIMARY KEY CHECK (id = 1),
+  upgrade_channel TEXT NOT NULL CHECK (upgrade_channel IN ('beta', 'canary'))
 ) STRICT;
 ";
 

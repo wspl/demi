@@ -1331,7 +1331,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Updating Demi"
-        note="Over the whole app while Demi updates its data for a new release, from the first answer that says so until Demi serves again; then the page loads itself in the new build. Under the bar: what Demi updates now, the accounts and settings first, then the conversations, one of how many; the bytes done of how many; and the time left once Demi can estimate it, rounded to minutes as macOS Software Update gives it. Until Demi first says how far it is, the bar moves and nothing is written under it; afterwards the screen keeps what Demi last said while it cannot be reached. Nothing on it acts."
+        note="Over the whole app while Demi updates its data for a new release, from the first answer that says so until Demi serves again; then the page loads itself in the new build. An update an administrator runs from Settings › Updates shows it from the moment Demi restarts, with Restarting Demi under the moving bar. Under the bar: what Demi updates now, the accounts and settings first, then the conversations, one of how many; the bytes done of how many; and the time left once Demi can estimate it, rounded to minutes as macOS Updates gives it. Until Demi first says how far it is, the bar moves and nothing is written under it; afterwards the screen keeps what Demi last said while it cannot be reached. Nothing on it acts."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GalleryOverlayWell size="wide">
@@ -1358,6 +1358,13 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           <GalleryOverlayWell size="wide">
             <GallerySpecimen variant="before Demi says">
               <UpdatingScreen :progress="null" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="restarting for an update">
+              <UpdatingScreen :progress="null" restarting />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>

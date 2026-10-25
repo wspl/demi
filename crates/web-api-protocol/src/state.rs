@@ -80,6 +80,10 @@ pub struct ProductState {
     /// Whether the backend can send account mail, which an email change
     /// needs for its code; without it the page offers no email change.
     pub mail: bool,
+    /// Settings › Updates, for the master and administrators of a
+    /// server that offers updates; none for a user's page, or on another
+    /// server.
+    pub server_upgrade: Option<crate::server_upgrade::ServerUpgrade>,
     /// This run of the backend, an id it chooses when it starts. The
     /// revisions it counts in memory, such as a conversation's list of
     /// permission requests, compare only within one run: a page holding
@@ -275,6 +279,13 @@ pub enum SyncEvent {
         /// The entity tag of the list's route's answer; empty when it has none.
         etag: String,
     },
+    /// The server's update was checked, or one runs, changed its step or
+    /// failed. Only the channels of the master and admins of a server that
+    /// offers updates carry it.
+    ServerUpgrade { upgrade: crate::server_upgrade::ServerUpgrade },
+    /// The backend stops for an update: every page shows the screen of
+    /// `GET /update` until the backend serves again.
+    Update { state: UpdateState },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,
     /// The answer to the page's `{ ping: id }`, sent at once.
@@ -282,13 +293,18 @@ pub enum SyncEvent {
 }
 
 /// `GET /update`, which the backend answers without a session, before it
-/// serves anything else too: whether it migrates its data for a new
-/// release, and how far it is. It names no conversation.
+/// serves anything else too: whether it stops for a new release or
+/// migrates its data for one, and how far it is. It names no conversation.
+/// The state channel pushes it to every page when the backend stops for an
+/// update.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum UpdateState {
     /// It serves, or starts with nothing to migrate.
     None,
+    /// It stops next for an update an administrator ran, and serves again
+    /// in the new release.
+    Restarting,
     /// It migrates its data and serves nothing else until it is done.
     Updating {
         /// What it migrates now.

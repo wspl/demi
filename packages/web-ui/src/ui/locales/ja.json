@@ -33,7 +33,8 @@
     "estimating": "残り時間を計算中…",
     "underAMinute": "残り 1 分未満",
     "minutesLeft": "残り約 {count} 分",
-    "body": "アップデートが終わると Demi が自動的に開きます。"
+    "body": "アップデートが終わると Demi が自動的に開きます。",
+    "restarting": "Demi を再起動中"
   },
   "startingScreen": {
     "connecting": "Demi に接続中…",

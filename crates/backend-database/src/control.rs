@@ -11,6 +11,7 @@ use std::sync::Arc;
 use demi_shared_types::{Clock, Timestamp};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
+use demi_web_api_protocol::server_upgrade::UpgradeChannel;
 use demi_web_api_protocol::settings::Preferences;
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::users::{CloudStorage, ListedUser};
@@ -389,6 +390,37 @@ impl ControlService {
                 .map(|token| token.map(TokenHash::from_stored))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(tokens)
+        })
+        .await
+    }
+
+    /// The channel the server's updates come from: Beta until an
+    /// administrator chose another.
+    pub async fn upgrade_channel(&self) -> Result<UpgradeChannel, StorageError> {
+        self.call(|connection, _| {
+            let channel: Option<String> = connection
+                .query_row("SELECT upgrade_channel FROM server_settings WHERE id = 1", [], |row| row.get(0))
+                .optional()?;
+            Ok(match channel {
+                Some(channel) => channel.parse().map_err(|_| StorageError::Corrupt {
+                    table: "server_settings",
+                    column: "upgrade_channel",
+                    reason: format!("{channel} is no channel"),
+                })?,
+                None => UpgradeChannel::Beta,
+            })
+        })
+        .await
+    }
+
+    pub async fn set_upgrade_channel(&self, channel: UpgradeChannel) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "INSERT INTO server_settings (id, upgrade_channel) VALUES (1, ?1)
+                 ON CONFLICT (id) DO UPDATE SET upgrade_channel = excluded.upgrade_channel",
+                [channel.to_string()],
+            )?;
+            Ok(())
         })
         .await
     }

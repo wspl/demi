@@ -12,10 +12,14 @@
 //! 5. Both services start.
 //!
 //! An upgrade whose services do not start returns to the release it left.
+//!
+//! The running backend hears each phase (`notices`): the preparation, the
+//! stop just before it happens, and a return with its reason.
 
 use std::{fmt, io, process::Command};
 
 use demi_machine_manager_protocol::STATE_FORMAT;
+use demi_runner_protocol::release::UpgradeNotice;
 use semver::Version;
 
 use crate::{
@@ -23,6 +27,7 @@ use crate::{
     gvisor,
     journal::{Data, Journal, Step},
     layout::{Layout, UNITS},
+    notices::Notices,
     progress,
     runners,
     services::Services,
@@ -62,6 +67,16 @@ impl fmt::Display for Failure {
     }
 }
 
+impl Failure {
+    /// Why the move did not reach its release, in a line for a page.
+    pub fn reason(&self) -> String {
+        match self {
+            Self::Failed(error) => error.to_string(),
+            Self::Returned { to, reason, .. } => format!("{to} did not start: {reason}"),
+        }
+    }
+}
+
 impl From<io::Error> for Failure {
     fn from(error: io::Error) -> Self {
         Self::Failed(error)
@@ -70,11 +85,12 @@ impl From<io::Error> for Failure {
 
 /// Prepares the move from the current release to `to`, this program's own,
 /// while the current one serves, and carries it out.
-pub fn start(layout: &Layout, services: &dyn Services, to: &Version) -> Result<(), Failure> {
+pub fn start(layout: &Layout, services: &dyn Services, to: &Version, notices: &mut Notices) -> Result<(), Failure> {
     let from = layout.current_version()?;
     if &from == to {
         return Ok(());
     }
+    notices.tell(UpgradeNotice::Preparing { to: to.to_string() });
     let settings = Settings::read(&layout.config())?;
     let data = prepare(layout, &settings, &from, to)?;
     let journal = Journal {
@@ -83,7 +99,7 @@ pub fn start(layout: &Layout, services: &dyn Services, to: &Version) -> Result<(
         data,
         step: Step::Stopping,
     };
-    carry_out(layout, services, journal)
+    carry_out(layout, services, journal, notices)
 }
 
 /// Everything that can fail without stopping anything: the configuration,
@@ -157,7 +173,12 @@ fn manager_format(state: &std::path::Path) -> io::Result<Option<u32>> {
 
 /// Takes the journal's steps from the one it reached, each recorded before
 /// it is taken, and removes the journal once the release runs.
-pub fn carry_out(layout: &Layout, services: &dyn Services, mut journal: Journal) -> Result<(), Failure> {
+pub fn carry_out(
+    layout: &Layout,
+    services: &dyn Services,
+    mut journal: Journal,
+    notices: &mut Notices,
+) -> Result<(), Failure> {
     let path = layout.journal();
     let settings = Settings::read(&layout.config())?;
     let backend = settings.backend_data()?;
@@ -168,6 +189,9 @@ pub fn carry_out(layout: &Layout, services: &dyn Services, mut journal: Journal)
         journal.record(&path, step)?;
         match step {
             Step::Stopping => {
+                notices.tell(UpgradeNotice::Restarting {
+                    to: journal.to.to_string(),
+                });
                 for unit in UNITS.iter().rev() {
                     services.stop(unit)?;
                 }
@@ -183,7 +207,7 @@ pub fn carry_out(layout: &Layout, services: &dyn Services, mut journal: Journal)
             Step::Switching => {
                 layout.point_at(&journal.to)?;
                 layout.install_units(&journal.to)?;
-                services.reload()?;
+                services.reload(layout.upgrade_units())?;
             }
             Step::Starting => {
                 // The backend reports ready once its data is up to date,
@@ -245,7 +269,7 @@ fn return_to_from(
     }
     layout.point_at(&journal.from)?;
     layout.install_units(&journal.from)?;
-    services.reload()?;
+    services.reload(layout.upgrade_units())?;
     start_all(services).map_err(|(unit, error)| {
         io::Error::other(format!(
             "{} did not start again either: {unit}: {error}; the next demi-server command switches to {} again",

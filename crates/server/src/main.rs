@@ -1,7 +1,9 @@
 //! `demi-server`: the server's program for its own installation. Its commands:
 //!
 //! - `upgrade` fetches a release beside the current one and hands the move to
-//!   that release's own `demi-server`.
+//!   that release's own `demi-server`. With `--requested` it moves to the
+//!   version an administrator's Update Now asked for, as `demi-upgrade.service`
+//!   runs it when the backend writes the request (`notices`).
 //! - `rollback` hands the move to the release the last upgrade replaced.
 //! - `status` says where the server is.
 //! - `runtime` fetches the gVisor version this release pins.
@@ -25,6 +27,9 @@
 //! - The release's assets: the installed `demi-server` downloads the next release
 //!   by the asset names and the `SHA256SUMS` file of the release workflow, so
 //!   their names and that file's format never change.
+//! - The management socket's lines: the next release's `demi-server` tells the
+//!   running backend the runner release that comes next and how far the
+//!   upgrade is, so the lines' fields and steps are only ever added.
 //! - A runner's update: a paired device's runner of any earlier release must
 //!   understand that the backend serves another one and how to fetch it, so the
 //!   release check before the runner's socket opens, its headers and the body of
@@ -53,6 +58,7 @@ mod gvisor;
 mod journal;
 mod layout;
 mod moving;
+mod notices;
 mod progress;
 mod runners;
 mod services;
@@ -70,7 +76,9 @@ use clap::{Parser, Subcommand};
 use semver::Version;
 use tokio_util::sync::CancellationToken;
 
-use crate::{journal::Journal, layout::Layout, services::Systemd, settings::Settings};
+use demi_runner_protocol::release::UpgradeNotice;
+
+use crate::{journal::Journal, layout::Layout, notices::Notices, services::Systemd, settings::Settings};
 
 /// Installs, upgrades and rolls back this Demi server.
 #[derive(Parser)]
@@ -95,6 +103,10 @@ enum Action {
         /// Moves to the newest release, pre-releases included.
         #[arg(long, conflicts_with = "version")]
         prerelease: bool,
+        /// Moves to the version the backend's request file names, as
+        /// `demi-upgrade.service` asks.
+        #[arg(long, hide = true, conflicts_with_all = ["version", "prerelease", "from"])]
+        requested: bool,
         /// A directory holding the release's assets instead of the
         /// repository's GitHub releases.
         #[arg(long, value_name = "DIRECTORY")]
@@ -127,6 +139,7 @@ fn main() -> ExitCode {
     demi_shared_cli::install_panic_hook();
     let cli = Cli::parse();
     let layout = Layout::new(cli.root.clone());
+    let requested = matches!(cli.command, Action::Upgrade { requested: true, .. });
     let result = match cli.command {
         Action::Status => status(&layout),
         Action::Setup(options) => setup(&layout, options),
@@ -138,6 +151,15 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
+            // The administrator who asked hears why, and the request goes:
+            // the path unit would start this run again for it.
+            if requested {
+                let _ = std::fs::remove_file(layout.upgrade_request());
+                Notices::new(&layout).tell(UpgradeNotice::Failed {
+                    to: String::new(),
+                    reason: error.to_string(),
+                });
+            }
             eprintln!("demi-server: {error}");
             ExitCode::FAILURE
         }
@@ -213,16 +235,42 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
         return Err(hand_over(layout, &journal.to, "resume").into());
     }
     match command {
-        Action::Upgrade { version, prerelease, from } => upgrade(layout, version, prerelease, from),
+        Action::Upgrade { version, prerelease, from, requested } => {
+            let version = match (version, requested) {
+                (_, true) => match requested_version(layout)? {
+                    Some(version) => Some(version),
+                    None => {
+                        println!("No update was requested");
+                        return Ok(());
+                    }
+                },
+                (version, false) => version,
+            };
+            upgrade(layout, version, prerelease, from)
+        }
         Action::Rollback { yes } => rollback(layout, yes),
         Action::Move => {
-            moving::start(layout, &Systemd, &own_version())?;
+            let mut notices = Notices::new(layout);
+            if let Err(failure) = moving::start(layout, &Systemd, &own_version(), &mut notices) {
+                notices.tell(UpgradeNotice::Failed {
+                    to: own_version().to_string(),
+                    reason: failure.reason(),
+                });
+                return Err(failure.into());
+            }
             println!("The server runs {}", own_version());
             Ok(())
         }
         Action::Resume => {
             let journal = Journal::read(&layout.journal())?.ok_or("no move to finish")?;
-            moving::carry_out(layout, &Systemd, journal)?;
+            let mut notices = Notices::new(layout);
+            if let Err(failure) = moving::carry_out(layout, &Systemd, journal, &mut notices) {
+                notices.tell(UpgradeNotice::Failed {
+                    to: own_version().to_string(),
+                    reason: failure.reason(),
+                });
+                return Err(failure.into());
+            }
             println!("The server runs {}", own_version());
             Ok(())
         }
@@ -255,12 +303,58 @@ fn upgrade(
         println!("The server runs {version} already");
         return Ok(());
     }
-    if version < current {
-        return Err(format!("{version} is older than {current}: `demi-server rollback` goes back").into());
+    let mut notices = Notices::new(layout);
+    let fetched = if version < current {
+        Err(format!("{version} is older than {current}: `demi-server rollback` goes back").into())
+    } else {
+        println!("Fetching {version}");
+        notices.downloaded(&version, 0, 0);
+        runtime
+            .block_on(fetch::fetch(layout, &source, &version, &cancel, &mut |done, bytes| {
+                notices.downloaded(&version, done, bytes);
+            }))
+            .map_err(Box::<dyn std::error::Error>::from)
+    };
+    if let Err(error) = fetched {
+        notices.tell(UpgradeNotice::Failed {
+            to: version.to_string(),
+            reason: error.to_string(),
+        });
+        return Err(error);
     }
-    println!("Fetching {version}");
-    runtime.block_on(fetch::fetch(layout, &source, &version, &cancel))?;
+    // The next release tells the backend from here on.
+    drop(notices);
     Err(hand_over(layout, &version, "move").into())
+}
+
+/// The version the backend's request names, which this run removes: none
+/// when there is no request. The backend's user owns the request's
+/// directory, so the file is opened without following a link and without
+/// waiting, as opening a FIFO would wait for a writer forever, and it is a
+/// plain file that holds a version and nothing else.
+fn requested_version(layout: &Layout) -> Result<Option<Version>, Box<dyn std::error::Error>> {
+    use std::{io::Read as _, os::unix::fs::OpenOptionsExt as _};
+    /// A version is far shorter; a longer file is no request.
+    const LONGEST: u64 = 256;
+    let path = layout.upgrade_request();
+    let file = std::fs::File::options()
+        .read(true)
+        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
+        .open(&path);
+    let file = match file {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("{}: {error}", path.display()).into()),
+    };
+    std::fs::remove_file(&path)?;
+    if !file.metadata()?.is_file() {
+        return Err(format!("{} is not a file", path.display()).into());
+    }
+    let mut text = String::new();
+    file.take(LONGEST).read_to_string(&mut text)?;
+    let version = Version::parse(text.trim())
+        .map_err(|error| format!("{} names no version: {error}", path.display()))?;
+    Ok(Some(version))
 }
 
 fn rollback(layout: &Layout, yes: bool) -> Result<(), Box<dyn std::error::Error>> {

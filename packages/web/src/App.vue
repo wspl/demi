@@ -12,7 +12,8 @@ import { pageLog } from '@demicodes/web-ui/infra/log'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
-import type { SavedScope, SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import type { SavedScope, SidebarConversation, SidebarReorder, SidebarUpdate } from '@demicodes/web-ui/sidebar/types'
+import { updateOffered } from '@demicodes/web-ui/settings/server-upgrade'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { followTabAttention } from '@demicodes/web-ui/sidebar/tab-attention'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
@@ -287,6 +288,18 @@ onScopeDispose(followTabAttention({
     return shown ? conversationTitle(shown.title) : null
   },
 }))
+/** The server's update at the sidebar's foot, which only an administrator's state carries. */
+const sidebarUpdate = computed<SidebarUpdate | null>(() => {
+  const upgrade = product.snapshot?.serverUpgrade
+  if (!upgrade) {
+    return null
+  }
+  if (['downloading', 'preparing', 'restarting'].includes(upgrade.run.state)) {
+    return { state: 'running' }
+  }
+  const version = updateOffered(upgrade)
+  return version === null ? null : { state: 'available', version }
+})
 const account = computed(() => ({
   id: resources.userId,
   name: resources.username,
@@ -422,6 +435,7 @@ useAppShortcuts(
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
           :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"
           :settings-shortcut="resources.keys.find((binding) => binding.id === 'settings')?.keys"
+          :update="sidebarUpdate"
           @search="openSearch(null)"
           @retry-list="conversations.reloadList"
           @reorder="reorder"
@@ -507,7 +521,7 @@ useAppShortcuts(
   <ToastHost :below="APP_BAR_PX" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
   <Teleport to="body">
-    <UpdatingScreen v-if="update" :progress="update.progress" />
+    <UpdatingScreen v-if="update" :progress="update.progress" :restarting="update.restarting" />
   </Teleport>
   <MediaViewer :viewer="mediaViewer" />
 </template>

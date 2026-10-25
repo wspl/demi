@@ -443,13 +443,15 @@ impl Channel<'_> {
         };
         let mut promoted = false;
         if let SyncEvent::User { user } = &event {
-            // An account made an admin starts to see the accounts.
+            // An account made an admin starts to see the accounts and the
+            // server's updates.
             promoted = self.session.user.role == Role::User && user.role != Role::User;
             self.session.user = user.clone();
         }
         self.send(&event).await?;
         if promoted {
             Box::pin(self.send_part(&Part::Users)).await?;
+            Box::pin(self.send_part(&Part::ServerUpgrade)).await?;
         }
         Ok(())
     }
@@ -561,6 +563,8 @@ fn part_name(part: &Part) -> (&'static str, Option<&ConversationId>, Option<&str
         Part::Passkeys => ("passkeys", None, None),
         Part::Sessions => ("sessions", None, None),
         Part::Users => ("users", None, None),
+        Part::ServerUpgrade => ("server_upgrade", None, None),
+        Part::Update => ("update", None, None),
         Part::Plugins => ("plugins", None, None),
         Part::Plugin(id) => ("plugin", None, Some(id.as_str())),
         Part::Models => ("models", None, None),

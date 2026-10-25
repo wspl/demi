@@ -64,6 +64,11 @@
   "about": {
     "acknowledgementsFailed": "Couldn’t load the acknowledgements."
   },
+  "updates": {
+    "channelFailed": "Couldn’t change the update channel",
+    "checkFailed": "Couldn’t check for updates",
+    "updateFailed": "Couldn’t start the update"
+  },
   "dialog": {
     "nameFailed": "Could Not Change Your Name",
     "emailFailed": "Could Not Change Email",

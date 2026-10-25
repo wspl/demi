@@ -64,6 +64,11 @@
   "about": {
     "acknowledgementsFailed": "謝辞を読み込めませんでした。"
   },
+  "updates": {
+    "channelFailed": "アップデートチャンネルを変更できませんでした",
+    "checkFailed": "アップデートを確認できませんでした",
+    "updateFailed": "アップデートを開始できませんでした"
+  },
   "dialog": {
     "nameFailed": "名前を変更できませんでした",
     "emailFailed": "メールアドレスを変更できませんでした",

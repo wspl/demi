@@ -1,0 +1,10 @@
+# Moves the server to the release an administrator's Update Now asked for.
+# It runs as root and apart from the backend, which the upgrade stops
+# (crates/server/src/main.rs).
+[Unit]
+Description=Demi update
+
+[Service]
+Type=oneshot
+ExecStart=/opt/demi/current/bin/demi-server upgrade --requested
+TimeoutStartSec=infinity

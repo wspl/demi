@@ -6,6 +6,11 @@
 //! are, a line of JSON each time one moves on, until none is downloading or the
 //! asker stops waiting.
 //!
+//! `demi-server` also tells it how far an update of the server is, a line on
+//! a connection of its own each time, which the backend shows the
+//! administrators and answers with a line once it acted on it
+//! (`crates/backend-user-shard/src/upgrades.rs`).
+//!
 //! The socket takes requests without credentials and acts on every user's
 //! devices, so its directory is the backend unit's second runtime directory,
 //! apart from the one with the runner socket, which every Cloud mounts: a
@@ -17,7 +22,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use demi_backend_runners::prefetch::{NextRelease, progress};
-use demi_runner_protocol::release::{PrefetchAnswer, PrefetchRequest};
+use demi_runner_protocol::release::{PrefetchAnswer, PrefetchRequest, UpgradeNotice};
 use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio_util::sync::CancellationToken;
@@ -86,6 +91,12 @@ async fn answer(stream: UnixStream, state: AppState, stop: CancellationToken) {
     };
     if let Err(error) = request {
         tracing::warn!(event = "manage.request_unread", %error, "a management request was not read");
+        return;
+    }
+    if let Some(notice) = UpgradeNotice::decode(line.as_bytes()) {
+        state.services.upgrades.heard(notice).await;
+        let _ = write.write_all(b"{}\n").await;
+        let _ = write.flush().await;
         return;
     }
     let next = match announce(&state, &line).await {

@@ -4,6 +4,7 @@ import {
   Blocks,
   Bot,
   BrainCircuit,
+  CircleArrowUp,
   CircleUser,
   Code,
   Database,
@@ -231,6 +232,30 @@ export function withUsersSection(groups: SettingsNavGroup[], role: UserRole): Se
           ...group,
           items: group.items.flatMap((item) => (item.id === 'portForwards' ? [item, users] : [item])),
         }
+      : group,
+  )
+}
+
+/** Settings › Updates, which only the master and admins of a server that offers updates have. */
+export function updatesSection(): SettingsNavItem {
+  return {
+    id: 'updates',
+    label: t('updates.title'),
+    icon: CircleArrowUp,
+    keywords: words(t('sections.updates.keywords')),
+    settings: [{ label: t('updates.channel') }],
+  }
+}
+
+/** The rail with Updates before About, when `offered`; the rail unchanged otherwise. */
+export function withUpdatesSection(groups: SettingsNavGroup[], offered: boolean): SettingsNavGroup[] {
+  if (!offered) {
+    return groups
+  }
+  const update = updatesSection()
+  return groups.map((group) =>
+    group.items.some((item) => item.id === 'about')
+      ? { ...group, items: group.items.flatMap((item) => (item.id === 'about' ? [update, item] : [item])) }
       : group,
   )
 }

@@ -11,7 +11,7 @@
 //!   bin/demi-backend              the target's backend
 //!   bin/demi-machine-manager      the target's machine manager
 //!   bin/demi-server               the server's installer and upgrader
-//!   systemd/                      the units of the backend and the manager
+//!   systemd/                      the units of the services and the update
 //!   web/                          the built web app, with its build.json
 //!   runners/                      the runner release's manifests
 //!   commands/demi-file/           one command package release per directory,
@@ -85,9 +85,9 @@ const LEGAL: [(&str, &str); 3] = [
 /// The third-party notices at a release's root.
 const NOTICES: &str = "THIRD-PARTY-NOTICES";
 
-/// The services' units, which each program's crate keeps and a server
-/// release carries (`crates/server/src/main.rs`).
-const UNITS: [(&str, &str); 2] = [
+/// The services' units and an administrator's update's, which each
+/// program's crate keeps and a server release carries (`crates/server/src/main.rs`).
+const UNITS: [(&str, &str); 4] = [
     (
         "demi-backend.service",
         include_str!("../../backend/systemd/demi-backend.service"),
@@ -95,6 +95,14 @@ const UNITS: [(&str, &str); 2] = [
     (
         "demi-machine-manager.service",
         include_str!("../../machine-manager/systemd/demi-machine-manager.service"),
+    ),
+    (
+        "demi-upgrade.path",
+        include_str!("../../server/systemd/demi-upgrade.path"),
+    ),
+    (
+        "demi-upgrade.service",
+        include_str!("../../server/systemd/demi-upgrade.service"),
     ),
 ];
 

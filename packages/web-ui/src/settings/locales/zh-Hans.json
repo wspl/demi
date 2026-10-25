@@ -9,6 +9,36 @@
       "none": "没有致谢"
     }
   },
+  "updates": {
+    "title": "更新",
+    "description": "为所有账户更新这台服务器上的 Demi。",
+    "current": "Demi {version}",
+    "upToDate": "Demi 已是最新版本",
+    "available": "有新版本：Demi {version}",
+    "youHave": "当前版本：{version}。",
+    "releaseNotes": "发行说明",
+    "updateNow": "现在更新",
+    "checking": "正在检查更新…",
+    "checkFailed": "无法检查更新",
+    "lastChecked": "上次检查：{when}",
+    "neverChecked": "尚未检查",
+    "checkNow": "立即检查",
+    "downloading": "正在下载 Demi {version}",
+    "downloaded": "{done}，共 {all}",
+    "speed": "{size}/秒",
+    "preparing": "正在准备 Demi {version}…",
+    "restarting": "正在重新启动 Demi…",
+    "failed": "无法更新到 {version}。Demi 已退回 {running}。",
+    "failedNoVersion": "无法更新。Demi 仍在运行 {running}。",
+    "channel": "更新通道",
+    "channelDescription": "Canary 最先收到新版本，这些版本还没人在服务器上试过。",
+    "beta": "Beta",
+    "canary": "Canary",
+    "confirmTitle": "将 Demi 更新到 {version}？",
+    "confirmBody": "Demi 会重新启动，所有人都将有几分钟无法使用。",
+    "confirmAgents": "有 {count} 个智能体正在工作，更新后会继续。",
+    "update": "更新"
+  },
   "account": {
     "title": "账户",
     "description": "你的名称、电子邮件和登录方式。",
@@ -323,6 +353,9 @@
     "developer": {
       "keywords": "开发,调试,疑难解答",
       "errorsKeywords": "错误,报错,日志,调试,诊断"
+    },
+    "updates": {
+      "keywords": "更新,升级,版本,发布,canary,beta"
     }
   },
   "changeEmail": {

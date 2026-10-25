@@ -13,7 +13,7 @@ import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotificati
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
-import { settingsSections, withUsersSection } from '@demicodes/web-ui/settings/sections'
+import { settingsSections, withUpdatesSection, withUsersSection } from '@demicodes/web-ui/settings/sections'
 import { appShortcuts, isAppShortcut } from '@demicodes/web-ui/settings/shortcuts'
 import { shortcutSet } from '@demicodes/web-ui/ui/shortcut'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
@@ -52,6 +52,7 @@ import SubagentsPanel from './SubagentsPanel.vue'
 import CredentialsPanel from './CredentialsPanel.vue'
 import UsersPanel from './UsersPanel.vue'
 import AboutPanel from './AboutPanel.vue'
+import UpdatesPanel from './UpdatesPanel.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
 
 defineProps<{
@@ -71,8 +72,16 @@ const conversations = useConversations()
 const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
-/** The rail lists Users for the master and admins only. */
-const withUsers = computed(() => withUsersSection(settingsSections(), product.snapshot?.user?.role ?? 'user'))
+/**
+ * The rail lists Users for the master and admins only, and Updates
+ * for them on a server that offers updates, whose state then carries it.
+ */
+const withUsers = computed(() =>
+  withUpdatesSection(
+    withUsersSection(settingsSections(), product.snapshot?.user?.role ?? 'user'),
+    !!product.snapshot?.serverUpgrade,
+  ),
+)
 const sections = computed(() =>
   withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>
     pluginEnabled(product.snapshot, plugin),
@@ -492,5 +501,6 @@ function resetShortcuts(): void {
       @update:show-unexpected-errors="preferences.update({ showUnexpectedErrors: $event })"
     />
     <AboutPanel v-else-if="section === 'about'" />
+    <UpdatesPanel v-else-if="section === 'updates'" />
   </SettingsDialog>
 </template>

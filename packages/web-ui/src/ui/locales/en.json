@@ -33,7 +33,8 @@
     "estimating": "Estimating time remaining…",
     "underAMinute": "Less than a minute remaining",
     "minutesLeft": "About {count} minute remaining | About {count} minutes remaining",
-    "body": "Demi opens by itself when the update is done."
+    "body": "Demi opens by itself when the update is done.",
+    "restarting": "Restarting Demi"
   },
   "startingScreen": {
     "connecting": "Connecting to Demi…",

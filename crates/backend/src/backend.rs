@@ -432,6 +432,8 @@ impl Backend {
             plugins: config.plugins,
             cloud: CloudServices::new(machines, config.cloud),
             lifecycle: config.lifecycle,
+            upgrade_request: config.upgrade_request,
+            update: update.clone(),
         };
         let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);

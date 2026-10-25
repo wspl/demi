@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ChevronDown, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
+import { ChevronDown, CircleArrowUp, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
 import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -443,7 +443,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
       </GallerySection>
       <GallerySection
         title="IconButton"
-        note="Chip and circle. Accent is send."
+        note="Chip and circle. Accent is send. Success is a ghost in green, for something good waiting, as the sidebar’s update."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="default">
@@ -482,6 +482,9 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
           </GallerySpecimen>
           <GallerySpecimen variant="danger">
             <IconButton :icon="Trash2" variant="danger" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="success">
+            <IconButton :icon="CircleArrowUp" variant="success" aria-label="Demi 0.1.5500 is available" @click="productWould('Open Updates Settings')" />
           </GallerySpecimen>
           <GallerySpecimen variant="circle">
             <div class="flex items-center gap-1">

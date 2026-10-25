@@ -133,6 +133,8 @@ pub struct Services {
     /// operations wait for in the grace after the start
     /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub returning: Arc<Returning>,
+    /// The server's updates, Settings › Updates.
+    pub upgrades: Arc<crate::upgrades::Upgrades>,
 }
 
 /// What the provider services start with.
@@ -182,6 +184,11 @@ pub struct ServiceSettings {
     pub plugins: Vec<Box<dyn PluginFactory>>,
     pub cloud: CloudServices,
     pub lifecycle: LifecycleTuning,
+    /// The file an administrator's update is requested in; none on a
+    /// server that offers no updates.
+    pub upgrade_request: Option<std::path::PathBuf>,
+    /// The backend's update state, which says when it stops for an update.
+    pub update: Arc<demi_backend_database::update::Update>,
 }
 
 /// Why the services did not start.
@@ -351,6 +358,14 @@ impl Services {
             .build()
             .map_err(ServicesError::Http)?;
         let sync = SyncRegistry::default();
+        let upgrades = crate::upgrades::Upgrades::start(
+            settings.upgrade_request.clone(),
+            control.clone(),
+            sync.clone(),
+            settings.update.clone(),
+            clock.clone(),
+        )
+        .await?;
         let public_push = || -> Result<Arc<dyn PushTransport>, ServicesError> {
             Ok(Arc::new(PublicPushTransport::new().map_err(ServicesError::Http)?))
         };
@@ -464,6 +479,7 @@ impl Services {
             lifecycle: settings.lifecycle,
             sync,
             returning,
+            upgrades,
         })
     }
 

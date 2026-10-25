@@ -8,6 +8,7 @@ import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryAbout from '../components/GalleryAbout.vue'
+import GalleryUpdates, { type UpdatesMoment } from '../components/GalleryUpdates.vue'
 import type { NoticesAnswer } from '../fixtures/acknowledgements'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySettingsRows from '../components/GallerySettingsRows.vue'
@@ -16,7 +17,7 @@ import GallerySkillsCalls from '../components/GallerySkillsCalls.vue'
 import GalleryWebSearchCalls from '../components/GalleryWebSearchCalls.vue'
 import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { settingsSections as productSections, withUsersSection } from '@demicodes/web-ui/settings/sections'
+import { settingsSections as productSections, withUpdatesSection, withUsersSection } from '@demicodes/web-ui/settings/sections'
 import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
 import { createSettingsState, gallerySessions, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
@@ -181,6 +182,16 @@ const noticesAnswers = [
   { value: 'failure', label: 'Failure' },
 ] as const
 const noticesAnswer = ref<NoticesAnswer>('notices')
+/** Where the Updates specimen's stand-in server starts. */
+const updateMoments = [
+  { value: 'upToDate', label: 'Up to Date' },
+  { value: 'available', label: 'Available' },
+  { value: 'downloading', label: 'Downloading' },
+  { value: 'preparing', label: 'Preparing' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'checkFailed', label: 'Check Failed' },
+] as const
+const updateMoment = ref<UpdatesMoment>('available')
 /** The account specimen on a server without mail. */
 const noMail = ref({ name: 'Alex' })
 /** The specimen's signed-in browsers: Sign Out drops one, as the product's list would. */
@@ -199,13 +210,17 @@ providePageHost(
     { openLink: openExaSignIn },
   ),
 )
-// The full mock's user is the master, whose rail lists Users.
+// The full mock's user is the master of a server that offers updates, whose
+// rail lists Users and Updates.
 const sections = computed(() =>
-  withUsersSection(
-    withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
-      full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+  withUpdatesSection(
+    withUsersSection(
+      withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
+        full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+      ),
+      'master',
     ),
-    'master',
+    true,
   ),
 )
 /** The Users specimens: the master's page, an admin's, and the master's at phone width. */
@@ -421,6 +436,22 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
           />
           <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
             <GalleryAbout :answer="noticesAnswer" />
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Updates"
+        note="For the master and admins of a server that demi-server installed, before About: the release it runs, the newest of its channel with Update Now, Check Now with when it last looked, and the channel, Beta or Canary. Update Now asks first, naming the agents at work, then shows the download with its rate and the time left, and the preparation; from the restart every page shows the Updating Demi screen (Overlays). An update that failed says why until the next one. The stand-in server runs 0.1.5469: Beta has nothing newer, Canary offers 0.1.5500, and Update Now runs it through."
+      >
+        <div class="flex w-full max-w-2xl flex-col gap-4">
+          <Segmented
+            v-model="updateMoment"
+            :options="updateMoments"
+            size="sm"
+          />
+          <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryUpdates :moment="updateMoment" />
           </div>
         </div>
       </GallerySection>

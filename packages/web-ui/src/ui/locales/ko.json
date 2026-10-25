@@ -33,7 +33,8 @@
     "estimating": "남은 시간 계산 중…",
     "underAMinute": "1분 미만 남음",
     "minutesLeft": "약 {count}분 남음",
-    "body": "업데이트가 끝나면 Demi가 자동으로 열립니다."
+    "body": "업데이트가 끝나면 Demi가 자동으로 열립니다.",
+    "restarting": "Demi 재시작 중"
   },
   "startingScreen": {
     "connecting": "Demi에 연결하는 중…",
