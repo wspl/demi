@@ -347,9 +347,9 @@ The steps themselves leave nothing half done:
 
 ## From Settings
 
-A master or an administrator updates the server from Settings › Software
-Update, without a shell on the machine. The page shows the release the server
-runs and the newest release of its channel:
+A master or an administrator updates the server from Settings › Updates,
+without a shell on the machine. The page shows the release the server runs
+and the newest release of its channel:
 
 - **Beta** offers the releases Demi publishes, which GitHub marks *latest*.
 - **Canary** offers every release, a deploy's pre-releases included.
@@ -434,8 +434,9 @@ pre-release, `v$version` (`.github/workflows/release.yml`):
 
 A pre-release is never the latest release, which `releases/latest` gives, so
 Beta never offers one: Canary does, from the installer's `--canary`,
-`demi-server upgrade --canary` and Settings › Updates, until it is published. A run that fails touches no server.
-A release refuses a version that has a release already.
+`demi-server upgrade --canary` and Settings › Updates, until it is published.
+A run that fails touches no server. A release refuses a version that has a
+release already.
 
 Then move the server, the SSH host that `DEMI_DEPLOY_HOST` names in the
 developer's `.env`. It must already run Demi
@@ -447,8 +448,8 @@ ssh "$DEMI_DEPLOY_HOST" \
   "sudo /usr/local/bin/demi-server upgrade $version && sudo /usr/local/bin/demi-server status"
 ```
 
-A server on the Canary channel offers the pre-release in Settings › Software
-Update once it exists, so **Update Now** there moves it as this command does.
+A server on the Canary channel offers the pre-release in Settings › Updates
+once it exists, so **Update Now** there moves it as this command does.
 
 `demi-server upgrade` downloads the pre-release from GitHub as it downloads a
 published one and carries it out ([The upgrade](#the-upgrade)): the checks,
