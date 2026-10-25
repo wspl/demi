@@ -157,7 +157,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 ## 对比
 
-Demi 与 Pi、DeepSeek Harness、OpenHands、opencode、Orca、herdr、T3 Code 的逐项对比，见 [Demi 对比](docs/comparison.zh-CN.md)。
+Demi 与 OpenHands、Orca、T3 Code、DeepSeek Harness、opencode、Pi、herdr 的逐项对比，见 [Demi 对比](docs/comparison.zh-CN.md)。
 
 ## 文档
 

@@ -157,7 +157,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 ## 比較
 
-Pi、DeepSeek Harness、OpenHands、opencode、Orca、herdr、T3 Code と Demi の機能ごとの比較は [Demi の比較](docs/comparison.ja.md)をご覧ください。
+OpenHands、Orca、T3 Code、DeepSeek Harness、opencode、Pi、herdr と Demi の機能ごとの比較は [Demi の比較](docs/comparison.ja.md)をご覧ください。
 
 ## ドキュメント
 

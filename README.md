@@ -215,8 +215,8 @@ Read the [design docs](docs/README.md), starting with the
 
 ## Comparison
 
-How Demi differs from Pi, DeepSeek Harness, OpenHands, opencode, Orca,
-herdr and T3 Code, feature by feature: [Demi compared](docs/comparison.md).
+How Demi differs from OpenHands, Orca, T3 Code, DeepSeek Harness, opencode,
+Pi and herdr, feature by feature: [Demi compared](docs/comparison.md).
 
 ## Documentation
 
