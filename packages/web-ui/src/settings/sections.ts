@@ -185,6 +185,7 @@ export function settingsSections(): SettingsNavGroup[] {
       ],
     },
     {
+      id: 'system',
       items: [
         {
           id: 'developer',
@@ -209,7 +210,7 @@ export function settingsSections(): SettingsNavGroup[] {
 
 /** A rail group's caption in the page's language. */
 export function settingsGroupName(id: SettingsGroupId): string {
-  return id === 'agent' ? t('sections.agent') : t('sections.workspace')
+  return t(`sections.${id}`)
 }
 
 /** Settings › Users, which only the master and admins have. */

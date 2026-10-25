@@ -304,6 +304,7 @@
   "sections": {
     "agent": "에이전트",
     "workspace": "워크스페이스",
+    "system": "시스템",
     "general": {
       "keywords": "모양,외관",
       "themeKeywords": "다크 모드,라이트 모드,외관",

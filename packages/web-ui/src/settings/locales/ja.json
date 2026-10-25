@@ -304,6 +304,7 @@
   "sections": {
     "agent": "エージェント",
     "workspace": "ワークスペース",
+    "system": "システム",
     "general": {
       "keywords": "外観,見た目",
       "themeKeywords": "ダークモード,ライトモード,外観",

@@ -304,6 +304,7 @@
   "sections": {
     "agent": "Agent",
     "workspace": "Workspace",
+    "system": "System",
     "general": {
       "keywords": "appearance,look",
       "themeKeywords": "dark mode,light mode,appearance",
