@@ -69,7 +69,7 @@ const PROGRAM: &str = "program";
 
 use crate::{
     ArtifactResolver, ResidentBackend, RuntimeError,
-    cache::{ArtifactCache, Wanted},
+    cache::{ArtifactCache, Downloading, Wanted},
     invocations::{Invocations, Invoking, ResidentArtifacts},
     process::ResidentProcess,
 };
@@ -90,6 +90,7 @@ const REQUESTS: usize = 64;
 pub struct ResidentRegistry {
     handle: ResidentHandle,
     contents: watch::Receiver<Vec<HostArtifact>>,
+    downloading: watch::Receiver<Vec<Downloading>>,
     owner: tokio::task::JoinHandle<()>,
 }
 
@@ -107,6 +108,7 @@ impl ResidentRegistry {
     ) -> Result<Self, RuntimeError> {
         let cache = Arc::new(ArtifactCache::new(cache, image, backend).await?);
         let contents = cache.contents();
+        let downloading = cache.downloading();
         let invocations = Invocations::default();
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let owner = Owner {
@@ -129,6 +131,7 @@ impl ResidentRegistry {
                 cache,
             },
             contents,
+            downloading,
             owner: tokio::spawn(owner.run(receiver)),
         })
     }
@@ -141,6 +144,11 @@ impl ResidentRegistry {
     /// (`crates/runner-command-packages/src/cache.rs`).
     pub fn installed(&self) -> watch::Receiver<Vec<HostArtifact>> {
         self.contents.clone()
+    }
+
+    /// What the artifact cache is downloading, and each later list.
+    pub fn downloading(&self) -> watch::Receiver<Vec<Downloading>> {
+        self.downloading.clone()
     }
 
     /// Stops every resident and waits until each has ended. The owner also

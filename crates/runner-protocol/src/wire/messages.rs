@@ -1600,6 +1600,13 @@ pub enum Outbound {
         #[garde(dive)]
         artifacts: Vec<HostArtifact>,
     },
+    /// The artifacts this runner's cache is downloading and how far each
+    /// came, once the connection is online and as they change, at most four
+    /// times a second (`crates/runner-command-packages/src/cache.rs`).
+    Downloading {
+        #[garde(dive)]
+        downloads: Vec<HostDownload>,
+    },
 }
 
 /// One artifact a Host holds: its package, its line's name and its
@@ -1616,6 +1623,24 @@ pub struct HostArtifact {
     pub name: String,
     #[garde(length(min = 1, max = 100))]
     pub version: String,
+}
+
+/// An artifact a Host is downloading into its cache: its package, line and
+/// version, as a [`HostArtifact`] names them, and how many of its `size`
+/// bytes arrived.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostDownload {
+    #[garde(length(min = 1, max = 200))]
+    pub package: String,
+    #[garde(length(min = 1, max = 100))]
+    pub name: String,
+    #[garde(length(min = 1, max = 100))]
+    pub version: String,
+    #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+    pub received: u64,
+    #[garde(range(min = 1, max = demi_shared_types::MAX_SAFE_INTEGER))]
+    pub size: u64,
 }
 
 /// Why a hello was refused. `already_connected` is the one outcome a runner
@@ -2536,6 +2561,7 @@ impl Outbound {
             | Self::Pong { .. } => Carriage::Connection,
             Self::Revoke { .. }
             | Self::Installed { .. }
+            | Self::Downloading { .. }
             | Self::PackageMessage { .. }
             | Self::PackageLost { .. }
             | Self::JobOutput { .. }

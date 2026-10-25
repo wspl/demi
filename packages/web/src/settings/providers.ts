@@ -89,7 +89,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const install = product.snapshot?.providers?.find((provider) => provider.id === providerId)?.cliInstall ?? null
     return {
       newest,
-      install: install && (install.state === 'failed' ? { state: 'failed', message: install.message } : { state: install.state }),
+      install: install && (install.state === 'installed' ? { state: 'installed' } : install),
     }
   }
   let lifetime = new AbortController()
@@ -888,7 +888,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     if (state.verificationUrl && state.userCode) {
       return { kind: 'device', url: state.verificationUrl, code: state.userCode, ...expiry }
     }
-    return { kind: 'starting', stage: state.stage }
+    return { kind: 'starting', stage: state.stage, download: state.download }
   }
 
   const login = computed(() => opened.value && {

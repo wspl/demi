@@ -58,6 +58,7 @@
   "starting": {
     "connecting": "연결하는 중…",
     "cloud": "클라우드를 시작하는 중…",
+    "download": "브라우저 다운로드 중…",
     "browser": "브라우저를 시작하는 중…",
     "page": "페이지를 여는 중…"
   },

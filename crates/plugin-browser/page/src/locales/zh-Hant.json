@@ -58,6 +58,7 @@
   "starting": {
     "connecting": "正在連線…",
     "cloud": "正在啟動雲端…",
+    "download": "正在下載瀏覽器…",
     "browser": "正在啟動瀏覽器…",
     "page": "正在開啟頁面…"
   },

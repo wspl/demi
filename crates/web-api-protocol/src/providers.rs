@@ -2,7 +2,7 @@
 //! catalog. No body the backend answers carries key or token material.
 
 use demi_shared_types::{
-    AccountInfo, AudioKind, AudioShape, AuthState, CacheTtl, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
+    AccountInfo, AudioKind, AudioShape, AuthState, CacheTtl, DownloadProgress, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
     Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
@@ -786,6 +786,12 @@ pub enum LoginState {
     /// login ends at `expires_at` unless the user finishes it first.
     Pending {
         stage: LoginStage,
+        /// How far the download the stage waits for came, as a Claude
+        /// sign-in's CLI while it is `installing`; null when it waits for
+        /// none, or before the first bytes are reported.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<DownloadProgress>")]
+        download: Option<DownloadProgress>,
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         verification_url: Option<String>,
@@ -1049,7 +1055,13 @@ pub enum NewestVersion {
     rename_all_fields = "camelCase"
 )]
 pub enum CliInstall {
-    Installing {},
+    /// `download` says how far the CLI's download came; null before the
+    /// machine's runner reports its first bytes.
+    Installing {
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<DownloadProgress>")]
+        download: Option<DownloadProgress>,
+    },
     /// `path` is the executable on the Claude Code machine.
     Installed {
         path: String,

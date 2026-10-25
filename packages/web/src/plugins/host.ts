@@ -12,7 +12,7 @@ import { directStream } from '../direct/operations'
 import { useWorkPanel } from '../conversation/work'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
-import { packageInstalled } from '../state/installed'
+import { packageDownloading, packageInstalled } from '../state/installed'
 import { useResources } from '../state/resources'
 import { useSettingsAddress } from '../settings/address'
 import { executionFor } from '../targets/execution'
@@ -126,6 +126,10 @@ export function productPageHost(): PageHost {
     installed(plugin, conversation) {
       const host = primaryHost(plugin, conversation)
       return host ? packageInstalled(product.snapshot, host.deviceId, host.packages) : []
+    },
+    downloading(plugin, conversation) {
+      const host = primaryHost(plugin, conversation)
+      return host ? packageDownloading(product.snapshot, host.deviceId, host.packages) : []
     },
     hostStarting(conversation) {
       const state = product.snapshot

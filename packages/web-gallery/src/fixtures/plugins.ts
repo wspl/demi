@@ -2,7 +2,7 @@ import { createPinia } from 'pinia'
 import { httpStatusLine } from '@demicodes/utils'
 import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
-import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
+import type { HostArtifact, HostDownload } from '@demicodes/web-ui/devices/installed'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   PluginCallError,
@@ -40,6 +40,8 @@ export interface GalleryPlugin {
   streams?: Record<string, OpenUserStream>
   /** What the specimen's Host holds of its packages, read reactively. */
   installed?(): readonly HostArtifact[]
+  /** What the specimen's Host downloads of its packages now, read reactively. */
+  downloading?(): readonly HostDownload[]
 }
 
 /**
@@ -109,6 +111,7 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       throw new PluginCallError('unknown_stream', `No user stream "${name}"`)
     },
     installed: (plugin) => plugins[plugin]?.installed?.() ?? [],
+    downloading: (plugin) => plugins[plugin]?.downloading?.() ?? [],
     hostStarting: () => shell.hostStarting?.() ?? false,
     files: () => {
       if (!shell.files) {
@@ -177,6 +180,7 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
     return unknownMethod(method)
   }
   return {
+    downloading: () => browser.downloading.value,
     followState: () => ({
       // A browser held while the page connects has brought no list yet, as before a feed's first answer.
       value: () => (browser.held.value === 'connecting' ? undefined : browser.listed.value),

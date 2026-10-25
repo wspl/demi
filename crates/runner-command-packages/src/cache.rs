@@ -74,7 +74,7 @@ use demi_shared_artifacts::{
 };
 use serde::{Deserialize, Serialize};
 use demi_runner_process::backend::Backend;
-use demi_runner_protocol::wire::HostArtifact;
+use demi_runner_protocol::wire::{HostArtifact, HostDownload};
 use tokio::io::AsyncWrite;
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared, WeakShared};
@@ -285,6 +285,82 @@ pub struct ArtifactCache {
     /// no install of the release running now removes. The runner of their
     /// release starts with none, and its installs remove the older.
     ahead: Mutex<std::collections::HashSet<String>>,
+    /// What the cache is downloading and how far each download came, which
+    /// the connection reports to the backend for the views that wait.
+    downloading: watch::Sender<Vec<Downloading>>,
+}
+
+/// A download in progress, by the digest it fetches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Downloading {
+    pub sha256: String,
+    pub download: HostDownload,
+}
+
+/// How often a download's progress is published at most: four times a
+/// second moves a progress bar smoothly without flooding the connection.
+const SHOWN_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// A download the cache publishes while it lasts; dropping it ends it.
+struct Shown<'a> {
+    downloading: &'a watch::Sender<Vec<Downloading>>,
+    sha256: String,
+    at: Option<std::time::Instant>,
+}
+
+impl<'a> Shown<'a> {
+    fn begin(
+        downloading: &'a watch::Sender<Vec<Downloading>>,
+        line: &Line,
+        version: &str,
+        artifact: &PackageArtifact,
+    ) -> Self {
+        let shown = Downloading {
+            sha256: artifact.sha256.clone(),
+            download: HostDownload {
+                package: line.package.clone(),
+                name: line.name.clone(),
+                version: version.to_owned(),
+                received: 0,
+                size: artifact.size,
+            },
+        };
+        downloading.send_modify(|downloads| downloads.push(shown));
+        Self {
+            downloading,
+            sha256: artifact.sha256.clone(),
+            at: None,
+        }
+    }
+
+    /// `received` bytes arrived, published unless the last was too recent.
+    /// Shows `received` of the `size` bytes that travel, which are fewer than
+    /// the artifact's own size when they come compressed.
+    fn received(&mut self, received: u64, size: u64) {
+        let now = std::time::Instant::now();
+        if self.at.is_some_and(|at| now < at + SHOWN_EVERY) {
+            return;
+        }
+        self.at = Some(now);
+        let size = size.max(1);
+        self.downloading.send_modify(|downloads| {
+            for shown in downloads.iter_mut().filter(|shown| shown.sha256 == self.sha256) {
+                shown.download.size = size;
+                shown.download.received = received.min(size);
+            }
+        });
+    }
+}
+
+impl Drop for Shown<'_> {
+    fn drop(&mut self) {
+        // Two installs of one digest share one download, so one entry goes.
+        self.downloading.send_modify(|downloads| {
+            if let Some(index) = downloads.iter().position(|shown| shown.sha256 == self.sha256) {
+                downloads.remove(index);
+            }
+        });
+    }
 }
 
 /// An artifact to install: its line (its package and name) and version, its
@@ -388,6 +464,7 @@ impl ArtifactCache {
             installs: Mutex::default(),
             contents: watch::Sender::new(Vec::new()),
             ahead: Mutex::default(),
+            downloading: watch::Sender::new(Vec::new()),
         };
         cache.publish_contents().await;
         Ok(cache)
@@ -397,6 +474,11 @@ impl ArtifactCache {
     /// recorded, by package, line and version.
     pub fn contents(&self) -> watch::Receiver<Vec<HostArtifact>> {
         self.contents.subscribe()
+    }
+
+    /// What the cache is downloading, and each later list.
+    pub fn downloading(&self) -> watch::Receiver<Vec<Downloading>> {
+        self.downloading.subscribe()
     }
 
     /// The digests running residents hold.
@@ -530,6 +612,7 @@ impl ArtifactCache {
         let cache = self.clone();
         let artifact = wanted.artifact.clone();
         let line = wanted.line();
+        let version = wanted.version.to_owned();
         let sha256 = &wanted.artifact.sha256;
         self.shared(sha256, resolver, progress, cancel, move |report, resolver, cancel| {
             Box::pin(async move {
@@ -546,7 +629,7 @@ impl ArtifactCache {
                         return Ok(file);
                     }
                     cache
-                        .download(&line, &artifact, &destination, resolver.as_ref(), &*report, &cancel)
+                        .download(&line, &version, &artifact, &destination, resolver.as_ref(), &*report, &cancel)
                         .await?;
                     Ok(destination.clone())
                 })
@@ -567,6 +650,7 @@ impl ArtifactCache {
         let cache = self.clone();
         let artifact = wanted.artifact.clone();
         let line = wanted.line();
+        let version = wanted.version.to_owned();
         let archive = Archive {
             digest: digest_of(&wanted.artifact),
             entry: entry.to_owned(),
@@ -595,7 +679,7 @@ impl ArtifactCache {
                         };
                     let mut output = tokio::fs::File::create(unpacking.archive()).await?;
                     cache
-                        .fetch(&line, &artifact, &mut output, resolver.as_ref(), &*report, &cancel)
+                        .fetch(&line, &version, &artifact, &mut output, resolver.as_ref(), &*report, &cancel)
                         .await?;
                     drop(output);
                     (*report)(ArtifactProgress::Unpack);
@@ -914,6 +998,7 @@ impl ArtifactCache {
     async fn download(
         &self,
         line: &Line,
+        version: &str,
         artifact: &PackageArtifact,
         destination: &Path,
         resolver: &dyn ArtifactResolver,
@@ -929,7 +1014,7 @@ impl ArtifactCache {
             },
         )
         .await?;
-        self.fetch(line, artifact, staged.file(), resolver, progress, cancel)
+        self.fetch(line, version, artifact, staged.file(), resolver, progress, cancel)
             .await?;
         match staged.publish().await {
             Err(demi_shared_artifacts::Error::Io(error))
@@ -953,6 +1038,7 @@ impl ArtifactCache {
     async fn fetch(
         &self,
         line: &Line,
+        version: &str,
         artifact: &PackageArtifact,
         output: &mut (impl AsyncWrite + Unpin),
         resolver: &dyn ArtifactResolver,
@@ -960,9 +1046,11 @@ impl ArtifactCache {
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
         let expected = digest_of(artifact);
+        let mut shown = Shown::begin(&self.downloading, line, version, artifact);
         // Each tenth of `total` that `done` passes is reported once.
         let mut reported = 0;
         let mut report = |done: u64, total: u64| {
+            shown.received(done, total);
             let tenth = done.saturating_mul(10) / total.max(1);
             if tenth > reported {
                 reported = tenth;

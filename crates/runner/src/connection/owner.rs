@@ -82,6 +82,8 @@ pub struct Registered {
     /// What the artifact cache holds, which each connection reports
     /// (`crates/runner-command-packages/src/cache.rs`).
     pub cached: watch::Receiver<Vec<wire::HostArtifact>>,
+    /// What the artifact cache is downloading.
+    pub downloading: watch::Receiver<Vec<demi_runner_command_packages::cache::Downloading>>,
     pub dispatcher: Arc<Dispatcher>,
     /// Where the current connection publishes its live contexts.
     pub index: watch::Sender<Arc<ContextIndex>>,
@@ -154,6 +156,8 @@ struct Owner<'r> {
     volumes: Volumes,
     /// What the artifact cache holds.
     cached: watch::Receiver<Vec<wire::HostArtifact>>,
+    /// What the artifact cache is downloading.
+    downloading: watch::Receiver<Vec<demi_runner_command_packages::cache::Downloading>>,
     /// Whether this connection asked the backend to revoke the device.
     revoke_asked: bool,
     /// The pages' peers the backend introduced on this connection
@@ -246,6 +250,7 @@ pub async fn serve(
             transport.cancellation(),
         ),
         cached: registered.cached.clone(),
+        downloading: registered.downloading.clone(),
         revoke_asked: false,
         direct,
         own,
@@ -307,6 +312,9 @@ impl Owner<'_> {
                 Ok(()) = self.cached.changed(), if management.phase() == Phase::Online => {
                     self.report_installed().await?;
                 }
+                Ok(()) = self.downloading.changed(), if management.phase() == Phase::Online => {
+                    self.report_downloading()?;
+                }
                 arrival = transport.input.recv() => match arrival {
                     Some(arrival) => {
                         let end = match arrival.message {
@@ -333,6 +341,19 @@ impl Owner<'_> {
         let artifacts = self.cached.borrow_and_update().clone();
         let frame =
             wire::encode(&wire::Outbound::Installed { artifacts }).map_err(io::Error::other)?;
+        self.send(frame)
+    }
+
+    /// Reports what the artifact cache is downloading.
+    fn report_downloading(&mut self) -> io::Result<()> {
+        let downloads = self
+            .downloading
+            .borrow_and_update()
+            .iter()
+            .map(|shown| shown.download.clone())
+            .collect();
+        let frame =
+            wire::encode(&wire::Outbound::Downloading { downloads }).map_err(io::Error::other)?;
         self.send(frame)
     }
 
@@ -422,6 +443,7 @@ impl Owner<'_> {
                 registered.announce_paired(&device_name);
                 self.online().await?;
                 self.report_installed().await?;
+                self.report_downloading()?;
             }
             Inbound::ClaimPending { claim_token } if management.phase() != Phase::Online => {
                 management.set_phase(Phase::ClaimPending);
@@ -447,6 +469,7 @@ impl Owner<'_> {
                 self.online().await?;
                 // A Host paired again may hold artifacts from before.
                 self.report_installed().await?;
+                self.report_downloading()?;
             }
             Inbound::HelloError { code, reason } => {
                 tracing::warn!(event = "runner.registration_refused", code = %code, %reason, "the backend refused the runner's registration");

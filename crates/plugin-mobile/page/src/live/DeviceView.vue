@@ -14,6 +14,9 @@ import {
   type ScreenCorners,
   touchInput,
   wheelInput,
+  downloadProgress,
+  formatByteRatio,
+  type HostDownload,
 } from '@demicodes/plugin-sdk'
 import type { DeviceSession } from './session'
 import type { LiveFrame } from '../generated/plugin'
@@ -37,11 +40,14 @@ import { t } from '../locales/text'
  *   session's, so a return shows the device at once, and so does the next
  *   view of the device after this one unmounts.
  * - Until the first picture, it says what it waits for; a frame that could
- *   not be shown is a failure the viewer can retry.
+ *   not be shown is a failure the viewer can retry. A stream that waits for
+ *   the Host to download the plugin's program says how far the download came.
  */
 const props = defineProps<{
   session: DeviceSession
   shown: boolean
+  /** What the Host downloads of the plugin's packages now. */
+  downloads: readonly HostDownload[]
 }>()
 
 const area = ref<HTMLDivElement | null>(null)
@@ -190,13 +196,17 @@ const stalled = computed(() => props.session.state.connection === 'stalled')
 const reconnecting = computed(() => props.session.reconnecting && !!look.value?.picture)
 const painted = computed(() => !!look.value?.picture)
 const screenOff = computed(() => painted.value && props.session.state.screenOff)
+/** How far the Host's download came, while the stream waits for it; null when there is none. */
+const progress = computed(() => downloadProgress(props.downloads))
+/** How far the download came, in words, or a blank line that keeps its room. */
+const progressText = computed(() => progress.value ? formatByteRatio(progress.value.received, progress.value.size) : '\u00a0')
 /** What the view waits for, in words, while it shows no picture. */
 const waitingLabel = computed(() => {
   switch (props.session.waiting) {
     case 'connecting':
-      return t('region.connecting')
+      return progress.value ? t('region.downloading') : t('region.connecting')
     case 'reconnecting':
-      return t('region.reconnecting')
+      return progress.value ? t('region.downloading') : t('region.reconnecting')
     case 'frame':
       return t('region.frame')
     case 'screen':
@@ -450,6 +460,7 @@ function composed(event: CompositionEvent): void {
       >
         <IndeterminateSpinner class="text-white/80" />
         <span class="px-4 text-center text-[13px] text-white/80">{{ waitingLabel }}</span>
+        <span class="text-[12px] tabular-nums text-white/60" :class="{ invisible: !progress }">{{ progressText }}</span>
       </div>
       <div
         v-if="screenOff && placement"
@@ -506,6 +517,7 @@ function composed(event: CompositionEvent): void {
       class="absolute inset-0"
       status="loading"
       :label="waitingLabel"
+      :progress="progress"
     />
     <input
       ref="keys"
@@ -522,7 +534,7 @@ function composed(event: CompositionEvent): void {
     >
     <LiveActivityOverlay :active="activity.active" :label="t('activity')" :mark="mark" />
     <div v-if="stalled || reconnecting" role="status" class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-2">
-      <span class="rounded-md bg-surface px-2 py-1 text-[12px] text-fg-subtle shadow">{{ reconnecting ? t('region.reconnecting') : t('region.waiting') }}</span>
+      <span class="rounded-md bg-surface px-2 py-1 text-[12px] text-fg-subtle shadow">{{ reconnecting ? (progress ? `${t('region.downloading')} ${progressText}` : t('region.reconnecting')) : t('region.waiting') }}</span>
     </div>
   </div>
 </template>

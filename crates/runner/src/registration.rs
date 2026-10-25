@@ -260,6 +260,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         management,
         residents: registry.handle(),
         cached: registry.installed(),
+        downloading: registry.downloading(),
         dispatcher,
         index,
         paths,

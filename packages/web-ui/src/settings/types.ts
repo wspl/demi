@@ -8,6 +8,7 @@ import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { AutostartUnavailable } from '../devices/autostart'
 import type { DeviceMark } from '../devices/mark'
+import type { DownloadProgress } from '../devices/installed'
 import type { DeviceState } from '../devices/state'
 import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
@@ -364,7 +365,11 @@ export interface SettingsProviderCli {
   /** The vendor's newest version, or why it could not be read. */
   newest: { version: string } | { error: string }
   /** The last install on Claude Code's machine, which adding an account starts. */
-  install: { state: 'installing' } | { state: 'installed' } | { state: 'failed'; message: string } | null
+  install:
+    | { state: 'installing'; download: DownloadProgress | null }
+    | { state: 'installed' }
+    | { state: 'failed'; message: string }
+    | null
 }
 
 /**
@@ -524,7 +529,8 @@ export interface SettingsModelEditor {
 export type ProviderLoginStage = 'preparing' | 'waiting_for_machine' | 'installing' | 'starting' | 'waiting_for_user'
 
 export type ProviderLoginPhase =
-  | { kind: 'starting'; stage: ProviderLoginStage }
+  /** `download` says how far the command-line tool's download came while it is `installing`. */
+  | { kind: 'starting'; stage: ProviderLoginStage; download?: DownloadProgress | null }
   | {
       kind: 'device'
       url: string

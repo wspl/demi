@@ -9,6 +9,8 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
+import ProgressBar from '@demicodes/web-ui/ui/ProgressBar.vue'
+import { formatByteRatio } from '@demicodes/web-ui/files/format'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -42,6 +44,8 @@ const emit = defineEmits<{
  * page's code, never on what another page pastes or the refusal of its code.
  */
 const code = ref('')
+/** How far the command-line tool's download came, while the sign-in installs it. */
+const download = computed(() => (props.phase.kind === 'starting' && props.phase.stage === 'installing' ? props.phase.download ?? null : null))
 watch([() => props.isOpen, () => props.phase.kind], () => {
   code.value = ''
 })
@@ -118,15 +122,21 @@ function submitCode(): void {
         </p>
       </header>
 
-      <div
-        v-if="phase.kind === 'starting'"
-        class="flex items-center gap-2 py-4 text-chrome text-fg-muted"
-      >
-        <IndeterminateSpinner :size="ICON_PX.in24" />
-        <template v-if="phase.stage === 'waiting_for_machine'">{{ t('login.waitingMachine') }}</template>
-        <template v-else-if="phase.stage === 'installing'">{{ t('login.installing') }}</template>
-        <template v-else-if="phase.stage === 'starting'">{{ t('login.startingTool') }}</template>
-        <template v-else>{{ t('login.contacting', { vendor: vendorName }) }}</template>
+      <!-- The download's bar and sizes keep their room through every stage, so the text never moves. -->
+      <div v-if="phase.kind === 'starting'" class="flex flex-col gap-2 py-4">
+        <div class="flex items-center gap-2 text-chrome text-fg-muted">
+          <IndeterminateSpinner :size="ICON_PX.in24" />
+          <template v-if="phase.stage === 'waiting_for_machine'">{{ t('login.waitingMachine') }}</template>
+          <template v-else-if="phase.stage === 'installing'">{{ t('login.installing') }}</template>
+          <template v-else-if="phase.stage === 'starting'">{{ t('login.startingTool') }}</template>
+          <template v-else>{{ t('login.contacting', { vendor: vendorName }) }}</template>
+        </div>
+        <div class="flex items-center gap-3" :class="{ invisible: !download }">
+          <ProgressBar class="flex-1" :value="download?.received ?? 0" :max="download?.size ?? 1" :label="t('login.installing')" />
+          <span class="text-detail tabular-nums text-fg-subtle">{{
+            download ? formatByteRatio(download.received, download.size) : '\u00a0'
+          }}</span>
+        </div>
       </div>
 
       <div v-else-if="phase.kind === 'device'" class="flex flex-col gap-4">

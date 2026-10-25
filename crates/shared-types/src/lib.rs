@@ -150,7 +150,7 @@ pub use model::{
     file_extension_support, model_accepts_images, model_accepts_video,
 };
 pub use provider_state::{
-    AccountInfo, AudioKind, AudioShape, AuthState, CacheTtl, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, NotCacheTtl, RefusedCode,
+    AccountInfo, AudioKind, AudioShape, AuthState, CacheTtl, DownloadProgress, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, NotCacheTtl, RefusedCode,
     RuntimeState, VideoResolution, VideoShape, WireApi,
 };
 pub use quota::{

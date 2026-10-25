@@ -17,7 +17,7 @@ import { schemaRefusal } from '@demicodes/protocol'
 import type { Pinia } from 'pinia'
 import { z } from 'zod'
 import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
-import type { HostArtifact } from '../devices/installed'
+import type { HostArtifact, HostDownload } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { CommitHistorySource } from '../files/history'
 import type { TranscriptRequest } from '../files/request-changes'
@@ -210,6 +210,8 @@ export interface PageHost {
   stream(name: string, conversation: string): OpenUserStream
   /** What `conversation`'s primary Host holds of `plugin`'s packages, read reactively. */
   installed(plugin: string, conversation: string): readonly HostArtifact[]
+  /** What `conversation`'s primary Host downloads of `plugin`'s packages now, read reactively. */
+  downloading(plugin: string, conversation: string): readonly HostDownload[]
   /** Whether `conversation`'s primary Host is the user's Cloud while it does not run, read reactively. */
   hostStarting(conversation: string): boolean
   files(conversation: string): ConversationFileService
@@ -282,6 +284,8 @@ export interface ConversationPlugin {
   stream(name: string): OpenUserStream
   /** What the conversation's primary Host holds of the plugin's packages, kept while it is offline. */
   readonly installed: ComputedRef<readonly HostArtifact[]>
+  /** What the conversation's primary Host downloads of the plugin's packages now, and how far each came. */
+  readonly downloading: ComputedRef<readonly HostDownload[]>
   /**
    * Whether the conversation's primary Host is the user's Cloud while it
    * does not run: work the user starts there waits for it to start first.
@@ -568,6 +572,7 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
       validatedCall(host, plugin, method, params, result, conversation, options),
     stream: (name) => host.stream(name, conversation),
     installed: computed(() => host.installed(plugin, conversation)),
+    downloading: computed(() => host.downloading(plugin, conversation)),
     hostStarting: computed(() => host.hostStarting(conversation)),
   }
 }

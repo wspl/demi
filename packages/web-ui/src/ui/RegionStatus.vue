@@ -5,6 +5,9 @@ import { computed, type Component } from 'vue'
 import { CircleX } from '@lucide/vue'
 import Button from './Button.vue'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
+import ProgressBar from './ProgressBar.vue'
+import { formatByteRatio } from '../files/format'
+import type { DownloadProgress } from '../devices/installed'
 import { regionRetry } from './region-retry'
 import type { SentenceText, TitleText } from './ui-text'
 
@@ -22,6 +25,8 @@ import type { SentenceText, TitleText } from './ui-text'
  *   screen while it is retried. There is no third state between the two.
  * - A failed region announces itself (`role="alert"`); loading and other regions
  *   stay polite.
+ * - A loading region that waits for a download shows how far it came, as a bar
+ *   and its sizes under the label.
  */
 const props = withDefaults(
   defineProps<{
@@ -34,6 +39,12 @@ const props = withDefaults(
     detail?: string | null
     /** The request the failure came from, named under the reason. */
     requestId?: string | null
+    /**
+     * How far a download the loading pane waits for came. Null keeps the
+     * bar's room empty, for a pane that waits for a download in only some
+     * of its states, so the label never moves.
+     */
+    progress?: DownloadProgress | null
     /** What the loading pane says while a Retry runs. */
     loadingLabel?: SentenceText
     /** A note's single action; omitted notes offer nothing. */
@@ -79,6 +90,16 @@ function retry(): void {
       aria-hidden="true"
     />
     <p class="text-chrome text-fg-muted">{{ retrying ? (loadingLabel ?? shared('common.loading')) : label }}</p>
+    <div
+      v-if="progress !== undefined && shown === 'loading'"
+      class="flex w-48 flex-col items-center gap-1.5 pt-1"
+      :class="{ invisible: !progress || retrying }"
+    >
+      <ProgressBar :value="progress?.received ?? 0" :max="progress?.size ?? 1" :label="label" />
+      <p class="text-detail leading-4 tabular-nums text-fg-subtle">
+        {{ progress ? formatByteRatio(progress.received, progress.size) : '\u00a0' }}
+      </p>
+    </div>
     <p
       v-if="detail && shown === 'failed'"
       class="max-w-sm whitespace-pre-line text-detail leading-4 text-fg-subtle"

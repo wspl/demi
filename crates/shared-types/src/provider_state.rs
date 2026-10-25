@@ -456,6 +456,16 @@ impl LoginStage {
     }
 }
 
+/// How far a download came: `received` of its `size` bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    #[schemars(range(max = crate::MAX_SAFE_INTEGER))]
+    pub received: u64,
+    #[schemars(range(min = 1, max = crate::MAX_SAFE_INTEGER))]
+    pub size: u64,
+}
+
 /// What a login asks the user to do, reported while the login
 /// waits (`crates/backend-providers/src/vault/logins.rs`). When the login ends is
 /// the vault's, not the vendor's.

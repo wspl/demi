@@ -3,7 +3,7 @@
 use demi_runner_protocol::direct::CANDIDATE_CHARS;
 /// The STUN servers' URLs, which the product state names to the page.
 pub use demi_runner_protocol::direct::{NotAStunUrl, StunUrl};
-use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, OperatingSystem, RunnerPlatform};
+use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, HostDownload, OperatingSystem, RunnerPlatform};
 use demi_shared_types::{Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -109,7 +109,9 @@ pub enum DeviceState {
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only); `installed` is what its runner
 /// last reported its artifact cache holds, kept while it is offline
-/// (`crates/runner-command-packages/src/cache.rs`); `os` and `runner_version`
+/// (`crates/runner-command-packages/src/cache.rs`); `downloading` is what
+/// it downloads into that cache now and how far each came, while its runner
+/// is connected (the backend keeps it in memory only); `os` and `runner_version`
 /// are the operating system and the runner release its runner last
 /// reported, null before its runner first connected; `mark` is its mark,
 /// null for the Cloud; `direct` is whether
@@ -137,6 +139,7 @@ pub struct DeviceDto {
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,
     pub installed: Vec<HostArtifact>,
+    pub downloading: Vec<HostDownload>,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<OperatingSystem>")]
     pub os: Option<OperatingSystem>,

@@ -49,6 +49,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_host_interface::{HostError, Process, SpawnRequest};
+use demi_shared_types::DownloadProgress;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use tokio_util::sync::CancellationToken;
 
@@ -146,6 +147,9 @@ pub enum StartStage {
     Machine,
     /// Demi's CLI installed on the machine.
     Install,
+    /// How far the CLI's download came while it installs, as the machine's
+    /// runner reports it.
+    Download(DownloadProgress),
     /// The process readied and started.
     Process,
 }

@@ -115,7 +115,7 @@ pub use kept::{
 pub use messages::{
     ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitBranches, GitChange, GitChanges,
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
-    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, ProgramsArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LinkedWorktree,
+    HelloErrorCode, HostArtifact, HostDownload, HostIdentity, Inbound, JobArtifactOwner, ProgramsArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LinkedWorktree,
     LookPath, Looked, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
     Resume, RunnerInfo, RunnerPlatform, ResidentErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, WriteExists,

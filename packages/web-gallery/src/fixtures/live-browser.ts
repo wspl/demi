@@ -20,6 +20,7 @@ import { encodeControl, encodeVideo } from '@demicodes/web-ui/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/web-ui/live/input'
 import { BrowserTabsError, type BrowserTabList, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
+import type { HostDownload } from '@demicodes/web-ui/devices/installed'
 import type { PanelReason } from '@demicodes/plugin-browser/generated/plugin'
 import { WORKSPACE_ROOT } from './workspace'
 
@@ -119,6 +120,18 @@ const LOAD_MS = 5000
 const CLOUD_START_MS = 2500
 /** How long the browser takes to start on a Host where it does not run, as Chrome starts. */
 const BROWSER_START_MS = 1500
+/** Chrome as the Host downloads it, of a typical size. */
+const CHROME_DOWNLOAD: HostDownload = {
+  package: 'demi.browser',
+  name: 'chrome',
+  version: '140.0.7339.80',
+  received: 0,
+  size: 163_577_856,
+}
+/** How often the runner reports a download, at most four times a second. */
+const DOWNLOAD_REPORT_MS = 250
+/** What a report adds, so the gallery's download takes about a minute. */
+const DOWNLOAD_STEP_BYTES = 681_574
 /** Each site's icon, drawn once. */
 const siteIcons = new Map<string, string>()
 
@@ -622,6 +635,8 @@ export interface GalleryBrowser {
   stream: OpenUserStream
   /** Whether the Host is a Cloud that is starting, as the product state says while it wakes. */
   hostStarting: ShallowRef<boolean>
+  /** What the Host downloads of the browser's packages, as the product state says while Chrome downloads. */
+  downloading: ShallowRef<readonly HostDownload[]>
   /** The Cloud stops, as an idle Cloud does, and its browser ends with it; the next tab opened or shown starts it again. */
   stopCloud(): void
   /** What a held opening waits for, and nothing once `finish` let it go on. */
@@ -641,6 +656,8 @@ export interface GalleryBrowser {
  * - Connecting… while the page has read neither the plugin's tab list nor a
  *   view's state.
  * - Starting Cloud… on a Cloud that starts.
+ * - Downloading the browser… with how far it came, on a Host without Chrome:
+ *   the download runs to its end, and the browser then starts.
  * - Starting the browser… on a Host whose browser has no tabs yet.
  * - Opening the page….
  */
@@ -833,6 +850,7 @@ export function galleryBrowser(
   let failOpen: BrowserTabsError | null = null
 
   const hostStarting = shallowRef(holding === 'cloud')
+  const downloading = shallowRef<readonly HostDownload[]>([])
   const held = shallowRef<StartingPhase | null>(holding)
   /** The openings `held` keeps, until `finish`. */
   const waiting: Array<() => void> = []
@@ -842,6 +860,26 @@ export function galleryBrowser(
   /** Waits `ms`; the timer ends by itself. */
   function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  /** The download that runs while an opening is held in `download`, until it has every byte. */
+  let download: ReturnType<typeof setInterval> | null = null
+
+  /** Chrome downloads from its first byte, as often as the runner reports it, and the held opening goes on at its end. */
+  function startDownload(): void {
+    if (download !== null) {
+      clearInterval(download)
+    }
+    downloading.value = [{ ...CHROME_DOWNLOAD, received: 0 }]
+    download = setInterval(() => {
+      const [current] = downloading.value
+      const received = Math.min(CHROME_DOWNLOAD.size, (current?.received ?? 0) + DOWNLOAD_STEP_BYTES)
+      if (received < CHROME_DOWNLOAD.size) {
+        downloading.value = [{ ...CHROME_DOWNLOAD, received }]
+        return
+      }
+      browser.finish()
+    }, DOWNLOAD_REPORT_MS)
   }
 
   /**
@@ -915,7 +953,7 @@ export function galleryBrowser(
     })
   }
 
-  return {
+  const browser: GalleryBrowser = {
     listed,
     newTab: async () => {
       await started()
@@ -1008,9 +1046,15 @@ export function galleryBrowser(
       end()
     },
     held,
+    downloading,
     finish: () => {
       held.value = null
       hostStarting.value = false
+      if (download !== null) {
+        clearInterval(download)
+        download = null
+      }
+      downloading.value = []
       // A view held back while the page connected says what the browser holds now.
       for (const view of views) {
         view.state()
@@ -1022,6 +1066,9 @@ export function galleryBrowser(
     hold: (phase) => {
       held.value = phase
       hostStarting.value = phase === 'cloud'
+      if (phase === 'download') {
+        startDownload()
+      }
       // The page connects again, as after a lost connection, and reads nothing until `finish`.
       if (phase === 'connecting') {
         for (const view of [...views]) {
@@ -1030,4 +1077,8 @@ export function galleryBrowser(
       }
     },
   }
+  if (holding === 'download') {
+    startDownload()
+  }
+  return browser
 }

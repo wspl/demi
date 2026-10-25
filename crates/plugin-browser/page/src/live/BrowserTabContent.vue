@@ -9,7 +9,7 @@ import { Dropdown } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { RegionStatus } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
-import { PaneReading, downloadUrl, formatByteRatio, formatBytes, usePage, usePaneReady, usePaneWaiting } from '@demicodes/plugin-sdk'
+import { PaneReading, downloadProgress, downloadUrl, formatByteRatio, formatBytes, usePage, usePaneReady, usePaneWaiting } from '@demicodes/plugin-sdk'
 import { clientPlatform } from '@demicodes/utils'
 import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
@@ -455,6 +455,7 @@ watch(
         class="min-h-0 flex-1"
         status="loading"
         :label="startingLabel(phase)"
+        :progress="downloadProgress(session.api.downloading())"
       />
       <LiveView
         v-else-if="live"
