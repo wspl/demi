@@ -1,17 +1,17 @@
 //! `GET /api/update`, and what the listener answers before the backend
 //! serves.
 //!
-//! The backend listens before it opens its databases. Until it serves, it
-//! answers:
+//! The backend listens before it opens its databases, and its update
+//! screen's mode listens without them. Until it serves, it answers:
 //!
-//! - `GET /api/update`: the step that runs, the conversations and bytes done
-//!   of how many, and the time left; it names no conversation. Once it
-//!   serves, it answers that nothing runs, or that the backend stops next
-//!   for an update of the server.
+//! - `GET /api/update`: the steps of the update, with the conversations and
+//!   bytes done of how many and the time left; it names no conversation.
+//!   Once it serves, it answers that nothing runs, or that the backend stops
+//!   next for an update of the server.
 //! - The web app's files, so a page loads and shows the progress.
-//! - 503 to every other request: `updating` while it migrates or converts
-//!   its data, `backend_starting` otherwise, which a page and a runner take
-//!   as a backend away for a moment.
+//! - 503 to every other request: `updating` while an update runs, so a page
+//!   loaded then opens on its screen, `backend_starting` otherwise, which a
+//!   page and a runner take as a backend away for a moment.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
-use demi_backend_database::update::{Update, UpdateReport};
+use demi_backend_database::update::Update;
 use demi_backend_runners::{native, public_url::PublicUrl};
 use demi_web_api_protocol::state::UpdateState;
 
@@ -56,9 +56,9 @@ pub(crate) fn routes(update: Arc<Update>, web_directory: Option<PathBuf>, public
 
 /// The 503 of a backend that does not serve yet.
 async fn not_yet(State(update): State<Arc<Update>>) -> Response {
-    match update.report() {
-        UpdateReport::Updating(_) => ApiError::updating(),
-        UpdateReport::Starting | UpdateReport::Ready | UpdateReport::Restarting => ApiError::backend_starting(),
+    match update.state() {
+        UpdateState::Updating { .. } => ApiError::updating(),
+        UpdateState::None => ApiError::backend_starting(),
     }
     .into_response()
 }

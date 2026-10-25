@@ -28,7 +28,7 @@
     "speed": "{size}/秒",
     "preparing": "Demi {version} を準備中…",
     "restarting": "Demi を再起動中…",
-    "failed": "{version} にアップデートできませんでした。Demi は {running} に戻りました。",
+    "failed": "{version} にアップデートできませんでした",
     "failedNoVersion": "アップデートできませんでした。Demi は {running} のままです。",
     "channel": "アップデートチャンネル",
     "channelDescription": "Canary は最新のビルドをいち早く受け取ります。まだ誰もサーバで試していないビルドです。",
@@ -37,7 +37,30 @@
     "confirmTitle": "Demi を {version} にアップデートしますか？",
     "confirmBody": "Demi が再起動し、数分間すべてのユーザが利用できなくなります。",
     "confirmAgents": "{count} 個のエージェントが作業中です。アップデート後に再開します。",
-    "update": "アップデート"
+    "update": "アップデート",
+    "updatingTo": "Demi {version} にアップデート中",
+    "stepOf": "ステップ {number}/{count}：{step}",
+    "failedAt": "ステップ {number}/{count} に失敗しました：{step}",
+    "steps": {
+      "download": "Demi {version} をダウンロード",
+      "unpack": "Demi {version} を展開",
+      "checkConfiguration": "設定を確認",
+      "downloadGvisor": "gVisor をダウンロード",
+      "installImage": "Cloud イメージをインストール",
+      "checkDatabases": "データベースを確認",
+      "updateDevices": "デバイスの Demi をアップデート",
+      "restart": "Demi を再起動"
+    },
+    "detail": {
+      "of": "{done}/{count}",
+      "and": "と",
+      "waitingFor": "{names}を待っています",
+      "waitingForMore": "{names}ほか {count} 台を待っています",
+      "givesUpIn": "{time} 後に残りを待たずに続行",
+      "toUpdate": "{count} 件をアップデート",
+      "installed": "インストール済み",
+      "noChanges": "変更なし"
+    }
   },
   "account": {
     "title": "アカウント",

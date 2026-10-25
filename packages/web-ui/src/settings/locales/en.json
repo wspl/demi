@@ -28,7 +28,7 @@
     "speed": "{size}/s",
     "preparing": "Preparing Demi {version}…",
     "restarting": "Restarting Demi…",
-    "failed": "Couldn’t update to {version}. Demi went back to {running}.",
+    "failed": "Couldn’t update to {version}",
     "failedNoVersion": "Couldn’t update. Demi still runs {running}.",
     "channel": "Update channel",
     "channelDescription": "Canary gets the newest builds first, before anyone has tried them on a server.",
@@ -37,7 +37,30 @@
     "confirmTitle": "Update Demi to {version}?",
     "confirmBody": "Demi restarts and is unavailable to everyone for a few minutes.",
     "confirmAgents": "{count} agent is working; it continues after the update. | {count} agents are working; they continue after the update.",
-    "update": "Update"
+    "update": "Update",
+    "updatingTo": "Updating to Demi {version}",
+    "stepOf": "Step {number} of {count}: {step}",
+    "failedAt": "Step {number} of {count} failed: {step}",
+    "steps": {
+      "download": "Download Demi {version}",
+      "unpack": "Unpack Demi {version}",
+      "checkConfiguration": "Check the configuration",
+      "downloadGvisor": "Download gVisor",
+      "installImage": "Install the Cloud image",
+      "checkDatabases": "Check the databases",
+      "updateDevices": "Update Demi on your devices",
+      "restart": "Restart Demi"
+    },
+    "detail": {
+      "of": "{done} of {count}",
+      "and": " and ",
+      "waitingFor": "Waiting for {names}",
+      "waitingForMore": "Waiting for {names} and {count} more",
+      "givesUpIn": "Continues without the rest in {time}",
+      "toUpdate": "{count} to update | {count} to update",
+      "installed": "Already installed",
+      "noChanges": "No changes needed"
+    }
   },
   "account": {
     "title": "Account",

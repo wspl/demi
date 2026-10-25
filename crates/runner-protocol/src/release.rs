@@ -33,6 +33,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use demi_command_protocol::{PackageArtifact, digest, target_artifacts};
+use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::wire;
@@ -200,33 +202,262 @@ pub const UPGRADE_REQUEST: &str = "/run/demi-upgrade/version";
 /// A line `demi-server` writes on the management socket while it upgrades
 /// the server, its own connection each: how far the upgrade is. The
 /// backend shows it to the administrators, and answers a line of its own,
-/// any line, once it has acted on it: for `restarting`, once every page has
-/// heard that the backend stops.
+/// any line, once it has acted on it: for one whose restart runs, once every
+/// page has heard that the backend stops.
 ///
 /// A line is written by the running release's `demi-server` while it
 /// downloads, and by the next release's from its preparation on, to a
-/// backend of the running release: steps and fields may be added but never
-/// changed or removed, and a backend answers a line it cannot read as it
-/// answers any, which the writer ignores.
+/// backend of the running release. A backend answers a line it cannot read,
+/// as one of another release's form, as it answers any, which the writer
+/// ignores, and shows nothing of it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "upgrade", rename_all = "snake_case")]
 pub enum UpgradeNotice {
-    /// The release downloads: `bytes_done` of `bytes`, at `bytes_per_second`
-    /// of late, 0 before it is measured.
-    Downloading {
-        to: String,
-        bytes_done: u64,
-        bytes: u64,
-        #[serde(default)]
-        bytes_per_second: u64,
+    /// How far the update is: every step, in order.
+    Progress { update: UpdateRecord },
+    /// The update did not happen, and the server runs the release it ran;
+    /// none when it failed before it knew what to move to.
+    Failed {
+        reason: String,
+        update: Option<UpdateRecord>,
     },
-    /// The release checks itself and its devices fetch its runner, while
-    /// the backend still serves.
-    Preparing { to: String },
-    /// The backend stops next.
-    Restarting { to: String },
-    /// The upgrade did not happen, and the server runs the release it ran.
-    Failed { to: String, reason: String },
+}
+
+/// A server update's steps, which `demi-server` keeps in the backend's data
+/// directory as [`UPDATE_RECORD`] while it runs: the next `demi-server` of
+/// the move goes on from it, the update screen reads it while no backend
+/// runs, and the new backend reads it as it starts, then removes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRecord {
+    /// The release the update moves to.
+    pub to: String,
+    /// The release it leaves, which it returns to when `to` does not start.
+    pub from: String,
+    /// The steps while the server serves, Settings › Updates's.
+    pub upgrade: Vec<UpgradeStep>,
+    /// The steps from the restart on, the update screen's.
+    pub restart: Vec<RestartStep>,
+    /// `to` did not start, and the server returns to `from`.
+    pub returning: bool,
+}
+
+/// The record's file in the backend's data directory.
+pub const UPDATE_RECORD: &str = "update.json";
+
+impl UpdateRecord {
+    /// A move from `from` to `to` before its first step.
+    pub fn new(from: &str, to: &str) -> Self {
+        Self {
+            to: to.to_owned(),
+            from: from.to_owned(),
+            upgrade: UpgradeStepKind::ALL
+                .iter()
+                .map(|&kind| UpgradeStep { kind, state: StepState::Waiting })
+                .collect(),
+            restart: RestartStepKind::ALL
+                .iter()
+                .map(|&kind| RestartStep { kind, state: StepState::Waiting })
+                .collect(),
+            returning: false,
+        }
+    }
+
+    /// The state of the step `kind` of the preparation.
+    pub fn upgrade_step(&mut self, kind: UpgradeStepKind) -> &mut StepState {
+        &mut self
+            .upgrade
+            .iter_mut()
+            .find(|step| step.kind == kind)
+            .expect("a record holds every step")
+            .state
+    }
+
+    /// The state of the step `kind` from the restart on.
+    pub fn restart_step(&mut self, kind: RestartStepKind) -> &mut StepState {
+        &mut self
+            .restart
+            .iter_mut()
+            .find(|step| step.kind == kind)
+            .expect("a record holds every step")
+            .state
+    }
+
+    /// Whether the restart has begun, so every page shows the update screen.
+    pub fn restarting(&self) -> bool {
+        self.upgrade
+            .iter()
+            .any(|step| step.kind == UpgradeStepKind::Restart && step.state != StepState::Waiting)
+    }
+}
+
+/// The steps an update takes while the server serves, in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum UpgradeStepKind {
+    Download,
+    Unpack,
+    CheckConfiguration,
+    DownloadGvisor,
+    InstallImage,
+    CheckDatabases,
+    UpdateDevices,
+    Restart,
+}
+
+impl UpgradeStepKind {
+    pub const ALL: [Self; 8] = [
+        Self::Download,
+        Self::Unpack,
+        Self::CheckConfiguration,
+        Self::DownloadGvisor,
+        Self::InstallImage,
+        Self::CheckDatabases,
+        Self::UpdateDevices,
+        Self::Restart,
+    ];
+}
+
+/// The steps of an update from its restart on, in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum RestartStepKind {
+    StopDemi,
+    SaveClouds,
+    KeepDatabases,
+    Switch,
+    StartManager,
+    StartDemi,
+    UpdateControl,
+    UpdateConversations,
+}
+
+impl RestartStepKind {
+    pub const ALL: [Self; 8] = [
+        Self::StopDemi,
+        Self::SaveClouds,
+        Self::KeepDatabases,
+        Self::Switch,
+        Self::StartManager,
+        Self::StartDemi,
+        Self::UpdateControl,
+        Self::UpdateConversations,
+    ];
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct UpgradeStep {
+    pub kind: UpgradeStepKind,
+    pub state: StepState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RestartStep {
+    pub kind: RestartStepKind,
+    pub state: StepState,
+}
+
+/// How far one step is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum StepState {
+    Waiting,
+    Running {
+        started: Timestamp,
+        progress: Option<StepProgress>,
+    },
+    Done {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        took_ms: u64,
+        summary: StepSummary,
+    },
+    Skipped {
+        why: SkipReason,
+    },
+    Failed {
+        reason: String,
+    },
+}
+
+impl StepState {
+    /// A step that starts now, without numbers yet.
+    pub fn running() -> Self {
+        Self::Running {
+            started: Timestamp::truncate(jiff::Timestamp::now()),
+            progress: None,
+        }
+    }
+
+    /// The step, which ran since it started, is done, having done `summary`.
+    pub fn done(&self, summary: StepSummary) -> Self {
+        let took_ms = match self {
+            Self::Running { started, .. } => {
+                u64::try_from(jiff::Timestamp::now().as_millisecond() - started.as_millisecond()).unwrap_or(0)
+            }
+            _ => 0,
+        };
+        Self::Done { took_ms, summary }
+    }
+}
+
+/// The numbers of a running step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum StepProgress {
+    /// Bytes done of all; a download's rate of late, none before it is
+    /// measured, and the time left once known.
+    Bytes {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        done: u64,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        total: u64,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        per_second: Option<u64>,
+        left_seconds: Option<u32>,
+    },
+    /// The devices that have the new runner, of all asked, and the names of
+    /// those it waits for, until it goes on without them.
+    Devices {
+        done: u32,
+        total: u32,
+        waiting: Vec<String>,
+        gives_up_at: Timestamp,
+    },
+    /// The Clouds saved, of those the manager saves.
+    Clouds { done: u32, total: u32 },
+    /// The conversations updated, of all, with their bytes and the time left.
+    Conversations {
+        done: u32,
+        total: u32,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        bytes_done: u64,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        bytes: u64,
+        left_seconds: Option<u32>,
+    },
+}
+
+/// What a done step did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StepSummary {
+    None,
+    Bytes {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        bytes: u64,
+    },
+    Count { count: u32 },
+    Devices { done: u32, total: u32 },
+}
+
+/// Why an update does not need a step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SkipReason {
+    /// What it would fetch or install is there already.
+    Installed,
+    /// The new release changes nothing it would.
+    NoChanges,
 }
 
 impl UpgradeNotice {

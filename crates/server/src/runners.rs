@@ -27,7 +27,13 @@ pub const WAIT: Duration = Duration::from_secs(2 * 60);
 /// devices then download after the switch. Nothing here fails the upgrade
 /// but a release record that does not decode, or a failure to write to
 /// `out`.
-pub fn prefetch(socket: &Path, root: &Path, wait: Duration, out: &mut impl Write) -> io::Result<()> {
+pub fn prefetch(
+    socket: &Path,
+    root: &Path,
+    wait: Duration,
+    out: &mut impl Write,
+    heard: &mut dyn FnMut(&PrefetchProgress),
+) -> io::Result<()> {
     let record = root.join("runners").join("manifest.json");
     let release = match std::fs::read(&record) {
         // The next release may speak other protocols than this program.
@@ -50,7 +56,7 @@ pub fn prefetch(socket: &Path, root: &Path, wait: Duration, out: &mut impl Write
         release: release.release,
         root: root.to_owned(),
     };
-    let last = match wait_for(&stream, &request, wait, out) {
+    let last = match wait_for(&stream, &request, wait, out, heard) {
         Ok(last) => last,
         Err(Waited::Out(error)) => return Err(error),
         Err(Waited::Backend(reason)) => {
@@ -94,6 +100,7 @@ fn wait_for(
     request: &PrefetchRequest,
     wait: Duration,
     out: &mut impl Write,
+    heard: &mut dyn FnMut(&PrefetchProgress),
 ) -> Result<Option<PrefetchProgress>, Waited> {
     let backend = |error: io::Error| Waited::Backend(error.to_string());
     let mut line = serde_json::to_vec(request).map_err(|error| Waited::Backend(error.to_string()))?;
@@ -142,6 +149,7 @@ fn wait_for(
             let devices = if count == 1 { "device has" } else { "devices have" };
             writeln!(out, "{} of {count} {devices} the new runner", done(&progress)).map_err(Waited::Out)?;
         }
+        heard(&progress);
         let finished = progress.finished();
         last = Some(progress);
         if finished {

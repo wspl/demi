@@ -111,16 +111,31 @@ fn abandoned(data: &Path, version: &Version) -> PathBuf {
 }
 
 /// Keeps `databases` in the snapshot of `version`, made anew.
-pub fn take(data: &Path, version: &Version, databases: &[Migrating]) -> io::Result<()> {
+pub fn take(
+    data: &Path,
+    version: &Version,
+    databases: &[Migrating],
+    progress: &mut dyn FnMut(u64, u64),
+) -> io::Result<()> {
     let snapshot = snapshot(data, version);
     remove(&snapshot)?;
+    let copied: Vec<&Migrating> = databases.iter().filter(|migrating| !migrating.converts).collect();
+    let total = copied
+        .iter()
+        .map(|migrating| std::fs::metadata(data.join(&migrating.database)).map(|metadata| metadata.len()))
+        .sum::<io::Result<u64>>()?;
+    let mut done = 0;
+    progress(done, total);
     for migrating in databases {
         let target = snapshot.join(&migrating.database);
         std::fs::create_dir_all(target.parent().expect("a database lies in a directory"))?;
         if migrating.converts {
             std::fs::hard_link(data.join(&migrating.database), &target)?;
         } else {
-            std::fs::copy(data.join(&migrating.database), &target)?;
+            copy(&data.join(&migrating.database), &target, &mut |read| {
+                done += read;
+                progress(done, total);
+            })?;
             std::fs::File::open(&target)?.sync_all()?;
         }
     }
@@ -281,3 +296,53 @@ fn remove(path: &Path) -> io::Result<()> {
     }
 }
 
+
+/// Copies `from` to `to` a range at a time, telling each range's bytes, as
+/// `std::fs::copy` copies: through `copy_file_range`, which clones where the
+/// file system can, or by reads and writes where the kernel refuses it.
+fn copy(from: &Path, to: &Path, copied: &mut dyn FnMut(u64)) -> io::Result<()> {
+    use std::io::{Read as _, Write as _};
+    const RANGE: usize = 64 << 20;
+    let mut source = std::fs::File::open(from)?;
+    let mut target = std::fs::File::create(to)?;
+    let mut ranges = true;
+    let mut buffer = Vec::new();
+    loop {
+        let moved = if ranges {
+            match copy_range(&source, &target, RANGE)? {
+                Some(moved) => moved,
+                None => {
+                    ranges = false;
+                    buffer.resize(8 << 20, 0);
+                    continue;
+                }
+            }
+        } else {
+            let read = source.read(&mut buffer)?;
+            target.write_all(&buffer[..read])?;
+            read
+        };
+        if moved == 0 {
+            break;
+        }
+        copied(moved as u64);
+    }
+    target.set_permissions(source.metadata()?.permissions())
+}
+
+/// One range of `source` copied onto `target` by the kernel; none where it
+/// does not copy between these files.
+#[cfg(target_os = "linux")]
+fn copy_range(source: &std::fs::File, target: &std::fs::File, length: usize) -> io::Result<Option<usize>> {
+    use rustix::io::Errno;
+    match rustix::fs::copy_file_range(source, None, target, None, length) {
+        Ok(moved) => Ok(Some(moved)),
+        Err(Errno::XDEV | Errno::NOSYS | Errno::INVAL | Errno::OPNOTSUPP) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn copy_range(_: &std::fs::File, _: &std::fs::File, _: usize) -> io::Result<Option<usize>> {
+    Ok(None)
+}

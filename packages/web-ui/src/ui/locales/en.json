@@ -34,7 +34,23 @@
     "underAMinute": "Less than a minute remaining",
     "minutesLeft": "About {count} minute remaining | About {count} minutes remaining",
     "body": "Demi opens by itself when the update is done.",
-    "restarting": "Restarting Demi"
+    "restarting": "Restarting Demi",
+    "to": "Updating Demi to {version}",
+    "returning": "Returning to Demi {version}",
+    "failed": "Couldn’t update Demi to {version}",
+    "failedBody": "Demi is unavailable until an administrator finishes the update on the server.",
+    "of": "{done} of {count}",
+    "noChanges": "No changes needed",
+    "steps": {
+      "stopDemi": "Stop Demi",
+      "saveClouds": "Save the running Clouds",
+      "keepDatabases": "Keep a copy of the databases",
+      "switch": "Switch to the new version",
+      "startManager": "Start the Cloud manager",
+      "startDemi": "Start Demi",
+      "updateControl": "Update accounts and settings",
+      "updateConversations": "Update conversations"
+    }
   },
   "startingScreen": {
     "connecting": "Connecting to Demi…",

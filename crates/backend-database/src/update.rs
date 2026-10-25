@@ -1,18 +1,30 @@
-//! An update's progress: the databases a backend migrates or converts
-//! before it serves, measured in the bytes of their files.
+//! An update's progress as `GET /api/update` says it: the steps of a server
+//! update from its restart on, the last two of which are this backend's own,
+//! the databases it migrates or converts before it serves, measured in the
+//! bytes of their files.
 //!
-//! The backend starts it when it finds a database of an earlier form, before
-//! it opens any, and every page and `demi-server` read it until the backend
-//! is ready, and says when the backend stops next for an administrator's
-//! update of the server. It says which step runs, how many conversations are done of
-//! how many, how many bytes, and, once a rate is known, how long the rest
-//! takes. It names no conversation.
+//! - A backend that serves says so, or, once it heard that the server
+//!   restarts for an update, the steps `demi-server` told it.
+//! - A backend that starts reads the steps `demi-server` took before it
+//!   (`UPDATE_RECORD`), takes its own start as done, and adds how far its
+//!   data is: how many conversations of how many, how many bytes, and, once
+//!   a rate is known, how long the rest takes. A start without that record,
+//!   as one that only migrates, lists only its own two steps.
+//! - The update screen that `demi-server` runs while no backend does reads
+//!   the record anew at every question.
+//!
+//! It names no conversation, Cloud or device.
 
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use demi_web_api_protocol::state::{UpdateState, UpdateStep};
+use std::path::PathBuf;
+
+use demi_runner_protocol::release::{
+    RestartStep, RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpdateRecord,
+};
+use demi_web_api_protocol::state::UpdateState;
 
 use super::{DatabaseKind, SchemaFit, StorageError, schema_fit};
 
@@ -22,7 +34,7 @@ const ESTIMATE_AFTER: Duration = Duration::from_secs(3);
 
 /// What a backend that has not served yet does.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum UpdateReport {
+enum UpdateReport {
     /// It starts, with nothing to migrate.
     Starting,
     /// It migrates or converts its databases.
@@ -35,7 +47,7 @@ pub enum UpdateReport {
 
 /// How far an update is.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Progress {
+struct Progress {
     /// The control database migrates; the conversations come after it.
     pub control: bool,
     /// The conversations done, of `conversations`.
@@ -50,7 +62,7 @@ pub struct Progress {
 
 impl Progress {
     /// The share done, from 0 to 1.
-    pub fn share(&self) -> f64 {
+    fn share(&self) -> f64 {
         if self.bytes == 0 { 1.0 } else { (self.bytes_done as f64 / self.bytes as f64).min(1.0) }
     }
 }
@@ -59,7 +71,11 @@ impl Progress {
 struct State {
     /// What is due, once the update began.
     due: Option<Due>,
+    /// The start knows what is due: an update began, or nothing is due.
+    checked: bool,
     control_done: bool,
+    /// How long the control database took, once it is done.
+    control_took: Option<Duration>,
     conversations_done: u64,
     /// The bytes of the databases done.
     done: u64,
@@ -67,17 +83,23 @@ struct State {
     current: u64,
     began: Option<Instant>,
     phase: Phase,
+    /// The steps `demi-server` took before this start, its own taken as done.
+    record: Option<UpdateRecord>,
+    /// The update screen's record, read at every question; the last read
+    /// answers when the file cannot be read for a moment.
+    screen: Option<(PathBuf, Option<UpdateRecord>)>,
 }
 
 /// Where the backend is between its start and its stop.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 enum Phase {
     /// It opens its data, updating what is due.
     #[default]
     Opening,
     Serving,
-    /// It serves, and stops next for an update of the server.
-    Restarting,
+    /// It serves, and stops next for an update of the server, as the
+    /// record says.
+    Restarting(UpdateRecord),
 }
 
 /// An update's progress, shared by the backend's start and what reads it.
@@ -94,8 +116,14 @@ impl Update {
     pub fn begin(&self, due: Due) {
         let mut state = self.locked();
         state.due = Some(due);
+        state.checked = true;
         state.control_done = due.control == 0;
         state.began = Some(Instant::now());
+    }
+
+    /// The start has nothing to migrate or convert.
+    pub fn nothing_due(&self) {
+        self.locked().checked = true;
     }
 
     /// The control database is done.
@@ -103,6 +131,7 @@ impl Update {
         let mut state = self.locked();
         if !state.control_done {
             state.control_done = true;
+            state.control_took = state.began.map(|began| began.elapsed());
             state.done += state.due.map_or(0, |due| due.control);
         }
     }
@@ -120,25 +149,44 @@ impl Update {
         state.conversations_done += 1;
     }
 
+    /// The update screen, which reads its steps from the record at `path`
+    /// at every question.
+    pub fn screen(path: PathBuf) -> Self {
+        let update = Self::default();
+        update.locked().screen = Some((path, None));
+        update
+    }
+
+    /// The steps `demi-server` took before this start, which took until now.
+    pub fn recorded(&self, mut record: UpdateRecord) {
+        let start = record.restart_step(RestartStepKind::StartDemi);
+        *start = start.done(StepSummary::None);
+        self.locked().record = Some(record);
+    }
+
     /// The backend serves.
     pub fn ready(&self) {
         self.locked().phase = Phase::Serving;
     }
 
-    /// The backend stops next for an update of the server, or, with
-    /// `false`, no longer does, as when the update failed before the stop.
-    pub fn restarting(&self, restarting: bool) {
+    /// The backend stops next for an update of the server, as `record` says,
+    /// or, with none, no longer does, as when the update failed before the
+    /// stop.
+    pub fn restarting(&self, record: Option<UpdateRecord>) {
         let mut state = self.locked();
         if state.phase != Phase::Opening {
-            state.phase = if restarting { Phase::Restarting } else { Phase::Serving };
+            state.phase = match record {
+                Some(record) => Phase::Restarting(record),
+                None => Phase::Serving,
+            };
         }
     }
 
-    pub fn report(&self) -> UpdateReport {
+    fn report(&self) -> UpdateReport {
         let state = self.locked();
         match state.phase {
             Phase::Serving => return UpdateReport::Ready,
-            Phase::Restarting => return UpdateReport::Restarting,
+            Phase::Restarting(_) => return UpdateReport::Restarting,
             Phase::Opening => {}
         }
         let (Some(due), Some(began)) = (state.due, state.began) else {
@@ -162,19 +210,139 @@ impl Update {
     /// What `GET /api/update` answers, and what the state channel pushes
     /// when the backend stops for an update.
     pub fn state(&self) -> UpdateState {
-        match self.report() {
-            UpdateReport::Starting | UpdateReport::Ready => UpdateState::None,
-            UpdateReport::Restarting => UpdateState::Restarting,
-            UpdateReport::Updating(progress) => UpdateState::Updating {
-                step: if progress.control { UpdateStep::Control } else { UpdateStep::Conversations },
-                conversations_done: u32::try_from(progress.conversations_done).unwrap_or(u32::MAX),
-                conversations: u32::try_from(progress.conversations).unwrap_or(u32::MAX),
-                bytes_done: progress.bytes_done,
-                bytes: progress.bytes,
-                left_seconds: progress.left.map(|left| u32::try_from(left.as_secs()).unwrap_or(u32::MAX)),
+        if let Some(record) = self.screen_record() {
+            return updating(record, record_steps);
+        }
+        let report = self.report();
+        let state = self.locked();
+        match (&state.phase, report) {
+            (Phase::Restarting(record), _) => updating(record.clone(), record_steps),
+            (_, UpdateReport::Ready | UpdateReport::Restarting) => UpdateState::None,
+            (_, UpdateReport::Starting) => match &state.record {
+                Some(record) => updating(record.clone(), |record| {
+                    let mut steps = record.restart.clone();
+                    if state.checked {
+                        for step in &mut steps {
+                            if matches!(step.kind, RestartStepKind::UpdateControl | RestartStepKind::UpdateConversations) {
+                                step.state = StepState::Skipped { why: SkipReason::NoChanges };
+                            }
+                        }
+                    }
+                    steps
+                }),
+                None => UpdateState::None,
             },
+            (_, UpdateReport::Updating(progress)) => {
+                // A start that only migrates moves to its own version.
+                let record = state
+                    .record
+                    .clone()
+                    .unwrap_or_else(|| UpdateRecord::new("", demi_shared_artifacts::BUILD_VERSION));
+                let only_own = state.record.is_none();
+                let began = state.began.map_or_else(now, |began| ago(began.elapsed()));
+                updating(record, |record| {
+                    let steps = own_steps(record, progress, state.due, began, state.control_took);
+                    if only_own {
+                        steps
+                            .into_iter()
+                            .filter(|step| matches!(step.kind, RestartStepKind::UpdateControl | RestartStepKind::UpdateConversations))
+                            .collect()
+                    } else {
+                        steps
+                    }
+                })
+            }
         }
     }
+
+    /// The update screen's record as its file says now, or as it said last.
+    fn screen_record(&self) -> Option<UpdateRecord> {
+        let mut state = self.locked();
+        let (path, last) = state.screen.as_mut()?;
+        if let Some(read) = std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()) {
+            *last = Some(read);
+        }
+        last.clone()
+    }
+}
+
+/// The state of an update that `record` says, its steps as `steps` gives them.
+fn updating(record: UpdateRecord, steps: impl FnOnce(&UpdateRecord) -> Vec<RestartStep>) -> UpdateState {
+    UpdateState::Updating {
+        steps: steps(&record),
+        from: (!record.from.is_empty()).then(|| record.from.clone()),
+        returning: record.returning,
+        to: record.to,
+    }
+}
+
+fn record_steps(record: &UpdateRecord) -> Vec<RestartStep> {
+    record.restart.clone()
+}
+
+/// The record's steps with this backend's own, as far as `progress` says:
+/// the control database from `began`, then the conversations, from when the
+/// control database was done.
+fn own_steps(
+    record: &UpdateRecord,
+    progress: Progress,
+    due: Option<Due>,
+    began: demi_shared_types::Timestamp,
+    control_took: Option<Duration>,
+) -> Vec<RestartStep> {
+    let mut steps = record.restart.clone();
+    let control_bytes = due.map_or(0, |due| due.control);
+    let took = control_took.unwrap_or_default();
+    for step in &mut steps {
+        step.state = match step.kind {
+            RestartStepKind::UpdateControl if control_bytes == 0 => StepState::Skipped {
+                why: SkipReason::NoChanges,
+            },
+            RestartStepKind::UpdateControl if progress.control => StepState::Running {
+                started: began,
+                progress: Some(StepProgress::Bytes {
+                    done: progress.bytes_done.min(control_bytes),
+                    total: control_bytes,
+                    per_second: None,
+                    left_seconds: None,
+                }),
+            },
+            RestartStepKind::UpdateControl => StepState::Done {
+                took_ms: u64::try_from(took.as_millis()).unwrap_or(u64::MAX),
+                summary: StepSummary::Bytes { bytes: control_bytes },
+            },
+            RestartStepKind::UpdateConversations if progress.conversations == 0 => StepState::Skipped {
+                why: SkipReason::NoChanges,
+            },
+            RestartStepKind::UpdateConversations if progress.control => StepState::Waiting,
+            RestartStepKind::UpdateConversations => StepState::Running {
+                started: demi_shared_types::Timestamp::truncate(
+                    jiff::Timestamp::from(began) + jiff::SignedDuration::try_from(took).unwrap_or_default(),
+                ),
+                progress: Some(StepProgress::Conversations {
+                    done: u32::try_from(progress.conversations_done).unwrap_or(u32::MAX),
+                    total: u32::try_from(progress.conversations).unwrap_or(u32::MAX),
+                    // The conversations' own bytes, after the control
+                    // database's.
+                    bytes_done: progress.bytes_done.saturating_sub(control_bytes),
+                    bytes: progress.bytes.saturating_sub(control_bytes),
+                    left_seconds: progress.left.map(|left| u32::try_from(left.as_secs()).unwrap_or(u32::MAX)),
+                }),
+            },
+            _ => continue,
+        };
+    }
+    steps
+}
+
+/// The time `elapsed` before now.
+fn ago(elapsed: Duration) -> demi_shared_types::Timestamp {
+    let elapsed = jiff::SignedDuration::try_from(elapsed).unwrap_or_default();
+    demi_shared_types::Timestamp::truncate(jiff::Timestamp::now() - elapsed)
+}
+
+fn now() -> demi_shared_types::Timestamp {
+    demi_shared_types::Timestamp::truncate(jiff::Timestamp::now())
 }
 
 /// The databases a start migrates or converts.

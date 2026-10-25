@@ -294,7 +294,7 @@ const sidebarUpdate = computed<SidebarUpdate | null>(() => {
   if (!upgrade) {
     return null
   }
-  if (['downloading', 'preparing', 'restarting'].includes(upgrade.run.state)) {
+  if (upgrade.run.state === 'updating') {
     return { state: 'running' }
   }
   const version = updateOffered(upgrade)
@@ -521,7 +521,7 @@ useAppShortcuts(
   <ToastHost :below="APP_BAR_PX" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
   <Teleport to="body">
-    <UpdatingScreen v-if="update" :progress="update.progress" :restarting="update.restarting" />
+    <UpdatingScreen v-if="update" :progress="update.progress" />
   </Teleport>
   <MediaViewer :viewer="mediaViewer" />
 </template>

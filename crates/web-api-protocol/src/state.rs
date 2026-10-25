@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use demi_shared_types::MAX_SAFE_INTEGER;
 use schemars::JsonSchema;
+use demi_runner_protocol::release::RestartStep;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -293,41 +293,25 @@ pub enum SyncEvent {
 }
 
 /// `GET /update`, which the backend answers without a session, before it
-/// serves anything else too: whether it stops for a new release or
-/// migrates its data for one, and how far it is. It names no conversation.
-/// The state channel pushes it to every page when the backend stops for an
-/// update.
+/// serves anything else too, and which `demi-server`'s update screen answers
+/// while no backend runs: whether the server updates, and every step of the
+/// rest of the update. It names no conversation, Cloud or device: anyone who
+/// reaches the address reads it. The state channel pushes it to every page
+/// when the backend stops for an update.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum UpdateState {
     /// It serves, or starts with nothing to migrate.
     None,
-    /// It stops next for an update an administrator ran, and serves again
-    /// in the new release.
-    Restarting,
-    /// It migrates its data and serves nothing else until it is done.
+    /// The server updates, from its restart on, or the backend migrates its
+    /// data for a new release and serves nothing else until it is done.
     Updating {
-        /// What it migrates now.
-        step: UpdateStep,
-        /// The conversations done, of `conversations`.
-        conversations_done: u32,
-        conversations: u32,
-        /// The bytes of the databases done, of `bytes`.
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        bytes_done: u64,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        bytes: u64,
-        /// The seconds the rest takes; none until a rate is known.
-        left_seconds: Option<u32>,
+        /// The release the server moves to.
+        to: String,
+        /// The release it leaves; none for a start that only migrates.
+        from: Option<String>,
+        /// `to` did not start, and the server returns to `from`.
+        returning: bool,
+        steps: Vec<RestartStep>,
     },
-}
-
-/// What an update migrates now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum UpdateStep {
-    /// The accounts, settings and the list of conversations, first.
-    Control,
-    /// Each conversation's own database.
-    Conversations,
 }

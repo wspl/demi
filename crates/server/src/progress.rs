@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use demi_web_api_protocol::state::{UpdateState, UpdateStep};
+use demi_runner_protocol::release::{RestartStepKind, StepProgress, StepState};
+use demi_web_api_protocol::state::UpdateState;
 
 /// How often the progress is asked.
 const EVERY: Duration = Duration::from_secs(5);
@@ -77,30 +78,43 @@ fn ask(address: SocketAddr) -> Option<UpdateState> {
     serde_json::from_slice(&answer[body..]).ok()
 }
 
-/// The line for `state`; none when the backend is not updating.
+/// The line for `state`: the backend's own step that runs, with its numbers;
+/// none when the backend is not updating its data.
 fn said(state: &UpdateState) -> Option<String> {
-    let UpdateState::Updating {
-        step,
-        conversations_done,
-        conversations,
-        bytes_done,
-        bytes,
-        left_seconds,
-    } = state
-    else {
+    let UpdateState::Updating { steps, .. } = state else {
         return None;
     };
-    let what = match step {
-        UpdateStep::Control => "Updating accounts and settings".to_owned(),
-        UpdateStep::Conversations => format!("Updating conversations: {conversations_done} of {conversations}"),
-    };
-    let size = format!("{} of {}", size(*bytes_done), size(*bytes));
-    let left = match left_seconds {
-        None => String::new(),
-        Some(seconds) if *seconds < 60 => ", less than a minute left".to_owned(),
-        Some(seconds) => format!(", about {} minutes left", (seconds + 30) / 60),
-    };
-    Some(format!("{what} ({size}){left}"))
+    let (kind, progress) = steps.iter().find_map(|step| match &step.state {
+        StepState::Running { progress, .. } => Some((step.kind, progress.as_ref())),
+        _ => None,
+    })?;
+    match (kind, progress) {
+        (RestartStepKind::UpdateControl, Some(StepProgress::Bytes { done, total, .. })) => {
+            Some(format!("Updating accounts and settings ({} of {})", size(*done), size(*total)))
+        }
+        (
+            RestartStepKind::UpdateConversations,
+            Some(StepProgress::Conversations {
+                done,
+                total,
+                bytes_done,
+                bytes,
+                left_seconds,
+            }),
+        ) => {
+            let left = match left_seconds {
+                None => String::new(),
+                Some(seconds) if *seconds < 60 => ", less than a minute left".to_owned(),
+                Some(seconds) => format!(", about {} minutes left", (seconds + 30) / 60),
+            };
+            Some(format!(
+                "Updating conversations: {done} of {total} ({} of {}){left}",
+                size(*bytes_done),
+                size(*bytes)
+            ))
+        }
+        _ => None,
+    }
 }
 
 /// `1.2 GB`, `840 MB`, as the update screen writes them.

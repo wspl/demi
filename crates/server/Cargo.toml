@@ -22,6 +22,7 @@ demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-cli = { path = "../shared-cli" }
+demi-shared-types = { path = "../shared-types" }
 # `GET /api/update`, which an upgrade asks while the backend starts.
 demi-web-api-protocol = { path = "../web-api-protocol" }
 dotenvy = "0.15"

@@ -13,20 +13,27 @@
 //!
 //! An upgrade whose services do not start returns to the release it left.
 //!
-//! The running backend hears each phase (`notices`): the preparation, the
-//! stop just before it happens, and a return with its reason.
+//! Every step of the move is one of the update's steps (`notices`), which the
+//! running backend hears and the backend's data directory keeps: the
+//! preparation's, Settings › Updates's, and from the restart on the update
+//! screen's. While no backend runs, the new release's backend answers the
+//! pages in its update screen's mode, from those steps, so every page sees
+//! how far the move is: from the old backend's stop until the new one
+//! starts, and again while a return runs.
 
 use std::{fmt, io, process::Command};
 
-use demi_machine_manager_protocol::STATE_FORMAT;
-use demi_runner_protocol::release::UpgradeNotice;
+use demi_machine_manager_protocol::{DRAIN_RECORD, DrainRecord, STATE_FORMAT, runtime::RuntimeRelease};
+use demi_runner_protocol::release::{
+    DevicePrefetch, PrefetchState, RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind,
+};
 use semver::Version;
 
 use crate::{
     data,
     gvisor,
     journal::{Data, Journal, Step},
-    layout::{Layout, UNITS},
+    layout::{BACKEND, Layout, MANAGER, UNITS},
     notices::Notices,
     progress,
     runners,
@@ -40,6 +47,10 @@ pub enum Failure {
     /// The preparation or a step failed; for a step, the server is where
     /// the journal says, and the next run finishes the move.
     Failed(io::Error),
+    /// A step after the backend's stop failed: nothing serves but the
+    /// update screen, which shows the failed step, until the next run
+    /// finishes the move.
+    Stopped(io::Error),
     /// The release's services did not start, and the server runs the
     /// release it left again.
     Returned {
@@ -53,7 +64,7 @@ pub enum Failure {
 impl fmt::Display for Failure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Failed(error) => write!(formatter, "{error}"),
+            Self::Failed(error) | Self::Stopped(error) => write!(formatter, "{error}"),
             Self::Returned {
                 to,
                 from,
@@ -71,7 +82,7 @@ impl Failure {
     /// Why the move did not reach its release, in a line for a page.
     pub fn reason(&self) -> String {
         match self {
-            Self::Failed(error) => error.to_string(),
+            Self::Failed(error) | Self::Stopped(error) => error.to_string(),
             Self::Returned { to, reason, .. } => format!("{to} did not start: {reason}"),
         }
     }
@@ -90,9 +101,14 @@ pub fn start(layout: &Layout, services: &dyn Services, to: &Version, notices: &m
     if &from == to {
         return Ok(());
     }
-    notices.tell(UpgradeNotice::Preparing { to: to.to_string() });
+    notices.moving(&from, to);
+    // A move without the record of a fetch found the release unpacked, as a
+    // rollback does.
+    for kind in [UpgradeStepKind::Download, UpgradeStepKind::Unpack] {
+        notices.skip_waiting(kind, SkipReason::Installed);
+    }
     let settings = Settings::read(&layout.config())?;
-    let data = prepare(layout, &settings, &from, to)?;
+    let data = prepare(layout, &settings, &from, to, notices)?;
     let journal = Journal {
         from,
         to: to.clone(),
@@ -109,53 +125,135 @@ fn prepare(
     settings: &Settings,
     from: &Version,
     to: &Version,
+    notices: &mut Notices,
 ) -> io::Result<Data> {
     let bin = layout.release(to).join("bin");
+    notices.start(UpgradeStepKind::CheckConfiguration);
     run(settings.command(&bin.join("demi-backend")).arg("--check-config"))?;
     let manager = bin.join("demi-machine-manager");
     run(settings.command(&manager).arg("--check-config"))?;
-    gvisor::of_release(layout, to)?;
     let format = manager_format(&settings.manager_data()?)?;
-    let backend = settings.backend_data()?;
-    if to < from {
-        if format.is_some_and(|format| format > STATE_FORMAT) {
-            return Err(io::Error::other(format!(
-                "{from} changed the machine manager's state format, so the server cannot return to {to}"
-            )));
-        }
-        run(settings.command(&manager).arg("--import"))?;
-        let restore = data::snapshot(&backend, to).exists();
-        prefetch(layout, settings, to)?;
-        return Ok(if restore { Data::Restore } else { Data::Keep });
+    if to < from && format.is_some_and(|format| format > STATE_FORMAT) {
+        return Err(io::Error::other(format!(
+            "{from} changed the machine manager's state format, so the server cannot return to {to}"
+        )));
     }
-    if format.is_some_and(|format| format < STATE_FORMAT) {
+    notices.done(UpgradeStepKind::CheckConfiguration, StepSummary::None);
+    if layout.gvisor().join(RuntimeRelease::pinned().version()).exists() {
+        notices.step(UpgradeStepKind::DownloadGvisor, StepState::Skipped { why: SkipReason::Installed });
+    } else {
+        notices.start(UpgradeStepKind::DownloadGvisor);
+        gvisor::of_release(layout, to)?;
+        notices.done(UpgradeStepKind::DownloadGvisor, StepSummary::None);
+    }
+    if to > from && format.is_some_and(|format| format < STATE_FORMAT) {
         println!("{to} changes the machine manager's state format: a rollback cannot return to {from}");
     }
-    run(settings.command(&manager).arg("--import"))?;
-    let migrating = data::migrating(&backend)?;
-    let data = if migrating.is_empty() {
-        Data::Keep
+    install_image(layout, settings, to, &manager, notices)?;
+    let backend = settings.backend_data()?;
+    notices.start(UpgradeStepKind::CheckDatabases);
+    let data = if to < from {
+        if data::snapshot(&backend, to).exists() { Data::Restore } else { Data::Keep }
     } else {
-        let size = data::size(&backend, &migrating)?;
-        if !data::room(&backend, size)? {
-            return Err(io::Error::other(format!(
-                "{} has no room for the {size} bytes of the databases {to} migrates",
-                backend.display()
-            )));
+        let migrating = data::migrating(&backend)?;
+        if migrating.is_empty() {
+            Data::Keep
+        } else {
+            let size = data::size(&backend, &migrating)?;
+            if !data::room(&backend, size)? {
+                return Err(io::Error::other(format!(
+                    "{} has no room for the {size} bytes of the databases {to} migrates",
+                    backend.display()
+                )));
+            }
+            notices.done(
+                UpgradeStepKind::CheckDatabases,
+                StepSummary::Count {
+                    count: u32::try_from(migrating.len()).unwrap_or(u32::MAX),
+                },
+            );
+            Data::Snapshot
         }
-        Data::Snapshot
     };
-    prefetch(layout, settings, to)?;
+    if data != Data::Snapshot {
+        notices.step(UpgradeStepKind::CheckDatabases, StepState::Skipped { why: SkipReason::NoChanges });
+    }
+    prefetch(layout, settings, to, notices)?;
     Ok(data)
+}
+
+/// The new manager imports the release's image beside the running one; a
+/// base it has already is installed.
+fn install_image(
+    layout: &Layout,
+    settings: &Settings,
+    to: &Version,
+    manager: &std::path::Path,
+    notices: &mut Notices,
+) -> io::Result<()> {
+    let bases = settings.manager_data()?.join("images").join("bases");
+    let before = entries(&bases)?;
+    notices.start(UpgradeStepKind::InstallImage);
+    run(settings.command(manager).arg("--import"))?;
+    if entries(&bases)? == before {
+        notices.step(UpgradeStepKind::InstallImage, StepState::Skipped { why: SkipReason::Installed });
+    } else {
+        let archive = layout.release(to).join("image").join("rootfs.tar.zst");
+        let bytes = std::fs::metadata(archive).map_or(0, |metadata| metadata.len());
+        notices.done(UpgradeStepKind::InstallImage, StepSummary::Bytes { bytes });
+    }
+    Ok(())
+}
+
+/// The names in `directory`, none when it does not exist.
+fn entries(directory: &std::path::Path) -> io::Result<std::collections::BTreeSet<std::ffi::OsString>> {
+    match std::fs::read_dir(directory) {
+        Ok(read) => read.map(|entry| entry.map(|entry| entry.file_name())).collect(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Default::default()),
+        Err(error) => Err(error),
+    }
 }
 
 /// The last step of the preparation: the paired devices download `to`'s
 /// runner while the current release serves.
-fn prefetch(layout: &Layout, settings: &Settings, to: &Version) -> io::Result<()> {
+fn prefetch(layout: &Layout, settings: &Settings, to: &Version, notices: &mut Notices) -> io::Result<()> {
     let socket = settings
         .manage_socket()
         .unwrap_or_else(|| layout.manage_socket());
-    runners::prefetch(&socket, &layout.release(to), runners::WAIT, &mut io::stdout())
+    notices.start(UpgradeStepKind::UpdateDevices);
+    let gives_up_at = demi_shared_types::Timestamp::truncate(jiff::Timestamp::now() + runners::WAIT);
+    let mut last = None;
+    runners::prefetch(&socket, &layout.release(to), runners::WAIT, &mut io::stdout(), &mut |progress| {
+        let (done, total) = counted(&progress.devices);
+        notices.progress(
+            UpgradeStepKind::UpdateDevices,
+            StepProgress::Devices {
+                done,
+                total,
+                waiting: progress
+                    .devices
+                    .iter()
+                    .filter(|device| device.state == PrefetchState::Downloading)
+                    .map(|device| device.name.clone())
+                    .collect(),
+                gives_up_at,
+            },
+        );
+        last = Some((done, total));
+    })?;
+    match last {
+        Some((done, total)) if total > 0 => {
+            notices.done(UpgradeStepKind::UpdateDevices, StepSummary::Devices { done, total });
+        }
+        _ => notices.step(UpgradeStepKind::UpdateDevices, StepState::Skipped { why: SkipReason::NoChanges }),
+    }
+    Ok(())
+}
+
+/// The devices that have the new runner, of all asked.
+fn counted(devices: &[DevicePrefetch]) -> (u32, u32) {
+    let done = devices.iter().filter(|device| device.state == PrefetchState::Done).count();
+    (u32::try_from(done).unwrap_or(u32::MAX), u32::try_from(devices.len()).unwrap_or(u32::MAX))
 }
 
 /// The format the manager's state directory records, if any.
@@ -182,6 +280,46 @@ pub fn carry_out(
     let path = layout.journal();
     let settings = Settings::read(&layout.config())?;
     let backend = settings.backend_data()?;
+    let screen = Screen {
+        program: layout.release(&journal.to).join("bin/demi-backend"),
+        config: layout.config(),
+        record: notices.record_path(),
+    };
+    // A move taken again after its stop finds no backend: the screen
+    // answers the pages until the new one starts.
+    let mut stopped = journal.step > Step::Stopping;
+    if stopped {
+        screen.up(services);
+    }
+    let taken = take_steps(layout, services, &mut journal, notices, &settings, &backend, &screen, &mut stopped);
+    match taken {
+        Err(Failure::Failed(error)) if stopped => {
+            screen.up(services);
+            Err(Failure::Stopped(error))
+        }
+        Err(failure) => Err(failure),
+        Ok(()) => {
+            notices.finished();
+            Journal::remove(&path)?;
+            prune(layout, &backend, &journal)?;
+            Ok(())
+        }
+    }
+}
+
+/// The journal's steps from the one it reached; `stopped` says whether the
+/// backend no longer runs.
+fn take_steps(
+    layout: &Layout,
+    services: &dyn Services,
+    journal: &mut Journal,
+    notices: &mut Notices,
+    settings: &Settings,
+    backend: &std::path::Path,
+    screen: &Screen,
+    stopped: &mut bool,
+) -> Result<(), Failure> {
+    let path = layout.journal();
     for step in [Step::Stopping, Step::Data, Step::Switching, Step::Starting] {
         if step < journal.step {
             continue;
@@ -189,31 +327,61 @@ pub fn carry_out(
         journal.record(&path, step)?;
         match step {
             Step::Stopping => {
-                notices.tell(UpgradeNotice::Restarting {
-                    to: journal.to.to_string(),
-                });
-                for unit in UNITS.iter().rev() {
-                    services.stop(unit)?;
+                // Every page shows the update's screen from here; the backend
+                // answers once they had the time to hear it.
+                notices.start(UpgradeStepKind::Restart);
+                notices.start_restart(RestartStepKind::StopDemi);
+                services.stop(BACKEND)?;
+                *stopped = true;
+                notices.done_restart(RestartStepKind::StopDemi, StepSummary::None);
+                screen.up(services);
+                save_clouds(services, notices)?;
+            }
+            Step::Data => {
+                notices.start_restart(RestartStepKind::KeepDatabases);
+                match journal.data {
+                    Data::Keep => notices.restart(
+                        RestartStepKind::KeepDatabases,
+                        StepState::Skipped { why: SkipReason::NoChanges },
+                    ),
+                    Data::Snapshot => {
+                        let migrating = data::migrating(backend)?;
+                        let mut copied = 0;
+                        data::take(backend, &journal.from, &migrating, &mut |done, total| {
+                            copied = total;
+                            notices.progress_restart(
+                                RestartStepKind::KeepDatabases,
+                                StepProgress::Bytes {
+                                    done,
+                                    total,
+                                    per_second: None,
+                                    left_seconds: None,
+                                },
+                            );
+                        })?;
+                        notices.done_restart(RestartStepKind::KeepDatabases, StepSummary::Bytes { bytes: copied });
+                    }
+                    Data::Restore => {
+                        data::restore(backend, &journal.to, &journal.from)?;
+                        notices.done_restart(RestartStepKind::KeepDatabases, StepSummary::None);
+                    }
                 }
             }
-            Step::Data => match journal.data {
-                Data::Keep => {}
-                Data::Snapshot => {
-                    let migrating = data::migrating(&backend)?;
-                    data::take(&backend, &journal.from, &migrating)?;
-                }
-                Data::Restore => data::restore(&backend, &journal.to, &journal.from)?,
-            },
             Step::Switching => {
+                // A return that did not finish leaves this step to take
+                // again, towards the release the move goes to.
+                notices.returning(false);
+                notices.start_restart(RestartStepKind::Switch);
                 layout.point_at(&journal.to)?;
                 layout.install_units(&journal.to)?;
                 services.reload(layout.upgrade_units())?;
+                notices.done_restart(RestartStepKind::Switch, StepSummary::None);
             }
             Step::Starting => {
                 // The backend reports ready once its data is up to date,
                 // which may take minutes: meanwhile it says how far it is.
                 let watch = settings.backend_listen().map(progress::Watch::start);
-                let started = start_all(services);
+                let started = start_all(services, screen, notices);
                 if let Some(watch) = watch {
                     watch.stop();
                 }
@@ -224,16 +392,18 @@ pub fn carry_out(
                     if journal.to < journal.from {
                         return Err(Failure::Failed(reason));
                     }
+                    notices.failed_step(&format!("{} did not start", journal.to), true);
                     // The return undoes step 4, so the journal goes back to
                     // it: a return that does not finish leaves the next run
                     // to switch to the release again, never to start the
                     // one the return pointed `current` at.
                     journal.record(&path, Step::Switching)?;
-                    return_to_from(layout, services, &backend, &journal)?;
+                    return_to_from(layout, services, backend, journal, screen)?;
+                    *stopped = false;
                     Journal::remove(&path)?;
                     return Err(Failure::Returned {
-                        to: journal.to,
-                        from: journal.from,
+                        to: journal.to.clone(),
+                        from: journal.from.clone(),
                         reason,
                         log,
                     });
@@ -241,38 +411,117 @@ pub fn carry_out(
             }
         }
     }
-    Journal::remove(&path)?;
-    prune(layout, &backend, &journal)?;
     Ok(())
 }
 
-/// Starts both services in order; the unit that failed and why.
-fn start_all(services: &dyn Services) -> Result<(), (&'static str, io::Error)> {
-    for unit in UNITS {
-        services.start(unit).map_err(|error| (unit, error))?;
+/// Stops the manager, which saves every running Cloud, telling how many it
+/// has saved of how many as its record of the drain says.
+fn save_clouds(services: &dyn Services, notices: &mut Notices) -> io::Result<()> {
+    /// How often the drain's record is read.
+    const EVERY: std::time::Duration = std::time::Duration::from_millis(500);
+    let _ = std::fs::remove_file(DRAIN_RECORD);
+    notices.start_restart(RestartStepKind::SaveClouds);
+    let mut saving = 0;
+    let stopped = std::thread::scope(|scope| {
+        let stopping = scope.spawn(|| services.stop(MANAGER));
+        let mut last = None;
+        while !stopping.is_finished() {
+            let read = std::fs::read(DRAIN_RECORD)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<DrainRecord>(&bytes).ok());
+            if let Some(record) = read
+                && last != Some(record)
+            {
+                saving = record.saving;
+                notices.progress_restart(
+                    RestartStepKind::SaveClouds,
+                    StepProgress::Clouds {
+                        done: record.saved,
+                        total: record.saving,
+                    },
+                );
+                last = Some(record);
+            }
+            std::thread::sleep(EVERY);
+        }
+        stopping.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    });
+    stopped?;
+    notices.done_restart(RestartStepKind::SaveClouds, StepSummary::Count { count: saving });
+    Ok(())
+}
+
+/// The new release's backend in its update screen's mode, which answers the
+/// pages from the update's steps while no backend runs.
+struct Screen {
+    program: std::path::PathBuf,
+    config: std::path::PathBuf,
+    record: Option<std::path::PathBuf>,
+}
+
+impl Screen {
+    /// Starts the screen; one that does not start leaves the pages showing
+    /// what they read last.
+    fn up(&self, services: &dyn Services) {
+        if let Some(record) = &self.record
+            && let Err(error) = services.screen(&self.program, &self.config, record)
+        {
+            eprintln!("The update screen did not start: {error}");
+        }
     }
+
+    fn down(&self, services: &dyn Services) {
+        if self.record.is_some() {
+            services.end_screen();
+        }
+    }
+}
+
+/// Starts the manager, then the backend, which takes the address from the
+/// screen; the unit that failed and why.
+fn start_all(
+    services: &dyn Services,
+    screen: &Screen,
+    notices: &mut Notices,
+) -> Result<(), (&'static str, io::Error)> {
+    notices.start_restart(RestartStepKind::StartManager);
+    services.start(MANAGER).map_err(|error| (MANAGER, error))?;
+    notices.done_restart(RestartStepKind::StartManager, StepSummary::None);
+    screen.down(services);
+    // The backend takes its start, and its data's steps, from here.
+    notices.start_restart(RestartStepKind::StartDemi);
+    services.start(BACKEND).map_err(|error| (BACKEND, error))?;
     Ok(())
 }
 
-/// Puts the release an upgrade left back, with the databases it copied.
+/// Puts the release an upgrade left back, with the databases it copied;
+/// the screen answers the pages meanwhile.
 fn return_to_from(
     layout: &Layout,
     services: &dyn Services,
     backend: &std::path::Path,
     journal: &Journal,
+    screen: &Screen,
 ) -> io::Result<()> {
     for unit in UNITS.iter().rev() {
         services.stop(unit)?;
     }
+    screen.up(services);
     if journal.data == Data::Snapshot {
         data::restore(backend, &journal.from, &journal.to)?;
     }
     layout.point_at(&journal.from)?;
     layout.install_units(&journal.from)?;
     services.reload(layout.upgrade_units())?;
-    start_all(services).map_err(|(unit, error)| {
+    let started = services
+        .start(MANAGER)
+        .and_then(|()| {
+            screen.down(services);
+            services.start(BACKEND)
+        });
+    started.map_err(|error| {
         io::Error::other(format!(
-            "{} did not start again either: {unit}: {error}; the next demi-server command switches to {} again",
+            "{} did not start again either: {error}; the next demi-server command switches to {} again",
             journal.from, journal.to
         ))
     })

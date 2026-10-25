@@ -23,10 +23,9 @@ const AWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524])
 /** How often the screen asks how far the update is. */
 const ASK_EVERY_MS = 2000
 
-/** What the update screen shows: how far the backend is, or null until it says, and whether it restarts first. */
+/** What the update screen shows: every step of the update, or null until the server says. */
 export interface UpdateShown {
   progress: Extract<UpdateState, { state: 'updating' }> | null
-  restarting: boolean
 }
 
 const shown = ref<UpdateShown | null>(null)
@@ -34,11 +33,9 @@ const shown = ref<UpdateShown | null>(null)
 /** What the update screen shows; null while the backend is not updating. */
 export const update = readonly(shown)
 
-/** What the screen shows of `state`, which says the backend restarts or updates. */
+/** What the screen shows of `state`, which says the server updates. */
 function shownOf(state: UpdateState | null): UpdateShown {
-  return state?.state === 'updating'
-    ? { progress: state, restarting: false }
-    : { progress: null, restarting: state?.state === 'restarting' }
+  return { progress: state?.state === 'updating' ? state : null }
 }
 
 /**

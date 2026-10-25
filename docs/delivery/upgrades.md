@@ -226,7 +226,8 @@ contract ([What crosses releases](#what-crosses-releases)).
 ### Prepare
 
 Everything that can fail without stopping anything happens now, while the
-current release serves:
+current release serves. Settings › Updates lists these steps, with their
+progress where they have any ([From Settings](#from-settings)):
 
 1. **Configuration.** The new backend and the new machine manager each check
    `/opt/demi/config/demi.env` with `--check-config`, which validates every
@@ -280,7 +281,10 @@ journal, `/opt/demi/server/upgrade.json`, before it takes the step:
    and closes every runner connection
    (`crates/backend/src/backend.rs`).
 2. Stop the machine manager. Its stop saves and stops every device that is
-   still running, so each Cloud boots with the new release's programs.
+   still running, so each Cloud boots with the new release's programs. The
+   manager writes how many of the running Clouds it has saved to
+   `/run/demi-machine-manager/drain.json`, which `demi-server` reads while it
+   waits for the stop.
 3. Keep the databases that the new release changes in
    `<DEMI_BACKEND_DATA>/snapshots/<old version>/`, and sync them: a copy of
    each that it migrates in place, cloned where the file system can, and a
@@ -298,6 +302,17 @@ journal, `/opt/demi/server/upgrade.json`, before it takes the step:
 6. Remove the journal, then every release and snapshot other than the new
    release and the one it replaced.
 
+From step 1 until the new backend listens, no backend answers the pages. The
+new release's backend then runs in its update screen's mode,
+`demi-backend --update-screen <record>`, as the transient unit
+`demi-update-screen.service` with the backend unit's user, capability and
+configuration. It opens no database: it serves the web app and answers
+`GET /api/update` with the update's steps, which `demi-server` keeps in
+`<DEMI_BACKEND_DATA>/update.json` as it takes them. `demi-server` stops the
+screen just before it starts the backend, which reads the same file, goes on
+with its own steps and removes the file once it serves. A return shows the
+screen again while it runs.
+
 If step 5 fails, `demi-server` returns to the old release at once (see
 [Rollback](#rollback)), prints the last lines of the failing service's log,
 and exits with a failure.
@@ -312,6 +327,9 @@ point. The next `demi-server` command finds the journal and hands the upgrade
 to the `demi-server` of the release the move goes to. That one takes the
 recorded step again and the steps after it.
 
+- A step after step 1 that fails leaves the update screen running, with
+  the failed step, until the next command finishes the move; that command
+  stops the screen before it starts the backend.
 - A release whose services do not start returns the server as step 5 does.
 - The next command finishes a return that is terminated or does not start
   either.
@@ -351,10 +369,14 @@ to the master and administrators.
    upgrade stops.
 3. `demi-server` removes the request, refuses a version that is not newer
    than the current one, and upgrades as above.
-4. While it runs, `demi-server` tells the backend each step over the
-   backend's management socket: downloading, preparing, restarting, or failed
-   with the reason. The administrators' pages show the step. Before the stop,
-   every page shows the update's screen until the new release serves.
+4. While it runs, `demi-server` tells the backend every step of the update
+   over the backend's management socket, each with its state and its
+   progress: the bytes downloaded, the devices that have the new runner, the
+   Clouds saved, the databases copied. The administrators' pages list the
+   steps of [Fetch](#fetch) and [Prepare](#prepare) in Settings › Updates.
+   From the stop on, every page shows the update's screen, which lists the
+   steps of [Switch](#switch) and the new backend's own, until the new release
+   serves. A step that fails is marked as failed with its reason.
 
 The units come with the release, as the services' units do. A server on an
 earlier release gets them with one `sudo demi-server upgrade` to a release

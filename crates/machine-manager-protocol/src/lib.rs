@@ -45,6 +45,18 @@ mod wire;
 /// that changes a record raises it and migrates the earlier formats.
 pub const STATE_FORMAT: u32 = 1;
 
+/// Where a stopping manager says how many Clouds it has saved of those it
+/// saves, which an upgrade reads while the stop runs: in its runtime
+/// directory, which the host sees.
+pub const DRAIN_RECORD: &str = "/run/demi-machine-manager/drain.json";
+
+/// What [`DRAIN_RECORD`] holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DrainRecord {
+    pub saved: u32,
+    pub saving: u32,
+}
+
 pub use state::{
     BaseVersion, DeviceId, GenerationId, IdError, MachineImageState, RuntimeState, Volume,
     is_image_name,

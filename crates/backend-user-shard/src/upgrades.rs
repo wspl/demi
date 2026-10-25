@@ -27,7 +27,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::update::Update;
 use demi_backend_page_sync::{Part, SyncRegistry};
-use demi_runner_protocol::release::UpgradeNotice;
+use demi_runner_protocol::release::{StepState, UpdateRecord, UpgradeNotice, UpgradeStepKind};
 use demi_shared_artifacts::releases::{self, Channel};
 use demi_shared_types::Clock;
 use demi_web_api_protocol::server_upgrade::{ServerUpgrade, UpgradeChannel, UpgradeCheck, UpgradeRun};
@@ -226,18 +226,17 @@ impl Upgrades {
         }
         {
             let mut state = self.locked();
-            if matches!(
-                state.run,
-                UpgradeRun::Downloading { .. } | UpgradeRun::Preparing { .. } | UpgradeRun::Restarting { .. }
-            ) {
+            if matches!(state.run, UpgradeRun::Updating { .. }) {
                 return Err(RunRefused::Running);
             }
             write_request(request, &to)?;
-            state.run = UpgradeRun::Downloading {
+            // The download starts as `demi-server` does, which says how far
+            // it is from its first bytes.
+            let mut record = UpdateRecord::new(&self.running.to_string(), &to.to_string());
+            *record.upgrade_step(UpgradeStepKind::Download) = StepState::running();
+            state.run = UpgradeRun::Updating {
                 to: to.to_string(),
-                bytes_done: 0,
-                bytes: 0,
-                bytes_per_second: 0,
+                steps: record.upgrade,
             };
             state.heard = Instant::now();
         }
@@ -251,28 +250,44 @@ impl Upgrades {
     /// once they had the time to.
     pub async fn heard(&self, notice: UpgradeNotice) {
         tracing::info!(event = "upgrade.heard", ?notice, "demi-server told how far the update of the server is");
-        let restarting = matches!(notice, UpgradeNotice::Restarting { .. });
-        {
+        let restart = {
             let mut state = self.locked();
             state.heard = Instant::now();
-            state.run = match notice {
-                UpgradeNotice::Downloading { to, bytes_done, bytes, bytes_per_second } => UpgradeRun::Downloading { to, bytes_done, bytes, bytes_per_second },
-                UpgradeNotice::Preparing { to } => UpgradeRun::Preparing { to },
-                UpgradeNotice::Restarting { to } => UpgradeRun::Restarting { to },
-                UpgradeNotice::Failed { to, reason } => {
-                    // A run that knew what it moved to names it; the last
-                    // word of one that failed before it read the request
-                    // names nothing.
-                    let to = match (&state.run, to.is_empty()) {
-                        (UpgradeRun::Failed { .. }, true) => return,
-                        (UpgradeRun::Downloading { to, .. } | UpgradeRun::Preparing { to } | UpgradeRun::Restarting { to }, true) => to.clone(),
-                        _ => to,
+            match notice {
+                UpgradeNotice::Progress { update } => {
+                    let restart = update.restarting().then(|| update.clone());
+                    state.run = UpgradeRun::Updating {
+                        to: update.to,
+                        steps: update.upgrade,
                     };
-                    UpgradeRun::Failed { to, reason }
+                    restart
                 }
-            };
-        }
-        self.update.restarting(restarting);
+                UpgradeNotice::Failed { reason, update } => {
+                    state.run = match update {
+                        Some(update) => UpgradeRun::Failed {
+                            to: update.to,
+                            reason,
+                            steps: update.upgrade,
+                        },
+                        // A run that failed before it read the request
+                        // names nothing, and keeps the steps of one that
+                        // ran.
+                        None => match std::mem::replace(&mut state.run, UpgradeRun::None) {
+                            UpgradeRun::Updating { to, steps } => UpgradeRun::Failed { to, reason, steps },
+                            UpgradeRun::Failed { to, steps, .. } => UpgradeRun::Failed { to, reason, steps },
+                            UpgradeRun::None => UpgradeRun::Failed {
+                                to: String::new(),
+                                reason,
+                                steps: Vec::new(),
+                            },
+                        },
+                    };
+                    None
+                }
+            }
+        };
+        let restarting = restart.is_some();
+        self.update.restarting(restart);
         self.changed();
         if restarting {
             self.sync.mark_everyone(&Part::Update);
@@ -287,23 +302,33 @@ impl Upgrades {
     fn unheard(&self) {
         let restarting = {
             let mut state = self.locked();
-            let (to, restarting) = match &state.run {
-                UpgradeRun::Downloading { to, .. } | UpgradeRun::Preparing { to } => (to.clone(), false),
-                UpgradeRun::Restarting { to } => (to.clone(), true),
-                _ => return,
+            let UpgradeRun::Updating { to, steps } = &state.run else {
+                return;
             };
             if state.heard.elapsed() < UNHEARD {
                 return;
             }
+            let (to, mut steps) = (to.clone(), steps.clone());
+            let restarting = steps
+                .iter()
+                .any(|step| step.kind == UpgradeStepKind::Restart && step.state != StepState::Waiting);
             tracing::warn!(event = "upgrade.unheard", to = %to, "the update of the server went unheard and is taken as stopped");
+            let reason = "The update stopped without saying why. On the server, journalctl -u demi-upgrade shows what happened.";
+            // The step that ran is the one it stopped at.
+            for step in &mut steps {
+                if matches!(step.state, StepState::Running { .. }) {
+                    step.state = StepState::Failed { reason: reason.into() };
+                }
+            }
             state.run = UpgradeRun::Failed {
                 to,
-                reason: "The update stopped without saying why. On the server, journalctl -u demi-upgrade shows what happened.".into(),
+                reason: reason.into(),
+                steps,
             };
             restarting
         };
         if restarting {
-            self.update.restarting(false);
+            self.update.restarting(None);
             self.sync.mark_everyone(&Part::Update);
         }
         self.changed();
