@@ -68,9 +68,21 @@ pub struct NavigationObservation {
     documents: HashMap<RequestId, LoaderId>,
     states: HashMap<LoaderId, HashSet<String>>,
     committed: Option<LoaderId>,
+    /// When the observation began, and how long after it the navigation's
+    /// document committed, reached DOMContentLoaded and reached load, which
+    /// a navigation's line reports.
+    began: std::time::Instant,
+    steps: NavigationSteps,
     /// Whether a new document committed before the action's input began.
     changed: bool,
     pub url: String,
+}
+
+#[derive(Default)]
+struct NavigationSteps {
+    commit_ms: Option<u64>,
+    dom_ms: Option<u64>,
+    load_ms: Option<u64>,
 }
 
 enum Observed {
@@ -153,6 +165,8 @@ impl NavigationObservation {
             documents: HashMap::new(),
             states: HashMap::new(),
             committed: None,
+            began: std::time::Instant::now(),
+            steps: NavigationSteps::default(),
             changed: false,
             url: format!(
                 "{}{}",
@@ -202,6 +216,7 @@ impl NavigationObservation {
                     self.url = format!("{}{}", event.frame.url, event.frame.url_fragment.as_deref().unwrap_or_default());
                     if self.expected_loader.as_ref().is_none_or(|expected| *expected == event.frame.loader_id) && event.frame.loader_id != self.previous_loader {
                         self.committed = Some(event.frame.loader_id.clone());
+                        self.steps.commit_ms.get_or_insert(self.began.elapsed().as_millis() as u64);
                         if event.r#type == chromiumoxide::cdp::browser_protocol::page::NavigationType::BackForwardCacheRestore {
                             self.states.entry(event.frame.loader_id.clone()).or_default().extend(["DOMContentLoaded".into(), "load".into()]);
                         }
@@ -212,6 +227,14 @@ impl NavigationObservation {
             event = self.lifecycle.next() => {
                 let event = event.ok_or(BrowserError::TabNotFound)??;
                 if event.frame_id == self.frame {
+                    if self.committed.as_ref() == Some(&event.loader_id) {
+                        let at = self.began.elapsed().as_millis() as u64;
+                        match event.name.as_str() {
+                            "DOMContentLoaded" => { self.steps.dom_ms.get_or_insert(at); }
+                            "load" => { self.steps.load_ms.get_or_insert(at); }
+                            _ => {}
+                        }
+                    }
                     self.states.entry(event.loader_id.clone()).or_default().insert(event.name.clone());
                     Ok(Observed::Lifecycle)
                 } else { Ok(Observed::Other) }
@@ -379,6 +402,7 @@ impl BrowserTab {
         let mut observation = operation
             .run(NavigationObservation::subscribe(&self.page))
             .await?;
+        observation.began = std::time::Instant::now();
         let result = operation
             .run(async {
                 operation.begin_input();
@@ -427,6 +451,17 @@ impl BrowserTab {
         if observation.document_changed() {
             references.invalidate();
         }
+        let steps = &observation.steps;
+        tracing::info!(
+            event = "browser_navigation.ended",
+            ms = observation.began.elapsed().as_millis() as u64,
+            commit_ms = steps.commit_ms,
+            dom_ms = steps.dom_ms,
+            load_ms = steps.load_ms,
+            wait = ?load,
+            failed = result.is_err(),
+            "a navigation ended"
+        );
         match result {
             Ok(url) => Ok(url),
             Err(error) => {

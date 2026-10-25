@@ -56,6 +56,19 @@ pub struct Delivery {
     told: Option<(u32, u32, u32)>,
     /// The source of the pictures, which a probe's padding names too.
     source: Option<SourceId>,
+    /// When the delivery began, and its first picture's way to the page,
+    /// which one line reports once the page acknowledged it.
+    began: Instant,
+    first: Option<FirstFrame>,
+}
+
+/// The first picture a delivery sent: its generation and sequence, when it
+/// was queued, and whether its line was written.
+struct FirstFrame {
+    generation: u32,
+    sequence: u32,
+    queued: Instant,
+    written: bool,
 }
 
 impl Default for Delivery {
@@ -78,6 +91,8 @@ impl Delivery {
             applied: None,
             told: None,
             source: None,
+            began: Instant::now(),
+            first: None,
         }
     }
 
@@ -149,6 +164,12 @@ impl Delivery {
         };
         self.awaiting_key = false;
         let now = Instant::now();
+        self.first.get_or_insert(FirstFrame {
+            generation: self.generation,
+            sequence: frame.sequence,
+            queued: now,
+            written: false,
+        });
         let interval = std::time::Duration::from_secs_f64(1.0 / f64::from(self.rate.fps()));
         // A frame's chunks follow the ones before them.
         let start = self.paced.back().map_or(now, |paced| paced.at.max(now));
@@ -225,6 +246,20 @@ impl Delivery {
 
     /// The page acknowledged `acks` in one message.
     pub fn acknowledged<L>(&mut self, acks: &[ChunkAck], stream: Option<&StreamView<L>>) {
+        if let Some(first) = &mut self.first
+            && !first.written
+            && acks.iter().any(|ack| {
+                !ack.padding && ack.generation == first.generation && ack.sequence == first.sequence
+            })
+        {
+            first.written = true;
+            tracing::info!(
+                event = "live_view.first_acked",
+                queued_ms = first.queued.duration_since(self.began).as_millis() as u64,
+                acked_ms = self.began.elapsed().as_millis() as u64,
+                "a viewer's page acknowledged its first picture"
+            );
+        }
         self.rate.acknowledged(acks, Instant::now().into_std());
         self.probe();
         self.encode(stream);

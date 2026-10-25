@@ -330,6 +330,16 @@ struct Viewer<L> {
     scale: f64,
 }
 
+/// How long a stream took to its first picture, in steps from its start:
+/// until the source said its capture started, and until the capture's first
+/// frame, when the line is written. How long the frame took to reach a viewer
+/// is the viewer's delivery's line (`crates/live-view/src/delivery.rs`).
+#[derive(Default)]
+struct FirstPicture {
+    capture_ms: Option<u64>,
+    written: bool,
+}
+
 /// The line a stream ends with, written when `run` returns whichever way.
 struct Ending {
     source: String,
@@ -437,6 +447,7 @@ async fn run<S: Source>(
         cause: "owner_dropped",
     };
     let mut viewers: HashMap<u64, Viewer<S::Layout>> = HashMap::new();
+    let mut first = FirstPicture::default();
     let mut running: Option<Running<S::Capture, S::Layout>> = None;
     let mut epoch = 0;
     let mut key_frames = KeyFrames::default();
@@ -658,6 +669,7 @@ async fn run<S: Source>(
                 if paced(&mut viewers, running.as_ref()) {
                     key_frames.ask(Instant::now(), running.as_ref().map(|running| &running.capture));
                 }
+
             }
             _ = tokio::time::sleep_until(refine.unwrap_or_else(Instant::now)), if refine.is_some() => {
                 if let Some(running) = &mut running
@@ -737,6 +749,16 @@ async fn run<S: Source>(
                         }
                     }
                     failure = None;
+                    if !first.written {
+                        first.written = true;
+                        tracing::info!(
+                            event = "live_view.first_picture",
+                            source = ending.source.as_str(),
+                            capture_ms = first.capture_ms,
+                            frame_ms = ending.began.elapsed().as_millis() as u64,
+                            "a live view's capture sent its first picture"
+                        );
+                    }
                     ending.frames += 1;
                     ending.bytes += frame.data.len() as u64;
                     for viewer in viewers.values() {
@@ -749,7 +771,13 @@ async fn run<S: Source>(
                 // no picture. A capture that starts asks it to draw at once,
                 // rather than after the silence that tells a still source;
                 // one still silent then asks again.
-                Some(CaptureEvent::Started | CaptureEvent::Stalled) => source.redraw(),
+                Some(CaptureEvent::Started) => {
+                    first
+                        .capture_ms
+                        .get_or_insert(ending.began.elapsed().as_millis() as u64);
+                    source.redraw();
+                }
+                Some(CaptureEvent::Stalled) => source.redraw(),
                 Some(CaptureEvent::Failed(message)) => {
                     tracing::warn!(
                         event = "live_view_capture.ended",

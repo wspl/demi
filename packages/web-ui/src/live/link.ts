@@ -27,6 +27,7 @@ import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } 
 import { LiveFrameAssembler, encodeAcks, type LiveChunkAck, type LiveVideoChunk } from './frames'
 import type { LivePictureStream, PictureSink } from './pictures'
 import { LIVE_STALL_MS } from './protocol'
+import { pageLog } from '../infra/log'
 
 /** The most acknowledgements one message carries, because a message on the link is limited in size. */
 const ACKS_PER_MESSAGE = 8
@@ -77,6 +78,8 @@ export interface LiveLinkHandlers<F, S extends LivePictureStream> {
   keyframe(stream: S): void
   /** Reports a defect of the page, such as a frame the protocol refuses. */
   defect(message: string, error: unknown): void
+  /** What the view shows, such as `browser`, which its lines name. */
+  readonly view: string
   now?(): number
 }
 
@@ -111,6 +114,11 @@ export class LiveLink<F, S extends LivePictureStream> {
   private endedUnwatched = false
   /** When the module's answer the session expects is due; none while it expects none. */
   private answerDue: number | null = null
+  /**
+   * The steps of the stream's way to its first picture, by the page's clock,
+   * which one line reports once the picture is drawn.
+   */
+  private first: { began: number; answered?: number; arrived?: number; frame?: number; written: boolean } | null = null
 
   constructor(
     private readonly state: LiveLinkState,
@@ -141,6 +149,7 @@ export class LiveLink<F, S extends LivePictureStream> {
   start(): void {
     this.endedUnwatched = false
     this.received = this.time()
+    this.first = { began: performance.now(), written: false }
     const frames = this.handlers.frames()
     // A view ends once: the module's end and the socket's close both say so, and a
     // stream this link already left says nothing about the one that followed it.
@@ -269,6 +278,9 @@ export class LiveLink<F, S extends LivePictureStream> {
 
   /** The module answered: the view works. */
   live(): void {
+    if (this.first && this.first.answered === undefined) {
+      this.first.answered = performance.now()
+    }
     this.answerDue = null
     this.failures = 0
     this.state.ended = null
@@ -380,6 +392,9 @@ export class LiveLink<F, S extends LivePictureStream> {
       // The Host's probe of the path: acknowledged, and nothing to show.
       return false
     }
+    if (this.first && this.first.arrived === undefined) {
+      this.first.arrived = performance.now()
+    }
     if (chunk.generation > this.announced) {
       // Ahead of its announcement, which the other channel still carries.
       const early = this.early.get(chunk.generation) ?? []
@@ -398,6 +413,9 @@ export class LiveLink<F, S extends LivePictureStream> {
 
   private assemble(chunk: LiveVideoChunk): void {
     for (const frame of this.frames.add(chunk, this.time())) {
+      if (this.first && this.first.frame === undefined) {
+        this.first.frame = performance.now()
+      }
       this.pictures?.show(frame)
     }
     this.bound()
@@ -442,6 +460,30 @@ export class LiveLink<F, S extends LivePictureStream> {
     const acks = this.acks
     this.acks = []
     this.stream?.send(encodeAcks(acks))
+  }
+
+  /**
+   * The page drew a picture of the stream: the first is logged with the
+   * steps before it, in milliseconds from the stream's start (the module's
+   * answer, the first picture's first bytes, the first picture whole and in
+   * its turn, and its drawing), and when it came after the page's own load.
+   */
+  drawn(): void {
+    const first = this.first
+    if (!first || first.written) {
+      return
+    }
+    first.written = true
+    const now = performance.now()
+    const since = (at: number | undefined) => (at === undefined ? null : Math.round(at - first.began))
+    pageLog.info('live_view.first_drawn', {
+      view: this.handlers.view,
+      answered_ms: since(first.answered),
+      arrived_ms: since(first.arrived),
+      frame_ms: since(first.frame),
+      drawn_ms: since(now),
+      load_ms: Math.round(now),
+    })
   }
 
   /** The decoder could not decode a frame: the next must be a key frame, asked for at most once a second. */

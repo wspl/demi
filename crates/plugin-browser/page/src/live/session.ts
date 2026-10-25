@@ -140,6 +140,7 @@ export class LiveSession {
 
   constructor(private readonly options: LiveSessionOptions) {
     this.link = new LiveLink(this.state, {
+      view: 'browser',
       open: options.open,
       frames: () => new LiveFrameReader(),
       // The panel comes before the tab, so the module sizes the tab before it
@@ -313,6 +314,7 @@ export class LiveSession {
 
   /** The page painted a picture of `stream`'s tab. */
   showed(stream: LiveStream): void {
+    this.link.drawn()
     this.options.onPicture?.(stream.tab)
   }
 

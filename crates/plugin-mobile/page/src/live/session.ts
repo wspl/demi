@@ -325,6 +325,7 @@ export class DeviceSession {
 
   constructor(private readonly options: DeviceSessionOptions) {
     this.link = new LiveLink(this.state, {
+      view: 'mobile',
       open: options.open,
       frames: () => new DeviceFrames(),
       opened: () => {
@@ -627,6 +628,7 @@ export class DeviceSession {
 
   /** A picture of `stream` painted: the look is that picture's, in its orientation's frame, whole. */
   private painted(stream: DeviceStream): void {
+    this.link.drawn()
     const frame = this.state.frames[stream.orientation]
     if (!frame) {
       return
