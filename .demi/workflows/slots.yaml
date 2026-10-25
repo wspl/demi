@@ -17,8 +17,8 @@ instructions: |
   Review before a commit
   1. Before you commit code, the review profile reads the change once: the uncommitted diff in your slot against `origin/feat/demi-next`. A commit of documents alone has no review.
   2. You doubt every finding. A finding stands only when you reproduce it, with a test, a probe or steps on the running product, and see the problem happen. Drop each one you cannot reproduce.
-  3. Show the user only the findings that stand, each with why it happens (the code and how you reproduced it), what it does to the user or their data, and how you plan to fix it.
-  4. Fix them only when the user agrees, then commit.
+  3. Judge yourself whether each finding that stands needs a fix, and fix those that do.
+  4. Tell the user each finding that stands: why it happens (the code and how you reproduced it), what it does to the user or their data, and how you fixed it or why you left it. Then commit.
 subagent_instructions: |
   Your final reply is your report, with the whole result. Send no message before it.
 profiles:
