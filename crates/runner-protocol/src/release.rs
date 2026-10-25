@@ -115,6 +115,11 @@ impl RunnerRelease {
 /// which the backend gives the Hosts (`crates/xtask/src/server_release.rs`).
 pub const FILES: &str = "files";
 
+/// The directory of a server release's root that holds the release's command
+/// packages, one directory each with its descriptor
+/// (`crates/backend-runners/src/publication.rs`).
+pub const COMMANDS: &str = "commands";
+
 /// The runner's executable, as a release's files name it.
 pub const RUNNER: &str = "demi-runner";
 

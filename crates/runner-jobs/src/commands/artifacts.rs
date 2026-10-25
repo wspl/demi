@@ -1,5 +1,6 @@
 //! Where artifacts are (`crates/runner-command-packages/src/cache.rs`): the backend answers only for live work on the connection
-//! that the artifact belongs to, a job or an open user stream.
+//! that the artifact belongs to, a job or an open user stream, and for the
+//! package programs it sent the runner to keep.
 
 use crate::commands::contexts::Contexts;
 use crate::connection::ConnectionHandle;
@@ -74,6 +75,38 @@ impl ArtifactResolver for StreamArtifacts {
             let owner = wire::ArtifactOwner::Stream(wire::StreamArtifactOwner {
                 stream_id: self.stream.clone(),
             });
+            tokio::select! {
+                _ = cancel.cancelled() => Err(RuntimeError::Cancelled),
+                location = self.connection.locate(owner, artifact.sha256.clone()) => {
+                    ArtifactSource::from_location(location?)
+                }
+            }
+        })
+    }
+}
+
+/// For the package programs the backend sent the runner to keep, of its own
+/// release or, with `next`, of the release a prefetch named
+/// (`crates/runner/src/connection/owner.rs`).
+pub struct ProgramArtifacts {
+    connection: ConnectionHandle,
+    next: bool,
+}
+
+impl ProgramArtifacts {
+    pub fn new(connection: ConnectionHandle, next: bool) -> Self {
+        Self { connection, next }
+    }
+}
+
+impl ArtifactResolver for ProgramArtifacts {
+    fn resolve<'a>(
+        &'a self,
+        artifact: &'a PackageArtifact,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(async move {
+            let owner = wire::ArtifactOwner::Programs(wire::ProgramsArtifactOwner { next: self.next });
             tokio::select! {
                 _ = cancel.cancelled() => Err(RuntimeError::Cancelled),
                 location = self.connection.locate(owner, artifact.sha256.clone()) => {

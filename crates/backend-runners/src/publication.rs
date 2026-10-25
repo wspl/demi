@@ -57,7 +57,7 @@ pub(crate) const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
 /// One release directory of `commands/`, named as its program, which holds
 /// its `descriptor.json`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Release {
+pub(crate) struct Release {
     directory: PathBuf,
     executable: String,
 }
@@ -96,8 +96,7 @@ pub async fn publish_native(
     objects: &Objects,
     cancel: &CancellationToken,
 ) -> Result<NativeCatalog, PublicationError> {
-    let releases = releases(commands).await?;
-    let verified = verify_all(&releases).await?;
+    let (releases, verified) = read_releases(commands).await?;
     publish(&verified, &*objects.store, cancel).await?;
     match keep_releases(&*objects.store, version, &verified, runners, cancel).await {
         Ok(pruned) => tracing::info!(
@@ -113,19 +112,8 @@ pub async fn publish_native(
         // prunes again.
         Err(error) => tracing::warn!(event = "native_store.prune_failed", %error, "the native store's older releases stay"),
     }
-    let mut executables = HashMap::new();
-    for (release, descriptor) in releases.iter().zip(&verified) {
-        for (target, artifact) in &descriptor.targets {
-            let wanted = ReleaseArtifact {
-                file: compressed_file(&release.executable, target),
-                artifact: artifact.clone(),
-                encoded: true,
-            };
-            executables.entry(artifact.sha256.clone()).or_insert(wanted);
-        }
-    }
     let sourcing = Sourcing::new(objects.store.clone(), files);
-    let artifacts = Artifacts::new(sourcing, objects.signer.clone(), executables);
+    let artifacts = Artifacts::new(sourcing, objects.signer.clone(), executables(&releases, &verified));
     tracing::info!(
         event = "command_packages.published",
         packages = verified.len(),
@@ -135,6 +123,36 @@ pub async fn publish_native(
         directory: commands.to_owned(),
         reason: error.to_string(),
     })
+}
+
+/// The releases in `commands` and their verified descriptors, in the same
+/// order.
+pub(crate) async fn read_releases(
+    commands: &FilePath,
+) -> Result<(Vec<Release>, Vec<PackageDescriptor>), PublicationError> {
+    let releases = releases(commands).await?;
+    let verified = verify_all(&releases).await?;
+    Ok((releases, verified))
+}
+
+/// Each package executable of `releases`, whose descriptors are `verified`,
+/// by SHA-256, as the release's `files/` holds its compressed copy.
+pub(crate) fn executables(
+    releases: &[Release],
+    verified: &[PackageDescriptor],
+) -> HashMap<String, ReleaseArtifact> {
+    let mut executables = HashMap::new();
+    for (release, descriptor) in releases.iter().zip(verified) {
+        for (target, artifact) in &descriptor.targets {
+            let wanted = ReleaseArtifact {
+                file: compressed_file(&release.executable, target),
+                artifact: artifact.clone(),
+                encoded: true,
+            };
+            executables.entry(artifact.sha256.clone()).or_insert(wanted);
+        }
+    }
+    executables
 }
 
 /// The releases in `commands`, one per directory, in the order of their

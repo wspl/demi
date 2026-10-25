@@ -110,7 +110,7 @@ impl ResidentRegistry {
         let invocations = Invocations::default();
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let owner = Owner {
-            cache,
+            cache: cache.clone(),
             invocations: invocations.clone(),
             cwd,
             env,
@@ -126,6 +126,7 @@ impl ResidentRegistry {
             handle: ResidentHandle {
                 requests,
                 invocations,
+                cache,
             },
             contents,
             owner: tokio::spawn(owner.run(receiver)),
@@ -212,9 +213,56 @@ struct Acquired {
 pub struct ResidentHandle {
     requests: mpsc::Sender<Request>,
     invocations: Invocations,
+    cache: Arc<ArtifactCache>,
+}
+
+/// Which programs [`ResidentHandle::keep_programs`] put in the cache, and
+/// which it could not, with why.
+#[derive(Debug, Default)]
+pub struct ProgramsKept {
+    pub kept: Vec<String>,
+    pub failed: Vec<(String, String)>,
 }
 
 impl ResidentHandle {
+    /// Puts the program of each of `packages` for this Host's target in the
+    /// artifact cache, located by `resolver`, one at a time, so a resident's
+    /// start finds it there. Ahead of an update (`ahead`) the programs the
+    /// runner runs now stay. A package without a program for this target
+    /// is passed over; one that fails does not stop the others.
+    pub async fn keep_programs(
+        &self,
+        packages: &[PackageDescriptor],
+        resolver: Arc<dyn ArtifactResolver>,
+        ahead: bool,
+        cancel: &CancellationToken,
+    ) -> ProgramsKept {
+        let mut kept = ProgramsKept::default();
+        for descriptor in packages {
+            let Some(artifact) = descriptor.targets.get(host_target()) else {
+                continue;
+            };
+            let wanted = Wanted {
+                package: &descriptor.id,
+                name: PROGRAM,
+                version: &descriptor.version,
+                artifact: artifact.clone(),
+                form: &ArtifactForm::File,
+            };
+            let placed = if ahead {
+                self.cache.prefetch(&wanted, resolver.clone(), cancel).await
+            } else {
+                self.cache.install(&wanted, resolver.clone(), &|_| {}, cancel).await
+            };
+            match placed {
+                Ok(_) => kept.kept.push(descriptor.id.clone()),
+                Err(RuntimeError::Cancelled) => break,
+                Err(error) => kept.failed.push((descriptor.id.clone(), error.to_string())),
+            }
+        }
+        kept
+    }
+
     /// Registers `invocation`, which the caller starts in a resident of
     /// `package` for the work `resolver` locates artifacts for, until the
     /// returned guard drops: the artifacts the program asks for during it

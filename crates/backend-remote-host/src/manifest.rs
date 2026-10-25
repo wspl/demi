@@ -44,6 +44,15 @@ impl CommandCatalog {
         })
     }
 
+    /// Every package of the catalog.
+    pub(crate) fn packages(&self) -> Vec<PackageDescriptor> {
+        self.packages.to_vec()
+    }
+
+    pub(crate) fn resolver(&self) -> Rc<dyn ArtifactResolver> {
+        self.resolver.clone()
+    }
+
     /// The manifest of `commands`: each native command pinned to the
     /// descriptor of its package in this catalog.
     pub fn select(&self, commands: &CommandSet) -> Result<CommandSelection, ManifestError> {

@@ -13,6 +13,10 @@ use demi_runner_protocol::release::{DevicePrefetch, PrefetchProgress, PrefetchSt
 use demi_web_api_protocol::ids::DeviceId;
 use tokio::sync::watch;
 
+use demi_backend_remote_host::CommandCatalog;
+
+use crate::native::{NativeCatalog, StoredBytes};
+use crate::public_url::PublicUrl;
 use crate::sourcing::Sourcing;
 
 /// The runner release announced as next: its record, where its executables
@@ -20,16 +24,33 @@ use crate::sourcing::Sourcing;
 pub struct NextRelease {
     pub release: RunnerRelease,
     pub(crate) sourcing: Sourcing,
+    /// The release's command packages, whose programs the devices download
+    /// ahead with it; none when this backend could not read them.
+    programs: Option<NativeCatalog>,
     devices: watch::Sender<Vec<(DeviceId, DevicePrefetch)>>,
 }
 
 impl NextRelease {
-    pub(crate) fn new(release: RunnerRelease, sourcing: Sourcing) -> Self {
+    pub(crate) fn new(release: RunnerRelease, sourcing: Sourcing, programs: Option<NativeCatalog>) -> Self {
         Self {
             release,
             sourcing,
+            programs,
             devices: watch::Sender::new(Vec::new()),
         }
+    }
+
+    /// The calling thread's catalog of the release's command packages, whose
+    /// downloads from a local store are on `backend`.
+    pub fn programs(&self, backend: &PublicUrl) -> Option<CommandCatalog> {
+        self.programs.as_ref().map(|programs| programs.catalog(backend))
+    }
+
+    /// The stored object of the release's package executable whose SHA-256
+    /// is `sha256`, as [`NativeCatalog::local_artifact`] serves the current
+    /// release's.
+    pub async fn local_artifact(&self, sha256: &str, from: u64) -> Option<Result<StoredBytes, String>> {
+        self.programs.as_ref()?.local_artifact(sha256, from).await
     }
 
     /// `device`, which its user named `name`, is downloading the release.
