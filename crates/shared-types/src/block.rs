@@ -1460,4 +1460,9 @@ pub struct CompactionMarkerBlock {
     pub boundary_id: BlockId,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub compacted_tokens: u64,
+    /// The pass ran while the conversation was idle, before its prompt cache
+    /// expired; false for every other pass.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub idle: bool,
 }

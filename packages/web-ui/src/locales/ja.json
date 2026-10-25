@@ -21,7 +21,7 @@
     },
     "agent": {
       "title": "エージェント",
-      "description": "軽量モデルとメッセージ。",
+      "description": "軽量モデル、メッセージ、コンテキスト。",
       "smallModel": "軽量モデル",
       "model": "モデル",
       "modelDescription": "会話のタイトルを作成します。「自動」はプロバイダーから高速なモデルを選びます。",
@@ -35,7 +35,14 @@
       "resumeAfterRestart": "Demi の再起動後に再開",
       "resumeAfterRestartDescription": "アップデートなどで Demi が再起動して停止したターンを、再起動後に再開します。",
       "resumeAtRetry": "利用上限のリセット後に再開",
-      "resumeAtRetryDescription": "利用上限で停止したターンを、上限がリセットされたときに再開します。"
+      "resumeAtRetryDescription": "利用上限で停止したターンを、上限がリセットされたときに再開します。",
+      "context": "コンテキスト",
+      "compactIdle": "アイドル状態の会話を圧縮",
+      "compactIdleDescription": "長い会話のプロンプトキャッシュが期限切れになる直前に会話を要約し、次のメッセージで全体を再送信せずに済むようにします。",
+      "idleLifetime": "キャッシュの最短保持期間",
+      "idleLifetimeDescription": "プロバイダーがキャッシュをこの期間以上保持する会話だけを圧縮します。",
+      "halfHour": "30 分",
+      "hour": "1 時間"
     }
   },
   "appearance": {

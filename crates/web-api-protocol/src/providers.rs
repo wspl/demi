@@ -2,7 +2,7 @@
 //! catalog. No body the backend answers carries key or token material.
 
 use demi_shared_types::{
-    AccountInfo, AudioKind, AudioShape, AuthState, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
+    AccountInfo, AudioKind, AudioShape, AuthState, CacheTtl, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
     Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
@@ -259,6 +259,12 @@ pub struct ProviderPatch {
     #[serde(default)]
     #[garde(skip)]
     pub media: Option<MediaPatch>,
+    /// The prompt cache lifetime its requests ask for, null for none; only
+    /// an entry with presets takes one, and any lifetime besides them.
+    #[serde(default, with = "double_option")]
+    #[schemars(with = "Option<Nullable<CacheTtl>>")]
+    #[garde(skip)]
+    pub cache_ttl: Option<Option<CacheTtl>>,
 }
 
 /// A change of an entry's media, by kind.
@@ -419,6 +425,17 @@ pub struct ProviderDto {
     pub rotation: Rotation,
     /// How it makes each kind of media.
     pub media: EntryMedia,
+    /// The prompt cache lifetime its requests ask for; null when they name
+    /// none and the vendor keeps its default.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<CacheTtl>")]
+    pub cache_ttl: Option<CacheTtl>,
+    /// The lifetimes its protocol knows, which its Prompt cache lifetime
+    /// offers beside a custom one; null for an entry that cannot name one,
+    /// a subscription's included, which shows no such setting.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Vec<CacheTtl>>")]
+    pub cache_ttl_presets: Option<Vec<CacheTtl>>,
     pub created_at: Timestamp,
 }
 

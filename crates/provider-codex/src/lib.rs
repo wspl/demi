@@ -95,6 +95,11 @@ impl CodexConfig {
     pub const BACKEND_URL: &str = "https://chatgpt.com/backend-api";
     pub const AUTH_URL: &str = "https://auth.openai.com";
 
+    /// What the backend keeps a session's cache for: OpenAI's documented
+    /// default for GPT-5.6 and later. A request cannot ask for another, since
+    /// the backend refuses `prompt_cache_options` for every model it serves.
+    pub const DEFAULT_CACHE_LIFETIME: Duration = Duration::from_secs(30 * 60);
+
     /// The product's configuration of an entry's provider for `account`,
     /// asking for models with the version `releases` names.
     pub fn new(account: Option<String>, releases: CodexReleases) -> Self {

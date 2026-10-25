@@ -114,6 +114,10 @@ export const usePreferences = defineStore('preferences', () => {
    * interrupted goes on by itself once the backend is back; absent means yes.
    */
   const resumeAfterRestart = computed(() => product.snapshot?.preferences?.resumeAfterRestart ?? true)
+  /** Whether an idle conversation compacts before its prompt cache expires; absent means no. */
+  const compactIdle = computed(() => product.snapshot?.preferences?.compactIdle ?? false)
+  /** The least prompt cache lifetime an idle conversation compacts for; absent means an hour. */
+  const idleCompactionLifetime = computed(() => product.snapshot?.preferences?.idleCompactionLifetime ?? '1h')
   /** Whether the page shows the defects it found itself, with the ID of their lines in the log; absent means no. */
   const showUnexpectedErrors = computed(() => product.snapshot?.preferences?.showUnexpectedErrors ?? false)
   /**
@@ -374,6 +378,8 @@ export const usePreferences = defineStore('preferences', () => {
     sendWhileRunning,
     resumeAtRetry,
     resumeAfterRestart,
+    compactIdle,
+    idleCompactionLifetime,
     showUnexpectedErrors,
     multiAccountWarned,
     smallModel,

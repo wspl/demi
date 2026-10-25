@@ -260,6 +260,7 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
         makes_images: false,
         makes_videos: false,
         makes_audio: false,
+        cache_ttl: None,
     };
     Ok(Rc::new(OpenAiProvider::new(config, Arc::new(SystemClock))))
 }
@@ -512,6 +513,7 @@ impl Conversation {
             config: ServerConfig::default(),
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
+            idle_compaction_due: Rc::new(|_, _| {}),
             agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
             reply_files: Rc::new(demi_agent_server::testing::NoHostFiles),
         });

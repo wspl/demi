@@ -12,7 +12,7 @@ use demi_provider_common::{
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
-    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
+    AuthState, CacheTtl, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
     RuntimeState, Timestamp,
 };
 use futures_util::{
@@ -31,11 +31,26 @@ pub struct AnthropicConfig {
     /// appends `/messages` unless the URL already ends with it.
     pub base_url: Option<Url>,
     pub policy: VendorPolicy,
+    /// The prompt cache lifetime its requests' cache marks ask for; none
+    /// asks for the vendor's default, five minutes.
+    pub cache_ttl: Option<CacheTtl>,
 }
 
 impl AnthropicConfig {
     /// The base URL of an entry that names none (`crates/provider-common/src/endpoint.rs`).
     pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
+
+    /// The lifetimes the Messages API keeps a cache entry for.
+    pub const CACHE_TTLS: [&str; 2] = ["5m", "1h"];
+
+    /// The lifetime a new entry asks for: an hour.
+    ///
+    /// A session's requests are often more than five minutes apart (a `shell`
+    /// call watches a command for up to ten, and a user reads an answer
+    /// before replying). A lost entry costs 1.25 times the input price on the
+    /// whole history, where the hour costs twice the input price on what each
+    /// request adds.
+    pub const DEFAULT_CACHE_TTL: &str = "1h";
 }
 
 /// An `anthropic` entry, shared by every user and request of the entry.
@@ -48,6 +63,7 @@ struct Shared {
     api_key: Option<HeaderValue>,
     messages_url: Url,
     policy: VendorPolicy,
+    cache_ttl: Option<CacheTtl>,
     clock: Arc<dyn Clock>,
 }
 
@@ -61,6 +77,7 @@ impl AnthropicProvider {
                 api_key: config.api_key.as_ref().map(Secret::header_value),
                 messages_url: endpoint_url(&base, "/messages"),
                 policy: config.policy,
+                cache_ttl: config.cache_ttl,
                 clock,
             }),
         }

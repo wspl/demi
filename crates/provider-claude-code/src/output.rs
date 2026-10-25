@@ -444,6 +444,11 @@ impl LastCall {
         ProviderEvent::Call(CallEvent::Ended(self.0.call(outcome)))
     }
 
+    /// How long the latest call's cache write is kept, if it wrote any.
+    pub(crate) fn cache_lifetime(&self) -> Option<std::time::Duration> {
+        self.0.cache_lifetime()
+    }
+
     /// The latest call's usage, which the run's end takes, at the turn's
     /// `result` or at a batch of tool calls, so a later run never reports it
     /// again; none when no call since ended with its counts.

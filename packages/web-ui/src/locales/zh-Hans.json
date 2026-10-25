@@ -21,7 +21,7 @@
     },
     "agent": {
       "title": "智能体",
-      "description": "轻量模型和消息。",
+      "description": "轻量模型、消息和上下文。",
       "smallModel": "轻量模型",
       "model": "模型",
       "modelDescription": "用于撰写对话标题。“自动”会从你的供应商中选择一款快速模型。",
@@ -35,7 +35,14 @@
       "resumeAfterRestart": "Demi 重新启动后继续",
       "resumeAfterRestartDescription": "轮次因 Demi 重新启动（例如更新）而停止时，在重新启动后继续。",
       "resumeAtRetry": "用量限额重置后继续",
-      "resumeAtRetryDescription": "轮次因用量限额而停止时，在限额重置后继续。"
+      "resumeAtRetryDescription": "轮次因用量限额而停止时，在限额重置后继续。",
+      "context": "上下文",
+      "compactIdle": "压缩闲置对话",
+      "compactIdleDescription": "长对话的提示缓存即将过期前，先为它生成摘要，这样你的下一条消息就不必重新发送全部内容。",
+      "idleLifetime": "最短缓存有效期",
+      "idleLifetimeDescription": "只压缩供应商缓存保留时间不短于此值的对话。",
+      "halfHour": "30 分钟",
+      "hour": "1 小时"
     }
   },
   "appearance": {

@@ -30,7 +30,7 @@ use demi_provider_common::{
     videos::VideoMaker,
 };
 use demi_shared_types::{
-    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
+    AuthState, CacheTtl, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
     RuntimeState, Timestamp, WireApi,
 };
 use futures_util::{
@@ -70,11 +70,22 @@ pub struct OpenAiConfig {
     /// Whether the entry's key makes speech, as its vendor's audio shape
     /// says: an OpenAI key's does.
     pub makes_audio: bool,
+    /// The prompt cache lifetime a session's requests ask for in
+    /// `prompt_cache_options`; none sends no options, and the vendor keeps
+    /// its default.
+    pub cache_ttl: Option<CacheTtl>,
 }
 
 impl OpenAiConfig {
     /// The base URL of an entry that names none (`crates/provider-common/src/endpoint.rs`).
     pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+
+    /// The lifetimes a Responses request asks for: OpenAI's for GPT-5.6 and
+    /// later.
+    pub const RESPONSES_CACHE_TTLS: [&str; 2] = ["30m", "12h"];
+
+    /// The lifetimes a Chat Completions request asks for: Kimi's.
+    pub const CHAT_CACHE_TTLS: [&str; 2] = ["5m", "1h"];
 }
 
 /// An `openai` entry, shared by every user and request of the entry.
@@ -96,6 +107,7 @@ struct Shared {
     url: Url,
     wire: WireApi,
     policy: VendorPolicy,
+    cache_ttl: Option<CacheTtl>,
     clock: Arc<dyn Clock>,
 }
 
@@ -136,6 +148,7 @@ impl OpenAiProvider {
                 url: endpoint_url(&base, path),
                 wire: config.wire,
                 policy: config.policy,
+                cache_ttl: config.cache_ttl,
                 clock,
             }),
             images,

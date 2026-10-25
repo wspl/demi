@@ -66,6 +66,7 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         | ProviderRefusal::Key(_)
         | ProviderRefusal::MakesNo(..)
         | ProviderRefusal::UnmadeKind { .. }
+        | ProviderRefusal::CacheTtl { .. }
         | ProviderRefusal::Order => {
             return ApiError::invalid_body(message);
         }

@@ -337,7 +337,11 @@ async fn stream(
         s.return_runtime(runtime);
         let failure = match read? {
             Ok(reached) => {
-                s.update(|core| core.set_stage(TurnStage::Preparing));
+                let due = s.update(|core| {
+                    core.set_stage(TurnStage::Preparing);
+                    core.idle_compaction_due(window)
+                });
+                s.emit(SessionEvent::IdleCompactionDue { due });
                 compaction::report_context_usage(s, cancel).await;
                 return Ok(reached);
             }

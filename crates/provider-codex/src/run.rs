@@ -10,7 +10,8 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, VendorCall, encode_body,
+    CallEvent, CallOutcome, ErrorCode, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, VendorCall,
+    encode_body,
     wire::{ReportedString, Vendor, responses},
 };
 use futures_util::{Stream, StreamExt};
@@ -18,7 +19,7 @@ use http::StatusCode;
 use serde::Deserialize;
 
 use crate::{
-    LABEL, SIGNATURE_TAG, Shared, TransportMode,
+    CodexConfig, LABEL, SIGNATURE_TAG, Shared, TransportMode,
     failure::{read_codex_failure, with_usage_limit},
     request,
     transport::{self, OpenError, Refusal},
@@ -41,6 +42,7 @@ pub(crate) fn run(
         let request_id = request.request_id.clone();
         let model = request.model_id.clone();
         let websocket = shared.transport != TransportMode::Sse;
+        let session = matches!(request.prompt_cache, PromptCache::Session { .. });
         let body = encode_body(LABEL, move || request::encode(&request, websocket));
         let body = tokio::select! {
             biased;
@@ -100,6 +102,9 @@ pub(crate) fn run(
                 }
             }
         };
+        if session {
+            yield ProviderEvent::CacheLifetime(CodexConfig::DEFAULT_CACHE_LIFETIME);
+        }
         let vendor = Vendor {
             label: LABEL,
             reader: read_codex_failure,

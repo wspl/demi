@@ -19,7 +19,7 @@ use demi_shared_types::{ThinkingConfig, ThinkingSummary};
 use serde::Serialize;
 
 use crate::{
-    InferenceItem, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
+    InferenceItem, InferenceRequest, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
     wire::responses::{ReasoningItem, split_tool_use_id},
 };
 
@@ -41,6 +41,23 @@ pub fn prompt_cache_key(session_id: &str) -> Cow<'_, str> {
         Cow::Borrowed(session_id)
     } else {
         Cow::Owned(format!("session_{}", short_hash(session_id)))
+    }
+}
+
+/// The `prompt_cache_options` of a session's request that asks for a cache
+/// lifetime, as OpenAI's Responses API (GPT-5.6 and later) and Kimi's Chat
+/// Completions spell it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct PromptCacheOptions<'a> {
+    pub ttl: &'a str,
+}
+
+impl<'a> PromptCacheOptions<'a> {
+    /// The options of `request` that asks for `ttl`: a session's request
+    /// only, since no later request reads what another caches.
+    pub fn of(request: &InferenceRequest, ttl: Option<&'a str>) -> Option<Self> {
+        let session = matches!(request.prompt_cache, crate::PromptCache::Session { .. });
+        ttl.filter(|_| session).map(|ttl| Self { ttl })
     }
 }
 

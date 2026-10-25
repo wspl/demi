@@ -59,6 +59,7 @@ use crate::conversation::claude_cli::{ClaudeCli, ClaudeMachine};
 use crate::conversation::project_files::ProjectFiles;
 use crate::conversation::notifications::Notifications;
 use crate::conversation::retry_resume::RetryResumes;
+use crate::conversation::idle_compaction::IdleCompactions;
 use crate::conversation::search::SearchIndexer;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
@@ -160,6 +161,7 @@ pub struct Shard {
     /// Each conversation's timer for the retry time of its root's failed
     /// turn.
     retry_resumes: RetryResumes,
+    idle_compactions: IdleCompactions,
     /// The turns its conversations' trees work on, and the agents' own
     /// notifications, for the user's push notifications.
     pub(crate) notifications: Notifications,
@@ -248,6 +250,7 @@ impl Shard {
             worktrees: worktrees::WorktreesHeld::default(),
             schedules: crate::schedules::Schedules::default(),
             retry_resumes: RetryResumes::default(),
+            idle_compactions: IdleCompactions::default(),
             notifications: Notifications::default(),
         }
     }
@@ -275,6 +278,10 @@ impl Shard {
 
     pub(crate) fn retry_resumes(&self) -> &RetryResumes {
         &self.retry_resumes
+    }
+
+    pub(crate) fn idle_compactions(&self) -> &IdleCompactions {
+        &self.idle_compactions
     }
 
     pub(crate) fn idle_watches(&self) -> &ConversationWatches {
@@ -393,6 +400,7 @@ impl Shard {
         self.services.sync.forget(self.user());
         self.stop_idle_watches();
         self.retry_resumes.clear();
+        self.idle_compactions.clear();
         self.cloud.stop();
         self.titles.abort_all();
         self.tree_openers.close();

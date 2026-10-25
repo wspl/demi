@@ -86,7 +86,9 @@
     "compaction": {
       "running": "正在壓縮上下文…",
       "done": "上下文已壓縮",
-      "doneTo": "上下文已壓縮至約 {tokens} 個 token"
+      "doneTo": "上下文已壓縮至約 {tokens} 個 token",
+      "doneIdle": "閒置時上下文已壓縮",
+      "doneIdleTo": "閒置時上下文已壓縮至約 {tokens} 個 token"
     },
     "stopped": "已停止",
     "queued": "{count} 則佇列中",

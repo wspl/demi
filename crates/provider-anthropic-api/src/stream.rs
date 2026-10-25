@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use demi_provider_common::{
-    CallEvent, CallOutcome, EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
+    CallEvent, CallOutcome, EarlyEnd, ErrorCode, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure, tagged_wire,
     wire::{
         NonEmpty, ReportedString, Tagged, decode_tagged,
@@ -12,7 +12,7 @@ use demi_provider_common::{
         sse_data,
     },
 };
-use demi_shared_types::{Clock, FailureSource, ProviderErrorDiagnostics};
+use demi_shared_types::{CacheTtl, Clock, FailureSource, ProviderErrorDiagnostics};
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde::Deserialize;
@@ -42,9 +42,20 @@ pub(crate) fn run(
             return;
         }
         let model = request.model_id.clone();
+        // Only a session's request marks what it caches.
+        let lifetime = shared
+            .cache_ttl
+            .as_ref()
+            .filter(|_| matches!(request.prompt_cache, PromptCache::Session { .. }))
+            .map(CacheTtl::duration);
         // A body with images is megabytes of base64, built off the shard.
         let policy = shared.policy;
-        let body = match encode_body(LABEL, move || request::encode(&request, policy)).await {
+        let ttl = shared.cache_ttl.clone();
+        let body = match encode_body(LABEL, move || {
+            request::encode(&request, policy, ttl.as_ref().map(CacheTtl::as_str))
+        })
+        .await
+        {
             Ok(body) => body,
             Err(failure) => {
                 yield ProviderEvent::Error(failure);
@@ -86,6 +97,9 @@ pub(crate) fn run(
                 yield ProviderEvent::Error(failure);
             }
             return;
+        }
+        if let Some(lifetime) = lifetime {
+            yield ProviderEvent::CacheLifetime(lifetime);
         }
         let mut frames = Box::pin(sse_data(response.bytes_stream()));
         let mut mapper = Mapper::new(shared.clock.clone(), model);

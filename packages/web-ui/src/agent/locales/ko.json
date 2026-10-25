@@ -86,7 +86,9 @@
     "compaction": {
       "running": "컨텍스트 압축 중…",
       "done": "컨텍스트를 압축했습니다",
-      "doneTo": "컨텍스트를 약 {tokens} 토큰으로 압축했습니다"
+      "doneTo": "컨텍스트를 약 {tokens} 토큰으로 압축했습니다",
+      "doneIdle": "유휴 중 컨텍스트를 압축했습니다",
+      "doneIdleTo": "유휴 중 컨텍스트를 약 {tokens} 토큰으로 압축했습니다"
     },
     "stopped": "중지됨",
     "queued": "대기 중 {count}개",

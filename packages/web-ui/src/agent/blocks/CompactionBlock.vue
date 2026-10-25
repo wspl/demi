@@ -16,6 +16,8 @@ defineProps<{
    */
   summaryTokens?: number
   running?: boolean
+  /** The pass ran while the conversation was idle, before its prompt cache expired. */
+  idle?: boolean
 }>()
 </script>
 
@@ -25,8 +27,8 @@ defineProps<{
     <Shimmer v-if="running" active class="items-center text-row text-fg-row">
       <span>{{ t('transcript.compaction.running') }}</span>
     </Shimmer>
-    <span v-else-if="summaryTokens !== undefined" class="text-row text-fg-row">{{ t('transcript.compaction.doneTo', { tokens: formatTokens(summaryTokens) }) }}</span>
-    <span v-else class="text-row text-fg-row">{{ t('transcript.compaction.done') }}</span>
+    <span v-else-if="summaryTokens !== undefined" class="text-row text-fg-row">{{ t(idle ? 'transcript.compaction.doneIdleTo' : 'transcript.compaction.doneTo', { tokens: formatTokens(summaryTokens) }) }}</span>
+    <span v-else class="text-row text-fg-row">{{ t(idle ? 'transcript.compaction.doneIdle' : 'transcript.compaction.done') }}</span>
     <div class="h-px flex-1 bg-line-subtle" />
   </div>
 </template>

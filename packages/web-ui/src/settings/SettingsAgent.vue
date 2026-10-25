@@ -16,7 +16,7 @@ import { profileMissing } from './subagent-profiles'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SmallModelChoice } from './types'
+import type { IdleLifetime, SmallModelChoice } from './types'
 import type { InlineDetailText } from '../ui/inline-detail'
 
 /**
@@ -27,6 +27,9 @@ import type { InlineDetailText } from '../ui/inline-detail'
  * - Whether small requests stay on the conversation's provider.
  * - What Enter does with a message while the agent works.
  * - Whether a stopped turn goes on by itself.
+ * - Whether an idle conversation compacts before its prompt cache expires,
+ *   and for which least cache lifetime; the lifetime keeps its value while
+ *   the switch is off.
  *
  * Every row is a model. Which entry makes generated media is the order of
  * Settings › Providers and each entry's switches.
@@ -50,6 +53,8 @@ const sameProvider = defineModel<boolean>('sameProvider', { required: true })
 const sendWhileRunning = defineModel<SendWhileRunning>('sendWhileRunning', { required: true })
 const resumeAfterRestart = defineModel<boolean>('resumeAfterRestart', { required: true })
 const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
+const compactIdle = defineModel<boolean>('compactIdle', { required: true })
+const idleLifetime = defineModel<IdleLifetime>('idleLifetime', { required: true })
 
 /** The small model as the menu holds model settings: always the default tier. */
 const settings = computed<ModelSettings | null>(() =>
@@ -99,6 +104,11 @@ function change(next: ModelSettingsChange): void {
   const { providerId, modelId, thinkingEffort } = applyModelChange(settings.value ?? initialModelSettings(), next)
   smallModel.value = { providerId, modelId, thinkingEffort }
 }
+
+const lifetimeOptions = computed<readonly SegmentedOption<IdleLifetime>[]>(() => [
+  { value: '30m', label: t('settings.agent.halfHour') },
+  { value: '1h', label: t('settings.agent.hour') },
+])
 
 const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() => [
   { value: 'steer', label: sendWayLabel('steer') },
@@ -168,6 +178,26 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
         :description="t('settings.agent.resumeAtRetryDescription')"
       >
         <Switch v-model="resumeAtRetry" size="sm" :aria-label="t('settings.agent.resumeAtRetry')" />
+      </SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup :title="t('settings.agent.context')">
+      <SettingsRow
+        :label="t('settings.agent.compactIdle')"
+        :description="t('settings.agent.compactIdleDescription')"
+      >
+        <Switch v-model="compactIdle" size="sm" :aria-label="t('settings.agent.compactIdle')" />
+      </SettingsRow>
+      <SettingsRow
+        :label="t('settings.agent.idleLifetime')"
+        :description="t('settings.agent.idleLifetimeDescription')"
+        :disabled="!compactIdle"
+      >
+        <Segmented
+          v-model="idleLifetime"
+          size="sm"
+          :options="lifetimeOptions"
+          :disabled="!compactIdle"
+        />
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

@@ -3,6 +3,7 @@
 //! passes the API's stream events through (`crates/provider-claude-code/src/output.rs`).
 
 use std::borrow::Cow;
+use std::time::Duration;
 
 use demi_shared_types::TokenUsage;
 use serde::Deserialize;
@@ -111,6 +112,19 @@ impl CallUsage {
     /// The latest call's counts, once a `message_delta` stated them.
     pub fn usage(&self) -> Option<TokenUsage> {
         self.ended
+    }
+
+    /// How long the latest call's cache write is kept: an hour when all of it
+    /// is the hour's part, else the API's default of five minutes. None when
+    /// the call wrote nothing, whose reads leave the lifetime as an earlier
+    /// write set it.
+    pub fn cache_lifetime(&self) -> Option<Duration> {
+        let written = self.ended?.cache_write_tokens;
+        if written == 0 {
+            return None;
+        }
+        let minutes = if self.ended_1h >= written { 60 } else { 5 };
+        Some(Duration::from_secs(minutes * 60))
     }
 
     /// The latest call as the usage ledger keeps it, ended as `outcome`

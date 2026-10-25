@@ -25,7 +25,7 @@ use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider, GrokReleases};
 use demi_provider_minimax::{MinimaxConfig, MinimaxProvider, Region};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
-use demi_shared_types::{AudioShape, ImageShape, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, CacheTtl, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
 /// The families built into the backend.
@@ -80,12 +80,21 @@ impl ProviderFamily for AnthropicFamily {
             api_key: settings.api_key,
             base_url: settings.base_url,
             policy: settings.vendor,
+            cache_ttl: args.cache_ttl,
         };
         let text: Arc<dyn Provider> = Arc::new(AnthropicProvider::new(config, args.clock.clone()));
         match minimax {
             Some(minimax) => Ok(Arc::new(MinimaxProvider::new(minimax, text, args.clock))),
             None => Ok(text),
         }
+    }
+
+    fn cache_ttl_presets(&self, _: Option<WireApi>) -> Option<Vec<CacheTtl>> {
+        Some(lifetimes(&AnthropicConfig::CACHE_TTLS))
+    }
+
+    fn default_cache_ttl(&self) -> Option<CacheTtl> {
+        Some(lifetime(AnthropicConfig::DEFAULT_CACHE_TTL))
     }
 
     /// A MiniMax key makes images, Hailuo's videos and speech; its coding
@@ -144,12 +153,22 @@ impl ProviderFamily for OpenAiFamily {
             makes_images: settings.image_shape == Some(ImageShape::OpenaiImages),
             makes_videos: settings.video_shape == Some(VideoShape::XaiVideos),
             makes_audio: settings.audio_shape == Some(AudioShape::OpenaiSpeech),
+            cache_ttl: args.cache_ttl,
         };
         let text: Arc<dyn Provider> = Arc::new(OpenAiProvider::new(config, args.clock.clone()));
         match ark {
             Some(ark) => Ok(Arc::new(ArkProvider::new(ArkConfig { text: Some(text), ..ark }, args.clock))),
             None => Ok(text),
         }
+    }
+
+    /// An entry that names no wire speaks Responses.
+    fn cache_ttl_presets(&self, wire: Option<WireApi>) -> Option<Vec<CacheTtl>> {
+        let known = match wire.unwrap_or_default() {
+            WireApi::Responses => &OpenAiConfig::RESPONSES_CACHE_TTLS,
+            WireApi::ChatCompletions => &OpenAiConfig::CHAT_CACHE_TTLS,
+        };
+        Some(lifetimes(known))
     }
 
     /// An OpenAI or xAI key makes images through the OpenAI-shaped image
@@ -449,6 +468,16 @@ impl ProviderFamily for ClaudeCodeFamily {
                 .map(|provider| provider.login_accounts(machine)),
         )
     }
+}
+
+/// The lifetimes a provider crate declares.
+fn lifetimes(known: &[&str]) -> Vec<CacheTtl> {
+    known.iter().map(|ttl| lifetime(ttl)).collect()
+}
+
+/// A provider crate's lifetime constant.
+fn lifetime(text: &str) -> CacheTtl {
+    CacheTtl::try_from(text.to_owned()).expect("a provider's lifetime constant is a lifetime")
 }
 
 /// The account a subscription provider stands for and the store of its

@@ -7,6 +7,7 @@ import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logo
 import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import type {
   SettingsArchivedConversation,
+  SettingsCacheTtl,
   SettingsKeyBinding,
   SettingsPlugin,
   SettingsProviderEntry,
@@ -191,10 +192,37 @@ function model(partial: Partial<MockModel> & Pick<MockModel, 'id'>): MockModel {
   }
 }
 
+/**
+ * The Prompt cache lifetime an API key offers, as the backend's families
+ * declare it by protocol: it starts at an hour on Anthropic Messages, and
+ * none of a subscription's. `kept` is the lifetime the entry had, which a new
+ * protocol keeps when it is one of its presets.
+ */
+export function galleryCacheTtl(
+  entry: Pick<MockProvider, 'kind' | 'wireApi' | 'makesText'>,
+  kept?: string | null,
+): SettingsCacheTtl | undefined {
+  const offer = (presets: string[], initial: string | null) => ({
+    value: kept === undefined ? initial : kept !== null && presets.includes(kept) ? kept : initial,
+    presets,
+  })
+  if (entry.kind === 'subscription' || entry.makesText === false) return undefined
+  switch (entry.wireApi) {
+    case 'anthropic-messages':
+      return offer(['5m', '1h'], '1h')
+    case 'openai-responses':
+      return offer(['30m', '12h'], null)
+    case 'openai-chat':
+      return offer(['5m', '1h'], null)
+    default:
+      return undefined
+  }
+}
+
 export function provider(
   partial: Partial<MockProvider> & Pick<MockProvider, 'id' | 'name' | 'kind' | 'family'>
 ): MockProvider {
-  return {
+  const entry: MockProvider = {
     vendorId: null,
     compatible: false,
     baseUrl: '',
@@ -210,6 +238,7 @@ export function provider(
     logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
     ...partial,
   }
+  return 'cacheTtl' in partial ? entry : { ...entry, cacheTtl: galleryCacheTtl(entry) }
 }
 
 /** models.dev vendors one of Demi's runtimes can speak to, with their marks. */

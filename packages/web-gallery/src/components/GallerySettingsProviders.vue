@@ -15,6 +15,7 @@ import {
   type SettingsVendor,
 } from '@demicodes/web-ui/settings/types'
 import {
+  galleryCacheTtl,
   isIncomplete,
   mockVendors,
   vendorMedia,
@@ -56,7 +57,12 @@ function changeProvider(
   entry: SettingsProviderEntry,
   patch: Partial<SettingsProviderEntry>,
 ): void {
+  const kept = entry.cacheTtl?.value ?? null
   Object.assign(entry, patch)
+  // A new protocol offers its own lifetimes, as the backend's families do.
+  if (patch.wireApi !== undefined && patch.cacheTtl === undefined) {
+    entry.cacheTtl = galleryCacheTtl(entry as MockProvider, kept)
+  }
   if (patch.apiKey !== undefined) {
     // As in the product, the page never gets a stored key back: only whether
     // one exists, none once the field was emptied.

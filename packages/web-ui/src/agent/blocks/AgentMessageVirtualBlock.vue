@@ -332,6 +332,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       <CompactionBlock
         v-else-if="block.type === 'compaction_marker' || block.type === 'compaction_boundary'"
         :summary-tokens="summaryTokens"
+        :idle="block.type === 'compaction_marker' && block.idle === true"
       />
       <CompactionBlock
         v-else-if="block.type === 'compaction_progress'"

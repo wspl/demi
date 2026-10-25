@@ -583,6 +583,7 @@ fn run(
                         live.collecting.clear();
                         live.writing.clear();
                         live.streaming = None;
+                        let lifetime = live.cache_lifetime();
                         let usage = live.last_call.take();
                         // A result that does not name the last message
                         // written to the process ends an earlier turn, and
@@ -619,11 +620,17 @@ fn run(
                             TurnEnd::Answered if earlier => {
                                 refusal = None;
                                 signed_out = false;
+                                if let Some(lifetime) = lifetime {
+                                    yield ProviderEvent::CacheLifetime(lifetime);
+                                }
                                 yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
                                 continue;
                             }
                             TurnEnd::Answered => {
                                 runtime.live = Some(live);
+                                if let Some(lifetime) = lifetime {
+                                    yield ProviderEvent::CacheLifetime(lifetime);
+                                }
                                 yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
                             }
                             TurnEnd::Failed { message, code, status } => {

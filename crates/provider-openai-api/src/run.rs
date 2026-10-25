@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    InferenceRequest, ProviderEvent, ProviderFailure, encode_body, http_failure, read_http_failure,
+    InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, encode_body, http_failure, read_http_failure,
     wire::{Vendor, chat_completions, responses},
 };
-use demi_shared_types::WireApi;
+use demi_shared_types::{CacheTtl, WireApi};
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 
@@ -33,9 +33,19 @@ pub(crate) fn run(
         let policy = shared.policy;
         let model = request.model_id.clone();
         let tag = shared.signature_tag.clone();
-        let body = encode_body(LABEL, move || match wire {
-            WireApi::Responses => request::responses(&request, policy, &tag),
-            WireApi::ChatCompletions => request::chat_completions(&request, policy),
+        // Only a session's request asks for a lifetime.
+        let lifetime = shared
+            .cache_ttl
+            .as_ref()
+            .filter(|_| matches!(request.prompt_cache, PromptCache::Session { .. }))
+            .map(CacheTtl::duration);
+        let ttl = shared.cache_ttl.clone();
+        let body = encode_body(LABEL, move || {
+            let ttl = ttl.as_ref().map(CacheTtl::as_str);
+            match wire {
+                WireApi::Responses => request::responses(&request, policy, &tag, ttl),
+                WireApi::ChatCompletions => request::chat_completions(&request, policy, ttl),
+            }
         });
         let body = tokio::select! {
             biased;
@@ -82,6 +92,9 @@ pub(crate) fn run(
                 yield ProviderEvent::Error(failure);
             }
             return;
+        }
+        if let Some(lifetime) = lifetime {
+            yield ProviderEvent::CacheLifetime(lifetime);
         }
         let vendor = Vendor {
             label: LABEL,

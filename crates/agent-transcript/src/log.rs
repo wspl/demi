@@ -478,12 +478,14 @@ impl TranscriptLog {
     }
 
     /// Appends the marker of the boundary `boundary_id` with the estimate of
-    /// what it summarized.
+    /// what it summarized, of a pass that ran while the conversation was
+    /// `idle` or not.
     pub fn push_compaction_marker(
         &mut self,
         model: &ModelSelection,
         boundary_id: BlockId,
         compacted_tokens: u64,
+        idle: bool,
     ) {
         let (id, created_at) = self.stamp();
         self.append(Block::CompactionMarker(CompactionMarkerBlock {
@@ -493,6 +495,7 @@ impl TranscriptLog {
             model: model.clone(),
             boundary_id,
             compacted_tokens,
+            idle,
         }));
     }
 
