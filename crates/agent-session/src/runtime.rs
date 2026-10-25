@@ -334,8 +334,8 @@ pub struct ToolInvocation {
     /// a result may attach.
     pub request_limits: RequestLimits,
     /// What ends the window a shell tool watches its command in before its
-    /// time passes: the user's send now (`crates/agent-tools/src/lib.rs`).
-    pub send_now: SendNowArrival,
+    /// time passes (`crates/agent-tools/src/lib.rs`).
+    pub arrival: Arrival,
     /// Where the call tells its session the command it started, and learns
     /// whether something other than its tool that ends it leaves the
     /// command running (`crates/agent-session/src/core.rs`).
@@ -396,23 +396,76 @@ impl CallCommand {
     }
 }
 
-/// The user's send now (`crates/agent-tools/src/lib.rs`): the command a call
-/// watches moves to the background, and the result says so.
+/// What arrives for a call while it watches its command
+/// (`crates/agent-tools/src/lib.rs`): the user's send now, which moves the
+/// command to the background at once, and what waits for the turn's next
+/// boundary or another call of the step that has returned, which move it
+/// once it has run a while.
 #[derive(Debug, Clone)]
-pub struct SendNowArrival {
+pub struct Arrival {
     send_now: watch::Receiver<bool>,
+    /// How many inputs arrived in the session, a steer, an agent's message
+    /// or a command report; the call counts those after `since`, the count
+    /// when the model was last asked.
+    arrivals: watch::Receiver<u64>,
+    since: u64,
+    /// Whether a call of the call's step has returned.
+    step: watch::Receiver<bool>,
 }
 
-impl SendNowArrival {
-    pub(crate) fn new(send_now: watch::Receiver<bool>) -> Self {
-        Self { send_now }
+/// What arrived for a call, besides the user's send now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrived {
+    /// A steer, an agent's message or a command report, which waits for the
+    /// turn's next boundary.
+    Input,
+    /// Another call of the step returned.
+    Call,
+}
+
+impl Arrival {
+    pub(crate) fn new(
+        send_now: watch::Receiver<bool>,
+        arrivals: watch::Receiver<u64>,
+        since: u64,
+        step: watch::Receiver<bool>,
+    ) -> Self {
+        Self {
+            send_now,
+            arrivals,
+            since,
+            step,
+        }
     }
 
     /// Resolves once the user sent a message now.
-    pub async fn arrived(mut self) {
-        if self.send_now.wait_for(|sent| *sent).await.is_err() {
+    pub async fn sent_now_arrived(&self) {
+        let mut send_now = self.send_now.clone();
+        if send_now.wait_for(|sent| *sent).await.is_err() {
             // The session is gone, and nothing will arrive.
             std::future::pending::<()>().await;
+        }
+    }
+
+    /// Resolves once an input arrived since the model was last asked, or
+    /// another call of the step returned.
+    pub async fn other_arrived(&self) -> Arrived {
+        let since = self.since;
+        let mut arrivals = self.arrivals.clone();
+        let mut step = self.step.clone();
+        let input = async {
+            if arrivals.wait_for(|count| *count > since).await.is_err() {
+                std::future::pending::<()>().await;
+            }
+        };
+        let call = async {
+            if step.wait_for(|returned| *returned).await.is_err() {
+                std::future::pending::<()>().await;
+            }
+        };
+        tokio::select! {
+            () = input => Arrived::Input,
+            () = call => Arrived::Call,
         }
     }
 

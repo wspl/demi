@@ -2172,6 +2172,12 @@ impl SessionCore {
         );
     }
 
+    /// How many inputs arrived, which a shell call counts
+    /// (`crates/agent-session/src/runtime.rs`).
+    pub(super) fn arrivals(&self) -> u64 {
+        self.inputs.arrivals()
+    }
+
     /// Whether input arrived since `before` that is still to be written:
     /// an end report whose end a look showed meanwhile is withdrawn first.
     pub(super) fn arrived_since(&mut self, before: u64) -> bool {

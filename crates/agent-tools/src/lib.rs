@@ -33,12 +33,16 @@
 //! command wakes the node only when it ends.
 //!
 //! - A call returns when its command ends, or after [`CALL_WINDOW_MS`] with
-//!   the command still running, which then goes on in the background. The
-//!   tool's text says so. While the command waits for the user's permission,
-//!   the call holds and its window does not run: the user's allow, or a denial,
-//!   ends the wait. Only the user's send now ends a window early. A steer, an
-//!   agent's message and a command report are read at the next boundary,
-//!   after the call's result, as are a response's other calls.
+//!   the command still running, which then goes on in the background. Models
+//!   wait in their turn, as their training's tools hold a call until its
+//!   command ends, so a call holds that long and the tool's text names no
+//!   limit, which a model would plan around; a result that moved says why.
+//!   While the command waits for the user's permission, the call holds and
+//!   its window does not run: the user's allow, or a denial, ends the wait.
+//! - The user's send now ends a window at once. A steer, an agent's message,
+//!   a command report or another call of the step that returned end it once
+//!   the command has run [`ARRIVAL_WINDOW`]; each is read at the next
+//!   boundary, after the call's result.
 //! - A command in the background wakes the node when it ends, and once when it
 //!   has printed nothing for the session's silence limit
 //!   (`crates/agent-session/src/reports.rs`); nothing else wakes the node about
@@ -83,7 +87,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_agent_session::{
-    CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
+    Arrival, Arrived, CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
     ToolOutcome,
 };
 use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand};
@@ -190,7 +194,7 @@ impl Directory for Option<ChildDirectory> {
 const SHELL: &str = "shell";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Run a shell script on the conversation's Host. The call returns the output when the script ends; one still running after 30 s goes on in the background, and its end wakes you, as does 10 minutes without output. service: true runs a command until it is stopped, such as a server: the call returns once its output is quiet for 2 s, and only its exit wakes you. Calls in one response run in parallel.";
+const SHELL_DESCRIPTION: &str = "Run a shell script on the conversation's Host. The call returns the output when the script ends; a command that moves to the background wakes you when it ends. service: true runs a command until it is stopped, such as a server: the call returns once its output is quiet for 2 s, and only its exit wakes you. Calls in one response run in parallel.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -215,8 +219,13 @@ const QUIET: Duration = Duration::from_secs(2);
 /// The longest a service's call watches it.
 const SERVICE_WINDOW: Duration = Duration::from_secs(30);
 /// The longest a call watches a command that is not a service, in
-/// milliseconds: thirty seconds, which the tool's text states.
-pub const CALL_WINDOW_MS: u32 = 30_000;
+/// milliseconds: ten minutes, the most Claude Code's Bash tool holds a call,
+/// so a model that waits in its turn waits once.
+pub const CALL_WINDOW_MS: u32 = 600_000;
+/// How long a command runs before what arrives moves it to the background, in
+/// milliseconds: long enough that most commands end within it and return
+/// whole, short enough that the user's steer reads as sent.
+const ARRIVAL_WINDOW: u32 = 10_000;
 
 /// A node's access to its shell environments: the resolver that names the
 /// current Host, the product's factory, the environments made so far, and
@@ -359,7 +368,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     async fn shell(&self, call: ToolInvocation, input: ShellInput) -> Result<ToolOutcome, CallError> {
         // A call after one that the user's send now returned never
         // starts.
-        if call.send_now.sent_now() {
+        if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
         let began = std::time::Instant::now();
@@ -425,18 +434,12 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             service: input.service,
         });
         let window_ms = (!input.service).then_some(self.call_window_ms);
-        let (status, sent_now) = watch(
-            environment.as_ref(),
-            &command,
-            window_ms,
-            call.send_now.arrived(),
-        )
-        .await?;
+        let (status, arrived) = watch(environment.as_ref(), &command, window_ms, &call.arrival).await?;
         stopping.disarm();
         let running = matches!(status.state, CommandState::Running { .. });
-        let moved = match (sent_now, running && !input.service) {
-            (true, _) => Some(Moved::SentNow),
-            (false, true) => Some(Moved::TimePassed),
+        let moved = match (arrived, running && !input.service) {
+            (Some(arrived), _) => Some(arrived),
+            (None, true) => Some(Moved::TimePassed),
             _ => None,
         };
         let (outcome_name, exit) = match &status.state {
@@ -451,6 +454,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             outcome_name,
             moved.map(|moved| match moved {
                 Moved::SentNow => "sent_now",
+                Moved::Input => "input",
+                Moved::Call => "call",
                 Moved::TimePassed => "time",
             }),
             exit,
@@ -559,21 +564,24 @@ impl Drop for CallStop {
 /// - it ends;
 /// - `window_ms` passes, or for a service, its output has been quiet
 ///   for 2 seconds or 30 seconds have passed;
-/// - `until` resolves: the user sent a message now.
+/// - the user sent a message now;
+/// - something else waits for the agent, and the command has run
+///   [`ARRIVAL_WINDOW`].
 ///
-/// While the command waits for the user's answer, the window does not run: it
+/// While the command waits for the user's answer, neither time runs: each
 /// starts again from the moment the command goes on. A message the user sends
 /// now denies the request, and the call returns as any call does, with its
-/// command or when its window has passed.
+/// command or when its window has passed; nothing else that arrives returns
+/// it while it waits.
 ///
-/// Then returns its status, and whether `until` ended the watch. Ending the
-/// watch never stops the command.
+/// Then returns its status, and what arrived when that ended the watch.
+/// Ending the watch never stops the command.
 async fn watch(
     environment: &dyn ShellEnvironment,
     command: &CommandId,
     window_ms: Option<u32>,
-    until: impl Future<Output = ()>,
-) -> Result<(CommandStatus, bool), ShellError> {
+    arrival: &Arrival,
+) -> Result<(CommandStatus, Option<Moved>), ShellError> {
     // Whether the command waits for the user, which its job tells once it has
     // started; until then it does not.
     let (told, awaits) = tokio::sync::watch::channel(false);
@@ -584,24 +592,44 @@ async fn watch(
         std::future::pending::<std::convert::Infallible>().await
     };
     let window = window(environment, command, window_ms, awaits.clone());
-    let until = async {
-        until.await;
+    let sent_now = async {
+        arrival.sent_now_arrived().await;
         // The message denies the request it arrives beside, and the
         // command's end follows; it is read after the result.
         if *awaits.borrow() {
             std::future::pending::<()>().await;
         }
     };
-    let mut sent_now = false;
+    // What waits once the command has run its while, looked at then, so a
+    // steer the user took back meanwhile counts for nothing.
+    let other = async {
+        loop {
+            self::window(environment, command, Some(ARRIVAL_WINDOW), awaits.clone()).await?;
+            let mut asks = awaits.clone();
+            tokio::select! {
+                arrived = arrival.other_arrived() => {
+                    return Ok::<_, ShellError>(match arrived {
+                        Arrived::Input => Moved::Input,
+                        Arrived::Call => Moved::Call,
+                    });
+                }
+                // A command that waits for the user's answer holds its call,
+                // and runs its while again once it goes on.
+                _ = asks.wait_for(|awaits| *awaits) => {}
+            }
+        }
+    };
+    let mut moved = None;
     tokio::select! {
         ended = environment.ended(command) => {
             ended?;
         }
         watched = window => watched?,
-        () = until => sent_now = true,
+        () = sent_now => moved = Some(Moved::SentNow),
+        arrived = other => moved = Some(arrived?),
         never = telling => match never {},
     }
-    Ok((environment.status(command)?, sent_now))
+    Ok((environment.status(command)?, moved))
 }
 
 /// Resolves when the watch's time has passed (`watch`), which stands still

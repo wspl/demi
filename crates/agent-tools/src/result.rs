@@ -87,6 +87,11 @@ pub struct Look {
 pub enum Moved {
     /// The user's send now ended the window.
     SentNow,
+    /// A steer, an agent's message or a command report arrived, and the
+    /// command had run a while.
+    Input,
+    /// Another call of the step returned, and the command had run a while.
+    Call,
     /// The window's time passed (`crates/agent-session/src/reports.rs`).
     TimePassed,
 }
@@ -245,8 +250,11 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String 
     match &status.state {
         CommandState::Running { hint, outliving } => {
             match look.moved {
-                Some(Moved::SentNow) => after.push(format!(
-                    "[The user sent a message, so command {command} moved to the background. It keeps running; its end wakes you.]"
+                Some(Moved::SentNow | Moved::Input) => after.push(format!(
+                    "[A message arrived, so command {command} moved to the background. It keeps running; its end wakes you.]"
+                )),
+                Some(Moved::Call) => after.push(format!(
+                    "[Another call returned, so command {command} moved to the background. It keeps running; its end wakes you.]"
                 )),
                 Some(Moved::TimePassed) => {
                     after.push(

@@ -70,7 +70,7 @@ use super::{
     media::model_view,
     persist, reports,
     runtime::{
-        CallCommand, SeenContext, SendNowArrival, SystemPrompt, ToolEffect, ToolInvocation,
+        Arrival, CallCommand, SeenContext, SystemPrompt, ToolEffect, ToolInvocation,
         ToolOutcome,
     },
 };
@@ -152,7 +152,7 @@ async fn run_turn(
                 persist::flush(s).await?;
             }
         }
-        let executed = run_tools(s, cancel, recover).await?;
+        let executed = run_tools(s, cancel, recover, before).await?;
         if ends_for_message(s).await? {
             return Ok(());
         }
@@ -280,7 +280,10 @@ async fn ends_for_message(s: &SessionShared) -> Result<bool, TurnError> {
 /// Resolves once the user sent a message now, which cuts a provider
 /// request short.
 async fn sent_now(s: &SessionShared) {
-    SendNowArrival::new(s.send_now.subscribe()).arrived().await;
+    if s.send_now.subscribe().wait_for(|sent| *sent).await.is_err() {
+        // The session is gone, and nothing will arrive.
+        std::future::pending::<()>().await;
+    }
 }
 
 /// Writes the waiting input but the human steers when some arrived since
@@ -660,10 +663,15 @@ fn complete_text(s: &SessionShared) {
 /// dispatch fails, completes them as aborted with that failure as the reason,
 /// as a stop does, so the next request replays no call without a result.
 /// Returns whether the response requested any call.
+///
+/// `requested` is how many inputs had arrived when the round's request was
+/// sent: what arrived since waits for the model, and moves a call's command
+/// to the background once it has run a while.
 async fn run_tools(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
     defer_input: bool,
+    requested: u64,
 ) -> Result<bool, TurnError> {
     let calls = s.read(|core| core.transcript.pending_tool_calls());
     if calls.is_empty() {
@@ -709,6 +717,10 @@ async fn run_tools(
             // node works in by then (`crates/agent-store/src/changes.rs`).
             let started_in = s.runtime.directory().await;
             let turn = s.read(SessionCore::turn);
+            // Whether a call of the step has returned, which moves the
+            // others' commands to the background once they have run a
+            // while (`crates/agent-tools/src/lib.rs`).
+            let (step_returned, returns) = tokio::sync::watch::channel(false);
             let invocations = step
                 .iter()
                 .zip(&handles)
@@ -719,7 +731,7 @@ async fn run_tools(
                     input: tool_input(&call.input),
                     model: model.clone(),
                     request_limits,
-                    send_now: SendNowArrival::new(s.send_now.subscribe()),
+                    arrival: Arrival::new(s.send_now.subscribe(), s.arrivals.subscribe(), requested, returns.clone()),
                     command: handle.clone(),
                 })
                 .collect();
@@ -734,6 +746,7 @@ async fn run_tools(
             loop {
                 match cancel.guard(returned.next()).await {
                     Ok(Some((index, outcome))) => {
+                        step_returned.send_replace(true);
                         let outcome = outcome.unwrap_or_else(|failure| {
                             ToolOutcome::error(format!("Tool failed: {}", failure.0))
                         });
