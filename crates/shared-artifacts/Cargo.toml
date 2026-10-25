@@ -20,6 +20,7 @@ futures-util.workspace = true
 # `zstd`: a command executable arrives in zstd content coding
 # (`crates/backend-runners/src/publication.rs`).
 reqwest = { workspace = true, features = ["rustls", "stream", "zstd"] }
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"

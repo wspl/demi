@@ -64,6 +64,11 @@
   "about": {
     "acknowledgementsFailed": "無法載入致謝。"
   },
+  "updates": {
+    "channelFailed": "無法變更更新頻道",
+    "checkFailed": "無法檢查更新",
+    "updateFailed": "無法開始更新"
+  },
   "dialog": {
     "nameFailed": "無法變更你的名稱",
     "emailFailed": "無法變更電子郵件",

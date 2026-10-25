@@ -187,6 +187,12 @@ pub struct Options {
     /// yet, and the page opens on its setup.
     #[arg(long)]
     unseeded: bool,
+    /// Offer Settings › Updates, as a server's backend does: Update
+    /// Now writes its request to `version` in this directory, and the
+    /// management socket, `manage.sock` there, hears what an upgrade would
+    /// tell, which a check writes itself as `demi-server` would.
+    #[arg(long, value_name = "DIRECTORY")]
+    offer_updates: Option<PathBuf>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -351,6 +357,7 @@ async fn session(
         &socket,
         &release,
         seed.codex.as_ref(),
+        options.offer_updates.as_deref(),
     )?);
 
     let http = reqwest::Client::builder().no_proxy().build()?;
@@ -561,7 +568,7 @@ async fn manager_socket(manager: &mut dyn ChildWrapper) -> Result<String, Error>
 /// Starts the backend executable on the data directory `data`, with the
 /// variables the web app contract suite gives it, in isolated mode, its
 /// public URL `public`, which makes the master account's Codex entry hold
-/// `codex` at each start.
+/// `codex` at each start, and offers updates through `updates` when given.
 fn spawn_backend(
     data: &Path,
     port: u16,
@@ -569,6 +576,7 @@ fn spawn_backend(
     socket: &str,
     release: &Path,
     codex: Option<&CodexSignIn>,
+    updates: Option<&Path>,
 ) -> Result<Box<dyn ChildWrapper>, Error> {
     let mut command = program("demi-backend");
     command
@@ -582,6 +590,13 @@ fn spawn_backend(
         .stdin(Stdio::null());
     if let Some(log) = std::env::var_os("DEMI_LOG") {
         command.command_mut().env("DEMI_LOG", log);
+    }
+    if let Some(updates) = updates {
+        std::fs::create_dir_all(updates)?;
+        command
+            .command_mut()
+            .env(demi_runner_protocol::release::UPGRADE_REQUEST_ENV, updates.join("version"))
+            .env(demi_runner_protocol::release::MANAGE_SOCKET_ENV, updates.join("manage.sock"));
     }
     if let Some(codex) = codex {
         command

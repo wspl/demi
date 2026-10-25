@@ -23,7 +23,7 @@ SupplementaryGroups=demi-cloud
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 UMask=0077
-RuntimeDirectory=demi-backend demi-backend-manage
+RuntimeDirectory=demi-backend demi-backend-manage demi-upgrade
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
 TimeoutStartSec=infinity
@@ -31,6 +31,7 @@ TimeoutStopSec=infinity
 Restart=on-failure
 RestartSec=3
 EnvironmentFile=/opt/demi/config/demi.env
+Environment=DEMI_UPGRADE_REQUEST=/run/demi-upgrade/version
 ExecStart=/opt/demi/current/bin/demi-backend
 
 [Install]

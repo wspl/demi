@@ -90,10 +90,12 @@ const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disa
 const faded = computed(() => props.muted === true || props.disabled === true)
 const slots = useSlots()
 const clickable = computed(() => props.interactive === true || props.navigable === true)
-const accessory = computed(() => props.navigable === true || slots['accessory'] !== undefined)
-const below = computed(() => slots['below'] !== undefined)
+// Functions, not computed: `slots` is not reactive, so a computed would keep
+// the slots the row first rendered with.
+const accessory = () => props.navigable === true || slots['accessory'] !== undefined
+const below = () => slots['below'] !== undefined
 /** The controls align with the name's line rather than the row's middle. */
-const topAligned = computed(() => slots['detail'] !== undefined || below.value)
+const topAligned = () => slots['detail'] !== undefined || below()
 // The accessory's square: as wide as the row is tall. CSS cannot size a
 // stretched flex item's width from its height, so the row is measured.
 const rowElement = ref<HTMLElement>()
@@ -134,16 +136,16 @@ const working = provideRowTarget(() => props.target)
     <div
       class="flex min-w-0 flex-1 items-center"
       :class="[
-      inset ? 'min-h-9 phone:min-h-11 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? (below ? 'gap-x-3 px-3 py-3' : 'min-h-10 phone:min-h-11 gap-x-3 px-3 py-1.5') : 'min-h-14 gap-x-4 px-4 py-3',
-      below ? 'flex-wrap gap-y-3' : inset ? 'flex-nowrap gap-y-2' : 'flex-wrap gap-y-2',
-      accessory ? 'pr-0!' : '',
+      inset ? 'min-h-9 phone:min-h-11 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? (below() ? 'gap-x-3 px-3 py-3' : 'min-h-10 phone:min-h-11 gap-x-3 px-3 py-1.5') : 'min-h-14 gap-x-4 px-4 py-3',
+      below() ? 'flex-wrap gap-y-3' : inset ? 'flex-nowrap gap-y-2' : 'flex-wrap gap-y-2',
+      accessory() ? 'pr-0!' : '',
     ]"
     >
       <div
         v-if="$slots.leading"
         class="flex shrink-0 items-center text-fg-muted"
         :class="[centerLeading ? '' : 'h-5', faded ? 'opacity-60' : '']"
-        :style="{ alignSelf: !centerLeading && (description || $slots.description || topAligned) ? 'flex-start' : 'center' }"
+        :style="{ alignSelf: !centerLeading && (description || $slots.description || topAligned()) ? 'flex-start' : 'center' }"
       >
         <slot name="leading" />
       </div>
@@ -191,22 +193,22 @@ const working = provideRowTarget(() => props.target)
         :class="[
         inset ? 'shrink-0' : 'max-w-full grow *:data-field:grow',
         phoneStacked && !inset ? 'phone:basis-full' : '',
-        topAligned && !inset ? 'h-5 self-start' : '',
-        topAligned && inset ? '@sm:h-5 @sm:self-start' : '',
+        topAligned() && !inset ? 'h-5 self-start' : '',
+        topAligned() && inset ? '@sm:h-5 @sm:self-start' : '',
         disabled ? 'pointer-events-none' : '',
       ]"
       >
         <RowSpinner v-if="working" />
         <slot />
       </div>
-      <div v-if="below" class="order-last min-w-0 basis-full" :class="faded ? 'opacity-60' : ''">
+      <div v-if="below()" class="order-last min-w-0 basis-full" :class="faded ? 'opacity-60' : ''">
         <slot name="below" />
       </div>
     </div>
     <!-- A square as tall as a one-line row: its mark is as far from the row's end as from its top and
          bottom, and stays at the end of a row whose text wraps to several lines. -->
     <div
-      v-if="accessory"
+      v-if="accessory()"
       class="flex shrink-0 items-center justify-center text-fg-subtle"
       :class="faded ? 'opacity-60' : ''"
       :style="{ width: `${Math.min(rowHeight, ACCESSORY_MAX_PX)}px` }"

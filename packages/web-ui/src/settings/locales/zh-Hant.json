@@ -9,6 +9,36 @@
       "none": "沒有致謝"
     }
   },
+  "updates": {
+    "title": "更新",
+    "description": "為所有帳號更新這台伺服器上的 Demi。",
+    "current": "Demi {version}",
+    "upToDate": "Demi 已是最新版本",
+    "available": "有新版本：Demi {version}",
+    "youHave": "目前版本：{version}。",
+    "releaseNotes": "版本說明",
+    "updateNow": "立即更新",
+    "checking": "正在檢查更新⋯",
+    "checkFailed": "無法檢查更新",
+    "lastChecked": "上次檢查：{when}",
+    "neverChecked": "尚未檢查",
+    "checkNow": "立即檢查",
+    "downloading": "正在下載 Demi {version}",
+    "downloaded": "{done}，共 {all}",
+    "speed": "{size}/秒",
+    "preparing": "正在準備 Demi {version}⋯",
+    "restarting": "正在重新啟動 Demi⋯",
+    "failed": "無法更新至 {version}。Demi 已回到 {running}。",
+    "failedNoVersion": "無法更新。Demi 仍在執行 {running}。",
+    "channel": "更新頻道",
+    "channelDescription": "Canary 會最先收到新版本，這些版本還沒有人在伺服器上試過。",
+    "beta": "Beta",
+    "canary": "Canary",
+    "confirmTitle": "要將 Demi 更新至 {version} 嗎？",
+    "confirmBody": "Demi 會重新啟動，所有人都將有幾分鐘無法使用。",
+    "confirmAgents": "有 {count} 個智慧體正在工作，更新後會繼續。",
+    "update": "更新"
+  },
   "account": {
     "title": "帳號",
     "description": "你的名稱、電子郵件和登入方式。",
@@ -323,6 +353,9 @@
     "developer": {
       "keywords": "開發,除錯,疑難排解",
       "errorsKeywords": "錯誤,日誌,除錯,診斷"
+    },
+    "updates": {
+      "keywords": "更新,升級,版本,發布,canary,beta"
     }
   },
   "changeEmail": {

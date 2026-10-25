@@ -33,7 +33,8 @@
     "estimating": "正在估算剩余时间…",
     "underAMinute": "剩余不到 1 分钟",
     "minutesLeft": "大约还需 {count} 分钟",
-    "body": "更新完成后，Demi 会自动打开。"
+    "body": "更新完成后，Demi 会自动打开。",
+    "restarting": "正在重新启动 Demi"
   },
   "startingScreen": {
     "connecting": "正在连接到 Demi…",

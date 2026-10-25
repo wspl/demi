@@ -126,6 +126,6 @@ watchEffect(() => {
   />
   <MediaViewer :viewer="mediaViewer" />
   <Teleport to="body">
-    <UpdatingScreen v-if="update" :progress="update.progress" />
+    <UpdatingScreen v-if="update" :progress="update.progress" :restarting="update.restarting" />
   </Teleport>
 </template>

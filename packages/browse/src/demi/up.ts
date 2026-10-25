@@ -54,6 +54,13 @@ export interface UpOptions {
    * made as the web app starts; a web app already up is kept as it is.
    */
   built?: boolean
+  /**
+   * Offers Settings › Updates, as a server does, for a check of it: the
+   * backend writes Update Now's request to `version` in this directory, and its
+   * management socket is `manage.sock` there, on which the check tells what
+   * `demi-server` would. It applies when the backend starts.
+   */
+  offerUpdates?: string
 }
 
 export async function up(tool: Tool, args: (string | UpOptions)[]): Promise<void> {
@@ -115,6 +122,9 @@ async function startBackend(tool: Tool, options: UpOptions): Promise<void> {
   const command = [process.execPath, 'scripts/xtask.ts', 'dev', '--port', String(port), '--data', slotPaths(tool.slot).backendData]
   if (options.publicHost !== undefined) {
     command.push('--public-host', options.publicHost)
+  }
+  if (options.offerUpdates !== undefined) {
+    command.push('--offer-updates', options.offerUpdates)
   }
   const started = await start(tool, 'backend', port, command, {})
   const account = await untilReady('The backend', started, async () => {

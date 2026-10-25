@@ -64,6 +64,11 @@
   "about": {
     "acknowledgementsFailed": "无法加载致谢。"
   },
+  "updates": {
+    "channelFailed": "无法更改更新通道",
+    "checkFailed": "无法检查更新",
+    "updateFailed": "无法开始更新"
+  },
   "dialog": {
     "nameFailed": "无法更改你的名称",
     "emailFailed": "无法更改电子邮件",

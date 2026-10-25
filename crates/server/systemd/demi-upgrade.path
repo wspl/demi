@@ -1,0 +1,10 @@
+# Starts demi-upgrade.service when the backend writes an administrator's
+# request for an update (crates/server/src/main.rs).
+[Unit]
+Description=Demi update requests
+
+[Path]
+PathExists=/run/demi-upgrade/version
+
+[Install]
+WantedBy=multi-user.target

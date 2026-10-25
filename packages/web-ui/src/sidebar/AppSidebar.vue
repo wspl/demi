@@ -2,10 +2,11 @@
 import { t } from './locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 import { computed, nextTick, ref, useId, watch } from 'vue'
-import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
+import { Archive, CircleArrowUp, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { closeContextMenu, shownContextMenu, vContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
@@ -23,7 +24,8 @@ import type {
   SidebarConversation,
   SidebarEntry,
   SidebarProject,
-  SidebarReorder
+  SidebarReorder,
+  SidebarUpdate
 } from './types'
 import { plainConversations, projectGroups } from './group-conversations'
 import { useSidebarDrag } from './useSidebarDrag'
@@ -52,7 +54,9 @@ import SavedScopeDialog from './SavedScopeDialog.vue'
  * - Middle: plain conversations, then every project as a collapsible group of its
  *   conversations, with one selection across all of them. The Conversations and
  *   Projects groups each fold under their label.
- * - Bottom: the account and settings.
+ * - Bottom: the account and settings, and, for an administrator, the
+ *   server's update while one is offered or runs: green, as Chrome's Update
+ *   button, opening Settings › Updates.
  */
 const props = defineProps<{
   account: SidebarAccount
@@ -81,6 +85,8 @@ const props = defineProps<{
   onSwitchSavedScope?: Action<[id: string, scope: SavedScope, to: string | null]>
   /** Signs this browser out; the account's row works until the page goes. */
   onSignOut?: Action
+  /** The server's update an administrator sees at the foot; none hides it. */
+  update?: SidebarUpdate | null
 }>()
 
 const emit = defineEmits<{
@@ -804,13 +810,28 @@ function selectProjectConversations(project: SidebarProject): void {
           @click="emit('handOffToPhone')"
         />
       </Tooltip>
-      <Tooltip :content="t('foot.settings')" placement="right">
+      <!-- The last button's tip opens to the right, over the page; one before it would hide the next button. -->
+      <Tooltip :content="t('foot.settings')" :placement="update ? 'top' : 'right'">
         <IconButton
           :icon="Settings"
           :size="phone ? 'lg' : 'md'"
           variant="ghost"
           :aria-label="t('foot.settings')"
           @click="emit('openSettings')"
+        />
+      </Tooltip>
+      <Tooltip
+        v-if="update"
+        :content="update.state === 'available' ? t('foot.updateAvailable', { version: update.version }) : t('foot.updating')"
+        placement="right"
+      >
+        <!-- The spinner is its icon, not `loading`, which would refuse the click that shows the progress. -->
+        <IconButton
+          :icon="update.state === 'running' ? IndeterminateSpinner : CircleArrowUp"
+          :size="phone ? 'lg' : 'md'"
+          variant="success"
+          :aria-label="update.state === 'available' ? t('foot.updateAvailable', { version: update.version }) : t('foot.updating')"
+          @click="emit('openSettings', 'updates')"
         />
       </Tooltip>
     </div>

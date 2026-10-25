@@ -111,3 +111,4 @@ pub mod services;
 pub mod shard;
 pub mod sync;
 pub mod tuning;
+pub mod upgrades;

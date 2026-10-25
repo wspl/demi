@@ -1,5 +1,6 @@
 //! The two services, through systemd: an upgrade stops, starts and reloads
-//! them, and nothing else. A start returns once the service reports ready or
+//! them, and nothing else, and keeps the path unit of an administrator's
+//! update running when its release has one. A start returns once the service reports ready or
 //! has failed, since both units use `Type=notify`.
 
 use std::{io, process::Command};
@@ -9,8 +10,9 @@ pub trait Services {
     fn stop(&self, unit: &str) -> io::Result<()>;
     /// Starts `unit` and waits until it reports ready or fails.
     fn start(&self, unit: &str) -> io::Result<()>;
-    /// Reads the units again and enables both.
-    fn reload(&self) -> io::Result<()>;
+    /// Reads the units again and enables both, and runs the update's path
+    /// unit when `upgrades` says its units are in place, else stops it.
+    fn reload(&self, upgrades: bool) -> io::Result<()>;
     /// The last lines of `unit`'s log, for a failure's report.
     fn log(&self, unit: &str) -> String;
 }
@@ -27,11 +29,19 @@ impl Services for Systemd {
         systemctl(&["start", unit])
     }
 
-    fn reload(&self) -> io::Result<()> {
+    fn reload(&self, upgrades: bool) -> io::Result<()> {
+        // A path unit whose file went keeps running until it is stopped.
+        if !upgrades {
+            let _ = systemctl(&["disable", "--now", crate::layout::UPGRADE_PATH]);
+        }
         systemctl(&["daemon-reload"])?;
         let mut enable = vec!["enable"];
         enable.extend(crate::layout::UNITS);
-        systemctl(&enable)
+        systemctl(&enable)?;
+        if upgrades {
+            systemctl(&["enable", "--now", crate::layout::UPGRADE_PATH])?;
+        }
+        Ok(())
     }
 
     fn log(&self, unit: &str) -> String {

@@ -177,6 +177,14 @@ pub struct Config {
         default_value = demi_runner_protocol::release::MANAGE_SOCKET
     )]
     pub manage_socket: PathBuf,
+    /// The file an administrator's Update Now writes the version to, which
+    /// `demi-upgrade.path` watches; without it the server offers no updates
+    #[arg(
+        long,
+        env = demi_runner_protocol::release::UPGRADE_REQUEST_ENV,
+        value_name = "DEMI_UPGRADE_REQUEST"
+    )]
+    pub upgrade_request: Option<PathBuf>,
     /// Where the one object store lives: `local`, the data directory, or `s3`
     #[arg(
         long,
@@ -398,6 +406,7 @@ impl Config {
             .transpose()?;
         config.runner_socket = Some(self.runner_socket.clone());
         config.manage_socket = Some(self.manage_socket.clone());
+        config.upgrade_request = self.upgrade_request.clone();
         config.storage = self.storage()?;
         // A root serves the parts it holds: a developer's has no web app,
         // which Vite serves instead.
@@ -452,6 +461,10 @@ pub struct BackendConfig {
     /// (`crates/server/src/main.rs`); none, as for a test's backend,
     /// takes no such request.
     pub manage_socket: Option<PathBuf>,
+    /// The file an administrator's update is requested in
+    /// (`crates/backend-user-shard/src/upgrades.rs`); none offers no
+    /// updates, as on a developer's machine.
+    pub upgrade_request: Option<PathBuf>,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
     /// Who configures providers.
@@ -538,6 +551,7 @@ impl BackendConfig {
             machines_socket,
             runner_socket: None,
             manage_socket: None,
+            upgrade_request: None,
             address,
             mode,
             web_directory: None,

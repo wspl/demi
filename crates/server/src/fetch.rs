@@ -14,8 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::layout::{Layout, sync_directory};
 
-/// The repository whose GitHub releases are Demi's.
-const REPOSITORY: &str = "wspl/demi";
+use demi_shared_artifacts::releases::{self, Channel};
 
 /// The file of the assets' SHA-256 sums.
 const SUMS: &str = "SHA256SUMS";
@@ -25,9 +24,6 @@ const SUMS: &str = "SHA256SUMS";
 /// otherwise fill.
 const LARGEST: u64 = 4 << 30;
 
-/// How many redirects a download of a release's asset follows: two servers can
-/// redirect to each other without end.
-const REDIRECTS: usize = 10;
 
 /// Where releases come from.
 pub enum Source {
@@ -55,42 +51,18 @@ fn image_asset(version: &Version, architecture: &str) -> String {
     format!("demi-{version}-image-linux-{architecture}.tar")
 }
 
-/// A release as GitHub's API describes it, of which only the tag matters.
-#[derive(serde::Deserialize)]
-struct Release {
-    tag_name: String,
-}
-
-/// The most releases one page of GitHub's list gives.
-const PAGE: usize = 100;
-
 /// The newest release `source` offers. On GitHub that is the latest
 /// release, which is never a pre-release, or with `prerelease` the highest
-/// version among all the repository's releases tagged `v<version>`, a
-/// deploy's pre-releases included (`upgrades.md` § The upgrade). A
-/// directory's newest is its highest version either way.
+/// version among all the repository's releases, a deploy's pre-releases
+/// included (`upgrades.md` § The upgrade). A directory's newest is its
+/// highest version either way.
 pub async fn newest(source: &Source, prerelease: bool) -> io::Result<Version> {
     match source {
-        Source::GitHub if prerelease => {
-            let mut tags = Vec::new();
-            for page in 1.. {
-                let releases: Vec<Release> =
-                    github(&format!("releases?per_page={PAGE}&page={page}")).await?;
-                let whole = releases.len() == PAGE;
-                tags.extend(releases.into_iter().map(|release| release.tag_name));
-                if !whole {
-                    break;
-                }
-            }
-            highest(tags.iter().map(String::as_str))
-                .ok_or_else(|| io::Error::other(format!("{REPOSITORY} has no release tagged v<version>")))
-        }
         Source::GitHub => {
-            let latest: Release = github("releases/latest").await?;
-            let version = latest.tag_name.strip_prefix('v').ok_or_else(|| {
-                io::Error::other(format!("the newest release's tag {} names no version", latest.tag_name))
-            })?;
-            Version::parse(version).map_err(io::Error::other)
+            let channel = if prerelease { Channel::Every } else { Channel::Published };
+            releases::newest(channel).await?.ok_or_else(|| {
+                io::Error::other(format!("{} has no release to upgrade to", releases::REPOSITORY))
+            })
         }
         Source::Directory(directory) => {
             let architecture = architecture()?;
@@ -109,38 +81,16 @@ pub async fn newest(source: &Source, prerelease: bool) -> io::Result<Version> {
     }
 }
 
-/// The highest version among `tags` that are `v<version>`; any other tag,
-/// such as the gVisor build's `runsc-release-*`, is no Demi release.
-pub fn highest<'a>(tags: impl IntoIterator<Item = &'a str>) -> Option<Version> {
-    tags.into_iter()
-        .filter_map(|tag| Version::parse(tag.strip_prefix('v')?).ok())
-        .max()
-}
-
-/// Reads `path` of the repository's GitHub API.
-async fn github<T: serde::de::DeserializeOwned>(path: &str) -> io::Result<T> {
-    let client = demi_shared_artifacts::client().map_err(io::Error::other)?;
-    let response = client
-        .get(format!("https://api.github.com/repos/{REPOSITORY}/{path}"))
-        .header("user-agent", "demi-server")
-        .header("accept", "application/vnd.github+json")
-        .send()
-        .await
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| io::Error::other(error.without_url().to_string()))?;
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| io::Error::other(error.without_url().to_string()))?;
-    serde_json::from_slice(&bytes).map_err(io::Error::other)
-}
-
 /// Unpacks `version` into its release directory, unless it is there.
+///
+/// `progress` hears the bytes downloaded of all the release's, from GitHub;
+/// a directory's assets are there already.
 pub async fn fetch(
     layout: &Layout,
     source: &Source,
     version: &Version,
     cancel: &CancellationToken,
+    progress: &mut (dyn FnMut(u64, u64) + Send),
 ) -> io::Result<()> {
     let destination = layout.release(version);
     if destination.exists() {
@@ -159,13 +109,15 @@ pub async fn fetch(
         .prefix(&format!(".staging-{version}-"))
         .tempdir_in(&releases)?;
     let architecture = architecture()?;
-    let sums = obtain(source, version, SUMS, stage.path(), cancel).await?;
+    let names = [SUMS.to_owned(), server_asset(version, architecture), image_asset(version, architecture)];
+    let mut downloads = Downloads::new(source, version, &names).await?;
+    let sums = obtain(source, version, SUMS, stage.path(), cancel, &mut downloads, progress).await?;
     let sums = std::fs::read_to_string(sums)?;
     let sums = parse_sums(&sums)?;
     let root = stage.path().join("root");
     std::fs::create_dir(&root)?;
     for asset in [server_asset(version, architecture), image_asset(version, architecture)] {
-        let path = obtain(source, version, &asset, stage.path(), cancel).await?;
+        let path = obtain(source, version, &asset, stage.path(), cancel, &mut downloads, progress).await?;
         let expected = sums
             .iter()
             .find(|(name, _)| *name == asset)
@@ -196,26 +148,53 @@ async fn obtain(
     name: &str,
     stage: &Path,
     cancel: &CancellationToken,
+    downloads: &mut Downloads,
+    progress: &mut (dyn FnMut(u64, u64) + Send),
 ) -> io::Result<PathBuf> {
     match source {
         Source::Directory(directory) => Ok(directory.join(name)),
         Source::GitHub => {
-            let url = format!("https://github.com/{REPOSITORY}/releases/download/v{version}/{name}");
+            let url = releases::asset_url(version, name);
             let path = stage.join(name);
             let client = demi_shared_artifacts::download_client().map_err(io::Error::other)?;
             // GitHub serves a release's assets through a redirect to
             // short-lived storage; the sums check what arrives.
             let request = demi_shared_artifacts::Download {
                 limit: LARGEST,
-                redirects: REDIRECTS,
+                redirects: releases::REDIRECTS,
                 ..demi_shared_artifacts::Download::new(&url)
             };
-            demi_shared_artifacts::download(&client, request, &path, cancel, |_, _| {})
-                .await
-                .and_then(|received| received.plain())
-                .map_err(|error| io::Error::other(format!("{name}: {error}")))?;
+            let (before, bytes) = (downloads.done, downloads.bytes);
+            demi_shared_artifacts::download(&client, request, &path, cancel, |received, _| {
+                progress(before + received, bytes);
+            })
+            .await
+            .and_then(|received| received.plain())
+            .map_err(|error| io::Error::other(format!("{name}: {error}")))?;
+            downloads.done += std::fs::metadata(&path)?.len();
             Ok(path)
         }
+    }
+}
+
+/// The bytes a fetch downloads, and how many of them it has.
+struct Downloads {
+    done: u64,
+    bytes: u64,
+}
+
+impl Downloads {
+    /// The sizes of the assets `names` of `version`, asked of the addresses
+    /// they download from, which answer as the downloads would; nothing to
+    /// download from a directory.
+    async fn new(source: &Source, version: &Version, names: &[String]) -> io::Result<Self> {
+        let mut bytes = 0;
+        if let Source::GitHub = source {
+            for name in names {
+                bytes += releases::asset_size(version, name).await?;
+            }
+        }
+        Ok(Self { done: 0, bytes })
     }
 }
 

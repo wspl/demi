@@ -84,6 +84,12 @@ pub enum Part {
     Sessions,
     /// Every account, which only the channels of the master and admins send.
     Users,
+    /// Settings › Updates, which only the channels of the master and
+    /// admins send.
+    ServerUpgrade,
+    /// The backend stops for an update of the server: every page shows the
+    /// update's screen.
+    Update,
     /// The plugin list: whether the user has each plugin on.
     Plugins,
     /// A plugin's state, by the plugin's id.

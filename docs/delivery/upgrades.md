@@ -5,7 +5,9 @@ everything that release serves: the web app, every paired device's runner,
 every Cloud and the stored data. One command does it, and a failed upgrade
 leaves the server on the release it ran before.
 
-For example, a server runs 0.1.0 and 0.2.0 is published. Its operator runs:
+For example, a server runs 0.1.0 and 0.2.0 is published. Its operator runs
+the following command, or a master or an administrator clicks **Update Now**
+in Settings › Updates ([From Settings](#from-settings)):
 
 ```sh
 sudo demi-server upgrade
@@ -322,6 +324,41 @@ The steps themselves leave nothing half done:
 
 `crates/server/src/journal.rs` holds the reasons.
 
+## From Settings
+
+A master or an administrator updates the server from Settings › Software
+Update, without a shell on the machine. The page shows the release the server
+runs and the newest release of its channel:
+
+- **Beta** offers the releases Demi publishes, which GitHub marks *latest*.
+- **Canary** offers every release, a deploy's pre-releases included.
+
+The backend looks for the newest release when it starts, once a day and on
+**Check Now**. While a newer one exists, the sidebar shows a green update icon
+to the master and administrators.
+
+**Update Now** asks first, then runs the same upgrade as
+`sudo demi-server upgrade <version>`:
+
+1. The backend writes the version to `/run/demi-upgrade/version`. It runs as
+   an unprivileged user, so it cannot upgrade the server itself.
+2. The path unit `demi-upgrade.path` sees the file and starts
+   `demi-upgrade.service`. That unit runs
+   `demi-server upgrade --requested` as root, apart from the backend that the
+   upgrade stops.
+3. `demi-server` removes the request, refuses a version that is not newer
+   than the current one, and upgrades as above.
+4. While it runs, `demi-server` tells the backend each step over the
+   backend's management socket: downloading, preparing, restarting, or failed
+   with the reason. The administrators' pages show the step. Before the stop,
+   every page shows the update's screen until the new release serves.
+
+The units come with the release, as the services' units do. A server on an
+earlier release gets them with one `sudo demi-server upgrade`. Without them,
+or on a developer's machine, Settings has no Updates.
+
+`journalctl -u demi-upgrade` shows what an update from Settings did.
+
 ## A development build on a server
 
 For example, a batch of work is merged and the user wants to try it on their
@@ -383,6 +420,9 @@ developer's `.env`. It must already run Demi
 ssh "$DEMI_DEPLOY_HOST" \
   "sudo /usr/local/bin/demi-server upgrade $version && sudo /usr/local/bin/demi-server status"
 ```
+
+A server on the Canary channel offers the pre-release in Settings › Software
+Update once it exists, so **Update Now** there moves it as this command does.
 
 `demi-server upgrade` downloads the pre-release from GitHub as it downloads a
 published one and carries it out ([The upgrade](#the-upgrade)): the checks,
@@ -471,7 +511,8 @@ switching and rolling back, and the units.
 
 - It never edits the configuration.
 - It never touches a data directory except for its `snapshots/` and a restore.
-- It asks systemd to start and stop only Demi's two services.
+- It asks systemd to start and stop only Demi's two services, and to run the
+  path unit of an update from Settings.
 
 Setting a server up, the first time, is its `setup`
 ([Installation](installation.md)).

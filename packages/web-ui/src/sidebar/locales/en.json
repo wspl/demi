@@ -16,7 +16,9 @@
   },
   "foot": {
     "handOff": "Hand Off to Phone",
-    "settings": "Settings"
+    "settings": "Settings",
+    "updateAvailable": "Demi {version} is available",
+    "updating": "Updating Demi"
   },
   "account": {
     "label": "Account",

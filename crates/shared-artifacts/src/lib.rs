@@ -6,7 +6,7 @@
 //!   connection it trusts) with a declared size and SHA-256, and measured ones
 //!   for a release being prepared;
 //! - digests, and durable atomic publication;
-//! - release publication;
+//! - release publication, and Demi's releases on GitHub;
 //! - the install lock between processes, install receipts and archive
 //!   installation;
 //! - the content coding a command executable is served in.
@@ -31,6 +31,7 @@ mod lock;
 mod publish;
 pub mod receipt;
 mod release;
+pub mod releases;
 
 pub use archive::{
     Archive, ArchiveInstall, Unpacking, holds, install_archive, installed, recorded,

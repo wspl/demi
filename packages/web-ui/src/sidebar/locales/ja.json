@@ -16,7 +16,9 @@
   },
   "foot": {
     "handOff": "スマートフォンにハンドオフ",
-    "settings": "設定"
+    "settings": "設定",
+    "updateAvailable": "Demi {version} を利用できます",
+    "updating": "Demi をアップデート中"
   },
   "account": {
     "label": "アカウント",

@@ -7,6 +7,7 @@ import { updateStateSchema, type UpdateState } from '../api/generated/web-api'
 /**
  * The update the backend carries out before it serves a new release
  * (`crates/backend-http/src/update.rs`): once any answer says `updating`,
+ * or the state channel says the backend stops for an update of the server,
  * the page shows the update screen over everything, asks how far it is
  * until the backend serves, and then loads itself again, in the build the
  * backend now serves.
@@ -22,9 +23,10 @@ const AWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524])
 /** How often the screen asks how far the update is. */
 const ASK_EVERY_MS = 2000
 
-/** What the update screen shows: how far the backend is, or null until it says. */
+/** What the update screen shows: how far the backend is, or null until it says, and whether it restarts first. */
 export interface UpdateShown {
   progress: Extract<UpdateState, { state: 'updating' }> | null
+  restarting: boolean
 }
 
 const shown = ref<UpdateShown | null>(null)
@@ -32,15 +34,23 @@ const shown = ref<UpdateShown | null>(null)
 /** What the update screen shows; null while the backend is not updating. */
 export const update = readonly(shown)
 
+/** What the screen shows of `state`, which says the backend restarts or updates. */
+function shownOf(state: UpdateState | null): UpdateShown {
+  return state?.state === 'updating'
+    ? { progress: state, restarting: false }
+    : { progress: null, restarting: state?.state === 'restarting' }
+}
+
 /**
- * An answer said `updating`: the page shows the screen and follows the
- * update. The app under the screen takes no focus, pointer or key: a draft's
- * Enter or a shortcut would act unseen.
+ * An answer said `updating`, or the channel said the backend stops for an
+ * update, `state`: the page shows the screen and follows the update. The app
+ * under the screen takes no focus, pointer or key: a draft's Enter or a
+ * shortcut would act unseen.
  */
-export function noteUpdating(): void {
+export function noteUpdating(state: UpdateState | null = null): void {
   if (shown.value !== null)
     return
-  shown.value = { progress: null }
+  shown.value = shownOf(state)
   document.getElementById('app')?.setAttribute('inert', '')
   window.addEventListener('keydown', (event) => event.stopImmediatePropagation(), { capture: true })
   pageLog.info('update.shown', {})
@@ -58,7 +68,7 @@ async function follow(): Promise<void> {
           reloadPage()
           return
         }
-        shown.value = { progress: state }
+        shown.value = shownOf(state)
       } else if (!AWAY.has(response.status)) {
         // Any other answer comes from a backend that serves without this
         // route, as after a return to an earlier release, whose session gate

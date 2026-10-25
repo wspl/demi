@@ -116,7 +116,7 @@ pub fn web() -> Vec<Root> {
         panel,
         passkeys,
         permissions,
-        plugins, providers, push, saved, schedules, search, sessions, settings, shares, side_questions, sidebar, state, subagents, usage, users, workflows, workspaces,
+        plugins, providers, push, saved, schedules, search, server_upgrade, sessions, settings, shares, side_questions, sidebar, state, subagents, usage, users, workflows, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -144,6 +144,10 @@ pub fn web() -> Vec<Root> {
         sends::<sessions::HandoffSpend>(),
         receives::<state::ProductState>(),
         receives::<state::UpdateState>(),
+        receives::<server_upgrade::ServerUpgrade>(),
+        receives::<server_upgrade::WorkingAgents>(),
+        sends::<server_upgrade::SetUpgradeChannel>(),
+        sends::<server_upgrade::RunUpgrade>(),
         receives::<state::SyncEvent>(),
         sends::<state::PageMessage>(),
         receives::<settings::Settings>(),

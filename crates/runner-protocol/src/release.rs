@@ -256,6 +256,55 @@ impl RunnerUpdate {
 pub const MANAGE_SOCKET_ENV: &str = "DEMI_BACKEND_MANAGE_SOCKET";
 pub const MANAGE_SOCKET: &str = "/run/demi-backend-manage/manage.sock";
 
+/// The variable that names the file an administrator's Update Now writes
+/// the version to, and that file on a server: the backend's unit names it,
+/// a path unit starts `demi-server upgrade --requested` when it appears, and
+/// a backend without it offers no update.
+pub const UPGRADE_REQUEST_ENV: &str = "DEMI_UPGRADE_REQUEST";
+pub const UPGRADE_REQUEST: &str = "/run/demi-upgrade/version";
+
+/// A line `demi-server` writes on the management socket while it upgrades
+/// the server, its own connection each: how far the upgrade is. The
+/// backend shows it to the administrators, and answers a line of its own,
+/// any line, once it has acted on it: for `restarting`, once every page has
+/// heard that the backend stops.
+///
+/// A line is written by the running release's `demi-server` while it
+/// downloads, and by the next release's from its preparation on, to a
+/// backend of the running release: steps and fields may be added but never
+/// changed or removed, and a backend answers a line it cannot read as it
+/// answers any, which the writer ignores.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "upgrade", rename_all = "snake_case")]
+pub enum UpgradeNotice {
+    /// The release downloads: `bytes_done` of `bytes`, at `bytes_per_second`
+    /// of late, 0 before it is measured.
+    Downloading {
+        to: String,
+        bytes_done: u64,
+        bytes: u64,
+        #[serde(default)]
+        bytes_per_second: u64,
+    },
+    /// The release checks itself and its devices fetch its runner, while
+    /// the backend still serves.
+    Preparing { to: String },
+    /// The backend stops next.
+    Restarting { to: String },
+    /// The upgrade did not happen, and the server runs the release it ran.
+    Failed { to: String, reason: String },
+}
+
+impl UpgradeNotice {
+    /// Decodes a management line that is a notice; none for another line,
+    /// as a prefetch request is.
+    pub fn decode(bytes: &[u8]) -> Option<Self> {
+        let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+        value.get("upgrade")?;
+        serde_json::from_value(value).ok()
+    }
+}
+
 /// The management socket's one request, a line of JSON: the runner release the
 /// next server release installs, and that release's root, whose `runners/`
 /// holds its record and whose `release.json` says where its executables are.

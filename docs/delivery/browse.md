@@ -123,6 +123,11 @@ paired runner.
   public URL on `localhost`, the one name besides a real domain for which
   browsers make passkeys, so a check can add and use passkeys with Chrome's
   virtual authenticator through the page's CDP session.
+- **Updates.** `demi.up('backend', { offerUpdates: '/tmp/updates' })`
+  makes the backend offer Settings › Updates, as a server's does. Update
+  Now writes its request to `version` in that directory, and a check tells what
+  `demi-server` would, a line on the backend's management socket, `manage.sock`
+  there.
 - **A production build.** `demi.up('web', { built: true })` serves a production
   `vite build` of the web app instead of the development server, for a check of
   what only a build has, such as the service worker and opening offline.

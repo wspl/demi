@@ -9,6 +9,36 @@
       "none": "No acknowledgements"
     }
   },
+  "updates": {
+    "title": "Updates",
+    "description": "Updates Demi on this server, for every account.",
+    "current": "Demi {version}",
+    "upToDate": "Demi is up to date",
+    "available": "Demi {version} is available",
+    "youHave": "You have {version}.",
+    "releaseNotes": "Release Notes",
+    "updateNow": "Update Now",
+    "checking": "Checking for updates…",
+    "checkFailed": "Couldn’t check for updates",
+    "lastChecked": "Last checked {when}",
+    "neverChecked": "Not checked yet",
+    "checkNow": "Check Now",
+    "downloading": "Downloading Demi {version}",
+    "downloaded": "{done} of {all}",
+    "speed": "{size}/s",
+    "preparing": "Preparing Demi {version}…",
+    "restarting": "Restarting Demi…",
+    "failed": "Couldn’t update to {version}. Demi went back to {running}.",
+    "failedNoVersion": "Couldn’t update. Demi still runs {running}.",
+    "channel": "Update channel",
+    "channelDescription": "Canary gets the newest builds first, before anyone has tried them on a server.",
+    "beta": "Beta",
+    "canary": "Canary",
+    "confirmTitle": "Update Demi to {version}?",
+    "confirmBody": "Demi restarts and is unavailable to everyone for a few minutes.",
+    "confirmAgents": "{count} agent is working; it continues after the update. | {count} agents are working; they continue after the update.",
+    "update": "Update"
+  },
   "account": {
     "title": "Account",
     "description": "Your name, email and sign-in.",
@@ -323,6 +353,9 @@
     "developer": {
       "keywords": "developer,debug,troubleshooting",
       "errorsKeywords": "error,bug,log,debug,diagnostics"
+    },
+    "updates": {
+      "keywords": "update,upgrade,version,release,canary,beta"
     }
   },
   "changeEmail": {

@@ -202,6 +202,11 @@ const SIMPLIFIED: LanguageWriting = {
     ['Folder', '文件夹', 'Codex, ChatGPT, Apple'],
     ['To do (the tab’s count of what waits for the user, or of several kinds)', '待办', 'Chinese UI’s word for what waits on the user, as in to-do apps; 待处理 reads as a queue of work'],
     ['Failed, Done (the tab’s counts)', '出错, 完成', '(1 个出错), (2 个完成): the counter 个 as in 3 个文件'],
+    ['Updates', '更新', 'JetBrains IDEs, Home Assistant'],
+    ['Update Now', '现在更新', 'Apple’s Updates'],
+    ['Update channel', '更新通道', 'Chrome’s 渠道 and Edge’s 频道 name a release train; 通道 reads plainest beside 更新'],
+    ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
   ],
 }
 
@@ -370,6 +375,11 @@ const TRADITIONAL: LanguageWriting = {
     ['Folder', '資料夾', 'Codex, ChatGPT. Apple’s 檔案夾 is less usual'],
     ['To do (the tab’s count of what waits for the user, or of several kinds)', '待辦', 'As 待办 in 简体中文'],
     ['Failed, Done (the tab’s counts)', '出錯, 完成', '(1 個出錯), (2 個完成)'],
+    ['Updates', '更新', 'JetBrains IDEs, Home Assistant'],
+    ['Update Now', '立即更新', 'Apple’s Updates'],
+    ['Update channel', '更新頻道', 'Edge, Chrome'],
+    ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
   ],
 }
 
@@ -538,6 +548,11 @@ const JAPANESE: LanguageWriting = {
     ['Folder', 'フォルダー', 'ChatGPT, Codex; the long vowel as Microsoft’s style guide has written it since 2008, one spelling everywhere, as in サーバー and ユーザー'],
     ['To do (the tab’s count of what waits for the user, or of several kinds)', '要対応', '(要対応 2 件): what needs the user’s action, counted as 未読 3 件 is; やること reads as a chore list'],
     ['Failed, Done (the tab’s counts)', '失敗, 完了', '(失敗 1 件), (完了 2 件)'],
+    ['Updates', 'アップデート', 'JetBrains IDEs, Home Assistant'],
+    ['Update Now', '今すぐアップデート', 'Apple’s Updates'],
+    ['Update channel', 'アップデートチャンネル', 'Chrome, Edge'],
+    ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
   ],
 }
 
@@ -713,6 +728,11 @@ const KOREAN: LanguageWriting = {
     ['Revoke (a device)', '페어링 해제', 'The pairing ends; 해지 is a contract’s'],
     ['To do (the tab’s count of what waits for the user, or of several kinds)', '할 일', '(할 일 2개), counted as 읽지 않음 3개 is; the everyday word of to-do apps'],
     ['Failed, Done (the tab’s counts)', '실패, 완료', '(실패 1개), (완료 2개)'],
+    ['Updates', '업데이트', 'JetBrains IDEs, Home Assistant'],
+    ['Update Now', '지금 업데이트', 'Apple’s Updates'],
+    ['Update channel', '업데이트 채널', 'Chrome, Edge'],
+    ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
   ],
 }
 

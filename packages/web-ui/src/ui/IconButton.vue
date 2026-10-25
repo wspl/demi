@@ -29,7 +29,8 @@ const props = withDefaults(
     icon: Component
     iconSize?: number
     size?: 'xs' | 'sm' | 'md' | 'lg' | 'chip'
-    variant?: 'default' | 'solid' | 'ghost' | 'danger' | 'accent'
+    /** `success` is a ghost button in green, for something good waiting, such as an update to install. */
+    variant?: 'default' | 'solid' | 'ghost' | 'danger' | 'accent' | 'success'
     circle?: boolean
     disabled?: boolean
     /**
@@ -158,7 +159,9 @@ const glyphPx = computed(() => {
                 : pressed
                   ? 'bg-hover text-fg-body'
                   : 'text-fg-muted hover:bg-hover hover:text-fg-body'
-              : variant === 'danger'
+              : variant === 'success'
+                ? 'text-on-success hover:bg-hover'
+                : variant === 'danger'
                 ? 'btn text-on-danger'
                 : variant === 'solid'
                   ? 'btn-solid text-fg-body'

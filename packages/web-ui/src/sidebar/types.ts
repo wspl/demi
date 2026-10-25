@@ -71,6 +71,9 @@ export interface SidebarAccount {
   email: string
 }
 
+/** The server's update at the sidebar's foot: a release offered, or an update that runs. */
+export type SidebarUpdate = { state: 'available', version: string } | { state: 'running' }
+
 /** An entry of the sidebar's top group that opens a section of the settings dialog. */
 export interface SidebarEntry {
   /** The settings section it opens. */

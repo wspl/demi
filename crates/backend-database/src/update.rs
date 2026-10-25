@@ -3,13 +3,16 @@
 //!
 //! The backend starts it when it finds a database of an earlier form, before
 //! it opens any, and every page and `demi-server` read it until the backend
-//! is ready. It says which step runs, how many conversations are done of
+//! is ready, and says when the backend stops next for an administrator's
+//! update of the server. It says which step runs, how many conversations are done of
 //! how many, how many bytes, and, once a rate is known, how long the rest
 //! takes. It names no conversation.
 
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
+
+use demi_web_api_protocol::state::{UpdateState, UpdateStep};
 
 use super::{DatabaseKind, SchemaFit, StorageError, schema_fit};
 
@@ -26,6 +29,8 @@ pub enum UpdateReport {
     Updating(Progress),
     /// It serves.
     Ready,
+    /// It serves, and stops next for an update of the server.
+    Restarting,
 }
 
 /// How far an update is.
@@ -61,7 +66,18 @@ struct State {
     /// The bytes of the database under way that are done.
     current: u64,
     began: Option<Instant>,
-    ready: bool,
+    phase: Phase,
+}
+
+/// Where the backend is between its start and its stop.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    /// It opens its data, updating what is due.
+    #[default]
+    Opening,
+    Serving,
+    /// It serves, and stops next for an update of the server.
+    Restarting,
 }
 
 /// An update's progress, shared by the backend's start and what reads it.
@@ -69,14 +85,14 @@ struct State {
 pub struct Update(Mutex<State>);
 
 impl Update {
-    fn state(&self) -> std::sync::MutexGuard<'_, State> {
+    fn locked(&self) -> std::sync::MutexGuard<'_, State> {
         // Nothing panics while it holds the lock.
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Begins an update of what is `due`.
     pub fn begin(&self, due: Due) {
-        let mut state = self.state();
+        let mut state = self.locked();
         state.due = Some(due);
         state.control_done = due.control == 0;
         state.began = Some(Instant::now());
@@ -84,7 +100,7 @@ impl Update {
 
     /// The control database is done.
     pub fn control_finished(&self) {
-        let mut state = self.state();
+        let mut state = self.locked();
         if !state.control_done {
             state.control_done = true;
             state.done += state.due.map_or(0, |due| due.control);
@@ -93,12 +109,12 @@ impl Update {
 
     /// The database under way, of `bytes`, is `share` done.
     pub fn within(&self, bytes: u64, share: f64) {
-        self.state().current = (bytes as f64 * share.clamp(0.0, 1.0)) as u64;
+        self.locked().current = (bytes as f64 * share.clamp(0.0, 1.0)) as u64;
     }
 
     /// A conversation's database of `bytes` is done.
     pub fn finished(&self, bytes: u64) {
-        let mut state = self.state();
+        let mut state = self.locked();
         state.done += bytes;
         state.current = 0;
         state.conversations_done += 1;
@@ -106,13 +122,24 @@ impl Update {
 
     /// The backend serves.
     pub fn ready(&self) {
-        self.state().ready = true;
+        self.locked().phase = Phase::Serving;
+    }
+
+    /// The backend stops next for an update of the server, or, with
+    /// `false`, no longer does, as when the update failed before the stop.
+    pub fn restarting(&self, restarting: bool) {
+        let mut state = self.locked();
+        if state.phase != Phase::Opening {
+            state.phase = if restarting { Phase::Restarting } else { Phase::Serving };
+        }
     }
 
     pub fn report(&self) -> UpdateReport {
-        let state = self.state();
-        if state.ready {
-            return UpdateReport::Ready;
+        let state = self.locked();
+        match state.phase {
+            Phase::Serving => return UpdateReport::Ready,
+            Phase::Restarting => return UpdateReport::Restarting,
+            Phase::Opening => {}
         }
         let (Some(due), Some(began)) = (state.due, state.began) else {
             return UpdateReport::Starting;
@@ -130,6 +157,23 @@ impl Update {
         progress.left = (elapsed >= ESTIMATE_AFTER && share > 0.0)
             .then(|| elapsed.mul_f64((1.0 - share) / share));
         UpdateReport::Updating(progress)
+    }
+
+    /// What `GET /api/update` answers, and what the state channel pushes
+    /// when the backend stops for an update.
+    pub fn state(&self) -> UpdateState {
+        match self.report() {
+            UpdateReport::Starting | UpdateReport::Ready => UpdateState::None,
+            UpdateReport::Restarting => UpdateState::Restarting,
+            UpdateReport::Updating(progress) => UpdateState::Updating {
+                step: if progress.control { UpdateStep::Control } else { UpdateStep::Conversations },
+                conversations_done: u32::try_from(progress.conversations_done).unwrap_or(u32::MAX),
+                conversations: u32::try_from(progress.conversations).unwrap_or(u32::MAX),
+                bytes_done: progress.bytes_done,
+                bytes: progress.bytes,
+                left_seconds: progress.left.map(|left| u32::try_from(left.as_secs()).unwrap_or(u32::MAX)),
+            },
+        }
     }
 }
 

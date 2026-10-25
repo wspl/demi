@@ -16,7 +16,9 @@
   },
   "foot": {
     "handOff": "接力到手机",
-    "settings": "设置"
+    "settings": "设置",
+    "updateAvailable": "有新版本：Demi {version}",
+    "updating": "正在更新 Demi"
   },
   "account": {
     "label": "账户",

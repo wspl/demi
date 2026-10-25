@@ -43,6 +43,7 @@ pub mod push;
 pub mod query;
 pub mod saved;
 pub mod search;
+pub mod server_upgrade;
 pub mod sessions;
 pub mod settings;
 pub mod shares;

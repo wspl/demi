@@ -26,7 +26,7 @@ import { useAgentContext } from '../agent-context'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
-import { settingsSections as productSections } from '@demicodes/web-ui/settings/sections'
+import { settingsSections as productSections, withUpdatesSection } from '@demicodes/web-ui/settings/sections'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused } from '@demicodes/web-ui/sidebar/refused-toast'
 import { dismissToast } from '@demicodes/web-ui/infra/toast'
@@ -76,10 +76,17 @@ useAppShortcuts(() => true, appShortcuts, {
     sidebarCollapsed.value = !sidebarCollapsed.value
   },
 })
-const settingsSections = computed(() => withPluginSections(productSections(), PLUGIN_PAGES, pluginOn))
+// The demo account is the master of a server that offers updates.
+const settingsSections = computed(() => withUpdatesSection(withPluginSections(productSections(), PLUGIN_PAGES, pluginOn), true))
 const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
 const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab | null>(null)
+
+/** The foot's update: a release offered, and an update that runs. */
+const footUpdates = [
+  ['available', { state: 'available', version: '0.1.5500' }],
+  ['running', { state: 'running' }],
+] as const
 
 /** Opens the settings dialog, on `section` when an entry names one, as the product does. */
 function openSettings(section?: string): void {
@@ -588,6 +595,7 @@ onBeforeUnmount(() => {
             :new-shortcut="newShortcut"
             :search-shortcut="searchShortcut"
             :settings-shortcut="settingsShortcut"
+            :update="{ state: 'available', version: '0.1.5500' }"
             @search="productWould('Open the Search Window')"
             @reorder="reorder"
             @select="select"
@@ -702,6 +710,31 @@ onBeforeUnmount(() => {
                 @delete="(ids) => (foldConversations = without(foldConversations, ids))"
               />
             </div>
+          </div>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Updates"
+      note="For the master and admins of a server that offers updates: a green arrow at the foot, right of Settings, while the channel offers a newer release, as Chrome’s toolbar shows Update beside its menu; its tip names the release. While an update downloads and prepares it spins for every administrator. A click opens Settings › Updates, as the Expanded specimen’s does. A user never sees it."
+    >
+      <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen v-for="[variant, update] in footUpdates" :key="variant" :variant="variant">
+          <div class="gallery-frame flex h-[14rem] w-[16rem] overflow-hidden">
+            <AppSidebar
+              :account="demoAccount"
+              :projects="[]"
+              :conversations="[]"
+              :active-id="null"
+              :update="update"
+              @search="productWould('Open the Search Window')"
+              @create="productWould('Start a New Conversation')"
+              @add-project="productWould('Add a Project')"
+              @open-settings="wouldOpenSettings"
+              @sign-out="productWould('Sign Out')"
+              @hand-off-to-phone="wouldHandOffToPhone"
+            />
           </div>
         </GallerySpecimen>
       </div>
