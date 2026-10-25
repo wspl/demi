@@ -37,7 +37,7 @@ use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor,
 };
 use demi_runner_protocol::manifest::ManifestError;
-use demi_runner_protocol::release::{FILES, RUNNER, RunnerRelease, compressed_file};
+use demi_runner_protocol::release::{COMMANDS, FILES, RUNNER, RunnerRelease, compressed_file};
 use futures_util::future::LocalBoxFuture;
 use object_store::signer::Signer;
 use object_store::{GetOptions, GetRange, GetResult, ObjectStore, ObjectStoreExt as _};
@@ -249,8 +249,11 @@ impl NativeCatalog {
     /// The runner release `release` of the server release whose root is
     /// `root`, which an upgrade announced as next
     /// (`crates/server/src/main.rs`): its record from the root's
-    /// `runners/`, and its executables sourced into this backend's
-    /// store from the root's `files/`.
+    /// `runners/`, the catalog of its command packages from the root's
+    /// `commands/`, and their executables sourced into this backend's
+    /// store from the root's `files/`. A catalog this backend cannot read,
+    /// as one of a newer package protocol, is left out: the runner then
+    /// downloads the programs once it runs the release.
     pub async fn next_release(&self, release: &str, root: &Path) -> Result<NextRelease, String> {
         let artifacts = self
             .artifacts
@@ -263,7 +266,19 @@ impl NativeCatalog {
             .filter(|record| record.release == release)
             .ok_or_else(|| format!("{} holds no runner release {release}", root.display()))?;
         let sourcing = Sourcing::new(artifacts.sourcing.store().clone(), root.join(FILES));
-        Ok(NextRelease::new(record, sourcing))
+        let programs = match crate::publication::read_releases(&root.join(COMMANDS)).await {
+            Ok((releases, verified)) => {
+                let executables = crate::publication::executables(&releases, &verified);
+                let files = Sourcing::new(artifacts.sourcing.store().clone(), root.join(FILES));
+                let next = Artifacts::new(files, artifacts.signer.clone(), executables);
+                NativeCatalog::new(verified, next).map_err(|error| error.to_string())
+            }
+            Err(error) => Err(error.to_string()),
+        };
+        let programs = programs
+            .inspect_err(|error| tracing::warn!(event = "runner_release.programs_unread", release, %error, "the next release's command packages are not downloaded ahead"))
+            .ok();
+        Ok(NextRelease::new(record, sourcing, programs))
     }
 
     /// The loaded package `id`.

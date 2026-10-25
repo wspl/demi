@@ -50,7 +50,7 @@ use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
 pub use invocations::Invoking;
-pub use registry::{Resident, ResidentHandle, ResidentLease, ResidentRegistry};
+pub use registry::{ProgramsKept, Resident, ResidentHandle, ResidentLease, ResidentRegistry};
 
 /// Why a resident could not be had, or why it ended.
 #[derive(Debug, thiserror::Error)]

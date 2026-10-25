@@ -285,7 +285,7 @@ pub async fn publish_commands(
 ) -> Result<NativeCatalog, StartError> {
     let files = release.join(demi_runner_protocol::release::FILES);
     let objects = objects::open(&config.data_dir, &config.storage).await?;
-    let commands = release.join("commands");
+    let commands = release.join(demi_runner_protocol::release::COMMANDS);
     let runners = read_runner_release(&release.join("runners/manifest.json"), RunnerRelease::decode)
         .await
         .map_err(StartError::RunnerRelease)?;

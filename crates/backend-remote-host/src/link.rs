@@ -57,7 +57,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::{
     device_jobs::{DeviceJobs, Hello},
     file_watch::LinkSubscriptions,
-    manifest::CommandSelection,
+    manifest::{CommandCatalog, CommandSelection},
     output_records::{decode_output, stream_kind},
     pipes::Pipes,
     relay::{CallEnv, Stop},
@@ -138,6 +138,11 @@ pub trait LinkPolicy {
     /// connection hands its events on one after another, in the order the
     /// runner sent them.
     fn package_event(&self, event: PackageEvent) -> LocalBoxFuture<'static, ()>;
+
+    /// The command packages of the backend's release, whose programs the
+    /// runner keeps in its cache once the connection opens; none from a
+    /// backend that publishes no packages.
+    fn programs(&self) -> Option<CommandCatalog>;
 
     /// The runner said something of a port forward or of a peer it made
     /// with another runner (`crates/backend-user-shard/src/shard/port_forwards.rs`), in the order it said
@@ -374,6 +379,10 @@ pub(crate) struct Inner {
 struct State {
     /// What waits for a reply, by request or stream id.
     waiting: HashMap<String, Waiting>,
+    /// The packages whose programs the runner was sent to keep: the
+    /// backend's release's, and the ones of the release a prefetch named.
+    programs: Option<CommandCatalog>,
+    next_programs: Option<CommandCatalog>,
     spawns: HashMap<String, SpawnEntry>,
     residents: HashMap<String, ResidentEntry>,
     artifact_requests: HashSet<String>,
@@ -783,6 +792,7 @@ impl Link {
             release = options.hello.release.as_str(),
             "a runner connection opened"
         );
+        link.send_programs();
         let listed = options.hello.jobs.len();
         let adoption = options.jobs.adopt(&link, options.hello);
         if listed > 0 || adoption.lost > 0 || !adoption.resend.is_empty() {
@@ -1045,16 +1055,41 @@ impl Link {
             .map(|_| ())
     }
 
+    /// Tells the runner the packages of the backend's release, whose programs
+    /// it keeps in its cache (`crates/runner/src/connection/owner.rs`), and
+    /// lets it locate them.
+    fn send_programs(&self) {
+        let Some(programs) = self.0.policy.programs() else {
+            return;
+        };
+        let packages = programs.packages();
+        if packages.is_empty() {
+            return;
+        }
+        self.0.state.borrow_mut().programs = Some(programs);
+        self.post(&Inbound::Programs { packages });
+    }
+
     /// Asks the runner to download runner release `release` ahead, whose
-    /// executable for its target has `sha256` and `size` (`crates/runner/src/update.rs`): done once it is in place, or why it is not. The
-    /// runner names its answer by the release, which stands for the
-    /// request's id.
-    pub async fn prefetch(&self, release: &str, sha256: &str, size: u64) -> Result<(), HostError> {
+    /// executable for its target has `sha256` and `size`, and the programs
+    /// of the release's `programs` (`crates/runner/src/update.rs`): done once
+    /// they are in place, or why the executable is not. The runner names its
+    /// answer by the release, which stands for the request's id.
+    pub async fn prefetch(
+        &self,
+        release: &str,
+        sha256: &str,
+        size: u64,
+        programs: Option<CommandCatalog>,
+    ) -> Result<(), HostError> {
         let answered = self.wait_for(prefetch_id(release), Expected::Prefetch)?;
+        let packages = programs.as_ref().map(CommandCatalog::packages).unwrap_or_default();
+        self.0.state.borrow_mut().next_programs = programs;
         self.send(&Inbound::Prefetch {
             release: release.to_owned(),
             sha256: sha256.to_owned(),
             size,
+            packages,
         })?;
         answered.receive().await.map(|_| ())
     }
@@ -2199,6 +2234,16 @@ impl Link {
                     })
                 })
                 .flatten(),
+            ArtifactOwner::Programs(owner) => {
+                let programs = if owner.next { &state.next_programs } else { &state.programs };
+                let programs = programs.as_ref()?;
+                Some(Granted::Now(Grant {
+                    packages: programs.packages(),
+                    resolver: programs.resolver(),
+                    attached: Vec::new(),
+                    cancel: self.0.closed.clone(),
+                }))
+            }
             ArtifactOwner::Stream(owner) => {
                 if let Some(direct) = state.direct_streams.get(&owner.stream_id) {
                     return Some(Granted::Admitting(direct.admitted.subscribe()));

@@ -109,8 +109,10 @@ pub enum Inbound {
     Ping {},
     /// The runner release the backend moves to next, and its executable
     /// for the runner's target as a 409 would name it: a paired device's
-    /// runner downloads it into its installation while it serves, and
-    /// answers `prefetched` or `prefetch_failed` (`crates/runner/src/update.rs`).
+    /// runner downloads it into its installation while it serves, and the
+    /// programs of the release's `packages` into its artifact cache, keeping
+    /// the ones it runs now, and answers `prefetched` or `prefetch_failed`
+    /// (`crates/runner/src/update.rs`).
     Prefetch {
         #[garde(custom(digest))]
         release: String,
@@ -118,6 +120,17 @@ pub enum Inbound {
         sha256: String,
         #[garde(range(min = 1))]
         size: u64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(dive)]
+        packages: Vec<PackageDescriptor>,
+    },
+    /// The command packages of the backend's release, sent once the
+    /// connection opens: the runner puts the program of each for its target
+    /// in its artifact cache, so no command waits for its download
+    /// (`crates/runner/src/connection/owner.rs`).
+    Programs {
+        #[garde(dive)]
+        packages: Vec<PackageDescriptor>,
     },
     /// Flush writable filesystems before the guest is stopped; `sync_done`
     /// answers.
@@ -980,6 +993,7 @@ impl Inbound {
             Self::ConversationRelease { .. }
             | Self::PackageRelease { .. }
             | Self::Prefetch { .. }
+            | Self::Programs { .. }
             | Self::Sync { .. }
             | Self::Spawn { .. }
             | Self::SpawnStdin { .. }
@@ -1676,13 +1690,21 @@ pub struct PipeRef {
     pub url: String,
 }
 
-/// The live work an artifact serves, which authorizes it: a job and the
-/// manifest it runs with, or a user stream.
+/// What authorizes an artifact: a job and the manifest it runs with, a user
+/// stream, or the package programs the backend sent the runner to keep, of
+/// its own release or, with `next`, of the release a prefetch named.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(untagged)]
 pub enum ArtifactOwner {
     Job(#[garde(dive)] JobArtifactOwner),
     Stream(#[garde(skip)] StreamArtifactOwner),
+    Programs(#[garde(skip)] ProgramsArtifactOwner),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProgramsArtifactOwner {
+    pub next: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]

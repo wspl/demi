@@ -256,7 +256,8 @@ async fn counted(state: &AppState, device: Option<DeviceRecord>, stored: Stored)
 
 /// A local store's command executable, by its SHA-256, as S3 would serve
 /// it: its compressed copy, in zstd, from a byte on for a Range request, as
-/// a download that broke off resumes (`crates/runner-command-packages/src/cache.rs`). Only one of the catalog's that a runner's need put in the
+/// a download that broke off resumes (`crates/runner-command-packages/src/cache.rs`). Only one of the catalog's, or of the catalog of
+/// the release an upgrade announced as next, that a runner's need put in the
 /// store; any other digest answers 404.
 pub(super) async fn native_artifact(
     State(state): State<AppState>,
@@ -264,7 +265,14 @@ pub(super) async fn native_artifact(
     range: Option<TypedHeader<Range>>,
 ) -> Result<Response, ApiError> {
     let from = range.map_or(0, |TypedHeader(range)| range_start(&range));
-    let Some(stored) = state.services.native.local_artifact(&sha256, from).await else {
+    let stored = match state.services.native.local_artifact(&sha256, from).await {
+        Some(stored) => Some(stored),
+        None => match state.services.prefetches.next() {
+            Some(next) => next.local_artifact(&sha256, from).await,
+            None => None,
+        },
+    };
+    let Some(stored) = stored else {
         return Err(ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::NotFound,

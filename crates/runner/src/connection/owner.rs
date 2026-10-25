@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use demi_runner_command_packages::ResidentHandle;
+use demi_runner_command_packages::{ProgramsKept, ResidentHandle};
 use demi_runner_direct::{Addresses, Direct};
 use demi_runner_host::{
     files,
@@ -23,6 +23,7 @@ use demi_runner_host::{
 use demi_runner_jobs::{
     commands::{
         contexts::{ContextIndex, ContextPaths, Installed, Manifests},
+        artifacts::ProgramArtifacts,
         dispatch::Dispatcher,
         streams::ResidentStreams,
     },
@@ -489,11 +490,36 @@ impl Owner<'_> {
         Ok(None)
     }
 
+    /// Puts the program of each of the backend's `packages` for this Host in
+    /// the artifact cache, in the background, so that no command or view
+    /// waits for its download; a connection that ends stops it, and the next
+    /// one sends the packages again.
+    fn keep_programs(&mut self, packages: Vec<demi_command_protocol::PackageDescriptor>) {
+        let residents = self.registered.residents.clone();
+        let programs = Arc::new(ProgramArtifacts::new(self.kept.handle.clone(), false));
+        let closed = self.live.closed.clone();
+        self.work.spawn(async move {
+            let began = std::time::Instant::now();
+            let kept = residents.keep_programs(&packages, programs, false, &closed).await;
+            if !closed.is_cancelled() {
+                log_programs(kept, None, began);
+            }
+            Work::Done
+        });
+    }
+
     /// Downloads runner release `release`, whose executable `expected`
     /// describes, into the installation while the runner serves, and tells
     /// the backend how it went; the Host log keeps a failure (`crates/runner/src/update.rs`). A connection that ends stops the download, whose
     /// bytes the next download resumes from.
-    fn prefetch(&mut self, release: String, expected: demi_shared_artifacts::Digest) {
+    fn prefetch(
+        &mut self,
+        release: String,
+        expected: demi_shared_artifacts::Digest,
+        packages: Vec<demi_command_protocol::PackageDescriptor>,
+    ) {
+        let residents = self.registered.residents.clone();
+        let programs = Arc::new(ProgramArtifacts::new(self.kept.handle.clone(), true));
         let installed = self.registered.installed.clone();
         let backend = self.registered.backend.url().clone();
         let token = self.registered.token.borrow().clone();
@@ -514,6 +540,15 @@ impl Owner<'_> {
             };
             if closed.is_cancelled() {
                 return Work::Done;
+            }
+            // The release's programs come with it, so its first commands
+            // wait for none; one that does not come downloads at its first
+            // use, which is no failure of the download ahead.
+            if placed.is_ok() && !packages.is_empty() {
+                log_programs(residents.keep_programs(&packages, programs, true, &closed).await, Some(&release), began);
+                if closed.is_cancelled() {
+                    return Work::Done;
+                }
             }
             let reply = match placed {
                 Ok(()) => {
@@ -643,7 +678,9 @@ impl Owner<'_> {
                 release,
                 sha256,
                 size,
-            } => self.prefetch(release, demi_shared_artifacts::Digest { size, sha256 }),
+                packages,
+            } => self.prefetch(release, demi_shared_artifacts::Digest { size, sha256 }, packages),
+            Inbound::Programs { packages } => self.keep_programs(packages),
             Inbound::Manifest { manifest } => {
                 let installing = self.manifests.install(
                     manifest,
@@ -1217,4 +1254,20 @@ fn send_control(control: &mpsc::UnboundedSender<wire::Frame>, message: &wire::Ou
         }
     };
     control.send(frame).is_ok()
+}
+
+/// Writes how keeping the package programs went: of the backend's release, or
+/// ahead, of `next`.
+fn log_programs(kept: ProgramsKept, next: Option<&str>, began: std::time::Instant) {
+    for (package, error) in &kept.failed {
+        tracing::warn!(event = "package_program.keep_failed", package = package.as_str(), next, %error, "a package's program was not put in the cache");
+    }
+    tracing::info!(
+        event = "package_programs.kept",
+        next,
+        kept = kept.kept.len(),
+        failed = kept.failed.len(),
+        ms = began.elapsed().as_millis() as u64,
+        "the package programs are in the cache"
+    );
 }

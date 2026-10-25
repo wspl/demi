@@ -281,6 +281,10 @@ pub struct ArtifactCache {
     installs: Mutex<HashMap<String, InFlight>>,
     /// What the cache holds, which the connection reports to the backend.
     contents: watch::Sender<Vec<HostArtifact>>,
+    /// The digests put here ahead of an update ([`Self::prefetch`]), which
+    /// no install of the release running now removes. The runner of their
+    /// release starts with none, and its installs remove the older.
+    ahead: Mutex<std::collections::HashSet<String>>,
 }
 
 /// An artifact to install: its line (its package and name) and version, its
@@ -383,6 +387,7 @@ impl ArtifactCache {
             holds: Holds::default(),
             installs: Mutex::default(),
             contents: watch::Sender::new(Vec::new()),
+            ahead: Mutex::default(),
         };
         cache.publish_contents().await;
         Ok(cache)
@@ -417,6 +422,35 @@ impl ArtifactCache {
         progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
+        let path = self.place(wanted, resolver, progress, cancel).await?;
+        self.remove_older(wanted).await;
+        self.publish_contents().await;
+        Ok(path)
+    }
+
+    /// [`Self::install`] ahead of its use: the line's other artifacts stay,
+    /// since the runner still runs them until it moves to the release that
+    /// `wanted` is of, whose own install removes them.
+    pub async fn prefetch(
+        self: &Arc<Self>,
+        wanted: &Wanted<'_>,
+        resolver: Arc<dyn ArtifactResolver>,
+        cancel: &CancellationToken,
+    ) -> Result<PathBuf, RuntimeError> {
+        let path = self.place(wanted, resolver, &|_| {}, cancel).await?;
+        self.ahead.lock().expect("the digests put here ahead are intact").insert(wanted.artifact.sha256.clone());
+        self.publish_contents().await;
+        Ok(path)
+    }
+
+    /// Puts `wanted` in the cache and records it, without removing anything.
+    async fn place(
+        self: &Arc<Self>,
+        wanted: &Wanted<'_>,
+        resolver: Arc<dyn ArtifactResolver>,
+        progress: Progress<'_>,
+        cancel: &CancellationToken,
+    ) -> Result<PathBuf, RuntimeError> {
         let path = match wanted.form {
             ArtifactForm::File => {
                 self.install_file(wanted, resolver, progress, cancel)
@@ -428,8 +462,6 @@ impl ArtifactCache {
             }
         };
         self.record(wanted, &path).await?;
-        self.remove_older(wanted).await;
-        self.publish_contents().await;
         Ok(path)
     }
 
@@ -723,7 +755,7 @@ impl ArtifactCache {
             let older = record.package == wanted.package
                 && record.name == wanted.name
                 && sha256 != wanted.artifact.sha256;
-            if !older || self.holds.held(&sha256) {
+            if !older || self.holds.held(&sha256) || self.ahead.lock().expect("the digests put here ahead are intact").contains(&sha256) {
                 continue;
             }
             let entry = self.root.join(&sha256);

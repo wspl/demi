@@ -45,7 +45,7 @@ use demi_backend_host_access::host_commands::{pairing_code, reachable, resolve_h
 use demi_backend_host_access::root_of;
 use demi_backend_plugins::Lost;
 use demi_backend_database::server_log::ServerLog;
-use demi_backend_remote_host::{DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
+use demi_backend_remote_host::{CommandCatalog, DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
 use demi_runner_protocol::wire::{HostLogLine, LinkedWorktree};
 use demi_backend_runners::host_key::conversation_of;
 use demi_backend_database::permissions::AskedHost;
@@ -122,6 +122,12 @@ async fn watches(shard: &Shard, conversation: &ConversationId) -> GateLease {
 }
 
 impl LinkPolicy for ShardPolicy {
+    fn programs(&self) -> Option<CommandCatalog> {
+        let shard = self.shard.upgrade()?;
+        let services = shard.services();
+        Some(services.native.catalog(&services.public_url))
+    }
+
     fn host_log(&self) -> Option<Rc<dyn HostLog>> {
         let shard = self.shard.upgrade()?;
         Some(Rc::new(HostLines {
