@@ -58,6 +58,10 @@ const KEY_FRAME_SPACING: Duration = Duration::from_millis(500);
 /// of text from 37 to 42 dB within 15 repeats and to its best within 30, at
 /// 30 frames a second. Longer only sends repeats that change nothing.
 const REFINE_SPAN: Duration = Duration::from_secs(1);
+/// How long a repeat may go unanswered before the stream logs it: a source
+/// answers within a frame interval while the viewers' windows have room, so
+/// a longer silence is a capture or a viewer that stopped.
+const UNANSWERED: Duration = Duration::from_secs(2);
 
 /// One encoded picture of a source: H.264 Annex B in
 /// [`VIDEO_CODEC`](demi_live_view_protocol::VIDEO_CODEC), with its size in
@@ -382,8 +386,10 @@ struct Refine {
     until: Instant,
     /// When the next is asked for.
     next: Instant,
-    /// One was asked for and has not come back.
-    asked: bool,
+    /// When the one asked for was, while it has not come back.
+    asked: Option<Instant>,
+    /// Its silence was logged.
+    logged: bool,
 }
 
 impl Refine {
@@ -393,7 +399,8 @@ impl Refine {
         Self {
             until: now + interval + REFINE_SPAN,
             next: now + interval,
-            asked: false,
+            asked: None,
+            logged: false,
         }
     }
 }
@@ -567,8 +574,14 @@ async fn run<S: Source>(
         let refine = running
             .as_ref()
             .and_then(|running| running.refine.as_ref())
-            .filter(|refine| !refine.asked)
+            .filter(|refine| refine.asked.is_none())
             .map(|refine| refine.next);
+        let unanswered = running
+            .as_ref()
+            .and_then(|running| running.refine.as_ref())
+            .filter(|refine| !refine.logged)
+            .and_then(|refine| refine.asked)
+            .map(|asked| asked + UNANSWERED);
         let event = async {
             match running.as_mut() {
                 Some(running) => running.capture.next().await,
@@ -653,9 +666,28 @@ async fn run<S: Source>(
                     if Instant::now() >= refine.until {
                         running.refine = None;
                     } else {
-                        refine.asked = true;
+                        refine.asked = Some(Instant::now());
                         running.capture.repeat();
                     }
+                }
+            }
+            // Tells a still picture from a capture that stopped, which look
+            // the same to the viewer: the first answers its repeats.
+            _ = tokio::time::sleep_until(unanswered.unwrap_or_else(Instant::now)), if unanswered.is_some() => {
+                if let Some(running) = &mut running
+                    && let Some(refine) = &mut running.refine
+                    && let Some(asked) = refine.asked
+                {
+                    refine.logged = true;
+                    tracing::warn!(
+                        event = "live_view_capture.unanswered",
+                        source = ending.source.as_str(),
+                        ms = asked.elapsed().as_millis() as u64,
+                        sequence = running.sequence,
+                        floor = viewers.values().map(|viewer| viewer.floor).min(),
+                        window = viewers.values().map(|viewer| viewer.window).min(),
+                        "a live view capture did not answer a repeat"
+                    );
                 }
             }
             _ = tokio::time::sleep_until(key_frames.due()), if key_frames.deferred => {
@@ -692,8 +724,9 @@ async fn run<S: Source>(
                             // The repeat asked for came back: the next follows a
                             // frame interval later.
                             Some(refine) if frame.repeat => {
-                                if refine.asked {
-                                    refine.asked = false;
+                                if refine.asked.is_some() {
+                                    refine.asked = None;
+                                    refine.logged = false;
                                     refine.next = now + interval;
                                 }
                             }

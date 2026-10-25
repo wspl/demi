@@ -475,6 +475,7 @@ where
     .map_err(BrowserError::Configuration)?;
     directories.keep_until_retired();
     let profile = directories.profile().to_owned();
+    let launching = std::time::Instant::now();
     let launched = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
@@ -484,8 +485,23 @@ where
         }) => result.map_err(BrowserError::from),
     };
     let (browser, mut handler) = match launched {
-        Ok(launched) => launched,
+        Ok(launched) => {
+            tracing::info!(
+                event = "browser.launched",
+                ms = launching.elapsed().as_millis() as u64,
+                "Chrome started"
+            );
+            launched
+        }
         Err(error) => {
+            if !matches!(error, BrowserError::Cancelled) {
+                tracing::warn!(
+                    event = "browser.launch_failed",
+                    ms = launching.elapsed().as_millis() as u64,
+                    %error,
+                    "Chrome did not start"
+                );
+            }
             let cleanup = directories.remove(process.terminate().await).await;
             return after_cleanup(Err(error), cleanup);
         }
