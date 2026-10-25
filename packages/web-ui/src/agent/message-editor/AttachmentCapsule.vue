@@ -17,15 +17,15 @@ import type { MessageCapsule, MessageTransfer } from './capsules'
  * - Pointed at, an image or a video shows large in its preview card, and a text
  *   file its opening lines.
  * - An upload in progress shows how far it has come.
- * - A failed upload says so, with Retry where it can be uploaded from there, as
- *   in the composer.
+ * - A failed upload says so, with Retry in its mark's place where it can be
+ *   uploaded from there, as in the composer.
  * - A missing file, whose bytes are gone, says so, and is deleted or attached
  *   again.
  *
  * The capsule fits inside the line it stands in, at every text size: never
  * taller than the line, never reaching into the next one (`base.css` §
- * `.message-capsule-line`). Its icon, thumbnail, name and Retry are centred in
- * the pill.
+ * `.message-capsule-line`). Its icon, thumbnail or Retry, and its name are
+ * centred in the pill.
  *
  * It is a character of the message, so it is deleted as one, by the editor's
  * own keys. It carries no control of its own for that.
@@ -175,6 +175,17 @@ const preview = computed<
           class="text-fg-muted transition-[stroke-dashoffset] duration-75 ease-linear"
         />
       </svg>
+      <!-- Retry takes the place of the failure's mark, so the capsule keeps its width
+           when its upload fails; its hit area reaches past its 14 px. -->
+      <button
+        v-else-if="failed && retryable"
+        type="button"
+        class="relative mx-px flex size-3.5 shrink-0 items-center justify-center rounded text-on-danger before:absolute before:-inset-1 before:content-[''] hover:bg-tint-danger-strong phone:before:-inset-[7px]"
+        :aria-label="shared('common.retry')"
+        @click.stop="emit('retry')"
+      >
+        <RotateCw :size="11" />
+      </button>
       <CircleAlert
         v-else-if="broken"
         :size="14"
@@ -202,15 +213,6 @@ const preview = computed<
         v-if="capsule.host"
         class="shrink-0 text-fg-muted"
       >· {{ capsule.host }}</span>
-      <button
-        v-if="failed && retryable"
-        type="button"
-        class="-mr-1 flex size-4 shrink-0 items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong phone:-my-1.5 phone:-mr-2 phone:size-hit-xs phone:[&>svg]:size-3.5"
-        :aria-label="shared('common.retry')"
-        @click.stop="emit('retry')"
-      >
-        <RotateCw :size="11" />
-      </button>
     </span>
     <template #overlay>
       <pre

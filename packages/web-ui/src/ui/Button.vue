@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, useAttrs } from 'vue'
+import { computed, onMounted, ref, useAttrs, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { blockUnavailableButtonEvent, pressOnKey } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import { disabledTooltip } from './disabled'
@@ -66,9 +67,10 @@ const tooltipContent = computed(() =>
 )
 const emit = defineEmits<{ spinEnd: [] }>()
 const root = ref<HTMLElement | null>(null)
+const label = ref<HTMLElement | null>(null)
 // The icons a caller puts straight into the button, beside its label, turn.
 const { rotating, onClick: spinOnPress } = useButtonIconSpin(
-  () => root.value ? [...root.value.querySelectorAll(':scope > svg')] : [],
+  () => label.value ? [...label.value.querySelectorAll(':scope > svg')] : [],
   props,
   () => emit('spinEnd'),
 )
@@ -79,6 +81,62 @@ const unavailable = computed(() => props.disabled === true || props.loading === 
 /** The spinner takes a leading icon's size, which follows the button's. */
 const icons = useIconPx()
 const spinnerPx = computed(() => (props.size === 'xs' ? icons.value.in12 : props.size === 'sm' ? icons.value.in20 : icons.value.in24))
+
+/**
+ * Where the spinner stands while the button works, which never changes the
+ * button's size: over a leading icon, which it hides, or over the middle of a
+ * button without one, whose label it hides.
+ *
+ * The spinner is out of the flow and what it covers keeps its room, so nothing
+ * beside the button moves when its work starts or ends.
+ */
+const spinnerAt = ref<{ over: 'icon'; left: number } | { over: 'label' } | null>(null)
+
+/** The button's leading icon: an icon before any text of the label. */
+function leadingIcon(): SVGElement | null {
+  for (const node of label.value?.childNodes ?? []) {
+    if (node instanceof SVGElement) {
+      return node
+    }
+    if (node.nodeType !== Node.COMMENT_NODE && node.textContent?.trim()) {
+      return null
+    }
+  }
+  return null
+}
+
+/**
+ * Places the spinner from the button as it stands: as its work starts, and
+ * again whenever the button changes size meanwhile, as a full-width one does
+ * with its window. Over the label it is simply centred.
+ */
+function place(on: boolean): void {
+  const face = root.value
+  if (!on || !face) {
+    spinnerAt.value = null
+    return
+  }
+  const icon = leadingIcon()
+  if (!icon) {
+    spinnerAt.value = { over: 'label' }
+    return
+  }
+  // Measured on screen, then in the face's own pixels, which a scaled
+  // ancestor makes differ.
+  const box = icon.getBoundingClientRect()
+  const faceBox = face.getBoundingClientRect()
+  const scale = faceBox.width ? face.offsetWidth / faceBox.width : 1
+  spinnerAt.value = { over: 'icon', left: (box.left - faceBox.left + box.width / 2) * scale }
+}
+
+watch(working, place, { flush: 'sync' })
+// A button drawn while its operation already runs, as in a dialog opened again.
+onMounted(() => place(working.value))
+useResizeObserver(root, () => {
+  if (working.value) {
+    place(true)
+  }
+})
 
 defineExpose({
   /** Presses the button as a click does, for a shortcut that stands for it: refused while it is disabled or working. */
@@ -163,19 +221,40 @@ const sizeClass = computed(() => {
         blocked && !working ? 'opacity-40' : '',
       ]"
     >
-      <!-- The spinner takes the place of a leading icon, or stands beside the label; the button keeps its look. -->
-      <span v-if="working" class="button-spinner flex shrink-0" aria-hidden="true">
+      <!-- The spinner takes the place of a leading icon, or of the label of a button
+           without one; the button keeps its look and its size. -->
+      <span
+        v-if="working"
+        class="pointer-events-none absolute top-1/2 flex -translate-x-1/2 -translate-y-1/2"
+        :style="spinnerAt?.over === 'icon' ? { left: `${spinnerAt.left}px` } : { left: '50%' }"
+        aria-hidden="true"
+      >
         <IndeterminateSpinner :size="spinnerPx" />
       </span>
-      <slot />
+      <span
+        ref="label"
+        class="button-label contents"
+        :data-covered="working ? (spinnerAt?.over ?? 'label') : undefined"
+      ><slot /></span>
     </span>
   </Tooltip>
 </template>
 
 <style scoped>
-/* A leading icon gives its place to the spinner. */
-.button-spinner + :deep(svg) {
-  display: none;
+/* What the spinner covers keeps its room: the leading icon, or the whole label.
+   The label is made transparent rather than hidden, so it still names the
+   button to assistive technology; the wrapper draws no box of its own, so its
+   text goes by its color and its elements by their opacity. */
+.button-label[data-covered='icon'] > :deep(svg:first-child) {
+  visibility: hidden;
+}
+
+.button-label[data-covered='label'] {
+  color: transparent;
+}
+
+.button-label[data-covered='label'] > :deep(*) {
+  opacity: 0;
 }
 
 /* On a phone an icon beside the label is a chip's (`PHONE_ICON_PX.chip`),

@@ -20,12 +20,13 @@ import type { SharePhase } from './sharing'
  *
  * The dialog opens before the link exists:
  *
- * - While `phase` makes the link, Creating link… and a spinner stand in the
- *   field where the link will, and Copy Link waits.
+ * - While `phase` makes the link, Creating link… stands in the field where
+ *   the link will, with a spinner at the field's end, and Copy Link waits.
  * - A failure says why under the field, and Try Again takes Copy Link's place.
  * - Update Link shows its progress in the field the same way.
  *
- * Copy Link is the default button and turns to Copied after a copy. Update Link
+ * Copy Link is the default button and turns to Copied after a copy, keeping its
+ * width. Update Link
  * and Stop Sharing are the caller's `onUpdate` and `onStop`, which return the
  * promise of their work: the button shows it, and the other waits.
  */
@@ -76,7 +77,8 @@ const stop = computed<Operation>(() => ({ action: 'stop', target: `share:${token
         autocomplete="off"
         @focus="($event.target as HTMLInputElement).select()"
       >
-        <template v-if="busy" #prefix>
+        <!-- At the field's end, so the text stands where the link will. -->
+        <template v-if="busy" #suffix>
           <IndeterminateSpinner :size="14" />
         </template>
       </TextInput>
@@ -90,7 +92,11 @@ const stop = computed<Operation>(() => ({ action: 'stop', target: `share:${token
       <Button v-if="phase.status === 'failed'" variant="primary" @click="emit('retry')">{{ t('share.tryAgain') }}</Button>
       <Button v-else variant="primary" :disabled="!link" @click="emit('copy')">
         <component :is="copied ? Check : Copy" :size="14" />
-        {{ copied ? shared('common.copied') : t('share.copyLink') }}
+        <!-- Both labels take one cell, so the button keeps the wider one's width. -->
+        <span class="inline-grid">
+          <span class="col-start-1 row-start-1" :class="copied ? 'invisible' : ''">{{ t('share.copyLink') }}</span>
+          <span class="col-start-1 row-start-1" :class="copied ? '' : 'invisible'">{{ shared('common.copied') }}</span>
+        </span>
       </Button>
     </template>
   </Dialog>

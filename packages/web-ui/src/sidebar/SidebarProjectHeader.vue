@@ -89,7 +89,8 @@ const emit = defineEmits<{
         </span>
       </span>
     </span>
-    <RowSpinner v-if="working" />
+    <!-- The spinner takes the device mark's box, so the name keeps its width. -->
+    <RowSpinner v-if="working" class="h-6! w-4! phone:size-8!" />
     <DeviceMark v-else :host="project.hostKind === 'cloud' ? { kind: 'cloud' } : project.device" />
     <span
       class="absolute inset-y-0 right-[23px] flex items-center opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:right-9 phone:opacity-100 phone:pointer-events-auto"
