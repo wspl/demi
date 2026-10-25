@@ -888,6 +888,9 @@ async fn live(
     let descriptor = start.descriptor;
     let began = std::time::Instant::now();
     let _held = cache.holds().hold(&start.artifact.sha256);
+    // How long the executable took to be had, which the start's line splits
+    // from the process's own start.
+    let mut install_ms = 0u64;
     let started = async {
         let wanted = Wanted {
             package: &descriptor.id,
@@ -905,6 +908,7 @@ async fn live(
             });
         };
         let executable = cache.install(&wanted, start.resolver, &progress, &stop).await;
+        install_ms = began.elapsed().as_millis() as u64;
         state.send_replace(State::Starting(None));
         let executable = executable?;
         let artifacts = Arc::new(ResidentArtifacts {
@@ -935,6 +939,7 @@ async fn live(
                     from = "starting",
                     to = "failed",
                     ms = began.elapsed().as_millis() as u64,
+                    install_ms,
                     %error,
                     "a resident did not start"
                 );
@@ -949,6 +954,7 @@ async fn live(
         from = "starting",
         to = "ready",
         ms = began.elapsed().as_millis() as u64,
+        install_ms,
         pid = resident.pid(),
         "a resident started"
     );
