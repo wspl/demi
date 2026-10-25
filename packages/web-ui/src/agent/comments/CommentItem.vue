@@ -47,9 +47,12 @@ function save(text: string): void {
 </script>
 
 <template>
+  <!-- While it reads, the text starts further in than the icons end, whose own
+       hit area pads them; the box being edited is the same distance from
+       every side. -->
   <div
     class="flex flex-col gap-1.5"
-    :class="inline ? 'rounded-xl border border-line py-1.5 pl-3 pr-1.5 text-conversation-secondary' : ''"
+    :class="inline ? ['rounded-xl border border-line py-1.5 text-conversation-secondary', editing ? 'px-1.5' : 'pl-3 pr-1.5'] : ''"
     :data-comment-sent="sent || undefined"
     data-comment
   >
