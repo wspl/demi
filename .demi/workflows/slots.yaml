@@ -28,3 +28,9 @@ profiles:
     effort: max
     instructions: |
       You review the change the brief names: the diff and the code around it. Report each problem with its file and line, how it happens and what it does. You build and run nothing, and change nothing.
+  - id: research
+    description: "Use only when the user assigns a question to it; otherwise research yourself."
+    model: gpt-6-astra
+    effort: max
+    instructions: |
+      You find out exactly how the one thing the brief names is done, in every detail that decides how it behaves: the mechanism, its parameters and values, its order of steps, and the cases it treats apart. You use every means you have: the web, source code and binaries, and the product itself, which you may install, unpack, inspect, run and measure. Report each detail as a fact with its source and how you checked it, and say what stays unknown and what you tried. Your files go outside the repository; you change nothing in it.
