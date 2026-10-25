@@ -1047,13 +1047,23 @@ impl Conversations {
         operation: std::result::Result<BrowserOperation, OperationError>,
     ) -> std::result::Result<Completion, ResidentError> {
         let json = context.request.json == Some(true);
+        let began = std::time::Instant::now();
+        // How long the call waited for its browser, when it needed one.
+        let mut environment_ms = None;
         let result = async {
             let command =
                 operation.map_err(|error| BrowserError::Configuration(error.to_string()))?;
             let cancellation = context.cancellation.child_token();
             let _cancel_on_drop = cancellation.clone().drop_guard();
             let deadline = tokio::time::Instant::now() + command.timeout();
-            let invocation = self.execute(browser, &mut context, &command, &cancellation, deadline);
+            let invocation = self.execute(
+                browser,
+                &mut context,
+                &command,
+                &cancellation,
+                deadline,
+                &mut environment_ms,
+            );
             tokio::pin!(invocation);
             let produced = match tokio::time::timeout_at(deadline, invocation.as_mut()).await {
                 Ok(result) => result,
@@ -1088,6 +1098,20 @@ impl Conversations {
             }
         }
         .await;
+        let failed = result
+            .as_ref()
+            .err()
+            // The code as the protocol writes it, such as `tab_not_found`.
+            .and_then(|error: &BrowserError| serde_json::to_value(error.code()).ok())
+            .and_then(|code| code.as_str().map(str::to_owned));
+        tracing::info!(
+            event = "browser_call.ended",
+            operation = context.request.operation.as_str(),
+            ms = began.elapsed().as_millis() as u64,
+            environment_ms,
+            error = failed.as_deref(),
+            "a browser call ended"
+        );
         match result {
             Ok((stdout, captured)) => {
                 if let Some(captured) = captured {
@@ -1198,6 +1222,7 @@ impl Conversations {
         command: &BrowserOperation,
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
+        environment_ms: &mut Option<u64>,
     ) -> Result<CommandOutput> {
         if matches!(command, BrowserOperation::Install(_)) {
             // The Host's browser, not the conversation's: nothing starts.
@@ -1227,7 +1252,10 @@ impl Conversations {
             locale: context.request.context.locale.clone(),
             color_scheme: context.request.context.color_scheme,
         });
-        let environment = browser.environment(starting.as_ref(), cancellation).await?;
+        let waiting = std::time::Instant::now();
+        let environment = browser.environment(starting.as_ref(), cancellation).await;
+        *environment_ms = Some(waiting.elapsed().as_millis() as u64);
+        let environment = environment?;
         let Some(environment) = environment else {
             if matches!(command, BrowserOperation::TabList(_)) {
                 return Ok(CommandOutput::Json(output::value(TabListResult {

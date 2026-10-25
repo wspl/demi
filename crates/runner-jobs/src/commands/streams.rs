@@ -295,6 +295,7 @@ impl Opening {
         stream: &CancellationToken,
     ) -> Result<OpenedStream, StreamRefusal> {
         let Self { opener, moved } = self;
+        let began = std::time::Instant::now();
         let StreamStart {
             stream_id,
             context,
@@ -343,11 +344,13 @@ impl Opening {
         ));
         let numbers = Arc::new(opener.connection.clone());
         let invoking = residents.invoking(&stream_id, &package.id, resolver.clone());
+        let mut acquire_ms = 0u64;
         let opened = async {
             let mut resident = residents
                 .acquire(&package, resolver, numbers, stream)
                 .await
                 .map_err(|error| error.to_string())?;
+            acquire_ms = began.elapsed().as_millis() as u64;
             let invocation = Invocation {
                 // A user stream runs no command line: its failures name the
                 // operation instead.
@@ -375,7 +378,7 @@ impl Opening {
                 Err(message) => return Err(refused(ResidentErrorCode::ResidentFailed, message)),
             },
         };
-        log.event("resident_stream.opened", None, None);
+        log.opened(acquire_ms, began.elapsed().as_millis() as u64);
         Ok(OpenedStream {
             exchange: Exchange::new(input, output),
             log,
@@ -545,6 +548,19 @@ impl StreamLog {
             stream = self.source.as_str(),
             code,
             error,
+            "a resident stream changed"
+        );
+    }
+
+    /// The stream opened, after `acquire_ms` waiting for its resident and
+    /// `ms` in all.
+    fn opened(&self, acquire_ms: u64, ms: u64) {
+        tracing::info!(
+            event = "resident_stream.opened",
+            conversation = self.conversation.as_str(),
+            stream = self.source.as_str(),
+            acquire_ms,
+            ms,
             "a resident stream changed"
         );
     }

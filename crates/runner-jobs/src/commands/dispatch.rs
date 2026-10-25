@@ -206,6 +206,7 @@ impl Dispatcher {
                 // JSON document (`crates/runner-command-packages/src/cache.rs`).
                 let (lines, mut told) = tokio::sync::mpsc::unbounded_channel::<String>();
                 let quiet = parsed.json;
+                let acquiring_began = std::time::Instant::now();
                 let acquiring = self.residents.acquire_telling(
                     descriptor,
                     resolver,
@@ -230,6 +231,7 @@ impl Dispatcher {
                     output.stderr(line.into()).await?;
                 }
                 let mut resident = acquired.map_err(ResidentError::failed)?;
+                let acquire_ms = acquiring_began.elapsed().as_millis() as u64;
                 let request = Invocation {
                     context: context.command.clone(),
                     json: Some(parsed.json),
@@ -252,7 +254,18 @@ impl Dispatcher {
                     native_exchange(input, response, &mut invocation.input, &mut output, &path)
                         .await
                 };
-                match exchange.await {
+                let calling = std::time::Instant::now();
+                let exchanged = exchange.await;
+                tracing::info!(
+                    event = "resident_call.ended",
+                    package = descriptor.id.as_str(),
+                    operation = request.operation.as_str(),
+                    acquire_ms,
+                    ms = calling.elapsed().as_millis() as u64,
+                    exit = exchanged.as_ref().ok().copied(),
+                    "a command's call of its resident ended"
+                );
+                match exchanged {
                     Ok(code) => code,
                     Err(
                         Failed::Caller(error) | Failed::Resident(error @ ResidentError::Cancelled),
