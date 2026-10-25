@@ -68,7 +68,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, CliSite, CliStart, CliStarter, CliSystem, CliWork, ConfigDir,
-    Placed, Placement, PreparedProcesses, StartError, StartStage, StartSteps, WorkLease,
+    IdleProcesses, MachineState, Placed, Placement, StartError, StartStage, StartSteps, WorkLease,
     close_process,
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
@@ -151,6 +151,10 @@ pub struct ClaudeMachine {
     control: ControlService,
     /// The master, read once: an instance's master never changes.
     master: Arc<tokio::sync::OnceCell<UserId>>,
+    /// The machine's idle processes, of every user's runtimes.
+    idle: Arc<IdleProcesses>,
+    /// What the provider keeps of the machine.
+    state: Arc<MachineState>,
 }
 
 impl ClaudeMachine {
@@ -159,7 +163,14 @@ impl ClaudeMachine {
             shards,
             control,
             master: Arc::default(),
+            idle: Arc::default(),
+            state: Arc::default(),
         }
+    }
+
+    /// The machine's idle processes, of every user's runtimes.
+    pub(crate) fn idle(&self) -> &Arc<IdleProcesses> {
+        &self.idle
     }
 
     async fn master(&self) -> Result<UserId, StartError> {
@@ -194,6 +205,10 @@ impl ClaudeMachine {
 }
 
 impl AccountMachine for ClaudeMachine {
+    fn state(&self) -> &MachineState {
+        &self.state
+    }
+
     fn run(&self, entry: String, work: AccountWork) -> BoxFuture<'static, Result<(), StartError>> {
         let machine = self.clone();
         Box::pin(async move {
@@ -236,32 +251,24 @@ impl AccountMachine for ClaudeMachine {
 /// The placement of a provider's process for a user's conversation or
 /// entry: every start crosses once to the master's shard, which starts the
 /// process on the Claude Code machine and relays it back as `Send` pipe
-/// ends; the processes prepared ahead are the user's own.
+/// ends.
 pub(crate) struct CrossPlacement {
     shard: Weak<Shard>,
     work: ProcessWork,
     machine: ClaudeMachine,
-    /// The processes prepared ahead for the user.
-    prepared: Rc<PreparedProcesses>,
 }
 
 impl CrossPlacement {
     /// The placement a provider's process of `work` starts with.
     pub fn placement(shard: Weak<Shard>, work: ProcessWork) -> Rc<dyn Placement> {
-        // A shard that is gone starts nothing, so what it would share
-        // matters to nobody.
-        let (prepared, machine) = match shard.upgrade() {
-            Some(shard) => (shard.claude_cli().prepared.clone(), shard.claude_machine()),
-            None => (Rc::default(), None),
-        };
-        match machine {
+        // A shard that is gone starts nothing.
+        match shard.upgrade().and_then(|shard| shard.claude_machine()) {
             Some(machine) => Rc::new(Self {
                 shard,
                 work,
                 machine,
-                prepared,
             }),
-            None => Rc::new(Unplaced(prepared)),
+            None => Rc::new(Unplaced),
         }
     }
 
@@ -347,14 +354,14 @@ impl Placement for CrossPlacement {
         WorkLease::new(held)
     }
 
-    fn prepared(&self) -> Rc<PreparedProcesses> {
-        self.prepared.clone()
+    fn idle(&self) -> Arc<IdleProcesses> {
+        self.machine.idle.clone()
     }
 }
 
 /// The placement of a shard that has no Claude Code machine to reach, as in
 /// a backend that has no shards: every start fails.
-struct Unplaced(Rc<PreparedProcesses>);
+struct Unplaced;
 
 impl Placement for Unplaced {
     fn start<'a>(
@@ -370,8 +377,9 @@ impl Placement for Unplaced {
         WorkLease::new(())
     }
 
-    fn prepared(&self) -> Rc<PreparedProcesses> {
-        self.0.clone()
+    fn idle(&self) -> Arc<IdleProcesses> {
+        // Nothing starts, so nothing is idle.
+        Arc::default()
     }
 }
 
@@ -819,6 +827,10 @@ impl MachinePlacement {
                 ))
             })?;
             lap(&mut steps.system);
+            // The machine keeps as many idle processes as its memory holds.
+            if let (Some(machine), Some(link)) = (shard.claude_machine(), shard.devices().link(&access.device.id)) {
+                machine.idle().hold_memory(link.memory());
+            }
             let site = CliSite {
                 executable,
                 run_dir,
@@ -922,9 +934,9 @@ impl Placement for MachinePlacement {
         }
     }
 
-    fn prepared(&self) -> Rc<PreparedProcesses> {
-        // A sign-in or a probe prepares nothing ahead.
-        Rc::default()
+    fn idle(&self) -> Arc<IdleProcesses> {
+        // A sign-in or a probe is never kept, nor prepared ahead.
+        Arc::default()
     }
 }
 
@@ -1158,7 +1170,6 @@ impl Drop for MachineDir {
 ///
 /// - the versions each machine has;
 /// - the versions being installed beside the one in use;
-/// - the processes prepared ahead for the user;
 /// - on the master's shard, what it keeps of the Claude Code machine: the run
 ///   directory's real path there and the gates of the accounts whose processes
 ///   it starts.
@@ -1166,7 +1177,6 @@ impl Drop for MachineDir {
 pub(crate) struct ClaudeCli {
     versions: RefCell<HashMap<DeviceId, KeptVersions>>,
     upgrading: RefCell<HashSet<String>>,
-    prepared: Rc<PreparedProcesses>,
     /// The accounts whose processes the master's shard starts, each with
     /// its gate.
     gates: Rc<AccountGates>,
@@ -1489,11 +1499,11 @@ impl Shard {
     /// Follows the vault's announcements of active-account changes until the
     /// shard closes (`crates/provider-claude-code/src/prepared.rs`).
     ///
-    /// For each change, the processes prepared for the user in the previous
+    /// For each change, the processes prepared for the entry in the previous
     /// account's directory close, and the conversations on the entry that a page
     /// has open prepare again. `changes` was subscribed when the shard was made,
     /// so no change since is missed; a follower that fell behind treats every
-    /// entry as changed.
+    /// entry as changed, and closes every process prepared on the machine.
     pub(crate) async fn follow_account_changes(
         self: Rc<Self>,
         mut changes: tokio::sync::broadcast::Receiver<ProviderId>,
@@ -1505,7 +1515,15 @@ impl Shard {
             };
             match changed {
                 Ok(entry) => {
-                    self.claude_cli().prepared.close_entry(entry.as_str());
+                    // An entry that cannot be read has no active account
+                    // whose processes would stay.
+                    let active = match self.services().vault.entry(entry.clone()).await {
+                        Ok(Some(stored)) => stored.active().map(|account| account.as_str().to_owned()),
+                        Ok(None) | Err(_) => None,
+                    };
+                    if let Some(machine) = self.claude_machine() {
+                        machine.idle().close_prepared_of(entry.as_str(), active.as_deref());
+                    }
                     self.agent().prepare_open(Some(entry.as_str()));
                 }
                 Err(RecvError::Lagged(missed)) => {
@@ -1516,7 +1534,9 @@ impl Shard {
                         outcome = "prepared_processes_closed",
                         "account changes were missed"
                     );
-                    self.claude_cli().prepared.close_all();
+                    if let Some(machine) = self.claude_machine() {
+                        machine.idle().close_prepared();
+                    }
                     self.agent().prepare_open(None);
                 }
                 // The vault lives as long as the backend.

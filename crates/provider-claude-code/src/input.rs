@@ -1,13 +1,14 @@
 //! What Demi writes to the CLI's standard input
 //! (`crates/provider-claude-code/src/run.rs`).
 //!
-//! It writes the `initialize` control request that declares the SDK MCP server,
-//! the user messages a kept process gains, and the answers to the CLI's control
+//! It writes the `initialize` control request, which declares the SDK MCP
+//! server with its handshake made, the user messages a kept process gains, and the answers to the CLI's control
 //! requests. Each is one JSON line. A user message is the same message in the
 //! session a new process resumes, with a client id the CLI names again in the
 //! `result` of the turn that consumes it.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use demi_provider_common::{InferenceItem, Medium, UserPart, json_body};
 use rmcp::model::ServerJsonRpcMessage;
@@ -35,14 +36,21 @@ pub(crate) enum Input<'a> {
 }
 
 /// A request Demi sends the CLI: `initialize`, which declares the SDK MCP
-/// server of a request's process, or none for the usage probe's, and
-/// `get_usage`, which the probe asks (`crates/provider-claude-code/src/account.rs`).
+/// server of a request's process that offers tools, or none, and `get_usage`,
+/// which the probe asks (`crates/provider-claude-code/src/account.rs`).
 #[derive(Serialize)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub(crate) enum ControlRequest<'a> {
     Initialize {
         #[serde(rename = "sdkMcpServers")]
-        sdk_mcp_servers: [&'a str; 1],
+        sdk_mcp_servers: &'a [&'a str],
+        /// The handshake's results by server, which the CLI answers its MCP
+        /// client from, so that the turn finds the tools connected.
+        #[serde(
+            rename = "sdkMcpServerManifests",
+            skip_serializing_if = "BTreeMap::is_empty"
+        )]
+        sdk_mcp_server_manifests: BTreeMap<&'a str, &'a Manifest>,
         #[serde(rename = "systemPrompt")]
         system_prompt: &'a str,
     },
@@ -53,6 +61,19 @@ pub(crate) enum ControlRequest<'a> {
         /// does not show.
         skip_behaviors: bool,
     },
+}
+
+/// An SDK MCP server's answers to the handshake the CLI's client would make
+/// with it.
+#[derive(Serialize)]
+pub(crate) struct Manifest {
+    /// The server's `initialize` result, whose protocol version must be the
+    /// one the CLI's client asks for.
+    #[serde(rename = "initializeResult")]
+    pub(crate) initialize_result: serde_json::Value,
+    /// The server's answer to the first `tools/list`.
+    #[serde(rename = "toolsListResult")]
+    pub(crate) tools_list_result: serde_json::Value,
 }
 
 /// The one answer to a control request of the CLI's.

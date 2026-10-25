@@ -15,6 +15,10 @@
 //!   reads and renews the sign-in itself, and a directory of its own there for
 //!   its session;
 //! - the CLI's updater and automatic compaction off;
+//! - the CLI's nonessential traffic off, so its start waits on no request of
+//!   its own, and its feature flags read from the account's disk cache;
+//! - the `initialize` request read before anything else, with the handshake of
+//!   Demi's MCP server already made, so the first turn has its tools;
 //! - the input a session ends with answered at once.
 //!
 //! A sign-in runs the CLI's own login in a new directory, and a usage probe a
@@ -27,7 +31,6 @@ use demi_provider_common::InferenceRequest;
 use demi_provider_common::openai_request::reasoning_effort;
 use demi_shared_types::ThinkingConfig;
 
-use crate::input::MCP_SERVER;
 use crate::placement::{CliSite, CliStart};
 use crate::session::SessionFile;
 
@@ -57,10 +60,14 @@ pub(crate) fn start(site: &CliSite, args: Vec<String>, session: &SessionFile) ->
 /// The CLI renews the sign-in when it is due and answers control requests
 /// without inferring (`crates/provider-claude-code/src/account.rs`). Its
 /// environment never turns the CLI's nonessential traffic off, which turns its
-/// quota reading off with it. It is work of the machine while it runs.
+/// quota reading off with it. So it is the one process of the account that
+/// fetches the CLI's feature flags, and refreshes the account's disk cache of
+/// them when that is older than the CLI's six hours. It is work of the machine
+/// while it runs.
 pub(crate) fn probe(site: &CliSite) -> CliStart {
     let mut env = environment(site);
     env.remove("CLAUDE_CODE_RESUME_INTERRUPTED_TURN");
+    env.remove("CLAUDE_CODE_GB_DISK_CACHE_WHEN_TELEMETRY_OFF");
     env.insert("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_owned(), None);
     let spawn = SpawnRequest {
         command: site.executable.clone(),
@@ -169,17 +176,12 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
     if !matches!(request.thinking, Some(ThinkingConfig::Disabled {})) {
         args.extend(["--thinking-display".into(), "summarized".into()]);
     }
-    // A server the configuration names is one the CLI waits for before its
-    // first request; the `initialize` request alone declares it only after
-    // the CLI began to answer the input its session ends with, and that
-    // request would offer no tools (Claude Code 2.1.294).
-    if !request.tools.is_empty() {
-        let servers = serde_json::json!({
-            "mcpServers": { MCP_SERVER: { "type": "sdk", "name": MCP_SERVER } },
-        });
-        args.push("--mcp-config".into());
-        args.push(servers.to_string());
-    }
+    // The CLI reads `initialize` before it resumes the session's input, and
+    // the request declares Demi's MCP server with its handshake made
+    // (`crates/provider-claude-code/src/live.rs`). Without the flag the CLI
+    // answers that input meanwhile, and its first request offers no tools
+    // (Claude Code 2.1.296).
+    args.push("--await-initialize".into());
     args
 }
 
@@ -201,11 +203,14 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
 /// - `CLAUDECODE` is removed, so the CLI never takes itself for a session
 ///   inside another Claude Code.
 /// - The input the session ends with is answered at once.
-///
-/// The CLI's telemetry stays on. Turning it off (`DISABLE_TELEMETRY=1`) halved
-/// the CLI's start in a gVisor sandbox, but CLI 2.1.296 then reports each
-/// call's `iterations` empty, and Demi read the turn's sum as the last call's
-/// usage and compacted after every response.
+/// - The CLI's nonessential traffic is off: its telemetry, error reporting,
+///   update and announcement checks, and the fetch of its feature flags, each
+///   a request across the network that its start or its first turn waited for,
+///   5 s of a Cloud's start in all.
+/// - Its feature flags are read from the account's disk cache, which the usage
+///   probe refreshes (`crates/provider-claude-code/src/quota.rs`); without the
+///   cache the CLI would run on its built-in defaults, which may behave
+///   differently.
 fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
     let set = |value: &str| Some(value.to_owned());
     BTreeMap::from([
@@ -218,6 +223,8 @@ fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
         ("DISABLE_AUTO_COMPACT".to_owned(), set("1")),
         ("MAX_MCP_OUTPUT_TOKENS".to_owned(), set("1000000")),
         ("CLAUDE_CODE_SILENT_TURN_REMINDER".to_owned(), set("0")),
+        ("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_owned(), set("1")),
+        ("CLAUDE_CODE_GB_DISK_CACHE_WHEN_TELEMETRY_OFF".to_owned(), set("1")),
         ("CLAUDECODE".to_owned(), None),
     ])
 }

@@ -1756,6 +1756,10 @@ pub struct RunnerInfo {
     )]
     #[garde(dive)]
     pub kernel: Option<Kernel>,
+    /// The Host's physical memory in bytes, which bounds how many idle Claude
+    /// Code processes its machine keeps
+    /// (`crates/provider-claude-code/src/idle.rs`).
+    pub memory: u64,
     /// The `SHELL` of the device environment, which every process the
     /// runner starts inherits; none when it names none.
     #[serde(

@@ -6,9 +6,17 @@
 //!   sends no message, for its usage (`get_usage`).
 //! - The `rate_limit_event` lines the CLI prints when the vendor's rate-limit
 //!   headers change.
+//!
+//! The probe's process is also the one of the account that fetches the CLI's
+//! feature flags, which every other process reads from the account's disk cache
+//! (`crates/provider-claude-code/src/cli.rs`). The CLI refreshes a cache older
+//! than its six hours as it starts, and leaves a younger one alone. So a process
+//! of the account that starts three hours or more after the last probe runs one
+//! in the background, and the cache is never more than nine hours old. A
+//! sign-in fetches the flags too, so a new account's first process finds them.
 
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use demi_host_interface::{Process, ProcessOutput};
@@ -36,6 +44,10 @@ use crate::placement::{AccountMachine, AccountWork, CliWork, Placed, Placement};
 /// lock a killed process left (`crates/provider-claude-code/src/account.rs`).
 const PROBE_LIMIT: Duration = Duration::from_secs(30);
 
+/// How long after a probe a process's start runs another, for the flags it
+/// refreshes: half the CLI's own refresh interval of six hours.
+const FLAGS_DUE_AFTER: Duration = Duration::from_secs(3 * 60 * 60);
+
 /// The id of the probe's `get_usage` request.
 const USAGE_REQUEST: &str = "usage";
 
@@ -49,10 +61,46 @@ pub(crate) struct ClaudeQuota {
     pub(crate) entry: String,
 }
 
+/// When each account's feature flags were last fetched on the Claude Code
+/// machine, by a process of the account with the CLI's traffic on: its sign-in
+/// or its usage probe. It is kept by the account's id, which names its
+/// directory there, for every provider of the account.
+#[derive(Default)]
+pub(crate) struct FlagRefreshes(Mutex<HashMap<String, tokio::time::Instant>>);
+
+impl FlagRefreshes {
+    fn refreshed_at(&self) -> std::sync::MutexGuard<'_, HashMap<String, tokio::time::Instant>> {
+        // The times stay whole whatever panicked while they were held.
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Whether a start of a process of `account` is to run a probe: no
+    /// process fetched its flags in three hours, or none since the backend
+    /// started. A probe that is due counts as one that fetched them now.
+    pub(crate) fn due(&self, account: &str) -> bool {
+        let mut refreshed_at = self.refreshed_at();
+        if refreshed_at
+            .get(account)
+            .is_some_and(|at| at.elapsed() < FLAGS_DUE_AFTER)
+        {
+            return false;
+        }
+        refreshed_at.insert(account.to_owned(), tokio::time::Instant::now());
+        true
+    }
+
+    /// A process of `account` with the CLI's traffic on starts now.
+    pub(crate) fn refreshed(&self, account: &str) {
+        self.refreshed_at()
+            .insert(account.to_owned(), tokio::time::Instant::now());
+    }
+}
+
 impl QuotaSource for ClaudeQuota {
     fn probe_cost(&self) -> Option<ProbeCost> {
         Some(ProbeCost::Free)
     }
+
 
     /// The CLI's `get_usage` answer, in a process of the account's directory on
     /// the Claude Code machine.
@@ -70,6 +118,9 @@ impl QuotaSource for ClaudeQuota {
                 .work()
                 .await
                 .map_err(|failure| failure.quota_error())?;
+            if let CliWork::Account { account, .. } = &account.work {
+                machine.state().flags.refreshed(account);
+            }
             let (answer, answered) = oneshot::channel();
             let work = account.work;
             let probe: AccountWork = Box::new(move |placement, abandoned| {

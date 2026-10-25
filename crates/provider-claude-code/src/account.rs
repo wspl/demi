@@ -96,7 +96,8 @@ impl ClaudeAuth {
         Self { pool, account }
     }
 
-    fn account(&self) -> Result<&str, AuthFailure> {
+    /// The account the provider stands for.
+    pub(crate) fn account(&self) -> Result<&str, AuthFailure> {
         self.account
             .as_deref()
             .ok_or(AuthFailure::new(FAMILY, AuthReason::Missing))

@@ -4,10 +4,11 @@
 //! before the request, resumes the history and waits, and the request takes it
 //! as it would take a kept process.
 //!
-//! A task owns the process while it waits. It answers the CLI's MCP handshake,
-//! hands the process to the request that matches it, and closes it once it went
-//! unused for ten minutes, when the runtime drops it, or when its machine needs
-//! its seat. A preparation that fails is logged and forgotten.
+//! A task owns the process while it waits. It answers the CLI's MCP messages,
+//! hands the process to the request that matches it, and closes it when the
+//! runtime drops it or its seat among the machine's idle processes says so
+//! (`crates/provider-claude-code/src/idle.rs`). A preparation that fails is
+//! logged and forgotten.
 //!
 //! A request that finds no kept process waits for a new one. On a production
 //! server a subagent's median first turn waited 3.0 s before its CLI was ready
@@ -20,127 +21,19 @@
 //!   that an open reads no blob holds for the open itself.
 //! - It never gets in the way: it takes no admission the user's own commands
 //!   wait for, and one that fails is logged and forgotten.
-//! - A user has at most two prepared processes not yet used; a third closes the
-//!   oldest.
 
-use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
 use demi_provider_common::{InferenceItem, InferenceRequest};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
 
 use crate::Shared;
+use crate::idle::{self, Closing, Idle, Seat};
 use crate::live::{LiveCli, ProcessKey};
 use crate::placement::Placement;
 use crate::timing::Took;
-
-/// How long a prepared process waits for its request before it is closed.
-pub(crate) const UNUSED_FOR: Duration = Duration::from_secs(10 * 60);
-
-/// How many prepared processes not yet used one machine holds: each holds a
-/// CLI's memory, and the machine's is limited.
-const MOST_ON_A_MACHINE: usize = 2;
-
-/// The processes prepared ahead on one machine and not yet used, of every
-/// runtime that starts its processes there.
-///
-/// It holds at most two: a third preparation closes the oldest. It lives with
-/// its machine's placement on the machine's user's shard.
-#[derive(Default)]
-pub struct PreparedProcesses {
-    seats: RefCell<VecDeque<SeatRecord>>,
-    /// How many preparations began on the machine, which numbers them.
-    begun: std::cell::Cell<u64>,
-}
-
-struct SeatRecord {
-    id: u64,
-    /// The provider entry whose runtime prepared the process.
-    entry: String,
-    close: CancellationToken,
-}
-
-impl PreparedProcesses {
-    /// A seat for a process `entry`'s runtime prepares; the oldest seat
-    /// beyond the machine's two is told to close.
-    fn seat(self: &Rc<Self>, entry: &str) -> Seat {
-        let id = self.begun.get();
-        self.begun.set(id + 1);
-        let close = CancellationToken::new();
-        let mut seats = self.seats.borrow_mut();
-        seats.push_back(SeatRecord {
-            id,
-            entry: entry.to_owned(),
-            close: close.clone(),
-        });
-        while seats.len() > MOST_ON_A_MACHINE {
-            if let Some(oldest) = seats.pop_front() {
-                oldest.close.cancel();
-                tracing::info!(
-                    event = "claude_code_prepared.evicted",
-                    provider = oldest.entry,
-                    limit = MOST_ON_A_MACHINE,
-                    "a prepared process was closed for a newer one: the machine holds two"
-                );
-            }
-        }
-        Seat {
-            id,
-            set: Rc::downgrade(self),
-            close,
-        }
-    }
-
-    /// Closes every process prepared for the provider entry `entry`, as
-    /// when the entry's active account changed and they run in the previous
-    /// account's directory.
-    pub fn close_entry(&self, entry: &str) {
-        self.seats.borrow_mut().retain(|seat| {
-            let kept = seat.entry != entry;
-            if !kept {
-                seat.close.cancel();
-            }
-            kept
-        });
-    }
-
-    /// Closes every process prepared on the machine.
-    pub fn close_all(&self) {
-        for seat in self.seats.borrow_mut().drain(..) {
-            seat.close.cancel();
-        }
-    }
-
-    /// How many prepared processes the machine holds unused.
-    pub fn len(&self) -> usize {
-        self.seats.borrow().len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.seats.borrow().is_empty()
-    }
-}
-
-/// A prepared process's place among its machine's; leaving it, when the
-/// process is used or closed, frees it.
-struct Seat {
-    id: u64,
-    set: Weak<PreparedProcesses>,
-    close: CancellationToken,
-}
-
-impl Drop for Seat {
-    fn drop(&mut self) {
-        if let Some(set) = self.set.upgrade() {
-            set.seats.borrow_mut().retain(|seat| seat.id != self.id);
-        }
-    }
-}
 
 /// What the runtime asks of a prepared process's task.
 enum Command {
@@ -169,7 +62,7 @@ impl Prepared {
         request: InferenceRequest,
     ) -> Self {
         let (commands, received) = oneshot::channel();
-        let seat = placement.prepared().seat(&shared.id);
+        let seat = placement.idle().seat(&shared.id, shared.auth.account().ok(), Idle::Prepared);
         let key = ProcessKey::of(&request);
         let system_prompt = request.system_prompt.clone();
         let items = request.items.clone();
@@ -232,9 +125,8 @@ impl Prepared {
 /// then answers what the CLI asks while it waits, until a request takes it or
 /// it is closed.
 ///
-/// Ten minutes after the preparation began, a process no request took is
-/// closed. Closing a process still starting gives its start up, which closes
-/// what it started.
+/// Its seat counts it idle from the preparation's start. Closing a process
+/// still starting gives its start up, which closes what it started.
 async fn wait(
     shared: Arc<Shared>,
     placement: Rc<dyn Placement>,
@@ -243,8 +135,8 @@ async fn wait(
     seat: Seat,
 ) {
     let session = request.session_id.clone();
-    let unused = tokio::time::sleep(UNUSED_FOR);
-    tokio::pin!(unused);
+    let closing = seat.closing();
+    tokio::pin!(closing);
     let started = async {
         let mut live = LiveCli::start(&shared, &*placement, &request, Took::Prepared).await?;
         live.prepare(&request).await?;
@@ -261,8 +153,15 @@ async fn wait(
                 // Dropping the start gives it up and closes what it started.
                 Ok(Command::Close) | Err(_) => return,
             },
-            () = seat.close.cancelled() => return,
-            () = &mut unused, if taker.is_none() => return,
+            // A request that stopped waiting took the process from its
+            // runtime, so nobody else will.
+            () = taken_by_nobody(&mut taker), if taker.is_some() => return,
+            closed = &mut closing, if taker.is_none() => {
+                if closed == Closing::Unused {
+                    idle::log_unused(&shared, &session, Idle::Prepared);
+                }
+                return;
+            }
         }
     };
     let mut live = match started {
@@ -292,18 +191,10 @@ async fn wait(
                 }
                 return;
             }
-            () = seat.close.cancelled() => {
-                live.close().await;
-                return;
-            }
-            () = &mut unused => {
-                tracing::info!(
-                    event = "claude_code_prepared.unused",
-                    provider = %shared.id,
-                    node = session,
-                    ms = u64::try_from(UNUSED_FOR.as_millis()).unwrap_or(u64::MAX),
-                    "a Claude Code process prepared ahead went unused and was closed"
-                );
+            closed = &mut closing => {
+                if closed == Closing::Unused {
+                    idle::log_unused(&shared, &session, Idle::Prepared);
+                }
                 live.close().await;
                 return;
             }
@@ -320,6 +211,14 @@ async fn wait(
             live.close().await;
             return;
         }
+    }
+}
+
+/// Resolves once the request in `taker` stopped waiting for the process.
+async fn taken_by_nobody(taker: &mut Option<oneshot::Sender<LiveCli>>) {
+    match taker {
+        Some(taker) => taker.closed().await,
+        None => std::future::pending().await,
     }
 }
 

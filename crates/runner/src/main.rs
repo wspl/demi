@@ -560,6 +560,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             .unwrap_or_else(|| demi_shared_artifacts::BUILD_VERSION.into()),
         identity,
         kernel: kernel(),
+        memory: memory(),
         shell: login_shell,
         managed: boot
             .as_ref()
@@ -841,6 +842,16 @@ fn operating_system() -> wire::OperatingSystem {
         distribution,
         arch: std::env::consts::ARCH.to_owned(),
     }
+}
+
+/// The Host's physical memory in bytes, which the hello reports
+/// (`crates/provider-claude-code/src/idle.rs`).
+fn memory() -> u64 {
+    use sysinfo::{MemoryRefreshKind, RefreshKind, System};
+    System::new_with_specifics(
+        RefreshKind::nothing().with_memory(MemoryRefreshKind::nothing().with_ram()),
+    )
+    .total_memory()
 }
 
 /// The kernel as `uname -s` and `uname -r` print it, read natively, which

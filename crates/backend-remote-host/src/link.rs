@@ -240,6 +240,8 @@ pub struct LinkOptions {
     /// its `hello`.
     pub kernel: Option<wire::Kernel>,
     pub shell: Option<String>,
+    /// The Host's physical memory in bytes, from its `hello`.
+    pub memory: u64,
     pub pipes: Pipes,
     pub policy: Rc<dyn LinkPolicy>,
     /// How often to ping; none turns liveness off.
@@ -327,6 +329,7 @@ pub(crate) struct Inner {
     identity: HostIdentity,
     kernel: Option<wire::Kernel>,
     shell: Option<String>,
+    memory: u64,
     /// The device's jobs, which outlive the connection.
     device_jobs: DeviceJobs,
     /// The device's session, which this connection carries on.
@@ -740,6 +743,7 @@ impl Link {
             identity: options.identity,
             kernel: options.kernel,
             shell: options.shell,
+            memory: options.memory,
             device_jobs: options.jobs.clone(),
             session: options.session.clone(),
             control,
@@ -923,6 +927,12 @@ impl Link {
     /// reported it; none from a runner on Windows.
     pub fn kernel(&self) -> Option<&wire::Kernel> {
         self.0.kernel.as_ref()
+    }
+
+    /// The Host's physical memory in bytes, as the runner's hello reported
+    /// it.
+    pub fn memory(&self) -> u64 {
+        self.0.memory
     }
 
     /// The `SHELL` a process the runner starts inherits, as its hello
