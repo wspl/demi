@@ -52,7 +52,9 @@ use demi_machine_manager_protocol::runtime::GVISOR_PATH;
 use semver::Version;
 
 /// The services, in the order they start; they stop in the reverse order.
-pub const UNITS: [&str; 2] = ["demi-machine-manager.service", "demi-backend.service"];
+pub const UNITS: [&str; 2] = [MANAGER, BACKEND];
+pub const MANAGER: &str = "demi-machine-manager.service";
+pub const BACKEND: &str = "demi-backend.service";
 
 /// The units that run an administrator's update: the path unit, which runs
 /// beside the services, and the service it starts. A release without them,

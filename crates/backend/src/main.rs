@@ -101,6 +101,9 @@ async fn run(
     if config.check_config {
         return ExitCode::SUCCESS;
     }
+    if let Some(record) = &config.update_screen {
+        return update_screen(&config, &settings, record, &mut stop).await;
+    }
     // What `DEMI_LOG` selects goes to standard error, which the process
     // supervisor keeps, and to the server log in the data directory.
     let limits = server_log::Limits {
@@ -141,6 +144,34 @@ async fn run(
     let served = serve(&config, settings, &release, &mut stop, started, open_files_limit).await;
     log.close().await;
     served
+}
+
+/// Answers every page with the update screen of the steps in `record` until
+/// a stop signal: no storage opens, and the log goes to standard error only,
+/// since the data directory's log is the backend's.
+async fn update_screen(config: &Config, settings: &BackendConfig, record: &Path, stop: &mut StopSignals) -> ExitCode {
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(config.log.clone())
+        .init();
+    let update = std::sync::Arc::new(demi_backend_database::update::Update::screen(record.to_owned()));
+    let listening = demi_backend_http::Edge::listen(
+        settings.address,
+        settings.public_url.as_ref(),
+        settings.web_directory.clone(),
+        update,
+    )
+    .await;
+    let _listening = match listening {
+        Ok(listening) => listening,
+        Err(error) => {
+            tracing::error!(event = "update_screen.listen_failed", address = %settings.address, %error, "the update screen did not start");
+            return ExitCode::FAILURE;
+        }
+    };
+    tracing::info!(event = "update_screen.started", address = %settings.address, "the update screen is listening");
+    stop.requested().await;
+    ExitCode::SUCCESS
 }
 
 /// Starts the backend and serves until a stop signal, then shuts it down.

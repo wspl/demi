@@ -3,9 +3,10 @@
 //! (`crates/server/src/main.rs`). Only a server that `demi-server` installed
 //! offers it.
 
-use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
+use demi_shared_types::Timestamp;
 use garde::Validate;
 use schemars::JsonSchema;
+use demi_runner_protocol::release::UpgradeStep;
 use serde::{Deserialize, Serialize};
 
 /// `GET /server-upgrade`, and what its changes answer; the state channel
@@ -64,23 +65,16 @@ pub enum UpgradeCheck {
 #[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum UpgradeRun {
     None,
-    /// The release downloads while the server serves: `bytes_done` of
-    /// `bytes`, at `bytes_per_second` of late, 0 before it is measured.
-    Downloading {
+    /// It runs: every step of it while the server serves, in order.
+    Updating { to: String, steps: Vec<UpgradeStep> },
+    /// The update did not happen; the server runs the release it ran. The
+    /// steps say which one failed; none when it failed before it knew what
+    /// to move to.
+    Failed {
         to: String,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        bytes_done: u64,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        bytes: u64,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        bytes_per_second: u64,
+        reason: String,
+        steps: Vec<UpgradeStep>,
     },
-    /// The release checks itself and the paired devices fetch its runner.
-    Preparing { to: String },
-    /// The backend stops next, and serves again in the new release.
-    Restarting { to: String },
-    /// The update did not happen; the server runs the release it ran.
-    Failed { to: String, reason: String },
 }
 
 /// `PUT /server-upgrade/channel`.

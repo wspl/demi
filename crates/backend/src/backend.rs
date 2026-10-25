@@ -52,7 +52,7 @@ use demi_backend_blobs::ObjectError;
 use demi_backend_blobs::store as objects;
 use demi_backend_runners::install::{RunnerReleases, read_runner_release};
 use demi_backend_runners::native::NativeCatalog;
-use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::release::{RunnerRelease, UPDATE_RECORD, UpdateRecord};
 use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
@@ -315,6 +315,16 @@ impl Backend {
         // The listener answers before the data is ready: while a new release
         // migrates or converts it, every page shows how far it is.
         let update = Arc::new(Update::default());
+        // The steps of the server update that started this release, which
+        // its pages go on showing until it serves.
+        let record = data_dir.join(UPDATE_RECORD);
+        if let Some(recorded) = std::fs::read(&record)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<UpdateRecord>(&bytes).ok())
+            .filter(|recorded| recorded.to == demi_shared_artifacts::BUILD_VERSION)
+        {
+            update.recorded(recorded);
+        }
         let listening = Edge::listen(
             config.address,
             config.public_url.as_ref(),
@@ -359,9 +369,12 @@ impl Backend {
                 .await
                 .map_err(|error| StartError::Storage(StorageError::from(error)))??
         };
-        if let Some(due) = due {
-            tracing::info!(event = "update.started", bytes = due.all, "the backend updates its data before it serves");
-            update.begin(due);
+        match due {
+            Some(due) => {
+                tracing::info!(event = "update.started", bytes = due.all, "the backend updates its data before it serves");
+                update.begin(due);
+            }
+            None => update.nothing_due(),
         }
         let secret = match &config.instance_secret {
             Some(secret) => secret.clone(),
@@ -534,6 +547,7 @@ impl Backend {
             }
         };
         update.ready();
+        let _ = std::fs::remove_file(config.data_dir.join(UPDATE_RECORD));
         let edge = listening.open(runner_socket, manage_socket, state, config.web_directory);
         // The machine manager settles what an earlier backend left in the
         // background: no page waits for it, and a manager that starts late is

@@ -34,7 +34,23 @@
     "underAMinute": "剩余不到 1 分钟",
     "minutesLeft": "大约还需 {count} 分钟",
     "body": "更新完成后，Demi 会自动打开。",
-    "restarting": "正在重新启动 Demi"
+    "restarting": "正在重新启动 Demi",
+    "to": "正在将 Demi 更新到 {version}",
+    "returning": "正在退回 Demi {version}",
+    "failed": "无法将 Demi 更新到 {version}",
+    "failedBody": "管理员在服务器上完成更新之前，Demi 暂时无法使用。",
+    "of": "{done}/{count}",
+    "noChanges": "无需更改",
+    "steps": {
+      "stopDemi": "停止 Demi",
+      "saveClouds": "保存正在运行的 Cloud",
+      "keepDatabases": "备份数据库",
+      "switch": "切换到新版本",
+      "startManager": "启动 Cloud 管理服务",
+      "startDemi": "启动 Demi",
+      "updateControl": "更新账户和设置",
+      "updateConversations": "更新对话"
+    }
   },
   "startingScreen": {
     "connecting": "正在连接到 Demi…",

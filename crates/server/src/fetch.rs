@@ -79,19 +79,32 @@ pub async fn newest(source: &Source, channel: Channel) -> io::Result<Version> {
     }
 }
 
-/// Unpacks `version` into its release directory, unless it is there.
-///
-/// `progress` hears the bytes downloaded of all the release's, from GitHub;
-/// a directory's assets are there already.
+/// How far a fetch is.
+pub enum Fetched {
+    /// The release is unpacked already.
+    Present,
+    /// The bytes downloaded of all the release's, from GitHub.
+    Downloading { done: u64, total: u64 },
+    /// Every asset is here: `bytes` downloaded, none from a directory.
+    Downloaded { bytes: u64 },
+    /// The archives' bytes checked and unpacked, of all.
+    Unpacking { done: u64, total: u64 },
+    /// The release is unpacked, from archives of `bytes`.
+    Unpacked { bytes: u64 },
+}
+
+/// Downloads `version`'s assets, then checks and unpacks them into its
+/// release directory, unless it is there; `progress` hears how far it is.
 pub async fn fetch(
     layout: &Layout,
     source: &Source,
     version: &Version,
     cancel: &CancellationToken,
-    progress: &mut (dyn FnMut(u64, u64) + Send),
+    progress: &mut (dyn FnMut(Fetched) + Send),
 ) -> io::Result<()> {
     let destination = layout.release(version);
     if destination.exists() {
+        progress(Fetched::Present);
         return Ok(());
     }
     let releases = layout.releases();
@@ -107,27 +120,40 @@ pub async fn fetch(
         .prefix(&format!(".staging-{version}-"))
         .tempdir_in(&releases)?;
     let architecture = architecture()?;
-    let names = [SUMS.to_owned(), server_asset(version, architecture), image_asset(version, architecture)];
+    let archives = [server_asset(version, architecture), image_asset(version, architecture)];
+    let names = [SUMS.to_owned(), archives[0].clone(), archives[1].clone()];
     let mut downloads = Downloads::new(source, version, &names).await?;
-    let sums = obtain(source, version, SUMS, stage.path(), cancel, &mut downloads, progress).await?;
+    let mut downloaded = |done, total| progress(Fetched::Downloading { done, total });
+    let sums = obtain(source, version, SUMS, stage.path(), cancel, &mut downloads, &mut downloaded).await?;
+    let mut paths = Vec::new();
+    for asset in &archives {
+        paths.push(obtain(source, version, asset, stage.path(), cancel, &mut downloads, &mut downloaded).await?);
+    }
+    progress(Fetched::Downloaded { bytes: downloads.done });
     let sums = std::fs::read_to_string(sums)?;
     let sums = parse_sums(&sums)?;
     let root = stage.path().join("root");
     std::fs::create_dir(&root)?;
-    for asset in [server_asset(version, architecture), image_asset(version, architecture)] {
-        let path = obtain(source, version, &asset, stage.path(), cancel, &mut downloads, progress).await?;
+    let total = paths.iter().map(|path| std::fs::metadata(path).map(|metadata| metadata.len())).sum::<io::Result<u64>>()?;
+    let mut done = 0;
+    for (asset, path) in archives.iter().zip(&paths) {
         let expected = sums
             .iter()
-            .find(|(name, _)| *name == asset)
+            .find(|(name, _)| name == asset)
             .map(|(_, sha256)| sha256.as_str())
             .ok_or_else(|| io::Error::other(format!("{SUMS} names no {asset}")))?;
-        let found = demi_shared_artifacts::digest(&path, LARGEST, cancel)
+        let found = demi_shared_artifacts::digest(path, LARGEST, cancel)
             .await
             .map_err(io::Error::other)?;
         if found.sha256 != expected {
             return Err(io::Error::other(format!("{asset} does not match its SHA-256 in {SUMS}")));
         }
-        let file = std::fs::File::open(&path)?;
+        let file = Counted {
+            inner: std::fs::File::open(path)?,
+            done: &mut done,
+            total,
+            progress: &mut *progress,
+        };
         if asset.ends_with(".zst") {
             unpack(zstd::Decoder::new(file)?, &root)?;
         } else {
@@ -135,7 +161,33 @@ pub async fn fetch(
         }
     }
     std::fs::rename(&root, &destination)?;
-    sync_directory(&releases)
+    sync_directory(&releases)?;
+    progress(Fetched::Unpacked { bytes: total });
+    Ok(())
+}
+
+/// An archive that tells how many of all the archives' bytes are read, at
+/// most once a megabyte.
+struct Counted<'a, R> {
+    inner: R,
+    done: &'a mut u64,
+    total: u64,
+    progress: &'a mut (dyn FnMut(Fetched) + Send),
+}
+
+impl<R: Read> Read for Counted<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        let before = *self.done;
+        *self.done += read as u64;
+        if before / (1 << 20) != *self.done / (1 << 20) {
+            (self.progress)(Fetched::Unpacking {
+                done: *self.done,
+                total: self.total,
+            });
+        }
+        Ok(read)
+    }
 }
 
 /// The asset `name` of `version` as a file: downloaded into `stage`, or the

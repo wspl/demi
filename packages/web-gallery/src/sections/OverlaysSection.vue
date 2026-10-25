@@ -10,6 +10,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
 import UpdatingScreen from '@demicodes/web-ui/ui/UpdatingScreen.vue'
+import { updatingMoments } from '../fixtures/updating'
 import GalleryContextMenus from '../components/GalleryContextMenus.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import FloatingWindow from '@demicodes/web-ui/ui/FloatingWindow.vue'
@@ -1331,40 +1332,47 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Updating Demi"
-        note="Over the whole app while Demi updates its data for a new release, from the first answer that says so until Demi serves again; then the page loads itself in the new build. An update an administrator runs from Settings › Updates shows it from the moment Demi restarts, with Restarting Demi under the moving bar. Under the bar: what Demi updates now, the accounts and settings first, then the conversations, one of how many; the bytes done of how many; and the time left once Demi can estimate it, rounded to minutes as macOS Updates gives it. Until Demi first says how far it is, the bar moves and nothing is written under it; afterwards the screen keeps what Demi last said while it cannot be reached. Nothing on it acts."
+        note="Over the whole app from the moment Demi restarts for an update until it serves again, for everyone, signed in or not; then the page loads itself in the new build. It lists every step of the rest of the update, the same eight in every update: stop Demi, save the running Clouds, keep a copy of the databases, switch, start the Cloud manager, start Demi, update the accounts and settings, update the conversations. A done step says how long it took, the running one how far it is (Clouds saved, bytes copied, conversations and bytes with the time left), a step the update does not need says so; a bar shows the whole. It shows counts and sizes, never a name. When the new version does not start, the failed step says so and the title says Demi returns to the version it left. Until Demi first says how far it is the bar moves and the list's room stays empty; while Demi cannot be reached the screen keeps what it last read. Nothing on it acts."
       >
         <div class="specimen-row specimen-row-wide items-start">
-          <GalleryOverlayWell size="wide">
-            <GallerySpecimen variant="accounts and settings, estimating">
-              <UpdatingScreen :progress="{ step: 'control', conversationsDone: 0, conversations: 73, bytesDone: 0, bytes: 7088059392, leftSeconds: null }" />
+          <GalleryOverlayWell size="tall" style="min-width: 42rem">
+            <GallerySpecimen variant="saving the Clouds">
+              <UpdatingScreen :progress="updatingMoments.saving" />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>
         <div class="specimen-row specimen-row-wide items-start">
-          <GalleryOverlayWell size="wide">
-            <GallerySpecimen variant="conversations, minutes left">
-              <UpdatingScreen :progress="{ step: 'conversations', conversationsDone: 41, conversations: 73, bytesDone: 2899102924, bytes: 7088059392, leftSeconds: 185 }" />
+          <GalleryOverlayWell size="tall" style="min-width: 42rem">
+            <GallerySpecimen variant="keeping a copy of the databases">
+              <UpdatingScreen :progress="updatingMoments.copying" />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>
         <div class="specimen-row specimen-row-wide items-start">
-          <GalleryOverlayWell size="wide">
-            <GallerySpecimen variant="conversations, under a minute">
-              <UpdatingScreen :progress="{ step: 'conversations', conversationsDone: 70, conversations: 73, bytesDone: 6591895552, bytes: 7088059392, leftSeconds: 20 }" />
+          <GalleryOverlayWell size="tall" style="min-width: 42rem">
+            <GallerySpecimen variant="updating conversations">
+              <UpdatingScreen :progress="updatingMoments.conversations" />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>
         <div class="specimen-row specimen-row-wide items-start">
-          <GalleryOverlayWell size="wide">
+          <GalleryOverlayWell size="tall" style="min-width: 42rem">
+            <GallerySpecimen variant="returning to the version it left">
+              <UpdatingScreen :progress="updatingMoments.returning" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="tall" style="min-width: 42rem">
+            <GallerySpecimen variant="a step failed after the stop">
+              <UpdatingScreen :progress="updatingMoments.failed" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="tall" style="min-width: 42rem">
             <GallerySpecimen variant="before Demi says">
               <UpdatingScreen :progress="null" />
-            </GallerySpecimen>
-          </GalleryOverlayWell>
-        </div>
-        <div class="specimen-row specimen-row-wide items-start">
-          <GalleryOverlayWell size="wide">
-            <GallerySpecimen variant="restarting for an update">
-              <UpdatingScreen :progress="null" restarting />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>

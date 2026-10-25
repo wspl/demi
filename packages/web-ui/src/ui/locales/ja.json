@@ -34,7 +34,23 @@
     "underAMinute": "残り 1 分未満",
     "minutesLeft": "残り約 {count} 分",
     "body": "アップデートが終わると Demi が自動的に開きます。",
-    "restarting": "Demi を再起動中"
+    "restarting": "Demi を再起動中",
+    "to": "Demi を {version} にアップデート中",
+    "returning": "Demi {version} に戻しています",
+    "failed": "Demi を {version} にアップデートできませんでした",
+    "failedBody": "管理者がサーバでアップデートを完了するまで、Demi は使用できません。",
+    "of": "{done}/{count}",
+    "noChanges": "変更なし",
+    "steps": {
+      "stopDemi": "Demi を停止",
+      "saveClouds": "実行中の Cloud を保存",
+      "keepDatabases": "データベースのコピーを保存",
+      "switch": "新しいバージョンに切り替え",
+      "startManager": "Cloud マネージャを起動",
+      "startDemi": "Demi を起動",
+      "updateControl": "アカウントと設定をアップデート",
+      "updateConversations": "会話をアップデート"
+    }
   },
   "startingScreen": {
     "connecting": "Demi に接続中…",

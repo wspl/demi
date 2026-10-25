@@ -28,7 +28,7 @@
     "speed": "{size}/초",
     "preparing": "Demi {version} 준비 중…",
     "restarting": "Demi 재시작 중…",
-    "failed": "{version}(으)로 업데이트할 수 없습니다. Demi가 {running}(으)로 돌아갔습니다.",
+    "failed": "{version}(으)로 업데이트할 수 없음",
     "failedNoVersion": "업데이트할 수 없습니다. Demi는 계속 {running}입니다.",
     "channel": "업데이트 채널",
     "channelDescription": "Canary는 아직 아무도 서버에서 써 보지 않은 최신 빌드를 가장 먼저 받습니다.",
@@ -37,7 +37,30 @@
     "confirmTitle": "Demi를 {version}(으)로 업데이트하시겠습니까?",
     "confirmBody": "Demi가 재시작되어 몇 분 동안 모든 사용자가 사용할 수 없습니다.",
     "confirmAgents": "에이전트 {count}개가 작업 중이며, 업데이트 후 계속됩니다.",
-    "update": "업데이트"
+    "update": "업데이트",
+    "updatingTo": "Demi {version}(으)로 업데이트 중",
+    "stepOf": "{count}단계 중 {number}단계: {step}",
+    "failedAt": "{count}단계 중 {number}단계 실패: {step}",
+    "steps": {
+      "download": "Demi {version} 다운로드",
+      "unpack": "Demi {version} 압축 풀기",
+      "checkConfiguration": "설정 확인",
+      "downloadGvisor": "gVisor 다운로드",
+      "installImage": "Cloud 이미지 설치",
+      "checkDatabases": "데이터베이스 확인",
+      "updateDevices": "기기의 Demi 업데이트",
+      "restart": "Demi 재시작"
+    },
+    "detail": {
+      "of": "{done}/{count}",
+      "and": ", ",
+      "waitingFor": "{names} 기다리는 중",
+      "waitingForMore": "{names} 외 {count}대 기다리는 중",
+      "givesUpIn": "{time} 후 나머지 없이 계속",
+      "toUpdate": "{count}개 업데이트",
+      "installed": "이미 설치됨",
+      "noChanges": "변경 사항 없음"
+    }
   },
   "account": {
     "title": "계정",

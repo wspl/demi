@@ -34,7 +34,23 @@
     "underAMinute": "1분 미만 남음",
     "minutesLeft": "약 {count}분 남음",
     "body": "업데이트가 끝나면 Demi가 자동으로 열립니다.",
-    "restarting": "Demi 재시작 중"
+    "restarting": "Demi 재시작 중",
+    "to": "Demi를 {version}(으)로 업데이트 중",
+    "returning": "Demi {version}(으)로 되돌리는 중",
+    "failed": "Demi를 {version}(으)로 업데이트할 수 없음",
+    "failedBody": "관리자가 서버에서 업데이트를 완료할 때까지 Demi를 사용할 수 없습니다.",
+    "of": "{done}/{count}",
+    "noChanges": "변경 사항 없음",
+    "steps": {
+      "stopDemi": "Demi 중지",
+      "saveClouds": "실행 중인 Cloud 저장",
+      "keepDatabases": "데이터베이스 사본 보관",
+      "switch": "새 버전으로 전환",
+      "startManager": "Cloud 관리자 시작",
+      "startDemi": "Demi 시작",
+      "updateControl": "계정 및 설정 업데이트",
+      "updateConversations": "대화 업데이트"
+    }
   },
   "startingScreen": {
     "connecting": "Demi에 연결하는 중…",

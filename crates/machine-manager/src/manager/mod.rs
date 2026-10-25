@@ -18,7 +18,7 @@ mod linux {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DeviceId, HibernateParams, ImageStateParams, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
         ResetParams, RuntimeState, RuntimeStateParams, WakeParams,
     };
     use tokio::{
@@ -206,22 +206,42 @@ mod linux {
         }
 
         /// Hibernates every known device at once; the caller holds the
-        /// whole gate, so no worker is running an operation.
+        /// whole gate, so no worker is running an operation. How many of
+        /// the running Clouds are saved goes to the drain's record, which an
+        /// upgrade shows while it waits for the stop.
         async fn drain(&self) -> Result<(), OpError> {
-            let workers: Vec<_> = self.devices.borrow().values().cloned().collect();
+            let running: std::collections::BTreeSet<DeviceId> =
+                self.running_devices().await.into_iter().map(|(device, _)| device).collect();
+            let saving = u32::try_from(running.len()).unwrap_or(u32::MAX);
+            let saved = std::sync::atomic::AtomicU32::new(0);
+            record_drain(DrainRecord { saved: 0, saving });
+            let workers: Vec<_> = self
+                .devices
+                .borrow()
+                .iter()
+                .map(|(device, worker)| (device.clone(), worker.clone()))
+                .collect();
             let outcomes =
-                futures_util::future::join_all(workers.into_iter().map(|worker| async move {
-                    let (reply, answer) = oneshot::channel();
-                    // The manager's own save names no machine and removes
-                    // no fallback.
-                    let op = DeviceOp::Hibernate {
-                        retention: Retention::Previous,
-                    };
-                    worker
-                        .send(DeviceCommand::Run { op, reply })
-                        .await
-                        .map_err(|_| OpError::WorkerStopped)?;
-                    answer.await.map_err(|_| OpError::WorkerStopped)?
+                futures_util::future::join_all(workers.into_iter().map(|(device, worker)| {
+                    let (running, saved) = (&running, &saved);
+                    async move {
+                        let (reply, answer) = oneshot::channel();
+                        // The manager's own save names no machine and removes
+                        // no fallback.
+                        let op = DeviceOp::Hibernate {
+                            retention: Retention::Previous,
+                        };
+                        worker
+                            .send(DeviceCommand::Run { op, reply })
+                            .await
+                            .map_err(|_| OpError::WorkerStopped)?;
+                        let outcome = answer.await.map_err(|_| OpError::WorkerStopped)?;
+                        if running.contains(&device) {
+                            let saved = saved.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            record_drain(DrainRecord { saved, saving });
+                        }
+                        outcome
+                    }
                 }))
                 .await;
             let failures: Vec<OpError> = outcomes.into_iter().filter_map(Result::err).collect();
@@ -229,6 +249,20 @@ mod linux {
                 return Err(OpError::Shutdown(Parts(failures)));
             }
             Ok(())
+        }
+    }
+
+    /// Writes `record` whole to the drain's record; one that cannot be
+    /// written leaves the upgrade showing the count it read last.
+    fn record_drain(record: DrainRecord) {
+        let path = std::path::Path::new(DRAIN_RECORD);
+        let staged = path.with_extension("new");
+        let written = serde_json::to_vec(&record)
+            .map_err(std::io::Error::other)
+            .and_then(|bytes| std::fs::write(&staged, bytes))
+            .and_then(|()| std::fs::rename(&staged, path));
+        if let Err(error) = written {
+            tracing::debug!(event = "drain.record_failed", %error, "the drain's record was not written");
         }
     }
 

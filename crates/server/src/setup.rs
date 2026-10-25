@@ -198,7 +198,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     }
 
     step(&format!("Fetching Demi {version}"));
-    runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new(), &mut |_, _| {}))?;
+    runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new(), &mut |_| {}))?;
     step("Fetching the gVisor runtime it pins");
     gvisor::of_release(layout, &version)?;
 

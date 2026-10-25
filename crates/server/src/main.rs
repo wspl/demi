@@ -76,7 +76,7 @@ use clap::{Parser, Subcommand};
 use semver::Version;
 use tokio_util::sync::CancellationToken;
 
-use demi_runner_protocol::release::UpgradeNotice;
+use demi_runner_protocol::release::{SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind};
 use demi_shared_artifacts::releases::Channel;
 
 use crate::{journal::Journal, layout::Layout, notices::Notices, services::Systemd, settings::Settings};
@@ -183,10 +183,7 @@ fn main() -> ExitCode {
             // the path unit would start this run again for it.
             if requested {
                 let _ = std::fs::remove_file(layout.upgrade_request());
-                Notices::new(&layout).tell(UpgradeNotice::Failed {
-                    to: String::new(),
-                    reason: error.to_string(),
-                });
+                Notices::new(&layout).failed(error.to_string(), false);
             }
             eprintln!("demi-server: {error}");
             ExitCode::FAILURE
@@ -280,10 +277,7 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
         Action::Move => {
             let mut notices = Notices::new(layout);
             if let Err(failure) = moving::start(layout, &Systemd, &own_version(), &mut notices) {
-                notices.tell(UpgradeNotice::Failed {
-                    to: own_version().to_string(),
-                    reason: failure.reason(),
-                });
+                notices.failed(failure.reason(), matches!(failure, moving::Failure::Stopped(_)));
                 return Err(failure.into());
             }
             println!("The server runs {}", own_version());
@@ -292,11 +286,9 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
         Action::Resume => {
             let journal = Journal::read(&layout.journal())?.ok_or("no move to finish")?;
             let mut notices = Notices::new(layout);
+            notices.moving(&journal.from, &journal.to);
             if let Err(failure) = moving::carry_out(layout, &Systemd, journal, &mut notices) {
-                notices.tell(UpgradeNotice::Failed {
-                    to: own_version().to_string(),
-                    reason: failure.reason(),
-                });
+                notices.failed(failure.reason(), matches!(failure, moving::Failure::Stopped(_)));
                 return Err(failure.into());
             }
             println!("The server runs {}", own_version());
@@ -335,22 +327,42 @@ fn upgrade(
         return Ok(());
     }
     let mut notices = Notices::new(layout);
+    notices.moving(&current, &version);
     let fetched = if version < current {
         Err(format!("{version} is older than {current}: `demi-server rollback` goes back").into())
     } else {
         println!("Fetching {version}");
-        notices.downloaded(&version, 0, 0);
+        notices.start(UpgradeStepKind::Download);
         runtime
-            .block_on(fetch::fetch(layout, &source, &version, &cancel, &mut |done, bytes| {
-                notices.downloaded(&version, done, bytes);
+            .block_on(fetch::fetch(layout, &source, &version, &cancel, &mut |fetched| match fetched {
+                fetch::Fetched::Present => {
+                    for kind in [UpgradeStepKind::Download, UpgradeStepKind::Unpack] {
+                        notices.step(kind, StepState::Skipped { why: SkipReason::Installed });
+                    }
+                }
+                fetch::Fetched::Downloading { done, total } => notices.downloaded(done, total),
+                // Assets from a directory are taken where they are, with
+                // no bytes to tell.
+                fetch::Fetched::Downloaded { bytes } => {
+                    let summary = if bytes == 0 { StepSummary::None } else { StepSummary::Bytes { bytes } };
+                    notices.done(UpgradeStepKind::Download, summary);
+                    notices.start(UpgradeStepKind::Unpack);
+                }
+                fetch::Fetched::Unpacking { done, total } => notices.progress(
+                    UpgradeStepKind::Unpack,
+                    StepProgress::Bytes {
+                        done,
+                        total,
+                        per_second: None,
+                        left_seconds: None,
+                    },
+                ),
+                fetch::Fetched::Unpacked { bytes } => notices.done(UpgradeStepKind::Unpack, StepSummary::Bytes { bytes }),
             }))
             .map_err(Box::<dyn std::error::Error>::from)
     };
     if let Err(error) = fetched {
-        notices.tell(UpgradeNotice::Failed {
-            to: version.to_string(),
-            reason: error.to_string(),
-        });
+        notices.failed(error.to_string(), false);
         return Err(error);
     }
     // The next release tells the backend from here on.

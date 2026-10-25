@@ -121,6 +121,10 @@ pub struct Config {
     /// Validate the configuration as a start would, then exit
     #[arg(long)]
     pub check_config: bool,
+    /// Serve only the update screen of the server update whose steps `FILE`
+    /// holds, as `demi-server` runs it while no backend runs
+    #[arg(long, hide = true, value_name = "FILE")]
+    pub update_screen: Option<PathBuf>,
     /// Development only: the Codex sign-in the master account's Codex entry
     /// holds from each start, which `xtask dev` writes
     /// (`crates/xtask/src/dev/mod.rs`)

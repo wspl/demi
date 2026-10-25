@@ -28,7 +28,7 @@
     "speed": "{size}/秒",
     "preparing": "正在準備 Demi {version}⋯",
     "restarting": "正在重新啟動 Demi⋯",
-    "failed": "無法更新至 {version}。Demi 已回到 {running}。",
+    "failed": "無法更新至 {version}",
     "failedNoVersion": "無法更新。Demi 仍在執行 {running}。",
     "channel": "更新頻道",
     "channelDescription": "Canary 會最先收到新版本，這些版本還沒有人在伺服器上試過。",
@@ -37,7 +37,30 @@
     "confirmTitle": "要將 Demi 更新至 {version} 嗎？",
     "confirmBody": "Demi 會重新啟動，所有人都將有幾分鐘無法使用。",
     "confirmAgents": "有 {count} 個智慧體正在工作，更新後會繼續。",
-    "update": "更新"
+    "update": "更新",
+    "updatingTo": "正在更新至 Demi {version}",
+    "stepOf": "第 {number} 步，共 {count} 步：{step}",
+    "failedAt": "第 {number} 步（共 {count} 步）失敗：{step}",
+    "steps": {
+      "download": "下載 Demi {version}",
+      "unpack": "解開 Demi {version}",
+      "checkConfiguration": "檢查設定",
+      "downloadGvisor": "下載 gVisor",
+      "installImage": "安裝 Cloud 映像檔",
+      "checkDatabases": "檢查資料庫",
+      "updateDevices": "更新你裝置上的 Demi",
+      "restart": "重新啟動 Demi"
+    },
+    "detail": {
+      "of": "{done}/{count}",
+      "and": "和",
+      "waitingFor": "正在等待{names}",
+      "waitingForMore": "正在等待{names}等 {count} 台",
+      "givesUpIn": "{time} 後不再等待其餘裝置",
+      "toUpdate": "{count} 個需要更新",
+      "installed": "已安裝",
+      "noChanges": "無需變更"
+    }
   },
   "account": {
     "title": "帳號",
