@@ -1,8 +1,8 @@
 /**
  * A live view's pictures on a canvas (`crates/plugin-mobile/page/src/index.ts`).
  *
- * WebCodecs decodes the Host's H.264 frames in sequence, and the page draws the
- * newest picture it has at the next refresh. Whatever the source, a browser tab or a
+ * WebCodecs decodes the Host's H.264 frames in sequence, and the page draws each
+ * picture as soon as it is decoded. Whatever the source, a browser tab or a
  * simulator, its pictures come so.
  */
 import { LIVE_VIDEO_CODEC } from '@demicodes/protocol'
@@ -132,7 +132,14 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
     // Only the newest picture is worth painting.
     this.latest?.frame.close()
     this.latest = { frame: picture, generation }
-    this.painting ??= requestAnimationFrame(() => this.paint())
+    // Painted at once: the canvas reaches the screen at the next refresh
+    // either way, and a picture decoded just after a refresh's callbacks
+    // would wait a whole frame for the next.
+    if (this.painting !== null) {
+      cancelAnimationFrame(this.painting)
+      this.painting = null
+    }
+    this.paint()
   }
 
   private paint(): void {
