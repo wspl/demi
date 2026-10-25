@@ -444,6 +444,30 @@ pub enum SessionEvent {
     ActionFailed {
         report: ErrorReport,
     },
+    /// When the session compacts while idle changed: an answered request
+    /// set it, or none when it fails a condition, and a compaction ends it.
+    IdleCompactionDue {
+        due: Option<IdleCompactionDue>,
+    },
+}
+
+/// When a session compacts while idle, shortly before its prompt cache
+/// expires, and the lifetime of that cache, which the product compares with
+/// the user's minimum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdleCompactionDue {
+    pub at: Timestamp,
+    pub lifetime: std::time::Duration,
+}
+
+impl IdleCompactionDue {
+    /// When the cache expires: the rest of its lifetime after `at`. A
+    /// compaction after it would read the whole history uncached.
+    pub fn expires_at(&self) -> Timestamp {
+        let before = self.lifetime * compaction::IDLE_COMPACTION_SHARE.0 / compaction::IDLE_COMPACTION_SHARE.1;
+        let rest = i64::try_from((self.lifetime - before).as_millis()).unwrap_or(i64::MAX);
+        Timestamp::from_millisecond(self.at.as_millisecond().saturating_add(rest)).unwrap_or(self.at)
+    }
 }
 
 /// Why an action's body ended early.
@@ -1150,7 +1174,14 @@ impl AgentSession {
 
     /// Runs one compaction pass.
     pub fn compact(&self) -> Result<ActionHandle, AdmissionError> {
-        self.shared.update(|core| core.admit(ActionKind::Compact))
+        self.shared.update(|core| core.admit(ActionKind::Compact { idle: false }))
+    }
+
+    /// Runs one compaction pass while the session is idle, before its prompt
+    /// cache expires; a pass that fails writes nothing. Returns false, and
+    /// runs nothing, when the session is not idle.
+    pub fn compact_idle(&self) -> bool {
+        self.shared.update(SessionCore::admit_idle_compaction)
     }
 
     pub fn dequeue_message(&self, id: &TurnId) -> bool {

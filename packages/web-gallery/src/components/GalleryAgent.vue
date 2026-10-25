@@ -27,6 +27,8 @@ defineProps<{
     v-model:send-while-running="galleryMessages.sendWhileRunning"
     v-model:resume-after-restart="galleryMessages.resumeAfterRestart"
     v-model:resume-at-retry="galleryMessages.resumeAtRetry"
+    v-model:compact-idle="galleryMessages.compactIdle"
+    v-model:idle-lifetime="galleryMessages.idleLifetime"
     :overlay-store="appOverlayStore"
     :providers="demoProviders"
     :models="smallModelCatalog"

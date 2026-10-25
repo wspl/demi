@@ -21,7 +21,7 @@
     },
     "agent": {
       "title": "智慧體",
-      "description": "輕量模型和訊息。",
+      "description": "輕量模型、訊息和上下文。",
       "smallModel": "輕量模型",
       "model": "模型",
       "modelDescription": "用於撰寫對話標題。「自動」會從你的供應商中選擇一款快速模型。",
@@ -35,7 +35,14 @@
       "resumeAfterRestart": "Demi 重新啟動後繼續",
       "resumeAfterRestartDescription": "輪次因 Demi 重新啟動（例如更新）而停止時，在重新啟動後繼續。",
       "resumeAtRetry": "使用上限重設後繼續",
-      "resumeAtRetryDescription": "輪次因使用上限而停止時，在上限重設後繼續。"
+      "resumeAtRetryDescription": "輪次因使用上限而停止時，在上限重設後繼續。",
+      "context": "上下文",
+      "compactIdle": "壓縮閒置對話",
+      "compactIdleDescription": "長對話的提示快取即將過期前，先為它產生摘要，讓你的下一則訊息不必重新傳送全部內容。",
+      "idleLifetime": "最短快取有效期",
+      "idleLifetimeDescription": "只壓縮供應商快取保留時間不短於此值的對話。",
+      "halfHour": "30 分鐘",
+      "hour": "1 小時"
     }
   },
   "appearance": {

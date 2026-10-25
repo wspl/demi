@@ -278,7 +278,9 @@
       "sameProviderKeywords": "隐私,同一供应商",
       "sendKeywords": "引导,排队,回车",
       "restartKeywords": "重启,更新,继续",
-      "retryKeywords": "用量限制,额度,重置"
+      "retryKeywords": "用量限制,额度,重置",
+      "compactIdleKeywords": "压缩,提示缓存,闲置,摘要",
+      "idleLifetimeKeywords": "提示缓存,有效期,TTL"
     },
     "providers": {
       "keywords": "模型,API 密钥,anthropic,openai,claude code,codex,基础 URL,目录"
@@ -583,6 +585,18 @@
       "reorder": "拖动以重新排序",
       "move": "移动“{label}”",
       "none": "没有账户"
+    },
+    "cacheTtl": {
+      "title": "提示缓存有效期",
+      "description": "供应商保留对话缓存的时长。选择“未指定”时不发送有效期。",
+      "unspecified": "未指定",
+      "custom": "自定义",
+      "customItem": "自定义…",
+      "customField": "自定义有效期",
+      "customPlaceholder": "2h",
+      "invalid": "请输入整数分钟或小时，例如 90m 或 2h。",
+      "minutes": "{count} 分钟",
+      "hours": "{count} 小时"
     },
     "connection": {
       "endpoint": "端点",

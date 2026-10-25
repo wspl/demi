@@ -84,6 +84,20 @@ const MAX_FIT_PASSES: usize = 8;
 /// holds.
 const MANUAL_COMPACTION_PERCENT: u8 = 50;
 
+/// The smallest window in use whose session compacts while idle: on a
+/// smaller one, the compaction near the window comes first.
+pub(super) const IDLE_COMPACTION_WINDOW: u64 = 300_000;
+
+/// The fewest tokens a request carries for its session to compact while idle:
+/// below them, writing the context to the cache again costs little next to
+/// the detail a summary loses.
+pub(super) const IDLE_COMPACTION_CONTEXT: u64 = 200_000;
+
+/// The share of the cache's lifetime, as a fraction, after which an idle
+/// session compacts: the summary request then still reads the cache, with
+/// room for its own wait.
+pub(super) const IDLE_COMPACTION_SHARE: (u32, u32) = (9, 10);
+
 /// The most room the token threshold leaves for the model's answer, and the
 /// room it leaves beyond that for the summary request's instruction and the
 /// estimate's margin, in tokens.
@@ -219,6 +233,9 @@ pub(super) enum Trigger {
         estimate: Option<u64>,
         compact_from: Option<u64>,
     },
+    /// The session was idle and its prompt cache about to expire, at an
+    /// estimate; none when it could not be read.
+    Idle { estimate: Option<u64> },
 }
 
 impl Trigger {
@@ -292,6 +309,16 @@ impl Trigger {
                 compact_from,
                 "a compaction pass started"
             ),
+            Self::Idle { estimate } => session_log!(
+                core,
+                info,
+                event = "compaction.started",
+                node = %core.id,
+                turn,
+                trigger = "idle",
+                estimate,
+                "a compaction pass started"
+            ),
         }
     }
 
@@ -303,6 +330,7 @@ impl Trigger {
             Self::TokenRefusal { .. } => "vendor_refused",
             Self::ModelSwitch { .. } => "model_switch",
             Self::UserAction { .. } => "user",
+            Self::Idle { .. } => "idle",
         }
     }
 }
@@ -549,7 +577,8 @@ pub(super) async fn run_pass(
     let began = s.read(|core| core.clock().now().as_millisecond());
     let tokens_before = held_context_usage(s).await.map(|usage| usage.tokens);
     let mut facts = PassFacts::default();
-    let result = pass(s, cancel, &mut facts).await;
+    let idle = matches!(trigger, Trigger::Idle { .. });
+    let result = pass(s, cancel, &mut facts, idle).await;
     let outcome = match &result {
         Ok(true) => "done",
         Ok(false) => "no_gain",
@@ -583,6 +612,9 @@ pub(super) async fn run_pass(
     });
     if matches!(result, Ok(true)) {
         s.update(SessionCore::count_compaction);
+        // The next request writes the compacted context anew, and its answer
+        // tells when it compacts while idle.
+        s.emit(SessionEvent::IdleCompactionDue { due: None });
     }
     result
 }
@@ -602,11 +634,21 @@ struct PassFacts {
     attempts: u32,
 }
 
+/// One pass; a pass while the session is `idle` marks its marker so, and
+/// records no failure, which nobody asked to see.
 async fn pass(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
     facts: &mut PassFacts,
+    idle: bool,
 ) -> Result<bool, TurnError> {
+    let record_failure = |s: &SessionShared, report: Box<ErrorReport>| {
+        if idle {
+            TurnError::Failed(report)
+        } else {
+            record_failure(s, report)
+        }
+    };
     let model = s.read(|core| core.model.clone());
     let window_tokens = cancel.guard(window_in_use(s, &model)).await?;
     let budget = window_tokens.map_or(KEPT_WORK, |window| {
@@ -688,7 +730,7 @@ async fn pass(
                         kept,
                     );
                     core.transcript
-                        .push_compaction_marker(&model, boundary, compacted_tokens);
+                        .push_compaction_marker(&model, boundary, compacted_tokens, idle);
                     core.commit();
                     // The next request writes its prefix anew in any case,
                     // so the agent takes an account again for it

@@ -10,7 +10,7 @@
 //! Sealing and opening belong to the vault; these operations store and read the
 //! sealed bytes.
 
-use demi_shared_types::{ProviderModelList, QuotaSnapshot, Timestamp};
+use demi_shared_types::{CacheTtl, ProviderModelList, QuotaSnapshot, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, Rotation};
 use garde::Validate;
@@ -88,6 +88,9 @@ pub struct ProviderRow {
     pub video_generation: bool,
     /// Whether the entry makes audio when its provider can.
     pub audio_generation: bool,
+    /// The prompt cache lifetime the entry's requests ask for; none asks for
+    /// none.
+    pub cache_ttl: Option<CacheTtl>,
 }
 
 /// The media switches a change of an entry sets, each kind's when
@@ -109,6 +112,7 @@ pub struct NewProvider {
     pub label: String,
     pub config: Option<Vec<u8>>,
     pub active: Option<CredentialId>,
+    pub cache_ttl: Option<CacheTtl>,
 }
 
 /// A `provider_credentials` row: one account with its secret still sealed.
@@ -142,10 +146,10 @@ pub struct CredentialWrite {
     pub secret: Option<Vec<u8>>,
 }
 
-const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation";
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation, cache_ttl";
 /// The columns a new entry stores; its rotation is the default, manual, its
 /// Image Generation is on, and it joins the end of its owner's list.
-const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, position";
+const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, cache_ttl, position";
 const CREDENTIAL_COLUMNS: &str =
     "id, identity_key, label, detail, source, secret, version, quota, updated_at, signed_out";
 
@@ -177,7 +181,7 @@ impl ControlService {
             let inserted = transaction
                 .query_row(
                     &format!(
-                        "INSERT INTO providers ({NEW_PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                        "INSERT INTO providers ({NEW_PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
                            (SELECT coalesce(max(position) + 1, 0) FROM providers WHERE owner_user_id = ?2))
                          ON CONFLICT (owner_user_id, provider_type) WHERE credential_kind = 'subscription' DO NOTHING
                          RETURNING {PROVIDER_COLUMNS}"
@@ -190,7 +194,8 @@ impl ControlService {
                         provider.label,
                         provider.config,
                         provider.active.as_ref().map(CredentialId::as_str),
-                        now.as_millisecond()
+                        now.as_millisecond(),
+                        provider.cache_ttl.as_ref().map(CacheTtl::as_str)
                     ],
                     |row| Ok(provider_row(row)),
                 )
@@ -229,9 +234,10 @@ impl ControlService {
         .await
     }
 
-    /// Replaces the entry's label, family, sealed configuration, rotation or
-    /// media switches, and answers the entry as it now is; `None` for an
-    /// entry that no longer exists.
+    /// Replaces the entry's label, family, sealed configuration, rotation,
+    /// media switches or prompt cache lifetime, and answers the entry as it
+    /// now is; `None` for an entry that no longer exists.
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_provider(
         &self,
         id: ProviderId,
@@ -240,6 +246,7 @@ impl ControlService {
         config: Option<Vec<u8>>,
         rotation: Option<Rotation>,
         switches: MediaSwitches,
+        cache_ttl: Option<Option<CacheTtl>>,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -283,6 +290,12 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE providers SET audio_generation = ?1 WHERE id = ?2",
                     params![on, id.as_str()],
+                )?;
+            }
+            if let Some(ttl) = cache_ttl {
+                transaction.execute(
+                    "UPDATE providers SET cache_ttl = ?1 WHERE id = ?2",
+                    params![ttl.as_ref().map(CacheTtl::as_str), id.as_str()],
                 )?;
             }
             let updated = provider_by_id(&transaction, &id)?;
@@ -697,6 +710,10 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
         image_generation: row.get("image_generation")?,
         video_generation: row.get("video_generation")?,
         audio_generation: row.get("audio_generation")?,
+        cache_ttl: row
+            .get::<_, Option<String>>("cache_ttl")?
+            .map(|ttl| decode("providers", "cache_ttl", CacheTtl::try_from(ttl)))
+            .transpose()?,
     })
 }
 

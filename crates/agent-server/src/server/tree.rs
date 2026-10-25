@@ -527,6 +527,7 @@ impl<H: HostResolver> Tree<H> {
             let agents = agents.clone();
             let readings = readings.clone();
             let status_changed = deps.status_changed.clone();
+            let idle_compaction_due = deps.idle_compaction_due.clone();
             let root = root.clone();
             let paths = paths.clone();
             // Whether the root runs, which its recent patches follow.
@@ -546,6 +547,9 @@ impl<H: HostResolver> Tree<H> {
                 }
                 if let SessionEvent::PhaseChanged { .. } = event {
                     status_changed(&root);
+                }
+                if let SessionEvent::IdleCompactionDue { due } = event {
+                    idle_compaction_due(&root, *due);
                 }
             })
         });

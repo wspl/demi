@@ -9,7 +9,7 @@ use demi_provider_common::{
     openai_request::{
         AssistantReplay, ChatDialect, ChatMedia, ChatMessage, ChatTool, InputItem, Reasoning,
         ReasoningReplay, ResponsesDialect, ResponsesTool, SummaryOff, ToolMedia, chat_messages,
-        prompt_cache_key, reasoning_effort, responses_input, responses_reasoning,
+        PromptCacheOptions, prompt_cache_key, reasoning_effort, responses_input, responses_reasoning,
     },
 };
 use demi_shared_types::is_blank;
@@ -21,7 +21,12 @@ use demi_provider_common::VendorPolicy;
 /// The JSON body of a Responses request.
 /// `signature_tag` names the entry's vendor, whose reasoning alone is
 /// replayed.
-pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy, signature_tag: &str) -> Vec<u8> {
+pub(crate) fn responses(
+    request: &InferenceRequest,
+    policy: VendorPolicy,
+    signature_tag: &str,
+    cache_ttl: Option<&str>,
+) -> Vec<u8> {
     let dialect = ResponsesDialect {
         signature_tag,
         assistant: if policy.replay_assistant_status {
@@ -51,6 +56,7 @@ pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy, signat
         store: false,
         include: ["reasoning.encrypted_content"],
         prompt_cache_key: prompt_cache_key(request.cache_session()),
+        prompt_cache_options: PromptCacheOptions::of(request, cache_ttl),
         max_output_tokens: request.max_output_tokens().map(|limit| limit.get()),
         instructions: (!is_blank(&request.system_prompt)).then_some(request.system_prompt.as_str()),
         tools: request
@@ -76,6 +82,8 @@ struct ResponsesBody<'a> {
     include: [&'static str; 1],
     prompt_cache_key: Cow<'a, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    prompt_cache_options: Option<PromptCacheOptions<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     max_output_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<&'a str>,
@@ -91,10 +99,15 @@ struct ResponsesBody<'a> {
     service_tier: Option<&'a str>,
 }
 
-/// The JSON body of a Chat Completions request. It carries no cache field:
-/// OpenAI and most compatible vendors cache by prefix on their own, and some
-/// compatible vendors refuse fields they do not know.
-pub(crate) fn chat_completions(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
+/// The JSON body of a Chat Completions request. It carries a cache field only
+/// when the entry asks for a lifetime: OpenAI and most compatible vendors
+/// cache by prefix on their own, and some compatible vendors refuse fields
+/// they do not know.
+pub(crate) fn chat_completions<'a>(
+    request: &'a InferenceRequest,
+    policy: VendorPolicy,
+    cache_ttl: Option<&'a str>,
+) -> Vec<u8> {
     let dialect = ChatDialect {
         reasoning_content: policy.pass_back_reasoning_content,
         media: ChatMedia::Native,
@@ -111,6 +124,7 @@ pub(crate) fn chat_completions(request: &InferenceRequest, policy: VendorPolicy)
         stream_options: StreamOptions {
             include_usage: true,
         },
+        prompt_cache_options: PromptCacheOptions::of(request, cache_ttl),
     };
     json_body(&body)
 }
@@ -132,6 +146,8 @@ struct ChatBody<'a> {
     service_tier: Option<&'a str>,
     /// The last chunk carries the request's usage.
     stream_options: StreamOptions,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt_cache_options: Option<PromptCacheOptions<'a>>,
 }
 
 #[derive(Serialize)]

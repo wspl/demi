@@ -278,7 +278,9 @@
       "sameProviderKeywords": "privacy,same provider",
       "sendKeywords": "steer,queue,enter",
       "restartKeywords": "restart,update,continue",
-      "retryKeywords": "usage limit,quota,reset"
+      "retryKeywords": "usage limit,quota,reset",
+      "compactIdleKeywords": "compaction,compact,prompt cache,idle,summary",
+      "idleLifetimeKeywords": "prompt cache,lifetime,TTL"
     },
     "providers": {
       "keywords": "models,api key,anthropic,openai,claude code,codex,base url,catalog"
@@ -583,6 +585,18 @@
       "reorder": "Drag to reorder",
       "move": "Move {label}",
       "none": "No accounts"
+    },
+    "cacheTtl": {
+      "title": "Prompt cache lifetime",
+      "description": "How long the provider keeps a conversation cached. Unspecified sends no lifetime.",
+      "unspecified": "Unspecified",
+      "custom": "Custom",
+      "customItem": "Custom…",
+      "customField": "Custom lifetime",
+      "customPlaceholder": "2h",
+      "invalid": "Enter whole minutes or hours, such as 90m or 2h.",
+      "minutes": "{count} minute | {count} minutes",
+      "hours": "{count} hour | {count} hours"
     },
     "connection": {
       "endpoint": "Endpoint",

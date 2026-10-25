@@ -21,7 +21,7 @@
     },
     "agent": {
       "title": "Agent",
-      "description": "Small model and messages.",
+      "description": "Small model, messages and context.",
       "smallModel": "Small Model",
       "model": "Model",
       "modelDescription": "Writes conversation titles. Automatic picks a fast model from your providers.",
@@ -35,7 +35,14 @@
       "resumeAfterRestart": "Resume after Demi restarts",
       "resumeAfterRestartDescription": "Continues a turn that stopped because Demi restarted, such as for an update.",
       "resumeAtRetry": "Resume after a usage limit resets",
-      "resumeAtRetryDescription": "Continues a turn that stopped at a usage limit when the limit resets."
+      "resumeAtRetryDescription": "Continues a turn that stopped at a usage limit when the limit resets.",
+      "context": "Context",
+      "compactIdle": "Compact idle conversations",
+      "compactIdleDescription": "Shortly before a long conversation’s prompt cache expires, summarizes it so your next message doesn’t resend all of it.",
+      "idleLifetime": "Minimum cache lifetime",
+      "idleLifetimeDescription": "Only conversations whose provider keeps the cache at least this long are compacted.",
+      "halfHour": "30 Minutes",
+      "hour": "1 Hour"
     }
   },
   "appearance": {

@@ -288,6 +288,26 @@ pub enum SendWhileRunning {
     Queue,
 }
 
+/// The least prompt cache lifetime for which an idle conversation compacts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum IdleLifetime {
+    #[serde(rename = "30m")]
+    HalfHour,
+    #[serde(rename = "1h")]
+    #[default]
+    Hour,
+}
+
+impl IdleLifetime {
+    pub fn duration(self) -> std::time::Duration {
+        let minutes = match self {
+            Self::HalfHour => 30,
+            Self::Hour => 60,
+        };
+        std::time::Duration::from_secs(minutes * 60)
+    }
+}
+
 /// A language Demi speaks (`localization.md`), by its BCP 47 tag: the
 /// page's text and the backend's are written in each.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -492,6 +512,27 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
+    /// Whether an idle conversation compacts shortly before its prompt
+    /// cache expires, when its window is large enough and its cache lives at
+    /// least `idle_compaction_lifetime`. Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub compact_idle: Option<bool>,
+    /// The least prompt cache lifetime an idle conversation compacts for.
+    /// Absent means an hour.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "IdleLifetime")]
+    #[garde(skip)]
+    pub idle_compaction_lifetime: Option<IdleLifetime>,
     /// Whether the page shows an error of its own that no caller shows, with
     /// an ID that finds its line in the log. The page logs every error
     /// either way. Absent means no.
@@ -745,6 +786,27 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
+    /// Whether an idle conversation compacts shortly before its prompt
+    /// cache expires, when its window is large enough and its cache lives at
+    /// least `idle_compaction_lifetime`. Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub compact_idle: Option<bool>,
+    /// The least prompt cache lifetime an idle conversation compacts for.
+    /// Absent means an hour.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "IdleLifetime")]
+    #[garde(skip)]
+    pub idle_compaction_lifetime: Option<IdleLifetime>,
     /// Whether the page shows an error of its own that no caller shows, with
     /// an ID that finds its line in the log. The page logs every error
     /// either way. Absent means no.

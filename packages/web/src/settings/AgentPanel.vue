@@ -31,5 +31,9 @@ const resources = useResources()
     @update:resume-after-restart="preferences.update({ resumeAfterRestart: $event })"
     :resume-at-retry="preferences.resumeAtRetry"
     @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
+    :compact-idle="preferences.compactIdle"
+    @update:compact-idle="preferences.update({ compactIdle: $event })"
+    :idle-lifetime="preferences.idleCompactionLifetime"
+    @update:idle-lifetime="preferences.update({ idleCompactionLifetime: $event })"
   />
 </template>

@@ -26,26 +26,16 @@ const DEFAULT_MAX_TOKENS: u32 = 32_000;
 /// keeps below `max_tokens`.
 const MIN_THINKING_BUDGET: u32 = 1_024;
 
-/// How long the vendor keeps an entry after the request that wrote or last read
-/// it: an hour.
-///
-/// A session's requests are often more than five minutes apart (a `shell` call
-/// watches a command for up to ten, and a user reads an answer before
-/// replying). A lost entry costs 1.25 times the input price on the whole
-/// history, where the hour costs twice the input price on what each request
-/// adds.
-const CACHE_LIFETIME: &str = "1h";
-
 /// A mark on the block where the vendor writes a cache entry, and where a
-/// later request reads it back.
-const CACHE_MARK: CacheControl = CacheControl {
-    kind: "ephemeral",
-    ttl: CACHE_LIFETIME,
-};
+/// later request reads it back, kept for the entry's lifetime, or the
+/// vendor's default without one.
+fn cache_mark(ttl: Option<&str>) -> CacheControl<'_> {
+    CacheControl { kind: "ephemeral", ttl }
+}
 
-/// The JSON body of `request`.
-pub(crate) fn encode(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
-    json_body(&body(request, policy))
+/// The JSON body of `request`, whose cache marks ask for `ttl`.
+pub(crate) fn encode(request: &InferenceRequest, policy: VendorPolicy, ttl: Option<&str>) -> Vec<u8> {
+    json_body(&body(request, policy, ttl))
 }
 
 #[derive(Serialize)]
@@ -82,7 +72,7 @@ struct Content<'a> {
     #[serde(flatten)]
     block: Block<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    cache_control: Option<CacheControl>,
+    cache_control: Option<CacheControl<'a>>,
 }
 
 impl<'a> From<Block<'a>> for Content<'a> {
@@ -106,10 +96,11 @@ impl Content<'_> {
 }
 
 #[derive(Clone, Copy, Serialize)]
-struct CacheControl {
+struct CacheControl<'a> {
     #[serde(rename = "type")]
     kind: &'static str,
-    ttl: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ttl: Option<&'a str>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
@@ -185,7 +176,7 @@ struct Tool<'a> {
     description: &'a str,
     input_schema: &'a serde_json::Map<String, serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    cache_control: Option<CacheControl>,
+    cache_control: Option<CacheControl<'a>>,
 }
 
 impl<'a> From<&'a ToolDefinition> for Tool<'a> {
@@ -221,7 +212,7 @@ struct OutputConfig<'a> {
     effort: &'a str,
 }
 
-fn body(request: &InferenceRequest, policy: VendorPolicy) -> Body<'_> {
+fn body<'a>(request: &'a InferenceRequest, policy: VendorPolicy, ttl: Option<&'a str>) -> Body<'a> {
     let max_tokens = request
         .max_output_tokens()
         .map_or(DEFAULT_MAX_TOKENS, |limit| limit.get());
@@ -251,10 +242,11 @@ fn body(request: &InferenceRequest, policy: VendorPolicy) -> Body<'_> {
         PromptCache::Off => messages(&request.items, 0).0,
         PromptCache::Session { answered_items } => {
             let (mut messages, answered_end) = messages(&request.items, answered_items);
-            mark_shared_prefix(&mut system, &mut tools);
+            let mark = cache_mark(ttl);
+            mark_shared_prefix(&mut system, &mut tools, mark);
             let request_end = last_position(&messages);
             for position in [answered_end, request_end].into_iter().flatten() {
-                mark_at(&mut messages, position);
+                mark_at(&mut messages, position, mark);
             }
             messages
         }
@@ -275,17 +267,17 @@ fn body(request: &InferenceRequest, policy: VendorPolicy) -> Body<'_> {
 /// Marks the end of what the nodes of one product and profile share: the
 /// system prompt, or the last tool when the prompt is blank. Its entry serves
 /// a conversation's first request and each request after a summary.
-fn mark_shared_prefix(system: &mut [Content<'_>], tools: &mut [Tool<'_>]) {
+fn mark_shared_prefix<'a>(system: &mut [Content<'a>], tools: &mut [Tool<'a>], mark: CacheControl<'a>) {
     if let Some(prompt) = system.last_mut() {
-        prompt.cache_control = Some(CACHE_MARK);
+        prompt.cache_control = Some(mark);
     } else if let Some(tool) = tools.last_mut() {
-        tool.cache_control = Some(CACHE_MARK);
+        tool.cache_control = Some(mark);
     }
 }
 
 /// Marks the block at `position`, or the nearest block before it that can
 /// carry a mark.
-fn mark_at(messages: &mut [Message<'_>], position: Position) {
+fn mark_at<'a>(messages: &mut [Message<'a>], position: Position, mark: CacheControl<'a>) {
     let (last_message, last_block) = position;
     for index in (0..=last_message).rev() {
         let content = &mut messages[index].content;
@@ -299,7 +291,7 @@ fn mark_at(messages: &mut [Message<'_>], position: Position) {
             .rev()
             .find(|block| block.can_mark())
         {
-            block.cache_control = Some(CACHE_MARK);
+            block.cache_control = Some(mark);
             return;
         }
     }

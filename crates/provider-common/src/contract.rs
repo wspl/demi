@@ -637,6 +637,12 @@ pub enum ProviderEvent {
     /// None when the vendor reported no call's own usage; nothing stands in for
     /// it. An HTTP provider makes it with [`ProviderEvent::response`].
     Response(Option<TokenUsage>),
+    /// How long the vendor keeps the prompt cache this run wrote and read,
+    /// sent before the run's `Response` when the provider knows it: the
+    /// lifetime its request asked for, the vendor's documented one when it
+    /// asked for none, or the one the vendor reported writing. A run whose
+    /// provider does not know it sends none.
+    CacheLifetime(std::time::Duration),
     /// The run's failure; it is the run's last event.
     Error(ProviderFailure),
     /// The account the agent uses from this run on, sent before anything else
@@ -766,8 +772,8 @@ impl ProviderEvent {
     /// Whether the event is output the model wrote in this run: reasoning, text
     /// or a tool call, whole or in pieces.
     ///
-    /// The run's usage and failure, the agent's account and the vendor's record
-    /// of the session are bookkeeping, which writes nothing of the answer. A
+    /// The run's usage, cache lifetime and failure, the agent's account and the
+    /// vendor's record of the session are bookkeeping, which writes nothing of the answer. A
     /// usage limit after only those still sends the request again on another
     /// account (`crates/backend-providers/src/llm/rotation.rs`).
     pub fn is_output(&self) -> bool {
@@ -781,6 +787,7 @@ impl ProviderEvent {
             | Self::ToolCallInput { .. }
             | Self::ToolCall(_) => true,
             Self::Response(_)
+            | Self::CacheLifetime(_)
             | Self::Error(_)
             | Self::Account(_)
             | Self::AccountSwitch(_)

@@ -41,8 +41,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     ActionEnd, ActionHandle, ActionReply, AdmissionError, AgentMessageError, ErrorReport,
-    Execution, ModelSwitch, SessionEvent, Settle, Status, SteerError,
+    Execution, IdleCompactionDue, ModelSwitch, SessionEvent, Settle, Status, SteerError,
     cancel::{CancelReason, TurnCancel},
+    compaction::{IDLE_COMPACTION_CONTEXT, IDLE_COMPACTION_SHARE, IDLE_COMPACTION_WINDOW},
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
     input::{Input, InputQueue, Opens, Take},
     persist::PersistMarks,
@@ -428,7 +429,11 @@ pub(super) enum ActionKind {
     Resume {
         reason: Option<String>,
     },
-    Compact,
+    /// A compaction pass: the user's, or one while the session is `idle`,
+    /// before its prompt cache expires.
+    Compact {
+        idle: bool,
+    },
     /// An admitted edit, whose submission waits in the session's edit state.
     Edit,
     /// A switch to the `to`th version at the block `target`'s place.
@@ -446,7 +451,7 @@ impl ActionKind {
             Self::Continue => "continue",
             Self::Retry => "retry",
             Self::Resume { .. } => "resume",
-            Self::Compact => "compact",
+            Self::Compact { .. } => "compact",
             Self::Edit => "edit",
             Self::Switch { .. } => "switch",
         }
@@ -515,6 +520,15 @@ struct StreamedOutput {
     first_at: Option<Timestamp>,
     /// When the response ended.
     ended_at: Option<Timestamp>,
+    /// When the request was sent, from which its prompt cache's lifetime
+    /// counts.
+    sent_at: Timestamp,
+    /// How long the vendor keeps the request's prompt cache, when its
+    /// provider said.
+    cache_lifetime: Option<std::time::Duration>,
+    /// The tokens the request carried, input and cache alike, once its
+    /// response reported them.
+    carried: Option<u64>,
 }
 
 impl StreamedOutput {
@@ -927,6 +941,18 @@ impl SessionCore {
         Ok(self.push_action(kind, turn))
     }
 
+    /// Admits a compaction while the session is idle: only while nothing
+    /// runs, waits or would open a turn. Returns whether it was admitted.
+    pub(super) fn admit_idle_compaction(&mut self) -> bool {
+        let idle = matches!(self.activity, Activity::Idle) && self.pending.is_empty() && !self.wants_continuation();
+        if !idle || self.refuse_admission().is_err() {
+            return false;
+        }
+        let turn = self.new_turn();
+        drop(self.push_action(ActionKind::Compact { idle: true }, turn));
+        true
+    }
+
     fn push_action(&mut self, kind: ActionKind, turn: TurnId) -> ActionHandle {
         let (reply, handle) = ActionHandle::channel();
         self.pending.push_back(PendingAction {
@@ -1022,7 +1048,7 @@ impl SessionCore {
         // A turn waits for the model's answer from its start, through the
         // hooks and the Host reads that build its request; a compaction
         // alone asks for none.
-        let waits = !matches!(kind, ActionKind::Compact);
+        let waits = !matches!(kind, ActionKind::Compact { .. });
         let kind_name = kind.name();
         self.activity = Activity::Running(ActionRun {
             turn: turn.clone(),
@@ -2373,7 +2399,28 @@ impl SessionCore {
             reported: None,
             first_at: None,
             ended_at: None,
+            sent_at: self.clock.now(),
+            cache_lifetime: None,
+            carried: None,
         });
+    }
+
+    /// When the latest request's conversation compacts while idle, by the
+    /// conditions the request decides: a window in use of `window` and a
+    /// context large enough, and a cache lifetime its provider said. None
+    /// when any fails, or before the request was answered.
+    pub(super) fn idle_compaction_due(&self, window: Option<u64>) -> Option<IdleCompactionDue> {
+        let output = self.output.as_ref()?;
+        let lifetime = output.cache_lifetime?;
+        if window? < IDLE_COMPACTION_WINDOW || output.carried? < IDLE_COMPACTION_CONTEXT {
+            return None;
+        }
+        let before_expiry = lifetime * IDLE_COMPACTION_SHARE.0 / IDLE_COMPACTION_SHARE.1;
+        let at = output.sent_at.as_millisecond() + i64::try_from(before_expiry.as_millis()).ok()?;
+        Some(IdleCompactionDue {
+            at: Timestamp::from_millisecond(at).ok()?,
+            lifetime,
+        })
     }
 
     /// The running request ended without a response, failed, stopped or
@@ -2424,8 +2471,11 @@ impl SessionCore {
             }
             ProviderEvent::Response(usage) => {
                 output.reported = usage.map(|usage| usage.output_tokens);
+                output.carried =
+                    usage.map(|usage| usage.input_tokens + usage.cache_read_tokens + usage.cache_write_tokens);
                 output.ended_at = Some(now);
             }
+            ProviderEvent::CacheLifetime(lifetime) => output.cache_lifetime = Some(*lifetime),
             _ => {}
         }
         // The speed's clock starts at the first output that adds to the
@@ -2543,8 +2593,9 @@ impl SessionCore {
                 unreachable!("apply_event keeps entries before it writes blocks")
             }
             // A call's accounting is the usage ledger's, which the metered
-            // runtime writes; the transcript keeps the run's response.
-            ProviderEvent::Call(_) => {}
+            // runtime writes; the transcript keeps the run's response. The
+            // cache's lifetime is the request's output's.
+            ProviderEvent::Call(_) | ProviderEvent::CacheLifetime(_) => {}
         }
     }
 

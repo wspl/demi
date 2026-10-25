@@ -31,7 +31,7 @@ use demi_backend_providers::llm::families::{ProviderFamily, family_name};
 use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{Secret, SecretError};
-use demi_shared_types::{AudioShape, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{ProviderId, UserId};
 use demi_web_api_protocol::providers::{
@@ -97,6 +97,9 @@ pub enum ProviderRefusal {
     /// A model of a kind the entry makes none of.
     #[error("models: {model} is {} {kind} model, but {entry} makes no {}; choose {} {kind} shape first", article(*kind), plural(*kind), article(*kind))]
     UnmadeKind { entry: String, model: String, kind: ModelKind },
+    /// A prompt cache lifetime the entry's provider does not take.
+    #[error("cacheTtl: {entry} can’t ask for a prompt cache lifetime of {ttl}")]
+    CacheTtl { entry: String, ttl: String },
     /// A list of entries for an order that does not name each of the
     /// scope's once.
     #[error("providerIds: name every provider once")]
@@ -255,6 +258,11 @@ impl Services {
             }
         };
         distinct_models(config.models.as_ref())?;
+        let cache_ttl = self
+            .assembly
+            .families()
+            .get(&family)
+            .and_then(|family| family.default_cache_ttl());
         let owner = self.vault.owner_for(&user.id).await?;
         let label = match label {
             Ok(given) => given.into_string(),
@@ -265,7 +273,7 @@ impl Services {
         };
         Ok(self
             .vault
-            .create_api_key(owner, family, label, config)
+            .create_api_key(owner, family, label, config, cache_ttl)
             .await?)
     }
 
@@ -418,6 +426,8 @@ impl Services {
         if let Some(kind) = MediaKind::ALL.into_iter().find(|kind| switch(*kind).is_some() && !shapes.makes(*kind)) {
             return Err(ProviderRefusal::MakesNo(entry.label.clone(), kind.plural()));
         }
+        let cache_ttl = self.cache_ttl(&entry, family.as_deref(), config.as_ref(), patch.cache_ttl)?;
+        let retimes = cache_ttl.is_some();
         let label = patch.label.map(|label| label.into_string());
         let updated = self
             .vault
@@ -428,10 +438,11 @@ impl Services {
                 config,
                 patch.rotation,
                 switches,
+                cache_ttl,
             )
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
-        if reconfigures {
+        if reconfigures || retimes {
             self.assembly.invalidate(&entry.id).await?;
         }
         Ok(updated)
@@ -564,6 +575,50 @@ impl Services {
 
     /// The API-key family `name`, which must speak `wire_api` when the
     /// entry names one.
+    /// The prompt cache lifetime an edit of `entry` stores, if it changes:
+    /// the one the patch asks for, which only an entry whose protocol names
+    /// lifetimes takes; else, when the edit gives the entry another family or
+    /// wire, the one it kept if it is a preset of the new protocol, or that
+    /// protocol's default.
+    ///
+    /// `family` and `config` are the edit's, when it changes them.
+    fn cache_ttl(
+        &self,
+        entry: &ProviderEntry,
+        new_family: Option<&str>,
+        config: Option<&ApiKeyConfig>,
+        asked: Option<Option<CacheTtl>>,
+    ) -> Result<Option<Option<CacheTtl>>, ProviderRefusal> {
+        let stored_wire = match &entry.credential {
+            EntryCredential::ApiKey(config) => config.wire_api,
+            EntryCredential::Subscription { .. } => None,
+        };
+        let wire = config.map_or(stored_wire, |config| config.wire_api);
+        let family = self.assembly.families().get(new_family.unwrap_or(&entry.family));
+        let presets = family.and_then(|family| family.cache_ttl_presets(wire));
+        if let Some(asked) = asked {
+            if let Some(ttl) = asked.as_ref().filter(|_| presets.is_none()) {
+                return Err(ProviderRefusal::CacheTtl {
+                    entry: entry.label.clone(),
+                    ttl: ttl.as_str().to_owned(),
+                });
+            }
+            return Ok(Some(asked));
+        }
+        if new_family.is_none() && wire == stored_wire {
+            return Ok(None);
+        }
+        // A lifetime typed for one protocol is not one the next is known to
+        // take: only a preset of the new protocol carries over.
+        let known = |ttl: &CacheTtl| presets.as_ref().is_some_and(|presets| presets.contains(ttl));
+        let next = entry.cache_ttl.clone().filter(|ttl| known(ttl)).or_else(|| {
+            family
+                .and_then(|family| family.default_cache_ttl())
+                .filter(|ttl| known(ttl))
+        });
+        Ok((next != entry.cache_ttl).then_some(next))
+    }
+
     fn api_key_family(
         &self,
         name: &str,

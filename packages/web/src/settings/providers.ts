@@ -376,6 +376,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
         ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
         ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
+        ...(changes.cacheTtl !== undefined ? { cacheTtl: changes.cacheTtl.value } : {}),
         ...(changes.media !== undefined ? { media: mediaPatch(changes.media) } : {}),
         ...(changes.modelSource
           ? {

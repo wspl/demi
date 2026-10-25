@@ -22,7 +22,7 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentMessageError, Continuation, ForkError, ForkSeed, ModelSwitch, SessionConfig, fork_seed,
+    AgentMessageError, Continuation, ForkError, ForkSeed, IdleCompactionDue, ModelSwitch, SessionConfig, fork_seed,
 };
 use demi_agent_store::{AgentTreeStore, NodeRecord, Placement, SideOf, StoreError};
 use demi_conversation_socket_protocol::{AgentEntry, CacheChart, Version};
@@ -202,6 +202,10 @@ pub struct ServerDeps<H: HostResolver> {
     /// root's phase changed, or that was disposed: a product that shows each
     /// conversation's status reads it again.
     pub status_changed: Rc<dyn Fn(&NodeId)>,
+    /// Told when the root of a live tree compacts while idle changed
+    /// (`SessionEvent::IdleCompactionDue`): the product keeps the time, starts
+    /// the pass at it and reopens the tree for it.
+    pub idle_compaction_due: Rc<dyn Fn(&NodeId, Option<IdleCompactionDue>)>,
     /// What the product keeps of a conversation's agents that the tree
     /// shows, read once as a tree opens; the product tells each change after
     /// that ([`Tree::cost_changed`], [`Tree::side_card_changed`]).

@@ -38,7 +38,7 @@ use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_provider_common::{Provider, ProviderRuntime, Secret};
-use demi_shared_types::{AudioShape, Clock, ImageShape, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 use url::Url;
 
@@ -61,6 +61,19 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
     /// The provider of one entry and account.
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError>;
+
+    /// The prompt cache lifetimes an API-key entry of the family knows on
+    /// `wire`, which it may ask for beside any other; none for a family whose
+    /// requests name no lifetime. A subscription's never do: its vendor's
+    /// own client chooses.
+    fn cache_ttl_presets(&self, _wire: Option<WireApi>) -> Option<Vec<CacheTtl>> {
+        None
+    }
+
+    /// The lifetime a new entry of the family asks for; none to send none.
+    fn default_cache_ttl(&self) -> Option<CacheTtl> {
+        None
+    }
 
     /// Whether the family's entries make text: false for the family of the
     /// vendors that make media alone, whose entries have no text models
@@ -134,6 +147,8 @@ pub struct FamilyArgs {
     /// probe run on (`crates/provider-claude-code/src/placement.rs`); none before the
     /// backend's shards started, and in a backend without them.
     pub machine: Option<Arc<dyn AccountMachine>>,
+    /// The prompt cache lifetime the entry asks for; none to send none.
+    pub cache_ttl: Option<CacheTtl>,
 }
 
 /// The credential a provider stands for.

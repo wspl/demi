@@ -1,8 +1,11 @@
 import type { Block } from '@demicodes/protocol'
 import { demoModel, inRequests } from './blocks'
 
-/** A compaction as the transcript shows it: running, finished, or failed. */
-export type CompactionCase = 'running' | 'done' | 'failed'
+/**
+ * A compaction as the transcript shows it: running, finished, finished while
+ * the conversation was idle, or failed.
+ */
+export type CompactionCase = 'running' | 'done' | 'idle' | 'failed'
 
 const createdAt = '2026-09-24T12:00:00.000Z'
 
@@ -32,7 +35,8 @@ const SECOND_ANSWER = answer('compaction-a2', 'Updated `auth.test.ts` to expect 
  * The user compacts after the second answer. The pass inserts its summary
  * before that answer, where the request it summarized ended, and appends the
  * marker at the end, where the divider shows; a running pass shows there
- * too, and a failed one leaves its error record there.
+ * too, and a failed one leaves its error record there. An idle pass, which
+ * ran shortly before the prompt cache expired, says so on its divider.
  */
 export function compactionTranscript(state: CompactionCase): Block[] {
   const history = [FIRST, ...FIRST_ANSWER, SECOND]
@@ -61,6 +65,7 @@ export function compactionTranscript(state: CompactionCase): Block[] {
       model: demoModel,
       boundaryId: 'compaction-boundary',
       compactedTokens: 121_000,
+      ...(state === 'idle' ? { idle: true } : {}),
     },
   ])
 }

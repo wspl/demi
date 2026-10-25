@@ -1420,6 +1420,7 @@ const activitySince = Date.now()
 const compactionCases: { state: CompactionCase; variant: string }[] = [
   { state: 'running', variant: 'compacting' },
   { state: 'done', variant: 'compacted, at its trigger' },
+  { state: 'idle', variant: 'compacted while idle' },
   { state: 'failed', variant: 'failed' },
 ]
 const compactionSteers = [{ id: 'compaction-steer', content: [{ type: 'text' as const, text: 'Also run the whole auth suite.' }] }]
@@ -3252,7 +3253,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Compaction"
-        note="The user compacted after the second answer. The divider shows there, where the compaction was triggered, though the summary goes in before that answer. While the pass runs the divider says so, its words shimmering as a running row’s do, before a steer that arrived meanwhile, and the finished divider takes its place; a failed pass leaves its error record there. A Compact the user asked for ended no turn, so the dock offers no Resume for it (Session failures shows both cases)."
+        note="The user compacted after the second answer. The divider shows there, where the compaction was triggered, though the summary goes in before that answer. A conversation left idle compacts by itself shortly before its prompt cache expires, when Compact idle conversations is on in Settings › Agent, and its divider says so. While the pass runs the divider says so, its words shimmering as a running row’s do, before a steer that arrived meanwhile, and the finished divider takes its place; a failed pass leaves its error record there. A Compact the user asked for ended no turn, so the dock offers no Resume for it (Session failures shows both cases)."
       >
         <div class="specimen-stack">
           <GallerySpecimen

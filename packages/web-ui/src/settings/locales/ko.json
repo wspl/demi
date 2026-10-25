@@ -278,7 +278,9 @@
       "sameProviderKeywords": "개인정보,같은 제공업체",
       "sendKeywords": "조정,대기열,Enter",
       "restartKeywords": "재시작,업데이트,계속",
-      "retryKeywords": "사용량 한도,할당량,재설정"
+      "retryKeywords": "사용량 한도,할당량,재설정",
+      "compactIdleKeywords": "압축,프롬프트 캐시,유휴,요약",
+      "idleLifetimeKeywords": "프롬프트 캐시,유지 시간,TTL"
     },
     "providers": {
       "keywords": "모델,API 키,anthropic,openai,claude code,codex,기본 URL,카탈로그"
@@ -583,6 +585,18 @@
       "reorder": "끌어서 순서 변경",
       "move": "“{label}” 이동",
       "none": "계정 없음"
+    },
+    "cacheTtl": {
+      "title": "프롬프트 캐시 유지 시간",
+      "description": "제공업체가 대화를 캐시에 보관하는 시간입니다. 지정 안 함을 선택하면 유지 시간을 보내지 않습니다.",
+      "unspecified": "지정 안 함",
+      "custom": "사용자 지정",
+      "customItem": "사용자 지정…",
+      "customField": "사용자 지정 유지 시간",
+      "customPlaceholder": "2h",
+      "invalid": "90m 또는 2h처럼 분이나 시간을 정수로 입력하세요.",
+      "minutes": "{count}분",
+      "hours": "{count}시간"
     },
     "connection": {
       "endpoint": "엔드포인트",

@@ -278,7 +278,9 @@
       "sameProviderKeywords": "プライバシー,同じプロバイダー",
       "sendKeywords": "ステア,キュー,Enter",
       "restartKeywords": "再起動,アップデート,続行",
-      "retryKeywords": "使用量の上限,クォータ,リセット"
+      "retryKeywords": "使用量の上限,クォータ,リセット",
+      "compactIdleKeywords": "圧縮,プロンプトキャッシュ,アイドル,要約",
+      "idleLifetimeKeywords": "プロンプトキャッシュ,保持期間,TTL"
     },
     "providers": {
       "keywords": "モデル,API キー,anthropic,openai,claude code,codex,ベース URL,カタログ"
@@ -583,6 +585,18 @@
       "reorder": "ドラッグして並べ替え",
       "move": "「{label}」を移動",
       "none": "アカウントはありません"
+    },
+    "cacheTtl": {
+      "title": "プロンプトキャッシュの保持期間",
+      "description": "プロバイダーが会話をキャッシュしておく期間です。「指定なし」では保持期間を送信しません。",
+      "unspecified": "指定なし",
+      "custom": "カスタム",
+      "customItem": "カスタム…",
+      "customField": "カスタムの保持期間",
+      "customPlaceholder": "2h",
+      "invalid": "90m や 2h のように、分または時間を整数で入力してください。",
+      "minutes": "{count} 分",
+      "hours": "{count} 時間"
     },
     "connection": {
       "endpoint": "エンドポイント",

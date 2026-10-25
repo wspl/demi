@@ -40,7 +40,7 @@ use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, NewAccount, RefreshGates,
     credential_id_for, decode_secret,
 };
-use demi_shared_types::{AudioShape, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
@@ -114,6 +114,8 @@ pub struct ProviderEntry {
     /// Whether the entry makes audio when its provider can: its Audio
     /// Generation switch.
     pub audio_generation: bool,
+    /// The prompt cache lifetime its requests ask for; none to send none.
+    pub cache_ttl: Option<CacheTtl>,
 }
 
 /// How an entry authenticates.
@@ -318,7 +320,13 @@ impl ProviderEntry {
     ///   goes nowhere yet.
     /// - `shapes` are the ones it makes media in.
     /// - `catalog` is when the media catalog in use was published.
-    pub fn dto(&self, default_endpoint: Option<EndpointUrl>, shapes: MediaShapes, catalog: Timestamp) -> ProviderDto {
+    pub fn dto(
+        &self,
+        default_endpoint: Option<EndpointUrl>,
+        shapes: MediaShapes,
+        catalog: Timestamp,
+        cache_ttl_presets: Option<Vec<CacheTtl>>,
+    ) -> ProviderDto {
         let config = match &self.credential {
             EntryCredential::ApiKey(config) => Some(config),
             EntryCredential::Subscription { .. } => None,
@@ -353,6 +361,8 @@ impl ProviderEntry {
                 },
                 catalog,
             },
+            cache_ttl: self.cache_ttl.clone(),
+            cache_ttl_presets,
             created_at: self.created_at,
         }
     }
@@ -550,6 +560,7 @@ impl Vault {
         family: String,
         label: String,
         config: ApiKeyConfig,
+        cache_ttl: Option<CacheTtl>,
     ) -> Result<ProviderEntry, StorageError> {
         let id = new_id();
         let sealed = self.seal_config(&id, &config);
@@ -561,6 +572,7 @@ impl Vault {
             label,
             config: Some(sealed),
             active: None,
+            cache_ttl,
         };
         let row = self.0.control.insert_provider(provider, Vec::new()).await?;
         // An API-key entry is under no uniqueness rule.
@@ -619,6 +631,7 @@ impl Vault {
             label,
             config: None,
             active,
+            cache_ttl: None,
         };
         let row = self.0.control.insert_provider(provider, accounts).await?;
         if let Some(row) = &row {
@@ -699,8 +712,10 @@ impl Vault {
         Ok(())
     }
 
-    /// Replaces the entry's label, family, configuration, rotation or media
-    /// switches; `None` for an entry that no longer exists.
+    /// Replaces the entry's label, family, configuration, rotation, media
+    /// switches or prompt cache lifetime; `None` for an entry that no longer
+    /// exists.
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
         id: ProviderId,
@@ -709,12 +724,13 @@ impl Vault {
         config: Option<ApiKeyConfig>,
         rotation: Option<Rotation>,
         switches: MediaSwitches,
+        cache_ttl: Option<Option<CacheTtl>>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
         let row = self
             .0
             .control
-            .update_provider(id, label, family, sealed, rotation, switches)
+            .update_provider(id, label, family, sealed, rotation, switches, cache_ttl)
             .await?;
         if let Some(row) = &row {
             self.mark_changed(&row.owner);
@@ -801,6 +817,7 @@ impl Vault {
             image_generation: row.image_generation,
             video_generation: row.video_generation,
             audio_generation: row.audio_generation,
+            cache_ttl: row.cache_ttl,
         })
     }
 

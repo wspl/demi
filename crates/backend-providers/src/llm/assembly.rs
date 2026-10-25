@@ -30,7 +30,7 @@ use demi_provider_common::media::{MediaMaker, MediaModelInfo};
 use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::{DeviceRoute, Provider, ProviderHttp, ProviderRuntime, RuntimeEnv};
-use demi_shared_types::{AudioShape, Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
+use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_provider_common::models_dev::ModelsDevError;
 use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE, Vendor};
@@ -511,7 +511,17 @@ impl ProviderAssembly {
             .and_then(|family| family.default_endpoint())
             // A family's default is a constant that parses.
             .map(|url| EndpointUrl::try_from(url.to_owned()).expect("a default endpoint parses"));
-        entry.dto(default, self.media_shapes(entry), self.media.current().updated)
+        entry.dto(default, self.media_shapes(entry), self.media.current().updated, self.cache_ttl_presets(entry))
+    }
+
+    /// The prompt cache lifetimes `entry`'s protocol knows, as its family and
+    /// wire say; none for an entry whose requests name none.
+    pub fn cache_ttl_presets(&self, entry: &ProviderEntry) -> Option<Vec<CacheTtl>> {
+        let wire = match &entry.credential {
+            EntryCredential::ApiKey(config) => config.wire_api,
+            EntryCredential::Subscription { .. } => None,
+        };
+        self.families.get(&entry.family)?.cache_ttl_presets(wire)
     }
 
     /// The shapes in which `entry` makes media: a compatible entry's, its
@@ -674,12 +684,14 @@ impl ProviderAssembly {
                 })
             }
         };
-        Ok(self.args(
+        let mut args = self.args(
             entry.id.as_str().to_owned(),
             entry.label.clone(),
             Some(entry.owner.as_str()),
             credential,
-        ))
+        );
+        args.cache_ttl = entry.cache_ttl.clone();
+        Ok(args)
     }
 
     fn args(&self, entry_id: String, label: String, owner: Option<&str>, credential: FamilyCredential) -> FamilyArgs {
@@ -687,6 +699,7 @@ impl ProviderAssembly {
             entry_id,
             label,
             credential,
+            cache_ttl: None,
             http: self.http_of(owner, self.http.clone()),
             services_http: self.http.clone(),
             clock: self.clock.clone(),

@@ -131,6 +131,8 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.65's, which 0.1.64 shipped too, before the shortcuts came in a Mac
 ///   set and a PC set and a conversation had schedules in place of the
 ///   account's automations.
+/// - 0.1.5469's, before an entry asked for a prompt cache lifetime and a root
+///   compacted while idle.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -314,6 +316,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.5409.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_5409),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5469.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_5469),
         },
     ],
 };
@@ -604,6 +610,19 @@ DROP TABLE saved_messages;
 ALTER TABLE saved_messages_next RENAME TO saved_messages;
 CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
 CREATE INDEX saved_messages_of_workspace ON saved_messages (workspace_id, saved_at);
+";
+
+/// From 0.1.5469's control schema to the current one: an entry asks for a
+/// prompt cache lifetime, which an Anthropic entry's requests asked an hour
+/// for until then, and a root may compact while idle.
+const CONTROL_FROM_0_1_5469: &str = "
+ALTER TABLE providers ADD COLUMN cache_ttl TEXT;
+UPDATE providers SET cache_ttl = '1h' WHERE provider_type = 'anthropic';
+CREATE TABLE idle_compactions (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  due_at          INTEGER NOT NULL,
+  lifetime_ms     INTEGER NOT NULL CHECK (lifetime_ms > 0)
+) STRICT;
 ";
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
@@ -5321,6 +5340,15 @@ CREATE TABLE interrupted_turns (
   conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
 ) STRICT;
 
+-- The roots that compact while idle, shortly before their prompt cache
+-- expires: when, and the cache's lifetime, which the user's minimum is
+-- compared with. A row goes with its conversation, and when its time came.
+CREATE TABLE idle_compactions (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  due_at          INTEGER NOT NULL,
+  lifetime_ms     INTEGER NOT NULL CHECK (lifetime_ms > 0)
+) STRICT;
+
 -- Each share of a conversation or of one answer of it, behind its token,
 -- the only key to it (`sharing.md` § Storage and routes): its owner, its
 -- conversation, its kind, the answer's block for an answer's share, and when
@@ -5409,6 +5437,9 @@ CREATE TABLE providers (
   -- Whether the entry makes audio when its provider can; on from the
   -- start.
   audio_generation     INTEGER NOT NULL DEFAULT 1 CHECK (audio_generation IN (0, 1)),
+  -- The prompt cache lifetime its requests ask for, whole minutes or hours
+  -- such as '5m' or '1h'; null asks for none.
+  cache_ttl            TEXT,
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;

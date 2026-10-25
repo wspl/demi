@@ -79,6 +79,12 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
     // What the turn's end held reaches clients with the action's end, the
     // phase it leaves included, however the action ends.
     let _end = ReleaseEvents(s);
+    // A turn uses the conversation, or stops, fails or changes its model
+    // before any answer could report again: the idle compaction the last
+    // answer set is no longer due. A compaction reports when it ends.
+    if !matches!(kind, ActionKind::Compact { .. }) {
+        s.emit(SessionEvent::IdleCompactionDue { due: None });
+    }
     let lease = cancel.guard(s.runtime.enter_action()).await;
     let body = match &lease {
         Ok(_) => execute(s, &kind, &cancel).await,
@@ -222,20 +228,31 @@ async fn execute(
         ActionKind::Resume { reason } => resume(s, cancel, reason.clone()).await,
         ActionKind::Edit => editing::run(s, cancel).await,
         ActionKind::Switch { target, to } => editing::switch(s, cancel, target, *to).await,
-        ActionKind::Compact => {
+        ActionKind::Compact { idle } => {
             // The server compared the estimate with the share from which the
             // user may compact before it took the frame; the log repeats it.
             // A usage that cannot be read only leaves it out of the log: the
             // pass reads what it needs itself and reports its own failure.
             let usage = compaction::context_usage(s, cancel).await.ok();
-            let trigger = compaction::Trigger::UserAction {
-                estimate: usage.as_ref().map(|usage| usage.tokens),
-                compact_from: usage.and_then(|usage| usage.compact_from),
+            let estimate = usage.as_ref().map(|usage| usage.tokens);
+            let trigger = if *idle {
+                compaction::Trigger::Idle { estimate }
+            } else {
+                compaction::Trigger::UserAction {
+                    estimate,
+                    compact_from: usage.and_then(|usage| usage.compact_from),
+                }
             };
             // What arrives during the pass waits for the scheduler, which
             // opens the next turn with it once the pass ends.
-            compaction::compacting(s, compaction::run_pass(s, cancel, &trigger)).await?;
-            Ok(())
+            let pass = compaction::compacting(s, compaction::run_pass(s, cancel, &trigger)).await;
+            match pass {
+                // Nobody asked for an idle pass, so its failure is the log's
+                // alone, which `run_pass` wrote: the cache it would have read
+                // has expired by any later try.
+                Err(TurnError::Failed(_)) if *idle => Ok(()),
+                pass => pass.map(drop),
+            }
         }
     }
 }

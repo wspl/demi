@@ -29,6 +29,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
+import ProviderCacheTtl from './ProviderCacheTtl.vue'
 import ProviderQuota from './ProviderQuota.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -1205,6 +1206,14 @@ function endpointCheck(value: string) {
                     class="w-72 max-w-full"
                   />
                 </SettingsRow>
+                <ProviderCacheTtl
+                  v-if="selected.cacheTtl"
+                  :key="selected.id"
+                  :cache-ttl="selected.cacheTtl"
+                  :overlay-store="overlayStore"
+                  :disabled="fieldsLocked(selected)"
+                  @change="emit('change', selected, { cacheTtl: $event })"
+                />
               </template>
               <!-- A key's test has a row of its own; a subscription's sits on its active account. -->
               <SettingsRow

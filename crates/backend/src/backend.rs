@@ -63,7 +63,7 @@ use demi_backend_http::{AppState, Edge, Listening, Site, WebBuildError, manage_s
 use demi_backend_user_shard::conversation::cost::follow_usage;
 use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
 use demi_backend_user_shard::conversation::{
-    finish_deletions, recover_forks, resume_after_restart,
+    arm_idle_compactions, finish_deletions, recover_forks, resume_after_restart,
 };
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
@@ -489,6 +489,10 @@ impl Backend {
         // off. A failure does not stop the start: the marks stay for the next
         // start, and meanwhile the turns wait for the user's Resume.
         start_step("interrupted_turns", resume_after_restart(&services.control, &shards.shards())).await;
+        // Each user's idle conversations compact at the times their last
+        // requests set, which a restart keeps. A failure does not stop the
+        // start: the next answered request sets its conversation's time again.
+        start_step("idle_compactions", arm_idle_compactions(&services.control, &shards.shards())).await;
         // Each user's schedules fire what a backend that was down missed
         // and wait for their next times. A failure does not stop the start: a
         // user's next call starts them.

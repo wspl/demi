@@ -86,7 +86,9 @@
     "compaction": {
       "running": "Compacting context…",
       "done": "Context compacted",
-      "doneTo": "Context compacted to ~{tokens} tokens"
+      "doneTo": "Context compacted to ~{tokens} tokens",
+      "doneIdle": "Context compacted while idle",
+      "doneIdleTo": "Context compacted while idle to ~{tokens} tokens"
     },
     "stopped": "Stopped",
     "queued": "{count} queued",

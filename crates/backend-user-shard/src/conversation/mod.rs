@@ -22,6 +22,7 @@ mod deletion;
 mod attachment_facts;
 mod failure_facts;
 mod history;
+pub(crate) mod idle_compaction;
 mod fork;
 mod instructions;
 mod live_reads;
@@ -65,6 +66,7 @@ pub use self::deletion::finish_deletions;
 pub use self::attachment_facts::{attachment_facts, reply_blocks};
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
+pub use self::idle_compaction::arm_idle_compactions;
 pub use self::restart_resume::resume_after_restart;
 pub use self::announcement::AgentsError;
 pub(crate) use self::product::ShardHosts;
@@ -188,6 +190,14 @@ pub(crate) fn conversation_parts(
         },
         agents: Rc::new(ShardAgents { shard: shard.clone() }),
         reply_files: Rc::new(ShardReplyFiles { shard: shard.clone() }),
+        idle_compaction_due: {
+            let shard = shard.clone();
+            Rc::new(move |root: &NodeId, due| {
+                if let Some(shard) = shard.upgrade() {
+                    shard.follow_idle_compaction(&conversation_of(root), due);
+                }
+            })
+        },
     });
     ConversationParts { agent, titles }
 }

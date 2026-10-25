@@ -86,7 +86,9 @@
     "compaction": {
       "running": "コンテキストを圧縮中…",
       "done": "コンテキストを圧縮しました",
-      "doneTo": "コンテキストを約 {tokens} トークンに圧縮しました"
+      "doneTo": "コンテキストを約 {tokens} トークンに圧縮しました",
+      "doneIdle": "アイドル中にコンテキストを圧縮しました",
+      "doneIdleTo": "アイドル中にコンテキストを約 {tokens} トークンに圧縮しました"
     },
     "stopped": "停止済み",
     "queued": "{count} 件が待機中",

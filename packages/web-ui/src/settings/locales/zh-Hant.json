@@ -278,7 +278,9 @@
       "sameProviderKeywords": "隱私,同一供應商",
       "sendKeywords": "引導,排隊,Enter",
       "restartKeywords": "重新啟動,更新,繼續",
-      "retryKeywords": "用量限制,額度,重設"
+      "retryKeywords": "用量限制,額度,重設",
+      "compactIdleKeywords": "壓縮,提示快取,閒置,摘要",
+      "idleLifetimeKeywords": "提示快取,有效期,TTL"
     },
     "providers": {
       "keywords": "模型,API 金鑰,anthropic,openai,claude code,codex,基礎 URL,目錄"
@@ -583,6 +585,18 @@
       "reorder": "拖曳以重新排序",
       "move": "移動「{label}」",
       "none": "沒有帳號"
+    },
+    "cacheTtl": {
+      "title": "提示快取有效期",
+      "description": "供應商保留對話快取的時長。選擇「未指定」時不傳送有效期。",
+      "unspecified": "未指定",
+      "custom": "自訂",
+      "customItem": "自訂…",
+      "customField": "自訂有效期",
+      "customPlaceholder": "2h",
+      "invalid": "請輸入整數分鐘或小時，例如 90m 或 2h。",
+      "minutes": "{count} 分鐘",
+      "hours": "{count} 小時"
     },
     "connection": {
       "endpoint": "端點",

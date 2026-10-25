@@ -483,3 +483,69 @@ pub struct RefusedCode {
     pub code: u32,
     pub message: String,
 }
+
+/// A prompt cache lifetime as a request sends it: whole minutes or hours,
+/// such as `5m`, `1h` or `90m`.
+///
+/// Five digits at most: a longer lifetime is no vendor's, and the duration
+/// stays far within a `u64` of seconds.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct CacheTtl(String);
+
+/// The texts a [`CacheTtl`] is, which the web app checks a typed one by.
+const CACHE_TTL_PATTERN: &str = "^[1-9][0-9]{0,4}[mh]$";
+
+/// Why a text is not a prompt cache lifetime.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("must be whole minutes or hours, such as 5m or 1h")]
+pub struct NotCacheTtl;
+
+impl CacheTtl {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// How long the vendor keeps the cache, as the text says.
+    pub fn duration(&self) -> std::time::Duration {
+        let (number, unit) = self.0.split_at(self.0.len() - 1);
+        let number: u64 = number.parse().expect("a lifetime's number has five digits at most");
+        let unit = if unit == "h" { 3_600 } else { 60 };
+        std::time::Duration::from_secs(number * unit)
+    }
+}
+
+impl TryFrom<String> for CacheTtl {
+    type Error = NotCacheTtl;
+
+    fn try_from(text: String) -> Result<Self, NotCacheTtl> {
+        let Some(number) = text.strip_suffix(['m', 'h']) else {
+            return Err(NotCacheTtl);
+        };
+        let digits = number.bytes().all(|byte| byte.is_ascii_digit());
+        if !digits || number.is_empty() || number.len() > 5 || number.starts_with('0') {
+            return Err(NotCacheTtl);
+        }
+        Ok(Self(text))
+    }
+}
+
+impl From<CacheTtl> for String {
+    fn from(ttl: CacheTtl) -> Self {
+        ttl.0
+    }
+}
+
+impl JsonSchema for CacheTtl {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "CacheTtl".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": "string", "pattern": CACHE_TTL_PATTERN })
+    }
+}

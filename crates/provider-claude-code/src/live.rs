@@ -289,6 +289,8 @@ pub(crate) struct LiveCli {
     pub(crate) held: Vec<ToolCall>,
     /// The usage of the latest API call, which the turn's response carries.
     pub(crate) last_call: LastCall,
+    /// How long the latest call that wrote the cache keeps it.
+    written_lifetime: Option<Duration>,
     pub(crate) mcp: Option<Mcp>,
     /// Which block each entry the process mirrors belongs to.
     pub(crate) mirror: Mirror,
@@ -416,6 +418,7 @@ impl LiveCli {
             writing: HashMap::new(),
             held: Vec::new(),
             last_call: LastCall::default(),
+            written_lifetime: None,
             mcp,
             mirror: Mirror::default(),
             started: Some(StartTiming {
@@ -875,12 +878,22 @@ impl LiveCli {
             self.mirror.observe(call);
         }
         events.extend(self.mirror.place(request, false, None));
+        events.extend(self.cache_lifetime().map(ProviderEvent::CacheLifetime));
         events.push(ProviderEvent::response(
             self.last_call.take(),
             FAMILY,
             &request.model_id,
         ));
         events
+    }
+
+    /// How long the vendor keeps the cache the latest call left: as long as
+    /// the CLI's latest write was kept for, which the CLI chooses.
+    pub(crate) fn cache_lifetime(&mut self) -> Option<Duration> {
+        if let Some(lifetime) = self.last_call.cache_lifetime() {
+            self.written_lifetime = Some(lifetime);
+        }
+        self.written_lifetime
     }
 
     /// Adds a tool use to the batch being collected; a tool use the CLI

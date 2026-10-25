@@ -172,6 +172,7 @@ export function providerView(
     baseUrl: entry.endpoint ?? '',
     wireApi: wireApi(entry.providerType, entry.wireApi),
     apiKey: '',
+    cacheTtl: entry.cacheTtlPresets ? { value: entry.cacheTtl, presets: entry.cacheTtlPresets } : undefined,
     // A compatible API has no catalog: its list is the one the user keeps.
     modelSource: entry.models || entry.compatible ? 'manual' : 'catalog',
     // The Unix epoch is what a list that was never downloaded reports: no time to show.

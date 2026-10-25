@@ -21,6 +21,9 @@ import type { VerificationHost } from '../auth/verification'
  * (`crates/backend-providers/src/llm/small_model.rs`): model settings without a
  * tier, since small requests use the default one. It is none for Automatic.
  */
+/** The least prompt cache lifetime for which an idle conversation compacts. */
+export type IdleLifetime = '30m' | '1h'
+
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
 
 /** A kind of media an entry may make, in the order its sections follow. */
@@ -435,6 +438,34 @@ export interface SettingsProviderEntry {
   media: { [K in SettingsMediaKind]: SettingsEntryMedia<K> }
   /** The vendor mark (`providerLogo`); null falls back to an initial. */
   logo: string | null
+  /**
+   * Its Prompt cache lifetime, for an API key whose protocol names one;
+   * absent shows no such row, as for every subscription.
+   */
+  cacheTtl?: SettingsCacheTtl
+}
+
+/**
+ * An API key's prompt cache lifetime and the lifetimes its protocol knows
+ * (`packages/web-ui/src/settings/ProviderCacheTtl.vue`); any other may be
+ * typed.
+ */
+export interface SettingsCacheTtl {
+  /** What its requests ask for, such as `1h`; null for none. */
+  value: string | null
+  /** The lifetimes its protocol knows, shortest first. */
+  presets: string[]
+}
+
+/** A lifetime as a request sends it: whole minutes or hours. */
+export const CACHE_TTL_PATTERN = /^[1-9][0-9]{0,4}[mh]$/
+
+/** A lifetime in words, such as *5 minutes* or *1 hour*. */
+export function cacheTtlLabel(value: string): string {
+  const count = Number(value.slice(0, -1))
+  return value.endsWith('h')
+    ? t('providers.cacheTtl.hours', { count })
+    : t('providers.cacheTtl.minutes', { count })
 }
 
 export const THINKING_EFFORTS = [
