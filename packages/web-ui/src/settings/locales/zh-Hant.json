@@ -304,6 +304,7 @@
   "sections": {
     "agent": "智慧體",
     "workspace": "工作區",
+    "system": "系統",
     "general": {
       "keywords": "外觀,樣式",
       "themeKeywords": "深色模式,淺色模式,外觀",
