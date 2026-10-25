@@ -190,6 +190,11 @@ function intakePlugin(options: IntakeOptions): Plugin {
    * made it ready.
    */
   let prepared: PreparedHtml | null = null
+  /**
+   * The capsules the last paste brought that this composer has no file for,
+   * which `keepCapsules` dropped.
+   */
+  let dropped = 0
 
   /**
    * The HTML of `transfer` as ProseMirror read it; null when it read the plain
@@ -225,6 +230,8 @@ function intakePlugin(options: IntakeOptions): Plugin {
         if (capsule && (prepared?.images.has(capsule.id) || (options.carries(capsule.id) && !present.has(capsule.id)))) {
           present.add(capsule.id)
           nodes.push(node)
+        } else {
+          dropped += 1
         }
       })
       return Fragment.from(nodes)
@@ -333,8 +340,12 @@ function intakePlugin(options: IntakeOptions): Plugin {
     const code = inCode(view.state.selection.$from)
     const pasted = dataTransferFiles(transfer)
     // A copied message comes back with its files where they stood; code takes
-    // text alone.
-    const copied = code ? null : transferCopiedMessage(transfer)
+    // text alone. A copy of this message whose files it still carries keeps
+    // its own capsules, as ProseMirror reads them back.
+    const own = dropped === 0 && !!new DOMParser()
+      .parseFromString(transfer.getData('text/html'), 'text/html')
+      .querySelector('[data-pm-slice]')
+    const copied = code || own ? null : transferCopiedMessage(transfer)
     if (copied) {
       landAtSelection(view)
       options.message(copied, pasted.find((file) => file.type.startsWith('image/')) ?? null)
@@ -416,6 +427,7 @@ function intakePlugin(options: IntakeOptions): Plugin {
       // this composer brings its own nodes: a capsule it moves is still in
       // the message until it lands.
       transformPasted(slice, view) {
+        dropped = 0
         const kept = view.dragging ? slice : new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd)
         return trimmedSlice(kept, view.state.schema)
       },

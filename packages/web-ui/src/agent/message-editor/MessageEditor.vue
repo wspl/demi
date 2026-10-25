@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { Fragment, type Node as ProseMirrorNode, type Slice } from '@tiptap/pm/model'
 import { type EditorState, Selection, type Transaction } from '@tiptap/pm/state'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import { useMarkdownRenderVersion } from '../../markdown/render-version'
@@ -121,6 +121,8 @@ let shown = props.markdown
  * cursor was.
  */
 let landing: number | null = null
+/** The slice ProseMirror last put on the clipboard, until `copy` takes it. */
+let copied: Slice | null = null
 
 const editor = new Editor({
   extensions: composerExtensions({
@@ -162,7 +164,10 @@ const editor = new Editor({
     // A copy, a cut or a drag holds no blank line before its first line or
     // after its last, in its HTML as in its text. ProseMirror drags the copied
     // slice, so text moved within a composer leaves such lines behind.
-    transformCopied: (slice, view) => trimmedSlice(slice, view.state.schema),
+    transformCopied: (slice, view) => {
+      copied = trimmedSlice(slice, view.state.schema)
+      return copied
+    },
     // Copied text is the Markdown, each file by its name, wherever it is
     // copied from; code copied from inside a code block is the code.
     clipboardTextSerializer: (slice) => slice.openStart > 0 && slice.content.childCount === 1 && slice.content.firstChild?.type.spec.code
@@ -403,7 +408,44 @@ function dragStart(event: DragEvent): void {
   if (!slice || !transfer) {
     return
   }
-  const forms = clipboard.forms(editor.schema, slice.content)
+  const forms = clipboard.forms(editor.schema, currentFiles(slice.content))
+  if (!forms.clipboard.message.files.length) {
+    return
+  }
+  const html = document.createRange().createContextualFragment(transfer.getData('text/html'))
+  transfer.setData('text/html', copiedMessageHtml(forms.clipboard.message, html))
+}
+
+/**
+ * `content` with each capsule as the composer knows its file now: a file
+ * uploaded since its capsule went in has its blob, which a copy carries.
+ */
+function currentFiles(content: Fragment): Fragment {
+  const nodes: ProseMirrorNode[] = []
+  content.forEach((node) => {
+    const capsule = capsuleOf(node)
+    const known = capsule && transfers?.current(capsule.id)
+    nodes.push(known
+      ? node.type.create({ ...node.attrs, capsule: known }, node.content, node.marks)
+      : node.isLeaf ? node : node.copy(currentFiles(node.content)))
+  })
+  return Fragment.from(nodes)
+}
+
+/**
+ * A copy or a cut carries Demi's own form beside ProseMirror's, as a drag
+ * does, so another conversation's composer brings its files back as capsules
+ * without uploading them. It runs once ProseMirror has written the clipboard,
+ * from the slice it copied, which a cut has already taken from the message.
+ */
+function copy(event: ClipboardEvent): void {
+  const slice = copied
+  copied = null
+  const transfer = event.clipboardData
+  if (!slice || !transfer) {
+    return
+  }
+  const forms = clipboard.forms(editor.schema, currentFiles(slice.content))
   if (!forms.clipboard.message.files.length) {
     return
   }
@@ -472,6 +514,8 @@ defineExpose({
     :data-files="files() ? '' : undefined"
     @click="click"
     @dragstart="dragStart"
+    @copy="copy"
+    @cut="copy"
   >
     <EditorContent :editor="editor" />
   </div>

@@ -133,14 +133,16 @@ export function useTransfers(): TransferContext | null {
  * on another device.
  */
 export function composerCapsule(item: ComposerAttachment): MessageCapsule {
+  const reference = item.reference ? { reference: item.reference } : {}
   if (item.kind === 'reference') {
-    return { id: item.id, name: item.name, host: item.host, path: item.path }
+    return { id: item.id, name: item.name, host: item.host, path: item.path, ...reference }
   }
   return {
     id: item.id,
     name: item.name,
     ...(item.src ? { image: item.src } : {}),
     ...(item.snippet ? { snippet: item.snippet } : {}),
+    ...reference,
   }
 }
 

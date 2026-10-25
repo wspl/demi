@@ -1,6 +1,7 @@
 import { baseName } from '@demicodes/utils'
 import { formatBytes } from '../../files/format'
 import { t } from '../locales/text'
+import type { FileReference } from './copied-message'
 
 /**
  * A failed upload keeps its capsule, which offers Retry; the toast says why it
@@ -29,6 +30,8 @@ export interface ComposerFileAttachment {
   progress?: number
   /** The opening of a text file, as the backend answered its upload. */
   snippet?: string
+  /** Its blob once uploaded, which a copy of the message carries. */
+  reference?: FileReference
 }
 
 /** A host path. The tile is the same; the tooltip is `host · filename`. */
@@ -38,6 +41,8 @@ export interface ComposerRemoteAttachment {
   name: string
   host: string
   path: string
+  /** Its device, which a copy of the message carries. */
+  reference?: FileReference
 }
 
 export type ComposerAttachment = ComposerFileAttachment | ComposerRemoteAttachment

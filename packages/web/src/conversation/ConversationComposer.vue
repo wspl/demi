@@ -28,7 +28,7 @@ import { usePreferences } from '../state/preferences'
 import { placesFor } from '../devices/files'
 import { conversationHostSource } from './files'
 import { claimStoredFile, uploadAttachment } from '../api/uploads'
-import type { Conversation } from '../state/types'
+import type { Conversation, ProductAttachment } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
 import { useSettingsAddress } from '../settings/address'
 import { useContextCard } from './context-card'
@@ -64,6 +64,18 @@ watch(() => store.composerFocusRequests, () => composer.value?.focusDraft())
 const startingTurn = computed(() =>
   turnStartingMessage(props.conversation.phase, props.conversation.pendingSends) !== undefined,
 )
+
+/**
+ * A file of the composer with where it is once a message can name it without
+ * its bytes, which a copy of the message carries: its blob once uploaded, or
+ * its device.
+ */
+function referenced(file: ProductAttachment): ProductAttachment {
+  if (file.kind === 'reference') {
+    return { ...file, reference: { type: 'device', deviceId: file.deviceId } }
+  }
+  return file.upload ? { ...file, reference: { type: 'stored', sha256: file.upload.sha256, mediaType: file.upload.mediaType } } : file
+}
 
 /** The store takes the files; their capsules go into the message where the composer said they would land. */
 function addFiles(files: File[]) {
@@ -284,7 +296,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :attachments="
         conversation.files.filter(
           (file) => !conversation.pendingSends.some((pending) => pending.fileIds.includes(file.id)),
-        )
+        ).map(referenced)
       "
       :providers="resources.providerInfos"
       :models="resources.models"
