@@ -19,7 +19,7 @@ pub enum Namespace {
     /// lives there.
     HostMount,
     /// The network namespace bound at the path, such as a slot's
-    /// `/run/netns/demi-3`.
+    /// `/run/demi-machine-manager/netns/demi-3`.
     Network(PathBuf),
     /// A new network namespace, which the job may bind to a path.
     NewNetwork,

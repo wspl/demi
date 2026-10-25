@@ -18,7 +18,9 @@
 //! 7. It installs the network policy, imports the configured base unless an
 //!    upgrade imported it already (`--import`) and collects the bases nothing
 //!    needs.
-//! 8. It pins its own mount namespace.
+//! 8. It pins its own mount namespace, then mounts its directory of network
+//!    namespaces, which the pin's bind on the host would otherwise cover
+//!    (`network::netns`).
 //! 9. It probes with a small image that storage can be mounted, frozen and
 //!    copied.
 //! 10. It opens its socket.
@@ -236,6 +238,7 @@ mod service {
         let base = base::import(&core.tools, &core.config.image, &core.store.bases()).await?;
         base::retain(&core.config.images(), &core.config.working(), &base).await?;
         namespace.pin().await?;
+        core.network.mount_namespace_directory().await?;
         preflight::probe_storage(&core).await?;
         let socket_path = core.config.socket.clone();
         let socket = Socket::bind(&socket_path).await?;

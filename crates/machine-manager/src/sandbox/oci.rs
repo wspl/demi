@@ -89,8 +89,8 @@ const PROCESS_LIMIT: u64 = 1024;
 /// What one boot's configuration varies by.
 pub struct Boot<'a> {
     pub directory: &'a RuntimeDirectory,
-    /// The network namespace's name under `/run/netns`.
-    pub namespace: &'a str,
+    /// The file that holds the sandbox's network namespace.
+    pub namespace: &'a Path,
     /// The boot's cgroup; `None` with the resource limits off, when the
     /// sandbox has none.
     pub cgroup: Option<Cgroup<'a>>,
@@ -177,7 +177,7 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
             namespace(LinuxNamespaceType::Mount)?,
             LinuxNamespaceBuilder::default()
                 .typ(LinuxNamespaceType::Network)
-                .path(format!("/run/netns/{}", boot.namespace))
+                .path(boot.namespace)
                 .build()?,
         ])
         .masked_paths(
