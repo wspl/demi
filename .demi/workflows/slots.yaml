@@ -12,7 +12,7 @@ instructions: |
 
   Branches
   - A branch starts from `origin/feat/demi-next` after a `git fetch`. A new decision record takes the next number that neither `origin/feat/demi-next`, nor a branch on origin, nor the board has taken.
-  - Merge on `origin/feat/demi-next` only when the user approves, then run `bun xtask sweep` in your slot.
+  - Merge on `origin/feat/demi-next` only when the user approves, then delete the branch on origin and run `bun xtask sweep` in your slot.
 
   Review before a commit
   1. Before you commit code, the review profile reads the change once: the uncommitted diff in your slot against `origin/feat/demi-next`. A commit of documents alone has no review.
