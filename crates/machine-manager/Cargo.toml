@@ -41,6 +41,7 @@ which = "8"
 zstd = { version = "0.13", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 linux-raw-sys = { version = "0.12", default-features = false, features = ["ioctl", "loop_device", "std"] }
 rtnetlink = "0.23"
 rustix = { version = "1", features = ["fs", "mount", "process", "thread"] }
