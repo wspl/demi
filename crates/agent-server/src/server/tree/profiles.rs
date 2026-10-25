@@ -10,8 +10,11 @@
 //! deleted afterwards changes no child.
 //!
 //! A profile never replaces the product's prompt (the child is always Demi) and
-//! never changes the commands. A spawn without `--profile` takes the inherit
-//! profile, which exists whether or not the user has profiles.
+//! never changes the commands. With the user's profiles, a spawn without
+//! `--profile` takes the inherit profile, which exists whether or not the user
+//! has profiles. A project's workflow has no inherit profile: its profiles are
+//! the subagents its team planned, and work none of them is for is the
+//! spawning agent's own.
 //!
 //! The checks run in the order of `Tree::spawn_setup`. The reasons behind them:
 //!
@@ -34,10 +37,12 @@
 //! - A workflow chosen for the conversation replaces the user's profiles and
 //!   the switch.
 //! - `profiles list` reads the settings at call time and succeeds while
-//!   subagents are off. The profiles are in neither the system prompt nor a
-//!   context block: the prompt is rendered once per tree and could not follow
-//!   an edit, and a block would put every edit into every conversation's
-//!   transcript, spawning or not.
+//!   subagents are off. The user's profiles are in neither the system prompt
+//!   nor a context block: the prompt is rendered once per tree and could not
+//!   follow an edit, and a block would put every edit into every
+//!   conversation's transcript, spawning or not. A chosen workflow's profiles
+//!   are in its element of the instructions block, which follows its file
+//!   already.
 //! - `create`, `edit` and `delete` change a setting every conversation reads,
 //!   so each needs the user's permission in each conversation. They go through
 //!   the settings page's path, with its checks and words.
@@ -170,7 +175,8 @@ impl<H: HostResolver> Tree<H> {
     /// What a spawn by `owner` with the profile `name` makes its child of; for
     /// a resume, what the child the resume moves to the profile is made of.
     ///
-    /// `name` is none for the inherit profile, which only a spawn takes. The
+    /// `name` is none for the inherit profile, which only a spawn with the
+    /// user's profiles takes; a workflow's spawn without it fails. The
     /// checks run against the user's current settings and the conversation's
     /// choice. The first that fails ends the call before anything is created
     /// or changed. In order, they require that:
@@ -227,13 +233,14 @@ impl<H: HostResolver> Tree<H> {
             )),
             ConversationProfiles::Workflow(workflow) => {
                 let Some(name) = name else {
-                    return Ok(inherit());
+                    return Err(unnamed_in(&workflow));
                 };
                 let child = workflow
                     .profiles
                     .iter()
                     .find(|child| child.name == name)
-                    .ok_or_else(|| unknown_in(name, &workflow, omitting))?;
+                    // A workflow's spawn has no profile to fall back on; a resume goes on with the child's.
+                    .ok_or_else(|| unknown_in(name, &workflow, (purpose == SetupFor::Resume).then_some(omitting)))?;
                 let (model, context_limit) = match &child.model {
                     None => parents(),
                     Some(Ok(selection)) => (selection.clone(), child.context_limit),
@@ -477,7 +484,7 @@ impl<H: HostResolver> Tree<H> {
                 .profiles
                 .iter()
                 .find(|child| child.name == name)
-                .ok_or_else(|| unknown_in(name, &workflow, SetupFor::Spawn.omitting()))?;
+                .ok_or_else(|| unknown_in(name, &workflow, None))?;
             return Ok(workflow_answer(&workflow, child));
         }
         let settings = read(&server).await?;
@@ -674,7 +681,7 @@ impl ProfileListing {
             )),
             _ if self.profiles.is_empty() => Some(match &self.workflow {
                 None => "the user has no enabled subagent profile; demi agent spawn without --profile inherits the parent".to_owned(),
-                Some(name) => format!("workflow {name} has no profiles; demi agent spawn without --profile inherits the parent"),
+                Some(name) => format!("workflow {name} has no profiles; demi agent spawn fails, so do the work in this session"),
             }),
             WorkflowChoice::Default | WorkflowChoice::Workflow { .. } => None,
         }
@@ -760,22 +767,42 @@ fn unknown(name: &str, settings: &SubagentSettings, omitting: &str) -> String {
     )
 }
 
-/// Why a spawn names no profile of the conversation's workflow: with the
-/// workflow's names.
-fn unknown_in(name: &str, workflow: &ChosenWorkflow, omitting: &str) -> String {
+/// Why a spawn without `--profile` fails in a conversation that chose a
+/// workflow: with the workflow's names.
+fn unnamed_in(workflow: &ChosenWorkflow) -> String {
     let names: Vec<&str> = workflow
         .profiles
         .iter()
         .map(|child| child.name.as_str())
         .collect();
     if names.is_empty() {
+        return format!("workflow {} has no profiles; do this work in this session.", workflow.name);
+    }
+    format!(
+        "workflow {} spawns only its profiles: {}; do other work in this session.",
+        workflow.name,
+        names.join(", ")
+    )
+}
+
+/// Why a spawn or a resume names no profile of the conversation's workflow:
+/// with the workflow's names, and what an omitted `--profile` does where it
+/// does anything.
+fn unknown_in(name: &str, workflow: &ChosenWorkflow, omitting: Option<&str>) -> String {
+    let names: Vec<&str> = workflow
+        .profiles
+        .iter()
+        .map(|child| child.name.as_str())
+        .collect();
+    let omit = omitting.map(|omitting| format!(" Omit --profile to {omitting}.")).unwrap_or_default();
+    if names.is_empty() {
         return format!(
-            "unknown profile \"{name}\"; this conversation's workflow {} has no profiles. Omit --profile to {omitting}.",
+            "unknown profile \"{name}\"; this conversation's workflow {} has no profiles.{omit}",
             workflow.name
         );
     }
     format!(
-        "unknown profile \"{name}\"; the profiles of this conversation's workflow {} are {}. Run `demi agent profiles list` for when to use each, or omit --profile to {omitting}.",
+        "unknown profile \"{name}\"; the profiles of this conversation's workflow {} are {}. Run `demi agent profiles list` for when to use each.{omit}",
         workflow.name,
         names.join(", ")
     )
