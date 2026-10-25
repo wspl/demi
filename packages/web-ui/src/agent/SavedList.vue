@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { ArrowUp, Paperclip, Pencil, Trash2 } from '@lucide/vue'
+import { ArrowUp, Pencil, Trash2 } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
-import { ICON_PX } from '../ui/icon-metrics'
 import MenuItem from '../ui/MenuItem.vue'
 import type { Action } from '../ui/operations'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import AttachmentCapsule from './message-editor/AttachmentCapsule.vue'
 import type { SavedRow } from './saved'
 
 /**
@@ -16,13 +16,13 @@ import type { SavedRow } from './saved'
  *
  * Each row is a menu row:
  *
- * - It shows the message's first line and, when the message has files, their
- *   count, with no time.
+ * - It shows the message on one line, each file as its capsule where it
+ *   stands, as the composer shows it, with no time.
  * - Pressing it edits the message.
- * - A message the server has not taken yet reads Saving…, before the count.
+ * - A message the server has not taken yet reads Saving… before the actions.
  * - Edit, Send and Delete always stand at the row's end, where the row keeps
- *   their inset, the count before them. They are quiet, and take the normal
- *   icon color while the pointer or the focus is on the row.
+ *   their inset. They are quiet, and take the normal icon color while the
+ *   pointer or the focus is on the row.
  */
 defineProps<{
   rows: SavedRow[]
@@ -53,13 +53,14 @@ function onSaved(action: 'edit' | 'send' | 'delete', id: string) {
         :operation="onSaved('edit', row.id)"
         @select="onEdit?.(row.id)"
       >
-        <span class="min-w-0 truncate">{{ row.preview }}</span>
+        <span class="min-w-0 truncate">
+          <template v-for="(part, index) in row.parts" :key="index">
+            <AttachmentCapsule v-if="'capsule' in part" :capsule="part.capsule" />
+            <template v-else>{{ part.text }}</template>
+          </template>
+        </span>
         <template #actions>
           <span v-if="row.state === 'saving'" class="mr-1 whitespace-nowrap text-fg-subtle">{{ t('composer.saved.saving') }}</span>
-          <span v-if="row.attachmentCount" class="mr-1 inline-flex items-center gap-0.5 whitespace-nowrap text-fg-subtle">
-            <Paperclip :size="ICON_PX.in28" class="shrink-0" />
-            {{ row.attachmentCount }}
-          </span>
           <Tooltip :content="t('composer.saved.edit')" class="inline-flex saved-action">
             <IconButton
               :icon="Pencil"

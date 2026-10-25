@@ -15,7 +15,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { createId } from '@demicodes/utils'
-import { savedPreview, type SavedRow } from '@demicodes/web-ui/agent/saved'
+import { savedParts, type SavedRow } from '@demicodes/web-ui/agent/saved'
 import { beginSavedEdit, type MessageEditContent, type MessageEditState, type SavedMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -167,8 +167,7 @@ const savedEdit = ref<SavedMessageEdit | null>(null)
 const messageEdit = computed(() => props.messageEdit ?? savedEdit.value)
 const savedRows = computed<SavedRow[]>(() => savedMessages.value.map((saved) => ({
   id: saved.id,
-  preview: savedPreview(saved.markdown),
-  attachmentCount: saved.files.length,
+  parts: savedParts(saved.markdown, saved.files.map((item) => composerCapsule(item))),
   state: saved.saving ? 'saving' : 'saved',
 })))
 /** Whether the reload is offered, and whether one is under way, as the product's summary and store hold them. */

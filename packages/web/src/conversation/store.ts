@@ -62,7 +62,7 @@ import {
   type CopiedStoredFile,
   type PasteHost,
 } from '@demicodes/web-ui/agent/message-input/copied-message'
-import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
+import { composerCapsule, contentMessage } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { createConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
@@ -4236,6 +4236,8 @@ export const useConversations = defineStore('conversations', () => {
     /** Saves the drafts that wait for typing to pause: when the page is hidden, or, with `keepalive`, closes. */
     flushDrafts: (keepalive = false) => recordSync.flush(items.value, keepalive),
     saveForLater,
+    /** A saved message as the composer shows it: its Markdown, and each file's capsule in the order of their marks. */
+    savedMessage: (conversation: Conversation, message: Message) => contentMessage(savedEditContent(conversation, message)),
     editSaved,
     sendSaved,
     deleteSaved,
