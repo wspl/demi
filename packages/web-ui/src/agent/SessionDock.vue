@@ -73,7 +73,8 @@ const rowRef = ref<HTMLElement>()
 const chipsRef = ref<HTMLElement>()
 const composerRef = ref<HTMLElement>()
 const { height: rowHeight } = useElementSize(rowRef, { width: 0, height: 0 }, { box: 'border-box' })
-const { width: chipsWidth } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'border-box' })
+// The chips' own width: the scroller's padding lies outside the row's flow.
+const { width: chipsWidth } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'content-box' })
 const { height: composerHeight } = useElementSize(composerRef, { width: 0, height: 0 }, { box: 'border-box' })
 const surfaceComposer = inject(sessionComposerKey, null)
 watch(composerHeight, (height) => {
@@ -189,10 +190,12 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       The chips keep their room: on a narrow row the reading gives way, its
       speed first. When the chips alone are wider than the row, as four are on
       a phone, they stay on one line and scroll sideways, so the dock's height
-      does not change.
+      does not change. A scroller clips what reaches past its padding box, as
+      the chips' 0.5px ring does, so its padding holds the ring, and its
+      margin of the same width keeps the chips where they stand.
     -->
     <div ref="rowRef" class="hidden items-center gap-1.5 pb-2 has-[>*>*]:flex">
-      <div ref="chipsRef" class="flex min-w-0 shrink items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
+      <div ref="chipsRef" class="-m-px flex min-w-0 shrink items-center gap-1.5 overflow-x-auto p-px overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
         <slot name="chips" />
       </div>
       <span v-if="showScrollToBottom" class="w-chip shrink-0" />
