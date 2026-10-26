@@ -54,7 +54,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use demi_command_sdk::paths::resolve;
 
 use demi_runner_process::{
-    pipes::{PipeClient, report_pipe},
+    pipes::{PipeClient, UploadBody, report_pipe, report_queued},
     private_files::{chmod, io_error},
 };
 use demi_runner_protocol::wire::{self, Inbound, PipeRef, ReadAt};
@@ -110,7 +110,7 @@ impl FileTransfers {
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
         self.transfers.spawn(async move {
-            let read = open_read(target, offset.unwrap_or(0), length, held.as_deref(), &transfer).await;
+            let read = open_upload(target, offset.unwrap_or(0), length, held.as_deref(), &transfer).await;
             let read = match read {
                 Ok(read) => read,
                 Err(error) => {
@@ -135,7 +135,7 @@ impl FileTransfers {
                 report_pipe(&reply, output.id, result);
                 return;
             };
-            let result = pipes.put(&output.url, body, &transfer).await;
+            let result = pipes.upload(&output, body, || report_queued(&reply, &output.id), &transfer).await;
             report_pipe(&reply, output.id, result);
         });
         Ok(())
@@ -172,7 +172,10 @@ impl FileTransfers {
             if !send(&reply, answer) {
                 return;
             }
-            let result = pipes.put(&output.url, framed(opened), &transfer).await;
+            let result = match framed(opened).await {
+                Ok(body) => pipes.upload(&output, body, || report_queued(&reply, &output.id), &transfer).await,
+                Err(error) => Err(error),
+            };
             report_pipe(&reply, output.id, result);
         });
         Ok(())
@@ -480,8 +483,8 @@ impl FileTransfers {
             if !send(&reply, found) {
                 return;
             }
-            let body = futures_util::stream::iter([Ok::<_, io::Error>(Bytes::from(bytes))]);
-            let result = pipes.put(&output.url, body, &transfer).await;
+            let body = UploadBody::new().bytes(Bytes::from(bytes));
+            let result = pipes.upload(&output, body, || report_queued(&reply, &output.id), &transfer).await;
             report_pipe(&reply, output.id, result);
         });
         Ok(())
@@ -524,18 +527,47 @@ pub async fn open_read(
     held: Option<&str>,
     cancel: &CancellationToken,
 ) -> io::Result<OpenedRead> {
-    let (file, stat) = open_range(target, offset, length, cancel).await?;
+    let (file, len, stat) = open_range(target, offset, length, cancel).await?;
+    let opened = opened_file(stat, held);
+    let body: Option<FileBody> = (!opened.unchanged).then(|| Box::pin(chunks(file.take(len))) as FileBody);
+    Ok(OpenedRead { opened, body })
+}
+
+/// What a read of the version `held` answers of a file of `stat`.
+fn opened_file(stat: wire::FileStat, held: Option<&str>) -> wire::OpenedFile {
     let version = wire::file_version(stat.size, stat.mtime.0);
     let unchanged = held == Some(version.as_str());
-    let body: Option<FileBody> = (!unchanged).then(|| Box::pin(chunks(file)) as FileBody);
-    Ok(OpenedRead {
-        opened: wire::OpenedFile {
-            stat,
-            version,
-            unchanged,
-        },
-        body,
-    })
+    wire::OpenedFile {
+        stat,
+        version,
+        unchanged,
+    }
+}
+
+/// [`open_read`] for the backend's `fs_readFile`: the range as an upload's
+/// body, which goes again from any offset (`demi_runner_process::pipes`).
+async fn open_upload(
+    target: io::Result<PathBuf>,
+    offset: u64,
+    length: Option<u64>,
+    held: Option<&str>,
+    cancel: &CancellationToken,
+) -> io::Result<UploadRead> {
+    let (file, len, stat) = open_range(target, offset, length, cancel).await?;
+    let opened = opened_file(stat, held);
+    let body = if opened.unchanged {
+        None
+    } else {
+        Some(UploadBody::new().file(file.into_std().await, offset, len))
+    };
+    Ok(UploadRead { opened, body })
+}
+
+/// A file an upload's read opened: what the read answers, and its bytes
+/// unless the file still has the version the read named.
+struct UploadRead {
+    opened: wire::OpenedFile,
+    body: Option<UploadBody>,
 }
 
 /// `fs_hashFile`: the size and SHA-256 of the regular file at `target`,
@@ -567,7 +599,8 @@ pub async fn hash(
     }
     let path = target.to_string_lossy().into_owned();
     // The read is limited to the size the file had when it was opened.
-    let (mut file, stat) = open_range(Ok(target), 0, None, cancel).await?;
+    let (file, len, stat) = open_range(Ok(target), 0, None, cancel).await?;
+    let mut file = file.take(len);
     if stat.size > limit {
         return Ok(wire::FileHash::TooLarge { size: stat.size });
     }
@@ -587,8 +620,8 @@ pub async fn hash(
         .map_err(io::Error::other)
 }
 
-/// The regular file at `target`, positioned at `offset` and limited to
-/// `length` bytes, or to the end it had when it was opened, with its
+/// The regular file at `target`, positioned at `offset`, and the bytes of
+/// it to read: `length`, or to the end it had when it was opened. With its
 /// metadata then, which the read answers so that no `stat` precedes it
 /// (`crates/runner-host/src/lib.rs`).
 async fn open_range(
@@ -596,7 +629,7 @@ async fn open_range(
     offset: u64,
     length: Option<u64>,
     cancel: &CancellationToken,
-) -> io::Result<(impl AsyncRead + Unpin + Send + 'static, wire::FileStat)> {
+) -> io::Result<(fs::File, u64, wire::FileStat)> {
     let target = target?;
     // Out of open files, the transfer waits for one (`crates/command-sdk/src/descriptors.rs`).
     let mut file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
@@ -610,7 +643,7 @@ async fn open_range(
     let rest = metadata.len().saturating_sub(offset);
     let stat = crate::fs::stat(metadata)?;
     file.seek(SeekFrom::Start(offset)).await?;
-    Ok((file.take(length.map_or(rest, |length| length.min(rest))), stat))
+    Ok((file, length.map_or(rest, |length| length.min(rest)), stat))
 }
 
 /// A file of a read of several, open, and the size it had then.
@@ -678,44 +711,17 @@ pub fn file_reads(opened: &[io::Result<OpenFile>]) -> Vec<wire::FileRead> {
         .collect()
 }
 
-/// The pipe body of a read of several files: each opened file's length,
-/// eight bytes in big-endian order, then its bytes (`wire::FileRead`). A
-/// file that got shorter since it was opened fails the body.
-pub fn framed(
-    opened: Vec<io::Result<OpenFile>>,
-) -> impl futures_util::Stream<Item = io::Result<Bytes>> + Send + 'static {
-    futures_util::stream::iter(opened.into_iter().flatten()).flat_map(|OpenFile { file, size }| {
-        let length = futures_util::stream::once(async move {
-            Ok(Bytes::copy_from_slice(&size.to_be_bytes()))
-        });
-        length.chain(exactly(file, size))
-    })
-}
-
-/// The first `size` bytes of `file`, which must have them.
-fn exactly(
-    file: fs::File,
-    size: u64,
-) -> impl futures_util::Stream<Item = io::Result<Bytes>> + Send + 'static {
-    let chunks = chunks(file.take(size));
-    futures_util::stream::unfold(Some((chunks, 0)), move |state| async move {
-        let (mut chunks, read) = state?;
-        match chunks.next().await {
-            Some(Ok(chunk)) => {
-                let read = read + chunk.len() as u64;
-                Some((Ok(chunk), Some((chunks, read))))
-            }
-            Some(Err(error)) => Some((Err(error), None)),
-            None if read < size => Some((
-                Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "the file got shorter while it was read",
-                )),
-                None,
-            )),
-            None => None,
-        }
-    })
+/// The upload of a read of several files: each opened file's length, eight
+/// bytes in big-endian order, then its bytes (`wire::FileRead`). A file that
+/// got shorter since it was opened fails the upload.
+pub async fn framed(opened: Vec<io::Result<OpenFile>>) -> io::Result<UploadBody> {
+    let mut body = UploadBody::new();
+    for OpenFile { file, size } in opened.into_iter().flatten() {
+        body = body
+            .bytes(Bytes::copy_from_slice(&size.to_be_bytes()))
+            .file(file.into_std().await, 0, size);
+    }
+    Ok(body)
 }
 
 /// What is at `path`, a symbolic link followed. A file's first `limit`

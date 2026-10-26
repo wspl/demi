@@ -18,10 +18,7 @@ use crate::{HostFile, HostRead};
 pub fn root_reads(paths: HostPaths, ancestors: &[String]) -> Vec<HostRead> {
     ancestors
         .iter()
-        .map(|directory| HostRead {
-            path: paths.join(directory, ".git"),
-            limit: 0,
-        })
+        .map(|directory| HostRead::new(paths.join(directory, ".git"), 0))
         .collect()
 }
 

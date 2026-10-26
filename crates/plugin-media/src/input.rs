@@ -72,7 +72,7 @@ pub async fn read_images(port: &PluginPort, paths: &[String]) -> Result<Vec<Imag
     if paths.is_empty() {
         return Ok(Vec::new());
     }
-    let reads = paths.iter().map(|path| HostRead::new(path.clone(), MAX_IMAGE_BYTES)).collect();
+    let reads = paths.iter().map(|path| HostRead::content(path.clone(), MAX_IMAGE_BYTES)).collect();
     let files = match port.read_host_files(reads).await {
         Ok(files) => files,
         Err(PortFailure::Refused(PortRefusal::NotRunning)) => {

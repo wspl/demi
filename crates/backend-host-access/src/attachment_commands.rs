@@ -51,7 +51,7 @@ use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_agent_store::{attachments::upload_media_type, pixels::pixel_size};
-use demi_backend_blobs::blobs::OPENING_BYTES;
+use demi_backend_blobs::blobs::{FetchError, OPENING_BYTES};
 use demi_backend_database::conversation_attachments::{
     self, AttachmentNumber, AttachmentRow, AttachmentSource, StoredAttachment,
 };
@@ -486,17 +486,20 @@ async fn store(
     let (blob, opening, size) = match held {
         Some(opening) => (sha256, opening.bytes, opening.size),
         None => {
-            let bytes = on_host(shard, conversation, device, purpose, async |host| {
-                read(&host.host, cwd, path).await
-            })
-            .await??;
+            // A copy of the same bytes under way is waited for, not made twice.
+            let read = || async move {
+                on_host(shard, conversation, device, purpose, async |host| {
+                    read(&host.host, cwd, path).await
+                })
+                .await?
+            };
+            let bytes = blobs.fetch_once(&sha256, read).await.map_err(|error| match error {
+                FetchError::Read(error) => error,
+                error => CopyError::Unreadable(error.to_string()),
+            })?;
             let size = u64::try_from(bytes.len()).expect("an attachment's size fits u64");
-            let blob = blobs
-                .put(bytes.clone())
-                .await
-                .map_err(|error| CopyError::Unreadable(error.to_string()))?;
             let opened = bytes.len().min(OPENING_BYTES as usize);
-            (blob, bytes.slice(..opened), size)
+            (sha256, bytes.slice(..opened), size)
         }
     };
     let sent = preview_media_type(path).unwrap_or(UNKNOWN_MEDIA_TYPE);
