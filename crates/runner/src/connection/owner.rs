@@ -175,6 +175,9 @@ struct Owner<'r> {
     exposure: Option<crate::exposure::Exposure>,
     /// The manifests installed on this connection, which end with it.
     manifests: Manifests,
+    /// The runner release downloading ahead on this connection, and what
+    /// stops it: one at a time, the newest the backend named.
+    prefetching: Option<(String, tokio_util::sync::CancellationToken)>,
 }
 
 /// Serves one connection until it ends, then ends everything it owns; the
@@ -242,6 +245,7 @@ pub async fn serve(
         log: transport.log.clone(),
         following: None,
         work: JoinSet::new(),
+        prefetching: None,
         host,
         streams,
         volumes: Volumes::new(
@@ -541,13 +545,25 @@ impl Owner<'_> {
         expected: demi_shared_artifacts::Digest,
         packages: Vec<demi_command_protocol::PackageDescriptor>,
     ) {
+        // The download that runs answers for the release it downloads; one
+        // of an earlier release stops, since a newer one replaces it.
+        if let Some((ahead, cancel)) = &self.prefetching
+            && !cancel.is_cancelled()
+        {
+            if *ahead == release {
+                return;
+            }
+            cancel.cancel();
+        }
+        let closed = self.live.closed.child_token();
+        self.prefetching = Some((release.clone(), closed.clone()));
         let residents = self.registered.residents.clone();
         let programs = Arc::new(ProgramArtifacts::new(self.kept.handle.clone(), true));
         let installed = self.registered.installed.clone();
         let backend = self.registered.backend.url().clone();
         let token = self.registered.token.borrow().clone();
         let control = self.live.control.clone();
-        let closed = self.live.closed.clone();
+        let connection = self.live.closed.clone();
         self.work.spawn(async move {
             let began = std::time::Instant::now();
             let size = expected.size;
@@ -561,18 +577,21 @@ impl Owner<'_> {
                     "this runner was not installed by an installer, so it does not update itself",
                 )),
             };
-            if closed.is_cancelled() {
-                return Work::Done;
-            }
             // The release's programs come with it, so its first commands
             // wait for none; one that does not come downloads at its first
             // use, which is no failure of the download ahead.
-            if placed.is_ok() && !packages.is_empty() {
+            if placed.is_ok() && !packages.is_empty() && !closed.is_cancelled() {
                 log_programs(residents.keep_programs(&packages, programs, true, &closed).await, Some(&release), began);
-                if closed.is_cancelled() {
-                    return Work::Done;
-                }
             }
+            // A connection that ended hears nothing; a download a newer
+            // release replaced did not happen.
+            if connection.is_cancelled() {
+                return Work::Done;
+            }
+            let placed = match placed {
+                Ok(()) if closed.is_cancelled() => Err(io::Error::other("a newer runner release replaced it")),
+                placed => placed,
+            };
             let reply = match placed {
                 Ok(()) => {
                     tracing::info!(event = "runner_release.prefetched", release = release.as_str(), bytes = size, ms = began.elapsed().as_millis() as u64, "a runner release is downloaded ahead");
@@ -593,6 +612,8 @@ impl Owner<'_> {
                 }
                 Err(error) => tracing::warn!(event = "runner_release.prefetch_answer_invalid", %error, "the answer to a prefetch does not encode"),
             }
+            // Done: the next request starts anew.
+            closed.cancel();
             Work::Done
         });
     }

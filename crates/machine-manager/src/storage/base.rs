@@ -79,8 +79,8 @@ pub enum BaseError {
     Escape(String),
     #[error("Cloud executable integrity mismatch: {0}")]
     Executable(String),
-    #[error("{} is not a valid record of the configured bases: {source}", path.display())]
-    Configured {
+    #[error("{} is not a valid record of the store's bases: {source}", path.display())]
+    Record {
         path: PathBuf,
         source: serde_json::Error,
     },
@@ -105,24 +105,37 @@ struct Configured {
     previous: Option<BaseVersion>,
 }
 
+/// The base an import beside a running manager last imported, as ahead of
+/// an update, kept in the store's `ahead.json` until a manager is configured
+/// with it. Since no manager ran it, no Cloud is pinned to it.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Ahead {
+    base: BaseVersion,
+}
+
+/// Reads the store's JSON record at `path`; none when there is none.
+fn read_record<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, BaseError> {
+    match fs_err::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|source| BaseError::Record { path: path.to_owned(), source }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// Records `base` as the configured base of the store at `images`, and the
 /// one configured before it as the previous, then removes every base that
-/// neither names and no committed generation or working pair, under
-/// `images` and `working`, is pinned to.
+/// neither names, that was not imported ahead, and that no committed
+/// generation or working pair, under `images` and `working`, is pinned to.
 pub async fn retain(images: &Path, working: &Path, base: &BaseVersion) -> Result<(), BaseError> {
     let images = images.to_owned();
     let working = working.to_owned();
     let base = base.clone();
     blocking::run(move |off| -> Result<(), BaseError> {
         let path = images.join("configured.json");
-        let recorded: Option<Configured> = match fs_err::read(&path) {
-            Ok(bytes) => Some(
-                serde_json::from_slice(&bytes)
-                    .map_err(|source| BaseError::Configured { path: path.clone(), source })?,
-            ),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-            Err(error) => return Err(error.into()),
-        };
+        let recorded: Option<Configured> = read_record(&path)?;
         let configured = match recorded {
             Some(recorded) if recorded.current == base => recorded,
             recorded => Configured {
@@ -131,10 +144,20 @@ pub async fn retain(images: &Path, working: &Path, base: &BaseVersion) -> Result
             },
         };
         write_json(off, &path, &configured)?;
+        // The base imported ahead is configured now, or still ahead.
+        let ahead_path = images.join("ahead.json");
+        let ahead = match read_record::<Ahead>(&ahead_path)? {
+            Some(ahead) if ahead.base == configured.current => {
+                fs_err::remove_file(&ahead_path)?;
+                None
+            }
+            ahead => ahead.map(|ahead| ahead.base),
+        };
         sync(off, &images)?;
         let mut kept: Vec<BaseVersion> = pinned(off, &images, &working)?;
         kept.push(configured.current);
         kept.extend(configured.previous);
+        kept.extend(ahead);
         let bases = images.join("bases");
         for entry in fs_err::read_dir(&bases)? {
             let entry = entry?;
@@ -148,6 +171,43 @@ pub async fn retain(images: &Path, working: &Path, base: &BaseVersion) -> Result
             tracing::info!(event = "cloud_base.removed", %name, "a Cloud base that nothing needs was removed");
         }
         sync(off, &bases)?;
+        Ok(())
+    })
+    .await
+}
+
+/// Records `imported`, which an import beside a running manager put in the
+/// store at `images`, as the base imported ahead, and removes the one
+/// imported ahead before it, which no manager ran and no Cloud is pinned
+/// to: one base waits ahead at most. A base a manager is configured with is
+/// none imported ahead.
+pub async fn imported_ahead(images: &Path, imported: &BaseVersion) -> Result<(), BaseError> {
+    let images = images.to_owned();
+    let imported = imported.clone();
+    blocking::run(move |off| -> Result<(), BaseError> {
+        let configured: Option<Configured> = read_record(&images.join("configured.json"))?;
+        let ahead_path = images.join("ahead.json");
+        let earlier: Option<Ahead> = read_record(&ahead_path)?;
+        let ran = |base: &BaseVersion| {
+            configured
+                .as_ref()
+                .is_some_and(|configured| configured.current == *base || configured.previous.as_ref() == Some(base))
+        };
+        if ran(&imported) {
+            if earlier.is_some() {
+                fs_err::remove_file(&ahead_path)?;
+            }
+        } else {
+            write_json(off, &ahead_path, &Ahead { base: imported.clone() })?;
+        }
+        sync(off, &images)?;
+        if let Some(earlier) = earlier.filter(|earlier| earlier.base != imported && !ran(&earlier.base)) {
+            let path = images.join("bases").join(earlier.base.as_str());
+            if path.exists() {
+                remove_tree(off, &path)?;
+                tracing::info!(event = "cloud_base.removed", name = %earlier.base, "a Cloud base imported ahead was replaced by a newer one");
+            }
+        }
         Ok(())
     })
     .await

@@ -83,7 +83,7 @@ const NOTICES: &str = "THIRD-PARTY-NOTICES";
 
 /// The services' units and an administrator's update's, which each
 /// program's crate keeps and a server release carries (`crates/server/src/main.rs`).
-const UNITS: [(&str, &str); 4] = [
+const UNITS: [(&str, &str); 6] = [
     (
         "demi-backend.service",
         include_str!("../../backend/systemd/demi-backend.service"),
@@ -99,6 +99,14 @@ const UNITS: [(&str, &str); 4] = [
     (
         "demi-upgrade.service",
         include_str!("../../server/systemd/demi-upgrade.service"),
+    ),
+    (
+        "demi-prepare.path",
+        include_str!("../../server/systemd/demi-prepare.path"),
+    ),
+    (
+        "demi-prepare.service",
+        include_str!("../../server/systemd/demi-prepare.service"),
     ),
 ];
 

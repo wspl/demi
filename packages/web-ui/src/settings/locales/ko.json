@@ -16,6 +16,13 @@
     "upToDate": "Demi가 최신 상태입니다",
     "available": "Demi {version} 사용 가능",
     "youHave": "현재 버전: {version}",
+    "background": {
+      "starting": "백그라운드에서 다운로드 중…",
+      "downloading": "백그라운드에서 다운로드 중: {all} 중 {done}",
+      "installing": "백그라운드에서 설치 중…",
+      "ready": "설치할 준비가 되었습니다. 현재 버전: {version}",
+      "failed": "백그라운드에서 Demi {version}을(를) 다운로드할 수 없습니다. 현재 버전: {running}"
+    },
     "releaseNotes": "릴리스 노트",
     "updateNow": "지금 업데이트",
     "checking": "업데이트 확인 중…",

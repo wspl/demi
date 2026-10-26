@@ -145,17 +145,10 @@ fn prepare(
         )));
     }
     notices.done(UpgradeStepKind::CheckConfiguration, StepSummary::None);
-    if layout.gvisor().join(RuntimeRelease::pinned().version()).exists() {
-        notices.step(UpgradeStepKind::DownloadGvisor, StepState::Skipped { why: SkipReason::Installed });
-    } else {
-        notices.start(UpgradeStepKind::DownloadGvisor);
-        gvisor::of_release(layout, to)?;
-        notices.done(UpgradeStepKind::DownloadGvisor, StepSummary::None);
-    }
+    install(layout, settings, to, notices)?;
     if to > from && format.is_some_and(|format| format < STATE_FORMAT) {
         println!("{to} changes the machine manager's state format: a rollback cannot return to {from}");
     }
-    install_image(layout, settings, to, &manager, notices)?;
     let backend = settings.backend_data()?;
     notices.start(UpgradeStepKind::CheckDatabases);
     let data = if to < from {
@@ -185,6 +178,21 @@ fn prepare(
         notices.step(UpgradeStepKind::CheckDatabases, StepState::Skipped { why: SkipReason::NoChanges });
     }
     Ok(data)
+}
+
+/// What the release `to`, this program's own, installs beside the running
+/// one before anything stops, which the work ahead of an update does too:
+/// its gVisor version and its image.
+pub fn install(layout: &Layout, settings: &Settings, to: &Version, notices: &mut Notices) -> io::Result<()> {
+    if layout.gvisor().join(RuntimeRelease::pinned().version()).exists() {
+        notices.step(UpgradeStepKind::DownloadGvisor, StepState::Skipped { why: SkipReason::Installed });
+    } else {
+        notices.start(UpgradeStepKind::DownloadGvisor);
+        gvisor::of_release(layout, to)?;
+        notices.done(UpgradeStepKind::DownloadGvisor, StepSummary::None);
+    }
+    let manager = layout.release(to).join("bin").join("demi-machine-manager");
+    install_image(layout, settings, to, &manager, notices)
 }
 
 /// The new manager imports the release's image beside the running one; a
@@ -337,7 +345,7 @@ fn take_steps(
                 notices.start_restart(RestartStepKind::Switch);
                 layout.point_at(&journal.to)?;
                 layout.install_units(&journal.to)?;
-                services.reload(layout.upgrade_units())?;
+                services.reload(&layout.path_units())?;
                 notices.done_restart(RestartStepKind::Switch, StepSummary::None);
             }
             Step::Starting => {
@@ -475,7 +483,7 @@ fn return_to_from(
     }
     layout.point_at(&journal.from)?;
     layout.install_units(&journal.from)?;
-    services.reload(layout.upgrade_units())?;
+    services.reload(&layout.path_units())?;
     let started = services
         .start(MANAGER)
         .and_then(|()| {

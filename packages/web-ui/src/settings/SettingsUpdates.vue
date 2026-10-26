@@ -176,11 +176,31 @@ const status = computed<{ label: string, description: string }>(() => {
       return { label: t('updates.checkFailed'), description: check.reason }
     case 'checked':
       return check.newer
-        ? { label: t('updates.available', { version: check.newer }), description: youHave }
+        ? { label: t('updates.available', { version: check.newer }), description: preparationOf(check.newer) }
         : { label: t('updates.upToDate'), description: currentVersion }
   }
   return { label: '', description: '' }
 })
+
+/** What the server has got ready of `version` ahead of Update Now; the version it runs while there is nothing to say. */
+function preparationOf(version: string): string {
+  const preparation = props.state.preparation
+  const running = props.state.running
+  if (preparation.state === 'none' || preparation.version !== version)
+    return t('updates.youHave', { version: running })
+  switch (preparation.state) {
+    case 'downloading':
+      return preparation.total > 0
+        ? t('updates.background.downloading', { done: formatBytes(preparation.done), all: formatBytes(preparation.total) })
+        : t('updates.background.starting')
+    case 'installing':
+      return t('updates.background.installing')
+    case 'ready':
+      return t('updates.background.ready', { version: running })
+    case 'failed':
+      return t('updates.background.failed', { version, running })
+  }
+}
 
 /** When the last check ended; a check that runs keeps the one before it. */
 const lastCheckedAt = ref<string | null>(null)

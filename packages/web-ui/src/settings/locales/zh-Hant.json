@@ -16,6 +16,13 @@
     "upToDate": "Demi 已是最新版本",
     "available": "有新版本：Demi {version}",
     "youHave": "目前版本：{version}。",
+    "background": {
+      "starting": "正在背景下載…",
+      "downloading": "正在背景下載：{done}，共 {all}",
+      "installing": "正在背景安裝…",
+      "ready": "已準備好安裝。目前版本：{version}。",
+      "failed": "無法在背景下載 Demi {version}。目前版本：{running}。"
+    },
     "releaseNotes": "版本說明",
     "updateNow": "立即更新",
     "checking": "正在檢查更新⋯",

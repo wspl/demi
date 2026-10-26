@@ -41,6 +41,9 @@
 //! first download.
 //!
 //! - A failed prefetch is harmless, since the update downloads what is missing.
+//! - One release waits ahead at most: a server that got a newer release ready
+//!   since has its devices download that one, and their download removes the
+//!   earlier one's.
 //! - Every download of a runner executable, ahead or in an update, is Demi's
 //!   one download (`demi_shared_artifacts`), staged in
 //!   `releases/.download-<release>/` and resumed.
@@ -147,9 +150,39 @@ impl Installed {
         cancel: &CancellationToken,
     ) -> io::Result<()> {
         let _lock = InstallerLock::take(&self.root)?;
-        self.place(backend, token, release, expected, cancel)
-            .await
-            .map(drop)
+        self.place(backend, token, release, expected, cancel).await?;
+        self.prune_ahead(release).await;
+        Ok(())
+    }
+
+    /// Removes what an earlier download ahead left in `releases/`, the
+    /// executable of a release that `release` came after and its download,
+    /// so one release waits ahead at most. The running release's directory,
+    /// which an installation from before runs from, and what the system holds
+    /// open, such as the executable Windows renamed aside, stay.
+    async fn prune_ahead(&self, release: &str) {
+        let mut entries = match tokio::fs::read_dir(self.root.join("releases")).await {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(event = "runner_update.prune_failed", %error, "an earlier runner release downloaded ahead stays");
+                return;
+            }
+        };
+        let download = format!(".download-{release}");
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == release || name == self.release || name == download || name.starts_with(".replaced-") {
+                continue;
+            }
+            let removed = match entry.file_type().await {
+                Ok(kind) if kind.is_dir() => tokio::fs::remove_dir_all(entry.path()).await,
+                _ => tokio::fs::remove_file(entry.path()).await,
+            };
+            if let Err(error) = removed {
+                tracing::warn!(event = "runner_update.prune_failed", release = %name, %error, "an earlier runner release downloaded ahead stays");
+            }
+        }
     }
 
     /// Puts the executable `update` names in place, downloaded from

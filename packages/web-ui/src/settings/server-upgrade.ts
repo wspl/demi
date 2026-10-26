@@ -30,6 +30,18 @@ export interface UpgradeStep {
   state: StepState
 }
 
+/**
+ * How far the server is in getting a newer release ready ahead of Update
+ * Now: downloaded and unpacked, its gVisor and Cloud image installed, and its
+ * runner on the devices.
+ */
+export type UpgradePreparation =
+  | { state: 'none' }
+  | { state: 'downloading', version: string, done: number, total: number }
+  | { state: 'installing', version: string }
+  | { state: 'ready', version: string }
+  | { state: 'failed', version: string, reason: string }
+
 /** An update that runs, or did not happen. */
 export type UpgradeRun =
   | { state: 'none' }
@@ -41,6 +53,7 @@ export interface ServerUpgrade {
   running: string
   channel: UpgradeChannel
   check: UpgradeCheck
+  preparation: UpgradePreparation
   run: UpgradeRun
 }
 

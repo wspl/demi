@@ -1,6 +1,7 @@
 //! The devices' download of the next runner: the running backend hears which
 //! runner release comes next, over its management socket, and has its
-//! connected paired devices download it while the preparation goes on.
+//! connected paired devices download it, once the server got the release
+//! ready ahead of an update and again as the update's preparation starts.
 //!
 //! Nothing waits for them. A thread of its own reads the backend's answers
 //! only to say how many devices have the new runner, and ends once all have
@@ -11,9 +12,32 @@ use std::{
     io::{self, BufRead as _, BufReader, Write},
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use demi_runner_protocol::release::{PrefetchAnswer, PrefetchProgress, PrefetchRequest, PrefetchState, RunnerRelease};
+
+/// How long the work ahead of an update waits for the backend to answer its
+/// announcement of the next runner release.
+const ANNOUNCE_WAIT: Duration = Duration::from_secs(60);
+
+/// The request that names the runner release of the release at `root` as
+/// next; none when the release has no runners. A release record that does
+/// not decode is an error.
+fn request(root: &Path) -> io::Result<Option<PrefetchRequest>> {
+    let record = root.join("runners").join("manifest.json");
+    let release = match std::fs::read(&record) {
+        // The next release may speak other protocols than this program.
+        Ok(bytes) => RunnerRelease::decode_intact(&bytes)
+            .map_err(|error| io::Error::other(format!("{}: {error}", record.display())))?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    Ok(Some(PrefetchRequest {
+        release: release.release,
+        root: root.to_owned(),
+    }))
+}
 
 /// Tells the backend on `socket` that the runner release of the release at
 /// `root` comes next, and leaves its devices to download it. A backend whose
@@ -21,22 +45,43 @@ use demi_runner_protocol::release::{PrefetchAnswer, PrefetchProgress, PrefetchRe
 /// has no runners; its devices then download after the restart. Nothing
 /// here fails the upgrade but a release record that does not decode.
 pub fn start_prefetch(socket: &Path, root: &Path) -> io::Result<()> {
-    let record = root.join("runners").join("manifest.json");
-    let release = match std::fs::read(&record) {
-        // The next release may speak other protocols than this program.
-        Ok(bytes) => RunnerRelease::decode_intact(&bytes)
-            .map_err(|error| io::Error::other(format!("{}: {error}", record.display())))?,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error),
-    };
-    let request = PrefetchRequest {
-        release: release.release,
-        root: root.to_owned(),
+    let Some(request) = request(root)? else {
+        return Ok(());
     };
     let socket = socket.to_owned();
     std::thread::Builder::new()
         .name("prefetch".to_owned())
         .spawn(move || follow(&socket, &request, &mut io::stdout()))?;
+    Ok(())
+}
+
+/// Tells the backend on `socket` that the runner release of the release at
+/// `root`, which the server got ready ahead of an update, comes next, and
+/// returns once it has asked its connected devices to download it: they do
+/// while nothing waits. The backend that is not there, or refuses, is told
+/// nothing, and the update's own preparation tells it again.
+pub fn announce(socket: &Path, root: &Path) -> io::Result<()> {
+    let Some(request) = request(root)? else {
+        return Ok(());
+    };
+    let Ok(stream) = UnixStream::connect(socket) else {
+        return Ok(());
+    };
+    // A backend that does not answer holds the work ahead, and the server's
+    // lock with it, no longer than this: an update waits for that lock. The
+    // backend asks every connected device before it answers, within seconds.
+    stream.set_read_timeout(Some(ANNOUNCE_WAIT))?;
+    stream.set_write_timeout(Some(ANNOUNCE_WAIT))?;
+    let mut line = serde_json::to_vec(&request).map_err(io::Error::other)?;
+    line.push(b'\n');
+    let mut writer = &stream;
+    if writer.write_all(&line).is_err() {
+        return Ok(());
+    }
+    // The first answer comes once every device was asked; closing then
+    // leaves their downloads going.
+    let mut answer = String::new();
+    let _ = BufReader::new(&stream).read_line(&mut answer);
     Ok(())
 }
 

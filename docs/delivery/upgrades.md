@@ -100,7 +100,8 @@ The parts of the layout follow these rules:
   (`crates/xtask/src/server_release.rs`) of the server's Linux target,
   unpacked from its two archives. `demi-server` never changes a root after it
   unpacks it: a new release is a new directory. A server keeps the current
-  release and at most one other, the one a rollback returns to.
+  release, the one a rollback returns to, and at most one ready ahead of an
+  update ([Ready ahead](#ready-ahead)).
 - **gVisor.** No release carries gVisor. Each machine manager is built against
   one pinned version of `runsc`, and `demi-server` fetches that version into
   `gvisor/<version>/` before a release that needs it runs
@@ -357,9 +358,43 @@ and the newest release of its channel:
 - **Beta** offers the releases Demi publishes, which GitHub marks *latest*.
 - **Canary** offers every release, a deploy's pre-releases included.
 
-The backend looks for the newest release when it starts, once a day and on
+The backend looks for the newest release when it starts, every hour and on
 **Check Now**. While a newer one exists, the sidebar shows a green update icon
 to the master and administrators.
+
+### Ready ahead
+
+After every check that finds a newer release, the server gets it ready while
+the current one serves, so **Update Now** has only the checks and the restart
+left:
+
+1. The backend writes the version to `/run/demi-upgrade/prepare`.
+2. The path unit `demi-prepare.path` sees the file and starts
+   `demi-prepare.service`, which runs `demi-server prepare --requested` as
+   root.
+3. `demi-server` removes the request and does nothing while another run of it
+   holds its lock, or while a move is interrupted. Otherwise it removes a
+   release that was ready before this one, fetches the release as
+   [Fetch](#fetch) does, and hands over to the release's own `demi-server
+   prepare`. That one downloads its gVisor version, imports its image, and
+   tells the running backend its runner release, which the connected devices
+   download ([Prepare](#prepare)).
+4. It tells the backend each step, which Settings › Updates shows on the
+   release's row: *Downloading in the background*, *Installing in the
+   background…*, then *Ready to install*, or why it could not. The next check
+   asks again, so a backend started since hears of the release within the
+   hour, and so do the devices that were away.
+
+An update that starts while this runs waits for it, then finds its steps done
+and shows them as already installed.
+
+One release is ready at most. The server keeps its current release, the one a
+rollback returns to, and the one ready ahead, with their gVisor versions. The
+manager's import beside a running manager records the base it imported in
+`ahead.json` in its image store and removes the one recorded before it, which
+no manager ran and no Cloud is pinned to. A device keeps the runner and the
+programs of the release it runs and of the one ready ahead; its download of a
+newer one removes the earlier one's.
 
 **Update Now** asks first, then runs the same upgrade as
 `sudo demi-server upgrade <version>`:

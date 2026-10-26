@@ -16,6 +16,13 @@
     "upToDate": "Demi is up to date",
     "available": "Demi {version} is available",
     "youHave": "You have {version}.",
+    "background": {
+      "starting": "Downloading in the background…",
+      "downloading": "Downloading in the background: {done} of {all}",
+      "installing": "Installing in the background…",
+      "ready": "Ready to install. You have {version}.",
+      "failed": "Couldn’t download Demi {version} in the background. You have {running}."
+    },
     "releaseNotes": "Release Notes",
     "updateNow": "Update Now",
     "checking": "Checking for updates…",

@@ -204,6 +204,12 @@ pub const MANAGE_SOCKET: &str = "/run/demi-backend-manage/manage.sock";
 pub const UPGRADE_REQUEST_ENV: &str = "DEMI_UPGRADE_REQUEST";
 pub const UPGRADE_REQUEST: &str = "/run/demi-upgrade/version";
 
+/// The file, beside [`UPGRADE_REQUEST`], the backend writes the newest
+/// release's version to after a check finds it, which a path unit answers
+/// with `demi-server prepare --requested`: the server gets the release ready
+/// ahead of Update Now.
+pub const PREPARE_REQUEST_NAME: &str = "prepare";
+
 /// A line `demi-server` writes on the management socket while it upgrades
 /// the server, its own connection each: how far the upgrade is. The
 /// backend shows it to the administrators, and answers a line of its own,
@@ -226,6 +232,11 @@ pub enum UpgradeNotice {
         reason: String,
         update: Option<UpdateRecord>,
     },
+    /// How far the server is in getting `update.to` ready ahead of Update
+    /// Now: the steps it takes ahead, the download, the unpacking, gVisor
+    /// and the image, in their states, the others waiting. A failed step
+    /// ended the work.
+    Preparing { update: UpdateRecord },
 }
 
 /// A server update's steps, which `demi-server` keeps in the backend's data

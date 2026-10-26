@@ -8,6 +8,11 @@
 //!     pages ◄── the state channel ◄── heard(notice)
 //! ```
 //!
+//! Every check that finds a newer release has the server get it ready ahead:
+//! the backend writes its version to the prepare request beside the update's,
+//! whose appearance has systemd start `demi-server prepare --requested`, and
+//! shows the administrators how far the release is got ready.
+//!
 //! The backend cannot update the server itself: it runs as an unprivileged
 //! user, and the update stops it. It writes the version to the request file,
 //! whose appearance has systemd start `demi-server upgrade --requested` as
@@ -27,18 +32,29 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::update::Update;
 use demi_backend_page_sync::{Part, SyncRegistry};
-use demi_runner_protocol::release::{StepState, UpdateRecord, UpgradeNotice, UpgradeStepKind};
+use demi_runner_protocol::release::{
+    PREPARE_REQUEST_NAME, StepProgress, StepState, UpdateRecord, UpgradeNotice, UpgradeStepKind,
+};
 use demi_shared_artifacts::releases::{self, Channel};
 use demi_shared_types::Clock;
-use demi_web_api_protocol::server_upgrade::{ServerUpgrade, UpgradeChannel, UpgradeCheck, UpgradeRun};
+use demi_web_api_protocol::server_upgrade::{ServerUpgrade, UpgradeChannel, UpgradeCheck, UpgradePreparation, UpgradeRun};
 use demi_web_api_protocol::state::UpdateState;
 use semver::Version;
 
-/// How often the backend looks for a newer release by itself: as often as
-/// macOS does, and far below GitHub's 60 unauthenticated requests an hour
-/// per address, which Canary's list of every release spends a page of 100
-/// at a time.
-const CHECK_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
+/// How often the backend looks for a newer release by itself, which the
+/// server then gets ready: a fix a channel publishes reaches the
+/// administrators within the hour, far below GitHub's 60 unauthenticated
+/// requests an hour per address, which Canary's list of every release spends
+/// a page of 100 at a time.
+const CHECK_EVERY: Duration = Duration::from_secs(60 * 60);
+
+/// The steps the server takes ahead of Update Now.
+const AHEAD: [UpgradeStepKind; 4] = [
+    UpgradeStepKind::Download,
+    UpgradeStepKind::Unpack,
+    UpgradeStepKind::DownloadGvisor,
+    UpgradeStepKind::InstallImage,
+];
 
 /// How long a step of an update may go unheard before the backend takes the
 /// update as stopped: `demi-server` repeats its step every 10 seconds.
@@ -84,9 +100,13 @@ pub struct Upgrades {
 struct State {
     channel: UpgradeChannel,
     check: UpgradeCheck,
+    preparation: UpgradePreparation,
     run: UpgradeRun,
     /// When `demi-server` last told how far the run is.
     heard: Instant,
+    /// Whether the run's own `demi-server` told how far it is: until it
+    /// does, as while it waits for the work ahead, the run shows that work.
+    told: bool,
 }
 
 impl Upgrades {
@@ -115,8 +135,10 @@ impl Upgrades {
             state: Mutex::new(State {
                 channel,
                 check: UpgradeCheck::Never,
+                preparation: UpgradePreparation::None,
                 run: UpgradeRun::None,
                 heard: Instant::now(),
+                told: false,
             }),
             checking: tokio::sync::Mutex::new(()),
         });
@@ -146,6 +168,7 @@ impl Upgrades {
                 running: self.running.to_string(),
                 channel: state.channel,
                 check: state.check.clone(),
+                preparation: state.preparation.clone(),
                 run: state.run.clone(),
             }
         })
@@ -206,14 +229,28 @@ impl Upgrades {
                 }
             }
         };
-        {
+        let prepare = {
             let mut state = self.locked();
             // A change of channel meanwhile checks again.
-            if state.channel == channel {
+            if state.channel != channel {
+                None
+            } else {
+                let newer = match &check {
+                    UpgradeCheck::Checked { newer, .. } => newer.clone(),
+                    _ => None,
+                };
                 state.check = check;
+                newer.filter(|_| !matches!(state.run, UpgradeRun::Updating { .. }))
+            }
+        };
+        self.changed();
+        if let (Some(newer), Some(request)) = (prepare, &self.request) {
+            let prepare = request.with_file_name(PREPARE_REQUEST_NAME);
+            match write_request(&prepare, &newer) {
+                Ok(()) => tracing::info!(event = "upgrade.prepare_requested", version = %newer, "the server gets the newest release ready ahead"),
+                Err(error) => tracing::warn!(event = "upgrade.prepare_unrequested", version = %newer, %error, "the newest release was not asked to be got ready"),
             }
         }
-        self.changed();
     }
 
     /// Runs the update to `version`: writes the request that has systemd
@@ -230,7 +267,7 @@ impl Upgrades {
             if matches!(state.run, UpgradeRun::Updating { .. }) {
                 return Err(RunRefused::Running);
             }
-            write_request(request, &to)?;
+            write_request(request, &to.to_string())?;
             // The download starts as `demi-server` does, which says how far
             // it is from its first bytes.
             let mut record = UpdateRecord::new(&self.running.to_string(), &to.to_string());
@@ -240,6 +277,7 @@ impl Upgrades {
                 steps: record.upgrade,
             };
             state.heard = Instant::now();
+            state.told = false;
         }
         tracing::info!(event = "upgrade.requested", to = %to, "an administrator asked for an update of the server");
         self.changed();
@@ -255,7 +293,33 @@ impl Upgrades {
             let mut state = self.locked();
             state.heard = Instant::now();
             match notice {
+                UpgradeNotice::Preparing { update } => {
+                    state.preparation = preparation_of(&update);
+                    // A run that waits for the work ahead shows it, and
+                    // hears from it, until its own `demi-server` tells.
+                    let told = state.told;
+                    let mut shown = false;
+                    if let UpgradeRun::Updating { to, steps } = &mut state.run
+                        && *to == update.to
+                        && !told
+                    {
+                        for step in steps.iter_mut().filter(|step| AHEAD.contains(&step.kind)) {
+                            if let Some(ahead) = update.upgrade.iter().find(|ahead| ahead.kind == step.kind) {
+                                step.state = ahead.state.clone();
+                            }
+                        }
+                        shown = true;
+                    }
+                    if shown {
+                        state.heard = Instant::now();
+                    }
+                    // The work ahead says nothing of a restart.
+                    drop(state);
+                    self.changed();
+                    return;
+                }
                 UpgradeNotice::Progress { update } => {
+                    state.told = true;
                     let restart = update.restarting().then(|| update.clone());
                     state.run = UpgradeRun::Updating {
                         to: update.to,
@@ -336,9 +400,42 @@ impl Upgrades {
     }
 }
 
+/// How far the work ahead that `update` tells has got its release ready.
+fn preparation_of(update: &UpdateRecord) -> UpgradePreparation {
+    let version = update.to.clone();
+    let ahead = || update.upgrade.iter().filter(|step| AHEAD.contains(&step.kind));
+    // Any step that failed ended the work, one it failed before too.
+    if let Some(reason) = update.upgrade.iter().find_map(|step| match &step.state {
+        StepState::Failed { reason } => Some(reason.clone()),
+        _ => None,
+    }) {
+        return UpgradePreparation::Failed { version, reason };
+    }
+    if ahead().all(|step| matches!(step.state, StepState::Done { .. } | StepState::Skipped { .. })) {
+        return UpgradePreparation::Ready { version };
+    }
+    let download = ahead().find(|step| step.kind == UpgradeStepKind::Download).map(|step| &step.state);
+    match download {
+        Some(StepState::Running {
+            progress: Some(StepProgress::Bytes { done, total, .. }),
+            ..
+        }) => UpgradePreparation::Downloading {
+            version,
+            done: *done,
+            total: *total,
+        },
+        Some(StepState::Running { .. } | StepState::Waiting) => UpgradePreparation::Downloading {
+            version,
+            done: 0,
+            total: 0,
+        },
+        _ => UpgradePreparation::Installing { version },
+    }
+}
+
 /// Writes `version` to the request file whole, so the path unit that waits
 /// for the file never reads half of it.
-fn write_request(request: &std::path::Path, version: &Version) -> std::io::Result<()> {
+fn write_request(request: &std::path::Path, version: &str) -> std::io::Result<()> {
     let staged = request.with_extension("new");
     std::fs::write(&staged, version.to_string())?;
     std::fs::rename(&staged, request)
