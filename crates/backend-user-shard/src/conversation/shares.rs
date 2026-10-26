@@ -241,6 +241,7 @@ impl Shard {
             .conversations
             .read(&share.conversation, move |connection| {
                 let page = PageQuery {
+                    blocks: None,
                     before: query.before,
                     after: query.after,
                     around: query.around.as_ref(),

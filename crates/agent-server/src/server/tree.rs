@@ -895,17 +895,17 @@ impl<H: HostResolver> Tree<H> {
         self.agents.version()
     }
 
-    /// The latest page of the live node `id`'s transcript, read from its
-    /// window now, with the version the window is at, the view of each of its
+    /// The latest `count` blocks, a page at most, of the live node `id`'s
+    /// transcript, read from its window now, with the version the window is at, the view of each of its
     /// live commands, with those a closed child's shells hold while they stop,
     /// and the output of the request its agent runs; none for a node that is
     /// not live.
     ///
     /// Read at once, nothing awaited, so the page's patches begin at the
     /// version it names.
-    pub fn latest_page(&self, id: &NodeId) -> Option<(LatestPage, Vec<ShellStatus>, Option<RequestOutput>)> {
+    pub fn latest_page(&self, id: &NodeId, count: usize) -> Option<(LatestPage, Vec<ShellStatus>, Option<RequestOutput>)> {
         let node = self.node(id)?;
-        let page = node.session().latest_page();
+        let page = node.session().latest_page(count);
         Some((page, self.live_commands_of(id), node.session().request_output()))
     }
 

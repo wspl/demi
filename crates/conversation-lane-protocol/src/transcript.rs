@@ -130,6 +130,15 @@ pub const STORED_EPOCH: &str = "stored";
 /// memory.
 pub const PAGE_BLOCKS: usize = 1000;
 
+/// How many of its latest blocks a page reads of a root it holds nothing of,
+/// before it shows the conversation: a screen's rows in nearly every
+/// transcript, and the page before them is read once they show.
+///
+/// Bounded because the first read is what the reader waits for, and a whole
+/// page of a long transcript takes seconds to read and carry from a far
+/// server.
+pub const FIRST_BLOCKS: usize = 500;
+
 /// How long a call's input a light form keeps whole: a short script, such
 /// as one that only looks at a command, says on the folded row what the
 /// call did.
@@ -244,8 +253,8 @@ fn light_block(block: &Block) -> Block {
 /// Where a page is taken from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageAt {
-    /// The latest page.
-    Latest,
+    /// The latest this many blocks, a page's at most.
+    Latest(usize),
     /// The page that ends just before the block at this index.
     Before(usize),
     /// The page that starts just after the block at this index.
@@ -257,7 +266,8 @@ pub enum PageAt {
 /// The blocks of the page `at` of a transcript of `length` blocks, as a range
 /// of indices, [`PAGE_BLOCKS`] of them where the transcript holds so many there.
 ///
-/// - `Latest` ends at the transcript's end.
+/// - `Latest` ends at the transcript's end, with as many blocks as it names
+///   up to a page.
 /// - `Before` ends just before the block at its index, and `After` starts just
 ///   after it.
 /// - `Around` holds the block with half the page on each side; near an end of
@@ -266,7 +276,7 @@ pub enum PageAt {
 /// - An index past the transcript's ends answers an empty page there.
 pub fn page(length: usize, at: PageAt) -> Range<usize> {
     match at {
-        PageAt::Latest => length.saturating_sub(PAGE_BLOCKS)..length,
+        PageAt::Latest(blocks) => length.saturating_sub(blocks.min(PAGE_BLOCKS))..length,
         PageAt::Before(index) => {
             let end = index.min(length);
             end.saturating_sub(PAGE_BLOCKS)..end
@@ -286,7 +296,7 @@ pub fn page(length: usize, at: PageAt) -> Range<usize> {
 /// The start of the latest page of `blocks`, a transcript or the window of it
 /// a session holds.
 pub fn latest_page_start(blocks: &[Block]) -> usize {
-    page(blocks.len(), PageAt::Latest).start
+    page(blocks.len(), PageAt::Latest(PAGE_BLOCKS)).start
 }
 
 /// An index of a transcript as a frame or a page names it.

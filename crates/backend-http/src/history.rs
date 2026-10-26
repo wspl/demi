@@ -20,7 +20,7 @@ use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
 use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, reply_blocks};
-use demi_conversation_lane_protocol::{STORED_EPOCH, Version, index_u32, light};
+use demi_conversation_lane_protocol::{PAGE_BLOCKS, STORED_EPOCH, Version, index_u32, light};
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
@@ -45,7 +45,17 @@ pub(super) async fn transcript(
     let record = owned(services, &user.id, &id).await?;
     let node = NodeId::try_from(node).map_err(|_| no_node())?;
     let latest = query.latest.0;
-    let earlier = latest && query.earlier.0;
+    let count = match query.blocks.map(usize::try_from) {
+        None => PAGE_BLOCKS,
+        Some(Ok(count)) if (1..=PAGE_BLOCKS).contains(&count) => count,
+        Some(_) => {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                ErrorCode::InvalidQuery,
+                format!("`blocks` takes 1 to {PAGE_BLOCKS}"),
+            ));
+        }
+    };
     let live = if latest {
         let conversation = record.id.clone();
         let wanted = node.clone();
@@ -54,7 +64,7 @@ pub(super) async fn transcript(
             .of(&user.id)
             .call(move |shard, _| async move {
                 shard
-                    .live_transcript(&conversation, &wanted)
+                    .live_transcript(&conversation, &wanted, count)
                     .await
                     .map_err(ApiError::conversation_unreadable)
             })
@@ -121,9 +131,6 @@ pub(super) async fn transcript(
             page
         }
     };
-    if earlier {
-        page = with_earlier(&state, &record.id, &node, page).await?;
-    }
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.assembly, &user.id, &page.blocks).await;
     page.attachments = attachment_facts(&services.conversations, &record.id, reply_blocks(&page.blocks))
@@ -140,46 +147,6 @@ pub(super) async fn transcript(
         "a page of a transcript was read"
     );
     Ok(Json(page))
-}
-
-/// `page`, the latest page of `node`, with the page before it in front: one
-/// run of blocks from the earlier page's start, as the two pages would join.
-/// A transcript that holds nothing before the latest page, or that changed
-/// under the block the latest page starts at, answers the latest page alone.
-async fn with_earlier(
-    state: &AppState,
-    conversation: &demi_web_api_protocol::ids::ConversationId,
-    node: &NodeId,
-    mut page: TranscriptPage,
-) -> Result<TranscriptPage, ApiError> {
-    let Some(edge) = page.blocks.first().map(|block| block.id().clone()) else {
-        return Ok(page);
-    };
-    if page.start == 0 {
-        return Ok(page);
-    }
-    let before = page.start;
-    let transcript = Transcript::Agent(node.clone());
-    let read = state
-        .services
-        .conversations
-        .read(conversation, move |connection| {
-            tree::read_page(
-                connection,
-                &transcript,
-                PageQuery { before: Some(before), after: None, around: None, edge: Some(&edge) },
-            )
-        })
-        .await
-        .map_err(ApiError::conversation_unreadable)?;
-    let Ok(earlier) = page_answer(read, no_node, no_block, outside, changed) else {
-        return Ok(page);
-    };
-    page.start = earlier.start;
-    page.blocks.splice(0..0, earlier.blocks);
-    page.versions.splice(0..0, earlier.versions);
-    page.summaries.splice(0..0, earlier.summaries);
-    Ok(page)
 }
 
 /// The version of a transcript read from the store: an epoch no live

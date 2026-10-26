@@ -156,10 +156,21 @@ export async function readResponse<T>(
   response: Response,
   schema: z.ZodType<T>,
 ): Promise<T> {
+  return (await readSizedResponse(response, schema)).value
+}
+
+/** `readResponse`, with the size of the answer's body in bytes, which tells the network's share of a slow read. */
+export async function readSizedResponse<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+): Promise<{ value: T; bytes: number }> {
   const requestId = response.headers.get(REQUEST_ID_HEADER)
   let body: unknown
+  let bytes: number
   try {
-    body = await response.json()
+    const raw = await response.arrayBuffer()
+    bytes = raw.byteLength
+    body = JSON.parse(new TextDecoder().decode(raw))
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new UnreadableResponse('Invalid server response: not JSON', `${answerOf(requestId)} is not JSON`)
@@ -171,7 +182,7 @@ export async function readResponse<T>(
   if (!parsed.success) {
     throw invalidResponse(parsed.error, requestId)
   }
-  return parsed.data
+  return { value: parsed.data, bytes }
 }
 
 /**

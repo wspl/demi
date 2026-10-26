@@ -497,7 +497,7 @@ pub struct ReadRequest {
     pub revision: u64,
 }
 
-/// `?latest=true[&earlier=true]|before=|after=|around=&edge=` of
+/// `?latest=true[&blocks=]|before=|after=|around=&edge=` of
 /// `GET /conversations/:id/agents/:node/transcript`: `latest` reads the
 /// latest page from the window of the node's live session, and the rest read
 /// the store. Queries are the backend's alone and are not emitted.
@@ -506,11 +506,11 @@ pub struct ReadRequest {
 pub struct TranscriptQuery {
     #[serde(default)]
     pub latest: StrictBool,
-    /// With `latest`: the page before the latest comes with it, as one run of
-    /// blocks from the earlier page's start, so a page that holds nothing
-    /// of the transcript needs one request for both.
+    /// Of the latest page, how many of its last blocks are read, 1 to
+    /// `PAGE_BLOCKS` (`crates/conversation-lane-protocol`); the whole page
+    /// without it.
     #[serde(default)]
-    pub earlier: StrictBool,
+    pub blocks: Option<u32>,
     #[serde(default)]
     pub before: Option<u32>,
     #[serde(default)]

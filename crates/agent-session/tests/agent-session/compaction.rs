@@ -3281,7 +3281,7 @@ async fn a_session_of_many_compactions_holds_only_its_last_window_and_reads_the_
     // The earlier history is read from the store whole; the latest page is
     // the window's, and a page reads the rest when it shows it.
     assert_eq!(session.history().await.unwrap().blocks, path);
-    let latest = session.latest_page();
+    let latest = session.latest_page(demi_conversation_lane_protocol::PAGE_BLOCKS);
     assert_eq!((latest.start, latest.length), (next, path.len()));
 
     // An edit of the first message, before every boundary, replaces the

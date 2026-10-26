@@ -1007,10 +1007,11 @@ impl AgentSession {
         self.shared.read(|core| look(&core.transcript))
     }
 
-    /// The session's latest page, in its light form, read from the window as
-    /// it is now, with the version the window is at.
-    pub fn latest_page(&self) -> LatestPage {
-        window::latest(&self.shared)
+    /// The session's latest `count` blocks, a page at most, in their light
+    /// form, read from the window as it is now, with the version the window
+    /// is at.
+    pub fn latest_page(&self, count: usize) -> LatestPage {
+        window::latest(&self.shared, count)
     }
 
     /// The schedule's run whose message is the latest the user or an

@@ -165,6 +165,11 @@ pub fn module(header: &str) -> String {
             count(demi_conversation_lane_protocol::PAGE_BLOCKS),
         ),
         (
+            "FIRST_BLOCKS",
+            "How many of its latest blocks a page reads of a root it holds nothing of, before it shows the conversation.",
+            count(demi_conversation_lane_protocol::FIRST_BLOCKS),
+        ),
+        (
             "TEXT_FILE_BYTES",
             "The most bytes of a file the text route reads; a larger text file shows its first this many.",
             count(demi_command_protocol::EDIT_FILE_BYTES),

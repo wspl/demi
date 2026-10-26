@@ -31,7 +31,7 @@ use demi_agent_store::{
     Placement, Rows, SavedVersions, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
-use demi_conversation_lane_protocol::{BlockVersions, PageAt, TurnSpeed, page};
+use demi_conversation_lane_protocol::{BlockVersions, PAGE_BLOCKS, PageAt, TurnSpeed, page};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
@@ -2433,10 +2433,11 @@ pub enum PageRead {
     Invalid(&'static str),
 }
 
-/// Where a page is read from, as its query asks: none, `before` or `after` with its
-/// `edge`, or `around`.
+/// Where a page is read from, as its query asks: none, the latest, with how
+/// many of its last `blocks`; `before` or `after` with its `edge`; or `around`.
 #[derive(Debug, Clone, Copy)]
 pub struct PageQuery<'a> {
+    pub blocks: Option<u32>,
     pub before: Option<u32>,
     pub after: Option<u32>,
     pub around: Option<&'a BlockId>,
@@ -2446,6 +2447,7 @@ pub struct PageQuery<'a> {
 impl<'a> From<&'a TranscriptQuery> for PageQuery<'a> {
     fn from(query: &'a TranscriptQuery) -> Self {
         Self {
+            blocks: query.blocks,
             before: query.before,
             after: query.after,
             around: query.around.as_ref(),
@@ -2482,8 +2484,11 @@ pub fn read_page(
             Err(PageRead::Changed)
         })
     };
+    if query.blocks.is_some() && (query.before.is_some() || query.after.is_some() || query.around.is_some()) {
+        return Ok(PageRead::Invalid("`blocks` reads the latest page alone"));
+    }
     let at = match (query.before, query.after, query.around) {
-        (None, None, None) => PageAt::Latest,
+        (None, None, None) => PageAt::Latest(query.blocks.map_or(PAGE_BLOCKS, |blocks| usize::try_from(blocks).unwrap_or(usize::MAX))),
         (Some(index), None, None) => match edge_at(index)? {
             Ok(index) => PageAt::Before(index),
             Err(refusal) => return Ok(refusal),

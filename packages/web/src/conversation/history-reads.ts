@@ -12,7 +12,7 @@ import {
 import { boundedHistory, pageBeside, shownWindow } from '@demicodes/web-ui/agent/history'
 import type { HistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { oneRunPerKey } from '@demicodes/utils'
-import { ApiError, apiRequest, logReadAnswered, logReadFailed, readResponse } from '../api/client'
+import { ApiError, apiRequest, logReadAnswered, logReadFailed, readResponse, readSizedResponse } from '../api/client'
 import { createReading } from './reading'
 import {
   transcriptPageSchema,
@@ -38,6 +38,11 @@ function latestOnly(history: HeldTranscript): HeldTranscript {
   const fresh = latest.blocks.findLastIndex((block) => block.stale) + 1
   const blocks = latest.blocks.slice(fresh)
   return heldTranscript(history.length, blocks.length > 0 ? [{ start: latest.start + fresh, blocks }] : [], history.version)
+}
+
+/** Whether `history` holds the block `edge` at `index`. */
+function holdsAt(history: HeldTranscript, index: number, edge: string): boolean {
+  return history.windows.some((window) => window.blocks[index - window.start]?.id === edge)
 }
 
 /** How long the reads a view no longer needs run on, for a view that asks for them again. */
@@ -186,9 +191,9 @@ export function createHistoryReads<T extends HistoryHolder>(
     const fields = { read: 'page', at: at.kind, node: node ?? holder.id }
     try {
       const response = await apiRequest(`${path(holder, node)}/transcript?${query}`, { signal: AbortSignal.any([signal(), stop]) })
-      const page = await readResponse(response, transcriptPageSchema)
+      const { value: page, bytes } = await readSizedResponse(response, transcriptPageSchema)
       viewRead(holder.id, node)
-      logReadAnswered(response, began, { ...fields, blocks: page.blocks.length }, holder.id)
+      logReadAnswered(response, began, { ...fields, blocks: page.blocks.length, bytes }, holder.id)
       return page
     } catch (error) {
       logReadFailed(error, began, fields, holder.id)
@@ -285,10 +290,19 @@ export function createHistoryReads<T extends HistoryHolder>(
     })
   }
 
-  /** Reads the page `at` and takes it, unless `stop` stops it first. */
+  /**
+   * Reads the page `at` and takes it, unless `stop` stops it first. A page
+   * beside a window joins it only while the window still holds its edge
+   * where the read began: an edit that cut the transcript meanwhile took
+   * what the page holds out of it, and the reader's scroll reads again.
+   */
   async function readInto(holder: T, node: string | null, at: PageAt, stop: AbortSignal): Promise<void> {
+    const joins = () => (at.kind !== 'before' && at.kind !== 'after') || holdsAt(historyOf(holder, node), at.index, at.edge)
     const disk = at.kind === 'before' ? await kept?.(holder, node, at.index, at.edge) : null
     stop.throwIfAborted()
+    if (!joins()) {
+      return
+    }
     if (disk && disk.window.blocks.length > 0) {
       const history = historyOf(holder, node)
       setHistory(
@@ -307,7 +321,10 @@ export function createHistoryReads<T extends HistoryHolder>(
       }
       return
     }
-    take(holder, node, await readPage(holder, node, at, stop))
+    const page = await readPage(holder, node, at, stop)
+    if (joins()) {
+      take(holder, node, page)
+    }
   }
 
   /**
