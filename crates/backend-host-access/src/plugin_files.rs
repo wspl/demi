@@ -27,7 +27,10 @@ use std::collections::{BTreeSet, HashMap};
 
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_remote_host::{DirectoryFile, HostSubscriber, Link, Look, LookAt, RemoteHost, WeakLink};
-use demi_host_interface::{FileKind, Host as _, HostError, HostErrorKind};
+use bytes::{Bytes, BytesMut};
+use futures_util::StreamExt;
+use demi_host_interface::{ByteRange, FileKind, Host as _, HostError, HostErrorKind, HostFs as _};
+use demi_runner_protocol::wire::FileHash;
 use demi_plugin_interface::{EntryKind, HostDirectory, HostEntry, HostFile, HostRead, PluginId};
 use demi_shared_types::{B64Bytes, ReadAt};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -118,7 +121,7 @@ impl dyn HostShard + '_ {
             return Err(ReadFilesError::Moved);
         }
         let waits = Waits::until_ended(cancel, &access.open.ended);
-        let found = waits.wait(look_files(&access.host.host, reads)).await?;
+        let found = waits.wait(read_host_files(&access.host.host, &self.blobs(), reads)).await?;
         Ok(found.map_err(HostAccessError::Host)?)
     }
 
@@ -140,11 +143,11 @@ impl dyn HostShard + '_ {
             .iter()
             .map(|read| HostRead {
                 path: paths.resolve(directory, &read.path),
-                limit: read.limit,
+                ..read.clone()
             })
             .collect();
         let waits = Waits::until_ended(cancel, &access.open.ended);
-        let found = waits.wait(look_files(&access.host.host, &reads)).await?;
+        let found = waits.wait(read_host_files(&access.host.host, &self.blobs(), &reads)).await?;
         Ok(found.map_err(HostAccessError::Host)?.0)
     }
 
@@ -305,6 +308,66 @@ async fn install(
         });
     }
     host.write_directory(path, files, 0o555).await
+}
+
+/// What each of `reads` finds on `host`, a read by content's file
+/// ([`HostRead::content`]) as the bytes `blobs` hold of it, or one read of
+/// them into `blobs` (`UserBlobs::fetch_once`): the Host hashes the file, and
+/// its bytes travel only when they are new, so twenty commands that read the
+/// same image send it once. The rest is [`look_files`].
+pub async fn read_host_files(
+    host: &RemoteHost,
+    blobs: &UserBlobs,
+    reads: &[HostRead],
+) -> Result<(Vec<HostFile>, ReadAt), HostError> {
+    let looks: Vec<HostRead> = reads
+        .iter()
+        .map(|read| if read.content { HostRead::new(read.path.clone(), 0) } else { read.clone() })
+        .collect();
+    let (mut files, read_at) = look_files(host, &looks).await?;
+    let contents = reads.iter().zip(&files).enumerate().filter_map(|(index, (read, file))| match file {
+        HostFile::File { size, .. } if read.content && *size <= read.limit => Some(async move {
+            (index, content(host, blobs, &read.path, read.limit).await)
+        }),
+        _ => None,
+    });
+    for (index, read) in futures_util::future::join_all(contents).await {
+        files[index] = match read {
+            Ok(bytes) => HostFile::File {
+                size: bytes.len() as u64,
+                bytes: B64Bytes::new(bytes),
+            },
+            Err(message) => HostFile::Unreadable { message },
+        };
+    }
+    Ok((files, read_at))
+}
+
+/// The bytes of the file at `path` on `host`, of at most `limit`: the ones
+/// `blobs` hold under its hash, or a read of them into `blobs`.
+async fn content(host: &RemoteHost, blobs: &UserBlobs, path: &str, limit: u64) -> Result<Bytes, String> {
+    let (sha256, size) = match host.hash_file(path, limit).await.map_err(|error| error.message)? {
+        FileHash::Hashed { sha256, size, .. } => (sha256, size),
+        FileHash::TooLarge { size } => return Err(format!("the file grew to {size} bytes while it was read")),
+    };
+    // Only the bytes hashed: a file replaced since by a larger one is read
+    // no further, and fails as changed.
+    let read = || async move {
+        let range = ByteRange {
+            offset: 0,
+            length: Some(size),
+        };
+        let mut stream = host.read_stream(path, range).await?;
+        let mut bytes = BytesMut::new();
+        while let Some(chunk) = stream.next().await {
+            bytes.extend_from_slice(&chunk?);
+            if bytes.len() as u64 > size {
+                return Err(HostError::interrupted("the runner sent more bytes than it was asked for"));
+            }
+        }
+        Ok::<_, HostError>(bytes.freeze())
+    };
+    blobs.fetch_once(&sha256, read).await.map_err(|error| error.to_string())
 }
 
 /// What each of `reads` finds on `host`, with one request to the Host

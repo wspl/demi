@@ -21,19 +21,16 @@ use std::{
 };
 
 use bytes::Bytes;
-use futures_util::{Stream, StreamExt, stream::BoxStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
+use demi_runner_process::pipes::UploadBody;
 use demi_runner_protocol::wire::{self, JOB_KEPT_PART_BYTES, KeptRecord, OutputStream, WireBytes};
 
 /// How many bytes of records one segment of the kept output's end holds
 /// before the next one begins: the granularity at which the end lets old
 /// output go, so that the disk it takes stays bounded.
 const SEGMENT_BYTES: u64 = 1024 * 1024;
-
-/// The size of the chunks a snapshot is read in.
-const CHUNK_BYTES: usize = 64 * 1024;
 
 /// The job's writer of its kept output.
 pub struct KeptOutput {
@@ -198,23 +195,22 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// The snapshot's records: the head, where output was left out the
-    /// record that says how much, then the end.
-    pub fn into_stream(self) -> io::Result<impl Stream<Item = io::Result<Bytes>> + Send + 'static> {
-        let mut parts = vec![part(self.head)];
+    /// The snapshot's records as an upload: the head, where output was left
+    /// out the record that says how much, then the end
+    /// (`demi_runner_process::pipes`).
+    pub fn into_upload(self) -> io::Result<UploadBody> {
+        let (head, length) = self.head;
+        let mut body = UploadBody::new().file(head, 0, length);
         if self.left_out > 0 {
             let record = wire::encode_record(&KeptRecord::LeftOut(self.left_out))
                 .map_err(io::Error::other)?;
-            parts.push(futures_util::stream::once(async move { Ok(Bytes::from(record)) }).boxed());
+            body = body.bytes(Bytes::from(record));
         }
-        parts.extend(self.segments.into_iter().map(part));
-        Ok(futures_util::stream::iter(parts).flatten())
+        for (segment, length) in self.segments {
+            body = body.file(segment, 0, length);
+        }
+        Ok(body)
     }
-}
-
-fn part((file, length): (std::fs::File, u64)) -> BoxStream<'static, io::Result<Bytes>> {
-    let file = tokio::fs::File::from_std(file).take(length);
-    tokio_util::io::ReaderStream::with_capacity(file, CHUNK_BYTES).boxed()
 }
 
 /// The longest start of `bytes` whose record takes at most `room` bytes, and

@@ -737,7 +737,7 @@ fn runners_and_downloads() -> Router<AppState> {
 /// closing backend, and the pipes beside both.
 fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> Router {
     let pipes = Router::new()
-        .route("/api/pipes/{id}", put(runners::put).get(runners::get))
+        .route("/api/pipes/{id}", put(runners::put).get(runners::get).head(runners::head))
         .route(
             &format!("{}/{{id}}", demi_runner_protocol::wire::CALL_OUTPUT_ROUTE),
             get(runners::call_output),

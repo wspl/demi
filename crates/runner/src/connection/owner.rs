@@ -35,7 +35,7 @@ use demi_runner_jobs::{
 use demi_runner_process::{
     backend::Backend,
     job_shell::JobShell,
-    pipes::{PipeClient, report_pipe},
+    pipes::{PipeClient, report_pipe, report_queued},
 };
 use demi_runner_protocol::{
     values::DeviceToken,
@@ -1220,7 +1220,10 @@ async fn read_media(
         }
         Err(error) => tracing::warn!(event = "reply.encode_failed", what = "job_media_read", %error, "a job media read reply was not encoded"),
     }
-    let result = pipes.put(&pipe.url, files::framed(opened), &closed).await;
+    let result = match files::framed(opened).await {
+        Ok(body) => pipes.upload(&pipe, body, || report_queued(&control, &pipe.id), &closed).await,
+        Err(error) => Err(error),
+    };
     report_pipe(&control, pipe.id, result);
 }
 
@@ -1239,7 +1242,7 @@ async fn read_job(
             .await
             .map_err(io::Error::other)
             .and_then(|snapshot| snapshot)
-            .and_then(|snapshot| snapshot.into_stream()),
+            .and_then(|snapshot| snapshot.into_upload()),
         None => Err(io::Error::new(
             io::ErrorKind::NotFound,
             "the job keeps no output: it is unknown or released",
@@ -1258,7 +1261,7 @@ async fn read_job(
         Err(error) => tracing::warn!(event = "reply.encode_failed", what = "job_read", %error, "a job read reply was not encoded"),
     }
     let result = match snapshot {
-        Ok(stream) => pipes.put(&pipe.url, stream, &closed).await,
+        Ok(body) => pipes.upload(&pipe, body, || report_queued(&control, &pipe.id), &closed).await,
         Err(error) => Err(error),
     };
     report_pipe(&control, pipe.id, result);

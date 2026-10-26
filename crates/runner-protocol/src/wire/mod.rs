@@ -122,7 +122,8 @@ pub use messages::{
 };
 pub use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
 pub use pipe_frames::{
-    CALL_OUTPUT_ROUTE, PIPE_DATA_BYTES, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeEnd, PipeFrame, PipeMove, PipePath, PipeSink, moved_frame, PipeFrameDecoder,
+    CALL_OUTPUT_ROUTE, PIPE_DATA_BYTES, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, UPLOAD_CHUNK_BYTES, UPLOAD_COMPLETE,
+    UPLOAD_OFFSET, PipeEnd, PipeFrame, PipeMove, PipePath, PipeSink, moved_frame, PipeFrameDecoder,
     PipeFrameError, decode_message, encode_data, end_frame, idle_frame,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
@@ -138,7 +139,7 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 64;
+pub const VERSION: u32 = 65;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);

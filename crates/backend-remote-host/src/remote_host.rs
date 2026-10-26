@@ -283,12 +283,13 @@ impl RemoteHost {
     /// before any byte. A range is read up to the end the file had when it was
     /// opened. Dropping the reader stops the read.
     pub async fn read_pipe(&self, path: &str, range: ByteRange) -> Result<OpenedRead, HostError> {
-        opened(self.read_pipe_held(self.cwd(), path, range, None).await?)
+        opened(self.read_pipe_held(self.cwd(), path, range, None, true).await?)
     }
 
     /// [`RemoteHost::read_pipe`], with a relative `path` resolved against
     /// `cwd` instead of the directory the Host's work starts in, such as the
-    /// directory a command was invoked in.
+    /// directory a command was invoked in: a command's read, which no page
+    /// waits to show.
     pub async fn read_pipe_in(
         &self,
         cwd: &str,
@@ -296,7 +297,7 @@ impl RemoteHost {
         range: ByteRange,
     ) -> Result<OpenedRead, HostError> {
         opened(
-            self.read_pipe_held(Some(cwd.to_owned()), path, range, None)
+            self.read_pipe_held(Some(cwd.to_owned()), path, range, None, false)
                 .await?,
         )
     }
@@ -310,13 +311,28 @@ impl RemoteHost {
         path: &str,
         limit: u64,
     ) -> Result<wire::FileHash, HostError> {
+        self.hash_beside(Some(cwd.to_owned()), path, limit).await
+    }
+
+    /// [`RemoteHost::hash_file_in`], with a relative `path` resolved against
+    /// the directory the Host's work starts in.
+    pub async fn hash_file(&self, path: &str, limit: u64) -> Result<wire::FileHash, HostError> {
+        self.hash_beside(self.cwd(), path, limit).await
+    }
+
+    async fn hash_beside(
+        &self,
+        cwd: Option<String>,
+        path: &str,
+        limit: u64,
+    ) -> Result<wire::FileHash, HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
         let hashed = link
             .call(Expected::Fs("hashFile"), |id| Inbound::FsHashFile {
                 id,
                 path: path.into(),
-                cwd: Some(cwd.to_owned()),
+                cwd,
                 limit,
             })
             .await?;
@@ -334,15 +350,19 @@ impl RemoteHost {
         range: ByteRange,
         held: &str,
     ) -> Result<ConditionalRead, HostError> {
-        self.read_pipe_held(self.cwd(), path, range, Some(held)).await
+        self.read_pipe_held(self.cwd(), path, range, Some(held), true).await
     }
 
+    /// A read of `path`'s `range` unless the file still has the version
+    /// `held`; `shown` when a page waits to show it, whose upload then goes
+    /// ahead (`crates/runner-process/src/pipes/uploads.rs`).
     async fn read_pipe_held(
         &self,
         cwd: Option<String>,
         path: &str,
         range: ByteRange,
         held: Option<&str>,
+        shown: bool,
     ) -> Result<ConditionalRead, HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
@@ -354,7 +374,7 @@ impl RemoteHost {
                 offset: (range.offset > 0).then_some(range.offset),
                 length: range.length,
                 version: held.map(str::to_owned),
-                output,
+                output: PipeRef { shown, ..output },
             }
         })
         .await?;
@@ -750,7 +770,8 @@ impl RemoteHost {
                 id,
                 root: root.into(),
                 path: path.into(),
-                output,
+                // The Changes panel waits to show it.
+                output: PipeRef { shown: true, ..output },
                 commit: commit.map(str::to_owned),
             }
         })
@@ -1473,13 +1494,11 @@ impl Host for RemoteHost {
 }
 
 impl HostFs for RemoteHost {
+    // What the backend reads for itself goes after what a page shows.
     fn read_file<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
         Box::pin(async move {
-            collect_pipe(
-self.read_pipe(path, ByteRange::default()).await?.body,
-                usize::MAX,
-            )
-            .await
+            let read = self.read_pipe_held(self.cwd(), path, ByteRange::default(), None, false).await?;
+            collect_pipe(opened(read)?.body, usize::MAX).await
         })
     }
 
@@ -1489,7 +1508,8 @@ self.read_pipe(path, ByteRange::default()).await?.body,
         range: ByteRange,
     ) -> LocalBoxFuture<'a, Result<ByteStream, HostError>> {
         Box::pin(async move {
-            Ok(byte_stream(self.read_pipe(path, range).await?.body))
+            let read = self.read_pipe_held(self.cwd(), path, range, None, false).await?;
+            Ok(byte_stream(opened(read)?.body))
         })
     }
 

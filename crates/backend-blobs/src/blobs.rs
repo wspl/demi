@@ -9,6 +9,12 @@
 //! namespace holds already is remembered for a day, since it writes nothing
 //! that would show its age.
 //!
+//! A content a Host holds is read into the namespace once
+//! ([`UserBlobs::fetch_once`]): a read of the same content that comes while one
+//! is under way waits for it, as Docker's transfer manager joins a transfer
+//! already running for the same layer, and the day of grace keeps it for the
+//! next read.
+//!
 //! A blob is published before any row or frame that names it:
 //!
 //! - An upload, before a message can name it.
@@ -64,11 +70,34 @@ pub struct StoredBlob {
 /// row that names it, and the day covers the wait.
 pub const GRACE_MS: i64 = 24 * 60 * 60 * 1000;
 
-/// Every user's blob namespace, with the puts of blobs that existed already.
+/// Every user's blob namespace, with the puts of blobs that existed already
+/// and the contents being read in.
 #[derive(Clone)]
 pub struct BlobStores {
     objects: Arc<dyn ObjectStore>,
     again: Arc<PutAgain>,
+    fetching: Arc<Mutex<HashMap<UserId, Arc<Fetching>>>>,
+}
+
+/// A user's contents being read into the namespace, each with how its read
+/// ended once it has: none while it goes on, or why it failed.
+type Fetching = Mutex<HashMap<BlobRef, tokio::sync::watch::Receiver<Option<Result<(), String>>>>>;
+
+/// Why a content was not read into the namespace.
+#[derive(Debug, thiserror::Error)]
+pub enum FetchError<E> {
+    #[error(transparent)]
+    Store(#[from] ObjectError),
+    /// The caller's own read failed.
+    #[error("{0}")]
+    Read(E),
+    /// The read the caller waited for failed, for this reason.
+    #[error("{0}")]
+    Waited(String),
+    /// The bytes read are not the content's: the file changed since it was
+    /// hashed.
+    #[error("the file changed while it was read")]
+    Changed,
 }
 
 impl BlobStores {
@@ -80,6 +109,7 @@ impl BlobStores {
                 clock,
                 users: Mutex::new(HashMap::new()),
             }),
+            fetching: Arc::default(),
         }
     }
 
@@ -91,6 +121,13 @@ impl BlobStores {
             namespace: Path::from_iter(["blobs", user.as_str()]),
             clock: self.again.clock.clone(),
             puts: self.again.of(user),
+            fetching: self
+                .fetching
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .entry(user.clone())
+                .or_default()
+                .clone(),
         }
     }
 }
@@ -147,9 +184,69 @@ pub struct UserBlobs {
     namespace: Path,
     clock: Arc<dyn Clock>,
     puts: Arc<UserPuts>,
+    fetching: Arc<Fetching>,
 }
 
 impl UserBlobs {
+    /// The bytes `blob` names: the namespace's, or once another caller's read
+    /// of them ended, or `read`'s, stored under `blob`. Only one read of a
+    /// content goes at a time; one that ends without its bytes, such as a
+    /// read that was cancelled, leaves the next caller to read them.
+    ///
+    /// Bytes `read` answers that are not `blob`'s fail: the file changed
+    /// since it was hashed.
+    pub async fn fetch_once<F, Fut, E>(&self, blob: &BlobRef, read: F) -> Result<Bytes, FetchError<E>>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<Bytes, E>>,
+        E: std::fmt::Display,
+    {
+        let mut read = Some(read);
+        loop {
+            if let Some(bytes) = self.get(blob).await? {
+                return Ok(bytes);
+            }
+            let (ended, waiting) = {
+                let mut fetching = self.fetching.lock().unwrap_or_else(PoisonError::into_inner);
+                match fetching.get(blob) {
+                    Some(ended) => (None, Some(ended.clone())),
+                    None => {
+                        let (ended, waiting) = tokio::sync::watch::channel(None);
+                        fetching.insert(blob.clone(), waiting);
+                        (Some(ended), None)
+                    }
+                }
+            };
+            if let Some(mut waiting) = waiting {
+                // A read that went away without an outcome lets this one try.
+                if let Ok(outcome) = waiting.wait_for(Option::is_some).await
+                    && let Some(Err(reason)) = &*outcome
+                {
+                    return Err(FetchError::Waited(reason.clone()));
+                }
+                continue;
+            }
+            let ended = ended.expect("a read that does not wait reads");
+            let _reading = Reading {
+                fetching: &self.fetching,
+                blob,
+            };
+            let Some(read) = read.take() else {
+                unreachable!("a caller reads at most once, and only when it does not wait");
+            };
+            let fetched = async {
+                let bytes = read().await.map_err(FetchError::Read)?;
+                if !self.put_named(bytes.clone(), blob).await? {
+                    return Err(FetchError::Changed);
+                }
+                Ok(bytes)
+            }
+            .await;
+            ended.send_replace(Some(fetched.as_ref().map(|_| ()).map_err(ToString::to_string)));
+            return fetched;
+        }
+    }
+
     /// Stores `bytes` and answers their name.
     ///
     /// A name always names the same bytes, so a blob the namespace holds
@@ -294,6 +391,22 @@ impl UserBlobs {
 
     fn location(&self, blob: &BlobRef) -> Path {
         self.namespace.clone().join(blob.as_str())
+    }
+}
+
+/// A read into the namespace under way: its entry goes once it ended, also
+/// when its caller went away.
+struct Reading<'a> {
+    fetching: &'a Fetching,
+    blob: &'a BlobRef,
+}
+
+impl Drop for Reading<'_> {
+    fn drop(&mut self) {
+        self.fetching
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(self.blob);
     }
 }
 

@@ -20,6 +20,25 @@
 //! whose frames are small, showed nothing for minutes while its pictures waited
 //! in a body.
 //!
+//! # A content pipe in chunks
+//!
+//! The edge holds a request's body, so a body that breaks at 90% may give the
+//! backend none of it. A content pipe goes as `PUT` requests of at most
+//! [`UPLOAD_CHUNK_BYTES`], as the IETF draft of resumable uploads (tus's
+//! successor) and Google Cloud Storage's resumable uploads send theirs:
+//!
+//! - Each names the offset of its first byte in [`UPLOAD_OFFSET`], and the last
+//!   says `?1` in [`UPLOAD_COMPLETE`].
+//! - The backend answers a chunk that is not the last with `204` and the offset
+//!   it took in [`UPLOAD_OFFSET`]; the last with the pipe's outcome, as a whole
+//!   body is answered.
+//! - A chunk whose offset is not the one the backend took is answered `409` with
+//!   that offset; the runner sends from there.
+//! - `HEAD` answers the offset the backend took, so a chunk whose connection
+//!   broke goes again from there on a new one.
+//! - A request without [`UPLOAD_OFFSET`] is the whole pipe, which a refusal or a
+//!   break ends.
+//!
 //! # Pipes the runner reads
 //!
 //! A pipe the runner reads is a `GET` whose response streams. The same edge
@@ -81,6 +100,17 @@ pub const PIPE_DATA_BYTES: usize = 64 * 1024;
 /// The most bytes of an end frame's map, its cause's words included: a reader
 /// holds the frame whole.
 const PIPE_END_BYTES: usize = 64 * 1024;
+
+/// The most bytes of one `PUT` of a content pipe: the chunk Google Cloud
+/// Storage's client libraries and the AWS CLI upload by default.
+pub const UPLOAD_CHUNK_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The header of a chunk's offset, and of the offset the backend took.
+pub const UPLOAD_OFFSET: &str = "upload-offset";
+
+/// The header of a chunk that ends the pipe's bytes, `?1`, as a structured
+/// field's true.
+pub const UPLOAD_COMPLETE: &str = "upload-complete";
 
 /// The route of a call's standard output, which the runner reads over a
 /// WebSocket that resumes (`/api/pipes/{id}` serves every other pipe).

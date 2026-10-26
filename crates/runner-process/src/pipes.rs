@@ -2,7 +2,9 @@
 //! routes, and the report of a pipe's outcome
 //! (`crates/runner-protocol/src/wire/pipe_frames.rs`).
 //!
-//! - A content pipe from the runner is a `PUT` body.
+//! - A content pipe from the runner goes as `PUT` bodies, in its turn and
+//!   in chunks that resume (`uploads`); a small one whose source cannot go
+//!   again, such as a search's results, as one `PUT` body ([`PipeClient::put`]).
 //! - A stream pipe, whose bytes must arrive as they are written, goes over a
 //!   WebSocket at the same path, since a TLS edge in front of the backend may
 //!   hold a request's body until it ends
@@ -13,8 +15,10 @@
 
 mod moves;
 mod resumed;
+mod uploads;
 
 pub use moves::{Carried, PairPlace, PipeChannel, PipePairs};
+pub use uploads::{UPLOADS_AT_ONCE, UploadBody, causes};
 
 use bytes::Bytes;
 use crate::backend::Backend;
@@ -32,6 +36,13 @@ use tokio_util::sync::CancellationToken;
 
 /// How long a pipe's connection may take to open.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// How often an HTTP/2 connection of pipes pings its peer, and how long the
+/// peer has to answer before the connection ends: gRPC's keepalive, whose
+/// answer has 20 seconds by default. A link that stalls without closing
+/// fails its requests within 35 seconds, inside [`RECONNECT_FOR`].
+const PING_EVERY: Duration = Duration::from_secs(15);
+const PING_ANSWER: Duration = Duration::from_secs(20);
 /// How long a pipe request that fails on its connection before the backend
 /// received any of it is tried again on new connections, as a download's
 /// connections are (`crates/shared-artifacts/src/download.rs`): a link through a
@@ -62,6 +73,8 @@ pub struct PipeClient {
     /// one, on whose direct channels the pipes between two devices move
     /// (`moves`).
     pairs: Arc<watch::Sender<Option<Arc<dyn PipePairs>>>>,
+    /// The runner's uploads, which take turns (`uploads`).
+    uploads: Arc<uploads::Uploads>,
 }
 
 impl PipeClient {
@@ -73,9 +86,12 @@ impl PipeClient {
     }
 
     /// A client whose connections may take at most `connect_timeout` to
-    /// open. Only opening has a deadline: a request, an answer or a body may
-    /// stay quiet for as long as its pipe lasts. [`PipeClient::new`] gives a
-    /// connection 15 seconds.
+    /// open. A request, an answer or a body may stay quiet for as long as its
+    /// pipe lasts, since a slow reader holds its source back; an HTTP/2
+    /// connection whose peer stops answering its pings ends, so that a link
+    /// that stalls without closing fails the requests on it instead of
+    /// holding them, and an upload's turn, for good. [`PipeClient::new`]
+    /// gives a connection 15 seconds.
     pub fn with_connect_timeout(
         backend: &Backend,
         token: watch::Receiver<Option<DeviceToken>>,
@@ -91,6 +107,8 @@ impl PipeClient {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(connect_timeout)
             .http2_adaptive_window(true)
+            .http2_keep_alive_interval(PING_EVERY)
+            .http2_keep_alive_timeout(PING_ANSWER)
             .build()
             .map_err(io::Error::other)?;
         let downloads = demi_shared_artifacts::download_client_through(|builder| backend.http(builder))
@@ -103,6 +121,7 @@ impl PipeClient {
             connect_timeout,
             token,
             pairs: Arc::new(watch::Sender::new(None)),
+            uploads: Arc::default(),
         })
     }
 
@@ -864,12 +883,22 @@ impl<S: Stream<Item = io::Result<Bytes>>> Stream for BodyAttempt<S> {
     }
 }
 
-/// Reports a pipe end's outcome to the backend.
+/// Tells the backend that this runner's upload into pipe `id` waits for its
+/// turn (`uploads`).
+pub fn report_queued(output: &mpsc::UnboundedSender<wire::Frame>, id: &str) {
+    match wire::encode(&wire::Outbound::PipeQueued { pipe_id: id.to_owned() }) {
+        // A connection that ended takes nothing more.
+        Ok(message) => drop(output.send(message)),
+        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "pipe_queued", %error, "a queued pipe was not encoded"),
+    }
+}
+
+/// Reports a pipe end's outcome to the backend, a failure with its causes.
 pub fn report_pipe(output: &mpsc::UnboundedSender<wire::Frame>, id: String, result: io::Result<()>) {
     match wire::encode(&wire::Outbound::PipeDone {
         pipe_id: id,
         ok: result.is_ok(),
-        error: result.err().map(|error| error.to_string()),
+        error: result.err().map(|error| causes(&error)),
     }) {
         // A connection that ended takes nothing more.
         Ok(message) => drop(output.send(message)),

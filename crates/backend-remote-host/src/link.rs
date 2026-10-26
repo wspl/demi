@@ -1884,6 +1884,10 @@ impl Link {
                     }
                 }
             }
+            Outbound::PipeQueued { pipe_id } => {
+                self.0.pipes.queued_from_device(&pipe_id, &self.0.device);
+                tracing::info!(event = "pipe.queued", host_id = %self.0.device, pipe = %pipe_id, "a device's upload into a pipe waits for its turn");
+            }
             Outbound::ArtifactResolve {
                 id,
                 owner,

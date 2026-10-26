@@ -433,11 +433,23 @@ pub struct DirectoryPath {
 pub struct HostRead {
     pub path: String,
     pub limit: u64,
+    /// Whether a file within the limit is read by its content: the Host
+    /// hashes it, and its bytes travel only when the user's blobs lack them
+    /// and no read of the same content is under way. A file over the limit
+    /// then answers its size and no bytes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub content: bool,
 }
 
 impl HostRead {
     pub fn new(path: String, limit: u64) -> Self {
-        Self { path, limit }
+        Self { path, limit, content: false }
+    }
+
+    /// A read of a whole file of at most `limit` bytes by its content, such as
+    /// a command's input image, which a batch of commands reads alike.
+    pub fn content(path: String, limit: u64) -> Self {
+        Self { path, limit, content: true }
     }
 }
 

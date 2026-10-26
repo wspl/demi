@@ -29,13 +29,13 @@ use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_remote_host::{
-    DeviceSource, PipeRefusal, SourceMessage, accept_call_sink, accept_stream_pipe, offer_response,
+    ChunkEnd, ChunkRefusal, DeviceChunk, DeviceSource, PipeRefusal, SourceMessage, accept_call_sink, accept_stream_pipe, offer_response,
 };
 use demi_runner_protocol::release::{
     RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER, UpdateExecutable,
 };
 use demi_runner_protocol::values::DeviceToken;
-use demi_runner_protocol::wire::LINK_FRAME_BYTES;
+use demi_runner_protocol::wire::{LINK_FRAME_BYTES, UPLOAD_COMPLETE, UPLOAD_OFFSET};
 use demi_web_api_protocol::devices::DeviceKind;
 use futures_util::StreamExt as _;
 use tracing::Instrument as _;
@@ -153,16 +153,38 @@ async fn updating(state: &AppState, headers: &HeaderMap) {
 /// `PUT /api/pipes/:id`: the source's bytes, forwarded as the sink takes
 /// them. The answer is the pipe's outcome: 200 once the sink drained it,
 /// 409 with why it failed, also while the body is still arriving.
+///
+/// A request that names its offset is a chunk of an upload
+/// (`crates/runner-protocol/src/wire/pipe_frames.rs`): one that is not the
+/// last is answered 204 with the offset taken once its bytes went in.
 pub(super) async fn put(
     State(state): State<AppState>,
     Path(id): Path<String>,
     authorization: Option<TypedHeader<Authorization<Bearer>>>,
+    headers: HeaderMap,
     body: Body,
 ) -> Response {
     let device = match device_of(&state, authorization).await {
         Ok(device) => device,
         Err(refusal) => return *refusal,
     };
+    if let Some(offset) = headers.get(UPLOAD_OFFSET) {
+        let Some(offset) = offset.to_str().ok().and_then(|offset| offset.parse::<u64>().ok()) else {
+            return (StatusCode::BAD_REQUEST, "the upload's offset is not a number").into_response();
+        };
+        let complete = headers.get(UPLOAD_COMPLETE).is_some_and(|complete| complete == "?1");
+        let chunk = match claim_chunk(&state, id, device, offset).await {
+            Ok(chunk) => chunk,
+            Err(refusal) => return *refusal,
+        };
+        return match chunk.pump(body.into_data_stream(), complete).await {
+            ChunkEnd::Taken(taken) => (StatusCode::NO_CONTENT, [(UPLOAD_OFFSET, taken.to_string())]).into_response(),
+            // Nobody reads the answer of a request that broke off.
+            ChunkEnd::Broken => StatusCode::BAD_REQUEST.into_response(),
+            ChunkEnd::Over(Ok(())) => (StatusCode::OK, "drained").into_response(),
+            ChunkEnd::Over(Err(failure)) => (StatusCode::CONFLICT, failure.reason().to_owned()).into_response(),
+        };
+    }
     let source = match claim_source(&state, id, device).await {
         Ok(source) => source,
         Err(refusal) => return *refusal,
@@ -304,6 +326,60 @@ async fn claim_source(
     match claimed {
         Ok(Ok(source)) => Ok(source),
         Ok(Err(refusal)) => Err(Box::new(refused(refusal))),
+        Err(_) => Err(Box::new(StatusCode::SERVICE_UNAVAILABLE.into_response())),
+    }
+}
+
+/// `HEAD /api/pipes/:id`: the offset of the device's upload into the pipe
+/// that the backend took, from which a chunk whose connection broke goes
+/// again.
+pub(super) async fn head(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    authorization: Option<TypedHeader<Authorization<Bearer>>>,
+) -> Response {
+    let device = match device_of(&state, authorization).await {
+        Ok(device) => device,
+        Err(refusal) => return *refusal,
+    };
+    let owner = device.user.clone();
+    let taken = state
+        .shards
+        .of(&owner)
+        .call_while_closing(move |shard, _| async move {
+            shard.pipes().taken_by(&id, device.id.as_str())
+        })
+        .await;
+    match taken {
+        Ok(Ok(taken)) => (StatusCode::NO_CONTENT, [(UPLOAD_OFFSET, taken.to_string())]).into_response(),
+        Ok(Err(refusal)) => refused(refusal),
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
+}
+
+/// The source end of pipe `id` for a chunk of `device`'s upload from
+/// `offset`; another offset is answered 409 with the one taken.
+async fn claim_chunk(
+    state: &AppState,
+    id: String,
+    device: DeviceRecord,
+    offset: u64,
+) -> Result<DeviceChunk, Box<Response>> {
+    let owner = device.user.clone();
+    let claimed = state
+        .shards
+        .of(&owner)
+        .call_while_closing(move |shard, _| async move {
+            shard.pipes().claim_chunk(&id, device.id.as_str(), offset)
+        })
+        .await;
+    match claimed {
+        Ok(Ok(chunk)) => Ok(chunk),
+        Ok(Err(ChunkRefusal::Offset(taken))) => Err(Box::new(
+            (StatusCode::CONFLICT, [(UPLOAD_OFFSET, taken.to_string())], ChunkRefusal::Offset(taken).to_string())
+                .into_response(),
+        )),
+        Ok(Err(ChunkRefusal::NotFound)) => Err(Box::new(refused(PipeRefusal::NotFound))),
         Err(_) => Err(Box::new(StatusCode::SERVICE_UNAVAILABLE.into_response())),
     }
 }

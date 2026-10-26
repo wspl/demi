@@ -637,10 +637,7 @@ impl Shard {
         let paths = self.host_paths(id).await.map_err(|error| error.to_string())?;
         // The Host reads the path against the directory as a shell there
         // does, following links before `..`.
-        let read = HostRead {
-            path: paths.beside(directory, path),
-            limit: WORKFLOW_FILE_MAX_BYTES + 1,
-        };
+        let read = HostRead::new(paths.beside(directory, path), WORKFLOW_FILE_MAX_BYTES + 1);
         let (mut found, _) = self
             .host_shard()
             .read_files(id, std::slice::from_ref(&read), &CancellationToken::new())

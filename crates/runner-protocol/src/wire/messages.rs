@@ -1440,6 +1440,12 @@ pub enum Outbound {
         )]
         error: Option<String>,
     },
+    /// This runner's upload into a pipe waits in its queue
+    /// (`crates/runner-process/src/pipes/uploads.rs`): the pipe waits for its
+    /// source without its arrival window until the upload starts.
+    PipeQueued {
+        pipe_id: String,
+    },
     /// Subscription `id` is watched: a change at a number above `since` is
     /// reported, numbers of `epoch` (`crates/runner-host/src/numbers.rs`).
     FsLive {
@@ -1713,6 +1719,11 @@ pub struct FileOffer {
 pub struct PipeRef {
     pub id: String,
     pub url: String,
+    /// Whether a page waits to show what the runner uploads into the pipe,
+    /// which then goes ahead of the uploads a command or the agent waits for
+    /// (`crates/runner-process/src/pipes/uploads.rs`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shown: bool,
 }
 
 /// What authorizes an artifact: a job and the manifest it runs with, a user
@@ -2575,6 +2586,7 @@ impl Outbound {
             | Self::RpcStdinEnd { .. }
             | Self::RpcCancel { .. }
             | Self::PipeDone { .. }
+            | Self::PipeQueued { .. }
             | Self::Worktrees { .. } => Carriage::Outlasting,
             Self::ConversationReleased { .. }
             | Self::PackageReleased { .. }

@@ -22,6 +22,13 @@
 //! a job elsewhere. A pipe whose ends have not both arrived within the arrival
 //! window fails.
 //!
+//! A content pipe from a device comes in chunks, each a `PUT` that names its
+//! offset (`crates/runner-protocol/src/wire/pipe_frames.rs`). Between two, the
+//! record keeps the source's writer and the bytes it took ([`UploadHold`]), so
+//! a chunk whose connection broke goes again from there. A runner whose upload
+//! waits for its turn says so, and the pipe then waits for its source without
+//! its arrival window.
+//!
 //! A pipe between two devices whose runners may talk directly, as its minter
 //! says ([`Pipe::may_go_direct`]), moves its bytes to their direct channel and
 //! back (`crates/runner-protocol/src/wire/pipe_frames.rs`): its record tells the
@@ -35,7 +42,10 @@ use std::{
     future::{Future, pending},
     io,
     rc::{Rc, Weak},
-    sync::{Arc, Mutex, OnceLock, PoisonError},
+    sync::{
+        Arc, Mutex, OnceLock, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -76,7 +86,12 @@ struct Slot {
     source: End,
     sink: End,
     source_arrived: bool,
+    /// Whether the source's runner said its upload waits for its turn: the
+    /// pipe then waits for it without the arrival window.
+    source_queued: bool,
     sink_arrived: bool,
+    /// A device source's writer between the chunks of its upload.
+    upload: Arc<UploadHold>,
     /// The byte channel's ends, until the ends that use them arrive.
     sender: Option<mpsc::Sender<Piece>>,
     /// How long its ends have to arrive; none for a pipe of a call, which
@@ -321,7 +336,9 @@ impl Pipes {
                 source: end(source),
                 sink: end(sink),
                 source_arrived: false,
+                source_queued: false,
                 sink_arrived: false,
+                upload: Arc::default(),
                 sender: Some(sender),
                 receiver: Some(receiver),
                 direct: false,
@@ -395,6 +412,62 @@ impl Pipes {
             device: device.into(),
             sink: slot.sink_told.subscribe(),
         })
+    }
+
+    /// The source end of pipe `id` for a chunk of `device`'s upload from
+    /// `offset`: the first claims the pipe's writer, and each after takes it
+    /// from where the one before left it.
+    pub fn claim_chunk(&self, id: &str, device: &str, offset: u64) -> Result<DeviceChunk, ChunkRefusal> {
+        let mut slots = self.0.slots.borrow_mut();
+        let slot = slots.get_mut(id).ok_or(ChunkRefusal::NotFound)?;
+        if slot.source != End::Device(device.into()) || !slot.core.is_open() {
+            return Err(ChunkRefusal::NotFound);
+        }
+        let hold = slot.upload.clone();
+        let taken = hold.taken.load(Ordering::Acquire);
+        if offset != taken {
+            return Err(ChunkRefusal::Offset(taken));
+        }
+        let writer = match slot.sender.take() {
+            Some(sender) => {
+                slot.source_arrived = true;
+                slot.update_deadline();
+                PipeWriter {
+                    sender: Some(sender),
+                    core: slot.core.clone(),
+                    abandoned: "source HTTP request disconnected",
+                }
+            }
+            // A chunk still sends: the next goes once it ended.
+            None => hold.take().ok_or(ChunkRefusal::Offset(taken))?,
+        };
+        Ok(DeviceChunk {
+            writer: Some(writer),
+            hold,
+        })
+    }
+
+    /// The bytes of pipe `id` that `device`'s upload into it took.
+    pub fn taken_by(&self, id: &str, device: &str) -> Result<u64, PipeRefusal> {
+        let slots = self.0.slots.borrow();
+        let slot = slots.get(id).ok_or(PipeRefusal::NotFound)?;
+        if slot.source != End::Device(device.into()) || !slot.core.is_open() {
+            return Err(PipeRefusal::NotFound);
+        }
+        Ok(slot.upload.taken.load(Ordering::Acquire))
+    }
+
+    /// A device's report that its upload into pipe `id` waits for its turn:
+    /// the pipe waits for its source without the arrival window. It counts
+    /// only from the pipe's source.
+    pub fn queued_from_device(&self, id: &str, device: &str) {
+        let mut slots = self.0.slots.borrow_mut();
+        if let Some(slot) = slots.get_mut(id)
+            && slot.source == End::Device(device.into())
+        {
+            slot.source_queued = true;
+            slot.update_deadline();
+        }
     }
 
     /// Whether a pipe between the runners of `one` and `other` that may go
@@ -556,7 +629,7 @@ impl Slot {
     /// The arrival window runs while an end is missing: it stops once both
     /// arrived, and starts again when an end is named anew.
     fn update_deadline(&mut self) {
-        if self.source_arrived && self.sink_arrived {
+        if (self.source_arrived || self.source_queued) && self.sink_arrived {
             self.deadline.send_replace(None);
         } else if self.deadline.borrow().is_none() {
             self.deadline
@@ -617,6 +690,7 @@ impl Pipe {
         PipeRef {
             id: self.id.to_string(),
             url: format!("/api/pipes/{}", self.id),
+            shown: false,
         }
     }
 
@@ -626,6 +700,7 @@ impl Pipe {
         PipeRef {
             id: self.id.to_string(),
             url: format!("{}/{}", wire::CALL_OUTPUT_ROUTE, self.id),
+            shown: false,
         }
     }
 
@@ -1016,6 +1091,106 @@ impl SinkState {
                 self.ended = true;
                 vec![wire::end_frame(&Ok(()))]
             }
+        }
+    }
+}
+
+/// A device source's writer while no chunk of its upload sends, and the
+/// bytes its chunks took.
+#[derive(Default)]
+struct UploadHold {
+    writer: Mutex<Option<PipeWriter>>,
+    taken: AtomicU64,
+}
+
+impl UploadHold {
+    fn take(&self) -> Option<PipeWriter> {
+        self.writer.lock().unwrap_or_else(PoisonError::into_inner).take()
+    }
+
+    fn keep(&self, writer: PipeWriter) {
+        *self.writer.lock().unwrap_or_else(PoisonError::into_inner) = Some(writer);
+    }
+}
+
+/// Why a chunk of a device's upload is not taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ChunkRefusal {
+    /// No such pipe, the pipe is over, or its source is another device.
+    #[error("no such pipe")]
+    NotFound,
+    /// The upload goes on from this offset, which the backend took.
+    #[error("the upload goes on from byte {0}")]
+    Offset(u64),
+}
+
+/// How a chunk of a device's upload went.
+#[derive(Debug)]
+pub enum ChunkEnd {
+    /// It was taken, and the upload goes on from this offset.
+    Taken(u64),
+    /// Its request broke off: the upload goes on from the offset taken.
+    Broken,
+    /// The pipe is over: drained, or failed with why.
+    Over(Result<(), PipeFailure>),
+}
+
+/// A chunk of a device's upload, for the edge to feed. Dropped before its
+/// end, it leaves the writer for the next chunk.
+pub struct DeviceChunk {
+    writer: Option<PipeWriter>,
+    hold: Arc<UploadHold>,
+}
+
+impl DeviceChunk {
+    /// Forwards the chunk's bytes into the pipe as the sink takes them. The
+    /// last, `complete`, ends the source and answers the pipe's outcome;
+    /// another answers the offset the upload goes on from.
+    pub async fn pump<S, E>(mut self, body: S, complete: bool) -> ChunkEnd
+    where
+        S: Stream<Item = Result<Bytes, E>>,
+    {
+        let Some(core) = self.writer.as_ref().map(|writer| writer.core.clone()) else {
+            return ChunkEnd::Broken;
+        };
+        let over = core.done();
+        tokio::pin!(body, over);
+        loop {
+            let chunk = tokio::select! {
+                biased;
+                outcome = &mut over => return ChunkEnd::Over(outcome),
+                chunk = body.next() => chunk,
+            };
+            let Some(writer) = self.writer.as_mut() else {
+                return ChunkEnd::Broken;
+            };
+            match chunk {
+                Some(Ok(bytes)) => {
+                    let count = bytes.len() as u64;
+                    if writer.write(bytes).await.is_err() {
+                        return ChunkEnd::Over(core.done().await);
+                    }
+                    self.hold.taken.fetch_add(count, Ordering::AcqRel);
+                }
+                // Dropping the chunk leaves the writer for the next.
+                Some(Err(_)) => return ChunkEnd::Broken,
+                None if complete => {
+                    if let Some(writer) = self.writer.take() {
+                        writer.end();
+                    }
+                    return ChunkEnd::Over(core.done().await);
+                }
+                None => return ChunkEnd::Taken(self.hold.taken.load(Ordering::Acquire)),
+            }
+        }
+    }
+}
+
+/// A chunk whose request went away leaves its writer for the next.
+impl Drop for DeviceChunk {
+    fn drop(&mut self) {
+        if let Some(writer) = self.writer.take() {
+            self.hold.keep(writer);
         }
     }
 }

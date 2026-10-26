@@ -50,7 +50,7 @@ pub use offers::{FileOffers, Offer};
 pub use offers::offer_response;
 pub use output_records::{decode_output, encode_output};
 pub use pipes::{
-    ARRIVAL, DeviceSink, DeviceSource, Pipe, PipeError, PipeFailure, PipeReader, PipeRefusal,
+    ARRIVAL, ChunkEnd, ChunkRefusal, DeviceChunk, DeviceSink, DeviceSource, Pipe, PipeError, PipeFailure, PipeReader, PipeRefusal,
     PipeWriter, Pipes, SinkSession, SourceMessage,
 };
 pub use session::{Beginning, DeviceSession};

@@ -225,10 +225,7 @@ pub(crate) async fn search_instructions(
     let mut reads = project::root_reads(paths, &ancestors);
     for directory in &ancestors {
         for name in NAMES {
-            reads.push(HostRead {
-                path: join(directory, name),
-                limit: 0,
-            });
+            reads.push(HostRead::new(join(directory, name), 0));
         }
         reads.push(HostRead::new(demi_file(directory), 0));
     }
@@ -249,7 +246,7 @@ pub(crate) async fn search_instructions(
         watch.push(file(demi_file(directory)));
     }
     let taken_file = |path: String, answer: &HostFile| match answer {
-        HostFile::File { size, .. } => Some(HostRead { path, limit: *size }),
+        HostFile::File { size, .. } => Some(HostRead::new(path, *size)),
         HostFile::Unreadable { message } => {
             tracing::info!(event = "instruction_file.unreadable", %conversation, %path, reason = %message, "a project instruction file cannot be read");
             None

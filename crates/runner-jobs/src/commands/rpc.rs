@@ -400,7 +400,7 @@ fn report(
     let message = wire::encode(&wire::Outbound::PipeDone {
         pipe_id: reference.id.clone(),
         ok: result.is_ok(),
-        error: result.as_ref().err().map(ToString::to_string),
+        error: result.as_ref().err().map(|error| demi_runner_process::pipes::causes(error)),
     })
     .map_err(ResidentError::failed)?;
     output.push(message);
