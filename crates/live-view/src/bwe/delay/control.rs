@@ -53,17 +53,21 @@ impl DelayController {
         }
     }
 
-    /// Record a packet from a TWCC report.
+    /// Record a packet from a TWCC report; answers whether the delay went
+    /// from underuse back to normal among them, which is how libwebrtc's
+    /// `delay_based_bwe.cc` tells that the path recovered from an overuse.
     pub fn update(
         &mut self,
         acked: &[AckedPacket],
         acked_bitrate: Option<Bitrate>,
         probe_bitrate: Option<Bitrate>,
         now: Instant,
-    ) -> Option<Bitrate> {
+    ) -> bool {
         let mut max_rtt = None;
+        let mut recovered = false;
 
         for acked_packet in acked {
+            let before = self.trendline_estimator.hypothesis();
             max_rtt = max_rtt.max(Some(acked_packet.rtt()));
             if let Some(delay_variation) = self
                 .arrival_group_accumulator
@@ -85,6 +89,8 @@ impl DelayController {
                 self.trendline_estimator
                     .add_delay_observation(delay_variation, delay_variation.last_remote_recv_time);
             }
+            recovered |= before == BandwidthUsage::Underuse
+                && self.trendline_estimator.hypothesis() == BandwidthUsage::Normal;
         }
 
         if let Some(rtt) = max_rtt {
@@ -102,7 +108,11 @@ impl DelayController {
         );
         self.last_twcc_report = now;
 
-        self.last_estimate
+        // As libwebrtc, only an update that neither overuses nor takes a
+        // probe's result passes the recovery on.
+        recovered
+            && probe_bitrate.is_none()
+            && self.trendline_estimator.hypothesis() != BandwidthUsage::Overuse
     }
 
     pub fn poll_timeout(&self) -> Instant {

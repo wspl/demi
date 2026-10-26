@@ -17,6 +17,14 @@
 //! - The rate control probes the path with padding (`probe`), since the
 //!   pictures alone rarely fill it. A rising delay lowers the rate. A loss
 //!   whose retransmission only delays a chunk does not.
+//! - A still picture sends next to nothing, so the sender is
+//!   application-limited (`bwe::alr`) most of the time: once it sends at its
+//!   rate again, the acknowledged rate follows at once, and a large drop is
+//!   probed back (`probe`).
+//! - A view's new stream after [`STALE`] without sending starts the estimate
+//!   over, as a new view does: the path may have changed meanwhile, and an
+//!   estimate far above it fills the path with seconds of pictures before
+//!   the delay brings it down.
 //! - Below what a picture needs, the sender lowers the frame rate first, then
 //!   the resolution.
 //! - Viewers of a source share its encoding, so the slowest decides. A blocked
@@ -35,6 +43,7 @@ use demi_live_view_protocol::{ChunkAck, VIDEO_MAX_BITRATE};
 use crate::{
     bwe::{
         AckedPacket, Bitrate, DataSize, DelayBasedEstimate,
+        alr::AlrDetector,
         probe::{ProbeCluster, ProbeEstimator},
     },
     probe::Probes,
@@ -44,6 +53,9 @@ use crate::{
 pub(crate) const INITIAL_BITRATE: u32 = 5_000_000;
 /// The least the encoder is asked for.
 const MIN_BITRATE: u32 = 100_000;
+/// How long a view sends nothing before its next stream starts the estimate
+/// over: what the path carried before it says little of the path now.
+const STALE: Duration = Duration::from_secs(10);
 /// How long the least round trip is remembered.
 const ROUND_TRIP_SPAN: Duration = Duration::from_secs(10);
 /// What the window allows beyond the round trip: a frame's pacing and the
@@ -101,6 +113,17 @@ pub(crate) struct Rate {
     scale: usize,
     probes: Probes,
     probe_estimator: ProbeEstimator,
+    alr: AlrDetector,
+    /// Whether the sender was application-limited at the last
+    /// acknowledgement.
+    limited: bool,
+    /// When the sender last stopped being application-limited.
+    limited_until: Option<Instant>,
+    /// When the last chunk went; none before the first.
+    last_sent: Option<Instant>,
+    /// When the estimate started over; what was sent before is only taken
+    /// off the bytes in flight.
+    restarted: Option<Instant>,
 }
 
 impl Rate {
@@ -120,9 +143,31 @@ impl Rate {
             scale: 0,
             probes: Probes::default(),
             probe_estimator: ProbeEstimator::default(),
+            alr: AlrDetector::default(),
+            limited: false,
+            limited_until: None,
+            last_sent: None,
+            restarted: None,
         };
+        rate.alr.set_estimate(rate.estimate.estimate());
         rate.resize(pixels);
         rate
+    }
+
+    /// Starts the estimate over at `now` when it is stale: something was
+    /// sent, and nothing for [`STALE`]. The chunks still on their way stay
+    /// in flight, so the window keeps counting them.
+    pub fn restart_if_stale(&mut self, now: Instant) {
+        if !self.last_sent.is_some_and(|sent| now.saturating_duration_since(sent) > STALE) {
+            return;
+        }
+        let mut fresh = Self::new(self.pixels as u64);
+        fresh.flight = std::mem::take(&mut self.flight);
+        fresh.in_flight = self.in_flight;
+        fresh.sent = self.sent;
+        fresh.clock = self.clock;
+        fresh.restarted = Some(now);
+        *self = fresh;
     }
 
     /// The panel's picture has `pixels` device pixels now.
@@ -183,12 +228,14 @@ impl Rate {
     /// Chunk `id` of `bytes` bytes went to the page at `now`.
     pub fn sent(&mut self, id: ChunkId, bytes: usize, now: Instant) {
         self.started.get_or_insert(now);
+        self.last_sent = Some(now);
+        self.alr.sent(DataSize::bytes(bytes as i64), now);
         self.sent += 1;
         let order = self.sent;
         let (_, sequence, _, padding) = id;
         let probe = padding.then_some(sequence);
         if !padding {
-            self.probes.picture(bytes, now, self.estimate.estimate());
+            self.probes.picture(now, self.estimate.estimate(), self.alr.started());
         }
         if let Some(replaced) = self.flight.insert(id, Sent { at: now, bytes, order, probe }) {
             self.in_flight -= replaced.bytes;
@@ -220,6 +267,9 @@ impl Rate {
                 continue;
             };
             self.in_flight -= sent.bytes;
+            if self.restarted.is_some_and(|restarted| sent.at < restarted) {
+                continue;
+            }
             let round_trip = now.saturating_duration_since(sent.at);
             self.early = self
                 .started
@@ -246,9 +296,13 @@ impl Rate {
         {
             self.round_trips.pop_front();
         }
-        if !acked.is_empty() {
-            self.estimate.update(acked, probed.map(|(_, measured)| measured), now);
+        let limited = self.alr.started().is_some();
+        if self.limited && !limited {
+            self.estimate.alr_ended(now);
+            self.limited_until = Some(now);
         }
+        self.limited = limited;
+        let recovered = !acked.is_empty() && self.estimate.update(acked, probed.map(|(_, measured)| measured), now);
         if let Some((cluster, measured)) = probed {
             tracing::debug!(
                 event = "live_view.probed",
@@ -261,6 +315,12 @@ impl Rate {
         self.probe_estimator.handle_timeout(now);
         if now >= self.estimate.poll_timeout() {
             self.estimate.handle_timeout(now);
+        }
+        let estimate = self.estimate.estimate();
+        self.alr.set_estimate(estimate);
+        self.probes.estimate(estimate, now);
+        if recovered {
+            self.probes.recovered(now, limited, self.limited_until);
         }
         self.fit();
     }
