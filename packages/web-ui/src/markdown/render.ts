@@ -502,12 +502,17 @@ function showsMedium(token: Token): boolean {
  * link around one and nothing else.
  */
 function isMedium(token: Token): boolean {
-  if (showsMedium(token))
+  return isImageIn(token, showsMedium)
+}
+
+/** Whether an inline token is an image that `shows`, or a link around one and nothing else. */
+function isImageIn(token: Token, shows: (image: Token) => boolean): boolean {
+  if (shows(token))
     return true
   if (token.type !== 'link')
     return false
   const inside = (token.tokens ?? []).filter((part) => !isWhiteSpace(part))
-  return inside.length === 1 && inside[0] !== undefined && showsMedium(inside[0])
+  return inside.length === 1 && inside[0] !== undefined && shows(inside[0])
 }
 
 /**
@@ -815,11 +820,22 @@ const MATH_OPENER = /^\${1,2}\n/
  *   follows `<details>` inside it
  */
 export function messageBlockEnds(src: string): number[] {
-  const blocks: { start: number; live: boolean }[] = []
+  const blocks: { start: number; live: boolean; endsInMedium: boolean }[] = []
+  const lexer = new agentMarked.Lexer(agentMarked.defaults)
   let offset = 0
-  for (const token of new agentMarked.Lexer(agentMarked.defaults).blockTokens(src.slice(0, src.lastIndexOf('\n') + 1))) {
-    if (token.type !== 'space')
-      blocks.push({ start: offset, live: token.type === 'html' || (token.type !== 'blockMath' && MATH_OPENER.test(token.raw)) })
+  for (const token of lexer.blockTokens(src.slice(0, src.lastIndexOf('\n') + 1))) {
+    if (token.type !== 'space') {
+      const live = token.type === 'html' || (token.type !== 'blockMath' && MATH_OPENER.test(token.raw))
+      const edges = mediumEdges(lexer, token)
+      const before = blocks.at(-1)
+      // Media on both sides of the line between two blocks join in one run.
+      if (before?.endsInMedium && edges.first) {
+        before.live ||= live
+        before.endsInMedium = edges.last
+      } else {
+        blocks.push({ start: offset, live, endsInMedium: edges.last })
+      }
+    }
     offset += token.raw.length
   }
   let last = blocks.length - 1
@@ -827,6 +843,21 @@ export function messageBlockEnds(src: string): number[] {
   if (live >= 0)
     last = Math.min(last, live)
   return blocks.slice(1, Math.max(1, last + 1)).map((block) => block.start)
+}
+
+/**
+ * Whether a top-level block of a message starts and ends with a medium, which
+ * joins the media of the block beside it in one run (`joinMediaRuns`). Its
+ * files unknown, every image and attachment block counts, as one may show.
+ */
+function mediumEdges(lexer: InstanceType<typeof agentMarked.Lexer>, token: Token): { first: boolean; last: boolean } {
+  if (token.type === ATTACHMENT_BLOCK)
+    return { first: true, last: true }
+  if (token.type !== 'paragraph')
+    return { first: false, last: false }
+  const inline = lexer.inlineTokens(token.text).filter((part) => !isWhiteSpace(part))
+  const mayShow = (part: Token | undefined): boolean => part !== undefined && isImageIn(part, (image) => image.type === 'image')
+  return { first: mayShow(inline[0]), last: mayShow(inline.at(-1)) }
 }
 
 /** An agent's message: GitHub Flavored Markdown with math. */

@@ -5,13 +5,13 @@
  * backend follows the same rule to know which attachments a share serves
  * (`named_attachments` in `crates/backend-database/src/shares.rs`).
  */
-const TAG = String.raw`<attachment id="(a[1-9]\d*)" ?\/>[ \t]*`
+export const ATTACHMENT_TAG = String.raw`<attachment id="(a[1-9]\d*)" ?\/>[ \t]*`
 
 /** The tag starting a block, up to three spaces in, with its line's end. */
-const AT_START = new RegExp(String.raw`^ {0,3}${TAG}(?:\n|$)`)
+const AT_START = new RegExp(String.raw`^ {0,3}${ATTACHMENT_TAG}(?:\n|$)`)
 
 /** A later line of the text that is the tag, up to three spaces in. */
-const A_LATER_LINE = new RegExp(String.raw`\n {0,3}${TAG}(?:\n|$)`)
+const A_LATER_LINE = new RegExp(String.raw`\n {0,3}${ATTACHMENT_TAG}(?:\n|$)`)
 
 /**
  * The attachment block that starts `src`, its whole line and the number it
