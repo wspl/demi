@@ -555,6 +555,12 @@ watch(
   { flush: 'post' },
 )
 provideLabelRoom(() => titleRoom.value)
+// The dock, its cards, chips and composer, shows with the transcript, never
+// over the loading pane: what it shows arrives by different reads, such as
+// the schedules with the metadata, which answers before the transcript, and
+// one that came first would stand alone under Loading, then move up when the
+// composer comes.
+const dockShown = computed(() => props.conversation.archived || transcriptShown(props.conversation.load))
 // Recovery of an unfinished turn needs:
 //
 // - a provider
@@ -1014,7 +1020,7 @@ watch(
             :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
             @scroll-to-bottom="scrollToBottom"
           >
-            <template v-if="permissionRequests?.length" #above>
+            <template v-if="dockShown && permissionRequests?.length" #above>
               <RequestCard
                 :requests="permissionRequests"
                 :deciding="decidingPermission"
@@ -1022,7 +1028,7 @@ watch(
                 @decide="(id, decision, credential) => emit('decidePermission', id, decision, credential)"
               />
             </template>
-            <template #chips>
+            <template v-if="dockShown" #chips>
               <!--
                 The transcript says what happened; the recovery controls are
                 here, over the input.
@@ -1076,14 +1082,8 @@ watch(
                 @delete="(id) => emit('deleteSchedule', id)"
               />
             </template>
-            <!--
-              With the transcript: a message sent while the session opens goes
-              once it has.
-            -->
-            <slot
-              v-if="conversation.archived || transcriptShown(conversation.load)"
-              name="composer"
-            />
+            <!-- A message sent while the session opens goes once it has. -->
+            <slot v-if="dockShown" name="composer" />
           </SessionDock>
         </template>
         <template #overDock>
