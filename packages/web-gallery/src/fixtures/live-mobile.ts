@@ -30,9 +30,11 @@ import {
   mobileTabDataSchema,
 } from '@demicodes/plugin-mobile'
 import { PluginCallError } from '@demicodes/web-ui/plugins/page'
+import type { HostDownload } from '@demicodes/web-ui/devices/installed'
 import { encodeControl, encodeVideo } from '@demicodes/web-ui/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
+import { shallowRef } from 'vue'
 import { productWould } from '../product-would'
 import type { GalleryPanel } from './panel'
 import type { GalleryPlugin } from './plugins'
@@ -41,6 +43,18 @@ import { WORKSPACE_ROOT } from './workspace'
 const FPS = 10
 /** How long the gallery's runner takes to restart. */
 const RESTART_MS = 6000
+/** The plugin's program as an updated runner downloads it, of a typical size. */
+const PROGRAM_DOWNLOAD: HostDownload = {
+  package: 'demi.mobile',
+  name: 'demi-mobile',
+  version: '0.1.0',
+  received: 0,
+  size: 27_262_976,
+}
+/** How often the runner reports a download, at most four times a second. */
+const DOWNLOAD_REPORT_MS = 250
+/** What a report adds, so the gallery's download takes about eight seconds. */
+const DOWNLOAD_STEP_BYTES = 851_968
 /** A screen's pixels per point. */
 const SCALE = 3
 const decoder = new TextDecoder()
@@ -214,6 +228,12 @@ export interface GalleryMobile {
    * Host's resident keeps them.
    */
   runnerRestarts(): void
+  /**
+   * The Host's runner updates while its new program still downloads: every
+   * device's stream ends and opens again once the download is done, as the
+   * resident of the new version starts only then.
+   */
+  runnerUpdates(): void
 }
 
 export function galleryMobile(panel: GalleryPanel): GalleryMobile {
@@ -391,6 +411,10 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
 
   /** While the runner restarts, no stream opens. */
   let restartingUntil = 0
+  /** What the Host downloads of the plugin's packages, as the product state says. */
+  const downloading = shallowRef<readonly HostDownload[]>([])
+  /** The download an update runs, until it has every byte. */
+  let download: ReturnType<typeof setInterval> | null = null
 
   const stream: OpenUserStream = (handlers) => {
     const view = new MobileView(handlers, () => [...open.values()], (shown) => power(shown, true))
@@ -409,7 +433,11 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
   }
 
   return {
-    plugin: { call: (method, params) => call(method, params), streams: { mobile: stream } },
+    plugin: {
+      call: (method, params) => call(method, params),
+      streams: { mobile: stream },
+      downloading: () => downloading.value,
+    },
     removed: (tab) => {
       const id = shows(tab)
       if (id) {
@@ -465,6 +493,33 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       for (const view of [...views]) {
         view.dropped('the runner restarted')
       }
+    },
+    runnerUpdates: () => {
+      if (open.size === 0) {
+        productWould('No simulator is open to lose its connection.')
+        return
+      }
+      if (download !== null) {
+        clearInterval(download)
+      }
+      restartingUntil = Number.POSITIVE_INFINITY
+      downloading.value = [PROGRAM_DOWNLOAD]
+      for (const view of [...views]) {
+        view.dropped('the runner updated')
+      }
+      download = setInterval(() => {
+        const received = Math.min(PROGRAM_DOWNLOAD.size, (downloading.value[0]?.received ?? 0) + DOWNLOAD_STEP_BYTES)
+        if (received < PROGRAM_DOWNLOAD.size) {
+          downloading.value = [{ ...PROGRAM_DOWNLOAD, received }]
+          return
+        }
+        if (download !== null) {
+          clearInterval(download)
+          download = null
+        }
+        downloading.value = []
+        restartingUntil = 0
+      }, DOWNLOAD_REPORT_MS)
     },
     devicesSleep: () => {
       if (open.size === 0) {

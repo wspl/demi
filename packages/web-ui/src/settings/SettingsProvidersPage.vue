@@ -28,6 +28,8 @@ import AsyncRegion from '../ui/AsyncRegion.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
+import ProgressBar from '@demicodes/web-ui/ui/ProgressBar.vue'
+import { formatByteRatio } from '@demicodes/web-ui/files/format'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import ProviderCacheTtl from './ProviderCacheTtl.vue'
 import ProviderQuota from './ProviderQuota.vue'
@@ -1328,7 +1330,23 @@ function endpointCheck(value: string) {
                 :label="selected.cli.install.state === 'installing' ? t('providers.cli.installing') : t('providers.cli.installFailed')"
                 :description="selected.cli.install.state === 'failed' ? selected.cli.install.message : undefined"
               >
-                <IndeterminateSpinner v-if="selected.cli.install.state === 'installing'" />
+                <!-- The download's sizes take their line from the install's start, so the row keeps its height. -->
+                <template v-if="selected.cli.install.state === 'installing'" #description>
+                  <span class="tabular-nums">{{
+                    selected.cli.install.download
+                      ? formatByteRatio(selected.cli.install.download.received, selected.cli.install.download.size)
+                      : '\u00a0'
+                  }}</span>
+                </template>
+                <div v-if="selected.cli.install.state === 'installing'" class="flex w-24 items-center justify-end">
+                  <ProgressBar
+                    v-if="selected.cli.install.download"
+                    :value="selected.cli.install.download.received"
+                    :max="selected.cli.install.download.size"
+                    :label="t('providers.cli.installing')"
+                  />
+                  <IndeterminateSpinner v-else />
+                </div>
                 <Button
                   v-else
                   size="sm"

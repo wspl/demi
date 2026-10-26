@@ -9,7 +9,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use demi_shared_types::{AccountInfo, Clock, LoginPending, LoginStage};
+use demi_shared_types::{AccountInfo, Clock, DownloadProgress, LoginPending, LoginStage};
 use futures_util::future::BoxFuture;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -79,6 +79,9 @@ pub struct LoginIo<'a> {
     /// until it reports another stage, and `waiting_for_user` once it reports
     /// `pending`. A family whose login prepares in one step reports none.
     pub stage: &'a (dyn Fn(LoginStage) + Send + Sync),
+    /// How far a download the login's stage waits for came, such as a
+    /// Claude sign-in's CLI while it is `installing`.
+    pub download: &'a (dyn Fn(DownloadProgress) + Send + Sync),
     /// The codes the user pastes, in order; a login that takes none leaves
     /// them.
     pub codes: mpsc::UnboundedReceiver<Secret>,

@@ -672,16 +672,25 @@ impl Owner {
 
 /// Prints a `line` of how `install` goes in the output of its invocation,
 /// unless it answers in JSON, whose output is the one document.
-async fn print_progress(context: &InvocationContext, line: String) -> Result<()> {
+/// Where an install's progress lines go: `demi browser install`'s own output,
+/// or the standard error of an operation that installs first.
+#[derive(Clone, Copy)]
+enum Lines {
+    Stdout,
+    Stderr,
+}
+
+async fn print_progress(context: &InvocationContext, line: String, lines: Lines) -> Result<()> {
     if context.request.json == Some(true) {
         return Ok(());
     }
+    let line = Bytes::from(line);
+    let printed = match lines {
+        Lines::Stdout => context.output.stdout(line).await,
+        Lines::Stderr => context.output.stderr(line).await,
+    };
     // An output that takes nothing more is an invocation that ended.
-    context
-        .output
-        .stdout(Bytes::from(line))
-        .await
-        .map_err(|_| BrowserError::Cancelled)
+    printed.map_err(|_| BrowserError::Cancelled)
 }
 
 /// What the tab's page offers, of every command family: the page's own families
@@ -1053,6 +1062,7 @@ impl Conversations {
         let result = async {
             let command =
                 operation.map_err(|error| BrowserError::Configuration(error.to_string()))?;
+            self.install_first(&command, &mut context).await?;
             let cancellation = context.cancellation.child_token();
             let _cancel_on_drop = cancellation.clone().drop_guard();
             let deadline = tokio::time::Instant::now() + command.timeout();
@@ -1197,22 +1207,38 @@ impl Conversations {
     /// `context`'s invocation, which prints a line in its own output as each
     /// tenth of a download arrives and as it is unpacked, unless it answers
     /// in JSON.
-    async fn install(&self, context: &mut InvocationContext) -> Result<InstallResult> {
+    async fn install(&self, context: &mut InvocationContext, lines: Lines) -> Result<InstallResult> {
         let (progress, mut reports) = mpsc::channel(PROGRESS_LINES);
         let installing = self.chrome.install(&context.request.invocation_id, progress);
         tokio::pin!(installing);
         let installed = loop {
             tokio::select! {
                 biased;
-                Some(report) = reports.recv() => print_progress(context, report).await?,
+                Some(report) = reports.recv() => print_progress(context, report, lines).await?,
                 installed = &mut installing => break installed,
             }
         };
         // What the runner reported before it answered.
         while let Ok(report) = reports.try_recv() {
-            print_progress(context, report).await?;
+            print_progress(context, report, lines).await?;
         }
         installed
+    }
+
+    /// Installs Chrome for an operation that starts the conversation's
+    /// browser on a Host that has none, before the operation's own time
+    /// runs: the agent's first `tab new` works instead of failing, and a tab
+    /// the user opens in the panel opens once Chrome is in place. Its lines
+    /// go to standard error, as the operation's output is its own.
+    async fn install_first(&self, command: &BrowserOperation, context: &mut InvocationContext) -> Result<()> {
+        let starts = matches!(
+            command,
+            BrowserOperation::TabNew(_) | BrowserOperation::ContentFetch(_)
+        );
+        if !starts || self.chrome.installation().await.is_ok() {
+            return Ok(());
+        }
+        self.install(context, Lines::Stderr).await.map(drop)
     }
 
     async fn execute(
@@ -1226,7 +1252,7 @@ impl Conversations {
     ) -> Result<CommandOutput> {
         if matches!(command, BrowserOperation::Install(_)) {
             // The Host's browser, not the conversation's: nothing starts.
-            let installed = self.install(context).await?;
+            let installed = self.install(context, Lines::Stdout).await?;
             return Ok(CommandOutput::Json(output::value(installed)?));
         }
         // Only the user's page reads the tab list's number and its tabs closed

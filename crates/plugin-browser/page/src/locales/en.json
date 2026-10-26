@@ -58,6 +58,7 @@
   "starting": {
     "connecting": "Connecting…",
     "cloud": "Starting Cloud…",
+    "download": "Downloading the browser…",
     "browser": "Starting the browser…",
     "page": "Opening the page…"
   },

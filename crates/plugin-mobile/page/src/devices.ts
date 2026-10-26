@@ -9,7 +9,7 @@
  */
 import { onScopeDispose } from 'vue'
 import type { z } from 'zod'
-import { PluginCallError, type ConversationPlugin, type OpenUserStream } from '@demicodes/plugin-sdk'
+import { PluginCallError, type ConversationPlugin, type HostDownload, type OpenUserStream } from '@demicodes/plugin-sdk'
 import {
   appearanceResultSchema,
   closeResultSchema,
@@ -62,6 +62,8 @@ export interface MobileApi {
   screenshot(device: string): Promise<Saved>
   record(device: string, action: PanelRecord): Promise<RecordResult>
   stream: OpenUserStream
+  /** What the Host downloads of the plugin's packages now, such as its program, read reactively. */
+  downloading(): readonly HostDownload[]
 }
 
 export function mobileApi(plugin: ConversationPlugin): MobileApi {
@@ -93,5 +95,6 @@ export function mobileApi(plugin: ConversationPlugin): MobileApi {
     screenshot: (device) => call('screenshot', { device } satisfies OnDevice, savedSchema),
     record: (device, action) => call('record', { device, action } satisfies RecordDevice, recordResultSchema),
     stream: plugin.stream('mobile'),
+    downloading: () => plugin.downloading.value,
   }
 }

@@ -207,7 +207,8 @@ impl Work {
     ///   but one whose opening failed keeps the address its Retry opens.
     /// - Every bound tab whose browser tab was closed on purpose is removed.
     /// - Every bound tab whose browser tab was lost with the browser is marked
-    ///   closed, to open again when shown.
+    ///   closed, to open again when shown; one the list names again is not
+    ///   lost, as when a report taken before its tab opened marked it.
     pub async fn sync(
         &self,
         conversation: &ConversationId,
@@ -262,10 +263,12 @@ impl Work {
         let present: HashMap<&str, &BrowserTab> =
             listed.iter().map(|tab| (tab.id.as_str(), tab)).collect();
         for (id, data) in &bound {
-            let Some(browser_tab) = data.live() else {
+            let Some(browser_tab) = data.tab.as_deref() else {
                 continue;
             };
+            let lost = data.live().is_none();
             match present.get(browser_tab) {
+                None if lost => {}
                 None if closed.iter().any(|tab| tab.as_str() == browser_tab) => {
                     port.remove_panel_tab(id.as_str()).await?;
                 }
@@ -277,8 +280,14 @@ impl Work {
                 // says them, and the count of its showings when it rose. A tab
                 // whose page failed to open keeps its own address: its browser
                 // tab may still show the blank page it was made with.
+                //
+                // A tab marked lost that the list names was never lost: a
+                // report taken before it opened, applied after, marked it.
                 Some(tab) => {
                     let mut follows = Map::new();
+                    if lost {
+                        follows.insert("closed".into(), Value::Null);
+                    }
                     if data.failure.is_none() {
                         if data.url != tab.url {
                             follows.insert("url".into(), Value::from(tab.url.clone()));

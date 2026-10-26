@@ -23,7 +23,7 @@ use demi_provider_common::credentials::{
     NewAccount,
     credential_id_for, decode_secret, find_by_identity,
 };
-use demi_shared_types::{LoginPending, LoginStage, RefusedCode, StreamKind};
+use demi_shared_types::{DownloadProgress, LoginPending, LoginStage, RefusedCode, StreamKind};
 use futures_util::future::BoxFuture;
 use futures_util::{FutureExt as _, StreamExt as _};
 use reqwest::Url;
@@ -42,6 +42,8 @@ use crate::placement::{
 enum Shown {
     /// What the sign-in waits for before the CLI prints its link.
     Stage(LoginStage),
+    /// How far the CLI's download came while it installs.
+    Download(DownloadProgress),
     /// The link the CLI printed.
     Link(String),
     /// The CLI refused a code the user pasted, and waits for another.
@@ -110,6 +112,7 @@ async fn sign_in(
     let LoginIo {
         pending,
         stage,
+        download,
         codes,
         stop,
     } = io;
@@ -128,6 +131,7 @@ async fn sign_in(
     let mut link_url = None;
     let mut show = |next: Shown| match next {
         Shown::Stage(reached) => stage(reached),
+        Shown::Download(progress) => download(progress),
         Shown::Link(url) => {
             pending(LoginPending {
                 verification_url: url.clone(),
@@ -200,11 +204,12 @@ async fn sign_in_at(
     let stages = {
         let shown = shown.clone();
         move |reached: StartStage| {
-            let _ = shown.send(Shown::Stage(match reached {
-                StartStage::Machine => LoginStage::WaitingForMachine,
-                StartStage::Install => LoginStage::Installing,
-                StartStage::Process => LoginStage::Starting,
-            }));
+            let _ = shown.send(match reached {
+                StartStage::Machine => Shown::Stage(LoginStage::WaitingForMachine),
+                StartStage::Install => Shown::Stage(LoginStage::Installing),
+                StartStage::Download(progress) => Shown::Download(progress),
+                StartStage::Process => Shown::Stage(LoginStage::Starting),
+            });
         }
     };
     // A start given up removes what it made.

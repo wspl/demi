@@ -126,6 +126,6 @@ const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => 
     >
       {{ t('region.unsupported') }}
     </div>
-    <DeviceView v-else :session="device" :shown="shown" />
+    <DeviceView v-else :session="device" :shown="shown" :downloads="session.api.downloading()" />
   </div>
 </template>

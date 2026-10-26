@@ -263,24 +263,41 @@ function checkCli(p: SettingsProviderEntry) {
   )
 }
 
-/** How long the Cloud takes to wake, read the release and install the CLI. */
-const CLI_INSTALL_MS = 3000
+/** How long the Cloud takes to wake and read the release before the CLI's download starts. */
+const CLI_WAKE_MS = 1500
+/** The CLI's size, as its native build is. */
+const CLI_SIZE = 213_909_504
+/** How often the runner reports the download, at most four times a second. */
+const CLI_REPORT_MS = 250
+/** What a report adds, so the download takes about five seconds. */
+const CLI_STEP_BYTES = 10_485_760
 /** The specimen's CLI installs under way, which end when the page goes. */
 const cliInstalls = new Set<number>()
 
-/** Installing while Claude Code’s machine wakes and downloads, then installed; Install works until the request is taken. */
+/** Installing while Claude Code’s machine wakes, then downloading with its sizes, then installed; Install works until the request is taken. */
 async function installCli(p: SettingsProviderEntry) {
   const cli = p.cli
   if (!cli || cli.install?.state === 'installing') {
     return
   }
   await slow()
-  cli.install = { state: 'installing' }
-  const timer = window.setTimeout(() => {
-    cliInstalls.delete(timer)
-    cli.install = { state: 'installed' }
-  }, CLI_INSTALL_MS)
-  cliInstalls.add(timer)
+  cli.install = { state: 'installing', download: null }
+  const woken = window.setTimeout(() => {
+    cliInstalls.delete(woken)
+    const reports = window.setInterval(() => {
+      const install = cli.install
+      const received = Math.min(CLI_SIZE, (install?.state === 'installing' ? install.download?.received ?? 0 : 0) + CLI_STEP_BYTES)
+      if (received < CLI_SIZE) {
+        cli.install = { state: 'installing', download: { received, size: CLI_SIZE } }
+        return
+      }
+      window.clearInterval(reports)
+      cliInstalls.delete(reports)
+      cli.install = { state: 'installed' }
+    }, CLI_REPORT_MS)
+    cliInstalls.add(reports)
+  }, CLI_WAKE_MS)
+  cliInstalls.add(woken)
 }
 
 /** Whether the specimen's user went on past the warning about several accounts; a reload asks again. */

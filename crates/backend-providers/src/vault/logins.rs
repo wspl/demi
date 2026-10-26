@@ -33,7 +33,7 @@ use std::time::Duration;
 use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{LoginError, LoginIo, LoginKind, MemoryCredentialPool};
-use demi_shared_types::{Clock, LoginPending, LoginStage, RequestId, Timestamp};
+use demi_shared_types::{Clock, DownloadProgress, LoginPending, LoginStage, RequestId, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, LoginId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, ListedLogin, LoginState};
 use tokio::sync::{mpsc, watch};
@@ -158,12 +158,19 @@ impl Flow {
     /// Moves the running login to `stage`, and logs the time the stage
     /// before took; `false` when it is there already or has ended.
     fn reach(&mut self, stage: LoginStage) -> bool {
-        let LoginState::Pending { stage: current, .. } = &mut self.state else {
+        let LoginState::Pending {
+            stage: current,
+            download,
+            ..
+        } = &mut self.state
+        else {
             return false;
         };
         if *current == stage {
             return false;
         }
+        // A download belongs to the stage that waits for it.
+        *download = None;
         let now = Instant::now();
         tracing::info!(
             event = "login.stage_reached",
@@ -311,6 +318,7 @@ impl LoginFlows {
             stage_since: started,
             state: LoginState::Pending {
                 stage: LoginStage::Preparing,
+                download: None,
                 verification_url: None,
                 user_code: None,
                 needs_code: false,
@@ -595,6 +603,11 @@ impl LoginFlows {
             let id = id.clone();
             move |stage: LoginStage| flows.stage(&id, stage)
         };
+        let download = {
+            let flows = self.clone();
+            let id = id.clone();
+            move |progress: DownloadProgress| flows.download(&id, progress)
+        };
         let accounts = accounts
             .accounts()
             .expect("a login's provider has account operations");
@@ -602,6 +615,7 @@ impl LoginFlows {
         let login = accounts.login(LoginIo {
             pending: &pending,
             stage: &stage,
+            download: &download,
             codes,
             stop: stop.clone(),
         });
@@ -654,6 +668,29 @@ impl LoginFlows {
         self.announce(&owner);
     }
 
+    /// Stores how far the download the login's stage waits for came.
+    fn download(&self, id: &LoginId, progress: DownloadProgress) {
+        let mut flows = self.lock();
+        let Some(flow) = flows.get_mut(id) else {
+            return;
+        };
+        let LoginState::Pending {
+            stage: LoginStage::Installing,
+            download,
+            ..
+        } = &mut flow.state
+        else {
+            return;
+        };
+        if flow.cancel.is_cancelled() || *download == Some(progress) {
+            return;
+        }
+        *download = Some(progress);
+        let owner = flow.owner.clone();
+        drop(flows);
+        self.announce(&owner);
+    }
+
     /// Stores what the vendor asked the user to do, while the login waits.
     ///
     /// The login still ends when it started to. A refusal of a code before the
@@ -699,6 +736,7 @@ impl LoginFlows {
         };
         let state = LoginState::Pending {
             stage: LoginStage::WaitingForUser,
+            download: None,
             verification_url: Some(pending.verification_url),
             user_code: pending.user_code,
             needs_code: flow.kind == Some(LoginKind::PastedCode),

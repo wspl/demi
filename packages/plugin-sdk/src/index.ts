@@ -84,7 +84,8 @@ export type {
   UserStream,
   UserStreamHandlers,
 } from '@demicodes/web-ui/plugins/streams'
-export type { HostArtifact } from '@demicodes/web-ui/devices/installed'
+export type { DownloadProgress, HostArtifact, HostDownload } from '@demicodes/web-ui/devices/installed'
+export { downloadProgress } from '@demicodes/web-ui/devices/installed'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 // What the page says of a failure, in the page's language.
 export { errorMessage } from '@demicodes/web-ui/infra/errors'

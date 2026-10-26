@@ -45,7 +45,7 @@ use demi_host_interface::{
 use demi_runner_protocol::direct::{DialRefusal, Introduced, OfferRefusal, StunUrl};
 use demi_runner_protocol::forward::{Forward, ForwardRunState};
 use demi_runner_protocol::wire::{LinkedWorktree, 
-    self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, HostLogLine, Inbound, Outbound,
+    self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, HostDownload, HostLogLine, Inbound, Outbound,
     Read, ReadAt,
 };
 use demi_shared_gates::GateLease;
@@ -373,6 +373,9 @@ pub(crate) struct Inner {
     /// What the runner last reported its artifact cache holds; none until
     /// it reports.
     installed: watch::Sender<Option<Vec<HostArtifact>>>,
+    /// What the runner's cache downloads now, as it last said; kept in
+    /// memory only.
+    downloading: watch::Sender<Vec<HostDownload>>,
 }
 
 #[derive(Default)]
@@ -770,6 +773,7 @@ impl Link {
             liveness: Cell::new(Liveness::Watching),
             heard: Cell::new(tokio::time::Instant::now()),
             installed: watch::Sender::new(None),
+            downloading: watch::Sender::new(Vec::new()),
             pongs: watch::Sender::new(()),
         }));
         if let Some(log) = link.0.host_log.clone() {
@@ -962,6 +966,12 @@ impl Link {
     /// report.
     pub fn watch_installed(&self) -> watch::Receiver<Option<Vec<HostArtifact>>> {
         self.0.installed.subscribe()
+    }
+
+    /// What the runner's cache downloads now and how far each came, as it
+    /// last said (`crates/runner-command-packages/src/cache.rs`).
+    pub fn watch_downloading(&self) -> watch::Receiver<Vec<HostDownload>> {
+        self.0.downloading.subscribe()
     }
 
     pub fn is_closed(&self) -> bool {
@@ -1588,6 +1598,9 @@ impl Link {
             Outbound::Hello { .. } => {}
             Outbound::Installed { artifacts } => {
                 self.0.installed.send_replace(Some(artifacts));
+            }
+            Outbound::Downloading { downloads } => {
+                self.0.downloading.send_replace(downloads);
             }
             Outbound::Pong { jobs } => {
                 self.0.state.borrow_mut().pong_jobs = jobs;

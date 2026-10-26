@@ -72,6 +72,8 @@ use demi_provider_claude_code::{
     close_process,
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
+use demi_runner_protocol::wire::HostDownload;
+use demi_shared_types::DownloadProgress;
 use demi_web_api_protocol::providers::CliInstall;
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
 use futures_util::{FutureExt as _, StreamExt as _};
@@ -1351,7 +1353,11 @@ impl Shard {
                     return Err(error.into());
                 }
             };
-            let installed = self.ensure_cli(target, &wanted).await?;
+            let installing = self.ensure_cli(target, &wanted);
+            let installed = match self.devices().link(&target.device) {
+                Some(link) => reporting_download(installing, link.watch_downloading(), stages).await,
+                None => installing.await,
+            }?;
             return Ok(installed.path.to_string_lossy().into_owned());
         };
         let Some(wanted) = releases.believed() else {
@@ -1576,6 +1582,8 @@ impl Shard {
         let context = provider_context(&self.services().control, self.user(), entry)
             .await
             .map_err(|error| format!("The command context could not be read: {error}"))?;
+        let user = self.user().clone();
+        let entry = entry.clone();
         machine
             .on_machine(move |shard, _| async move {
                 let access = shard
@@ -1583,10 +1591,56 @@ impl Shard {
                     .claude_code_access()
                     .await
                     .map_err(|error| error.to_string())?;
-                shard.cli_executable_at(&access, &context, &|_| {}).await
+                let services = shard.services();
+                let download = |stage| {
+                    if let StartStage::Download(progress) = stage
+                        && services.cli_installs.download(&user, &entry, progress)
+                    {
+                        services.sync.mark(&user, Part::Providers);
+                    }
+                };
+                shard.cli_executable_at(&access, &context, &download).await
             })
             .await
             .map_err(|error| error.0)?
+    }
+}
+
+/// Runs `installing` and reports to `stages` how far the CLI's download on
+/// the machine came, as its runner says in `downloads`.
+async fn reporting_download<T>(
+    installing: impl Future<Output = T>,
+    mut downloads: tokio::sync::watch::Receiver<Vec<HostDownload>>,
+    stages: &dyn Fn(StartStage),
+) -> T {
+    // A download under way, as one another start began, is reported first.
+    downloads.mark_changed();
+    tokio::pin!(installing);
+    loop {
+        tokio::select! {
+            biased;
+            done = &mut installing => return done,
+            changed = downloads.changed() => {
+                // A connection that ended reports nothing more.
+                if changed.is_err() {
+                    return installing.await;
+                }
+                let progress = downloads
+                    .borrow_and_update()
+                    .iter()
+                    .filter(|download| download.package == PACKAGE)
+                    .fold(None, |sum: Option<DownloadProgress>, download| {
+                        let sum = sum.unwrap_or(DownloadProgress { received: 0, size: 0 });
+                        Some(DownloadProgress {
+                            received: sum.received + download.received,
+                            size: sum.size + download.size,
+                        })
+                    });
+                if let Some(progress) = progress {
+                    stages(StartStage::Download(progress));
+                }
+            }
+        }
     }
 }
 
@@ -1734,10 +1788,24 @@ impl CliInstalls {
     fn begin(&self, user: &UserId, entry: &ProviderId) -> bool {
         let mut states = self.lock();
         let key = (user.clone(), entry.clone());
-        if matches!(states.get(&key), Some(CliInstall::Installing {})) {
+        if matches!(states.get(&key), Some(CliInstall::Installing { .. })) {
             return false;
         }
-        states.insert(key, CliInstall::Installing {});
+        states.insert(key, CliInstall::Installing { download: None });
+        true
+    }
+
+    /// Records how far a running install's download came; `false` when it
+    /// is not running or nothing changed.
+    fn download(&self, user: &UserId, entry: &ProviderId, progress: DownloadProgress) -> bool {
+        let mut states = self.lock();
+        let Some(CliInstall::Installing { download }) = states.get_mut(&(user.clone(), entry.clone())) else {
+            return false;
+        };
+        if *download == Some(progress) {
+            return false;
+        }
+        *download = Some(progress);
         true
     }
 

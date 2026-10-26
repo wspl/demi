@@ -88,5 +88,6 @@ export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: st
     stop: (tab) => move('stop', { tab } satisfies StopTab),
     stream: plugin.stream('browser'),
     hostStarting: () => plugin.hostStarting.value,
+    downloading: () => plugin.downloading.value,
   }
 }

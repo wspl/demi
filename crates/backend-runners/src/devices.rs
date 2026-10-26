@@ -804,6 +804,10 @@ impl Devices {
             state: self.state(&device.id),
             download_percent: self.download(&device.id).map(|download| download.percent()),
             home: self.home(&device.id),
+            downloading: self
+                .link(&device.id)
+                .map(|link| link.watch_downloading().borrow().clone())
+                .unwrap_or_default(),
             installed: device.installed,
             id: device.id,
             kind: device.kind,
@@ -995,6 +999,18 @@ impl Serving {
             (&mut outgoing)
                 .with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into())))),
         );
+        // What the runner's cache downloads, which the devices' views show
+        // while it lasts.
+        let mut downloading = link.watch_downloading();
+        let shown = {
+            let marks = marks.clone();
+            async move {
+                while downloading.changed().await.is_ok() {
+                    marks.mark(Part::Devices);
+                }
+                std::future::pending::<()>().await
+            }
+        };
         // What the runner's cache holds, which the device's record keeps;
         // the watch ends with the connection.
         let mut installed = link.watch_installed();
@@ -1014,6 +1030,7 @@ impl Serving {
         let end = tokio::select! {
             end = served => end,
             () = held => unreachable!("the installed artifacts are watched until the connection ends"),
+            () = shown => unreachable!("the downloads are watched until the connection ends"),
         };
         match &end {
             // A message one end could not decode ended the connection; the

@@ -23,6 +23,7 @@
   "region": {
     "connecting": "Connecting to the simulator…",
     "reconnecting": "Reconnecting to the simulator…",
+    "downloading": "Downloading…",
     "frame": "Loading the device’s frame…",
     "screen": "Waiting for the screen…",
     "waiting": "Waiting for the device…",

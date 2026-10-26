@@ -39,7 +39,7 @@ import { z } from 'zod'
 import { panelReasonSchema, type BrowserTabs, type LiveDownload, type LiveTab, type PanelReason } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from '@demicodes/plugin-sdk'
-import type { OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
+import type { HostDownload, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession, type LiveStream, type PanelReport } from './session'
 import { t } from '../locales/text'
 
@@ -189,6 +189,8 @@ export interface BrowserTabsApi {
   stream: OpenUserStream
   /** Whether the Host is a Cloud that does not run yet, read reactively. */
   hostStarting(): boolean
+  /** What the Host downloads of the plugin's packages now, Chrome or its program, read reactively. */
+  downloading(): readonly HostDownload[]
 }
 
 /** Answers that will not change by asking again. */
@@ -199,10 +201,10 @@ export type PictureSupport = 'checking' | 'supported' | 'unsupported'
 
 /**
  * What Demi does for a panel tab before the browser has its tab: reads what the
- * Host is doing, starts the Cloud, starts the browser on the Host, or has the
- * browser open the tab.
+ * Host is doing, starts the Cloud, downloads the browser or its program to the
+ * Host, starts the browser on the Host, or has the browser open the tab.
  */
-export type StartingPhase = 'connecting' | 'cloud' | 'browser' | 'page'
+export type StartingPhase = 'connecting' | 'cloud' | 'download' | 'browser' | 'page'
 
 /** What the content says in each phase, from the frame the phase begins. */
 export function startingLabel(phase: StartingPhase): SentenceText {
@@ -544,6 +546,9 @@ export class BrowserTabsController {
     }
     if (this.api.hostStarting()) {
       return 'cloud'
+    }
+    if (this.api.downloading().length > 0) {
+      return 'download'
     }
     if (tabs === null) {
       return 'connecting'

@@ -200,6 +200,10 @@ const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
   { variant: 'Claude Code · contacting', phase: { kind: 'starting', stage: 'preparing' } },
   { variant: 'Claude Code · waiting for its machine', phase: { kind: 'starting', stage: 'waiting_for_machine' } },
   { variant: 'Claude Code · installing', phase: { kind: 'starting', stage: 'installing' } },
+  {
+    variant: 'Claude Code · installing · downloading',
+    phase: { kind: 'starting', stage: 'installing', download: { received: 71_303_168, size: 213_909_504 } },
+  },
   { variant: 'Claude Code · starting', phase: { kind: 'starting', stage: 'starting' } },
   {
     variant: 'Claude Code · link and code',
