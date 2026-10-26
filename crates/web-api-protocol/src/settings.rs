@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use demi_command_protocol::{COMMAND_LOCALE_LANGUAGES, ColorScheme, CommandLocale};
-use demi_shared_types::{Nullable, WorkflowChoice, is_context_limit};
+use demi_shared_types::{IDLE_COMPACTION_CONTEXT_FLOOR, MAX_SAFE_INTEGER, Nullable, WorkflowChoice, is_context_limit};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -533,6 +533,17 @@ pub struct Preferences {
     #[schemars(with = "IdleLifetime")]
     #[garde(skip)]
     pub idle_compaction_lifetime: Option<IdleLifetime>,
+    /// The least context, in tokens, of a conversation that compacts while
+    /// idle, at least `IDLE_COMPACTION_CONTEXT_FLOOR`. Absent means
+    /// `IDLE_COMPACTION_CONTEXT`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u64")]
+    #[garde(range(min = IDLE_COMPACTION_CONTEXT_FLOOR, max = MAX_SAFE_INTEGER))]
+    pub idle_compaction_context: Option<u64>,
     /// Whether the page shows an error of its own that no caller shows, with
     /// an ID that finds its line in the log. The page logs every error
     /// either way. Absent means no.
@@ -807,6 +818,17 @@ pub struct PreferencesPatch {
     #[schemars(with = "IdleLifetime")]
     #[garde(skip)]
     pub idle_compaction_lifetime: Option<IdleLifetime>,
+    /// The least context, in tokens, of a conversation that compacts while
+    /// idle, at least `IDLE_COMPACTION_CONTEXT_FLOOR`. Absent means
+    /// `IDLE_COMPACTION_CONTEXT`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u64")]
+    #[garde(range(min = IDLE_COMPACTION_CONTEXT_FLOOR, max = MAX_SAFE_INTEGER))]
+    pub idle_compaction_context: Option<u64>,
     /// Whether the page shows an error of its own that no caller shows, with
     /// an ID that finds its line in the log. The page logs every error
     /// either way. Absent means no.

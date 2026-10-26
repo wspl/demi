@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Feather } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
@@ -9,7 +9,12 @@ import { applyModelChange, initialModelSettings, type ModelSettings, type ModelS
 import { otherWayKeys, sendWayLabel, type SendWhileRunning } from '../agent/send-way'
 import Dropdown from '../ui/Dropdown.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
+import { IDLE_COMPACTION_CONTEXT_FLOOR } from '@demicodes/protocol'
+import InlineError from '../ui/InlineError.vue'
 import Switch from '../ui/Switch.vue'
+import TokenInput from '../ui/TokenInput.vue'
+import { formatTokens } from '../ui/token-count'
+import type { SentenceText } from '../ui/ui-text'
 import ModelChoiceTrigger from './ModelChoiceTrigger.vue'
 import { modelChoiceLabel, type ModelChoiceLabel } from './model-choice'
 import { profileMissing } from './subagent-profiles'
@@ -28,8 +33,11 @@ import type { InlineDetailText } from '../ui/inline-detail'
  * - What Enter does with a message while the agent works.
  * - Whether a stopped turn goes on by itself.
  * - Whether an idle conversation compacts before its prompt cache expires,
- *   and for which least cache lifetime; the lifetime keeps its value while
- *   the switch is off.
+ *   for which least cache lifetime and from which least context; both keep
+ *   their values while the switch is off. The context commits on Enter or
+ *   when the field loses focus; one below the floor the backend takes
+ *   (`IDLE_COMPACTION_CONTEXT_FLOOR`) stays in the field with what to fix,
+ *   and Escape gives the field back the value the setting holds.
  *
  * Every row is a model. Which entry makes generated media is the order of
  * Settings › Providers and each entry's switches.
@@ -55,6 +63,39 @@ const resumeAfterRestart = defineModel<boolean>('resumeAfterRestart', { required
 const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
 const compactIdle = defineModel<boolean>('compactIdle', { required: true })
 const idleLifetime = defineModel<IdleLifetime>('idleLifetime', { required: true })
+/** The least context, in tokens, of a conversation that compacts while idle. */
+const idleContext = defineModel<number>('idleContext', { required: true })
+
+const contextDraft = ref<number | null>(idleContext.value)
+const contextProblem = ref<SentenceText | null>(null)
+watch(idleContext, (tokens) => {
+  contextDraft.value = tokens
+  contextProblem.value = null
+})
+
+function commitContext() {
+  const tokens = contextDraft.value
+  if (tokens === null || tokens < IDLE_COMPACTION_CONTEXT_FLOOR) {
+    contextProblem.value = t('settings.agent.idleContextFloor', { floor: formatTokens(IDLE_COMPACTION_CONTEXT_FLOOR) })
+    return
+  }
+  contextProblem.value = null
+  if (tokens !== idleContext.value)
+    idleContext.value = tokens
+}
+
+/**
+ * Enter commits and Escape gives the field back the value the setting holds;
+ * either ends the edit, and the dialog around stays open.
+ */
+function finishContext(event: KeyboardEvent) {
+  event.preventDefault()
+  if (event.key === 'Escape') {
+    contextDraft.value = idleContext.value
+    contextProblem.value = null
+  }
+  ;(event.target as HTMLElement).blur()
+}
 
 /** The small model as the menu holds model settings: always the default tier. */
 const settings = computed<ModelSettings | null>(() =>
@@ -197,6 +238,25 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
           size="sm"
           :options="lifetimeOptions"
           :disabled="!compactIdle"
+        />
+      </SettingsRow>
+      <SettingsRow
+        :label="t('settings.agent.idleContext')"
+        :description="t('settings.agent.idleContextDescription')"
+        :disabled="!compactIdle"
+      >
+        <template v-if="contextProblem" #problem>
+          <InlineError :message="contextProblem" />
+        </template>
+        <TokenInput
+          v-model="contextDraft"
+          size="sm"
+          class="w-32"
+          :disabled="!compactIdle"
+          :aria-label="t('settings.agent.idleContext')"
+          @focusout="commitContext"
+          @keydown.enter="finishContext"
+          @keydown.escape="finishContext"
         />
       </SettingsRow>
     </SettingsGroup>

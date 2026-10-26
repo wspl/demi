@@ -88,11 +88,6 @@ const MANUAL_COMPACTION_PERCENT: u8 = 50;
 /// smaller one, the compaction near the window comes first.
 pub(super) const IDLE_COMPACTION_WINDOW: u64 = 300_000;
 
-/// The fewest tokens a request carries for its session to compact while idle:
-/// below them, writing the context to the cache again costs little next to
-/// the detail a summary loses.
-pub(super) const IDLE_COMPACTION_CONTEXT: u64 = 200_000;
-
 /// The share of the cache's lifetime, as a fraction, after which an idle
 /// session compacts: the summary request then still reads the cache, with
 /// room for its own wait.

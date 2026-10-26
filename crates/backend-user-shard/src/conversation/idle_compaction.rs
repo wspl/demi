@@ -10,7 +10,7 @@
 //!   row taken ◄────────────────────────────┘
 //!       │
 //!       ▼
-//!   switch on, lifetime ≥ the user's minimum? ──► tree opened, root compacts
+//!   switch on, lifetime and context ≥ the user's minimums? ──► root compacts
 //! ```
 //!
 //! - A later report replaces the row and the timer; a report of none removes
@@ -23,7 +23,7 @@
 //! - A time that came after its cache expired, as for a backend that was down
 //!   meanwhile, compacts nothing.
 //! - The preferences are read as the time comes, so the switch and the
-//!   minimum apply to the times stored before they changed.
+//!   minimums apply to the times stored before they changed.
 //!
 //! Nobody asked for the pass, so it changes nothing the sidebar shows: the
 //! tree does not count it as running, and a conversation whose output was
@@ -41,7 +41,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::idle_compactions::IdleCompaction;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::Part;
-use demi_shared_types::SessionPhase;
+use demi_shared_types::{IDLE_COMPACTION_CONTEXT, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
@@ -106,6 +106,7 @@ impl Shard {
         let due = due.map(|due| IdleCompaction {
             due_at: due.at,
             lifetime: due.lifetime,
+            carried: due.carried,
         });
         self.arm_idle_compaction(conversation.clone(), due, true);
     }
@@ -162,6 +163,7 @@ impl Shard {
         let reported = IdleCompactionDue {
             at: due.due_at,
             lifetime: due.lifetime,
+            carried: due.carried,
         };
         // A backend that was down past the time finds the cache gone: the
         // pass would pay for the whole history it was to spare.
@@ -181,6 +183,10 @@ impl Shard {
         let minimum = preferences.idle_compaction_lifetime.unwrap_or_default().duration();
         if due.lifetime < minimum {
             return "short_lifetime";
+        }
+        let context = preferences.idle_compaction_context.unwrap_or(IDLE_COMPACTION_CONTEXT);
+        if due.carried < context {
+            return "small_context";
         }
         if let Err(why) = self.restore_tree(conversation).await {
             tracing::warn!(event = "idle_compaction.open_failed", %conversation, %why, "a conversation was not opened to compact while idle");

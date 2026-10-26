@@ -41,6 +41,9 @@
       "compactIdleDescription": "長對話的提示快取即將過期前，先為它產生摘要，讓你的下一則訊息不必重新傳送全部內容。",
       "idleLifetime": "最短快取有效期",
       "idleLifetimeDescription": "只壓縮供應商快取保留時間不短於此值的對話。",
+      "idleContext": "最小上下文長度",
+      "idleContextDescription": "只壓縮上下文不少於此值的對話。",
+      "idleContextFloor": "請輸入不小於 {floor} 的值。",
       "halfHour": "30 分鐘",
       "hour": "1 小時"
     }

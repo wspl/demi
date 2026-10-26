@@ -35,5 +35,7 @@ const resources = useResources()
     @update:compact-idle="preferences.update({ compactIdle: $event })"
     :idle-lifetime="preferences.idleCompactionLifetime"
     @update:idle-lifetime="preferences.update({ idleCompactionLifetime: $event })"
+    :idle-context="preferences.idleCompactionContext"
+    @update:idle-context="preferences.update({ idleCompactionContext: $event })"
   />
 </template>

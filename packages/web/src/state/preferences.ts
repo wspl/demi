@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
+import { IDLE_COMPACTION_CONTEXT } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t } from './locales/text'
@@ -118,6 +119,8 @@ export const usePreferences = defineStore('preferences', () => {
   const compactIdle = computed(() => product.snapshot?.preferences?.compactIdle ?? false)
   /** The least prompt cache lifetime an idle conversation compacts for; absent means an hour. */
   const idleCompactionLifetime = computed(() => product.snapshot?.preferences?.idleCompactionLifetime ?? '1h')
+  /** The least context, in tokens, of a conversation that compacts while idle. */
+  const idleCompactionContext = computed(() => product.snapshot?.preferences?.idleCompactionContext ?? IDLE_COMPACTION_CONTEXT)
   /** Whether the page shows the defects it found itself, with the ID of their lines in the log; absent means no. */
   const showUnexpectedErrors = computed(() => product.snapshot?.preferences?.showUnexpectedErrors ?? false)
   /**
@@ -380,6 +383,7 @@ export const usePreferences = defineStore('preferences', () => {
     resumeAfterRestart,
     compactIdle,
     idleCompactionLifetime,
+    idleCompactionContext,
     showUnexpectedErrors,
     multiAccountWarned,
     smallModel,

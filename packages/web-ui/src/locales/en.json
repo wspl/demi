@@ -41,6 +41,9 @@
       "compactIdleDescription": "Shortly before a long conversation’s prompt cache expires, summarizes it so your next message doesn’t resend all of it.",
       "idleLifetime": "Minimum cache lifetime",
       "idleLifetimeDescription": "Only conversations whose provider keeps the cache at least this long are compacted.",
+      "idleContext": "Minimum context size",
+      "idleContextDescription": "Only conversations whose context is at least this large are compacted.",
+      "idleContextFloor": "Enter at least {floor}.",
       "halfHour": "30 Minutes",
       "hour": "1 Hour"
     }
