@@ -1,8 +1,8 @@
 // The syntax of math in Markdown, with nothing to load: `$$…$$` is display math,
 // and `$…$` is inline math by Pandoc's rule, so prices such as `$10 vs $12`
 // stay text while math may touch Chinese text, as in `面积为$x^2$平方米`.
-// `math.ts` draws it; what reads Markdown's own delimiters in text, as the
-// streaming reply's closers do (`ui/stream-reveal.ts`), reads it here.
+// `math.ts` draws it; what reads Markdown's own delimiters in text, as a
+// streaming reply's open formatting does (`open-inline.ts`), reads it here.
 import type { Tokens } from 'marked'
 
 /** `$$…$$` within a line: display math. */

@@ -66,7 +66,8 @@ const { shown, steps } = useStreamReveal(() => props.content, () => props.stream
 
 // While the text arrives, and while the rest of it still shows after the stream
 // ends, the steps show only what has settled; the last step shows it as it is.
-const visible = computed(() => (props.streaming || shown.value.length < props.content.length ? settled(shown.value) : shown.value))
+const partial = computed(() => props.streaming || shown.value.length < props.content.length)
+const visible = computed(() => (partial.value ? settled(shown.value) : shown.value))
 
 const renderVersion = useMarkdownRenderVersion()
 const agents = useMessageAgents()
@@ -93,9 +94,11 @@ const pictureCopies = computed<MessagePictures>(() => ({
  * theme) and what it names: its pictures, the files of its code, its agents.
  *
  * A block with no image reads no picture, so a change of the reply's pictures
- * leaves it as it is.
+ * leaves it as it is. The last block of a part of the reply shows the
+ * formatting it leaves open as it will be once it closes; the whole reply
+ * renders as it was written, as any reader of its Markdown does.
  */
-function renderBlock(source: () => string): () => string {
+function renderBlock(source: () => string, last: boolean): () => string {
   return () => {
     void renderVersion.value
     const text = source()
@@ -104,6 +107,7 @@ function renderBlock(source: () => string): () => string {
       codeFiles: codeFiles.value,
       ...(text.includes('![') ? { pictures: pictureCopies.value } : {}),
       agents: agents(),
+      ...(last && partial.value ? { partial: true } : {}),
     })
   }
 }
