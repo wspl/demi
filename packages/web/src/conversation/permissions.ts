@@ -100,9 +100,9 @@ export const usePermissions = defineStore('permissions', () => {
     return states.get(conversationId)!
   }
 
-  /** Takes an answer newer than the one the page holds; it is of the run the page holds now. */
-  function take(state: PermissionsState, answer: ConversationPermissions): void {
-    const taken = { run: product.snapshot?.run ?? null, revision: answer.revision }
+  /** Takes an answer newer than the one the page holds, of the backend's run `run`, the one the page holds now unless said. */
+  function take(state: PermissionsState, answer: ConversationPermissions, run = product.snapshot?.run ?? null): void {
+    const taken = { run, revision: answer.revision }
     if (!isNewer(taken, state.held)) {
       return
     }
@@ -123,7 +123,7 @@ export const usePermissions = defineStore('permissions', () => {
   function bring(conversationId: string, permissions: ConversationPermissions): void {
     if (brought.get(conversationId) !== permissions) {
       brought.set(conversationId, permissions)
-      take(stateFor(conversationId), permissions)
+      take(stateFor(conversationId), permissions, conversations.metadataRunOf(conversationId))
     }
   }
 

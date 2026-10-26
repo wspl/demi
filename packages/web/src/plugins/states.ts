@@ -34,6 +34,7 @@ interface Held {
 export function conversationStates(
   snapshot: () => PageState | null,
   metadataOf: (conversation: string) => ConversationMetadata | null,
+  metadataRunOf: (conversation: string) => string | null,
 ) {
   const held = reactive(new Map<string, Held>())
   /** Each followed state's watch, which outlives the scope of whoever follows first. */
@@ -42,7 +43,7 @@ export function conversationStates(
   function metadataRevision(plugin: string, conversation: string): RunRevision | null {
     const state = snapshot()
     const revision = metadataOf(conversation)?.pluginRevisions.find((entry) => entry.plugin === plugin)?.revision
-    return state?.run !== undefined && revision !== undefined ? { run: state.run, revision } : null
+    return state?.run !== undefined && revision !== undefined ? { run: metadataRunOf(conversation), revision } : null
   }
 
   function entryOf(key: string): Held {
@@ -82,11 +83,12 @@ export function conversationStates(
 
   /**
    * Takes a state the backend sent along with the conversation's metadata (`panelStates`), as
-   * if it had been read: a state that is not newer than the one held is left.
+   * if it had been read, in the backend's run the metadata was read in: a state that is not
+   * newer than the one held is left.
    */
   function hold(plugin: string, conversation: string, revision: number, state: unknown): void {
     const entry = entryOf(`${conversation}\u0000${plugin}`)
-    const taken = { run: snapshot()?.run ?? null, revision }
+    const taken = { run: metadataRunOf(conversation), revision }
     if (isNewer(taken, entry.held)) {
       entry.held = taken
       entry.state = state
@@ -143,5 +145,9 @@ export function conversationStates(
 export const usePluginStates = defineStore('plugin-states', () => {
   const product = useProduct()
   const conversations = useConversations()
-  return conversationStates(() => product.snapshot, (conversation) => conversations.metadataOf(conversation))
+  return conversationStates(
+    () => product.snapshot,
+    (conversation) => conversations.metadataOf(conversation),
+    (conversation) => conversations.metadataRunOf(conversation),
+  )
 })

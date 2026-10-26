@@ -52,6 +52,12 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * over it until they land; its fields below follow it.
    */
   metadata: Raw<Slot<ConversationMetadata>>
+  /**
+   * The backend's run the metadata was read in, whose count its permission
+   * requests' and plugin states' revisions are of: a copy on disk may hold
+   * one an earlier run counted. Null when no run is known.
+   */
+  metadataRun: string | null
   /** The version of the conversation's agents the page holds; null before it holds any. */
   agentsHeld: Version | null
   /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */

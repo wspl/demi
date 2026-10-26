@@ -411,8 +411,9 @@ export const useConversations = defineStore('conversations', () => {
     conversation.attachedHosts.replace(shown.hosts.hosts, { revisions: { '': shown.hosts.revision } })
   }
 
-  /** Takes `metadata` as a read of the conversation's, as its lane or a read of it brings it. */
-  function takeMetadata(conversation: Conversation, metadata: ConversationMetadata): void {
+  /** Takes `metadata` as a read of the conversation's, as its lane or a read of it brings it, in the backend's run `run`. */
+  function takeMetadata(conversation: Conversation, metadata: ConversationMetadata, run = product.snapshot?.run ?? null): void {
+    conversation.metadataRun = run
     conversation.metadata.replace(metadata)
   }
 
@@ -462,6 +463,7 @@ export const useConversations = defineStore('conversations', () => {
       persistence: 'synced',
       status: summaryStatus(record.status),
       metadata: markRaw(new Slot<ConversationMetadata>()),
+      metadataRun: null,
       agentsHeld: null,
       cwd: local.cwd ?? '',
       pluginsChanged: false,
@@ -1610,7 +1612,7 @@ export const useConversations = defineStore('conversations', () => {
       return false
     }
     if (copy && conversation.metadata.read.value === null) {
-      takeMetadata(conversation, copy.metadata)
+      takeMetadata(conversation, copy.metadata, copy.run)
     }
     // The agents show with the transcript, never over the loading pane.
     if (!root || latestBlocks(root.transcript).length === 0 || conversation.history.windows.length > 0) {
@@ -4272,6 +4274,8 @@ export const useConversations = defineStore('conversations', () => {
     /** The metadata of the conversation `id` as the page shows it; null while it holds none. */
     metadataOf: (id: string): ConversationMetadata | null =>
       items.value.find((item) => item.id === id)?.metadata.shown.value ?? null,
+    /** The backend's run the metadata of the conversation `id` was read in; null when none is known. */
+    metadataRunOf: (id: string): string | null => items.value.find((item) => item.id === id)?.metadataRun ?? null,
     costShown,
     watchRecentCost,
     /**
