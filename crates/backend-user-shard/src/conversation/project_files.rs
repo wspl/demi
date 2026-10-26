@@ -25,7 +25,7 @@ use demi_plugin_interface::{PluginId, WatchSubject};
 use demi_runner_protocol::files::Subject;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
-use demi_web_api_protocol::workflows::{ConversationWorkflowList, KeptWorkflowList};
+use demi_web_api_protocol::workflows::{ConversationWorkflowList, ConversationWorkflows, KeptWorkflowList};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
@@ -304,13 +304,22 @@ impl Shard {
             return project;
         }
         // The worktree's, beside the project's while the two differ by what
-        // their files say, which the menu's list does not hold whole.
+        // their files say, which the menu's list does not hold whole. Never
+        // waiting for the Host: by the searches held now, or until both are,
+        // by the stored menus, and a first search that finds something is
+        // announced.
         let worktree = self.stored_workflows(id, &device, at.workflows_directory(true), at.loaded).await;
-        let differs = matches!(
-            (&project.list, &worktree.list),
-            (KeptWorkflowList::Read { .. }, KeptWorkflowList::Read { .. })
-        ) && match futures_util::join!(self.kept_workflows(id, false), self.kept_workflows(id, true)) {
-            (Ok(KeptWorkflows::Found(project)), Ok(KeptWorkflows::Found(own))) => !project.offers_same(&own),
+        let kept = &self.project_files().workflows;
+        let differs = match (&project.list, &worktree.list) {
+            (KeptWorkflowList::Read { list: project_menu, .. }, KeptWorkflowList::Read { list: own_menu, .. }) => {
+                match (
+                    kept.held(&device, at.workflows_directory(false).to_owned()),
+                    kept.held(&device, at.workflows_directory(true).to_owned()),
+                ) {
+                    (Some(project), Some(own)) => !project.offers_same(&own),
+                    _ => !menus_offer_same(project_menu, own_menu),
+                }
+            }
             _ => false,
         };
         ConversationWorkflowList {
@@ -359,6 +368,19 @@ impl Shard {
             Err(error) => refused(&HostAccessError::from(error)),
         }
     }
+}
+
+/// Whether two stored menus offer the same workflows by what a menu holds:
+/// the same ids, names and profiles, each usable or not, wherever their files
+/// are. What the files say beyond it is compared once both searches are held.
+fn menus_offer_same(project: &ConversationWorkflows, own: &ConversationWorkflows) -> bool {
+    let offered = |menu: &ConversationWorkflows| {
+        menu.workflows
+            .iter()
+            .map(|workflow| (workflow.id.clone(), workflow.name.clone(), workflow.profiles.clone(), workflow.unavailable.is_some()))
+            .collect::<Vec<_>>()
+    };
+    project.unavailable.is_some() == own.unavailable.is_some() && offered(project) == offered(own)
 }
 
 /// Stores each search of a directory's workflows in the menu's form, and

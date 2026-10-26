@@ -172,6 +172,12 @@ where
         self.use_entry(conversation, device, key);
     }
 
+    /// What is held for `key` on `device` now, with no wait and no search: what
+    /// a page shows takes this, never [`Kept::get`].
+    pub fn held(&self, device: &DeviceId, key: K) -> Option<T> {
+        self.0.entries.borrow().get(&(device.clone(), key))?.state.held.borrow().clone()
+    }
+
     /// Why the last search of `key` on `device` was refused or failed, while
     /// nothing is held.
     pub fn refused(&self, device: &DeviceId, key: K) -> Option<Rc<HostAccessError>> {
@@ -427,8 +433,17 @@ where
                         reads_this_minute = reads,
                         "a project search was read"
                     );
-                    *state.held.borrow_mut() = Some(found.value);
+                    let first = state.held.borrow_mut().replace(found.value).is_none();
                     state.refused.replace(None);
+                    // Until a search found something, a page worked out what it
+                    // shows from nothing held, so the first that does is told
+                    // even when what was stored did not change.
+                    if first
+                        && changed != Some(true)
+                        && let Some(shown) = inner.upgrade().as_deref().and_then(|inner| inner.shown.as_ref())
+                    {
+                        (shown.announce)(&state.users.borrow());
+                    }
                 }
                 // The Host stopped meanwhile: its coming online searches again.
                 Err(SearchError::NotRunning) => {
