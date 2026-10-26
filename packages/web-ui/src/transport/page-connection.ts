@@ -30,6 +30,9 @@
  *   stream's after the others', and a piece only while the socket holds less
  *   than 64 KiB unsent. A lane starts no more of its messages than the
  *   backend's credit allows.
+ * - A lane's messages follow its open without waiting for `opened`; a lane
+ *   still opening when the connection is lost sends them again behind its
+ *   open on the next.
  */
 import { readonly, ref } from 'vue'
 import {
@@ -145,7 +148,13 @@ export class Lane extends EventTarget {
   /** How many more of its messages the backend takes. */
   credit = LANE_CREDIT
   /** Its messages not started yet. */
-  readonly outgoing: Outgoing[] = []
+  outgoing: Outgoing[] = []
+  /**
+   * The messages sent before it opened, which the backend holds until it
+   * answers the open: a connection lost meanwhile took them, and the next
+   * sends them again behind the lane's open.
+   */
+  readonly early: Outgoing[] = []
   /** The message whose pieces it sends, and how much of it went. */
   sending: (Outgoing & { at: number }) | null = null
   /** The pieces of the backend's message that more pieces complete. */
@@ -172,12 +181,14 @@ export class Lane extends EventTarget {
     return this.outgoing.reduce((total, message) => total + message.bytes.length, sending)
   }
 
+  /**
+   * Sends a message, which may follow the lane's open before `opened`
+   * comes, as a stream's data follows its headers in HTTP/2: the backend
+   * holds it until it answers the open, and drops it with a refusal.
+   */
   send(data: string | ArrayBuffer | ArrayBufferView): void {
-    if (this.readyState === Lane.CONNECTING) {
-      throw new DOMException('The lane is still opening', 'InvalidStateError')
-    }
     // A closed lane takes nothing more, as a closed WebSocket does.
-    if (this.readyState !== Lane.OPEN) {
+    if (this.readyState !== Lane.OPEN && this.readyState !== Lane.CONNECTING) {
       return
     }
     // A copy of the caller's bytes, which it may change once the call
@@ -186,6 +197,9 @@ export class Lane extends EventTarget {
       ? { bytes: new TextEncoder().encode(data), binary: false }
       : { bytes: data instanceof ArrayBuffer ? new Uint8Array(data.slice(0)) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice(), binary: true }
     this.outgoing.push(message)
+    if (this.readyState === Lane.CONNECTING) {
+      this.early.push(message)
+    }
     ready(this)
     flush()
   }
@@ -326,6 +340,10 @@ function lost(code: number, reason: string): void {
         lane.openTimer = null
       }
       lane.id = 0
+      // What it sent went with the connection: the next one carries it again.
+      lane.outgoing = [...lane.early]
+      lane.sending = null
+      lane.credit = LANE_CREDIT
     } else {
       finish(lane, code, reason, 'connection')
     }
@@ -377,6 +395,7 @@ function sendOpen(lane: Lane): void {
     flush()
     finish(lane, ABNORMAL_CLOSURE, '', 'page')
   }, OPEN_MS)
+  ready(lane)
   flush()
 }
 
@@ -399,6 +418,7 @@ function finish(lane: Lane, code: number, reason: string, by: 'page' | 'backend'
     numbered.delete(lane.id)
   }
   lane.outgoing.length = 0
+  lane.early.length = 0
   lane.sending = null
   lane.assembling = null
   for (const turn of turns) {
@@ -443,6 +463,7 @@ function receive(bytes: Uint8Array): boolean {
           lane.openTimer = null
         }
         lane.readyState = Lane.OPEN
+        lane.early.length = 0
         lane.openedAt = performance.now()
         pageLog.info('lane.opened', { lane: lane.name, open_ms: Math.round(lane.openedAt - lane.sentAt) }, lane.conversation)
         lane.dispatchEvent(new Event('open'))
@@ -526,7 +547,9 @@ function take(lane: Lane, flags: number, piece: Uint8Array<ArrayBuffer>): void {
 function ready(lane: Lane): void {
   const waits = lane.sending !== null || (lane.outgoing.length > 0 && lane.credit > 0)
   const turn = turns[lane.priority]
-  if (waits && lane.readyState === Lane.OPEN && !turn.includes(lane)) {
+  // A lane still opening sends behind its open, once that went on this connection.
+  const sends = lane.readyState === Lane.OPEN || (lane.readyState === Lane.CONNECTING && lane.id !== 0)
+  if (waits && sends && !turn.includes(lane)) {
     turn.push(lane)
   }
 }
