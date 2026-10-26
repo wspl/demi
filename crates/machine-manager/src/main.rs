@@ -85,6 +85,17 @@ fn main() -> std::process::ExitCode {
             .with_filter(LevelFilter::INFO),
         )
         .init();
+    // Before any thread starts, so that every thread works in the copy.
+    if config.mode == demi_machine_manager::config::Mode::Serve
+        && let Err(error) = demi_machine_manager::namespace::number_after_host()
+    {
+        tracing::error!(
+            event = "machine_manager.exited",
+            error_chain = %error,
+            "the machine manager ended with an error"
+        );
+        return std::process::ExitCode::FAILURE;
+    }
     // One thread owns the manager's state.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

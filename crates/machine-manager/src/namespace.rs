@@ -3,11 +3,14 @@
 //! mounted stay reachable if it dies, and the next manager recovers them
 //! through it.
 //!
-//! The manager binds the handle from PID 1's mount namespace, on a service host
-//! systemd's initial one. Linux binds a mount namespace only into one with a
-//! lower number, and Linux 6.18 numbers namespaces in per-CPU batches, so only
-//! the initial namespace, numbered at boot before all others, is sure to be
-//! lower than the service's.
+//! The manager binds the handle from PID 1's mount namespace. Linux binds a
+//! mount namespace only into one with a lower id, and Linux 6.18 hands each
+//! CPU its ids in batches of 4096: a namespace made after PID 1's, on a CPU
+//! whose batch began before it, has a lower id, and the bind fails with
+//! EINVAL. PID 1 runs in the initial namespace, numbered first, on most
+//! hosts, but in a namespace of its own in WSL and in a container, so the
+//! manager first gives itself a namespace numbered above PID 1's
+//! ([`number_after_host`]). Linux 6.19 numbers namespaces in order again.
 //!
 //! The owner record must name the next manager's own state directory. Otherwise
 //! startup stops and asks for the earlier manager to be recovered with its
@@ -31,11 +34,14 @@
 use std::{
     ffi::OsString,
     io,
-    os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
+    os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
     path::PathBuf,
 };
 
-use rustix::thread::LinkNameSpaceType;
+use rustix::{
+    io::Errno,
+    thread::{CpuSet, LinkNameSpaceType, UnshareFlags},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -48,6 +54,85 @@ use crate::{
     lock::{INHERITED, ManagerLock},
     storage::durable::{sync, write_json},
 };
+
+/// `NS_GET_ID` (`linux/nsfs.h`): the 64-bit id of a namespace, the number
+/// Linux compares to refuse a bind that could loop.
+const NS_GET_ID: rustix::ioctl::Opcode = rustix::ioctl::opcode::read::<u64>(0xb7, 0x0d);
+
+/// The ids a CPU takes from the shared counter at once
+/// (`COOKIE_LOCAL_BATCH`): the most namespaces one CPU makes before it hands
+/// out ids above every namespace made so far.
+const ID_BATCH: usize = 4096;
+
+/// The id of the namespace at `path`, or none on a kernel without
+/// `NS_GET_ID`, which numbers mount namespaces in the order it makes them.
+fn namespace_id(path: &str) -> io::Result<Option<u64>> {
+    let file = fs_err::File::open(path)?;
+    // SAFETY: NS_GET_ID writes one u64.
+    let getter = unsafe { rustix::ioctl::Getter::<NS_GET_ID, u64>::new() };
+    // SAFETY: the descriptor is a namespace's, and the getter matches the opcode.
+    match unsafe { rustix::ioctl::ioctl(file.file().as_fd(), getter) } {
+        Ok(id) => Ok(Some(id)),
+        Err(Errno::NOTTY) => Ok(None),
+        Err(error) => Err(failed(path, error)),
+    }
+}
+
+fn failed(path: &str, error: Errno) -> io::Error {
+    io::Error::new(io::Error::from(error).kind(), format!("reading the id of {path}: {error}"))
+}
+
+/// Gives this process a copy of its mount namespace numbered above PID 1's,
+/// so that [`SavedNamespace::pin`] can bind it into PID 1's: the copy made on
+/// a CPU whose batch of ids began after PID 1's namespace is, as is any once
+/// a CPU's batch runs out. The manager tries every CPU it may run on, as
+/// snap-confine does, then makes copies on the last until its batch runs out,
+/// for one whose CPUs all hold older batches. A process in PID 1's own
+/// namespace keeps it, which the start then refuses.
+///
+/// Runs before the manager starts any thread: unshare(CLONE_NEWNS) moves
+/// only the calling thread, so every thread must start after it to work in
+/// the namespace that [`SavedNamespace::pin`] pins.
+pub fn number_after_host() -> io::Result<()> {
+    const HOST: &str = "/proc/1/ns/mnt";
+    const OWN: &str = "/proc/thread-self/ns/mnt";
+    let (Some(host), Some(own)) = (namespace_id(HOST)?, namespace_id(OWN)?) else {
+        return Ok(());
+    };
+    if own >= host {
+        return Ok(());
+    }
+    let allowed = rustix::thread::sched_getaffinity(None)?;
+    let cpus: Vec<usize> = (0..CpuSet::MAX_CPU).filter(|&cpu| allowed.is_set(cpu)).collect();
+    let last = *cpus.last().ok_or_else(|| io::Error::other("this process may run on no CPU"))?;
+    let tries = cpus.iter().copied().chain(std::iter::repeat_n(last, ID_BATCH));
+    let copy_on = |cpu: usize| -> io::Result<u64> {
+        let mut one = CpuSet::new();
+        one.set(cpu);
+        rustix::thread::sched_setaffinity(None, &one)?;
+        // SAFETY: CLONE_NEWNS moves only this thread, the process's only one,
+        // into a copy of its mount namespace; it does not unshare the
+        // descriptor table.
+        unsafe { rustix::thread::unshare_unsafe(UnshareFlags::NEWNS) }?;
+        namespace_id(OWN)?.ok_or_else(|| io::Error::other("the kernel stopped reporting namespace ids"))
+    };
+    let mut numbered = Ok(own);
+    for cpu in tries {
+        numbered = copy_on(cpu);
+        if numbered.as_ref().map_or(true, |&own| own > host) {
+            break;
+        }
+    }
+    rustix::thread::sched_setaffinity(None, &allowed)?;
+    let own = numbered?;
+    if own <= host {
+        return Err(io::Error::other(format!(
+            "no copy of the manager's mount namespace is numbered above PID 1's: {own}, PID 1's {host}"
+        )));
+    }
+    tracing::info!(event = "machine_manager.namespace_renumbered", host, own, "the manager's mount namespace was copied to one numbered above PID 1's");
+    Ok(())
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
