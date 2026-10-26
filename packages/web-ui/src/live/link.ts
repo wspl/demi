@@ -40,11 +40,11 @@ export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 
 /** Why the page ended a view whose module sent a frame the protocol refuses. */
 export const REFUSED_FRAME = 'invalid_frame'
-/** Why the page ended a view whose stream brought nothing, heartbeats included, for as long as a page socket may. */
+/** Why the page ended a view whose stream brought nothing, heartbeats included, for as long as the page connection may. */
 export const SILENT_STREAM = 'silent'
 /** Why the page ended a view whose module did not answer in time when the session expected it to. */
 export const UNANSWERED_STREAM = 'unanswered'
-/** How long a module may take to answer the session, as a page socket's pong may. */
+/** How long a module may take to answer the session, as the page connection's pong may. */
 export const LIVE_ANSWER_MS = 5_000
 
 /** What the view shows of its connection; the session's own state holds it. */
@@ -151,7 +151,7 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.received = this.time()
     this.first = { began: performance.now(), written: false }
     const frames = this.handlers.frames()
-    // A view ends once: the module's end and the socket's close both say so, and a
+    // A view ends once: the module's end and the stream's close both say so, and a
     // stream this link already left says nothing about the one that followed it.
     const stream = this.handlers.open({
       data: (bytes) => {
@@ -177,7 +177,7 @@ export class LiveLink<F, S extends LivePictureStream> {
   /**
    * Expects the module to speak, from now: it speaks at least every quarter
    * second while someone watches the view, so the page's rule for a silent
-   * socket holds for the view as for its other sockets.
+   * connection holds for the view as for the page connection.
    */
   private listen(): void {
     this.received = this.time()
@@ -247,7 +247,7 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.state.connection = 'ended'
   }
 
-  /** The view ended, as the module or the socket said: it opens again after the page's waits. */
+  /** The view ended, as the module or the stream said: it opens again after the page's waits. */
   end(reason: string): void {
     this.drop()
     this.state.ended = reason
@@ -268,7 +268,7 @@ export class LiveLink<F, S extends LivePictureStream> {
    * The session asked its module for an answer, which it gives with
    * [`live`](#live): a view that does not hear it within
    * [`LIVE_ANSWER_MS`](#LIVE_ANSWER_MS) ends, and opens again. Only an answer
-   * from the module counts, not the backend's word that the socket is up.
+   * from the module counts, not the backend's word that the stream is up.
    */
   expectAnswer(): void {
     if (this.stream !== null) {

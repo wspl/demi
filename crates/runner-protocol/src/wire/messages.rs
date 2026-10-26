@@ -849,7 +849,7 @@ pub enum Inbound {
         #[garde(skip)]
         id: u32,
     },
-    /// The page's signaling socket closed, or the other runner's peer
+    /// The page's signaling lane closed, or the other runner's peer
     /// ended: the runner closes the peer.
     DirectClose {
         #[garde(length(min = 1))]

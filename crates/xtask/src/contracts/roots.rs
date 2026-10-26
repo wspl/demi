@@ -2,7 +2,7 @@
 //! from, the output each belongs to, and what the web app does with each. Every type they refer to is
 //! emitted with them.
 
-use demi_conversation_socket_protocol as frames;
+use demi_conversation_lane_protocol as frames;
 use demi_live_view_protocol as live;
 use demi_shared_types as core;
 use demi_runner_protocol::direct;
@@ -64,16 +64,20 @@ fn sends<T: JsonSchema>() -> Root {
     }
 }
 
-/// `@demicodes/protocol`: core's types, the conversation socket's frames
+/// `@demicodes/protocol`: core's types, the conversation lane's frames
 /// and the live view's own messages. Core's types are listed whether or not a
 /// frame refers to them, so that they are declared here and `web` imports
 /// them.
 pub fn protocol() -> Vec<Root> {
     vec![
+        // The page connection's own messages, and a lane's open and refusal
+        // (`packages/web-ui/src/transport/page-connection.ts`).
+        sends::<api::connection::PageConnectionMessage>(),
+        receives::<api::connection::BackendConnectionMessage>(),
+        sends::<api::connection::LaneTarget>(),
+        receives::<api::connection::LaneRefusal>(),
         receives::<frames::ServerFrame>(),
         sends::<frames::ClientFrame>(),
-        // Every page socket takes it.
-        sends::<frames::PagePing>(),
         // Every user stream takes it, over the relay and the direct channel
         // alike (`packages/web-ui/src/plugins/streams.ts`).
         sends::<direct::StreamWatched>(),

@@ -34,6 +34,7 @@ mod schedules;
 mod blobs;
 mod body;
 mod cloud;
+mod connection;
 mod content;
 mod conversations;
 mod cookies;
@@ -99,7 +100,9 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRef, OriginalUri, Request, State};
+use axum::Extension;
 use axum::http::Method;
+use demi_web_api_protocol::connection::CONNECT_ROUTE;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -377,7 +380,8 @@ impl FromRef<AppState> for Shards {
 ///   code;
 /// - the shares' public routes;
 /// - the routes that authenticate with device credentials instead;
-/// - the synchronization channel, which checks the session without renewing it.
+/// - the page connection, which checks the session without renewing it, and
+///   the synchronization channel of a page of an earlier build.
 ///
 /// The pipes stay outside the 503 of a closing backend, whose shutdown needs
 /// them, and outside the body limit, since their bodies have none.
@@ -519,9 +523,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/attachments/{attachment}/file",
             get(conversations::attachment_file),
         )
-        .route("/conversations/{id}/stream", get(conversations::stream))
-        .route("/conversations/{id}/streams/{name}", get(streams::open))
-        .route("/conversations/{id}/fs/watch", get(file_watch::open))
         .route("/conversations/{id}/cost/recent", get(cost::recent))
         .route("/conversations/{id}/search", get(search::search_in))
         .route("/conversations/{id}/panel/changes", post(panel::change))
@@ -603,8 +604,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(devices::browse).post(devices::make_directory),
         )
         .route("/devices/{id}/workflows", get(devices::workflows))
-        .route("/devices/{id}/direct", get(direct::open))
-        .route("/devices/{id}/fs/watch", get(file_watch::open_device))
         .route(
             "/conversations/{id}/fs",
             get(files::list)
@@ -648,7 +647,11 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/api/auth/passkey/options", post(passkeys::sign_in_options))
         .route("/api/auth/passkey", post(passkeys::sign_in))
         .route("/api/auth/handoff", post(sessions::spend_code))
-        .route("/api/sync", get(sync::channel))
+        .route(
+            &format!("/api{CONNECT_ROUTE}"),
+            get(connection::connect).layer(Extension(connection::Closing(closing.clone()))),
+        )
+        .route("/api/sync", get(sync::legacy))
         .merge(public_shares())
         .merge(html_views())
         .method_not_allowed_fallback(no_route)

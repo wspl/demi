@@ -5,7 +5,7 @@
 //! small model writes once, and whether the card is folded.
 
 use demi_shared_types::{BlockId, MediaSource, NodeId};
-use demi_conversation_socket_protocol::SideQuestion;
+use demi_conversation_lane_protocol::SideQuestion;
 use rusqlite::{Connection, Row, params};
 
 use super::StorageError;

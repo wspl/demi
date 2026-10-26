@@ -1723,7 +1723,7 @@ dependencies = [
  "demi-agent-store",
  "demi-agent-tools",
  "demi-agent-transcript",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-provider-common",
  "demi-provider-openai-api",
@@ -1750,7 +1750,7 @@ dependencies = [
  "demi-agent-store",
  "demi-agent-transcript",
  "demi-command-protocol",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-provider-claude-code",
  "demi-provider-common",
@@ -1775,7 +1775,7 @@ version = "0.1.65"
 dependencies = [
  "bytes",
  "demi-command-protocol",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-provider-common",
  "demi-shared-types",
@@ -1797,7 +1797,7 @@ dependencies = [
  "demi-agent-store",
  "demi-agent-transcript",
  "demi-command-protocol",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-provider-common",
  "demi-shared-types",
@@ -1821,7 +1821,7 @@ version = "0.1.65"
 dependencies = [
  "comrak",
  "demi-agent-store",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-provider-common",
  "demi-shared-types",
  "percent-encoding",
@@ -1979,7 +1979,7 @@ dependencies = [
  "comrak",
  "demi-agent-store",
  "demi-backend-remote-host",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-interface",
@@ -2068,7 +2068,7 @@ dependencies = [
  "demi-backend-runners",
  "demi-backend-user-shard",
  "demi-command-protocol",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-provider-common",
@@ -2287,7 +2287,7 @@ dependencies = [
  "demi-command-declarations",
  "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-interface",
@@ -2526,7 +2526,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-conversation-socket-protocol"
+name = "demi-conversation-lane-protocol"
 version = "0.1.65"
 dependencies = [
  "demi-shared-types",
@@ -3501,7 +3501,7 @@ version = "0.1.65"
 dependencies = [
  "base64 0.22.1",
  "demi-command-protocol",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-runner-protocol",
  "demi-shared-types",
  "garde",
@@ -12014,7 +12014,7 @@ dependencies = [
  "demi-command-package-file-protocol",
  "demi-command-package-mobile-protocol",
  "demi-command-protocol",
- "demi-conversation-socket-protocol",
+ "demi-conversation-lane-protocol",
  "demi-live-view-protocol",
  "demi-machine-manager-protocol",
  "demi-plugin-interface",

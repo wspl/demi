@@ -11,7 +11,7 @@
 //! - A save names its message's id; one sent again with the same id and content
 //!   answers as the first did.
 //!
-//! Sending one, as it is or as an edit changed it, is the conversation socket's
+//! Sending one, as it is or as an edit changed it, is the conversation lane's
 //! `send_saved` frame.
 
 use std::sync::Arc;

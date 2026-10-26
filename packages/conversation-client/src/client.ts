@@ -31,14 +31,14 @@ import { FrameTooLargeError, type ConversationClientTransport } from './transpor
 /**
  * A frame the backend or the session refused. It carries the code the page words
  * the refusal by, the values that text needs, the refusal in English as the
- * message, and the request ID of the socket that refused it, which a `rejected`
+ * message, and the request ID of the lane that refused it, which a `rejected`
  * frame carries.
  */
 export class RefusedError extends Error {
   override name = 'RefusedError'
   readonly code: string
   readonly params: Readonly<Record<string, unknown>>
-  /** The request ID of the socket that sent the refusal, which the page shows with it; null when the frame names none. */
+  /** The request ID of the lane that sent the refusal, which the page shows with it; null when the frame names none. */
   readonly requestId: string | null
 
   constructor(refusal: { code: string; params?: Record<string, unknown>; reason: string; requestId?: string }) {
@@ -84,7 +84,7 @@ export class ActionOutlivedError extends Error {
 export class SessionError extends Error {
   readonly code: string | null
   readonly diagnostics: ProviderErrorDiagnostics | undefined
-  /** The request ID of the socket that sent the frame, which the page shows with the error. */
+  /** The request ID of the lane that sent the frame, which the page shows with the error. */
   readonly requestId: string | null
 
   constructor(frame: ServerFrameOf<'error'>) {
@@ -134,7 +134,7 @@ interface Waiter<T> {
 
 /**
  * Where the client's copy of a node's transcript is: none, as before the
- * node is read; being read, while the socket's patches of it are dropped, and
+ * node is read; being read, while the lane's patches of it are dropped, and
  * the views of its commands, its request's output and its chart that it pushes
  * are kept, to follow the page's own; or current at a version.
  */
@@ -180,7 +180,7 @@ export interface ConversationRead {
 
 /**
  * How the client reads what it follows:
- * a read depends on no socket, and the socket, opened after the reads, brings
+ * a read depends on no lane, and the lane, opened after the reads, brings
  * changes alone. A read that fails is tried again after a wait, except at the
  * open, which fails with it.
  */
@@ -188,7 +188,7 @@ export interface ConversationReader {
   /**
    * The conversation's agents and its root's request output, with the tags of
    * the metadata and the lists it brings. With `whole` false only the agents
-   * are wanted: the metadata and the lists are followed by the socket and
+   * are wanted: the metadata and the lists are followed by the lane and
    * are not applied again.
    */
   conversation(signal: AbortSignal, options: { whole: boolean }): Promise<ConversationRead>
@@ -218,7 +218,7 @@ export type ConversationConnect = (signal: AbortSignal) => Promise<ConversationC
 export interface ConversationClientOptions {
   /**
    * The frames of the conversation itself that the backend sends on the
-   * socket beside its agents', such as its metadata, which the web app
+   * lane beside its agents', such as its metadata, which the web app
    * decodes: answers what the frame is, or null when the page does not take
    * it. A frame neither the protocol nor it takes drops the connection.
    */
@@ -255,14 +255,14 @@ export interface ConversationHeld {
 type Decision<T> = { resolve: T } | { reject: Error } | undefined
 
 /**
- * The web app's client of the conversation socket's frame protocol.
+ * The web app's client of the conversation lane's frame protocol.
  *
  * It does five things:
  *
  * - Validates every frame it receives with the generated schemas, and drops the
  *   connection when one does not match.
  * - Reads what it follows, the agents and each followed node's latest page,
- *   with no socket, then connects and opens the socket naming each value with
+ *   with no lane, then connects and opens the lane naming each value with
  *   the version it holds, so the backend sends only what changed; a version it
  *   no longer holds comes back `stale`, or `rebased` when the backend moved
  *   what it holds to a live version, and on a gap or another epoch the
@@ -302,7 +302,7 @@ export class ConversationClient {
   private agentsVersion: Version | null = null
   /** The tags of the conversation's own values the client follows, as the last read or frame carried them. */
   private readonly tags: Partial<ConversationTags> = {}
-  /** Whether the agents are being read, which drops what the socket brings of them. */
+  /** Whether the agents are being read, which drops what the lane brings of them. */
   private agentsReading = false
   /** The revision of the draft the page holds, which the open names. */
   private draft: number | undefined
@@ -331,15 +331,15 @@ export class ConversationClient {
 
   /**
    * Opens the conversation: reads what the page does not hold yet, the agents
-   * and the latest page of the root and of each of `nodes`, with no socket,
-   * and takes each as it answers; then connects and opens the socket, which
+   * and the latest page of the root and of each of `nodes`, with no lane,
+   * and takes each as it answers; then connects and opens the lane, which
    * attaches to the conversation's tree, which runs with the model settings
    * the conversation's record holds, naming each value held with its
    * version, so the backend sends what changed since. Resolves once `opened`
    * came. A client that opens again after its connection was lost holds what
    * it read, and reads nothing. `root` is the root's node, the conversation's
    * id. The open names `draft`, the revision of the draft the page holds, so
-   * the socket sends the draft only once it is newer. `held` names the
+   * the lane sends the draft only once it is newer. `held` names the
    * blocks the page holds of each node it follows, now and at each later
    * read, which a page read vouches for when the transcript did not change
    * under them. `holding` is what the page shows already, as from a copy on
@@ -397,7 +397,7 @@ export class ConversationClient {
     }
   }
 
-  /** Connects, and opens the socket with the versions held; the reads came before it. */
+  /** Connects, and opens the lane with the versions held; the reads came before it. */
   private async attach(signal?: AbortSignal): Promise<void> {
     const ended = new AbortController()
     const end = () => ended.abort(signal?.reason ?? this.detached.signal.reason)
@@ -418,7 +418,7 @@ export class ConversationClient {
       }
       const draft = this.draft
       const opening = { type: 'open' as const, ...(draft === undefined ? {} : { draft }), ...this.followsOf() }
-      this.logged('socket.followed', { values: opening.follows?.length ?? 0, nodes: this.subscriptions.size })
+      this.logged('lane.followed', { values: opening.follows?.length ?? 0, nodes: this.subscriptions.size })
       await this.request(
         opening,
         (event) => (event.type === 'opened' ? { resolve: undefined } : this.failure(event, 'open')),
@@ -747,7 +747,7 @@ export class ConversationClient {
 
   /**
    * Whether the client holds the node `node`'s transcript current with the
-   * backend's: read or brought current by the socket, and not being read
+   * backend's: read or brought current by the lane, and not being read
    * again.
    */
   holdsCurrent(node: string): boolean {
@@ -1152,15 +1152,6 @@ export class ConversationClient {
       case 'remove_result':
       case 'shell_write_result':
       case 'retry_scheduled':
-        this.emit(frame)
-        return
-      // A heartbeat only shows that the socket is alive; it changes
-      // nothing here.
-      case 'heartbeat':
-        return
-      // The answer to the page's ping as it returns, for the socket's
-      // liveness watch.
-      case 'pong':
         this.emit(frame)
         return
     }

@@ -5,7 +5,7 @@ import type { SessionLoad } from './session-status'
  * provider's answer. It runs from the send of a message that starts a turn,
  * its delivery included. A recovery the server has not acknowledged yet and
  * the agent's own retries are the same wait and keep the same word. A lost or
- * not yet made socket is no wait of the transcript's: the spinner over the
+ * not yet made lane is no wait of the transcript's: the spinner over the
  * transcript's end tells it, beside the dock (`SessionDock.vue`).
  */
 export type ActivityKind = 'requesting'
@@ -45,9 +45,9 @@ export interface ActivitySlotInput {
  *   up.
  * - A conversation that failed to open waits for nothing. The failure told at
  *   the tail says so.
- * - The socket does not change the row: a message sent while it is lost or
+ * - The lane does not change the row: a message sent while it is lost or
  *   not made yet says Requesting from the send, as the first message of a new
- *   conversation does while its socket opens
+ *   conversation does while its lane opens
  *   (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {

@@ -49,7 +49,7 @@ function failed(error: unknown): WorkflowList {
  * The workflows of `place`, as the Workflow menu lists them: what the backend
  * keeps of the conversation's project, and of the linked worktree it works in
  * while they differ, which the opening reads and
- * the socket brings again when the Host reports a change;
+ * the lane brings again when the Host reports a change;
  * or a new conversation's, `GET /devices/:id/workflows`, read once for its
  * directory.
  *

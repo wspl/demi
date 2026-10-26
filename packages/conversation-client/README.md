@@ -1,10 +1,11 @@
 # @demicodes/conversation-client
 
-The browser's client of Demi's conversation socket. It exports three things:
+The browser's client of Demi's conversation lane. It exports three things:
 
 - `ConversationClient` opens a conversation, sends messages, edits, steers and
   aborts, and keeps the transcript current from the backend's patches.
-- `createWebSocketTransport` carries its frames over a WebSocket.
+- `createWebSocketTransport` carries its frames over anything shaped as a
+  WebSocket, such as a conversation's lane of the page connection.
 - `applyTranscriptPatches` applies a patch list to a transcript.
 
 The client validates every frame the backend sends against the schemas of
@@ -16,9 +17,13 @@ The following example opens a conversation and sends a message:
 
 ```ts
 import { ConversationClient, createWebSocketTransport } from '@demicodes/conversation-client'
+import { openLane } from '@demicodes/web-ui/transport/page-connection'
 
-const socket = new WebSocket(`wss://demi.example/api/conversations/${id}/stream`)
-const client = new ConversationClient(createWebSocketTransport(socket))
+// Each connection opens the conversation's lane, and carries frames once it is open.
+const client = new ConversationClient(() => new Promise((resolve) => {
+  const lane = openLane({ kind: 'conversation', conversation: id }, 'conversation lane')
+  lane.addEventListener('open', () => resolve(createWebSocketTransport(lane)), { once: true })
+}))
 client.subscribe((event) => {
   if (event.type === 'transcript_patch') {
     render(event.blocks)

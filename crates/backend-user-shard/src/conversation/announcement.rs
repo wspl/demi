@@ -22,7 +22,7 @@ use demi_backend_database::conversation_index::{
 };
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
 use demi_agent_store::Placement;
-use demi_conversation_socket_protocol::{AgentEntry, Version};
+use demi_conversation_lane_protocol::{AgentEntry, Version};
 use demi_agent_tools::NodeContext;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::{conversation_of, root_of};

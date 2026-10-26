@@ -24,7 +24,7 @@ import type {
   SavedDelivery,
   Version,
 } from '@demicodes/protocol'
-import { ConversationSocketError } from '../transport/conversation-socket'
+import { ConversationLaneError } from '../transport/conversation-lane'
 import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
 import { failureHeadline } from './error-detail'
 import { boundedHistory } from './history'
@@ -149,7 +149,7 @@ const OPEN_TIMEOUT_MS = 30_000
  *
  * - keeps `load` at `reconnecting` (the spinner over the transcript's end says so,
  *   the composer stays), or at `connecting` while the session has never opened
- * - tries again after each of the page's reconnect waits, until the socket is
+ * - tries again after each of the page's reconnect waits, until the lane is
  *   back or the view is disposed
  *
  * An action taken meanwhile waits for the connection, without cutting a wait
@@ -240,7 +240,7 @@ export class ConversationRuntime {
         await client.submit(content, messageId, comments)
         return
       } catch (error) {
-        if (!(error instanceof ConversationSocketError)) {
+        if (!(error instanceof ConversationLaneError)) {
           throw error
         }
       }
@@ -264,7 +264,7 @@ export class ConversationRuntime {
       await client.steer(content, id, comments)
       return
     } catch (error) {
-      if (!(error instanceof ConversationSocketError)) {
+      if (!(error instanceof ConversationLaneError)) {
         throw error
       }
       if (await this.holdsSteer(id)) {
@@ -301,7 +301,7 @@ export class ConversationRuntime {
         if (error instanceof SavedGoneError) {
           return false
         }
-        if (!(error instanceof ConversationSocketError)) {
+        if (!(error instanceof ConversationLaneError)) {
           throw error
         }
       }
@@ -318,7 +318,7 @@ export class ConversationRuntime {
       try {
         await this.steersListed(client)
       } catch (error) {
-        if (!(error instanceof ConversationSocketError)) {
+        if (!(error instanceof ConversationLaneError)) {
           throw error
         }
         continue
@@ -336,14 +336,14 @@ export class ConversationRuntime {
       return
     }
     if (this.client.value !== client) {
-      throw new ConversationSocketError('The connection ended before the session listed its steers')
+      throw new ConversationLaneError('The connection ended before the session listed its steers')
     }
     const listed = deferred()
     const unsubscribe = client.subscribe((event) => {
       if (event.type === 'pending_steers') {
         listed.resolve()
       } else if (event.type === 'disconnected' || event.type === 'closed') {
-        listed.reject(new ConversationSocketError('The connection ended before the session listed its steers'))
+        listed.reject(new ConversationLaneError('The connection ended before the session listed its steers'))
       }
     })
     try {
@@ -443,7 +443,7 @@ export class ConversationRuntime {
         }
         return
       } catch (error) {
-        if (!(error instanceof ConversationSocketError)) {
+        if (!(error instanceof ConversationLaneError)) {
           throw error
         }
       }
@@ -564,7 +564,7 @@ export class ConversationRuntime {
 
   /**
    * Lets the connection go, and opens none until `connect`, keeping all the
-   * conversation shows, as an archived conversation does, whose socket the
+   * conversation shows, as an archived conversation does, whose lane the
    * backend closes. A connection the runtime was trying to bring back stops
    * being tried: the transcript it holds is what it shows.
    */
@@ -602,7 +602,7 @@ export class ConversationRuntime {
 
   private async ensureOpen(): Promise<ConversationClient> {
     // A request made as the page returns waits for the return's check, which
-    // replaces a broken socket before anything is sent on it.
+    // replaces a broken lane before anything is sent on it.
     const check = pendingReturnCheck()
     if (check !== null) {
       await check
@@ -663,7 +663,7 @@ export class ConversationRuntime {
           // Released meanwhile: disposed, or a newer opening took over.
           throw error
         }
-        if (!(error instanceof ConversationSocketError)) {
+        if (!(error instanceof ConversationLaneError)) {
           this.client.value = null
           this.opening = null
           // A record that holds no model opens no session until one is chosen.
@@ -689,7 +689,7 @@ export class ConversationRuntime {
     const abortAttempt = () => attempt.abort(controller.signal.reason)
     controller.signal.addEventListener('abort', abortAttempt, { once: true })
     const timeout = setTimeout(
-      () => attempt.abort(new ConversationSocketError('The conversation did not open in time')),
+      () => attempt.abort(new ConversationLaneError('The conversation did not open in time')),
       OPEN_TIMEOUT_MS,
     )
     // A deadline or a release while the session opens ends the connection,

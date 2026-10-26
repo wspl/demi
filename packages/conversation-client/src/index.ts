@@ -1,4 +1,4 @@
-// The browser's client of the conversation socket. It validates every frame it
+// The browser's client of the conversation lane. It validates every frame it
 // receives with the schemas of `@demicodes/protocol`, and imports no user
 // interface package.
 //

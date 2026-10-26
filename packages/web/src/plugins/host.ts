@@ -4,8 +4,8 @@ import { z } from 'zod'
 import type { PageHost } from '@demicodes/web-ui/plugins/page'
 import { disposePluginStores } from '@demicodes/web-ui/plugins/stores'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { userStreamAt } from '@demicodes/web-ui/transport/user-stream'
-import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
+import { userStreamOf } from '@demicodes/web-ui/transport/user-stream'
+import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { conversationFiles } from '../conversation/files'
 import { directRoute } from '../direct'
 import { directStream } from '../direct/operations'
@@ -117,11 +117,8 @@ export function productPageHost(): PageHost {
       }
     },
     stream(name, conversation) {
-      const path = `/conversations/${encodeURIComponent(conversation)}/streams/${encodeURIComponent(name)}`
-      const url = new URL(apiUrl(path), window.location.href)
-      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
       // Over the direct channel while the conversation's device has one.
-      return directStream(() => directRoute(conversation), name, userStreamAt(url.toString()))
+      return directStream(() => directRoute(conversation), name, userStreamOf(conversation, name))
     },
     installed(plugin, conversation) {
       const host = primaryHost(plugin, conversation)

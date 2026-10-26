@@ -38,7 +38,7 @@
 //! not a bill. Prices tiered by a request's length, as some models charge more
 //! past 200K tokens, are not modelled: a call is priced at the model's base rates.
 
-use demi_conversation_socket_protocol::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
+use demi_conversation_lane_protocol::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 use demi_shared_types::{Cost, Currency, ModelCost, QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
 use demi_web_api_protocol::conversations::{CostWindow, RecentAgent};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};

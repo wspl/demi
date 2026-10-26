@@ -1,4 +1,4 @@
-//! The signaling socket of a direct channel
+//! The signaling lane of a direct channel
 //! (`crates/runner-direct/src/lib.rs`).
 //!
 //! The backend introduces the page to its paired device's runner, through
@@ -13,55 +13,41 @@
 //! views, and each message names its peer. The backend gives each its own id
 //! toward the runner.
 //!
-//! The socket's close closes the runner's peers, and so does the user turning a
-//! plugin on or off, which the socket tells the page so that it offers again
+//! The lane's close closes the runner's peers, and so does the user turning a
+//! plugin on or off, which the lane tells the page so that it offers again
 //! with the new introduction.
 
 use std::future::poll_fn;
 use std::task::Poll;
 use std::time::Duration;
 
-use axum::extract::ws::rejection::WebSocketUpgradeRejection;
-use axum::extract::ws::{CloseFrame, Message, WebSocketUpgrade};
-use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
 use demi_backend_remote_host::{DirectAnswer, PeerEvent};
 use demi_backend_runners::command_context::{Reported, reported};
-use demi_backend_user_shard::shard::page_socket::{
-    PageEnd, PageSocket, PageSocketKind, PageSocketOrigin, PageStream, open_page_socket,
-};
+use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduced, Introduction, OfferRefusal};
 use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectPeer, DirectRequest, Unanswered};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::BoxFuture;
-use futures_util::{FutureExt as _, StreamExt as _};
+use futures_util::FutureExt as _;
 use garde::Validate as _;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::AppState;
-use super::body::page_socket;
+use super::connection::Opened;
 use super::devices::owned_device;
 use super::error::ApiError;
-use super::gate::AuthUser;
-use super::page_client::PageClient;
 
 /// How long the backend waits for the runner's answer to an offer.
 const ANSWER_TIMEOUT: Duration = CONNECT_TIMEOUT;
 
-/// `WS /devices/:deviceId/direct`: a device that is not the caller's
-/// answers 404, the Cloud 409 `not_a_paired_device`, and a paired device
-/// without a connected runner 409 `device_offline`, before the upgrade.
-pub(super) async fn open(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    client: PageClient,
-    upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
-) -> Result<Response, ApiError> {
-    let device = owned_device(&state, &user.id, &id, None).await?;
+/// The signaling of the caller's device `id`: a device that is not the
+/// caller's is refused 404, the Cloud 409 `not_a_paired_device`, and a paired
+/// device without a connected runner 409 `device_offline`.
+pub(super) async fn open(state: &AppState, user: &UserId, id: &str) -> Result<Opened, ApiError> {
+    let device = owned_device(state, user, id, None).await?;
     if device.kind == DeviceKind::Managed {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -69,44 +55,32 @@ pub(super) async fn open(
             "A direct channel reaches a paired device, not the Cloud",
         ));
     }
-    let upgrade = upgrade.map_err(|_| {
-        ApiError::new(
-            StatusCode::UPGRADE_REQUIRED,
-            ErrorCode::UpgradeRequired,
-            "The direct channel's signaling is a WebSocket",
-        )
-    })?;
     let device = device.id;
     let connected = {
         let device = device.clone();
         state
             .shards
-            .of(&user.id)
+            .of(user)
             .call(move |shard, _| async move { shard.devices().reached(&device).await })
             .await?
     };
     if !connected {
         return Err(ApiError::device_offline());
     }
-    let tuning = state.services.pages;
-    let origin = PageSocketOrigin {
-        device: Some(device.clone()),
-        ..client.origin(PageSocketKind::DirectSignaling, user.id.clone())
+    let signaling = Signaling {
+        state: state.clone(),
+        user: user.clone(),
+        device: device.clone(),
+        files: uuid::Uuid::new_v4().simple().to_string(),
+        live: uuid::Uuid::new_v4().simple().to_string(),
     };
-    Ok(page_socket(upgrade, move |socket| async move {
-        let (page, from_page) = open_page_socket(socket, tuning, origin);
-        let signaling = Signaling {
-            state,
-            user: user.id,
-            device,
-            files: uuid::Uuid::new_v4().simple().to_string(),
-            live: uuid::Uuid::new_v4().simple().to_string(),
-        };
-        signaling.serve(page, from_page).await;
-    }))
+    Ok(Opened {
+        device: Some(device),
+        ..Opened::new(move |lane, reader| signaling.serve(lane, reader))
+    })
 }
 
-/// One page's signaling socket for one device, with the peer ids the
+/// One page's signaling lane for one device, with the peer ids the
 /// backend gave its two peers toward the runner.
 struct Signaling {
     state: AppState,
@@ -124,31 +98,26 @@ struct Offered {
     switched: CancellationToken,
 }
 
-/// How a signaling socket ended, which it closes with.
+/// How a signaling lane ended, which it closes with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum End {
     /// The runner's connection ended.
     HostUnreachable,
     /// The page sent a message it should not have.
     Refused,
-    /// The page closed its socket, or it failed.
+    /// The page closed the lane, or its connection ended.
     PageClosed,
 }
 
 impl End {
-    /// How the socket ends: with the close frame the page hears, or as the
-    /// page left it.
-    fn page_end(self) -> PageEnd {
-        let frame = |code, reason: &'static str| {
-            PageEnd::Close(CloseFrame {
-                code,
-                reason: reason.into(),
-            })
-        };
+    /// How the lane ends: with the close the page hears, or as the page left
+    /// it.
+    fn lane_end(self) -> LaneEnd {
+        let close = |code, reason| LaneEnd::Close(LaneClose { code, reason });
         match self {
-            Self::HostUnreachable => frame(1011, "host_unreachable"),
-            Self::Refused => frame(1003, "invalid_message"),
-            Self::PageClosed => PageEnd::Gone,
+            Self::HostUnreachable => close(1011, "host_unreachable"),
+            Self::Refused => close(1003, "invalid_message"),
+            Self::PageClosed => LaneEnd::Gone,
         }
     }
 }
@@ -200,7 +169,7 @@ impl Signaling {
         }
     }
 
-    async fn serve(self, mut page: PageSocket, mut from_page: PageStream) {
+    async fn serve(self, mut page: Lane, mut from_page: LaneReader) {
         let link_ended = self.link_ended();
         tokio::pin!(link_ended);
         let mut peers: [Introducing; 2] = Default::default();
@@ -210,7 +179,7 @@ impl Signaling {
             self.peer_events(DirectPeer::Files).await,
             self.peer_events(DirectPeer::Live).await,
         ) else {
-            page.end(from_page, End::HostUnreachable.page_end()).await;
+            page.end(from_page, End::HostUnreachable.lane_end());
             return;
         };
         let mut said = [files, live];
@@ -286,20 +255,13 @@ impl Signaling {
                     continue;
                 }
                 message = from_page.next() => match message {
-                    Some(Ok(Message::Text(text))) => match request_of(text.as_str()) {
+                    Some(LaneMessage::Text(text)) => match request_of(&text) {
                         Some(request) => request,
                         None => break End::Refused,
                     },
-                    Some(Ok(Message::Binary(_))) => break End::Refused,
-                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
-                    Some(Ok(Message::Close(_)) | Err(_)) | None => break End::PageClosed,
+                    Some(LaneMessage::Binary(_)) => break End::Refused,
+                    None => break End::PageClosed,
                 },
-                () = page.silent() => {
-                    if page.send(text(&DirectMessage::Heartbeat)).await.is_err() {
-                        break End::PageClosed;
-                    }
-                    continue;
-                }
             };
             match request {
                 DirectRequest::Offer { peer, sdp } => {
@@ -336,7 +298,7 @@ impl Signaling {
             }
             self.forget_peer(peer).await;
         }
-        page.end(from_page, end.page_end()).await;
+        page.end(from_page, end.lane_end());
     }
 
     /// Resolves once the device's runner connection ends, or at once when
@@ -361,7 +323,7 @@ impl Signaling {
         let _ = waited;
     }
 
-    /// Relays an offer to the runner, as the peer of this socket, with what the
+    /// Relays an offer to the runner, as the peer of this lane, with what the
     /// runner needs of the user: the streams of the plugins they have on, their
     /// locale and their color scheme, and the STUN servers to ask.
     ///
@@ -433,7 +395,7 @@ impl Signaling {
         Some(Offered { message, switched })
     }
 
-    /// What the runner says of this socket's peer from now on; none when the
+    /// What the runner says of this lane's peer from now on; none when the
     /// device's runner is no longer connected.
     async fn peer_events(&self, which: DirectPeer) -> Option<mpsc::UnboundedReceiver<PeerEvent>> {
         let device = self.device.clone();
@@ -486,7 +448,7 @@ impl Signaling {
         let _ = relayed;
     }
 
-    /// The socket ended: what the runner says of its peer goes nowhere.
+    /// The lane ended: what the runner says of its peer goes nowhere.
     async fn forget_peer(&self, which: DirectPeer) {
         let device = self.device.clone();
         let peer = self.id(which).to_owned();

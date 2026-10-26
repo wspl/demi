@@ -157,7 +157,7 @@ export function ownBlocks(question: ShownSideQuestion): readonly HeldBlock[] | n
  * - the latest, when the page holds none of its transcript
  * - the one before, when what it holds starts after the first question
  * - none, once it holds the first question, or while the question is on its way
- *   and its transcript arrives on the socket
+ *   and its transcript arrives on the lane
  */
 export function pageToRead(question: ShownSideQuestion): 'latest' | 'before' | null {
   const window = latestWindow(question.history)

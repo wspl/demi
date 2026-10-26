@@ -1,6 +1,6 @@
 //! Conversations as the web app creates, lists and follows them.
 
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     AgentCost, AgentEntry, BlockVersions, CacheChart, ConversationAttachment, Failures, Refusal,
     RequestOutput, SendMessage, ShellStatus, TurnSpeed, Version,
 };
@@ -369,7 +369,7 @@ pub struct ConversationDetail {
 }
 
 /// What the conversation's socket carries of the conversation itself, beside
-/// its agents' frames (`crates/backend-user-shard/src/conversation/socket.rs`).
+/// its agents' frames (`crates/backend-user-shard/src/conversation/lane.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ConversationFrame {
@@ -523,7 +523,7 @@ pub struct TranscriptQuery {
 }
 
 /// One page of an agent's transcript: a thousand blocks, wherever requests
-/// begin and end (`PAGE_BLOCKS` in `crates/conversation-socket-protocol`), in their light form, with the failure facts of its error blocks
+/// begin and end (`PAGE_BLOCKS` in `crates/conversation-lane-protocol`), in their light form, with the failure facts of its error blocks
 /// (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

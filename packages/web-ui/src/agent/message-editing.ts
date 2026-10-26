@@ -215,7 +215,7 @@ export function useEditLastMessage(): () => (() => void) | undefined {
 }
 
 /**
- * The edit as the conversation socket carries it: a file the message already
+ * The edit as the conversation lane carries it: a file the message already
  * holds by its record's path and its media by blob reference, a file the edit
  * added by its upload, and no bytes at all. Media that is not a blob of the
  * conversation cannot be kept, and the edit is refused before it is sent.

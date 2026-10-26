@@ -252,7 +252,7 @@ export const useSession = defineStore('session', {
     },
     /**
      * Signs the account out, then forgets its data and loads the page again
-     * at the sign-in page, which releases its account-scoped stores, sockets
+     * at the sign-in page, which releases its account-scoped stores, lanes
      * and drafts. The page shows what it showed meanwhile: the backend ends
      * the session at once, but the browser holds its answer back while it
      * clears its cache, and what the ended session is refused meanwhile is

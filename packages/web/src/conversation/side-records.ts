@@ -30,11 +30,11 @@ export function sideActivity(side: SideRecord): AgentActivity {
 }
 
 /**
- * The page's action on its way stays so until what the socket brings shows
+ * The page's action on its way stays so until what the lane brings shows
  * the server has it, not the backend's answer to the request, which may come
  * first: the agent at work, or, once the backend took it, a transcript
  * changed since the action was sent, as after a Retry whose whole turn ran
- * while the socket was away. So the window says Requesting, without a time,
+ * while the lane was away. So the window says Requesting, without a time,
  * from the press until the server tells its wait, without a gap, and nothing
  * once the turn ended unseen.
  */

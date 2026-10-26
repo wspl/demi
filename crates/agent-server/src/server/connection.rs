@@ -1,4 +1,4 @@
-//! One conversation socket's frame handling.
+//! One conversation lane's frame handling.
 //!
 //! The backend decodes each client frame, resolves its content, and hands it to
 //! [`Connection::handle`], one frame at a time in arrival order. Every frame
@@ -36,7 +36,7 @@ use demi_agent_session::{
     AgentSession, EditCheck, EditSubmission, accepted, edit_digest, regenerate_digest,
 };
 use demi_agent_tools::HostResolver;
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, Follow, Followed, Held, RegenerateRequest,
     Refusal, RemoveOutcome, STORED_EPOCH, SendMessage, ServerFrame, SteerOutcome, Version,
 };
@@ -206,7 +206,7 @@ impl FrameRx {
     }
 }
 
-/// One conversation socket's handling. It belongs to one conversation: the
+/// One conversation lane's handling. It belongs to one conversation: the
 /// backend names the conversation, and the client never sends it. Dropping
 /// it detaches it; the tree's turns keep running.
 pub struct Connection<H: HostResolver> {

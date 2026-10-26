@@ -28,8 +28,8 @@ import {
  *   still shows. A click on one opens its conversation, in a page of the
  *   product that is open, never a share's, or a new one.
  *
- * It answers nothing else from a cache: not `build.json`, the API, the sockets
- * or a share's page. It imports only what needs no page.
+ * It answers nothing else from a cache: not `build.json`, the API, the page
+ * connection or a share's page. It imports only what needs no page.
  */
 
 declare const self: ServiceWorkerGlobalScope

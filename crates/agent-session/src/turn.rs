@@ -59,7 +59,7 @@ use demi_shared_types::{Block, BlockId, ModelSelection, ShellToolView, ToolView}
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use demi_conversation_socket_protocol::AgentCode;
+use demi_conversation_lane_protocol::AgentCode;
 
 use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,

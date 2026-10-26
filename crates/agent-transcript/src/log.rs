@@ -7,7 +7,7 @@
 
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
-use demi_conversation_socket_protocol::{TranscriptPatch, Version, Versions};
+use demi_conversation_lane_protocol::{TranscriptPatch, Version, Versions};
 use demi_provider_common::{AccountSwitch, ToolCall};
 use demi_shared_types::{ScheduleMark, CodeFile, MessageComment, PictureCopy, ReplyPicture, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,

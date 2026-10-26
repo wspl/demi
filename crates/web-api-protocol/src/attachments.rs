@@ -77,4 +77,4 @@ pub struct AttachmentDto {
 
 /// An attachment as a reply shows it, which a share's
 /// `GET /shares/:token/attachments/:attachment` answers.
-pub use demi_conversation_socket_protocol::{AttachmentSourceDto, ConversationAttachment};
+pub use demi_conversation_lane_protocol::{AttachmentSourceDto, ConversationAttachment};

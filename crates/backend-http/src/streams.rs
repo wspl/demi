@@ -1,43 +1,28 @@
 //! User streams at the edge.
 //!
-//! - The upgrade of a declared stream.
-//! - The relay of its bytes between the page's socket and the Host's pipes,
-//!   taken from the Host only as fast as the page takes them.
+//! - The open of a declared stream, a lane of the page connection.
+//! - The relay of its bytes between the lane and the Host's pipes, taken from
+//!   the Host only as fast as the page takes them.
 //! - The page's word on whether it watches the stream, a text message of the
 //!   user stream's own layer (`crates/runner-protocol/src/direct.rs`,
 //!   `StreamWatched`), which decides whether the stream is activity.
 
-use axum::extract::ws::rejection::WebSocketUpgradeRejection;
-use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
-use demi_backend_user_shard::shard::page_socket::{
-    PageEnd, PageSocketKind, PageSocketOrigin, open_page_socket,
-};
-use demi_backend_user_shard::tuning::PageTuning;
+use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_web_api_protocol::error::ErrorCode;
-use futures_util::StreamExt as _;
+use demi_web_api_protocol::ids::UserId;
 use tokio_util::sync::CancellationToken;
 
 use super::AppState;
-use super::body::page_socket;
+use super::connection::Opened;
 use super::conversations::owned;
 use super::error::ApiError;
-use super::gate::AuthUser;
-use super::page_client::PageClient;
 use demi_backend_host_access::stream::UserStream;
 use demi_runner_protocol::direct::StreamWatched;
 
-/// `WS /conversations/:id/streams/:name`: everything that can refuse the
-/// stream answers before the upgrade, the Host's opening of it included.
-pub(super) async fn open(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, name)): Path<(String, String)>,
-    client: PageClient,
-    upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
-) -> Result<Response, ApiError> {
+/// The stream `name` of the caller's conversation `id`: everything that can
+/// refuse it refuses the open, the Host's opening of it included.
+pub(super) async fn open(state: &AppState, user: &UserId, id: &str, name: String) -> Result<Opened, ApiError> {
     let unknown = || {
         ApiError::new(
             StatusCode::NOT_FOUND,
@@ -48,44 +33,37 @@ pub(super) async fn open(
     let Some(binding) = state.services.user_streams.get(&name).cloned() else {
         return Err(unknown());
     };
-    let record = owned(&state.services, &user.id, &id).await?;
-    let upgrade = upgrade.map_err(|_| {
-        ApiError::new(
-            StatusCode::UPGRADE_REQUIRED,
-            ErrorCode::UpgradeRequired,
-            "A user stream is a WebSocket",
-        )
-    })?;
-    let origin = PageSocketOrigin {
-        conversation: Some(record.id.clone()),
-        stream: Some(name.clone()),
-        ..client.origin(PageSocketKind::UserStream, user.id.clone())
-    };
-    let tuning = state.services.pages;
+    let record = owned(&state.services, user, id).await?;
+    let conversation = record.id.clone();
     // A stream of a plugin the user has off does not exist; one whose
     // plugin is turned off while it is open ends.
-    let opened = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, cancel| async move {
-            let Some(plugin_off) = shard.plugins().stream_end(&name).await? else {
-                return Ok(None);
-            };
-            let stream = shard
-                .host_shard()
-                .open_user_stream(&record.id, &binding, &cancel)
-                .await?;
-            Ok::<_, ApiError>(Some((stream, plugin_off)))
-        })
-        .await??;
+    let opened = {
+        let name = name.clone();
+        state
+            .shards
+            .of(user)
+            .call(move |shard, cancel| async move {
+                let Some(plugin_off) = shard.plugins().stream_end(&name).await? else {
+                    return Ok(None);
+                };
+                let stream = shard
+                    .host_shard()
+                    .open_user_stream(&record.id, &binding, &cancel)
+                    .await?;
+                Ok::<_, ApiError>(Some((stream, plugin_off)))
+            })
+            .await??
+    };
     let (stream, plugin_off) = opened.ok_or_else(unknown)?;
-    // An upgrade that never completes drops the stream, which ends it.
-    Ok(page_socket(upgrade, move |socket| {
-        relay(socket, tuning, origin, stream, plugin_off)
-    }))
+    // A lane that never opens drops the stream, which ends it.
+    Ok(Opened {
+        conversation: Some(conversation),
+        stream: Some(name),
+        ..Opened::new(move |lane, reader| relay(lane, reader, stream, plugin_off))
+    })
 }
 
-/// How a stream ended, which the page's socket closes with.
+/// How a stream ended, which its lane closes with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum End {
     /// The invocation completed.
@@ -99,27 +77,22 @@ enum End {
     Changed,
     /// The user turned off the stream's plugin.
     PluginDisabled,
-    /// The page closed its socket, or it failed.
+    /// The page closed the lane, or its connection ended.
     PageClosed,
 }
 
 impl End {
-    /// How the socket ends: with the close frame the page hears, or as the
-    /// page left it.
-    fn page_end(self) -> PageEnd {
-        let frame = |code, reason: &'static str| {
-            PageEnd::Close(CloseFrame {
-                code,
-                reason: reason.into(),
-            })
-        };
+    /// How the lane ends: with the close the page hears, or as the page left
+    /// it.
+    fn lane_end(self) -> LaneEnd {
+        let frame = |code, reason| LaneEnd::Close(LaneClose { code, reason });
         match self {
             Self::Completed => frame(1000, "completed"),
             Self::BinaryOnly => frame(1003, "binary_only"),
             Self::HostUnreachable => frame(1011, "host_unreachable"),
             Self::Changed => frame(4000, "conversation_changed"),
             Self::PluginDisabled => frame(4001, "plugin_disabled"),
-            Self::PageClosed => PageEnd::Gone,
+            Self::PageClosed => LaneEnd::Gone,
         }
     }
 }
@@ -128,7 +101,7 @@ impl End {
 ///
 /// - The page's binary messages go to the Host in order, each after the Host
 ///   took the one before.
-/// - The Host's bytes go to the page, each after the page's socket took the one
+/// - The Host's bytes go to the page, each after the connection wrote the one
 ///   before.
 /// - Message boundaries mean nothing.
 /// - The page's text message says whether it watches the stream.
@@ -136,9 +109,8 @@ impl End {
 ///   the user turns its plugin off; dropping the lease then ends it in the
 ///   shard.
 async fn relay(
-    socket: WebSocket,
-    tuning: PageTuning,
-    origin: PageSocketOrigin,
+    mut to_page: Lane,
+    mut from_page: LaneReader,
     stream: UserStream,
     plugin_off: CancellationToken,
 ) {
@@ -148,7 +120,6 @@ async fn relay(
         watched,
         lease,
     } = stream;
-    let (mut to_page, mut from_page) = open_page_socket(socket, tuning, origin);
     let end = {
         let deliver = async {
             loop {
@@ -166,21 +137,20 @@ async fn relay(
         let forward = async {
             loop {
                 match from_page.next().await {
-                    Some(Ok(Message::Binary(bytes))) => {
+                    Some(LaneMessage::Binary(bytes)) => {
                         if to_host.write(bytes).await.is_err() {
                             return End::HostUnreachable;
                         }
                     }
-                    Some(Ok(Message::Text(text))) => {
-                        match serde_json::from_str::<StreamWatched>(text.as_str()) {
+                    Some(LaneMessage::Text(text)) => {
+                        match serde_json::from_str::<StreamWatched>(&text) {
                             Ok(said) => {
                                 watched.send_replace(said.watched);
                             }
                             Err(_) => return End::BinaryOnly,
                         }
                     }
-                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                    Some(Ok(Message::Close(_)) | Err(_)) | None => return End::PageClosed,
+                    None => return End::PageClosed,
                 }
             }
         };
@@ -194,6 +164,6 @@ async fn relay(
             end = forward => end,
         }
     };
-    to_page.end(from_page, end.page_end()).await;
+    to_page.end(from_page, end.lane_end());
     drop(lease);
 }

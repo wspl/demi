@@ -11,10 +11,10 @@ import {
   type ConversationTarget,
   type CreateWorkspace,
   type DeviceDto,
-  type SavedScope,
   type SavedScopeSwitch,
   type SidebarReorder,
 } from '../api/generated/web-api'
+import type { SavedScope } from '@demicodes/protocol'
 import { useSession } from '../auth/session'
 import { known, useProduct } from './product'
 import { usePreferences } from './preferences'

@@ -1,7 +1,7 @@
 //! What the runner's link keeps across its connections
 //! (`crates/runner-protocol/src/wire/session.rs`): the numbers of the
 //! messages it wrote and received, the ones the backend did not confirm yet,
-//! and the lane the messages of a call wait in.
+//! and the backlog the messages of a call wait in.
 //!
 //! The backend answers the runner's hello with the number of the session it
 //! carries. The number the runner holds resumes the session: the backend says
@@ -13,7 +13,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use demi_runner_protocol::wire::{Lane, Resume, Session};
+use demi_runner_protocol::wire::{Backlog, Resume, Session};
 use tokio::sync::Notify;
 
 /// Why a call ends when the backend answers with a session of another number.
@@ -32,7 +32,7 @@ struct Shared {
     number: Mutex<Option<u64>>,
     /// Why the session that ran before ended, until the owner takes it.
     ended: Mutex<Option<String>>,
-    lane: Lane,
+    backlog: Backlog,
     /// Wakes the writer when messages arrived that wait for an
     /// acknowledgement.
     owed: Notify,
@@ -45,8 +45,8 @@ impl LinkState {
     }
 
     /// The queue the messages of calls wait in for a connection.
-    pub fn lane(&self) -> &Lane {
-        &self.0.lane
+    pub fn backlog(&self) -> &Backlog {
+        &self.0.backlog
     }
 
     /// What the next hello says of the session it carries on.
@@ -87,7 +87,7 @@ impl LinkState {
 
     fn restart(&self, session: &mut Session, reason: Option<&str>) {
         session.restart();
-        self.0.lane.clear();
+        self.0.backlog.clear();
         if let Some(reason) = reason {
             tracing::warn!(event = "link.session_ended", cause = reason, "the link's session ended");
             *self.0.ended.lock().unwrap_or_else(PoisonError::into_inner) = Some(reason.to_owned());

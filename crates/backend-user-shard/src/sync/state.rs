@@ -11,7 +11,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::Part;
 use demi_backend_runners::install::install_commands;
-use demi_conversation_socket_protocol::Version;
+use demi_conversation_lane_protocol::Version;
 use demi_plugin_interface::PluginError;
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::exposed_ports::ExposedPortList;

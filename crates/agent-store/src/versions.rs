@@ -31,7 +31,7 @@
 //! valid across switches, a share's list and the search index's rows, names a
 //! row by its row number.
 
-use demi_conversation_socket_protocol::Versions;
+use demi_conversation_lane_protocol::Versions;
 
 /// A row among those that follow the same row: its number and the row it
 /// was written in place of, when the session's own rewrite wrote it.

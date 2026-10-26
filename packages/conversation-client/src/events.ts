@@ -38,7 +38,7 @@ export type Failures = Record<string, ProviderFailureFacts>
  * What a `ConversationClient` tells its listeners. Most events are the
  * server frame as it arrived. The agents and a node's `transcript_reset` are
  * what the client read, which it tells as soon as the read answers, before
- * the socket opens.
+ * the lane opens.
  * The queue and the pending steers are the root's agent entry's, told as they
  * change and with each `agents` event. The transcript events carry what the
  * client read or a frame brought of a node, which the page applies to the
@@ -58,7 +58,6 @@ export type ClientSessionEvent =
   | ServerFrameOf<'shell_write_result'>
   | ServerFrameOf<'retry_scheduled'>
   | ServerFrameOf<'error'>
-  | ServerFrameOf<'pong'>
   | {
       /** Every agent of the conversation, as a read of it lists them, at `version`. */
       type: 'agents'

@@ -21,7 +21,7 @@ use demi_backend_user_shard::conversation::shares::{ShareBlobError, ShareRefusal
 use demi_backend_user_shard::services::Services;
 use demi_shared_types::{BlobRef, BlockId};
 use demi_backend_database::tree::{Entry, PageRead};
-use demi_conversation_socket_protocol::{index_u32, light};
+use demi_conversation_lane_protocol::{index_u32, light};
 use demi_web_api_protocol::conversations::{ConversationShares, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};

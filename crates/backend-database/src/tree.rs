@@ -31,7 +31,7 @@ use demi_agent_store::{
     Placement, Rows, SavedVersions, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
-use demi_conversation_socket_protocol::{BlockVersions, PageAt, TurnSpeed, page};
+use demi_conversation_lane_protocol::{BlockVersions, PageAt, TurnSpeed, page};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
@@ -1228,7 +1228,7 @@ fn path_versions(
     connection: &Connection,
     path: &Path,
     range: Range<i64>,
-) -> Result<BTreeMap<usize, demi_conversation_socket_protocol::Versions>, StorageError> {
+) -> Result<BTreeMap<usize, demi_conversation_lane_protocol::Versions>, StorageError> {
     path.versions(connection, range)?
         .into_iter()
         .map(|(position, versions)| Ok((decode("path_runs", "start", usize::try_from(position))?, versions)))

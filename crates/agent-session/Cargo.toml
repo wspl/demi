@@ -17,7 +17,7 @@ bench = false
 testing = ["demi-agent-transcript/testing", "demi-provider-common/testing"]
 
 [dependencies]
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-agent-store = { path = "../agent-store" }
 demi-agent-transcript = { path = "../agent-transcript" }
 demi-command-protocol = { path = "../command-protocol" }

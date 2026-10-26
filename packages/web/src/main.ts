@@ -3,9 +3,9 @@
 // handlers of the reusable UI in `web-ui` and of each plugin's page; it never
 // holds the UI itself.
 //
-// - Product state follows the synchronization channel (a WebSocket), chat
-//   uses the conversation client over a WebSocket, and everything else is
-//   same-origin REST.
+// - Product state follows the synchronization channel, chat uses the
+//   conversation client, each over a lane of the page connection, and
+//   everything else is same-origin REST.
 // - It imports no package by a computed name (the plugin page registry is a
 //   static list `xtask contracts` writes), no `web-gallery`, and no Node
 //   module outside its contract suite, which starts the backend, runner and
@@ -45,7 +45,8 @@ import { onOwnerChange } from './state/account-owner'
 import { usePreferences } from './state/preferences'
 import { useNotifications } from './state/notifications'
 import { useWorkPanel } from './conversation/work'
-import { onSessionExpired } from './api/client'
+import { apiRequest, apiUrl, onSessionExpired } from './api/client'
+import { configurePageConnection } from '@demicodes/web-ui/transport/page-connection'
 import { sendPageLog } from './api/page-log'
 import { useSession } from './auth/session'
 import ChatPage from './conversation/ChatPage.vue'
@@ -64,6 +65,14 @@ const browserLanguages = shallowRef(navigator.languages)
 const startLanguage = lastShownLanguage() ?? resolveLanguage('system', browserLanguages.value)
 const i18n = createPageI18n(startLanguage)
 setPageLanguage(startLanguage)
+// The page connection, which carries every lane of the page's
+// (`web-ui/src/transport/page-connection.ts`). The web browser does not say
+// why its upgrade failed: an ended session answers it with 401, which a
+// request learns and ends on the page as any 401 does.
+configurePageConnection({
+  url: () => apiUrl('/connect'),
+  failedToOpen: () => void apiRequest('/auth/me', { waits: false }).catch(() => {}),
+})
 const pinia = createPinia()
 const router = createRouter({
   history: createWebHistory(),

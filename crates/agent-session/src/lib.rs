@@ -105,7 +105,7 @@ use demi_agent_store::{
 use demi_agent_transcript::{
     Earlier, ForkEnd, IdSource, TranscriptLog, last_answer, last_failure,
 };
-use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, RequestOutput, TranscriptPatch, Version};
+use demi_conversation_lane_protocol::{AbortResult, AgentCode, Refusal, RequestOutput, TranscriptPatch, Version};
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
@@ -229,7 +229,7 @@ pub struct TranscriptSnapshot {
     pub blocks: Vec<Block>,
     pub version: Version,
     /// The versions at each place that holds more than one.
-    pub versions: std::collections::BTreeMap<usize, demi_conversation_socket_protocol::Versions>,
+    pub versions: std::collections::BTreeMap<usize, demi_conversation_lane_protocol::Versions>,
 }
 
 /// How an action ended when it did not fail.

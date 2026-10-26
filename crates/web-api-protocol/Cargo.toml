@@ -12,7 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-runner-protocol = { path = "../runner-protocol" }

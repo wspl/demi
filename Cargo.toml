@@ -3,7 +3,7 @@ resolver = "3"
 exclude = ["vendor/*/*"]
 members = [
   "crates/agent-server",
-  "crates/conversation-socket-protocol",
+  "crates/conversation-lane-protocol",
   "crates/agent-session",
   "crates/agent-store",
   "crates/agent-tools",

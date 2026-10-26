@@ -12,8 +12,8 @@
  *
  * A data channel has no traffic of its own when nothing happens, so each
  * long-lived operation keeps the heartbeat it has on the relay (the live view's
- * module, the file watch), which the page treats as it treats the relay's
- * sockets. WebRTC's own consent checks end a peer whose other end is gone
+ * module, the file watch), which the page treats as it treats the page
+ * connection's. WebRTC's own consent checks end a peer whose other end is gone
  * within about 30 seconds; the page sets the choice to `relay` as soon as the
  * connection state is `failed` or `closed`.
  */

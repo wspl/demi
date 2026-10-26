@@ -14,7 +14,7 @@ import { useConversations } from './store'
  * shows any of them, whoever uploaded it.
  *
  * A name with no description is missing: one above the conversation's
- * latest attachment may still come, and shows once the socket brings its
+ * latest attachment may still come, and shows once the lane brings its
  * description as it is uploaded. Nothing is asked of the backend. None while
  * no conversation shows.
  */

@@ -1,7 +1,7 @@
-//! The conversation socket: `WS /api/conversations/:id/stream`, moved into the
-//! user's shard once upgraded.
+//! The conversation lane: a conversation's lane of the page connection, which
+//! the user's shard serves once it opened.
 //!
-//! The socket decodes each message into a client frame and hands it to the
+//! The lane decodes each message into a client frame and hands it to the
 //! conversation's agent connection, one at a time in arrival order. The
 //! connection's outbox carries every server frame back, with the failure facts
 //! of the error blocks it brings; its media are references into the owner's
@@ -20,20 +20,20 @@
 //!   may no longer use.
 //! - `frame_delivery_failed`: storage failed to prepare the frame.
 //!
-//! A message that is not JSON closes the socket.
+//! A message that is not JSON closes the lane.
 //!
 //! # The conversation's own frames
 //!
-//! Beside the agents' frames, the socket sends what the backend keeps of the
+//! Beside the agents' frames, the lane sends what the backend keeps of the
 //! conversation itself (`ConversationFrame`) as it changes, never as the
 //! answer to an `open`: its metadata, whole; its saved messages, its workflows
 //! and its shares, each whole, with the entity tag of its route's answer; its
 //! draft when newer than the revision the page last held; and the description
 //! of an attachment an agent uploaded since the page's `open`, as a reply may
 //! name it before it exists. The page reads each by its route, then follows it
-//! by the `open` and `follow` frames, naming the tag it holds; the socket
+//! by the `open` and `follow` frames, naming the tag it holds; the lane
 //! reads the value and sends it when its tag differs, and at each change.
-//! A value the page does not follow is not sent. Only a socket of the
+//! A value the page does not follow is not sent. Only a lane of the
 //! conversation hears of them; the sidebar's channel sends the conversation's
 //! entry alone.
 //!
@@ -41,11 +41,11 @@
 //!
 //! The request that creates a conversation may carry its first message
 //! (`admit_first_message`). A connection of its own then takes the frames a
-//! page's socket would send, an `open` and the `send`, through the same
+//! page's lane would send, an `open` and the `send`, through the same
 //! handling, so the message is admitted as any `send` is: its title, its files
 //! resolved in the conversation, its id checked against the messages already
 //! taken. The request answers from what the connection's outbox holds, and the
-//! connection goes; the page's socket opens afterwards, and the page reads the
+//! connection goes; the page's lane opens afterwards, and the page reads the
 //! reply so far with the root's latest page.
 //!
 //! # Attachments
@@ -55,7 +55,7 @@
 //! sent, as its failure facts are. A reply streams in pieces, so a frame that
 //! completes a tag in the text so far names it, whichever piece it ends in.
 //!
-//! # Frames the socket rewrites
+//! # Frames the lane rewrites
 //!
 //! - An `open` takes the conversation's settings order, so the tree opens with
 //!   the model selection the record holds.
@@ -66,9 +66,8 @@
 //!   changed it: the edit holds the whole message, which goes as it is.
 
 use std::rc::{Rc, Weak};
-use std::time::Duration;
 
-use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
+use axum::extract::ws::close_code;
 use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
 use demi_agent_store::media::HeldMedia;
 use demi_backend_database::StorageError;
@@ -76,7 +75,7 @@ use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_backend_permissions::Stops;
 use demi_backend_database::conversation_attachments::uploaded_after;
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     SteerOutcome, Follow, Followed,
     ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, Refusal,
     RemoveOutcome, SavedDelivery, SendMessage, ServerFrame, TranscriptPatch, Version, decode_client_frame,
@@ -93,25 +92,19 @@ use futures_util::future::LocalBoxFuture;
 
 use super::attachment_facts::StreamedText;
 use super::failure_facts;
-use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
-use crate::sync::ChannelSession;
 use crate::sync::etag_of;
-use crate::shard::{PageEnd, PageSocket, Shard};
+use crate::shard::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Shard};
 use demi_backend_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
 use demi_backend_host_access::root_of;
 
-/// The close code of a socket whose page fell a full outbox behind; the page
+/// The close code of a lane whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.
 const LAGGED: u16 = 4001;
 
-/// The close code of a socket whose session was signed out, the
-/// synchronization channel's.
-const SESSION_ENDED: u16 = 4002;
-
-/// How a conversation socket ended.
+/// How a conversation lane ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Ending {
-    /// The page closed the socket, or it broke.
+    /// The page closed the lane, or it broke.
     Gone,
     /// The page sent a message that is not JSON.
     NotJson,
@@ -119,31 +112,21 @@ enum Ending {
     Lagged,
     /// The backend is shutting down.
     Closing,
-    /// The session the socket opened with was signed out, or expired.
-    SessionEnded,
-    /// The session could not be read at its expiry.
-    SessionUnread,
     /// The agent connection's outbox closed, so nothing more reaches the
-    /// page; the socket goes without a close frame.
+    /// page; the lane goes without a close frame.
     Detached,
 }
 
 impl Ending {
-    /// How the socket ends: with the close frame the backend sends, or
-    /// without one.
-    fn page_end(self) -> PageEnd {
-        let frame = |code, reason| CloseFrame {
-            code,
-            reason: Utf8Bytes::from_static(reason),
-        };
+    /// How the lane ends: with the close the backend sends, or without one.
+    fn lane_end(self) -> LaneEnd {
+        let close = |code, reason| LaneClose { code, reason };
         match self {
-            Self::Gone => PageEnd::Gone,
-            Self::NotJson => PageEnd::Close(frame(close_code::INVALID, "not_json")),
-            Self::Lagged => PageEnd::Fail(frame(LAGGED, "lagged")),
-            Self::Closing => PageEnd::Close(frame(close_code::AWAY, "backend_closing")),
-            Self::SessionEnded => PageEnd::Close(frame(SESSION_ENDED, "session_ended")),
-            Self::SessionUnread => PageEnd::Fail(frame(close_code::ERROR, "internal_error")),
-            Self::Detached => PageEnd::Dropped("agent connection closed"),
+            Self::Gone => LaneEnd::Gone,
+            Self::NotJson => LaneEnd::Close(close(close_code::INVALID, "not_json")),
+            Self::Lagged => LaneEnd::Fail(close(LAGGED, "lagged")),
+            Self::Closing => LaneEnd::Close(close(close_code::AWAY, "backend_closing")),
+            Self::Detached => LaneEnd::Dropped("agent connection closed"),
         }
     }
 }
@@ -153,20 +136,20 @@ enum Handled {
     /// The frame reached its session, or the backend refused it with these
     /// frames.
     Replies(Vec<ServerFrame>),
-    /// A frame that follows or ends following values: the socket applies
+    /// A frame that follows or ends following values: the lane applies
     /// `own`, what it follows itself, then `frame`, the rest, is handled.
     Following { own: OwnFollows, frame: Option<ClientFrame> },
     /// An `open` reached the tree, which answers it with `opened`.
     Opened { replies: Vec<ServerFrame> },
     /// The backend refused an `open` with these frames, as a conversation
-    /// with no model yet is: the socket answers `opened` after them, since
+    /// with no model yet is: the lane answers `opened` after them, since
     /// the page still reads the conversation and follows its changes.
     OpenRefused { replies: Vec<ServerFrame> },
-    /// The message is not JSON: the socket closes.
+    /// The message is not JSON: the lane closes.
     NotJson,
 }
 
-/// What a frame changes of what the socket follows itself: the conversation's
+/// What a frame changes of what the lane follows itself: the conversation's
 /// metadata and its lists, which the agents' connection knows nothing of.
 #[derive(Default)]
 struct OwnFollows {
@@ -177,20 +160,20 @@ struct OwnFollows {
 }
 
 impl OwnFollows {
-    /// Splits `follows` into what the socket follows itself, and the rest,
+    /// Splits `follows` into what the lane follows itself, and the rest,
     /// which the agents' connection follows.
     fn split(follows: Vec<Follow>) -> (Vec<Follow>, Vec<Follow>) {
         follows.into_iter().partition(|follow| is_own(&follow.value))
     }
 }
 
-/// Whether the socket follows `value` itself: the agents' connection follows
+/// Whether the lane follows `value` itself: the agents' connection follows
 /// the agents and the transcripts.
 fn is_own(value: &Followed) -> bool {
     matches!(value, Followed::Metadata | Followed::Saved | Followed::Workflows | Followed::Shares)
 }
 
-/// What a socket follows of the conversation itself, each value with the
+/// What a lane follows of the conversation itself, each value with the
 /// entity tag the page holds of it, which is what a value is told against: a
 /// value whose tag differs is sent whole, with its tag. A value none is not
 /// followed.
@@ -232,9 +215,9 @@ impl Shown {
         }
         for Follow { value, holds } in own.follow {
             let tag = match holds {
-                demi_conversation_socket_protocol::Held::Tag { tag } => tag,
+                demi_conversation_lane_protocol::Held::Tag { tag } => tag,
                 // A version names no whole value: the page holds none of it.
-                demi_conversation_socket_protocol::Held::Version { .. } => String::new(),
+                demi_conversation_lane_protocol::Held::Version { .. } => String::new(),
             };
             if let Some(slot) = self.slot(&value) {
                 *slot = Some(tag);
@@ -259,27 +242,23 @@ fn refusal(code: ErrorCode, message: impl Into<String>) -> ServerFrame {
 }
 
 impl Shard {
-    /// Serves a socket of `conversation` until either end closes it or the shard
+    /// Serves a lane of `conversation` until either end closes it or the shard
     /// closes.
     ///
-    /// - A frame the socket has handed to the agent is handled to its end, even
+    /// - A frame the lane has handed to the agent is handled to its end, even
     ///   when the shard closes meanwhile; until then, the outbox's frames keep
     ///   flowing to the page.
-    /// - A socket that has sent nothing for the heartbeat interval sends a
-    ///   `heartbeat`.
-    /// - `origin` is who opened it, which its log lines name.
-    /// - The session it opened with, `session`, closes it as it is signed out or
-    ///   as it expires.
-    pub async fn serve_conversation_socket(
+    /// - The lane ends with its connection, which ends with the session it
+    ///   opened with.
+    pub async fn serve_conversation_lane(
         self: Rc<Self>,
         conversation: ConversationRecord,
-        socket: WebSocket,
-        origin: PageSocketOrigin,
-        session: ChannelSession,
+        mut page: Lane,
+        mut stream: LaneReader,
     ) {
         // Counted before any wait, so the shard's close waits for this
-        // socket; one adopted as the close begins ends at once.
-        let _socket = self.tree_openers().token();
+        // lane; one adopted as the close begins ends at once.
+        let _lane = self.tree_openers().token();
         if self.is_closing() {
             return;
         }
@@ -287,13 +266,12 @@ impl Shard {
         let watch = self
             .services()
             .sync
-            .watch_conversation(self.user(), session.token.clone(), id.clone());
+            .watch_conversation(self.user(), id.clone());
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(&self),
             conversation: id.clone(),
         });
         let (connection, mut frames) = self.agent().connect(root_of(&id), resolver.clone());
-        let (mut page, mut stream) = open_page_socket(socket, self.services().pages, origin);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
         let mut shown = Shown::default();
         let mut streamed = StreamedText::default();
@@ -345,9 +323,9 @@ impl Shard {
                         }
                     }
                     // While a frame is handled, the page's next message
-                    // waits for its turn, and its pings are answered meanwhile.
+                    // waits for its turn in the lane's credit.
                     message = stream.next_unless_busy(busy) => match message {
-                        Some(Ok(Message::Text(text))) => {
+                        Some(LaneMessage::Text(text)) => {
                             let shard = self.clone();
                             let connection = &connection;
                             let id = id.clone();
@@ -355,20 +333,15 @@ impl Shard {
                                 shard.handle_message(&id, connection, text.as_str()).await
                             }));
                         }
-                        Some(Ok(Message::Binary(_))) => break Ending::NotJson,
-                        // Pings are answered by the socket itself.
-                        Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                        Some(Ok(Message::Close(_)) | Err(_)) | None => break Ending::Gone,
+                        Some(LaneMessage::Binary(_)) => break Ending::NotJson,
+                        None => break Ending::Gone,
                     },
                     // What changed in the conversation's metadata comes before
                     // the agent's frames, which never go quiet while it says
                     // something: the marks coalesce, so this takes the agent no
                     // more than one pass each time.
                     () = watch.marked() => {
-                        let marked = watch.take();
-                        if marked.session_ended {
-                            break Ending::SessionEnded;
-                        }
+                        watch.take();
                         if shown.follows_any() && !self.show_conversation(&id, &mut page, &mut shown, false).await {
                             break Ending::Gone;
                         }
@@ -403,11 +376,6 @@ impl Shard {
                         Outgoing::Lagged => break Ending::Lagged,
                         Outgoing::Closed => break Ending::Detached,
                     },
-                    () = page.silent() => {
-                        if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
-                            break Ending::Gone;
-                        }
-                    }
                 }
             }
         };
@@ -417,7 +385,6 @@ impl Shard {
         let ending = tokio::select! {
             biased;
             () = self.closed() => Ending::Closing,
-            ending = self.session_expiry(session) => ending,
             ending = relay => ending,
         };
         // A frame that reached the agent is handled to its end: its session
@@ -425,39 +392,9 @@ impl Shard {
         if let Some(handled) = handling.take() {
             handled.await;
         }
-        page.end(stream, ending.page_end()).await;
+        page.end(stream, ending.lane_end());
         // Dropping the connection, last, detaches it from its tree, whose
         // turns go on.
-    }
-
-    /// Resolves as the socket's session expires: at the expiry the socket
-    /// holds, it looks at the session again, since a request may have
-    /// renewed it, and waits for the new expiry if one did. One timer at a
-    /// time, which dropping the future releases.
-    async fn session_expiry(&self, mut session: ChannelSession) -> Ending {
-        let services = self.services();
-        loop {
-            let left = session.expires_at.to_jiff().duration_since(services.clock.now().to_jiff());
-            // An expiry already past is due at once.
-            tokio::time::sleep(Duration::try_from(left).unwrap_or(Duration::ZERO)).await;
-            match services.sessions.check(&session.token).await {
-                Ok(Some(renewed)) if renewed.expires_at > session.expires_at => {
-                    session.expires_at = renewed.expires_at;
-                }
-                // A session the clock has not yet passed is checked again
-                // at the expiry it holds.
-                Ok(Some(_)) => {}
-                Ok(None) => return Ending::SessionEnded,
-                Err(error) => {
-                    tracing::error!(
-                        event = "conversation_socket.session_read_failed",
-                        error = &error as &dyn std::error::Error,
-                        "a conversation socket's session could not be read"
-                    );
-                    return Ending::SessionUnread;
-                }
-            }
-        }
     }
 
     /// Restores the conversation's tree with no page attached, as an `open` does.
@@ -508,9 +445,9 @@ impl Shard {
     }
 
     /// Admits the first message of a conversation just created, as the
-    /// socket would: a connection of its own opens the conversation's session
+    /// lane would: a connection of its own opens the conversation's session
     /// and hands it the `send` frame through the admission every `send`
-    /// takes, then goes. The page opens its socket afterwards, and that
+    /// takes, then goes. The page opens its lane afterwards, and that
     /// opening carries the reply so far
     /// (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
     ///
@@ -933,19 +870,19 @@ impl Shard {
     }
 
     /// Sends one server frame, presented as the page receives it; false when
-    /// the socket is gone.
-    async fn send_frame(&self, conversation: &ConversationId, page: &mut PageSocket, streamed: &mut StreamedText, frame: ServerFrame) -> bool {
+    /// the lane is gone.
+    async fn send_frame(&self, conversation: &ConversationId, page: &mut Lane, streamed: &mut StreamedText, frame: ServerFrame) -> bool {
         self.send_frames(conversation, page, streamed, vec![frame]).await
     }
 
     /// Sends `frames` as one message: a frame alone as itself, several as
     /// a JSON array of them in order, which the page applies as one change. Every `error`
-    /// and `rejected` frame carries the request ID of the socket's upgrade, and every
+    /// and `rejected` frame carries the request ID of the lane's open, and every
     /// refused send of `conversation` is logged.
     async fn send_frames(
         &self,
         conversation: &ConversationId,
-        page: &mut PageSocket,
+        page: &mut Lane,
         streamed: &mut StreamedText,
         frames: Vec<ServerFrame>,
     ) -> bool {
@@ -962,7 +899,7 @@ impl Shard {
             } = &frame
             {
                 // The backend decides a send failed, and says so here, under
-                // the socket's request ID.
+                // the lane's request ID.
                 tracing::warn!(
                     event = "message.refused",
                     %conversation,
@@ -1032,11 +969,11 @@ impl Shard {
     ///
     /// With `opening`, the attachment the open's moment holds is taken as the
     /// baseline. A failed read is logged and sends nothing, as the next change
-    /// sends what it read; false when the socket is gone.
+    /// sends what it read; false when the lane is gone.
     async fn show_conversation(
         &self,
         conversation: &ConversationId,
-        page: &mut PageSocket,
+        page: &mut Lane,
         shown: &mut Shown,
         opening: bool,
     ) -> bool {
@@ -1360,7 +1297,7 @@ impl ContentResolver for ConversationFiles {
     ) -> LocalBoxFuture<'a, Result<ResolvedFiles, ContentError>> {
         Box::pin(async move {
             // A failure inside the backend has no cause of its own for the
-            // user; it is shown with the socket's request ID.
+            // user; it is shown with the lane's request ID.
             let refused = |message: String| ContentError {
                 message,
                 code: Some(ErrorCode::SendFailed.to_string()),
@@ -1429,7 +1366,7 @@ impl ContentResolver for ConversationFiles {
 }
 
 /// A duration as the integer `_ms` fields of the log hold it.
-fn millis(duration: Duration) -> u64 {
+fn millis(duration: std::time::Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 

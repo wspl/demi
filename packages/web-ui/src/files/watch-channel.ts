@@ -66,24 +66,23 @@ export type WatchMessage =
   | { type: 'renewed'; keys: string[] }
   | { type: 'offline' }
   | { type: 'heartbeat' }
-  | { type: 'pong'; id: number }
 
 /** What one connection of a watch tells the watch. */
 export interface WatchLinkHandlers {
   /**
    * It opened: what it says from now on counts.
    *
-   * With `ping`, which sends the far end a ping it answers with `pong`, as the
-   * backend's relay does and a direct channel's runner does not, the page's return
-   * asks it whether it is alive.
+   * `heartbeats` says whether it carries a heartbeat of its own, as a direct
+   * channel's watch does, whose silence breaks it; a lane of the page
+   * connection has the connection's liveness alone.
    */
-  opened(ping?: (id: number) => void): void
+  opened(heartbeats: boolean): void
   message(message: WatchMessage): void
   /** It closed, failed, or brought what did not read. */
   closed(): void
 }
 
-/** One connection of a watch: a WebSocket of the relay's or a direct channel's `watch`. */
+/** One connection of a watch: a lane of the page connection or a direct channel's `watch`. */
 export interface WatchLink {
   send(request: WatchRequest): void
   close(): void
@@ -158,8 +157,8 @@ interface SentRenewal {
  * returns opens it once. Without an owner, as for a simulated Host, the
  * Host counts as online.
  *
- * A connection that brings nothing, not even a heartbeat, for 75 seconds is
- * broken.
+ * A direct channel's watch that brings nothing, not even a heartbeat, for 75
+ * seconds is broken.
  */
 export class WatchChannel {
   private readonly carried = new Map<string, Subscription>()
@@ -294,11 +293,12 @@ export class WatchChannel {
     let link: WatchLink | null = null
     const current = () => link !== null && this.link === link
     link = this.open({
-      opened: (ping) => {
+      opened: (heartbeats) => {
         if (!current())
           return
         this.opened = true
-        this.silence = watchSilence(this.name, () => this.lose(link!), ping)
+        if (heartbeats)
+          this.silence = watchSilence(this.name, () => this.lose(link!))
         this.renewal = setInterval(() => this.renew(), RENEW_MS)
         this.toSubscribe.clear()
         this.toUnsubscribe.clear()
@@ -360,9 +360,6 @@ export class WatchChannel {
     switch (message.type) {
       case 'heartbeat':
         return
-      case 'pong':
-        this.silence?.ponged(message.id)
-        return
       case 'live': {
         const subscription = this.carried.get(message.key)
         if (!subscription)
@@ -418,7 +415,7 @@ export class WatchChannel {
         return
       }
       case 'offline':
-        // The socket closes after it.
+        // The connection closes after it.
         this.unwatch()
     }
   }
@@ -446,7 +443,7 @@ export class WatchChannel {
       clearInterval(this.renewal)
     this.renewal = null
     this.renewals = []
-    // A broken socket's own close may come much later, or never.
+    // A broken connection's own close may come much later, or never.
     link?.close()
     this.unwatch()
   }

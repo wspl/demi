@@ -1,10 +1,9 @@
 /**
  * The file watches of the page:
  *
- * - A conversation's, `WS /conversations/:id/fs/watch` or its direct channel's
- *   `watch`, which also carries an attached host's subscriptions under their
- *   `host`.
- * - A device's folder dialog's, `WS /devices/:deviceId/fs/watch`.
+ * - A conversation's, its `file_watch` lane or its direct channel's `watch`,
+ *   which also carries an attached host's subscriptions under their `host`.
+ * - A device's folder dialog's, its `device_watch` lane.
  *
  * Each carries the subscriptions of what the page keeps of one Host's files
  * (`WatchChannel`). This module opens their connections and reads what they
@@ -15,8 +14,7 @@ import type { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { WatchChannel, type WatchLink, type WatchLinkHandlers, type WatchRequest } from '@demicodes/web-ui/files/watch-channel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t } from './locales/text'
-import { openSocket, pingOn } from '@demicodes/web-ui/transport/liveness'
-import { apiUrl } from '../api/client'
+import { openLane, type LaneTarget } from '@demicodes/web-ui/transport/page-connection'
 import {
   fileWatchMessageSchema,
   type ConversationWatchRequest,
@@ -77,34 +75,32 @@ function onHost(request: WatchRequest, host: string): ConversationWatchRequest {
 }
 
 /**
- * A watch on the relay's WebSocket at the API path `path`; with `host`,
- * each subscription is on that attached host.
+ * A watch on the relay, a lane of the page connection that carries what
+ * `target` names; with `host`, each subscription is on that attached host.
  */
-function socketWatchLink(path: string, handlers: WatchLinkHandlers, host?: string): WatchLink {
-  const url = new URL(apiUrl(path), window.location.href)
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  const socket = openSocket(url, 'file watch')
-  const receive = watchReceiver(handlers, () => socket.close(1000))
-  socket.addEventListener('open', () => handlers.opened(pingOn(socket)))
-  socket.addEventListener('message', (event) => receive(event.data))
-  socket.addEventListener('close', () => handlers.closed())
+function laneWatchLink(target: LaneTarget, handlers: WatchLinkHandlers, host?: string): WatchLink {
+  const lane = openLane(target, 'file watch')
+  const receive = watchReceiver(handlers, () => lane.close(1000))
+  lane.addEventListener('open', () => handlers.opened(false))
+  lane.addEventListener('message', (event) => receive(event.data))
+  lane.addEventListener('close', () => handlers.closed())
   return {
-    send: (request) => socket.send(watchText(host === undefined ? request : onHost(request, host))),
-    close: () => socket.close(1000),
+    send: (request) => lane.send(watchText(host === undefined ? request : onHost(request, host))),
+    close: () => lane.close(1000),
   }
 }
 
-/** The relay's watch of a conversation, `WS /conversations/:id/fs/watch`. */
+/** The relay's watch of a conversation. */
 export const relayWatchLink: OpenConversationWatchLink = (conversationId, handlers) =>
-  socketWatchLink(`/conversations/${encodeURIComponent(conversationId)}/fs/watch`, handlers)
+  laneWatchLink({ kind: 'file_watch', conversation: conversationId }, handlers)
 
 /**
  * The relay's watch of a conversation's attached host: the conversation's
- * socket, whose subscriptions name the host. A direct channel reaches only
+ * watch, whose subscriptions name the host. A direct channel reaches only
  * the primary Host, so an attached host's watch is always on the relay.
  */
 export const relayAttachedWatchLink: OpenAttachedWatchLink = (conversationId, deviceId, handlers) =>
-  socketWatchLink(`/conversations/${encodeURIComponent(conversationId)}/fs/watch`, handlers, deviceId)
+  laneWatchLink({ kind: 'file_watch', conversation: conversationId }, handlers, deviceId)
 
 /**
  * A conversation's file watch: one watch of the Host the conversation runs
@@ -202,8 +198,8 @@ export class ConversationWatch {
 const deviceWatches = new Map<string, WatchChannel>()
 
 /**
- * A device's folder dialog's watch, `WS /devices/:deviceId/fs/watch`,
- * through device access, which carries the subscriptions of what the
+ * A device's folder dialog's watch, its `device_watch` lane, through device
+ * access, which carries the subscriptions of what the
  * dialog keeps of the device's files.
  *
  * It opens only while the device is online, as `followHost` holds it, and at
@@ -216,7 +212,7 @@ export function deviceWatch(deviceId: string, files: HostFiles, followHost: Foll
     let online: (() => boolean) | null = null
     const opened = new WatchChannel(
       files,
-      (handlers) => socketWatchLink(`/devices/${encodeURIComponent(deviceId)}/fs/watch`, handlers),
+      (handlers) => laneWatchLink({ kind: 'device_watch', device: deviceId }, handlers),
       undefined,
       () => (online ??= followHost(deviceId, () => opened.online()))(),
     )

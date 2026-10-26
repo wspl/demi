@@ -14,7 +14,7 @@ bench = false
 [dependencies]
 demi-agent-store = { path = "../agent-store" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-shared-types = { path = "../shared-types", features = ["tracing"] }
 demi-shared-gates = { path = "../shared-gates" }
 demi-backend-remote-host = { path = "../backend-remote-host" }

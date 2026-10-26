@@ -97,7 +97,7 @@ const usageLimitPayload = JSON.stringify({
           copy-text="OpenAI API request failed with HTTP 401"
         />
       </GallerySpecimen>
-      <GallerySpecimen wide variant="A refused frame · the catalogue’s words, the socket’s Request ID under them">
+      <GallerySpecimen wide variant="A refused frame · the catalogue’s words, the lane’s Request ID under them">
         <ErrorNotice
           :label="refusalFailure('conversation_archived').message"
           :request-id="refusalFailure('conversation_archived').requestId"

@@ -20,7 +20,7 @@ use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
 use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, reply_blocks};
-use demi_conversation_socket_protocol::{STORED_EPOCH, Version, index_u32, light};
+use demi_conversation_lane_protocol::{STORED_EPOCH, Version, index_u32, light};
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;

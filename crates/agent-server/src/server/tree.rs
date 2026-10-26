@@ -45,7 +45,7 @@ use demi_agent_session::{Continuation, LatestPage, ModelSwitch, SessionEvent, Se
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_status};
 use demi_agent_transcript::IdSource;
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     AgentCost, AgentCode, AgentRole, CacheChart, RequestOutput, STORED_EPOCH, ServerFrame, ShellStatus, TranscriptPatch, Version,
 };
 use demi_host_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
@@ -648,7 +648,7 @@ impl<H: HostResolver> Tree<H> {
     /// they are at.
     /// Each live agent's wait is how long it has waited now, which the page
     /// counts from the answer.
-    pub fn agents(&self) -> (Version, Vec<demi_conversation_socket_protocol::AgentEntry>) {
+    pub fn agents(&self) -> (Version, Vec<demi_conversation_lane_protocol::AgentEntry>) {
         let waits = |id: &NodeId| self.node(id).and_then(|node| node.session().waited_ms());
         (self.agents.version(), self.agents.all(waits))
     }
@@ -1249,12 +1249,12 @@ async fn evict_when_idle<H: HostResolver>(
 /// version, which a collection no live session runs keeps.
 pub(super) fn stored_agents(
     root: &NodeId,
-    subagents: Vec<(demi_agent_store::StoredSubagent, demi_conversation_socket_protocol::JobModel)>,
+    subagents: Vec<(demi_agent_store::StoredSubagent, demi_conversation_lane_protocol::JobModel)>,
     sides: Vec<NodeRecord>,
     placement: Option<demi_agent_store::Placement>,
     kept: KeptAgents,
     saved: u64,
-) -> (Version, Vec<demi_conversation_socket_protocol::AgentEntry>) {
+) -> (Version, Vec<demi_conversation_lane_protocol::AgentEntry>) {
     // No connection is attached to the sink, so the puts announce nothing.
     let agents = Agents::new(STORED_EPOCH.to_owned(), Rc::new(FrameSink::new()));
     agents.set_placement(placement.clone());

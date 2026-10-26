@@ -23,7 +23,7 @@ import {
 } from '@demicodes/web-ui/agent/message-editing'
 import { coded, errorCode, errorFields, errorMessage, reportError, requestIdOf, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { t as shared } from '@demicodes/web-ui/locales/text'
-import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
+import { ConversationLaneError } from '@demicodes/web-ui/transport/conversation-lane'
 import { sessionShown, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
@@ -65,7 +65,7 @@ import {
 import { composerCapsule, contentMessage } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
-import { createConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
+import { createConversationClient } from '@demicodes/web-ui/transport/conversation-lane'
 import { SessionError } from '@demicodes/conversation-client'
 import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, HeldTranscript, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
 import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, logReadFailed, readResponse } from '../api/client'
@@ -97,9 +97,9 @@ import {
   type ProductState,
   type ReadRequest,
   type SidebarReorder,
-  type WorkflowChoice,
   type ScheduleChange,
 } from '../api/generated/web-api'
+import type { WorkflowChoice } from '@demicodes/protocol'
 import { isEmptyMessage, joinMessageContent, storedMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { startingChoices, startingWorkflow, type RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
 import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
@@ -211,8 +211,8 @@ export const useConversations = defineStore('conversations', () => {
   const pendingChanges = ref<string[]>([])
   /**
    * The archive or restore of each conversation on its way, which its
-   * opening and its socket's connections wait for: the backend refuses an
-   * archived conversation's socket.
+   * opening and its lane's connections wait for: the backend refuses an
+   * archived conversation's lane.
    */
   const archiving = new Map<string, Promise<void>>()
   /**
@@ -411,7 +411,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.attachedHosts.replace(shown.hosts.hosts, { revisions: { '': shown.hosts.revision } })
   }
 
-  /** Takes `metadata` as a read of the conversation's, as its socket or a read of it brings it. */
+  /** Takes `metadata` as a read of the conversation's, as its lane or a read of it brings it. */
   function takeMetadata(conversation: Conversation, metadata: ConversationMetadata): void {
     conversation.metadata.replace(metadata)
   }
@@ -512,7 +512,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Keeps everything the conversation shows as its archive flag changes:
    *
-   * - Archived, it lets its socket go, which the backend would close.
+   * - Archived, it lets its lane go, which the backend would close.
    * - Brought back, it connects again from the blocks it holds once the restore
    *   lands, or, opened while archived, starts its session then.
    *
@@ -1289,16 +1289,9 @@ export const useConversations = defineStore('conversations', () => {
   /** Conversations whose record this page just created, which their opening does not read back. */
   const madeHere = new Set<string>()
 
-  /** The conversation's socket address. */
-  function streamUrl(id: string): string {
-    const url = new URL(`/api/conversations/${encodeURIComponent(id)}/stream`, window.location.href)
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    return url.toString()
-  }
-
   /**
    * The client's options for the conversation `id`: the reads of what it
-   * follows, and the frames of the conversation itself its socket sends beside
+   * follows, and the frames of the conversation itself its lane sends beside
    * its agents', its metadata, its lists and its draft, which the page decodes
    * against the backend's schema.
    */
@@ -1347,7 +1340,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * What the conversation's client reads, by routes that depend on no socket:
+   * What the conversation's client reads, by routes that depend on no lane:
    * the conversation with its agents and the request output, its saved
    * messages, workflows and draft, and a node's latest page. A read that could
    * not reach the backend is a lost connection, which the client tries again.
@@ -1410,7 +1403,7 @@ export const useConversations = defineStore('conversations', () => {
       return await request()
     } catch (error) {
       if (error instanceof TypeError) {
-        throw new ConversationSocketError(error.message)
+        throw new ConversationLaneError(error.message)
       }
       throw error
     }
@@ -1500,10 +1493,10 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Opens the conversation: it shows at once what the disk keeps of it,
    * its messages, metadata, agents and attachment descriptions, then its
-   * socket's open, after which the page reads the conversation, its saved
+   * lane's open, after which the page reads the conversation, its saved
    * messages, workflows and draft, and each shown node's latest page
-   * (`conversationReader`), and the socket keeps it live. A conversation
-   * the socket opens no session for, archived or without a model, reads its
+   * (`conversationReader`), and the lane keeps it live. A conversation
+   * the lane opens no session for, archived or without a model, reads its
    * metadata and its latest page instead.
    */
   async function loadConversation(
@@ -1541,7 +1534,7 @@ export const useConversations = defineStore('conversations', () => {
         disk = showFromDisk(conversation, signal).catch(() => {})
       }
       // The saved list and the hosts come with the metadata, the disk's now
-      // and the socket's as it arrives.
+      // and the lane's as it arrives.
       followMetadata(conversation)
       if (conversation.archived) {
         await openWithoutSession(conversation, signal)
@@ -1628,7 +1621,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Opens a conversation the socket opens no session for, archived or
+   * Opens a conversation the lane opens no session for, archived or
    * without a model: its metadata and agents, and its latest page, read
    * together; the opening stops at its first step.
    */
@@ -1718,11 +1711,11 @@ export const useConversations = defineStore('conversations', () => {
     }
     // A conversation that shows its transcript before its session, one this
     // page made or one restored from the archive, stays shown while its
-    // socket connects, even with no block yet.
+    // lane connects, even with no block yet.
     const shownBefore = conversation.load === 'ready'
     const runtime = new ConversationRuntime({
       state: conversation,
-      client: createConversationClient(streamUrl(conversation.id), clientOptions(conversation.id), () => archiving.get(conversation.id)),
+      client: createConversationClient(conversation.id, clientOptions(conversation.id), () => archiving.get(conversation.id)),
       holding: async (attempt) => {
         const waited = new AbortController()
         try {
@@ -1748,7 +1741,7 @@ export const useConversations = defineStore('conversations', () => {
       },
     })
     entry.runtime = runtime
-    // The socket follows the subagents read ahead and the one the Agents
+    // The lane follows the subagents read ahead and the one the Agents
     // window shows, as they join and leave, and the side questions whose
     // cards are open, as they open and fold, for as long as the cache keeps
     // the conversation.
@@ -1872,7 +1865,7 @@ export const useConversations = defineStore('conversations', () => {
    * The subagents the page keeps read and followed: those read ahead, once the
    * session is shown so that the root never waits for them, and the one the
    * Agents window shows, whatever the session does, so that a window that
-   * opens while the socket cannot connect, or after an opening failed, still
+   * opens while the lane cannot connect, or after an opening failed, still
    * reads it.
    */
   function wantedSubagents(conversation: Conversation): string[] {
@@ -1887,7 +1880,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The nodes the conversation's socket follows besides the root: the
+   * The nodes the conversation's lane follows besides the root: the
    * wanted subagents whose disk copies are read, and every side question
    * whose card is open. Derived from the agents' entries; never stored.
    */
@@ -2000,7 +1993,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * How many conversations shown most recently stay open, the one shown among
-   * them: each holds its state and socket in memory, and someone who works in
+   * them: each holds its state and lane in memory, and someone who works in
    * several conversations switches between about this many.
    */
   const KEPT_CONVERSATIONS = 8
@@ -2831,7 +2824,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Opens the conversation's tree again with the plugins the user has on; its
-   * socket is closed and reconnects, and the summary stops offering the reload.
+   * lane is closed and reconnects, and the summary stops offering the reload.
    */
   async function reloadPlugins(conversation: Conversation): Promise<void> {
     try {
@@ -3550,7 +3543,7 @@ export const useConversations = defineStore('conversations', () => {
       if (way === 'message' && conversation.persistence !== 'synced') {
         // The conversation's first message goes with its creation, once its
         // files are uploaded. It stays on its way until the session shows it,
-        // which the socket's opening brings, so the tail row says Requesting
+        // which the lane's opening brings, so the tail row says Requesting
         // throughout.
         const content = await sentFiles()
         await persistConversation(conversation, {
@@ -4092,10 +4085,10 @@ export const useConversations = defineStore('conversations', () => {
       await operation(await runtimeFor(conversation))
       return true
     } catch (error) {
-      if (error instanceof ConversationSocketError) {
-        // The socket dropped before the session answered: the page cannot
+      if (error instanceof ConversationLaneError) {
+        // The lane dropped before the session answered: the page cannot
         // tell whether it got the request, and never sends it again. The drop
-        // itself is reported where the socket was replaced.
+        // itself is reported where the lane was replaced.
         report('failures.connectionLost', t('failures.connectionLost'), error, {
           expected: true,
           message: t('failures.connectionLostMessage'),
@@ -4255,7 +4248,7 @@ export const useConversations = defineStore('conversations', () => {
     watchRecentCost,
     /**
      * Whether the page has, or is opening, a session of the conversation,
-     * whose socket follows the children it reads ahead: none when
+     * whose lane follows the children it reads ahead: none when
      * the opening started none, as for a conversation whose model is gone, or
      * failed.
      */

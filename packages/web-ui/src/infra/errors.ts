@@ -87,7 +87,7 @@ export function showUnexpectedErrors(show: boolean): void {
 
 /**
  * The ID of the backend request `error` came from, which the page shows with it:
- * an answer's, or a refused frame's socket's.
+ * an answer's, or a refused frame's lane's.
  *
  * It is null for a failure the page found itself, and for an answer something in
  * front of the backend gave.

@@ -302,22 +302,22 @@ pub fn own_frame(message: Vec<u8>) -> Vec<u8> {
 /// came.
 ///
 /// It also holds what reports, ahead of a message that could follow a change
-/// on the Host, the changes the backend must know of first ([`Lane::report`]).
+/// on the Host, the changes the backend must know of first ([`Backlog::report`]).
 #[derive(Clone, Default)]
-pub struct Lane(std::sync::Arc<LaneInner>);
+pub struct Backlog(std::sync::Arc<BacklogInner>);
 
 /// What pushes the Host's reports of what changed since its last call.
-pub type Reporter = Box<dyn Fn(&Lane) + Send + Sync>;
+pub type Reporter = Box<dyn Fn(&Backlog) + Send + Sync>;
 
 #[derive(Default)]
-struct LaneInner {
+struct BacklogInner {
     queue: std::sync::Mutex<VecDeque<super::Frame>>,
     pushed: tokio::sync::Notify,
     reporter: std::sync::OnceLock<Reporter>,
 }
 
-impl Lane {
-    /// Sets what [`Lane::report`] runs, once for the lane's life: a second
+impl Backlog {
+    /// Sets what [`Backlog::report`] runs, once for the backlog's life: a second
     /// reporter is dropped.
     pub fn set_reporter(&self, reporter: Reporter) {
         let _ = self.0.reporter.set(reporter);

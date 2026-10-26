@@ -35,7 +35,7 @@
 use std::collections::VecDeque;
 
 use demi_agent_store::SavedVersions;
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     Followed, Held, STORED_EPOCH, ServerFrame, ShellStatus, TranscriptPatch, Version,
 };
 use demi_agent_tools::HostResolver;

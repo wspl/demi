@@ -51,7 +51,7 @@
 //! - A message counts as received once its end handled it, so one read and then
 //!   dropped as the connection ended is written again.
 //! - What waits while the other end is gone depends on the message. A call's
-//!   messages wait in a lane for the next connection. A command's output,
+//!   messages wait in a backlog for the next connection. A command's output,
 //!   previews, file changes and the Host's log lines are not queued, as the next
 //!   connection reads what it needs from the Host's kept output
 //!   (`crates/runner/src/connection/kept.rs`); sent again, a message of output
@@ -127,7 +127,7 @@ pub use pipe_frames::{
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 pub use session::{
-    ACK_DELAY, Carriage, Lane, NUMBERED_HEAD_BYTES, Read, Reporter, Session, SessionError, own_frame,
+    ACK_DELAY, Carriage, Backlog, NUMBERED_HEAD_BYTES, Read, Reporter, Session, SessionError, own_frame,
 };
 pub use write_watch::{Watched, WriteProgress};
 

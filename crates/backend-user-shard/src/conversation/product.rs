@@ -16,7 +16,7 @@ use demi_agent_tools::{
     ProfileEdit, ProfileModel, SubagentSettings, SubagentSource, Toolset, ToolsetSource,
     runs_on as job_model,
 };
-use demi_conversation_socket_protocol::{CacheChart, JobModel};
+use demi_conversation_lane_protocol::{CacheChart, JobModel};
 use demi_shared_types::{ModelSelection, NodeId, PictureFailure, WorkflowChoice};
 
 use super::runs_on::runs_on;

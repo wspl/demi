@@ -2,7 +2,7 @@
 //!
 //! Each error block with a failure record is read by the provider its model
 //! selection names, and the facts travel beside the blocks, never stored. The
-//! conversation socket's transcript frames and the history route both read them
+//! conversation lane's transcript frames and the history route both read them
 //! here.
 //!
 //! Three kinds of fact need more than the provider's own reading:
@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use demi_conversation_socket_protocol::Failures;
+use demi_conversation_lane_protocol::Failures;
 use demi_provider_common::Provider;
 use demi_provider_common::ErrorCode;
 use demi_shared_types::{

@@ -36,8 +36,8 @@
 //!
 //! A page cannot hold up shutdown, nor can a Host:
 //!
-//! - A page socket's close waits at most a second for the page to take the
-//!   close frame.
+//! - A page connection's close waits at most a second for the page to take
+//!   the close frame.
 //! - A runner connection's end waits at most five seconds for the work it
 //!   carries.
 

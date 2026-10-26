@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use demi_backend_database::server_log::ServerLog;
 use demi_backend_user_shard::shard::Shards;
-use demi_backend_user_shard::shard::page_socket::open_page_sockets;
+use demi_backend_user_shard::shard::lane::{open_connections, open_lanes};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 /// How often the backend samples itself. A line a minute is 1,440 lines a
@@ -34,7 +34,8 @@ pub(crate) async fn sample(shards: Shards, log: ServerLog) {
             live_trees = census.live_trees,
             live_sessions = census.live_sessions,
             running_turns = census.running_turns,
-            open_sockets = open_page_sockets(),
+            page_connections = open_connections(),
+            lanes = open_lanes(),
             log_queue = log.queued(),
             runners_online = census.runners_online,
             "the backend's resources were sampled"

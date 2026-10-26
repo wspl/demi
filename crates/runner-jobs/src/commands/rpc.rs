@@ -4,7 +4,7 @@
 //! to it; the call itself sends its requests.
 //!
 //! A call outlives the connections it runs on: its messages wait in the
-//! link's lane for the next one, its standard output resumes where the
+//! link's backlog for the next one, its standard output resumes where the
 //! runner got to, and it ends with its exit or with the reason the link's
 //! session ended (`crates/runner/src/connection/link_state.rs`). Its
 //! standard input, when it is a pipe, is cut with the connection it goes
@@ -52,14 +52,14 @@ pub enum CallEvent {
 
 struct CallTransport<'a> {
     id: &'a str,
-    output: &'a wire::Lane,
+    output: &'a wire::Backlog,
     stop: &'a CancellationToken,
 }
 
 /// Ends a call that did not complete: the backend is told to cancel it.
 struct Pending<'a> {
     id: String,
-    lane: &'a wire::Lane,
+    backlog: &'a wire::Backlog,
     ended: CancellationToken,
     completed: bool,
 }
@@ -75,7 +75,7 @@ impl Drop for Pending<'_> {
         match wire::encode(&wire::Outbound::RpcCancel {
             call_id: self.id.clone(),
         }) {
-            Ok(message) => self.lane.push(message),
+            Ok(message) => self.backlog.push(message),
             Err(error) => {
                 tracing::warn!(event = "reply.encode_failed", what = "rpc_cancel", %error, "a call's cancellation was not encoded");
             }
@@ -153,7 +153,7 @@ pub async fn invoke(
         connected = handle.connected() => connected
             .map_err(|_| ResidentError::failed(io::Error::other(UNREACHABLE)))?,
     };
-    let lane = handle.lane().clone();
+    let backlog = handle.backlog().clone();
     let id = uuid::Uuid::new_v4().simple().to_string();
     let stop = cancel.child_token();
     let _stop_guard = stop.clone().drop_guard();
@@ -165,7 +165,7 @@ pub async fn invoke(
     }
     let mut pending = Pending {
         id: id.clone(),
-        lane: &lane,
+        backlog: &backlog,
         ended: stop.clone(),
         completed: false,
     };
@@ -184,15 +184,15 @@ pub async fn invoke(
     .map_err(ResidentError::failed)?;
     let result = async {
         // What the job changed of the Host's projects goes first, so the
-        // backend knows a worktree the command names (`Lane::report`).
-        lane.report();
-        lane.push(message);
+        // backend knows a worktree the command names (`Backlog::report`).
+        backlog.report();
+        backlog.push(message);
         if !request.live {
-            lane.push(stdin_end(&id)?);
+            backlog.push(stdin_end(&id)?);
         }
         let transport = CallTransport {
             id: &id,
-            output: &lane,
+            output: &backlog,
             stop: &stop,
         };
         exchange(pipes, &request, receiver, input, output, &transport).await
@@ -312,7 +312,7 @@ async fn exchange(
 /// a failure to write the output ends it here.
 async fn download(
     pipes: &PipeClient,
-    connection: &wire::Lane,
+    connection: &wire::Backlog,
     stop: &CancellationToken,
     output: &mut CommandOutput<'_>,
     reference: &PipeRef,
@@ -393,7 +393,7 @@ async fn send_input(
 }
 
 fn report(
-    output: &wire::Lane,
+    output: &wire::Backlog,
     reference: &PipeRef,
     result: &io::Result<()>,
 ) -> Result<(), ResidentError> {

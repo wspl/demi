@@ -16,7 +16,7 @@
 //! - The link's session outlives the connection ([`LinkState`]): the writer
 //!   numbers each message where it writes it and keeps it until the backend
 //!   confirms it, and after the hello is answered it writes again what the
-//!   backend did not receive. The messages of calls wait in a lane that
+//!   backend did not receive. The messages of calls wait in a backlog that
 //!   outlives the transport, the rest in the transport's queues, which end
 //!   with it.
 
@@ -176,7 +176,7 @@ impl Transport {
         let (control, mut controls) = mpsc::unbounded_channel::<Frame>();
         let (log, mut logs) = mpsc::channel::<Frame>(LOG_QUEUE);
         let (incoming, input) = mpsc::unbounded_channel();
-        let lane = link.lane().clone();
+        let backlog = link.backlog().clone();
         let (opened, _) = watch::channel(false);
         let stopped = cancel.clone();
         let owner = tokio::spawn(async move {
@@ -330,7 +330,7 @@ impl Transport {
                             }
                             message
                         }
-                        message = lane.next(), if phase == Phase::Open => message,
+                        message = backlog.next(), if phase == Phase::Open => message,
                         Some(message) = outgoing.recv(), if phase == Phase::Open => message,
                         Some(message) = logs.recv(), if phase == Phase::Open => message,
                         else => break,

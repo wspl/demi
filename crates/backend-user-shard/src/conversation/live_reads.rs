@@ -9,7 +9,7 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, Transcript};
-use demi_conversation_socket_protocol::{CacheChart, ShellStatus, index_u32};
+use demi_conversation_lane_protocol::{CacheChart, ShellStatus, index_u32};
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::conversations::TranscriptPage;
 use demi_web_api_protocol::ids::ConversationId;

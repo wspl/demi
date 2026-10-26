@@ -15,7 +15,7 @@ use demi_shared_types::{
 };
 use futures_util::future::LocalBoxFuture;
 
-use demi_conversation_socket_protocol::Versions;
+use demi_conversation_lane_protocol::Versions;
 
 use crate::{
     AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, EarlierRows, Kind, NodeClose,

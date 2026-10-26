@@ -58,7 +58,7 @@ use std::{
     rc::Rc,
 };
 
-use demi_conversation_socket_protocol::{JobModel, JobPhase, Subagent, TurnSpeed, Versions};
+use demi_conversation_lane_protocol::{JobModel, JobPhase, Subagent, TurnSpeed, Versions};
 use demi_host_interface::{CommandMedium, Seen, UnsentStart, WholeOutput};
 use demi_shared_types::{
     AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
@@ -371,7 +371,7 @@ pub enum StoreError {
 }
 
 /// The versions of a tree's stored state, at the epoch
-/// [`STORED_EPOCH`](demi_conversation_socket_protocol::STORED_EPOCH): they
+/// [`STORED_EPOCH`](demi_conversation_lane_protocol::STORED_EPOCH): they
 /// change with every save that changes what the value shows, so a page that
 /// holds one knows whether what it read is what the store holds now.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

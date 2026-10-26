@@ -28,7 +28,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::str::FromStr;
 
-use demi_conversation_socket_protocol::{AttachmentSourceDto, ConversationAttachment};
+use demi_conversation_lane_protocol::{AttachmentSourceDto, ConversationAttachment};
 
 use demi_shared_types::{BlobRef, NodeId, PixelSize};
 use demi_web_api_protocol::ids::DeviceId;

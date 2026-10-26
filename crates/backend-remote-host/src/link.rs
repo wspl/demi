@@ -19,7 +19,7 @@
 //! ([`DeviceSession`]). The driver numbers each message where it writes it,
 //! keeps it until the runner confirms it, and a connection that replaces
 //! another begins by writing again what the runner did not receive. The
-//! messages of the device's calls wait in the session's lane, which the
+//! messages of the device's calls wait in the session's backlog, which the
 //! driver writes between control and input; the calls themselves belong to
 //! the session, so the end of a connection stops none of them.
 //!
@@ -400,7 +400,7 @@ struct State {
     /// each.
     direct_streams: HashMap<String, DirectStream>,
     /// Where what the runner says of each peer goes: to the page's
-    /// signaling socket, by the peer's id.
+    /// signaling lane, by the peer's id.
     direct_peers: HashMap<String, mpsc::UnboundedSender<PeerEvent>>,
 }
 
@@ -1200,7 +1200,7 @@ impl Link {
     }
 
     /// What the runner says of peer `peer` from now on, its candidates and
-    /// its answers to the page's probes, until the page's signaling socket
+    /// its answers to the page's probes, until the page's signaling lane
     /// closes.
     pub fn direct_peer(&self, peer: &str) -> mpsc::UnboundedReceiver<PeerEvent> {
         let (said, events) = mpsc::unbounded_channel();
@@ -1237,7 +1237,7 @@ impl Link {
         });
     }
 
-    /// The page's signaling socket of peer `peer` closed: nothing the
+    /// The page's signaling lane of peer `peer` closed: nothing the
     /// runner says of the peer has anywhere to go.
     pub fn direct_forget(&self, peer: &str) {
         self.0.state.borrow_mut().direct_peers.remove(peer);

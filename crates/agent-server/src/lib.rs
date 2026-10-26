@@ -4,11 +4,11 @@
 //! [`Node`]s each run an [`AgentSession`](demi_agent_session::AgentSession)
 //! with the standard tools (`demi_agent_tools`), and save their checkpoints
 //! through the tree store (`demi_agent_store`). A [`Connection`] handles the
-//! decoded frames of one conversation socket, which the backend owns.
+//! decoded frames of one conversation lane, which the backend owns.
 //!
 //! ```text
 //! web app (ConversationClient)    backend: the user's shard           Host
-//!   send ---------------------->  conversation socket
+//!   send ---------------------->  conversation lane
 //!                                   -> Connection -> Tree -> root Node
 //!                                        provider request;
 //!                                        tool call ------------------> runner
@@ -51,7 +51,7 @@
 //!
 //! - depends on no concrete provider, Host implementation or user interface;
 //! - owns no shell interpreter;
-//! - owns no socket: the backend owns the conversation socket and hands the
+//! - owns no socket: the backend owns the conversation lane and hands the
 //!   server decoded frames.
 
 mod node;

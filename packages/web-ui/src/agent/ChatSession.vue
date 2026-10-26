@@ -89,7 +89,7 @@ const props = withDefaults(defineProps<{
   hasProvider: boolean
   /**
    * Whether the page does not hold what the conversation's session says now
-   * though it shows the conversation: its opening goes on, or its socket
+   * though it shows the conversation: its opening goes on, or its lane
    * reads the root's transcript again.
    */
   catchingUp?: boolean
@@ -181,7 +181,7 @@ const props = withDefaults(defineProps<{
    */
   readSubagentLatest?: (id: string) => Promise<void>
   /**
-   * Whether the page has, or is opening, a session whose socket follows the
+   * Whether the page has, or is opening, a session whose lane follows the
    * children the panel shows and those read ahead, so that the panel reads
    * none itself.
    */
@@ -506,7 +506,7 @@ function titleSheetEntries(listed: { pinned: boolean }) {
 
 /**
  * The page has been behind the conversation's session for `CATCH_UP_WAIT_MS`:
- * its socket is not open, or the root's transcript is read again. A spinner
+ * its lane is not open, or the root's transcript is read again. A spinner
  * over the transcript's end, where what it waits for will appear, says so,
  * unless a dock window covers that end.
  */

@@ -10,7 +10,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::drafts::{DraftRefusal, StagedFile};
 use demi_backend_page_sync::Part;
-use demi_conversation_socket_protocol::ClientContent;
+use demi_conversation_lane_protocol::ClientContent;
 use demi_web_api_protocol::drafts::{
     ATTACHMENT_MARK, DraftAnswer, DraftSave, DraftWritten,
 };

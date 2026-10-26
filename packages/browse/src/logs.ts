@@ -2,6 +2,10 @@
 // attached to the browser (browse.md § What `demi` adds), kept in the server so that
 // `demi.log` finds what happened before anyone asked.
 //
+// The page connection's frames (`crates/web-api-protocol/src/connection.rs`) are told
+// by their lane, as `sent lane 3 conversation c-1 open`, so a check reads what each
+// part of the page said as it read each socket's before.
+//
 // A page that reaches a runner over a direct channel (`crates/runner-direct/src/lib.rs`)
 // runs its file operations and its file watch on data channels, which no network event
 // shows. A script in the page tells the console about them, and they are kept with the
@@ -12,6 +16,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { BrowserContext, Page, Request, WebSocket } from 'playwright'
 import { z } from 'zod'
+import { BINARY_FLAG, CLOSE_FRAME, CONNECTION_FRAME, CREDIT_FRAME, DATA_FRAME, MORE_FLAG, OPENED_FRAME, OPEN_FRAME, REFUSED_FRAME } from '@demicodes/protocol'
 
 export const LOG_KINDS = ['console', 'network', 'sockets'] as const
 export type LogKind = typeof LOG_KINDS[number]
@@ -195,6 +200,14 @@ export class Logs {
     const url = new URL(socket.url())
     const name = url.pathname + url.search
     this.add('sockets', `open ${name}`)
+    if (url.pathname.endsWith('/api/connect')) {
+      const lanes = new Map<number, string>()
+      socket.on('framesent', (frame) => this.add('sockets', `sent ${laneFrameText(frame.payload, lanes)}`))
+      socket.on('framereceived', (frame) => this.add('sockets', `received ${laneFrameText(frame.payload, lanes)}`))
+      socket.on('socketerror', (error) => this.add('sockets', `error ${name} ${error}`))
+      socket.on('close', () => this.add('sockets', `closed ${name}`))
+      return
+    }
     socket.on('framesent', (frame) => this.add('sockets', `sent ${name} ${frameText(frame.payload)}`))
     socket.on('framereceived', (frame) => this.add('sockets', `received ${name} ${frameText(frame.payload)}`))
     socket.on('socketerror', (error) => this.add('sockets', `error ${name} ${error}`))
@@ -285,6 +298,56 @@ export function recordDirectChannels(mark: string): void {
       }
     })
     return channel
+  }
+}
+
+/**
+ * A page connection frame as a line: the connection's own JSON, or the lane's number
+ * and what it carries, named by its open's target, which `lanes` keeps by number.
+ */
+function laneFrameText(payload: string | Buffer, lanes: Map<number, string>): string {
+  if (typeof payload === 'string' || payload.length === 0) {
+    return `connection ${frameText(payload)}`
+  }
+  const kind = payload[0]
+  if (kind === CONNECTION_FRAME) {
+    return `connection ${frameText(payload.subarray(1).toString('utf8'))}`
+  }
+  if (payload.length < 5) {
+    return `connection ${frameText(payload)}`
+  }
+  const lane = payload.readUInt32BE(1)
+  const body = payload.subarray(5)
+  if (kind === OPEN_FRAME) {
+    const target = body.toString('utf8')
+    let named = target
+    try {
+      const value = JSON.parse(target) as Record<string, string>
+      named = Object.values(value).join(' ')
+    } catch {
+      // A target that is not JSON is told as it came.
+    }
+    lanes.set(lane, named)
+    return `lane ${lane} ${named} open`
+  }
+  const named = `lane ${lane} ${lanes.get(lane) ?? '?'}`
+  switch (kind) {
+    case OPENED_FRAME:
+      return `${named} opened`
+    case REFUSED_FRAME:
+      return `${named} refused ${frameText(body.toString('utf8'))}`
+    case CLOSE_FRAME:
+      return `${named} close ${body.length >= 2 ? body.readUInt16BE(0) : ''} ${body.subarray(2).toString('utf8')}`
+    case CREDIT_FRAME:
+      return `${named} credit ${body.length >= 2 ? body.readUInt16BE(0) : ''}`
+    case DATA_FRAME: {
+      const flags = body[0] ?? 0
+      const piece = body.subarray(1)
+      const more = (flags & MORE_FLAG) !== 0 ? ' (more follows)' : ''
+      return (flags & BINARY_FLAG) !== 0 ? `${named} <${piece.length} bytes>${more}` : `${named} ${frameText(piece.toString('utf8'))}${more}`
+    }
+    default:
+      return `${named} kind ${kind} ${frameText(body)}`
   }
 }
 

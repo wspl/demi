@@ -12,7 +12,7 @@ import GalleryComposer from './GalleryComposer.vue'
  * A conversation the page opens again from its copy while its session went
  * on: the spinner over the transcript's end says the page is behind until
  * what the session did since joins it. Switch Back reads it again; Lose the
- * Connection drops its socket for four seconds.
+ * Connection drops its lane for four seconds.
  */
 const flow = useTurnFlow({ id: 'gallery-catching-up', title: 'Login test', cwd: WORKSPACE_ROOT, blocks: transcriptDemoBlocks() })
 const session = flow.state

@@ -134,7 +134,7 @@ const step = computed(() => {
         List the Agents
       </Button>
       <Button v-if="session.load === 'opening'" size="sm" variant="ghost" @click="session.load = 'connecting'">
-        Lose the Socket
+        Lose the Connection
       </Button>
       <Button v-if="session.load !== 'loading'" size="sm" variant="ghost" @click="startOver">Start Over</Button>
     </div>
