@@ -1299,6 +1299,11 @@ export const useConversations = defineStore('conversations', () => {
     return {
       reader: conversationReader(id),
       logged: (event, fields) => pageLog.info(event, fields, id),
+      shows: (node) => {
+        const conversation = items.value.find((item) => item.id === id)
+        return product.activeConversationId === id && conversation !== undefined
+          && (node === null || node === id || conversation.shownSubagent === node || sideNodes(conversation).includes(node))
+      },
       unapplied: (node, reason) => {
         // A change the page could not apply goes to the server's log, as the
         // page reads what it follows again.

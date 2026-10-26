@@ -96,6 +96,13 @@ export class SessionError extends Error {
   }
 }
 
+/**
+ * The longest a read again of what the page does not show waits after a
+ * stale version, at random, so that the pages a backend's restart tells at
+ * once spread their reads.
+ */
+const STALE_SPREAD_MS = 2_000
+
 /** How long a confirmation may take before its wait gives up. */
 const CONFIRMATION_MS = 30_000
 
@@ -236,11 +243,13 @@ export interface ConversationClientOptions {
    */
   logged?: (event: string, fields: Record<string, string | number | boolean | null>) => void
   /**
-   * How long a read again waits after the backend told it a version is
-   * stale, in milliseconds: a random time of up to two seconds by default, so
-   * that pages told at once do not read at once.
+   * Whether the page shows `node` now, null for the conversation's agents.
+   * A read again that the backend asks for by telling a version is stale
+   * starts at once for what the page shows, and after a random wait of up
+   * to `STALE_SPREAD_MS` for the rest, so that the pages a backend's restart
+   * tells at once do not read at once. Nothing is shown by default.
    */
-  staleDelayMs?: () => number
+  shows?: (node: string | null) => boolean
 }
 
 /** What a client that opens again holds already, as a page shows it from a copy on disk. */
@@ -311,7 +320,7 @@ export class ConversationClient {
   private readonly reader: ConversationReader | null
   private readonly unapplied: (node: string | null, reason: 'gap' | 'epoch') => void
   private readonly logged: (event: string, fields: Record<string, string | number | boolean | null>) => void
-  private readonly staleDelayMs: () => number
+  private readonly shows: (node: string | null) => boolean
   /** The root's node, the conversation's id; null before `open`. */
   private root: string | null = null
   private queue: QueuedMessage[] = []
@@ -326,7 +335,7 @@ export class ConversationClient {
     this.reader = options.reader ?? null
     this.unapplied = options.unapplied ?? (() => {})
     this.logged = options.logged ?? (() => {})
-    this.staleDelayMs = options.staleDelayMs ?? (() => Math.random() * 2_000)
+    this.shows = options.shows ?? (() => false)
   }
 
   /**
@@ -419,10 +428,18 @@ export class ConversationClient {
       const draft = this.draft
       const opening = { type: 'open' as const, ...(draft === undefined ? {} : { draft }), ...this.followsOf() }
       this.logged('lane.followed', { values: opening.follows?.length ?? 0, nodes: this.subscriptions.size })
-      await this.request(
-        opening,
-        (event) => (event.type === 'opened' ? { resolve: undefined } : this.failure(event, 'open')),
-      )
+      // The transport may come before its lane opened: an attempt that ends
+      // while the open waits ends the connection, which rejects the wait.
+      const abandoned = () => this.disconnect(asError(ended.signal.reason))
+      ended.signal.addEventListener('abort', abandoned, { once: true })
+      try {
+        await this.request(
+          opening,
+          (event) => (event.type === 'opened' ? { resolve: undefined } : this.failure(event, 'open')),
+        )
+      } finally {
+        ended.signal.removeEventListener('abort', abandoned)
+      }
     } finally {
       signal?.removeEventListener('abort', end)
       this.detached.signal.removeEventListener('abort', end)
@@ -1300,11 +1317,16 @@ export class ConversationClient {
    * version it names when the connection is open. A failed read is tried
    * again after a wait, unless the open asks it once, which fails with it.
    */
+  /** How long a read again of `node` that a stale version asks for waits first. */
+  private staleDelay(node: string | null): number {
+    return this.shows(node) ? 0 : Math.random() * STALE_SPREAD_MS
+  }
+
   private async readConversation(retrying: boolean, staled = false): Promise<void> {
     const reader = this.reader!
     this.agentsReading = true
     if (staled) {
-      await this.sleep(this.staleDelayMs())
+      await this.sleep(this.staleDelay(null))
     }
     for (let failures = 0; ; ) {
       if (this.disposed) {
@@ -1517,7 +1539,7 @@ export class ConversationClient {
       const reader = this.reader!
       const live = () => !this.disposed && this.subscriptions.get(node) === subscription
       if (staled) {
-        await this.sleep(this.staleDelayMs())
+        await this.sleep(this.staleDelay(node))
       }
       for (let failures = 0; ; ) {
         if (!live()) {

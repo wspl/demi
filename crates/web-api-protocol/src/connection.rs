@@ -24,6 +24,11 @@
 //! Numbers are big-endian. The page numbers its lanes from 1 in each
 //! connection and never uses a number twice in it, so a message of a lane
 //! that has closed is dropped instead of reaching a lane opened after it.
+//!
+//! A lane's messages may follow its `open` at once, as a stream's data
+//! follows its headers in HTTP/2: the backend holds them, within the lane's
+//! credit, until it answers the open, hands them to the lane's owner first
+//! once it opens, and drops them if it refuses it.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

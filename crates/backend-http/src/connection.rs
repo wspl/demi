@@ -16,6 +16,10 @@
 //!   the session as it is now, and is refused with the status and error that
 //!   route answered; an account still to choose its password opens only the
 //!   synchronization channel. One open never waits for another.
+//! - The page sends a lane's messages behind its open without waiting for
+//!   `opened`: what comes while the open is checked is held, within the
+//!   lane's credit, and its owner takes it first once the lane opens; a
+//!   refused open drops it.
 //! - An opened lane is served by its owner: the user's shard serves the
 //!   synchronization channel and a conversation's lane, the edge the rest.
 //! - The writer writes the connection's own messages and every lane's
@@ -204,8 +208,52 @@ impl Ending {
 /// A lane of the connection, as the reader holds it.
 enum Slot {
     /// Its open is being checked, by this task.
-    Opening(AbortHandle),
+    Opening(Opening),
     Open(OpenLane),
+}
+
+/// A lane whose open is being checked, and what the page sent on it
+/// meanwhile, which its owner takes first once it opens.
+struct Opening {
+    task: AbortHandle,
+    /// The whole messages the page sent, each with whether it is binary.
+    messages: Vec<(bool, Bytes)>,
+    /// The message whose pieces are still coming, with whether it is binary.
+    assembling: Option<(bool, Vec<u8>)>,
+    /// Why the lane closes once it opens: the page sent past its credit or a
+    /// message larger than one may be, and what followed was not kept.
+    overrun: Option<(u16, &'static str)>,
+}
+
+impl Opening {
+    /// Keeps a piece the page sent before the open was answered, put
+    /// together into its message, within what an open lane would take: at
+    /// most the lane's credit of messages, each at most
+    /// `MAX_PAGE_MESSAGE_BYTES`, so a page holds no more here than once the
+    /// lane opens.
+    fn hold(&mut self, flags: u8, piece: Bytes) {
+        if self.overrun.is_some() {
+            return;
+        }
+        if self.messages.len() >= usize::from(LANE_CREDIT) {
+            self.overrun = Some((close_code::POLICY, "credit_exceeded"));
+            return;
+        }
+        let (binary, mut whole) = self
+            .assembling
+            .take()
+            .unwrap_or_else(|| (flags & BINARY_FLAG != 0, Vec::new()));
+        if whole.len() + piece.len() > MAX_PAGE_MESSAGE_BYTES {
+            self.overrun = Some((close_code::SIZE, "message_too_big"));
+            return;
+        }
+        whole.extend_from_slice(&piece);
+        if flags & MORE_FLAG == 0 {
+            self.messages.push((binary, Bytes::from(whole)));
+        } else {
+            self.assembling = Some((binary, whole));
+        }
+    }
 }
 
 struct OpenLane {
@@ -345,8 +393,8 @@ async fn serve(
     let (opened, refused) = (connection.opened, connection.refused);
     // The opens still checked stop; each owner hears the end of its lane.
     for slot in connection.lanes.into_values() {
-        if let Slot::Opening(task) = slot {
-            task.abort();
+        if let Slot::Opening(opening) = slot {
+            opening.task.abort();
         }
     }
     let close = ending.close();
@@ -498,7 +546,15 @@ impl Connection {
             })
             .instrument(span),
         );
-        self.lanes.insert(lane, Slot::Opening(task.abort_handle()));
+        self.lanes.insert(
+            lane,
+            Slot::Opening(Opening {
+                task: task.abort_handle(),
+                messages: Vec::new(),
+                assembling: None,
+                overrun: None,
+            }),
+        );
         Ok(())
     }
 
@@ -512,13 +568,12 @@ impl Connection {
             span,
             opened,
         } = answer;
-        if !matches!(self.lanes.get(&lane), Some(Slot::Opening(_))) {
+        let Some(Slot::Opening(opening)) = self.lanes.remove(&lane) else {
             return;
-        }
+        };
         let opened = match opened {
             Ok(opened) => opened,
             Err(refusal) => {
-                self.lanes.remove(&lane);
                 self.refused += 1;
                 self.write(Write::Control(json_frame(REFUSED_FRAME, lane, &refusal)));
                 return;
@@ -548,13 +603,24 @@ impl Connection {
         // Ahead of anything the owner sends, which comes through this task.
         self.write(Write::Control(lane_frame(OPENED_FRAME, lane, &[])));
         tokio::spawn((opened.serve)(owner, reader).instrument(span));
+        // What the page sent while the open was checked, ahead of what it
+        // sends next, as an open lane takes it.
+        for (binary, message) in opening.messages {
+            let _ = self.data(lane, if binary { BINARY_FLAG } else { 0 }, message);
+        }
+        if let Some((code, reason)) = opening.overrun {
+            self.close_lane(lane, code, reason);
+        }
     }
 
     /// Takes a piece of a message of `lane`'s.
     fn data(&mut self, lane: u32, flags: u8, piece: Bytes) -> Result<(), Ending> {
         let open = match self.lanes.get_mut(&lane) {
             Some(Slot::Open(open)) => open,
-            Some(Slot::Opening(_)) => return Err(Ending::Protocol("data before the lane opened")),
+            Some(Slot::Opening(opening)) => {
+                opening.hold(flags, piece);
+                return Ok(());
+            }
             // A message for a lane that ended meanwhile goes nowhere.
             None if lane <= self.last_lane => return Ok(()),
             None => return Err(Ending::Protocol("data for a lane never opened")),
@@ -621,8 +687,8 @@ impl Connection {
     /// lane's owner hears the close and nothing more of it is written.
     fn page_closed(&mut self, lane: u32, code: u16, reason: String) -> Result<(), Ending> {
         match self.lanes.get_mut(&lane) {
-            Some(Slot::Opening(task)) => {
-                task.abort();
+            Some(Slot::Opening(opening)) => {
+                opening.task.abort();
                 self.lanes.remove(&lane);
             }
             Some(Slot::Open(open)) => {
