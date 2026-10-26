@@ -306,6 +306,12 @@ function configure(state) {
 // Encode only while the viewers' windows have room for it: the module says how
 // many frames past the newest they had may come, and a picture that comes
 // meanwhile replaces the one waiting. A frame in the encoder counts as sent.
+//
+// In real time the encoder may drop a picture to keep its bit rate, and says
+// nothing of it: a hardware encoder at a low rate drops most pictures for a
+// second after a key frame. A flush after each picture tells a dropped one,
+// which is coded again, so a picture the page changed to is never lost and a
+// frame that will never come never holds the window.
 function encode(state) {
   if (!state.latest || state.sequence + state.encoding - state.ack >= state.window) return;
   if (socket.bufferedAmount > 1024 * 1024) return;
@@ -315,7 +321,6 @@ function encode(state) {
     state.encoder = new VideoEncoder({
       output(chunk) {
         if (captures.get(state.id) !== state) return;
-        state.encoding--;
         socket.send(pack(chunk, state));
       },
       error(error) {
@@ -340,7 +345,8 @@ function encode(state) {
   const timestamp = Math.round(performance.now() * 1000);
   state.sides.set(timestamp, { width, height });
   // Only a picture that neither changed nor is a key frame answers a repeat.
-  if (!state.dirty && !state.force) state.repeats.add(timestamp);
+  const asked = { force: state.force, dirty: state.dirty, repeat: !state.dirty && !state.force };
+  if (asked.repeat) state.repeats.add(timestamp);
   const frame = new VideoFrame(state.latest, {
     timestamp,
     visibleRect: {
@@ -358,6 +364,15 @@ function encode(state) {
   } finally {
     frame.close();
   }
+  // `pack` takes the picture's sides once the encoder gives the picture.
+  void state.encoder.flush().catch(() => {}).then(() => {
+    state.encoding--;
+    if (!state.sides.delete(timestamp)) return;
+    state.repeats.delete(timestamp);
+    state.force ||= asked.force;
+    state.dirty ||= asked.dirty;
+    state.repeat ||= asked.repeat;
+  });
   state.force = false;
   state.dirty = false;
   state.repeat = false;
