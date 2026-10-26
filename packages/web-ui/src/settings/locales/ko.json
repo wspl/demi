@@ -334,7 +334,8 @@
       "restartKeywords": "재시작,업데이트,계속",
       "retryKeywords": "사용량 한도,할당량,재설정",
       "compactIdleKeywords": "압축,프롬프트 캐시,유휴,요약",
-      "idleLifetimeKeywords": "프롬프트 캐시,유지 시간,TTL"
+      "idleLifetimeKeywords": "프롬프트 캐시,유지 시간,TTL",
+      "idleContextKeywords": "컨텍스트,토큰,임계값,최소"
     },
     "providers": {
       "keywords": "모델,API 키,anthropic,openai,claude code,codex,기본 URL,카탈로그"

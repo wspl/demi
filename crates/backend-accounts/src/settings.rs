@@ -112,6 +112,9 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     preferences.idle_compaction_lifetime = patch
         .idle_compaction_lifetime
         .or(preferences.idle_compaction_lifetime);
+    preferences.idle_compaction_context = patch
+        .idle_compaction_context
+        .or(preferences.idle_compaction_context);
     preferences.show_unexpected_errors = patch.show_unexpected_errors.or(preferences.show_unexpected_errors);
     preferences.multi_account_warned = patch.multi_account_warned.or(preferences.multi_account_warned);
     if let Some(hidden) = patch.hidden_providers {

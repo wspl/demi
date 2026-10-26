@@ -99,6 +99,7 @@ export function settingsSections(): SettingsNavGroup[] {
             { label: uiText('settings.agent.resumeAtRetry'), keywords: words(t('sections.agentPage.retryKeywords')) },
             { label: uiText('settings.agent.compactIdle'), keywords: words(t('sections.agentPage.compactIdleKeywords')) },
             { label: uiText('settings.agent.idleLifetime'), keywords: words(t('sections.agentPage.idleLifetimeKeywords')) },
+            { label: uiText('settings.agent.idleContext'), keywords: words(t('sections.agentPage.idleContextKeywords')) },
           ],
         },
         {

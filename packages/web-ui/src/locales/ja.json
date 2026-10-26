@@ -41,6 +41,9 @@
       "compactIdleDescription": "長い会話のプロンプトキャッシュが期限切れになる直前に会話を要約し、次のメッセージで全体を再送信せずに済むようにします。",
       "idleLifetime": "キャッシュの最短保持期間",
       "idleLifetimeDescription": "プロバイダーがキャッシュをこの期間以上保持する会話だけを圧縮します。",
+      "idleContext": "最小コンテキストサイズ",
+      "idleContextDescription": "コンテキストがこの値以上の会話だけを圧縮します。",
+      "idleContextFloor": "{floor} 以上を入力してください。",
       "halfHour": "30 分",
       "hour": "1 時間"
     }

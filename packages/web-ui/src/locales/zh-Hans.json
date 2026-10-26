@@ -41,6 +41,9 @@
       "compactIdleDescription": "长对话的提示缓存即将过期前，先为它生成摘要，这样你的下一条消息就不必重新发送全部内容。",
       "idleLifetime": "最短缓存有效期",
       "idleLifetimeDescription": "只压缩供应商缓存保留时间不短于此值的对话。",
+      "idleContext": "最小上下文长度",
+      "idleContextDescription": "只压缩上下文不少于此值的对话。",
+      "idleContextFloor": "请输入不小于 {floor} 的值。",
       "halfHour": "30 分钟",
       "hour": "1 小时"
     }

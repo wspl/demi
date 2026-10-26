@@ -18,12 +18,13 @@ use super::control::ControlService;
 
 const TABLE: &str = "idle_compactions";
 
-/// When a conversation's root compacts while idle, and the lifetime of the
-/// cache that time comes from.
+/// When a conversation's root compacts while idle, the lifetime of the
+/// cache that time comes from, and the tokens its request carried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IdleCompaction {
     pub due_at: Timestamp,
     pub lifetime: Duration,
+    pub carried: u64,
 }
 
 impl ControlService {
@@ -38,12 +39,14 @@ impl ControlService {
             match due {
                 Some(due) => {
                     let lifetime_ms = i64::try_from(due.lifetime.as_millis()).unwrap_or(i64::MAX);
+                    let carried = i64::try_from(due.carried).unwrap_or(i64::MAX);
                     connection.execute(
-                        "INSERT INTO idle_compactions (conversation_id, due_at, lifetime_ms)
-                           SELECT id, ?2, ?3 FROM conversations WHERE id = ?1
+                        "INSERT INTO idle_compactions (conversation_id, due_at, lifetime_ms, carried)
+                           SELECT id, ?2, ?3, ?4 FROM conversations WHERE id = ?1
                            ON CONFLICT (conversation_id)
-                           DO UPDATE SET due_at = excluded.due_at, lifetime_ms = excluded.lifetime_ms",
-                        rusqlite::params![conversation.as_str(), due.due_at.as_millisecond(), lifetime_ms],
+                           DO UPDATE SET due_at = excluded.due_at, lifetime_ms = excluded.lifetime_ms,
+                             carried = excluded.carried",
+                        rusqlite::params![conversation.as_str(), due.due_at.as_millisecond(), lifetime_ms, carried],
                     )?;
                 }
                 None => {
@@ -83,7 +86,7 @@ impl ControlService {
     ) -> Result<Vec<(ConversationId, IdleCompaction)>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(
-                "SELECT idle_compactions.conversation_id, due_at, lifetime_ms FROM idle_compactions
+                "SELECT idle_compactions.conversation_id, due_at, lifetime_ms, carried FROM idle_compactions
                    JOIN conversations ON conversations.id = idle_compactions.conversation_id
                    WHERE conversations.user_id = ?1
                    ORDER BY due_at",
@@ -104,7 +107,7 @@ impl ControlService {
         self.call(move |connection, _| {
             connection
                 .query_row(
-                    "SELECT due_at, lifetime_ms FROM idle_compactions WHERE conversation_id = ?1",
+                    "SELECT due_at, lifetime_ms, carried FROM idle_compactions WHERE conversation_id = ?1",
                     [conversation.as_str()],
                     |row| Ok(read_row(row, 0)),
                 )
@@ -133,13 +136,16 @@ impl ControlService {
     }
 }
 
-/// The time and lifetime of a row whose `due_at` is column `first`.
+/// The time, lifetime and tokens carried of a row whose `due_at` is column
+/// `first`.
 fn read_row(row: &rusqlite::Row<'_>, first: usize) -> Result<IdleCompaction, StorageError> {
     let due_at = decode(TABLE, "due_at", Timestamp::from_millisecond(row.get(first)?))?;
     let lifetime_ms: i64 = row.get(first + 1)?;
     let lifetime = decode(TABLE, "lifetime_ms", u64::try_from(lifetime_ms))?;
+    let carried: i64 = row.get(first + 2)?;
     Ok(IdleCompaction {
         due_at,
         lifetime: Duration::from_millis(lifetime),
+        carried: decode(TABLE, "carried", u64::try_from(carried))?,
     })
 }

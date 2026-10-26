@@ -11,6 +11,8 @@ const props = defineProps<{
   modelValue: number | null
   placeholder?: PlaceholderText
   size?: 'sm' | 'md'
+  /** The field and its unit both take no input. */
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -66,6 +68,7 @@ const otherUnit = computed(() => (unit.value === 'K' ? 'M' : 'K'))
     :model-value="text"
     :placeholder="placeholder"
     :size="size"
+    :disabled="disabled"
     inputmode="decimal"
     @update:model-value="onInput"
   >
@@ -74,6 +77,7 @@ const otherUnit = computed(() => (unit.value === 'K' ? 'M' : 'K'))
         type="button"
         class="h-5 min-w-5 cursor-default select-none rounded px-1 text-caption font-medium tabular-nums text-fg-muted transition-colors duration-200 ease-out hover:bg-hover hover:text-fg phone:h-hit-sm phone:min-w-hit-sm"
         data-drawn-target
+        :disabled="disabled"
         :aria-label="`Unit: ${unit === 'K' ? 'thousand' : 'million'} tokens. Switch to ${otherUnit === 'K' ? 'thousand' : 'million'}`"
         @click="toggleUnit"
       >

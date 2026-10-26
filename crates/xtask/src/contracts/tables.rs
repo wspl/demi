@@ -9,8 +9,8 @@ use std::fmt::Write as _;
 
 use demi_runner_protocol::direct;
 use demi_shared_types::{
-    ATTACHMENT_FILE_EXTENSIONS, CONTEXT_LIMIT_STEPS, HTML_SANDBOX, IMAGE_CONTENT_POLICY, PREVIEW_TYPES,
-    VIDEO_FILE_EXTENSIONS,
+    ATTACHMENT_FILE_EXTENSIONS, CONTEXT_LIMIT_STEPS, HTML_SANDBOX, IDLE_COMPACTION_CONTEXT,
+    IDLE_COMPACTION_CONTEXT_FLOOR, IMAGE_CONTENT_POLICY, PREVIEW_TYPES, VIDEO_FILE_EXTENSIONS,
 };
 
 use super::zod::push_doc;
@@ -97,6 +97,17 @@ pub fn module(header: &str) -> String {
     )
     .expect("writing to a string");
     source.push_str(CONTEXT_LIMIT_LOOKUPS);
+
+    source.push('\n');
+    push_doc(
+        &mut source,
+        Some("The least context, in tokens, of a conversation that compacts while idle,\nuntil the user sets another."),
+        0,
+    );
+    writeln!(source, "export const IDLE_COMPACTION_CONTEXT = {IDLE_COMPACTION_CONTEXT}").expect("writing to a string");
+    push_doc(&mut source, Some("The least the setting takes."), 0);
+    writeln!(source, "export const IDLE_COMPACTION_CONTEXT_FLOOR = {IDLE_COMPACTION_CONTEXT_FLOOR}")
+        .expect("writing to a string");
 
     source.push('\n');
     push_doc(

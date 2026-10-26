@@ -200,7 +200,7 @@ const empty = computed(() => props.profiles.length === 0)
         :label="t('subagents.maxLive')"
         :description="t('subagents.maxLiveDescription')"
       >
-        <template v-if="limitProblems.maxLive" #detail>
+        <template v-if="limitProblems.maxLive" #problem>
           <InlineError :message="limitProblems.maxLive" />
         </template>
         <LimitField
@@ -219,7 +219,7 @@ const empty = computed(() => props.profiles.length === 0)
         :label="t('subagents.maxDepth')"
         :description="t('subagents.maxDepthDescription')"
       >
-        <template v-if="limitProblems.maxDepth" #detail>
+        <template v-if="limitProblems.maxDepth" #problem>
           <InlineError :message="limitProblems.maxDepth" />
         </template>
         <LimitField

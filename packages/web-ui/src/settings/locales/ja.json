@@ -334,7 +334,8 @@
       "restartKeywords": "再起動,アップデート,続行",
       "retryKeywords": "使用量の上限,クォータ,リセット",
       "compactIdleKeywords": "圧縮,プロンプトキャッシュ,アイドル,要約",
-      "idleLifetimeKeywords": "プロンプトキャッシュ,保持期間,TTL"
+      "idleLifetimeKeywords": "プロンプトキャッシュ,保持期間,TTL",
+      "idleContextKeywords": "コンテキスト,トークン,しきい値,最小"
     },
     "providers": {
       "keywords": "モデル,API キー,anthropic,openai,claude code,codex,ベース URL,カタログ"

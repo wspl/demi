@@ -29,6 +29,7 @@ defineProps<{
     v-model:resume-at-retry="galleryMessages.resumeAtRetry"
     v-model:compact-idle="galleryMessages.compactIdle"
     v-model:idle-lifetime="galleryMessages.idleLifetime"
+    v-model:idle-context="galleryMessages.idleContext"
     :overlay-store="appOverlayStore"
     :providers="demoProviders"
     :models="smallModelCatalog"

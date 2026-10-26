@@ -60,6 +60,9 @@ import type { SentenceText } from '../ui/ui-text'
  *   usage bars. It takes a line of its own under the name and the controls at
  *   every width, from the row's start to its end, and the controls then align
  *   with the name's line, as they do beside `detail`.
+ * - The `problem` slot holds what is wrong with the row's value, such as an
+ *   `InlineError`. It takes a line of its own under the row, so the row grows
+ *   when it shows and its controls stay where they were.
  */
 const props = defineProps<{
   label: SentenceText
@@ -205,6 +208,10 @@ const working = provideRowTarget(() => props.target)
       </div>
       <div v-if="below()" class="order-last min-w-0 basis-full" :class="faded ? 'opacity-60' : ''">
         <slot name="below" />
+      </div>
+      <!-- After every other item, on a line of its own: the line above keeps its height and its controls their place. -->
+      <div v-if="$slots.problem" class="order-last -mt-0.5 min-w-0 basis-full">
+        <slot name="problem" />
       </div>
     </div>
     <!-- A square as tall as a one-line row: its mark is as far from the row's end as from its top and

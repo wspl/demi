@@ -334,7 +334,8 @@
       "restartKeywords": "重新啟動,更新,繼續",
       "retryKeywords": "用量限制,額度,重設",
       "compactIdleKeywords": "壓縮,提示快取,閒置,摘要",
-      "idleLifetimeKeywords": "提示快取,有效期,TTL"
+      "idleLifetimeKeywords": "提示快取,有效期,TTL",
+      "idleContextKeywords": "上下文,長度,token,閾值,門檻"
     },
     "providers": {
       "keywords": "模型,API 金鑰,anthropic,openai,claude code,codex,基礎 URL,目錄"

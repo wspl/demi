@@ -133,6 +133,8 @@ impl ReadBlob for NoBlobs {
 ///   account's automations.
 /// - 0.1.5469's, before an entry asked for a prompt cache lifetime, a root
 ///   compacted while idle and the server kept settings of its own.
+/// - 0.1.5541's, which 0.1.5495 to 0.1.5527 shipped too, before an idle
+///   compaction kept the tokens its request carried.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -320,6 +322,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.5469.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_5469),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5541.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_5541),
         },
     ],
 };
@@ -613,7 +619,7 @@ CREATE INDEX saved_messages_of_workspace ON saved_messages (workspace_id, saved_
 ";
 
 /// From 0.1.5469's control schema, a development build's that a server
-/// keeps data of, to the current one:
+/// keeps data of, to 0.1.5541's:
 ///
 /// - An entry asks for a prompt cache lifetime, which an Anthropic entry's
 ///   requests asked an hour for until then, and a root may compact while
@@ -632,6 +638,23 @@ CREATE TABLE server_settings (
   id              INTEGER PRIMARY KEY CHECK (id = 1),
   upgrade_channel TEXT NOT NULL CHECK (upgrade_channel IN ('beta', 'canary'))
 ) STRICT;
+";
+
+/// From 0.1.5541's control schema to the current one: an idle compaction
+/// keeps the tokens its request carried, which the user's minimum context
+/// is compared with. The rows stored before it qualified from 200,000
+/// tokens, the minimum until then.
+const CONTROL_FROM_0_1_5541: &str = "
+CREATE TABLE idle_compactions_next (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  due_at          INTEGER NOT NULL,
+  lifetime_ms     INTEGER NOT NULL CHECK (lifetime_ms > 0),
+  carried         INTEGER NOT NULL CHECK (carried > 0)
+) STRICT;
+INSERT INTO idle_compactions_next (conversation_id, due_at, lifetime_ms, carried)
+  SELECT conversation_id, due_at, lifetime_ms, 200000 FROM idle_compactions;
+DROP TABLE idle_compactions;
+ALTER TABLE idle_compactions_next RENAME TO idle_compactions;
 ";
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
@@ -5350,12 +5373,14 @@ CREATE TABLE interrupted_turns (
 ) STRICT;
 
 -- The roots that compact while idle, shortly before their prompt cache
--- expires: when, and the cache's lifetime, which the user's minimum is
--- compared with. A row goes with its conversation, and when its time came.
+-- expires: when, the cache's lifetime and the tokens the request carried,
+-- which the user's minimums are compared with. A row goes with its
+-- conversation, and when its time came.
 CREATE TABLE idle_compactions (
   conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
   due_at          INTEGER NOT NULL,
-  lifetime_ms     INTEGER NOT NULL CHECK (lifetime_ms > 0)
+  lifetime_ms     INTEGER NOT NULL CHECK (lifetime_ms > 0),
+  carried         INTEGER NOT NULL CHECK (carried > 0)
 ) STRICT;
 
 -- Each share of a conversation or of one answer of it, behind its token,

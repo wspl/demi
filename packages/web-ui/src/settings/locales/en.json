@@ -334,7 +334,8 @@
       "restartKeywords": "restart,update,continue",
       "retryKeywords": "usage limit,quota,reset",
       "compactIdleKeywords": "compaction,compact,prompt cache,idle,summary",
-      "idleLifetimeKeywords": "prompt cache,lifetime,TTL"
+      "idleLifetimeKeywords": "prompt cache,lifetime,TTL",
+      "idleContextKeywords": "context,tokens,threshold,minimum"
     },
     "providers": {
       "keywords": "models,api key,anthropic,openai,claude code,codex,base url,catalog"

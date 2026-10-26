@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { IDLE_COMPACTION_CONTEXT } from '@demicodes/protocol'
 import { DEFAULT_SEND_WHILE_RUNNING, type SendWhileRunning } from '@demicodes/web-ui/agent/send-way'
 import type { IdleLifetime } from '@demicodes/web-ui/settings/types'
 
@@ -26,10 +27,13 @@ export const galleryMessages = reactive<{
   resumeAtRetry: boolean
   compactIdle: boolean
   idleLifetime: IdleLifetime
+  /** The least context, in tokens, of a conversation that compacts while idle. */
+  idleContext: number
 }>({
   sendWhileRunning: DEFAULT_SEND_WHILE_RUNNING,
   resumeAfterRestart: true,
   resumeAtRetry: false,
   compactIdle: false,
   idleLifetime: '1h',
+  idleContext: IDLE_COMPACTION_CONTEXT,
 })

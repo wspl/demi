@@ -43,7 +43,7 @@ use super::{
     ActionEnd, ActionHandle, ActionReply, AdmissionError, AgentMessageError, ErrorReport,
     Execution, IdleCompactionDue, ModelSwitch, SessionEvent, Settle, Status, SteerError,
     cancel::{CancelReason, TurnCancel},
-    compaction::{IDLE_COMPACTION_CONTEXT, IDLE_COMPACTION_SHARE, IDLE_COMPACTION_WINDOW},
+    compaction::{IDLE_COMPACTION_SHARE, IDLE_COMPACTION_WINDOW},
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
     input::{Input, InputQueue, Opens, Take},
     persist::PersistMarks,
@@ -2419,13 +2419,16 @@ impl SessionCore {
     }
 
     /// When the latest request's conversation compacts while idle, by the
-    /// conditions the request decides: a window in use of `window` and a
-    /// context large enough, and a cache lifetime its provider said. None
-    /// when any fails, or before the request was answered.
+    /// conditions the request decides: a window in use of `window`, a
+    /// context the user's minimum could take, and a cache lifetime its
+    /// provider said. None when any fails, or before the request was
+    /// answered. The product compares the lifetime and the context with the
+    /// user's minimums when the time comes.
     pub(super) fn idle_compaction_due(&self, window: Option<u64>) -> Option<IdleCompactionDue> {
         let output = self.output.as_ref()?;
         let lifetime = output.cache_lifetime?;
-        if window? < IDLE_COMPACTION_WINDOW || output.carried? < IDLE_COMPACTION_CONTEXT {
+        let carried = output.carried?;
+        if window? < IDLE_COMPACTION_WINDOW || carried < demi_shared_types::IDLE_COMPACTION_CONTEXT_FLOOR {
             return None;
         }
         let before_expiry = lifetime * IDLE_COMPACTION_SHARE.0 / IDLE_COMPACTION_SHARE.1;
@@ -2433,6 +2436,7 @@ impl SessionCore {
         Some(IdleCompactionDue {
             at: Timestamp::from_millisecond(at).ok()?,
             lifetime,
+            carried,
         })
     }
 

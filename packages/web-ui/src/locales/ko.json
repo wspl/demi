@@ -41,6 +41,9 @@
       "compactIdleDescription": "긴 대화의 프롬프트 캐시가 만료되기 직전에 대화를 요약하여, 다음 메시지에서 전체 내용을 다시 보내지 않도록 합니다.",
       "idleLifetime": "최소 캐시 유지 시간",
       "idleLifetimeDescription": "제공업체가 캐시를 이 시간 이상 유지하는 대화만 압축합니다.",
+      "idleContext": "최소 컨텍스트 크기",
+      "idleContextDescription": "컨텍스트가 이 값 이상인 대화만 압축합니다.",
+      "idleContextFloor": "{floor} 이상을 입력하세요.",
       "halfHour": "30분",
       "hour": "1시간"
     }

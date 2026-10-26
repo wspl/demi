@@ -79,6 +79,7 @@ mod context_limit;
 mod failure;
 mod file_types;
 mod ids;
+mod idle_compaction;
 mod kept;
 mod log;
 #[cfg(feature = "tracing")]
@@ -125,6 +126,7 @@ pub use failure::{
     ContinueWith, FailureSource, NotExposedPort, OfflineDevice, ProviderErrorDiagnostics, ProviderFailureFacts, SignedOutAccount,
     VendorTrace,
 };
+pub use idle_compaction::{IDLE_COMPACTION_CONTEXT, IDLE_COMPACTION_CONTEXT_FLOOR};
 pub use context_limit::{
     CONTEXT_LIMIT_STEPS, ContextChoice, ContextLimitStep, ContextWordError, applied_context_limit,
     context_limits, context_word, effective_context_window, is_context_limit, offered_contexts,

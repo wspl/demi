@@ -452,12 +452,14 @@ pub enum SessionEvent {
 }
 
 /// When a session compacts while idle, shortly before its prompt cache
-/// expires, and the lifetime of that cache, which the product compares with
-/// the user's minimum.
+/// expires, with the lifetime of that cache and the tokens the request
+/// carried, input and cache alike, which the product compares with the
+/// user's minimums.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IdleCompactionDue {
     pub at: Timestamp,
     pub lifetime: std::time::Duration,
+    pub carried: u64,
 }
 
 impl IdleCompactionDue {
