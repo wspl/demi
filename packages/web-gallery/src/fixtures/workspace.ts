@@ -292,6 +292,52 @@ defineProps<{ files: ChangeFile[] }>()
 </template>
 `
 
+/** A page an agent wrote: a chart its own script draws, and a button that adds a bar. */
+const reportHtml = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Orders by quarter</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 32px; color: #1f2933; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { margin: 0 0 20px; color: #52606d; }
+  #chart { display: flex; align-items: flex-end; gap: 12px; height: 180px; }
+  .bar { width: 48px; background: #3b82f6; border-radius: 4px 4px 0 0; position: relative; }
+  .bar span { position: absolute; bottom: -22px; width: 100%; text-align: center; font-size: 12px; color: #52606d; }
+  button { margin-top: 36px; font: inherit; padding: 6px 14px; border: 1px solid #cbd2d9; border-radius: 6px; background: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>Orders by quarter</h1>
+<p>Example Shop, invented figures.</p>
+<div id="chart"></div>
+<button id="add">Add a quarter</button>
+<script>
+  const orders = [120, 164, 142, 198]
+  const chart = document.getElementById('chart')
+  function draw() {
+    chart.replaceChildren(...orders.map((count, index) => {
+      const bar = document.createElement('div')
+      bar.className = 'bar'
+      bar.style.height = Math.round(count / 250 * 180) + 'px'
+      bar.title = count + ' orders'
+      const label = document.createElement('span')
+      label.textContent = 'Q' + (index + 1)
+      bar.append(label)
+      return bar
+    }))
+  }
+  document.getElementById('add').addEventListener('click', () => {
+    orders.push(110 + (orders.length * 37) % 120)
+    draw()
+  })
+  draw()
+</script>
+</body>
+</html>
+`
+
 /** A source file with a short body naming itself, so every tab shows something. */
 function stub(path: string, body = ''): ReturnType<typeof textFile> {
   const name = baseName(path)
@@ -338,6 +384,8 @@ function tree(): MemoryDirectory {
       'intro.mov': assetFile('/fixtures/preview/demo.mp4', 31814, at),
       'tone.m4a': assetFile('/fixtures/preview/tone.m4a', 10396, at),
     }),
+    // An HTML file the File view shows as a page, whose script answers a click.
+    report: dir({ 'index.html': textFile(reportHtml, at) }),
     dist: dir({
       'app.zip': assetFile('/fixtures/preview/app.zip', 140, at),
       'cache.db': assetFile('/fixtures/preview/app.zip', 140, at),

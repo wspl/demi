@@ -119,6 +119,11 @@ export interface FileContents {
    * too large to read whole shows them.
    */
   readStart?(path: string, length: number, options?: { version?: string; signal?: AbortSignal }): Promise<Uint8Array>
+  /**
+   * Where the HTML file at `path` loads as a page, in a frame sandboxed with
+   * `HTML_SANDBOX`; absent when the source shows none.
+   */
+  htmlUrl?(path: string): Promise<string>
 }
 
 /** A file's text and the version it was read at; null when its source has no versions. */

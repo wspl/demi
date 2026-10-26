@@ -32,6 +32,7 @@ export interface ContentReads {
   url: FileContents['url']
   describe(path: string): Promise<Answered<FileDescription>>
   readStart?: FileContents['readStart']
+  htmlUrl?: FileContents['htmlUrl']
 }
 
 /**
@@ -109,6 +110,7 @@ export function keptContents(
     showDescription: (path) => files.show(spec(path)),
     // A part of a file is read for the view that shows it, never kept.
     ...(reads.readStart ? { readStart: reads.readStart } : {}),
+    ...(reads.htmlUrl ? { htmlUrl: reads.htmlUrl } : {}),
   }
 }
 

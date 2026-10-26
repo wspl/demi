@@ -2,7 +2,9 @@
 //!
 //! The backend serves a file under the media type this table gives it and shows
 //! in place only the types marked so. The page picks its viewer from the same
-//! table, generated into `@demicodes/protocol`, so the two always agree.
+//! table, generated into `@demicodes/protocol`, so the two always agree. An HTML
+//! file shown from a Host's files loads them as these types and the web's
+//! others.
 //!
 //! A file is told by its extension, not its content, for three reasons:
 //!
@@ -32,7 +34,7 @@ pub struct PreviewType {
 }
 
 /// The file-type table.
-pub const PREVIEW_TYPES: [PreviewType; 21] = [
+pub const PREVIEW_TYPES: [PreviewType; 22] = [
     preview("image/png", &["png"], true),
     preview("image/jpeg", &["jpg", "jpeg"], true),
     preview("image/gif", &["gif"], true),
@@ -56,6 +58,24 @@ pub const PREVIEW_TYPES: [PreviewType; 21] = [
     preview("application/pdf", &["pdf"], true),
     // Rendered from its text, never served as itself.
     preview("text/markdown", &["md", "markdown"], false),
+    // Shown from its own route (`html_view_media_type`), never served as
+    // itself here.
+    preview("text/html", &["html", "htm"], false),
+];
+
+/// What else an HTML file shown from a Host's files loads, by extension,
+/// beside the previewed types: the web's own types that the preview has no
+/// viewer for.
+const HTML_VIEW_TYPES: [(&str, &[&str]); 9] = [
+    ("text/css; charset=utf-8", &["css"]),
+    ("text/javascript; charset=utf-8", &["js", "mjs", "cjs"]),
+    ("application/json", &["json", "map"]),
+    ("application/wasm", &["wasm"]),
+    ("text/plain; charset=utf-8", &["txt"]),
+    ("application/xml", &["xml"]),
+    ("font/woff2", &["woff2"]),
+    ("font/woff", &["woff"]),
+    ("font/ttf", &["ttf"]),
 ];
 
 const fn preview(
@@ -76,17 +96,52 @@ const fn preview(
 /// names its paths with `\`, and a name that starts with its only dot, such
 /// as `.png`, has no extension.
 pub fn preview_media_type(path: &str) -> Option<&'static str> {
-    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    let (stem, extension) = name.rsplit_once('.')?;
-    if stem.is_empty() {
-        return None;
-    }
-    let extension = extension.to_ascii_lowercase();
+    let extension = extension(path)?;
     PREVIEW_TYPES
         .iter()
         .find(|entry| entry.extensions.contains(&extension.as_str()))
         .map(|entry| entry.media_type)
 }
+
+/// The media type an HTML file shown from a Host's files loads the file at
+/// `path` as: a previewed type, HTML as UTF-8, or another type of the web's;
+/// `None` for any other file.
+pub fn html_view_media_type(path: &str) -> Option<&'static str> {
+    let extension = extension(path)?;
+    let previewed = PREVIEW_TYPES
+        .iter()
+        .find(|entry| entry.extensions.contains(&extension.as_str()))
+        .map(|entry| match entry.media_type {
+            "text/html" => "text/html; charset=utf-8",
+            media_type => media_type,
+        });
+    previewed.or_else(|| {
+        HTML_VIEW_TYPES
+            .iter()
+            .find(|(_, extensions)| extensions.contains(&extension.as_str()))
+            .map(|(media_type, _)| *media_type)
+    })
+}
+
+/// The extension of the file at `path`, lowercase: either separator ends a
+/// directory, and a name that starts with its only dot has none.
+fn extension(path: &str) -> Option<String> {
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let (stem, extension) = name.rsplit_once('.')?;
+    if stem.is_empty() {
+        return None;
+    }
+    Some(extension.to_ascii_lowercase())
+}
+
+/// The sandbox an HTML file shown from a Host's files loads in, the
+/// `sandbox` policy of its answers and of the frame it shows in: it runs
+/// scripts, sends forms, shows `alert`, opens windows that leave the sandbox
+/// and downloads, as in a browser tab. Without `allow-same-origin` it never
+/// has the product's origin, and without `allow-top-navigation` it never
+/// replaces the product's page.
+pub const HTML_SANDBOX: &str = "allow-scripts allow-forms allow-modals allow-popups \
+    allow-popups-to-escape-sandbox allow-downloads";
 
 /// The content policy an image served in place carries: it runs no script and
 /// fetches nothing, in an opaque origin.

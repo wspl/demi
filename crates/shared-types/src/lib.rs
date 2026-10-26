@@ -131,7 +131,8 @@ pub use context_limit::{
     offers_context, session_context_window,
 };
 pub use file_types::{
-    IMAGE_CONTENT_POLICY, PREVIEW_TYPES, PreviewType, preview_media_type, shows_in_place,
+    HTML_SANDBOX, IMAGE_CONTENT_POLICY, PREVIEW_TYPES, PreviewType, html_view_media_type, preview_media_type,
+    shows_in_place,
 };
 #[doc(hidden)]
 pub use ids::__private;

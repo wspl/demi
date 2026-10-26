@@ -156,6 +156,17 @@ pub fn relative_to(directory: &str, path: &str) -> Option<String> {
     Some(if relative.is_empty() { ".".to_owned() } else { relative })
 }
 
+/// The names of `path` below `directory`, none for `directory` itself, after
+/// `.` and `..` are taken out; none when `path` is outside it. Each path is
+/// read in the form its text has, as [`relative_to`] reads it, so on a Posix
+/// Host a `\` is part of a name.
+pub fn names_below(directory: &str, path: &str) -> Option<Vec<String>> {
+    let path = typed_path::Utf8TypedPath::derive(path).normalize();
+    let directory = typed_path::Utf8TypedPath::derive(directory).normalize();
+    let below = path.strip_prefix(&directory).ok()?;
+    Some(below.components().map(|name| name.as_str().to_owned()).collect())
+}
+
 /// Whether `path` is `directory` or inside it, judged by their parts after `.`
 /// and `..` are taken out, without following a link
 /// (`crates/agent-store/src/changes.rs`).

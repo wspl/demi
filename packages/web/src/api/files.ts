@@ -16,9 +16,11 @@ import {
   directoryListsSchema,
   directorySchema,
   fileTextSchema,
+  htmlUrlSchema,
   listedDirectoriesSchema,
   type CreateDirectory,
   type DirectoryEntry,
+  type HtmlRequest,
   type LinkTarget,
   type SearchRequest,
 } from './generated/web-api'
@@ -216,6 +218,8 @@ export interface FileRoutes {
   remove?: string
   /** Searches the text of the files under a directory with `POST`. */
   search?: string
+  /** Where an HTML file loads as a page, asked with `POST`. */
+  html?: string
 }
 
 /**
@@ -232,6 +236,7 @@ export function conversationFileRoutes(conversationId: string): Required<FileRou
     upload: `${base}/raw`,
     remove: base,
     search: `${base}/search`,
+    html: `${base}/html`,
   }
 }
 
@@ -365,6 +370,7 @@ export function fileReads(
     upload: uploadEndpoint,
     remove: removeEndpoint,
     search: searchEndpoint,
+    html: htmlEndpoint,
   } = endpoints
   const listOne: ListOne = async (path) => {
     if (!endpoint) {
@@ -398,7 +404,28 @@ export function fileReads(
           },
         }
       : {}),
-    ...(rawEndpoint ? { contents: rawFileContents(rawEndpoint) } : {}),
+    ...(rawEndpoint
+      ? {
+          contents: {
+            ...rawFileContents(rawEndpoint),
+            ...(htmlEndpoint
+              ? {
+                  async htmlUrl(path: string) {
+                    try {
+                      const response = await apiRequest(htmlEndpoint, {
+                        method: 'POST',
+                        ...jsonBody({ path } satisfies HtmlRequest),
+                      })
+                      return (await readResponse(response, htmlUrlSchema)).url
+                    } catch (error) {
+                      browserError(error)
+                    }
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
     ...(textEndpoint
       ? {
           // The browser asks again on each read and keeps the text while the

@@ -38,7 +38,9 @@ use super::listener::Peer;
 use super::query::QueryParams;
 use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
 use demi_backend_host_access::access::{ConversationHost, HostAccessError, Refusal};
-use demi_backend_host_access::transfer::{Download, DownloadRequest, OpenSearch, RangeAnswer};
+use demi_backend_host_access::transfer::{
+    Download, DownloadPath, DownloadRequest, OpenSearch, RangeAnswer,
+};
 
 pub(super) async fn list(
     State(state): State<AppState>,
@@ -280,7 +282,7 @@ pub(super) async fn raw(
     // The bytes of a version a request names can only be that version's.
     let versioned = query.version.is_some();
     let request = DownloadRequest {
-        path: path.clone(),
+        path: DownloadPath::Named(path.clone()),
         version: query.version.map(|version| version.as_str().to_owned()),
         head: method == Method::HEAD,
         range: header(&headers, RANGE),
@@ -296,12 +298,32 @@ pub(super) async fn raw(
                 .await
         })
         .await??;
-    let download_flag = query.download.0;
+    let content = content_headers(
+        preview_media_type(&path),
+        query.download.0,
+        file_name(&path).as_deref(),
+    );
+    download_answer(download, &peer, versioned, content)
+}
+
+/// What a read of a file's bytes answers, with the `content` headers that say
+/// how they may be shown; `versioned` when the request named their version.
+pub(super) fn download_answer(
+    download: Download,
+    peer: &Peer,
+    versioned: bool,
+    content: HeaderMap,
+) -> Result<Response, ApiError> {
     match download {
         Download::NotAFile => Err(ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::NotFound,
             "Not a regular file",
+        )),
+        Download::OutOfReach => Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            "No such file",
         )),
         Download::Changed => Err(ApiError::new(
             StatusCode::PRECONDITION_FAILED,
@@ -320,8 +342,7 @@ pub(super) async fn raw(
             read_at,
         } => {
             let file = FileAnswer {
-                path: &path,
-                download: download_flag,
+                content: &content,
                 stat: &stat,
                 version: &version,
                 versioned,
@@ -337,8 +358,7 @@ pub(super) async fn raw(
             read_at,
         } => {
             let file = FileAnswer {
-                path: &path,
-                download: download_flag,
+                content: &content,
                 stat: &stat,
                 version: &version,
                 versioned,
@@ -712,11 +732,11 @@ where
 }
 
 /// The path's conversation id; one that is not an id names no conversation.
-fn conversation_id(id: &str) -> Result<ConversationId, ApiError> {
+pub(super) fn conversation_id(id: &str) -> Result<ConversationId, ApiError> {
     ConversationId::try_from(id).map_err(|_| HostAccessError::Missing.into())
 }
 
-fn header(headers: &HeaderMap, name: HeaderName) -> Option<String> {
+pub(super) fn header(headers: &HeaderMap, name: HeaderName) -> Option<String> {
     headers
         .get(name)
         .and_then(|value| value.to_str().ok())
@@ -763,8 +783,8 @@ fn raw_file_headers(versioned: bool) -> HeaderMap {
 
 /// The file a raw answer serves a part of.
 struct FileAnswer<'a> {
-    path: &'a str,
-    download: bool,
+    /// How its bytes may be shown.
+    content: &'a HeaderMap,
     stat: &'a FileStat,
     version: &'a str,
     /// The request named the version.
@@ -776,11 +796,7 @@ impl FileAnswer<'_> {
     /// part.
     fn headers(&self, part: &RangeAnswer) -> HeaderMap {
         let mut headers = raw_file_headers(self.versioned);
-        headers.extend(content_headers(
-            preview_media_type(self.path),
-            self.download,
-            file_name(self.path).as_deref(),
-        ));
+        headers.extend(self.content.clone());
         headers.insert(ETAG, header_value(self.version));
         headers.insert(LAST_MODIFIED, last_modified(self.stat));
         headers.extend(part.headers());

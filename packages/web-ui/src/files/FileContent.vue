@@ -11,6 +11,7 @@ import RegionNote from '../ui/RegionNote.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import FileBar from './FileBar.vue'
 import FilePreview from './FilePreview.vue'
+import HtmlView from './HtmlView.vue'
 import FileSummary from './FileSummary.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import { downloadUrl } from './download'
@@ -20,7 +21,7 @@ import { t as shared } from '../locales/text'
 import { t } from './locales/text'
 import { baseName } from '@demicodes/utils'
 import { parentPath } from './paths'
-import { hasSourceView, missingFile, previewKind, tooLargeNote } from './preview'
+import { hasSourceView, isHtml, missingFile, previewKind, tooLargeNote } from './preview'
 import { hasAnswered } from './file-cache'
 import { useShowing } from './showing'
 import { useTextStart } from './text-start'
@@ -35,9 +36,10 @@ import type { FileBrowserSource } from './types'
  * - Text, read-only in the code editor.
  * - An image, a video, an audio file or a PDF in the web browser's own viewer.
  * - Markdown rendered as a document.
+ * - HTML as the page it describes, where the source shows pages.
  * - A card for a file the page cannot show.
  *
- * The bar offers Preview and Source for Markdown and SVG, Copy of a text file's
+ * The bar offers Preview and Source for Markdown, SVG and HTML, Copy of a text file's
  * whole text, and Download. `label`, when given, says what the file is in its
  * place, as an attachment's preview names its file and size.
  *
@@ -83,17 +85,22 @@ const editorReady = computed(() => editorLoad.value.phase === 'ready')
 /** The path of the file whose editor is built, which draws its text with its colors. */
 const builtPath = ref<string | null>(null)
 
-/** Markdown and SVG only: their rendered view, or their text. */
+/** Markdown, SVG and HTML only: their rendered view, or their text. */
 const mode = defineModel<'preview' | 'source'>('mode', { default: 'preview' })
 
 const kind = computed(() => props.path === null ? 'text' : previewKind(props.path))
-const sourceView = computed(() => props.path !== null && hasSourceView(props.path))
+/** The file's contents, when they show it as a page: an HTML file's, where the source shows pages. */
+const htmlContents = computed(() => {
+  const contents = props.source.contents
+  return props.path !== null && isHtml(props.path) && contents?.htmlUrl ? { ...contents, htmlUrl: contents.htmlUrl } : null
+})
+const sourceView = computed(() => props.path !== null && (hasSourceView(props.path) || htmlContents.value !== null))
 /** The source shows for the line the file was opened at, over the Preview chosen, until another choice. */
 const sourceForLine = ref(false)
 watch(() => [props.path, props.line], () => {
   sourceForLine.value = props.line != null
 }, { immediate: true })
-/** What Markdown and SVG show: the choice, or their source for a line. */
+/** What Markdown, SVG and HTML show: the choice, or their source for a line. */
 const shownMode = computed<'preview' | 'source'>({
   get: () => sourceForLine.value ? 'source' : mode.value,
   set: (chosen) => {
@@ -314,6 +321,7 @@ const bar = computed(() => {
   return {
     ...shown,
     ...(props.label === undefined || !shown.download ? {} : { label: props.label }),
+    modes: shown.modes || htmlContents.value !== null,
     download: shown.download && props.source.contents !== undefined,
   }
 })
@@ -326,8 +334,16 @@ const markdown = computed(() => kind.value === 'markdown' &&
   shownMode.value === 'preview' &&
   state.value.phase === 'ready' &&
   renderable(state.value.text))
+/** The page an HTML file describes, unless Source is chosen, at the text read's version. */
+const htmlShown = computed(() => {
+  const contents = htmlContents.value
+  const entry = shown.entry.value
+  if (contents === null || shownMode.value !== 'preview' || state.value.phase !== 'ready')
+    return null
+  return { contents, version: entry?.value?.version ?? null }
+})
 /** Whether the view shows the file's text in the editor, unless the editor failed to load, which the region's note says. */
-const editorShown = computed(() => !markdown.value && props.path !== null && editorLoad.value.phase !== 'failed' && (state.value.phase === 'ready' || start.value?.phase === 'ready'))
+const editorShown = computed(() => !markdown.value && htmlShown.value === null && props.path !== null && editorLoad.value.phase !== 'failed' && (state.value.phase === 'ready' || start.value?.phase === 'ready'))
 /** The text the editor shows. */
 const shownText = computed(() => state.value.phase === 'ready' ? state.value.text : start.value?.phase === 'ready' ? start.value.text : '')
 /**
@@ -424,8 +440,14 @@ defineExpose({ readOpenedLink, revealLine })
       @shown="mediaShown = { path, shown: $event }"
     />
     <template v-if="!(editorReady && media && path && source.contents && !leadsToFolder) || brokenLink">
+    <HtmlView
+      v-if="editorReady && htmlShown && path"
+      :path="path"
+      :version="htmlShown.version"
+      :contents="htmlShown.contents"
+    />
     <MarkdownDocument
-      v-if="editorReady && markdown && state.phase === 'ready' && place"
+      v-else-if="editorReady && markdown && state.phase === 'ready' && place"
       :text="state.text"
       :place="place"
       :contents="source.contents"

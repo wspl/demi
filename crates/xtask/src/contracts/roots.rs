@@ -245,6 +245,8 @@ pub fn web() -> Vec<Root> {
         sends::<files::SearchRequest>(),
         receives::<files::SearchLine>(),
         sends::<files::CreateDirectory>(),
+        sends::<files::HtmlRequest>(),
+        receives::<files::HtmlUrl>(),
         sends::<files::CreateDeviceDirectory>(),
         receives::<files::CreatedDirectory>(),
         receives::<files::FileText>(),

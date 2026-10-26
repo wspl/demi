@@ -163,6 +163,22 @@ pub struct SearchRequest {
     pub query: SearchQuery,
 }
 
+/// `POST /conversations/:id/fs/html { path }`: the HTML file to show.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct HtmlRequest {
+    #[garde(skip)]
+    pub path: AbsolutePath,
+}
+
+/// Where the HTML file loads, under `/api/html/`: the session's token for the
+/// conversation, then the file's place under its working directory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HtmlUrl {
+    pub url: String,
+}
+
 /// `POST .../fs { path }`: a directory to make, with its parents.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]

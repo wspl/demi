@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 
 use demi_runner_protocol::direct;
 use demi_shared_types::{
-    ATTACHMENT_FILE_EXTENSIONS, CONTEXT_LIMIT_STEPS, IMAGE_CONTENT_POLICY, PREVIEW_TYPES,
+    ATTACHMENT_FILE_EXTENSIONS, CONTEXT_LIMIT_STEPS, HTML_SANDBOX, IMAGE_CONTENT_POLICY, PREVIEW_TYPES,
     VIDEO_FILE_EXTENSIONS,
 };
 
@@ -50,6 +50,14 @@ pub fn module(header: &str) -> String {
     );
     let policy = serde_json::to_string(IMAGE_CONTENT_POLICY).expect("the policy serializes");
     writeln!(source, "export const IMAGE_CONTENT_POLICY = {policy}").expect("writing to a string");
+    source.push('\n');
+    push_doc(
+        &mut source,
+        Some("The sandbox an HTML file shown from a Host's files loads in."),
+        0,
+    );
+    let sandbox = serde_json::to_string(HTML_SANDBOX).expect("the sandbox serializes");
+    writeln!(source, "export const HTML_SANDBOX = {sandbox}").expect("writing to a string");
 
     for (name, description, extensions) in [
         (
