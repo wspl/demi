@@ -1,5 +1,6 @@
 import { sliceHead } from '@demicodes/utils'
 import { openBlockMathAt } from '../markdown/math-syntax'
+import { ATTACHMENT_TAG } from '../markdown/attachment-block'
 import type { TextArrival } from '@demicodes/conversation-client'
 
 /**
@@ -124,15 +125,28 @@ export function nextStepEnd(text: string, from: number, ceiling: number, safe: (
 // before the look back for the row's leading pipe, so the look back runs at a
 // pipe, never at every character of a long paragraph, which made a line's
 // count grow as the square of its length.
-const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:? *\|)+(?: *:?-+:? *)?) *$|^ {0,3}\| *| *\|(?<=^ {0,3}\|.*\|) *|\]\([^)\n]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~`[\]\n]/gm
+//
+// An image is read as Marked reads it, its alt text holding brackets in pairs
+// and its address parentheses in pairs, and an attachment block as a line of
+// its own, as `attachment-block.ts` reads it.
+const MARKDOWN_SYNTAX = new RegExp([
+  String.raw`!\[(?:\[[^\]\n]*\]|\\.|[^[\]\\\n])*\]\([ \t]*(?:<[^<>\n]*>|(?:[^()\s]|\([^()\s]*\))*)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*\)`,
+  String.raw`^ {0,3}${ATTACHMENT_TAG}$`,
+  String.raw`^ {0,3}(?:\`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:? *\|)+(?: *:?-+:? *)?) *$|^ {0,3}\| *| *\|(?<=^ {0,3}\|.*\|) *|\]\([^)\n]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~\`[\]\n]`,
+].join('|'), 'gm')
 
 /**
  * About how many characters `source`, a slice of markdown, renders as, line
  * breaks left out: its text without the marks around it, without a code fence's
- * lines, a rule's dashes, and a table's pipes and the row that aligns its columns.
+ * lines, a rule's dashes, and a table's pipes and the row that aligns its columns,
+ * and without its images and attachment blocks.
  *
  * A step's fade covers this many rendered characters, so an estimate a mark off
- * fades a neighbouring character a moment early or late and nothing more.
+ * fades a neighbouring character a moment early or late. A count too high
+ * reaches back into the text before the step and fades it in again from the
+ * start, so where the source cannot tell, the count errs low: an image counts
+ * as no text, as a picture shows, though one whose copy is still being made
+ * shows its alt text in its place.
  */
 export function renderedLength(source: string): number {
   return source.replace(MARKDOWN_SYNTAX, '').length
@@ -393,7 +407,7 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
         continue
       fading.set(element, step)
       fade(element, marks[step]!.at, () => {
-        element.classList.remove('stream-ink')
+        element.classList.remove(FADING)
         if (element.classList.length === 0)
           element.removeAttribute('class')
       })
@@ -436,6 +450,14 @@ function fadingAround(node: Node, root: Element, fading: ReadonlyMap<Element, nu
   return undefined
 }
 
+/** The class of what is still fading in. */
+const FADING = 'stream-ink'
+
+/** Whether a fade still runs on `element` or within it. */
+export function fadesIn(element: Element): boolean {
+  return element.classList.contains(FADING) || element.querySelector(`.${FADING}`) !== null
+}
+
 /**
  * Fades `element` in from `at`, the time its step was shown, and calls
  * `done` once it has: a render can stay in the page after its fades end
@@ -443,7 +465,7 @@ function fadingAround(node: Node, root: Element, fading: ReadonlyMap<Element, nu
  */
 function fade(element: Element, at: number, done: () => void): void {
   // The class marks what is still fading in, for whoever looks at the page.
-  element.classList.add('stream-ink')
+  element.classList.add(FADING)
   const animation = element.animate(FADE_IN, { duration: STREAM_PACE.fadeMs, fill: 'backwards' })
   animation.startTime = at
   // Only a cancel rejects it, which nothing here calls; a fade whose element

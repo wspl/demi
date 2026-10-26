@@ -1,6 +1,6 @@
 import { computed, effectScope, onScopeDispose, shallowRef, watch, type ComputedRef, type EffectScope } from 'vue'
 import { messageBlockEnds } from '../markdown/render'
-import { wrapSteps, type RevealStep } from '../ui/stream-reveal'
+import { fadesIn, wrapSteps, type RevealStep } from '../ui/stream-reveal'
 
 /** A block of a reply as the page shows it. */
 interface Block<T> {
@@ -57,11 +57,29 @@ function asRendered(node: ChildNode): string {
 
 /**
  * Each fresh node of a render as the render made it, before a fade wrapped
- * any of its text: a node in the page that is that now, its fades over and
- * unwrapped, stays, and only the others are replaced. One whose fades are
- * still going on, or split it, is not what the render made, and is replaced.
+ * any of its text, to tell whether a node in the page shows what a new
+ * render makes in its place (`stillShows`).
  */
 const renderedAs = new WeakMap<ChildNode, string>()
+
+/**
+ * Whether `shown`, a node in the page, shows what `fresh`, a node of a new
+ * render, would: it stays, and only the others are replaced.
+ *
+ * An element the same render made stays though the page has filled it since,
+ * as it sizes a medium's tile and mounts an audio player: a video put back
+ * goes blank until it loads again. A text node, which a fade splits, and an
+ * element a fade still runs in stay only as what the render made, their fades
+ * over and unwrapped.
+ */
+function stillShows(shown: ChildNode, fresh: ChildNode): boolean {
+  const as = renderedAs.get(fresh)
+  if (as === undefined)
+    return false
+  if (shown instanceof Element && renderedAs.get(shown) === as && !fadesIn(shown))
+    return true
+  return asRendered(shown) === as
+}
 
 /**
  * Renders a reply into `root` a block at a time: while it streams, every block
@@ -213,8 +231,7 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
 function place(parent: Node, old: readonly ChildNode[], fresh: readonly ChildNode[], before: ChildNode | null): ChildNode[] {
   const placed = fresh.map((node, index) => {
     const was = old[index]
-    const as = renderedAs.get(node)
-    return was !== undefined && as !== undefined && asRendered(was) === as ? was : node
+    return was !== undefined && stillShows(was, node) ? was : node
   })
   const keep = new Set(placed)
   for (const node of old) {
