@@ -4,9 +4,16 @@
 //! - With a view's first picture, two probes at 3 and 6 times the estimate.
 //! - While the last probe finds the path carries at least 70% of its rate,
 //!   another at twice what it found.
-//! - While the pictures spend less than 65% of the estimate, a probe at twice
-//!   the estimate every 5 seconds, after a picture, which probes further as
-//!   the first ones do.
+//! - While the sender is application-limited (`bwe::alr`), a probe at twice
+//!   the estimate 5 seconds after it became so or after the last probe,
+//!   whichever is later, sent after a picture, which probes further as the
+//!   first ones do.
+//! - After a large drop: when the estimate fell below 66% of what it was and
+//!   the path recovers within 5 seconds, while the sender is
+//!   application-limited or was until 3 seconds ago, one probe at 85% of the
+//!   estimate before the drop, at most every 5 seconds. A drop a still
+//!   picture's next to nothing caused comes back at once; one the path
+//!   caused fails its probe and stays.
 //! - No probe above the codec level's bit rate, which no encoder is asked for.
 //!
 //! A text's pictures rarely spend their budget, and the delay-based estimate
@@ -14,7 +21,7 @@
 //! it started even on a loopback path. A probe is padding sent at its rate
 //! for 15 ms, in 5 chunks at the least, which the page acknowledges and drops
 //! (`bwe::probe` measures it). A still screen sends no pictures, so it sends
-//! no probes either.
+//! no periodic probes either.
 
 use std::{
     collections::VecDeque,
@@ -33,15 +40,25 @@ const FURTHER_THRESHOLD: f64 = 0.7;
 const FURTHER_SCALE: f64 = 2.0;
 /// How long a probe's result is waited for before probing on stops.
 const RESULT_WAIT: Duration = Duration::from_secs(1);
-/// The least time between two probes while the pictures leave room.
+/// How long after the sender became application-limited, or after the last
+/// probe, a periodic probe follows.
 const ALR_INTERVAL: Duration = Duration::from_secs(5);
-/// A probe's rate while the pictures leave room, as a multiple of the
-/// estimate.
+/// A probe's rate while the sender is application-limited, as a multiple of
+/// the estimate.
 const ALR_SCALE: f64 = 2.0;
-/// The span the pictures' rate is measured over.
-const ALR_SPAN: Duration = Duration::from_millis(500);
-/// The share of the estimate below which the pictures leave room.
-const ALR_RATIO: f64 = 0.65;
+/// An estimate below this share of the one before is a large drop.
+const DROP_THRESHOLD: f64 = 0.66;
+/// How long after a large drop a recovery probes back.
+const DROP_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long after the sender stopped being application-limited a recovery
+/// still probes back.
+const ALR_ENDED_TIMEOUT: Duration = Duration::from_secs(3);
+/// The least time between two probes back after a drop.
+const DROP_PROBE_INTERVAL: Duration = Duration::from_secs(5);
+/// The probe back's rate, as a share of the estimate before the drop.
+const AFTER_DROP: f64 = 0.85;
+/// The share of a probe's rate it is expected to find at the least.
+const PROBE_UNCERTAINTY: f64 = 0.05;
 /// How long a probe sends at its rate.
 const DURATION: Duration = Duration::from_millis(15);
 /// The fewest chunks a probe takes, so that its measure counts
@@ -56,45 +73,71 @@ pub(crate) struct Probes {
     /// The probe whose result decides whether another follows, its rate,
     /// and until when it is waited for.
     awaiting: Option<(u32, Bitrate, Instant)>,
-    /// The next probe while the pictures leave room, not before.
-    next_alr: Option<Instant>,
-    /// The pictures' bytes sent over the last [`ALR_SPAN`].
-    sent: VecDeque<(Instant, usize)>,
+    /// When the last probe was planned.
+    last_probe: Option<Instant>,
+    /// The estimate as it last was.
+    estimate: Option<Bitrate>,
+    /// The last large drop: when, and the estimate before it.
+    drop: Option<(Instant, Bitrate)>,
+    /// When the last probe back after a drop was planned.
+    probed_back: Option<Instant>,
     planned: VecDeque<ProbeCluster>,
 }
 
 impl Probes {
-    /// A picture's chunk of `bytes` left at `now`, with the path's estimate.
-    pub fn picture(&mut self, bytes: usize, now: Instant, estimate: Bitrate) {
-        self.sent.push_back((now, bytes));
-        while self
-            .sent
-            .front()
-            .is_some_and(|(at, _)| now.saturating_duration_since(*at) > ALR_SPAN)
-        {
-            self.sent.pop_front();
-        }
+    /// A picture's chunk left at `now`, with the path's estimate and since
+    /// when the sender is application-limited, if it is.
+    pub fn picture(&mut self, now: Instant, estimate: Bitrate, limited: Option<Instant>) {
         if !self.started {
             self.started = true;
-            self.next_alr = Some(now + ALR_INTERVAL);
             for scale in START {
-                let (id, target) = self.plan(estimate * scale);
+                let (id, target) = self.plan(estimate * scale, now);
                 self.awaiting = Some((id, target, now + RESULT_WAIT));
             }
             return;
         }
-        if self.awaiting.is_some_and(|(_, _, until)| now >= until) {
-            self.awaiting = None;
-        }
-        if self.awaiting.is_some() || !self.planned.is_empty() || self.next_alr.is_some_and(|at| now < at) {
+        self.expire(now);
+        let Some(since) = limited else {
+            return;
+        };
+        let due = self.last_probe.map_or(since, |last| last.max(since)) + ALR_INTERVAL;
+        if self.probing() || now < due {
             return;
         }
-        self.next_alr = Some(now + ALR_INTERVAL);
-        let spent: usize = self.sent.iter().map(|(_, bytes)| bytes).sum();
-        let rate = spent as f64 * 8.0 / ALR_SPAN.as_secs_f64();
-        if rate < estimate.as_f64() * ALR_RATIO {
-            let (id, target) = self.plan(estimate * ALR_SCALE);
-            self.awaiting = Some((id, target, now + RESULT_WAIT));
+        let (id, target) = self.plan(estimate * ALR_SCALE, now);
+        self.awaiting = Some((id, target, now + RESULT_WAIT));
+    }
+
+    /// The estimate is `estimate` at `now`.
+    pub fn estimate(&mut self, estimate: Bitrate, now: Instant) {
+        if let Some(before) = self.estimate
+            && estimate.as_f64() < before.as_f64() * DROP_THRESHOLD
+        {
+            self.drop = Some((now, before));
+        }
+        self.estimate = Some(estimate);
+    }
+
+    /// The path recovered from an overuse at `now`; `limited` says whether
+    /// the sender is application-limited, `limited_until` when it last
+    /// stopped being so.
+    pub fn recovered(&mut self, now: Instant, limited: bool, limited_until: Option<Instant>) {
+        self.expire(now);
+        let (Some((dropped, before)), Some(estimate)) = (self.drop, self.estimate) else {
+            return;
+        };
+        let lately_limited = limited_until.is_some_and(|until| now.saturating_duration_since(until) < ALR_ENDED_TIMEOUT);
+        if !(limited || lately_limited) || self.probing() {
+            return;
+        }
+        let back = before * AFTER_DROP;
+        if back.as_f64() * (1.0 - PROBE_UNCERTAINTY) > estimate.as_f64()
+            && now.saturating_duration_since(dropped) < DROP_TIMEOUT
+            && self.probed_back.is_none_or(|at| now.saturating_duration_since(at) > DROP_PROBE_INTERVAL)
+        {
+            self.probed_back = Some(now);
+            // One probe, which probes no further.
+            self.plan(back, now);
         }
     }
 
@@ -110,7 +153,7 @@ impl Probes {
         if measured.as_f64() >= target.as_f64() * FURTHER_THRESHOLD
             && target.as_f64() < f64::from(VIDEO_MAX_BITRATE)
         {
-            let (id, target) = self.plan(measured * FURTHER_SCALE);
+            let (id, target) = self.plan(measured * FURTHER_SCALE, now);
             self.awaiting = Some((id, target, now + RESULT_WAIT));
         }
     }
@@ -120,9 +163,24 @@ impl Probes {
         self.planned.pop_front()
     }
 
-    /// Plans a probe at `rate`, at most the codec level's; answers its ID
-    /// and rate.
-    fn plan(&mut self, rate: Bitrate) -> (u32, Bitrate) {
+    /// Whether a probe is planned or its result awaited.
+    fn probing(&self) -> bool {
+        self.awaiting.is_some() || !self.planned.is_empty()
+    }
+
+    /// Stops waiting for a result that is late at `now`.
+    fn expire(&mut self, now: Instant) {
+        if self.awaiting.is_some_and(|(_, _, until)| now >= until) {
+            self.awaiting = None;
+        }
+    }
+
+    /// Plans a probe at `rate`, at most the codec level's, at `now`; answers
+    /// its ID and rate. Any probe puts the next periodic one
+    /// [`ALR_INTERVAL`] off, as libwebrtc's does, so that a periodic probe
+    /// at a dropped estimate does not follow a probe back at once.
+    fn plan(&mut self, rate: Bitrate, now: Instant) -> (u32, Bitrate) {
+        self.last_probe = Some(now);
         let target = rate.min(Bitrate::bps(u64::from(VIDEO_MAX_BITRATE)));
         let bytes = target * DURATION;
         let chunks = (bytes.as_bytes_usize().div_ceil(CHUNK_BYTES)).max(MIN_CHUNKS);

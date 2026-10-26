@@ -1,6 +1,11 @@
 //! The delay-based half of Google Congestion Control (GoogCC) and its probe
 //! estimator, ported from str0m 0.24.1's `src/bwe/` with their algorithm
-//! unchanged.
+//! unchanged, and what str0m leaves out of libwebrtc's handling of an
+//! application-limited sender (`alr`): once the sender sends at its rate
+//! again, the acknowledged bit rate follows it at once, as libwebrtc's
+//! `AcknowledgedBitrateEstimator::SetAlrEndedTime` has it. A still picture
+//! sends next to nothing, and a decrease that took that rate as what the path
+//! carries would drop the estimate to its floor.
 //!
 //! The port holds the arrival groups, the trendline estimator, the AIMD rate
 //! control and the acknowledged bit rate estimator, which str0m ported from
@@ -44,6 +49,7 @@ use std::{
 pub use str0m_proto::{Bitrate, DataSize};
 
 mod acked_bitrate_estimator;
+pub mod alr;
 mod average;
 mod delay;
 mod macros;
@@ -135,6 +141,9 @@ fn already_happened() -> Instant {
 pub struct DelayBasedEstimate {
     delay_controller: DelayController,
     acked_bitrate_estimator: AckedBitrateEstimator,
+    /// When the sender stopped being application-limited, until a chunk
+    /// sent after it is acknowledged.
+    alr_ended: Option<Instant>,
 }
 
 impl DelayBasedEstimate {
@@ -145,15 +154,26 @@ impl DelayBasedEstimate {
                 INITIAL_BITRATE_WINDOW,
                 BITRATE_WINDOW,
             ),
+            alr_ended: None,
         }
+    }
+
+    /// The sender stopped being application-limited at `now`.
+    pub fn alr_ended(&mut self, now: Instant) {
+        self.alr_ended = Some(now);
     }
 
     /// Takes in a batch of acknowledged chunks, as str0m takes a TWCC
     /// report's, with what a probe among them measured, and answers the
-    /// estimate. A probe's result becomes the estimate.
-    pub fn update(&mut self, mut acked: Vec<AckedPacket>, probe: Option<Bitrate>, now: Instant) -> Option<Bitrate> {
+    /// estimate. A probe's result becomes the estimate. Answers whether the
+    /// path recovered from an overuse among them.
+    pub fn update(&mut self, mut acked: Vec<AckedPacket>, probe: Option<Bitrate>, now: Instant) -> bool {
         acked.sort_by(AckedPacket::order_by_receive_time);
         for packet in &acked {
+            if self.alr_ended.is_some_and(|ended| packet.local_send_time > ended) {
+                self.acked_bitrate_estimator.expect_fast_rate_change();
+                self.alr_ended = None;
+            }
             self.acked_bitrate_estimator
                 .update(packet.remote_recv_time, packet.size);
         }

@@ -88,6 +88,12 @@ impl AckedBitrateEstimator {
             (sample_var * pred_bitrate_estimate_var) / (sample_var + pred_bitrate_estimate_var);
     }
 
+    /// The rate is about to change fast, as when the sender stops being
+    /// application-limited: the next samples move the estimate further.
+    pub(super) fn expect_fast_rate_change(&mut self) {
+        self.estimate_var += 200.0;
+    }
+
     pub(super) fn current_estimate(&self) -> Option<Bitrate> {
         self.estimate
     }

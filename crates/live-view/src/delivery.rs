@@ -128,6 +128,7 @@ impl Delivery {
         self.generation += 1;
         self.epoch = epoch;
         self.rewatch();
+        self.rate.restart_if_stale(Instant::now().into_std());
         // The capture runs on for the other viewers: this one's pictures
         // start where it is, so its pace never holds the capture back.
         self.last = sequence;
