@@ -18,17 +18,22 @@ use crate::shard::Shard;
 use demi_backend_host_access::root_of;
 
 impl Shard {
-    /// The latest page of the live node `node` of the conversation `id`, read
-    /// from its window now, with the transcript's version and the view of each
+    /// The latest `count` blocks, a page at most, of the live node `node` of
+    /// the conversation `id`, read from its window now, with the transcript's version and the view of each
     /// live command of the node and its cache chart, without the failure facts
     /// and attachments its route adds; none when the node is not live.
-    pub async fn live_transcript(&self, id: &ConversationId, node: &NodeId) -> Result<Option<TranscriptPage>, StorageError> {
+    pub async fn live_transcript(
+        &self,
+        id: &ConversationId,
+        node: &NodeId,
+        count: usize,
+    ) -> Result<Option<TranscriptPage>, StorageError> {
         let Some(tree) = self.agent().tree(&root_of(id)) else {
             return Ok(None);
         };
         // Read at once, nothing awaited, so the patches that follow begin at
         // the version it names.
-        let Some((page, commands, request_output)) = tree.latest_page(node) else {
+        let Some((page, commands, request_output)) = tree.latest_page(node, count) else {
             return Ok(None);
         };
         let cache_chart = tree.cache_chart(node);

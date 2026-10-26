@@ -2,7 +2,7 @@ import { computed, markRaw, reactive, type Raw, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, deferred, delay, isAbortError, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
-import type { ClientContent, MessageComment } from '@demicodes/protocol'
+import { FIRST_BLOCKS, type ClientContent, type MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { NO_COST, agentCost, conversationCost, recentOf, type CostShown, type CostWindow } from '@demicodes/web-ui/agent/context-cost'
@@ -68,7 +68,7 @@ import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demi
 import { createConversationClient } from '@demicodes/web-ui/transport/conversation-lane'
 import { SessionError } from '@demicodes/conversation-client'
 import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, HeldTranscript, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
-import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, logReadFailed, readResponse } from '../api/client'
+import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, logReadFailed, readResponse, readSizedResponse } from '../api/client'
 import { readSaved } from '../api/saved'
 import type { z } from 'zod'
 import { loadDraft } from '../api/drafts'
@@ -1380,12 +1380,16 @@ export const useConversations = defineStore('conversations', () => {
       }),
       transcript: (node, signal, options) => connectionLost(async () => {
         const early = earlyReads.get(id)
-        const started = node === id && options?.earlier ? early?.root : undefined
+        const first = options?.first === true
+        const started = node === id && first ? early?.root : undefined
         if (early && started) {
           early.root = null
         }
-        const page = await (started ?? fetchTranscript(id, node, signal, options?.earlier === true))
+        const page = await (started ?? fetchTranscript(id, node, signal, first))
         signal.throwIfAborted()
+        if (first && page.start > 0) {
+          readBeforeOnceShown(id)
+        }
         return page
       }),
     }
@@ -1456,13 +1460,13 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /** The node's latest page with its version; with `earlier`, the page before it as one run of blocks with it. */
-  async function fetchTranscript(id: string, node: string, signal: AbortSignal, earlier: boolean): Promise<TranscriptRead> {
-    const query = earlier ? 'latest=true&earlier=true' : 'latest=true'
+  /** The node's latest page with its version; with `first`, its last `FIRST_BLOCKS` alone. */
+  async function fetchTranscript(id: string, node: string, signal: AbortSignal, first: boolean): Promise<TranscriptRead> {
+    const query = first ? `latest=true&blocks=${FIRST_BLOCKS}` : 'latest=true'
     const began = performance.now()
     try {
       const response = await apiRequest(`/conversations/${encodeURIComponent(id)}/agents/${encodeURIComponent(node)}/transcript?${query}`, { signal })
-      const page = await readResponse(response, transcriptPageSchema)
+      const { value: page, bytes } = await readSizedResponse(response, transcriptPageSchema)
       if (!page.version) {
         throw new Error('The latest page names no version of its transcript')
       }
@@ -1470,16 +1474,35 @@ export const useConversations = defineStore('conversations', () => {
       logReadAnswered(response, began, {
         read: 'transcript',
         node,
-        earlier,
+        first,
         blocks: page.blocks.length,
+        bytes,
         revision: page.version.revision,
         epoch: page.version.epoch,
       }, id)
       return { ...page, version: page.version }
     } catch (error) {
-      logReadFailed(error, began, { read: 'transcript', node, earlier }, id)
+      logReadFailed(error, began, { read: 'transcript', node, first }, id)
       throw error
     }
+  }
+
+  /**
+   * Reads the page before what a root's first read brought, once those rows
+   * show, while the conversation is still the one shown: the reader who
+   * scrolls up finds it held, and the one who only looks at the end did not
+   * wait for it. A conversation left meanwhile has released its reads.
+   */
+  function readBeforeOnceShown(id: string): void {
+    // The read is taken and drawn in this task; the frame after it shows it.
+    requestAnimationFrame(() => setTimeout(() => {
+      const conversation = items.value.find((item) => item.id === id)
+      if (!conversation || product.activeConversationId !== id) {
+        return
+      }
+      // A failure leaves the window's edge to the reader's scroll, which reads it again.
+      history.readBefore(conversation, null).catch(() => {})
+    }))
   }
 
   /** Starts the reads of a first load by address, which the opening takes. */

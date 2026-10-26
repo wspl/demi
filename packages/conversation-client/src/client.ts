@@ -201,10 +201,10 @@ export interface ConversationReader {
   conversation(signal: AbortSignal, options: { whole: boolean }): Promise<ConversationRead>
   /**
    * The latest page of the node's transcript, with its version and live
-   * commands; with `earlier`, the page before it comes as one run of blocks
-   * with it.
+   * commands; with `first`, only its last `FIRST_BLOCKS`, what the root's
+   * first screen shows.
    */
-  transcript(node: string, signal: AbortSignal, options?: { earlier: boolean }): Promise<TranscriptRead>
+  transcript(node: string, signal: AbortSignal, options?: { first: boolean }): Promise<TranscriptRead>
 }
 
 /**
@@ -1547,10 +1547,10 @@ export class ConversationClient {
         }
         let read: TranscriptRead
         try {
-          // The root's first read of a page that holds none of it brings the
-          // page before the latest too, which the view would ask for next.
+          // The root's first read of a page that holds none of it brings
+          // what its first screen shows, and no more, which it waits for.
           read = await reader.transcript(node, AbortSignal.any([this.detached.signal, subscription.stop.signal]), {
-            earlier: node === this.root && this.held(node) === undefined,
+            first: node === this.root && this.held(node) === undefined,
           })
         } catch (error) {
           attempted()

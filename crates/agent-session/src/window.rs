@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use demi_agent_store::{Kind, StoreError};
 use demi_agent_transcript::{Earlier, TranscriptLog};
-use demi_conversation_lane_protocol::{BlockVersions, Versions, latest_page_start, light};
+use demi_conversation_lane_protocol::{BlockVersions, PageAt, Versions, latest_page_start, light, page};
 use demi_shared_types::{Block, BlockId};
 
 use super::SessionShared;
@@ -69,20 +69,21 @@ pub struct LatestPage {
     pub version: demi_conversation_lane_protocol::Version,
 }
 
-/// The latest page of the session's transcript, read from the window as it is
-/// now, with the version the window is at: a page that holds it applies the
-/// patches after that version.
+/// The latest `count` blocks of the session's transcript, a page at most,
+/// read from the window as it is now, with the version the window is at: a
+/// page that holds them applies the patches after that version.
 ///
 /// It is read at once, so that it follows every patch sent before it.
-pub(crate) fn latest(s: &SessionShared) -> LatestPage {
+pub(crate) fn latest(s: &SessionShared, count: usize) -> LatestPage {
     s.read(|core| {
         let transcript = &core.transcript;
-        page_of(transcript.start(), transcript.blocks(), transcript.versions(), transcript.version())
+        page_of(transcript.start(), transcript.blocks(), transcript.versions(), transcript.version(), count)
     })
 }
 
-/// The latest page of the window of `blocks` from the position `start` on, with
-/// the `versions` of its places, at `version`.
+/// The latest `count` blocks, a page at most, of the window of `blocks` from
+/// the position `start` on, with the `versions` of their places, at
+/// `version`.
 ///
 /// Its blocks are light but the last, which the stream may still be writing:
 /// the patches that follow add to it, so it comes whole, and a page that
@@ -93,8 +94,9 @@ fn page_of(
     blocks: &[Block],
     versions: &BTreeMap<usize, Versions>,
     version: demi_conversation_lane_protocol::Version,
+    count: usize,
 ) -> LatestPage {
-    let from = start + latest_page_start(blocks);
+    let from = start + page(blocks.len(), PageAt::Latest(count)).start;
     let mut light = light(&blocks[from - start..]);
     if let (Some(last), Some(whole)) = (light.last_mut(), blocks.last()) {
         *last = whole.clone();
