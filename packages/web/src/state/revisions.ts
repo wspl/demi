@@ -3,15 +3,15 @@
  * counted it: a count compares only with counts of the same run.
  */
 export interface RunRevision {
-  /** The product state's `run` when the page took the revision; null while the page held no snapshot. */
+  /** The backend's run that counted the revision, as the product state names it; null when the page knew none. */
   run: string | null
   revision: number
 }
 
 /**
- * Whether `next`, of the run the page holds now, is newer than `held`:
- * anything is newer than nothing, and any revision of the current run is
- * newer than one of another run, since that backend's counts started again.
+ * Whether `next` is newer than `held`: anything is newer than nothing, and a
+ * revision of another run than `held`'s is taken, since a backend's counts
+ * start again with each run and the value that came later is the latest.
  */
 export function isNewer(next: RunRevision, held: RunRevision | null): boolean {
   return held === null || next.run !== held.run || next.revision > held.revision

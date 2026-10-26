@@ -18,6 +18,7 @@ import { pageLog } from '@demicodes/web-ui/infra/log'
 import { viewSupplied } from '@demicodes/web-ui/infra/view-timing'
 import { heldTranscript, type HeldBlock, type HeldTranscript, type TranscriptWindow } from '@demicodes/web-ui/transport/protocol'
 import { heldAccount, holds } from './account-owner'
+import { pageBuild } from './product'
 import {
   conversationMetadataSchema,
   userDtoSchema,
@@ -49,15 +50,11 @@ import { t } from './locales/text'
  * every read back until it ends; a write the disk is too full for evicts
  * rather than fails.
  *
- * It is disposable: written by one build and read by that build alone, a
- * record of another build is dropped, never migrated, and it is the
- * account's alone.
+ * It is disposable: each kind of record names its format, the shape it was
+ * written in, and a record of another format is dropped, never migrated, so
+ * a release that changes one kind's shape drops that kind alone and keeps
+ * the rest. It is the account's alone.
  */
-
-/** The build the records belong to; Vite's development server names none. */
-function cacheBuild(): string {
-  return import.meta.env.DEMI_WEB_BUILD ?? 'development'
-}
 
 const ACCOUNT = 'account'
 const CONVERSATIONS = 'conversations'
@@ -84,9 +81,10 @@ const NODE_INDEXES = ['viewedAt', 'conversation']
 
 /**
  * The database's layout. Its records are disposable, so a change of their
- * shape needs no new version: a record of another build is dropped. A new
- * layout drops every store of the one before, records and all, as a cache
- * of another build is dropped.
+ * shape needs no new version: a record of another format is dropped. A new
+ * layout, or a change of a record's meaning that keeps its shape, such as a
+ * field whose unit changes, takes a new version, which drops every store of
+ * the one before, records and all.
  */
 const database = new IndexedDatabase('demi-offline', 3, (request) => {
   const db = request.result
@@ -129,15 +127,23 @@ function copiedParts(state: PageState): PageState {
 }
 
 const accountRecordSchema = z.object({
-  build: z.string(),
+  format: z.string(),
   user: userDtoSchema,
   parts: copiedPartsSchema,
 })
 
 const conversationRecordSchema = z.object({
-  build: z.string(),
+  format: z.string(),
   userId: z.string(),
   metadata: conversationMetadataSchema,
+  /** The backend's run the metadata was read in, whose count its permission requests' and plugin states' revisions are of. */
+  run: z.string().nullable(),
+  /**
+   * The web app's build that wrote the metadata's plugin states, which are
+   * in each plugin's own shape, one no schema of the page's describes: a
+   * record of another build keeps the rest and drops them.
+   */
+  statesBuild: z.string().nullable(),
   agents: z.object({ version: versionSchema, entries: z.array(agentEntrySchema) }),
   /** The descriptions of the attachments its replies name, by id. */
   attachments: z.record(z.string(), conversationAttachmentSchema),
@@ -147,7 +153,7 @@ const conversationRecordSchema = z.object({
 const runSchema = z.object({ start: z.int().nonnegative(), end: z.int().nonnegative() })
 
 const nodeRecordSchema = z.object({
-  build: z.string(),
+  format: z.string(),
   userId: z.string(),
   conversation: z.string(),
   /** How many blocks its transcript held, as far as the latest run knows. */
@@ -170,7 +176,41 @@ const blockRecordSchema = z.object({
   failure: providerFailureFactsSchema.optional(),
 })
 
-export type ConversationCopy = Omit<z.infer<typeof conversationRecordSchema>, 'build' | 'userId'>
+/**
+ * A hash of the JSON Schema of `schemas`, the shape a kind of record is read
+ * in, computed once when first asked for: a record written in another shape
+ * names another.
+ */
+function formatOf(...schemas: z.ZodType[]): () => string {
+  let format: string | undefined
+  return () => {
+    format ??= hashOf(JSON.stringify(schemas.map((schema) => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }))))
+    return format
+  }
+}
+
+/** A 53-bit hash of `text` (cyrb53), in base 36: a record's format needs no cryptographic strength, and a synchronous one is read before the record. */
+function hashOf(text: string): string {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let at = 0; at < text.length; at++) {
+    const code = text.charCodeAt(at)
+    h1 = Math.imul(h1 ^ code, 2654435761)
+    h2 = Math.imul(h2 ^ code, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
+}
+
+/** The account's record's format. */
+const accountFormat = formatOf(accountRecordSchema)
+/** A conversation's record's format: its metadata, its agents and its attachments' descriptions. */
+const conversationFormat = formatOf(conversationRecordSchema)
+/** A node's record's format, and its blocks', which its runs name: a block of another shape goes with the record. */
+const nodeFormat = formatOf(nodeRecordSchema, blockRecordSchema)
+
+export type ConversationCopy = Omit<z.infer<typeof conversationRecordSchema>, 'format' | 'userId' | 'statesBuild'>
 type NodeRecord = z.infer<typeof nodeRecordSchema>
 type Run = z.infer<typeof runSchema>
 
@@ -244,38 +284,39 @@ function stored(value: unknown): unknown {
   return raw
 }
 
-/** Whether `value` is a record this build wrote, read before its shape, which is that build's. */
-function ofThisBuild(value: unknown): boolean {
-  const record = z.object({ build: z.string() }).safeParse(value)
-  return record.success && record.data.build === cacheBuild()
+/** Whether `value` is a record in `format`, read before its shape, which another format's is not. */
+function inFormat(value: unknown, format: string): boolean {
+  const record = z.object({ format: z.string() }).safeParse(value)
+  return record.success && record.data.format === format
 }
 
 /**
- * The account's copy this build wrote; none when there is none, or the
- * cache is another build's or does not read, which is then dropped whole.
+ * The account's copy; none when there is none, or it is in another format
+ * or does not read, which is then dropped. The conversations' and the
+ * nodes' records stay, each read by its own format.
  */
 export async function readAccountCopy(): Promise<AccountCopy | null> {
   const value = await database.transaction(ACCOUNT, 'readonly', (store) => store.get(ACCOUNT_KEY))
   if (value === undefined) {
     return null
   }
-  // Another build's copy is dropped before its shape is read, which may
-  // be that build's own: only a copy of this build that does not read is a
-  // defect.
-  const record = ofThisBuild(value) ? accountRecordSchema.safeParse(value) : null
+  // A copy of another format is dropped before its shape is read, which
+  // may be another release's own: only a copy of this format that does not
+  // read is a defect.
+  const record = inFormat(value, accountFormat()) ? accountRecordSchema.safeParse(value) : null
   if (record === null || !record.success) {
     if (record !== null) {
       reportError(t('failures.readOffline'), schemaRefusal(record.error), { site: 'failures.readOffline' })
     }
-    await deleteAccountCache()
+    await database.transaction(ACCOUNT, 'readwrite', (store) => store.delete(ACCOUNT_KEY))
     return null
   }
   return { user: record.data.user, parts: record.data.parts }
 }
 
-/** Reads `value` as `schema` says a record of this build for `userId` is; another build's, another account's or one that does not read is none. */
-function ours<S extends z.ZodType<{ userId: string }>>(schema: S, value: unknown, userId: string): z.infer<S> | null {
-  if (value === undefined || !ofThisBuild(value)) {
+/** Reads `value` as `schema` says a record in `format` for `userId` is; another format's, another account's or one that does not read is none. */
+function ours<S extends z.ZodType<{ userId: string }>>(schema: S, format: string, value: unknown, userId: string): z.infer<S> | null {
+  if (value === undefined || !inFormat(value, format)) {
     return null
   }
   const record = schema.safeParse(value)
@@ -287,21 +328,22 @@ function ours<S extends z.ZodType<{ userId: string }>>(schema: S, value: unknown
 }
 
 /**
- * The copy of conversation `id`'s metadata and agents this build wrote for
- * `userId`; none for none, or one that does not read. A database that
- * fails says so on the console, and the conversation has no copy then.
+ * The copy of conversation `id`'s metadata and agents in this format for
+ * `userId`, without the plugin states another build wrote; none for none,
+ * or one that does not read. A database that fails says so on the console,
+ * and the conversation has no copy then.
  */
 export async function readConversationCopy(userId: string, id: string): Promise<ConversationCopy | null> {
   const began = performance.now()
   try {
     const value = await database.transaction(CONVERSATIONS, 'readonly', (store) => store.get(id))
-    const record = ours(conversationRecordSchema, value, userId)
+    const record = ours(conversationRecordSchema, conversationFormat(), value, userId)
     pageLog.info('offline_copy.read', { what: 'conversation', found: record !== null, ms: Math.round(performance.now() - began) }, id)
     if (!record) {
       return null
     }
-    const { build: _build, userId: _user, ...copy } = record
-    return copy
+    const { format: _format, userId: _user, statesBuild, ...copy } = record
+    return statesBuild === pageBuild() ? copy : { ...copy, metadata: { ...copy.metadata, panelStates: [] } }
   } catch (error) {
     reportError(t('failures.readOffline'), error, { site: 'failures.readOffline' })
     return null
@@ -317,7 +359,7 @@ export async function writeConversationCopy(userId: string, id: string, copy: Co
   if (!holds(userId)) {
     return
   }
-  const record = { build: cacheBuild(), userId, ...copy }
+  const record = { format: conversationFormat(), userId, statesBuild: pageBuild(), ...copy }
   const began = performance.now()
   try {
     await withRoom(id, () => database.transaction(CONVERSATIONS, 'readwrite', (store) => store.put(record, id)))
@@ -379,7 +421,7 @@ export async function readNodeBlocks(
 ): Promise<{ window: TranscriptWindow, failures: Record<string, ProviderFailureFacts> } | null> {
   try {
     const value = await database.transaction(NODES, 'readonly', (store) => store.get(node))
-    const run = ours(nodeRecordSchema, value, userId)?.runs.find((each) => each.start < end && each.end > end)
+    const run = ours(nodeRecordSchema, nodeFormat(), value, userId)?.runs.find((each) => each.start < end && each.end > end)
     if (!run) {
       pageLog.info('offline_copy.read', { what: 'earlier_blocks', node, found: false, end })
       return null
@@ -405,7 +447,7 @@ async function viewedNode(userId: string, node: string): Promise<NodeRecord | nu
     let record: NodeRecord | null = null
     const request = nodes.get(node)
     request.onsuccess = () => {
-      record = ours(nodeRecordSchema, request.result, userId)
+      record = ours(nodeRecordSchema, nodeFormat(), request.result, userId)
       if (record) {
         record = { ...record, viewedAt: Date.now() }
         nodes.put(record, node)
@@ -461,9 +503,9 @@ export async function writeNode(userId: string, node: string, write: NodeWrite):
       }
       const held = nodes.get(node)
       held.onsuccess = () => {
-        const before = ours(nodeRecordSchema, held.result, userId)
+        const before = ours(nodeRecordSchema, nodeFormat(), held.result, userId)
         nodes.put({
-          build: cacheBuild(),
+          format: nodeFormat(),
           userId,
           conversation: write.conversation,
           length: write.length,
@@ -608,7 +650,7 @@ async function diskBound(): Promise<{ bound: number, reported: number | undefine
  * What each node's blocks take on disk, about, the node viewed longest ago
  * first. Measured when asked, as the text of each block, never kept as a
  * count: a count carried from one write to the next goes wrong whenever the
- * disk holds blocks the count never saw, as those another build left.
+ * disk holds blocks the count never saw, as those of another format.
  */
 async function diskUse(): Promise<{ node: string, bytes: number }[]> {
   return database.across([NODES, BLOCKS], 'readonly', (transaction) => {
@@ -808,7 +850,7 @@ function keepAccountCopy(
         if (!account() || !holds(user.id) || (parts.user !== undefined && parts.user.id !== user.id)) {
           return
         }
-        const record = stored({ build: cacheBuild(), user, parts })
+        const record = stored({ format: accountFormat(), user, parts })
         await withRoom(null, () => database.transaction(ACCOUNT, 'readwrite', (store) => store.put(record, ACCOUNT_KEY)))
       }
     } catch (error) {

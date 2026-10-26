@@ -319,7 +319,7 @@ function copyOf(conversation: Conversation): ConversationCopy | null {
     ...conversation.subagents.map((agent) => subagentEntry(toRaw(agent))),
     ...conversation.sides.flatMap((side) => sideEntry(toRaw(side))),
   ]
-  return { metadata: toRaw(metadata), agents: { version: toRaw(version), entries }, attachments: toRaw(conversation.attachmentDescriptions) }
+  return { metadata: toRaw(metadata), run: conversation.metadataRun, agents: { version: toRaw(version), entries }, attachments: toRaw(conversation.attachmentDescriptions) }
 }
 
 /** A child as its entry says it. */

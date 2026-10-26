@@ -242,7 +242,7 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
 const stateBuildSchema = productStateSchema.pick({ webBuild: true })
 
 /** This page's web app build, which `vite build` writes in; none in development, where Vite serves the sources. */
-function pageBuild(): string | null {
+export function pageBuild(): string | null {
   return import.meta.env.DEMI_WEB_BUILD ?? null
 }
 
