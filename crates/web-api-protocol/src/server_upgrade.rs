@@ -3,7 +3,7 @@
 //! (`crates/server/src/main.rs`). Only a server that `demi-server` installed
 //! offers it.
 
-use demi_shared_types::Timestamp;
+use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use demi_runner_protocol::release::UpgradeStep;
@@ -18,6 +18,8 @@ pub struct ServerUpgrade {
     pub running: String,
     pub channel: UpgradeChannel,
     pub check: UpgradeCheck,
+    /// The newest release, which the server gets ready while it serves.
+    pub preparation: UpgradePreparation,
     pub run: UpgradeRun,
 }
 
@@ -58,6 +60,30 @@ pub enum UpgradeCheck {
         notes_url: Option<String>,
     },
     Failed { at: Timestamp, reason: String },
+}
+
+/// How far the server is in getting a newer release ready ahead of Update
+/// Now: downloaded and unpacked, its gVisor and Cloud image installed, and
+/// its runner on the devices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum UpgradePreparation {
+    /// No newer release is being or has been got ready.
+    None,
+    /// Its archives download.
+    Downloading {
+        version: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        done: u64,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        total: u64,
+    },
+    /// It unpacks, and its gVisor and Cloud image install.
+    Installing { version: String },
+    /// Update Now has only the checks and the restart left.
+    Ready { version: String },
+    /// The work failed; the next hourly check tries again.
+    Failed { version: String, reason: String },
 }
 
 /// An update that runs or did not happen.

@@ -186,9 +186,11 @@ const noticesAnswer = ref<NoticesAnswer>('notices')
 const updateMoments = [
   { value: 'upToDate', label: 'Up to Date' },
   { value: 'checking', label: 'Checking' },
-  { value: 'available', label: 'Available' },
+  { value: 'preparing', label: 'Getting Ready' },
+  { value: 'available', label: 'Ready' },
+  { value: 'prepareFailed', label: 'Not Got Ready' },
   { value: 'downloading', label: 'Downloading' },
-  { value: 'devices', label: 'Waiting on Devices' },
+  { value: 'installing', label: 'Installing the Image' },
   { value: 'failed', label: 'Failed' },
   { value: 'checkFailed', label: 'Check Failed' },
 ] as const
@@ -443,7 +445,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Updates"
-        note="For the master and admins of a server that demi-server installed, before About: the release it runs, the newest of its channel with Update Now, Check Now with when it last looked, and the channel, Beta or Canary. Update Now counts the agents at work, then asks, naming them; then the row lists every step of the update, each with what it did and how long it took or how far it is, under a bar of the whole, and says which step runs; while devices download the new runner it names those it waits for and when it goes on without them. From the restart every page shows the Updating Demi screen (Overlays). An update that failed keeps its list, the failed step saying why, until the next one. The stand-in server runs 0.1.5469: Beta has nothing newer, Canary offers 0.1.5500, and Update Now runs it through."
+        note="For the master and admins of a server that demi-server installed, before About: the release it runs, the newest of its channel with Update Now, Check Now with when it last looked, and the channel, Beta or Canary. A check runs every hour, and a newer release it finds is got ready in the background: downloaded, unpacked, its gVisor and Cloud image installed and its runner on the devices, which the second line follows, Downloading in the background with its bytes, Installing in the background, then Ready to install, or why it could not, tried again at the next check. Update Now counts the agents at work, then asks, naming them; then the row lists every step of the update, what was got ready ahead already installed, each with what it did and how long it took or how far it is, under a bar of the whole, and says which step runs. The paired devices download the new runner meanwhile, and no step waits for them: a device not done by the restart updates after it. From the restart every page shows the Updating Demi screen (Overlays). An update that failed keeps its list, the failed step saying why, until the next one. The stand-in server runs 0.1.5469: Beta has nothing newer, Canary offers 0.1.5500, and Update Now runs it through."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented

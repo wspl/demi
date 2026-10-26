@@ -31,8 +31,9 @@
 //!
 //! The releases and the services follow these rules:
 //!
-//! - A server keeps the current release and at most one other, the one a
-//!   rollback returns to, and the gVisor versions of those two.
+//! - A server keeps the current release, the one a rollback returns to, and
+//!   at most one ready ahead of an update, and the gVisor versions of those
+//!   three.
 //! - `current` is replaced atomically by renaming a new link over it.
 //! - Both services take their release root from the real path of their own
 //!   executable, so they always run one release and the configuration file
@@ -56,11 +57,15 @@ pub const UNITS: [&str; 2] = [MANAGER, BACKEND];
 pub const MANAGER: &str = "demi-machine-manager.service";
 pub const BACKEND: &str = "demi-backend.service";
 
-/// The units that run an administrator's update: the path unit, which runs
-/// beside the services, and the service it starts. A release without them,
-/// as one before them, removes them.
-pub const UPGRADE_UNITS: [&str; 2] = [UPGRADE_PATH, "demi-upgrade.service"];
+/// The units of the server's updates: those that run an administrator's
+/// update and those that get the newest release ready ahead of it, each a
+/// path unit, which runs beside the services, and the service it starts. A
+/// release without one, as one before it, removes it.
+pub const UPGRADE_UNITS: [&str; 4] = [UPGRADE_PATH, "demi-upgrade.service", PREPARE_PATH, "demi-prepare.service"];
 pub const UPGRADE_PATH: &str = "demi-upgrade.path";
+pub const PREPARE_PATH: &str = "demi-prepare.path";
+/// The path units of the updates.
+pub const PATH_UNITS: [&str; 2] = [UPGRADE_PATH, PREPARE_PATH];
 
 pub struct Layout {
     root: PathBuf,
@@ -130,6 +135,13 @@ impl Layout {
         self.at(demi_runner_protocol::release::UPGRADE_REQUEST)
     }
 
+    /// The file the backend writes the newest release to, which the server
+    /// gets ready ahead of an update.
+    pub fn prepare_request(&self) -> PathBuf {
+        self.upgrade_request()
+            .with_file_name(demi_runner_protocol::release::PREPARE_REQUEST_NAME)
+    }
+
     /// The version of the release `current` names.
     pub fn current_version(&self) -> io::Result<Version> {
         let target = std::fs::read_link(self.current())?;
@@ -190,9 +202,12 @@ impl Layout {
         sync_directory(&units)
     }
 
-    /// Whether the update's units are in place.
-    pub fn upgrade_units(&self) -> bool {
-        self.units().join(UPGRADE_PATH).exists()
+    /// The path units of the updates that are in place.
+    pub fn path_units(&self) -> Vec<&'static str> {
+        PATH_UNITS
+            .into_iter()
+            .filter(|unit| self.units().join(unit).exists())
+            .collect()
     }
 }
 

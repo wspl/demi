@@ -100,7 +100,8 @@ The parts of the layout follow these rules:
   (`crates/xtask/src/server_release.rs`) of the server's Linux target,
   unpacked from its two archives. `demi-server` never changes a root after it
   unpacks it: a new release is a new directory. A server keeps the current
-  release and at most one other, the one a rollback returns to.
+  release, the one a rollback returns to, and at most one ready ahead of an
+  update ([Ready ahead](#ready-ahead)).
 - **gVisor.** No release carries gVisor. Each machine manager is built against
   one pinned version of `runsc`, and `demi-server` fetches that version into
   `gvisor/<version>/` before a release that needs it runs
@@ -227,35 +228,12 @@ contract ([What crosses releases](#what-crosses-releases)).
 
 Everything that can fail without stopping anything happens now, while the
 current release serves. Settings › Updates lists these steps, with their
-progress where they have any ([From Settings](#from-settings)):
+progress where they have any ([From Settings](#from-settings)), all but the
+runners', which no step waits for:
 
-1. **Configuration.** The new backend and the new machine manager each check
-   `/opt/demi/config/demi.env` with `--check-config`, which validates every
-   setting as a start would and exits. A failure names the variable.
-2. **gVisor.** `demi-server` fetches the `runsc` version that the new manager
-   pins into `/opt/demi/gvisor/<version>/`, unless it is there
-   (`crates/server/src/gvisor.rs`).
-3. **Cloud image.** The new manager imports the release's `image/` with
-   `demi-machine-manager --import`, beside the running manager. Bases are
-   immutable directories named by their `baseVersion` and published
-   atomically, and the running manager never reads one it was not configured
-   with, so the two do not meet. The import is the slow step of a manager's
-   start, and doing it now keeps it out of the interruption.
-4. **Data.** `demi-server` reads the schema version of each database in the
-   data directory that the configuration names, and compares it with the new
-   backend's. It knows them, because it is built from the same workspace.
-   - The databases whose versions differ are migrated, so they are copied, and
-     the file system must have room for the copy.
-   - A database whose version is neither the new schema's nor in its history
-     stops the upgrade here, naming the file, before anything is interrupted:
-     the new backend could not open it. A development build of another
-     unpublished schema can make such a database.
-5. **Manager state.** `demi-server` reads the format of the manager's state
-   directory. A release that changes the format is marked as one a rollback
-   cannot cross ([Rollback](#rollback)), and `demi-server` says so before it
-   goes on.
-6. **Runners.** `demi-server` tells the running backend the next runner
-   release and the new release's directory that holds its executables.
+1. **Runners.** As the preparation starts, `demi-server` tells the running
+   backend the next runner release and the new release's directory that holds
+   its executables.
    - It does so over the backend's management socket,
      `/run/demi-backend-manage/manage.sock`, which only the backend's user and
      root can open.
@@ -266,11 +244,37 @@ progress where they have any ([From Settings](#from-settings)):
      user's devices.
    - The backend has its connected paired runners download the release ahead
      (`crates/runner/src/update.rs`) and answers as they finish.
-   - `demi-server` prints how many have, *3 of 4 devices have the new runner*.
-     It goes on when all have, or after 2 minutes, naming those that have not:
-     they download after the switch.
+   - `demi-server` prints how many have, *3 of 4 devices have the new runner*,
+     while the next steps run, and waits for none of them. A device that has
+     not finished by the restart downloads after it, and shows as updating
+     until its runner is back.
    - A backend of a release without the socket is told nothing, and its
      runners update after the switch as before.
+2. **Configuration.** The new backend and the new machine manager each check
+   `/opt/demi/config/demi.env` with `--check-config`, which validates every
+   setting as a start would and exits. A failure names the variable.
+3. **gVisor.** `demi-server` fetches the `runsc` version that the new manager
+   pins into `/opt/demi/gvisor/<version>/`, unless it is there
+   (`crates/server/src/gvisor.rs`).
+4. **Cloud image.** The new manager imports the release's `image/` with
+   `demi-machine-manager --import`, beside the running manager. Bases are
+   immutable directories named by their `baseVersion` and published
+   atomically, and the running manager never reads one it was not configured
+   with, so the two do not meet. The import is the slow step of a manager's
+   start, and doing it now keeps it out of the interruption.
+5. **Data.** `demi-server` reads the schema version of each database in the
+   data directory that the configuration names, and compares it with the new
+   backend's. It knows them, because it is built from the same workspace.
+   - The databases whose versions differ are migrated, so they are copied, and
+     the file system must have room for the copy.
+   - A database whose version is neither the new schema's nor in its history
+     stops the upgrade here, naming the file, before anything is interrupted:
+     the new backend could not open it. A development build of another
+     unpublished schema can make such a database.
+6. **Manager state.** `demi-server` reads the format of the manager's state
+   directory. A release that changes the format is marked as one a rollback
+   cannot cross ([Rollback](#rollback)), and `demi-server` says so before it
+   goes on.
 
 ### Switch
 
@@ -354,9 +358,43 @@ and the newest release of its channel:
 - **Beta** offers the releases Demi publishes, which GitHub marks *latest*.
 - **Canary** offers every release, a deploy's pre-releases included.
 
-The backend looks for the newest release when it starts, once a day and on
+The backend looks for the newest release when it starts, every hour and on
 **Check Now**. While a newer one exists, the sidebar shows a green update icon
 to the master and administrators.
+
+### Ready ahead
+
+After every check that finds a newer release, the server gets it ready while
+the current one serves, so **Update Now** has only the checks and the restart
+left:
+
+1. The backend writes the version to `/run/demi-upgrade/prepare`.
+2. The path unit `demi-prepare.path` sees the file and starts
+   `demi-prepare.service`, which runs `demi-server prepare --requested` as
+   root.
+3. `demi-server` removes the request and does nothing while another run of it
+   holds its lock, or while a move is interrupted. Otherwise it removes a
+   release that was ready before this one, fetches the release as
+   [Fetch](#fetch) does, and hands over to the release's own `demi-server
+   prepare`. That one downloads its gVisor version, imports its image, and
+   tells the running backend its runner release, which the connected devices
+   download ([Prepare](#prepare)).
+4. It tells the backend each step, which Settings › Updates shows on the
+   release's row: *Downloading in the background*, *Installing in the
+   background…*, then *Ready to install*, or why it could not. The next check
+   asks again, so a backend started since hears of the release within the
+   hour, and so do the devices that were away.
+
+An update that starts while this runs waits for it, then finds its steps done
+and shows them as already installed.
+
+One release is ready at most. The server keeps its current release, the one a
+rollback returns to, and the one ready ahead, with their gVisor versions. The
+manager's import beside a running manager records the base it imported in
+`ahead.json` in its image store and removes the one recorded before it, which
+no manager ran and no Cloud is pinned to. A device keeps the runner and the
+programs of the release it runs and of the one ready ahead; its download of a
+newer one removes the earlier one's.
 
 **Update Now** asks first, then runs the same upgrade as
 `sudo demi-server upgrade <version>`:
@@ -371,12 +409,13 @@ to the master and administrators.
    than the current one, and upgrades as above.
 4. While it runs, `demi-server` tells the backend every step of the update
    over the backend's management socket, each with its state and its
-   progress: the bytes downloaded, the devices that have the new runner, the
-   Clouds saved, the databases copied. The administrators' pages list the
-   steps of [Fetch](#fetch) and [Prepare](#prepare) in Settings › Updates.
-   From the stop on, every page shows the update's screen, which lists the
-   steps of [Switch](#switch) and the new backend's own, until the new release
-   serves. A step that fails is marked as failed with its reason.
+   progress: the bytes downloaded, the Clouds saved, the databases copied.
+   The administrators' pages list the steps of [Fetch](#fetch) and
+   [Prepare](#prepare) in Settings › Updates. From the stop on, every page
+   shows the update's screen, which lists the steps of [Switch](#switch) and
+   the new backend's own. Once the new release serves, the screen shows every
+   step done and waits for the user to open Demi. A step that fails is marked
+   as failed with its reason.
 
 The units come with the release, as the services' units do. A server on an
 earlier release gets them with one `sudo demi-server upgrade` to a release

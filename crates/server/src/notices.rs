@@ -12,6 +12,9 @@
 //!   told nothing, and the upgrade goes on: the notices only report it.
 //!   While the update runs, the last notice is repeated every 10 seconds, so
 //!   a backend that hears nothing for longer knows the upgrade stopped.
+//! - The work ahead of an update (`preparing`) tells its steps as notices of
+//!   their own, which the backend shows as how far the release is got ready,
+//!   and keeps no record: no move reads it.
 use std::{
     collections::VecDeque,
     io::{self, BufRead as _, BufReader, Write as _},
@@ -52,6 +55,8 @@ pub struct Notices {
     path: Option<PathBuf>,
     /// The update's steps, once it knows what it moves to.
     record: Option<UpdateRecord>,
+    /// The steps are the work ahead of an update, not an update's.
+    preparing: bool,
     repeated: Arc<Repeated>,
     repeating: Option<JoinHandle<()>>,
     /// When the downloads told of the last `RATE_OVER` were, and their bytes
@@ -86,10 +91,19 @@ impl Notices {
             socket,
             path,
             record: None,
+            preparing: false,
             repeated,
             repeating: Some(repeating),
             downloads: VecDeque::new(),
         }
+    }
+
+    /// The notices of the work ahead of an update, which keep no record.
+    pub fn preparing(layout: &Layout) -> Self {
+        let mut notices = Self::new(layout);
+        notices.path = None;
+        notices.preparing = true;
+        notices
     }
 
     /// The update from `from` to `to`: the steps an earlier run of the same
@@ -195,6 +209,12 @@ impl Notices {
                 step.state = failed;
             } else if let Some(step) = record.upgrade.iter_mut().find(|step| running(&step.state)) {
                 step.state = failed;
+            } else if self.preparing
+                && let Some(step) = record.upgrade.iter_mut().find(|step| step.state == StepState::Waiting)
+            {
+                // The work ahead failed before its first step: that step
+                // says why.
+                step.state = failed;
             }
             record.returning = returning;
             self.changed();
@@ -218,6 +238,10 @@ impl Notices {
     pub fn failed(&mut self, reason: String, stopped: bool) {
         let returning = self.record.as_ref().is_some_and(|record| record.returning);
         self.failed_step(&reason, returning);
+        if self.preparing {
+            // The failed step says why; the next check tries again.
+            return;
+        }
         let update = self.record.take();
         self.tell(UpgradeNotice::Failed { reason, update });
         if !stopped {
@@ -253,12 +277,17 @@ impl Notices {
                 eprintln!("The update's steps were not kept in {}: {error}", path.display());
             }
         }
-        self.tell(UpgradeNotice::Progress { update: record.clone() });
+        let notice = if self.preparing {
+            UpgradeNotice::Preparing { update: record.clone() }
+        } else {
+            UpgradeNotice::Progress { update: record.clone() }
+        };
+        self.tell(notice);
     }
 
     /// Tells `notice` now, and again every 10 seconds while the update runs.
     fn tell(&mut self, notice: UpgradeNotice) {
-        let lasts = matches!(notice, UpgradeNotice::Progress { .. });
+        let lasts = matches!(notice, UpgradeNotice::Progress { .. } | UpgradeNotice::Preparing { .. });
         // Sent holding the lock, as the repeating thread sends, so the
         // backend hears the notices in the order they were told: a repeated
         // step never arrives after the restart or the failure that ended it.

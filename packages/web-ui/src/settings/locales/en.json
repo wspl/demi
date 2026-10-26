@@ -16,6 +16,13 @@
     "upToDate": "Demi is up to date",
     "available": "Demi {version} is available",
     "youHave": "You have {version}.",
+    "background": {
+      "starting": "Downloading in the background…",
+      "downloading": "Downloading in the background: {done} of {all}",
+      "installing": "Installing in the background…",
+      "ready": "Ready to install. You have {version}.",
+      "failed": "Couldn’t download Demi {version} in the background. You have {running}."
+    },
     "releaseNotes": "Release Notes",
     "updateNow": "Update Now",
     "checking": "Checking for updates…",
@@ -48,15 +55,10 @@
       "downloadGvisor": "Download gVisor",
       "installImage": "Install the Cloud image",
       "checkDatabases": "Check the databases",
-      "updateDevices": "Update Demi on your devices",
       "restart": "Restart Demi"
     },
     "detail": {
       "of": "{done} of {count}",
-      "and": " and ",
-      "waitingFor": "Waiting for {names}",
-      "waitingForMore": "Waiting for {names} and {count} more",
-      "givesUpIn": "Continues without the rest in {time}",
       "toUpdate": "{count} to update | {count} to update",
       "installed": "Already installed",
       "noChanges": "No changes needed"

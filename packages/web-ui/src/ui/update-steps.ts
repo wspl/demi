@@ -8,7 +8,6 @@
 /** The numbers of a running step. */
 export type StepProgress =
   | { kind: 'bytes', done: number, total: number, perSecond?: number | null, leftSeconds?: number | null }
-  | { kind: 'devices', done: number, total: number, waiting: readonly string[], givesUpAt: string }
   | { kind: 'clouds', done: number, total: number }
   | { kind: 'conversations', done: number, total: number, bytesDone: number, bytes: number, leftSeconds?: number | null }
 
@@ -17,7 +16,6 @@ export type StepSummary =
   | { kind: 'none' }
   | { kind: 'bytes', bytes: number }
   | { kind: 'count', count: number }
-  | { kind: 'devices', done: number, total: number }
 
 /** How far one step is. */
 export type StepState =
@@ -61,7 +59,6 @@ function share(progress: StepProgress): number {
       return progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0
     case 'conversations':
       return progress.bytes > 0 ? Math.min(1, progress.bytesDone / progress.bytes) : 0
-    case 'devices':
     case 'clouds':
       return progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0
   }

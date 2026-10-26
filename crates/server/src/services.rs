@@ -1,6 +1,6 @@
 //! The two services, through systemd: an upgrade stops, starts and reloads
-//! them, and nothing else, and keeps the path unit of an administrator's
-//! update running when its release has one. A start returns once the service reports ready or
+//! them, and nothing else, and keeps the path units of the updates running
+//! when its release has them. A start returns once the service reports ready or
 //! has failed, since both units use `Type=notify`.
 //!
 //! While neither backend runs, the update screen answers the pages: the new
@@ -17,9 +17,9 @@ pub trait Services: Sync {
     fn stop(&self, unit: &str) -> io::Result<()>;
     /// Starts `unit` and waits until it reports ready or fails.
     fn start(&self, unit: &str) -> io::Result<()>;
-    /// Reads the units again and enables both, and runs the update's path
-    /// unit when `upgrades` says its units are in place, else stops it.
-    fn reload(&self, upgrades: bool) -> io::Result<()>;
+    /// Reads the units again and enables both, and runs the path units of
+    /// the updates in `paths`, those in place, and stops the others.
+    fn reload(&self, paths: &[&str]) -> io::Result<()>;
     /// The last lines of `unit`'s log, for a failure's report.
     fn log(&self, unit: &str) -> String;
     /// Starts the backend `program` with the configuration `config` as the
@@ -41,17 +41,19 @@ impl Services for Systemd {
         systemctl(&["start", unit])
     }
 
-    fn reload(&self, upgrades: bool) -> io::Result<()> {
+    fn reload(&self, paths: &[&str]) -> io::Result<()> {
         // A path unit whose file went keeps running until it is stopped.
-        if !upgrades {
-            let _ = systemctl(&["disable", "--now", crate::layout::UPGRADE_PATH]);
+        for unit in crate::layout::PATH_UNITS {
+            if !paths.contains(&unit) {
+                let _ = systemctl(&["disable", "--now", unit]);
+            }
         }
         systemctl(&["daemon-reload"])?;
         let mut enable = vec!["enable"];
         enable.extend(crate::layout::UNITS);
         systemctl(&enable)?;
-        if upgrades {
-            systemctl(&["enable", "--now", crate::layout::UPGRADE_PATH])?;
+        for unit in paths {
+            systemctl(&["enable", "--now", unit])?;
         }
         Ok(())
     }

@@ -236,7 +236,8 @@ impl ResidentHandle {
     /// Puts the program of each of `packages` for this Host's target in the
     /// artifact cache, located by `resolver`, one at a time, so a resident's
     /// start finds it there. Ahead of an update (`ahead`) the programs the
-    /// runner runs now stay. A package without a program for this target
+    /// runner runs now stay, and those of a release downloaded ahead before
+    /// go. A package without a program for this target
     /// is passed over; one that fails does not stop the others.
     pub async fn keep_programs(
         &self,
@@ -246,10 +247,12 @@ impl ResidentHandle {
         cancel: &CancellationToken,
     ) -> ProgramsKept {
         let mut kept = ProgramsKept::default();
+        let mut release = std::collections::HashSet::new();
         for descriptor in packages {
             let Some(artifact) = descriptor.targets.get(host_target()) else {
                 continue;
             };
+            release.insert(artifact.sha256.clone());
             let wanted = Wanted {
                 package: &descriptor.id,
                 name: PROGRAM,
@@ -267,6 +270,11 @@ impl ResidentHandle {
                 Err(RuntimeError::Cancelled) => break,
                 Err(error) => kept.failed.push((descriptor.id.clone(), error.to_string())),
             }
+        }
+        // The programs of a release downloaded ahead before this one go,
+        // once this one's are in place.
+        if ahead && !cancel.is_cancelled() {
+            self.cache.keep_ahead(&release).await;
         }
         kept
     }

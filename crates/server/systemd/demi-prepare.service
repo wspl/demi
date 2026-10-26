@@ -1,0 +1,11 @@
+# Gets the newest release ready ahead of an update while the current one
+# serves: downloads and unpacks it, installs its gVisor and its Cloud image,
+# and has the devices download its runner. It runs as root and apart from the
+# backend (crates/server/src/preparing.rs).
+[Unit]
+Description=Demi getting the newest release ready
+
+[Service]
+Type=oneshot
+ExecStart=/opt/demi/current/bin/demi-server prepare --requested
+TimeoutStartSec=infinity

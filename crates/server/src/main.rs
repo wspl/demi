@@ -4,6 +4,9 @@
 //!   that release's own `demi-server`. With `--requested` it moves to the
 //!   version an administrator's Update Now asked for, as `demi-upgrade.service`
 //!   runs it when the backend writes the request (`notices`).
+//! - `prepare --requested` gets the newest release ready ahead of an update,
+//!   as `demi-prepare.service` runs it after the backend's check found one
+//!   (`preparing`).
 //! - `rollback` hands the move to the release the last upgrade replaced.
 //! - `status` says where the server is.
 //! - `runtime` fetches the gVisor version this release pins.
@@ -59,6 +62,7 @@ mod journal;
 mod layout;
 mod moving;
 mod notices;
+mod preparing;
 mod progress;
 mod runners;
 mod services;
@@ -159,6 +163,14 @@ enum Action {
     /// Finishes an interrupted move to this program's own release.
     #[command(hide = true)]
     Resume,
+    /// Gets a newer release ready ahead of an update: with `--requested` the
+    /// one the backend's request file names, as `demi-prepare.service` asks,
+    /// which hands over to that release's own `prepare`.
+    #[command(hide = true)]
+    Prepare {
+        #[arg(long)]
+        requested: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -169,6 +181,7 @@ fn main() -> ExitCode {
     // record, is read by the services' own users, so its modes never follow
     // the umask of the shell that ran it, as dpkg's do not.
     rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o022));
+    take_handed_lock();
     let cli = Cli::parse();
     let layout = Layout::new(cli.root.clone());
     let requested = matches!(cli.command, Action::Upgrade { requested: true, .. });
@@ -178,7 +191,28 @@ fn main() -> ExitCode {
         // A setup or a move runs it holding the lock; a fetch publishes
         // its version whole or not at all.
         Action::Runtime => require_root(&layout).and_then(|()| runtime(&layout)),
-        command => require_root(&layout).and_then(|()| locked(&layout, |layout| act(layout, command))),
+        // The work ahead of an update gives way to any other run: the next
+        // check asks for it again.
+        Action::Prepare { requested } => require_root(&layout).and_then(|()| match lock(&layout, false) {
+            Ok(_lock) if requested => preparing::requested(&layout),
+            Ok(_lock) => preparing::own(&layout),
+            Err(_) => {
+                // The request goes, or the path unit would start this run
+                // again at once, until systemd stops starting it.
+                if requested {
+                    let _ = std::fs::remove_file(layout.prepare_request());
+                }
+                println!("Another run of demi-server holds the server; the next check asks again");
+                Ok(())
+            }
+        }),
+        // An administrator's update, and a move handed over, wait for the
+        // run that holds the lock, such as the work ahead of the update or
+        // the run that handed over and let go of it.
+        command @ (Action::Upgrade { requested: true, .. } | Action::Move | Action::Resume) => {
+            require_root(&layout).and_then(|()| locked(&layout, true, |layout| act(layout, command)))
+        }
+        command => require_root(&layout).and_then(|()| locked(&layout, false, |layout| act(layout, command))),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -196,30 +230,70 @@ fn main() -> ExitCode {
 }
 
 /// This program's release.
-fn own_version() -> Version {
+pub(crate) fn own_version() -> Version {
     Version::parse(demi_shared_artifacts::BUILD_VERSION).expect("the build version is a version")
 }
 
-/// Runs `work` holding the lock that keeps one `demi-server` at a time.
+/// Runs `work` holding the lock that keeps one `demi-server` at a time,
+/// waiting for it when `wait`.
 fn locked(
     layout: &Layout,
+    wait: bool,
     work: impl FnOnce(&Layout) -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _lock = lock(layout)?;
+    let _lock = lock(layout, wait)?;
     work(layout)
 }
 
-/// The lock that keeps one `demi-server` at a time, held until dropped.
-fn lock(layout: &Layout) -> Result<std::fs::File, Box<dyn std::error::Error>> {
+/// The variable that names the descriptor of the lock a run handed over
+/// with it to a newer release's `demi-server`.
+const HANDED_LOCK: &str = "DEMI_SERVER_LOCK_FD";
+
+/// The descriptor of the lock this run holds, which a hand-over passes on.
+static HELD_LOCK: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+/// The lock the run that handed over to this one held, still held.
+static HANDED: std::sync::Mutex<Option<std::fs::File>> = std::sync::Mutex::new(None);
+
+/// Takes the lock a run that handed over to this program passed on, before
+/// any thread starts, so no other run takes it between the two.
+fn take_handed_lock() {
+    use std::os::fd::FromRawFd as _;
+    let Some(fd) = std::env::var(HANDED_LOCK).ok().and_then(|fd| fd.parse::<i32>().ok()) else {
+        return;
+    };
+    // SAFETY: no other thread runs yet, so none reads the environment.
+    unsafe { std::env::remove_var(HANDED_LOCK) };
+    // SAFETY: the run that handed over left this descriptor open for this
+    // program alone, and nothing else here owns it.
+    let lock = unsafe { std::fs::File::from_raw_fd(fd) };
+    // What this program starts in turn does not hold it.
+    if rustix::io::fcntl_setfd(&lock, rustix::io::FdFlags::CLOEXEC).is_ok() {
+        *HANDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(lock);
+    }
+}
+
+/// The lock that keeps one `demi-server` at a time, held until dropped; a
+/// run that does not `wait` fails while another holds it. A run handed
+/// over to holds its predecessor's lock already.
+fn lock(layout: &Layout, wait: bool) -> Result<std::fs::File, Box<dyn std::error::Error>> {
+    use std::os::fd::AsRawFd as _;
+    if let Some(lock) = HANDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take() {
+        HELD_LOCK.store(lock.as_raw_fd(), std::sync::atomic::Ordering::Relaxed);
+        return Ok(lock);
+    }
     std::fs::create_dir_all(layout.state())?;
     let lock = std::fs::File::options()
         .create(true)
         .truncate(false)
         .write(true)
         .open(layout.state().join("lock"))?;
-    if let Err(std::fs::TryLockError::WouldBlock) = lock.try_lock() {
+    if wait {
+        lock.lock()?;
+    } else if let Err(std::fs::TryLockError::WouldBlock) = lock.try_lock() {
         return Err("another demi-server is running".into());
     }
+    HELD_LOCK.store(lock.as_raw_fd(), std::sync::atomic::Ordering::Relaxed);
     Ok(lock)
 }
 
@@ -321,7 +395,9 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
             println!("The server runs {}", own_version());
             Ok(())
         }
-        Action::Status | Action::Setup(_) | Action::Runtime => unreachable!("runs without the lock"),
+        Action::Status | Action::Setup(_) | Action::Runtime | Action::Prepare { .. } => {
+            unreachable!("runs without act")
+        }
     }
 }
 
@@ -341,7 +417,6 @@ fn upgrade(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let cancel = CancellationToken::new();
     let version = match (version, channel, &source) {
         (Some(version), _, _) => version,
         (None, Some(channel), _) => runtime.block_on(fetch::newest(&source, channel))?,
@@ -358,35 +433,7 @@ fn upgrade(
     let fetched = if version < current {
         Err(format!("{version} is older than {current}: `demi-server rollback` goes back").into())
     } else {
-        println!("Fetching {version}");
-        notices.start(UpgradeStepKind::Download);
-        runtime
-            .block_on(fetch::fetch(layout, &source, &version, &cancel, &mut |fetched| match fetched {
-                fetch::Fetched::Present => {
-                    for kind in [UpgradeStepKind::Download, UpgradeStepKind::Unpack] {
-                        notices.step(kind, StepState::Skipped { why: SkipReason::Installed });
-                    }
-                }
-                fetch::Fetched::Downloading { done, total } => notices.downloaded(done, total),
-                // Assets from a directory are taken where they are, with
-                // no bytes to tell.
-                fetch::Fetched::Downloaded { bytes } => {
-                    let summary = if bytes == 0 { StepSummary::None } else { StepSummary::Bytes { bytes } };
-                    notices.done(UpgradeStepKind::Download, summary);
-                    notices.start(UpgradeStepKind::Unpack);
-                }
-                fetch::Fetched::Unpacking { done, total } => notices.progress(
-                    UpgradeStepKind::Unpack,
-                    StepProgress::Bytes {
-                        done,
-                        total,
-                        per_second: None,
-                        left_seconds: None,
-                    },
-                ),
-                fetch::Fetched::Unpacked { bytes } => notices.done(UpgradeStepKind::Unpack, StepSummary::Bytes { bytes }),
-            }))
-            .map_err(Box::<dyn std::error::Error>::from)
+        fetch_telling(layout, &source, &version, &mut notices)
     };
     if let Err(error) = fetched {
         notices.failed(error.to_string(), false);
@@ -397,16 +444,64 @@ fn upgrade(
     Err(hand_over(layout, &version, "move").into())
 }
 
+/// Fetches `version` from `source`, telling `notices` the download's and
+/// the unpacking's steps.
+pub(crate) fn fetch_telling(
+    layout: &Layout,
+    source: &fetch::Source,
+    version: &Version,
+    notices: &mut Notices,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    println!("Fetching {version}");
+    notices.start(UpgradeStepKind::Download);
+    runtime
+        .block_on(fetch::fetch(layout, source, version, &CancellationToken::new(), &mut |fetched| match fetched {
+            fetch::Fetched::Present => {
+                for kind in [UpgradeStepKind::Download, UpgradeStepKind::Unpack] {
+                    notices.step(kind, StepState::Skipped { why: SkipReason::Installed });
+                }
+            }
+            fetch::Fetched::Downloading { done, total } => notices.downloaded(done, total),
+            // Assets from a directory are taken where they are, with
+            // no bytes to tell.
+            fetch::Fetched::Downloaded { bytes } => {
+                let summary = if bytes == 0 { StepSummary::None } else { StepSummary::Bytes { bytes } };
+                notices.done(UpgradeStepKind::Download, summary);
+                notices.start(UpgradeStepKind::Unpack);
+            }
+            fetch::Fetched::Unpacking { done, total } => notices.progress(
+                UpgradeStepKind::Unpack,
+                StepProgress::Bytes {
+                    done,
+                    total,
+                    per_second: None,
+                    left_seconds: None,
+                },
+            ),
+            fetch::Fetched::Unpacked { bytes } => notices.done(UpgradeStepKind::Unpack, StepSummary::Bytes { bytes }),
+        }))
+        .map_err(Box::<dyn std::error::Error>::from)
+}
+
 /// The version the backend's request names, which this run removes: none
 /// when there is no request. The backend's user owns the request's
 /// directory, so the file is opened without following a link and without
 /// waiting, as opening a FIFO would wait for a writer forever, and it is a
 /// plain file that holds a version and nothing else.
 fn requested_version(layout: &Layout) -> Result<Option<Version>, Box<dyn std::error::Error>> {
+    read_request(&layout.upgrade_request())
+}
+
+/// The version the request at `path` names, which this run removes, as
+/// [`requested_version`] reads it.
+pub(crate) fn read_request(path: &std::path::Path) -> Result<Option<Version>, Box<dyn std::error::Error>> {
     use std::{io::Read as _, os::unix::fs::OpenOptionsExt as _};
     /// A version is far shorter; a longer file is no request.
     const LONGEST: u64 = 256;
-    let path = layout.upgrade_request();
+    let path = path.to_owned();
     let file = std::fs::File::options()
         .read(true)
         .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
@@ -456,13 +551,22 @@ fn rollback(layout: &Layout, yes: bool) -> Result<(), Box<dyn std::error::Error>
 
 /// Runs `action` of `version`'s own `demi-server` in this process's place;
 /// it returns only an error.
-fn hand_over(layout: &Layout, version: &Version, action: &str) -> io::Error {
+pub(crate) fn hand_over(layout: &Layout, version: &Version, action: &str) -> io::Error {
     let program = layout.release(version).join("bin/demi-server");
-    Command::new(program)
-        .arg(action)
-        .arg("--root")
-        .arg(layout.root())
-        .exec()
+    let mut command = Command::new(program);
+    command.arg(action).arg("--root").arg(layout.root());
+    // A release from this one on takes the lock this run holds, so no other
+    // run, such as the work ahead of an update, takes it between the two;
+    // an earlier one knows no such lock and takes the lock itself.
+    let held = HELD_LOCK.load(std::sync::atomic::Ordering::Relaxed);
+    if version >= &own_version() && held >= 0 {
+        // SAFETY: the lock's file stays open until this process is replaced.
+        let fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(held) };
+        if rustix::io::fcntl_setfd(fd, rustix::io::FdFlags::empty()).is_ok() {
+            command.env(HANDED_LOCK, held.to_string());
+        }
+    }
+    command.exec()
 }
 
 fn status(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {

@@ -180,7 +180,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
         });
     };
     crate::require_root(layout)?;
-    let _lock = crate::lock(layout)?;
+    let _lock = crate::lock(layout, false)?;
     let mut settings = configuration(&choices, &options)?;
     let source = match &options.from {
         Some(directory) => fetch::Source::Directory(std::path::absolute(directory)?),
@@ -248,7 +248,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     step("Starting Demi");
     layout.point_at(&version)?;
     layout.install_units(&version)?;
-    services.reload(layout.upgrade_units())?;
+    services.reload(&layout.path_units())?;
     for unit in UNITS {
         services.start(unit).map_err(|error| format!("{unit} did not start: {error}\n{}", services.log(unit)))?;
     }

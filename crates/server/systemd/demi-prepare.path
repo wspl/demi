@@ -1,0 +1,10 @@
+# Starts demi-prepare.service when the backend's check found a newer release
+# and asks the server to get it ready (crates/server/src/preparing.rs).
+[Unit]
+Description=Demi requests to get the newest release ready
+
+[Path]
+PathExists=/run/demi-upgrade/prepare
+
+[Install]
+WantedBy=multi-user.target

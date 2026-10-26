@@ -25,7 +25,7 @@ use std::{fmt, io, process::Command};
 
 use demi_machine_manager_protocol::{DRAIN_RECORD, DrainRecord, STATE_FORMAT, runtime::RuntimeRelease};
 use demi_runner_protocol::release::{
-    DevicePrefetch, PrefetchState, RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind,
+    RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind,
 };
 use semver::Version;
 
@@ -127,6 +127,12 @@ fn prepare(
     to: &Version,
     notices: &mut Notices,
 ) -> io::Result<Data> {
+    // The paired devices download `to`'s runner while the preparation goes
+    // on, and nothing waits for them.
+    let socket = settings
+        .manage_socket()
+        .unwrap_or_else(|| layout.manage_socket());
+    runners::start_prefetch(&socket, &layout.release(to))?;
     let bin = layout.release(to).join("bin");
     notices.start(UpgradeStepKind::CheckConfiguration);
     run(settings.command(&bin.join("demi-backend")).arg("--check-config"))?;
@@ -139,17 +145,10 @@ fn prepare(
         )));
     }
     notices.done(UpgradeStepKind::CheckConfiguration, StepSummary::None);
-    if layout.gvisor().join(RuntimeRelease::pinned().version()).exists() {
-        notices.step(UpgradeStepKind::DownloadGvisor, StepState::Skipped { why: SkipReason::Installed });
-    } else {
-        notices.start(UpgradeStepKind::DownloadGvisor);
-        gvisor::of_release(layout, to)?;
-        notices.done(UpgradeStepKind::DownloadGvisor, StepSummary::None);
-    }
+    install(layout, settings, to, notices)?;
     if to > from && format.is_some_and(|format| format < STATE_FORMAT) {
         println!("{to} changes the machine manager's state format: a rollback cannot return to {from}");
     }
-    install_image(layout, settings, to, &manager, notices)?;
     let backend = settings.backend_data()?;
     notices.start(UpgradeStepKind::CheckDatabases);
     let data = if to < from {
@@ -178,8 +177,22 @@ fn prepare(
     if data != Data::Snapshot {
         notices.step(UpgradeStepKind::CheckDatabases, StepState::Skipped { why: SkipReason::NoChanges });
     }
-    prefetch(layout, settings, to, notices)?;
     Ok(data)
+}
+
+/// What the release `to`, this program's own, installs beside the running
+/// one before anything stops, which the work ahead of an update does too:
+/// its gVisor version and its image.
+pub fn install(layout: &Layout, settings: &Settings, to: &Version, notices: &mut Notices) -> io::Result<()> {
+    if layout.gvisor().join(RuntimeRelease::pinned().version()).exists() {
+        notices.step(UpgradeStepKind::DownloadGvisor, StepState::Skipped { why: SkipReason::Installed });
+    } else {
+        notices.start(UpgradeStepKind::DownloadGvisor);
+        gvisor::of_release(layout, to)?;
+        notices.done(UpgradeStepKind::DownloadGvisor, StepSummary::None);
+    }
+    let manager = layout.release(to).join("bin").join("demi-machine-manager");
+    install_image(layout, settings, to, &manager, notices)
 }
 
 /// The new manager imports the release's image beside the running one; a
@@ -212,48 +225,6 @@ fn entries(directory: &std::path::Path) -> io::Result<std::collections::BTreeSet
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Default::default()),
         Err(error) => Err(error),
     }
-}
-
-/// The last step of the preparation: the paired devices download `to`'s
-/// runner while the current release serves.
-fn prefetch(layout: &Layout, settings: &Settings, to: &Version, notices: &mut Notices) -> io::Result<()> {
-    let socket = settings
-        .manage_socket()
-        .unwrap_or_else(|| layout.manage_socket());
-    notices.start(UpgradeStepKind::UpdateDevices);
-    let gives_up_at = demi_shared_types::Timestamp::truncate(jiff::Timestamp::now() + runners::WAIT);
-    let mut last = None;
-    runners::prefetch(&socket, &layout.release(to), runners::WAIT, &mut io::stdout(), &mut |progress| {
-        let (done, total) = counted(&progress.devices);
-        notices.progress(
-            UpgradeStepKind::UpdateDevices,
-            StepProgress::Devices {
-                done,
-                total,
-                waiting: progress
-                    .devices
-                    .iter()
-                    .filter(|device| device.state == PrefetchState::Downloading)
-                    .map(|device| device.name.clone())
-                    .collect(),
-                gives_up_at,
-            },
-        );
-        last = Some((done, total));
-    })?;
-    match last {
-        Some((done, total)) if total > 0 => {
-            notices.done(UpgradeStepKind::UpdateDevices, StepSummary::Devices { done, total });
-        }
-        _ => notices.step(UpgradeStepKind::UpdateDevices, StepState::Skipped { why: SkipReason::NoChanges }),
-    }
-    Ok(())
-}
-
-/// The devices that have the new runner, of all asked.
-fn counted(devices: &[DevicePrefetch]) -> (u32, u32) {
-    let done = devices.iter().filter(|device| device.state == PrefetchState::Done).count();
-    (u32::try_from(done).unwrap_or(u32::MAX), u32::try_from(devices.len()).unwrap_or(u32::MAX))
 }
 
 /// The format the manager's state directory records, if any.
@@ -374,7 +345,7 @@ fn take_steps(
                 notices.start_restart(RestartStepKind::Switch);
                 layout.point_at(&journal.to)?;
                 layout.install_units(&journal.to)?;
-                services.reload(layout.upgrade_units())?;
+                services.reload(&layout.path_units())?;
                 notices.done_restart(RestartStepKind::Switch, StepSummary::None);
             }
             Step::Starting => {
@@ -512,7 +483,7 @@ fn return_to_from(
     }
     layout.point_at(&journal.from)?;
     layout.install_units(&journal.from)?;
-    services.reload(layout.upgrade_units())?;
+    services.reload(&layout.path_units())?;
     let started = services
         .start(MANAGER)
         .and_then(|()| {

@@ -135,7 +135,8 @@ mod service {
     /// are immutable directories published under their own names, and a
     /// running manager reads none it was not configured with, so the
     /// import takes none of the manager's locks and needs no private
-    /// namespace.
+    /// namespace. It replaces the base an earlier import ahead of an update
+    /// left, which no manager ran, so one waits ahead at most.
     async fn import(config: Config) -> Result<(), Failure> {
         let runsc = config.runsc.clone();
         let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;
@@ -143,6 +144,7 @@ mod service {
         let data = config.data.clone();
         blocking::run(move |off| durable::create_private(off, &data)).await?;
         let base = base::import(&tools, &config.image, &bases).await?;
+        base::imported_ahead(&config.images(), &base).await?;
         println!("{base}");
         Ok(())
     }

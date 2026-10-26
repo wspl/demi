@@ -36,4 +36,17 @@ export const updatingMoments = {
   conversations: updatingAt('updateConversations', { state: 'running', started: ago(70), progress: { kind: 'conversations', done: 41, total: 73, bytesDone: 2765 * MB, bytes: 6760 * MB, leftSeconds: 185 } }),
   returning: updatingAt('startDemi', { state: 'failed', reason: 'Demi 0.1.5500 did not start' }, true),
   failed: updatingAt('switch', { state: 'failed', reason: 'No space left on device (os error 28)' }),
+  updated: {
+    to: '0.1.5500',
+    from: '0.1.5469',
+    returning: false,
+    steps: KINDS.map((kind): RestartStep => ({
+      kind,
+      state: kind === 'updateControl'
+        ? { state: 'skipped', why: 'noChanges' }
+        : kind === 'updateConversations'
+          ? { state: 'done', tookMs: 130_000, summary: { kind: 'count', count: 73 } }
+          : done(kind),
+    })),
+  },
 } satisfies Record<string, UpdateProgress>

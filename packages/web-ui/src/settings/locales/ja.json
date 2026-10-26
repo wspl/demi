@@ -16,6 +16,13 @@
     "upToDate": "Demi は最新です",
     "available": "Demi {version} を利用できます",
     "youHave": "現在のバージョン：{version}",
+    "background": {
+      "starting": "バックグラウンドでダウンロード中…",
+      "downloading": "バックグラウンドでダウンロード中：{done} / {all}",
+      "installing": "バックグラウンドでインストール中…",
+      "ready": "インストールの準備ができました。現在のバージョン：{version}",
+      "failed": "Demi {version} をバックグラウンドでダウンロードできませんでした。現在のバージョン：{running}"
+    },
     "releaseNotes": "リリースノート",
     "updateNow": "今すぐアップデート",
     "checking": "アップデートを確認中…",
@@ -48,15 +55,10 @@
       "downloadGvisor": "gVisor をダウンロード",
       "installImage": "Cloud イメージをインストール",
       "checkDatabases": "データベースを確認",
-      "updateDevices": "デバイスの Demi をアップデート",
       "restart": "Demi を再起動"
     },
     "detail": {
       "of": "{done}/{count}",
-      "and": "と",
-      "waitingFor": "{names}を待っています",
-      "waitingForMore": "{names}ほか {count} 台を待っています",
-      "givesUpIn": "{time} 後に残りを待たずに続行",
       "toUpdate": "{count} 件をアップデート",
       "installed": "インストール済み",
       "noChanges": "変更なし"

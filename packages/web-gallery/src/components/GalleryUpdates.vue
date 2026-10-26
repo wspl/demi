@@ -2,20 +2,21 @@
 import { onUnmounted, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsUpdates from '@demicodes/web-ui/settings/SettingsUpdates.vue'
-import type { UpgradeChannel, ServerUpgrade, UpgradeStep, UpgradeStepKind } from '@demicodes/web-ui/settings/server-upgrade'
+import type { UpgradeChannel, ServerUpgrade, UpgradePreparation, UpgradeStep, UpgradeStepKind } from '@demicodes/web-ui/settings/server-upgrade'
 import type { StepState } from '@demicodes/web-ui/ui/update-steps'
 import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
 
 /** Which moment of the server's updates the specimen starts at. */
-export type UpdatesMoment = 'upToDate' | 'checking' | 'available' | 'downloading' | 'devices' | 'failed' | 'checkFailed'
+export type UpdatesMoment = 'upToDate' | 'checking' | 'preparing' | 'available' | 'prepareFailed' | 'downloading' | 'installing' | 'failed' | 'checkFailed'
 
 /**
  * Settings › Updates with a stand-in server that runs 0.1.5469:
  * Beta offers nothing newer and Canary offers 0.1.5500. Check Now looks
- * again after a moment, a channel looks for the newest of it, and Update Now
- * runs every step of an update in a few seconds, waiting on two devices for
- * a while, and says the product would restart, where the product shows
+ * again after a moment, a channel looks for the newest of it, and a newer
+ * release found is got ready in the background in a few seconds. Update Now
+ * runs the rest of the update in a few seconds, what was got ready ahead
+ * already installed, and says the product would restart, where the product shows
  * every page the update's screen.
  */
 const props = withDefaults(defineProps<{ moment?: UpdatesMoment }>(), { moment: 'available' })
@@ -25,7 +26,7 @@ const NEWER = '0.1.5500'
 const NOTES = 'https://github.com/example/demi/releases/tag/v0.1.5500'
 const MB = 1024 * 1024
 const AT = '2026-10-25T09:00:00Z'
-const KINDS: readonly UpgradeStepKind[] = ['download', 'unpack', 'checkConfiguration', 'downloadGvisor', 'installImage', 'checkDatabases', 'updateDevices', 'restart']
+const KINDS: readonly UpgradeStepKind[] = ['download', 'unpack', 'checkConfiguration', 'downloadGvisor', 'installImage', 'checkDatabases', 'restart']
 
 /** The steps with those before `kind` done as a typical update does them, `kind` as `state`, and those after waiting. */
 function stepsAt(kind: UpgradeStepKind, state: StepState): UpgradeStep[] {
@@ -51,48 +52,50 @@ function doneState(kind: UpgradeStepKind): StepState {
       return { state: 'done', tookMs: 9_000, summary: { kind: 'bytes', bytes: 96 * MB } }
     case 'checkDatabases':
       return { state: 'done', tookMs: 800, summary: { kind: 'count', count: 2 } }
-    case 'updateDevices':
-      return { state: 'done', tookMs: 70_000, summary: { kind: 'devices', done: 5, total: 5 } }
     default:
       return { state: 'done', tookMs: 600, summary: { kind: 'none' } }
   }
 }
 
 const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString()
-const later = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString()
+const NONE: UpgradePreparation = { state: 'none' }
+const READY: UpgradePreparation = { state: 'ready', version: NEWER }
 
 function startingAt(moment: UpdatesMoment): ServerUpgrade {
   const offered = { state: 'checked', at: AT, newer: NEWER, notesUrl: NOTES } as const
   switch (moment) {
     case 'upToDate':
-      return { running: RUNNING, channel: 'beta', check: { state: 'checked', at: AT, newer: null }, run: { state: 'none' } }
+      return { running: RUNNING, channel: 'beta', check: { state: 'checked', at: AT, newer: null }, preparation: NONE, run: { state: 'none' } }
     case 'checking':
-      return { running: RUNNING, channel: 'beta', check: { state: 'checking' }, run: { state: 'none' } }
+      return { running: RUNNING, channel: 'beta', check: { state: 'checking' }, preparation: NONE, run: { state: 'none' } }
+    case 'preparing':
+      return { running: RUNNING, channel: 'canary', check: offered, preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB }, run: { state: 'none' } }
     case 'available':
-      return { running: RUNNING, channel: 'canary', check: offered, run: { state: 'none' } }
+      return { running: RUNNING, channel: 'canary', check: offered, preparation: READY, run: { state: 'none' } }
+    case 'prepareFailed':
+      return { running: RUNNING, channel: 'canary', check: offered, preparation: { state: 'failed', version: NEWER, reason: 'GitHub answered 503 Service Unavailable' }, run: { state: 'none' } }
     case 'downloading':
       return {
         running: RUNNING,
         channel: 'canary',
         check: offered,
+        preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB },
         run: { state: 'updating', to: NEWER, steps: stepsAt('download', { state: 'running', started: ago(9), progress: { kind: 'bytes', done: 88 * MB, total: 214 * MB, perSecond: 1.8 * MB } }) },
       }
-    case 'devices':
+    case 'installing':
       return {
         running: RUNNING,
         channel: 'canary',
         check: offered,
-        run: {
-          state: 'updating',
-          to: NEWER,
-          steps: stepsAt('updateDevices', { state: 'running', started: ago(48), progress: { kind: 'devices', done: 3, total: 5, waiting: ['Alex’s MacBook Pro', 'Office iMac'], givesUpAt: later(72) } }),
-        },
+        preparation: { state: 'installing', version: NEWER },
+        run: { state: 'updating', to: NEWER, steps: stepsAt('installImage', { state: 'running', started: ago(6), progress: null }) },
       }
     case 'failed':
       return {
         running: RUNNING,
         channel: 'canary',
         check: offered,
+        preparation: READY,
         run: {
           state: 'failed',
           to: NEWER,
@@ -101,7 +104,7 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
         },
       }
     case 'checkFailed':
-      return { running: RUNNING, channel: 'beta', check: { state: 'failed', at: AT, reason: 'GitHub answered 403 Forbidden' }, run: { state: 'none' } }
+      return { running: RUNNING, channel: 'beta', check: { state: 'failed', at: AT, reason: 'GitHub answered 403 Forbidden' }, preparation: NONE, run: { state: 'none' } }
   }
 }
 
@@ -116,6 +119,27 @@ async function check(): Promise<void> {
   // Canary's newest is NEWER, offered only to a server that runs an older one.
   const newer = state.value.channel === 'canary' && state.value.running !== NEWER ? NEWER : null
   state.value = { ...state.value, check: { state: 'checked', at: new Date().toISOString(), newer, notesUrl: newer ? NOTES : null } }
+  if (newer !== null && state.value.preparation.state !== 'ready')
+    await prepare(newer)
+}
+
+/** Gets `version` ready in the background, as the server does after a check found it. */
+async function prepare(version: string): Promise<void> {
+  const shown = (preparation: UpgradePreparation) => (state.value = { ...state.value, preparation })
+  // An update started meanwhile takes the work over.
+  const takenOver = () => stopped || state.value.run.state === 'updating'
+  for (let done = 0; done <= 214; done += 214 / 8) {
+    if (takenOver())
+      return
+    shown({ state: 'downloading', version, done: done * MB, total: 214 * MB })
+    await slow(400)
+  }
+  if (takenOver())
+    return
+  shown({ state: 'installing', version })
+  await slow(1500)
+  if (!takenOver())
+    shown({ state: 'ready', version })
 }
 
 function setChannel(channel: UpgradeChannel): Promise<void> {
@@ -131,7 +155,10 @@ async function update(version: string): Promise<void> {
   let steps: UpgradeStep[] = KINDS.map((kind) => ({ kind, state: { state: 'waiting' } }))
   const show = () => (state.value = { ...state.value, run: { state: 'updating', to: version, steps } })
   const started = new Date().toISOString()
-  for (let done = 0; done <= 214 && !stopped; done += 214 / 8) {
+  // What the server got ready ahead is installed already.
+  const ahead: readonly UpgradeStepKind[] = ['download', 'unpack', 'downloadGvisor', 'installImage']
+  const ready = state.value.preparation.state === 'ready' && state.value.preparation.version === version
+  for (let done = 0; done <= 214 && !stopped && !ready; done += 214 / 8) {
     steps = at(steps, 'download', { state: 'running', started, progress: { kind: 'bytes', done: done * MB, total: 214 * MB, perSecond: done === 0 ? 0 : 1.8 * MB } })
     show()
     await slow(300)
@@ -139,6 +166,11 @@ async function update(version: string): Promise<void> {
   for (const kind of KINDS.slice(0, 6)) {
     if (stopped)
       return
+    if (ready && ahead.includes(kind)) {
+      steps = at(steps, kind, { state: 'skipped', why: 'installed' })
+      show()
+      continue
+    }
     if (kind !== 'download') {
       steps = at(steps, kind, { state: 'running', started: new Date().toISOString(), progress: kind === 'unpack' || kind === 'installImage' ? { kind: 'bytes', done: 40 * MB, total: 96 * MB } : null })
       show()
@@ -147,14 +179,9 @@ async function update(version: string): Promise<void> {
     steps = at(steps, kind, doneState(kind))
     show()
   }
-  const waiting = ['Alex’s MacBook Pro', 'Office iMac', 'Studio Mac mini']
-  const givesUpAt = later(120)
-  for (let done = 2; done <= 5 && !stopped; done += 1) {
-    steps = at(steps, 'updateDevices', { state: 'running', started, progress: { kind: 'devices', done, total: 5, waiting: waiting.slice(done - 2), givesUpAt } })
-    show()
-    await slow(1200)
-  }
-  steps = at(at(steps, 'updateDevices', doneState('updateDevices')), 'restart', { state: 'running', started: new Date().toISOString(), progress: null })
+  if (stopped)
+    return
+  steps = at(steps, 'restart', { state: 'running', started: new Date().toISOString(), progress: null })
   show()
   await slow(1200)
   productWould(`Restart in ${version}`)

@@ -285,6 +285,9 @@ pub struct ArtifactCache {
     /// no install of the release running now removes. The runner of their
     /// release starts with none, and its installs remove the older.
     ahead: Mutex<std::collections::HashSet<String>>,
+    /// The digests installed for the release running now, which a download
+    /// ahead never removes.
+    installed: Mutex<std::collections::HashSet<String>>,
     /// What the cache is downloading and how far each download came, which
     /// the connection reports to the backend for the views that wait.
     downloading: watch::Sender<Vec<Downloading>>,
@@ -464,6 +467,7 @@ impl ArtifactCache {
             installs: Mutex::default(),
             contents: watch::Sender::new(Vec::new()),
             ahead: Mutex::default(),
+            installed: Mutex::default(),
             downloading: watch::Sender::new(Vec::new()),
         };
         cache.publish_contents().await;
@@ -505,6 +509,7 @@ impl ArtifactCache {
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
         let path = self.place(wanted, resolver, progress, cancel).await?;
+        self.installed.lock().expect("the digests installed are intact").insert(wanted.artifact.sha256.clone());
         self.remove_older(wanted).await;
         self.publish_contents().await;
         Ok(path)
@@ -523,6 +528,40 @@ impl ArtifactCache {
         self.ahead.lock().expect("the digests put here ahead are intact").insert(wanted.artifact.sha256.clone());
         self.publish_contents().await;
         Ok(path)
+    }
+
+    /// Keeps ahead of an update only the artifacts `release` names, those of
+    /// the release downloaded ahead last: what was put here ahead of an
+    /// earlier one goes, in every line, unless the running release installed
+    /// it or a running resident holds it. One release waits ahead at most.
+    pub async fn keep_ahead(&self, release: &std::collections::HashSet<String>) {
+        let earlier: Vec<String> = {
+            let mut ahead = self.ahead.lock().expect("the digests put here ahead are intact");
+            let installed = self.installed.lock().expect("the digests installed are intact");
+            let earlier = ahead
+                .iter()
+                .filter(|sha256| !release.contains(*sha256) && !installed.contains(*sha256))
+                .cloned()
+                .collect();
+            ahead.retain(|sha256| release.contains(sha256));
+            earlier
+        };
+        if earlier.is_empty() {
+            return;
+        }
+        let records = match self.records().await {
+            Ok(records) => records,
+            Err(error) => {
+                tracing::warn!(event = "artifact_cache.list_failed", step = "keep_ahead", %error, "the artifact cache could not be listed");
+                return;
+            }
+        };
+        for (sha256, record) in records {
+            if earlier.contains(&sha256) && !self.holds.held(&sha256) {
+                self.remove_entry(&sha256, &record).await;
+            }
+        }
+        self.publish_contents().await;
     }
 
     /// Puts `wanted` in the cache and records it, without removing anything.
@@ -842,27 +881,33 @@ impl ArtifactCache {
             if !older || self.holds.held(&sha256) || self.ahead.lock().expect("the digests put here ahead are intact").contains(&sha256) {
                 continue;
             }
-            let entry = self.root.join(&sha256);
-            let removed = match tokio::fs::symlink_metadata(&entry).await {
-                Ok(metadata) if metadata.is_dir() => tokio::fs::remove_dir_all(&entry).await,
-                Ok(_) => tokio::fs::remove_file(&entry).await,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-                Err(error) => Err(error),
-            };
-            let removed = match removed {
-                Ok(()) => tokio::fs::remove_file(self.line_record(&sha256)).await,
-                Err(error) => Err(error),
-            };
-            if let Err(error) = removed {
-                tracing::info!(
-                    event = "artifact_cache.kept",
-                    name = record.name.as_str(),
-                    version = record.version.as_str(),
-                    reason = "removal_failed",
-                    %error,
-                    "an older artifact stays in the artifact cache for now"
-                );
-            }
+            self.remove_entry(&sha256, &record).await;
+        }
+    }
+
+    /// Removes the artifact `sha256` and its record from the cache, or says
+    /// why it stays.
+    async fn remove_entry(&self, sha256: &str, record: &LineRecord) {
+        let entry = self.root.join(sha256);
+        let removed = match tokio::fs::symlink_metadata(&entry).await {
+            Ok(metadata) if metadata.is_dir() => tokio::fs::remove_dir_all(&entry).await,
+            Ok(_) => tokio::fs::remove_file(&entry).await,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        };
+        let removed = match removed {
+            Ok(()) => tokio::fs::remove_file(self.line_record(sha256)).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = removed {
+            tracing::info!(
+                event = "artifact_cache.kept",
+                name = record.name.as_str(),
+                version = record.version.as_str(),
+                reason = "removal_failed",
+                %error,
+                "an older artifact stays in the artifact cache for now"
+            );
         }
     }
 

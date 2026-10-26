@@ -58,7 +58,7 @@ pub(crate) fn routes(update: Arc<Update>, web_directory: Option<PathBuf>, public
 async fn not_yet(State(update): State<Arc<Update>>) -> Response {
     match update.state() {
         UpdateState::Updating { .. } => ApiError::updating(),
-        UpdateState::None => ApiError::backend_starting(),
+        UpdateState::None { .. } => ApiError::backend_starting(),
     }
     .into_response()
 }
