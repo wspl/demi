@@ -8,14 +8,14 @@ import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
 
 /** Which moment of the server's updates the specimen starts at. */
-export type UpdatesMoment = 'upToDate' | 'checking' | 'available' | 'downloading' | 'devices' | 'failed' | 'checkFailed'
+export type UpdatesMoment = 'upToDate' | 'checking' | 'available' | 'downloading' | 'installing' | 'failed' | 'checkFailed'
 
 /**
  * Settings › Updates with a stand-in server that runs 0.1.5469:
  * Beta offers nothing newer and Canary offers 0.1.5500. Check Now looks
  * again after a moment, a channel looks for the newest of it, and Update Now
- * runs every step of an update in a few seconds, waiting on two devices for
- * a while, and says the product would restart, where the product shows
+ * runs every step of an update in a few seconds and says the product would
+ * restart, where the product shows
  * every page the update's screen.
  */
 const props = withDefaults(defineProps<{ moment?: UpdatesMoment }>(), { moment: 'available' })
@@ -25,7 +25,7 @@ const NEWER = '0.1.5500'
 const NOTES = 'https://github.com/example/demi/releases/tag/v0.1.5500'
 const MB = 1024 * 1024
 const AT = '2026-10-25T09:00:00Z'
-const KINDS: readonly UpgradeStepKind[] = ['download', 'unpack', 'checkConfiguration', 'downloadGvisor', 'installImage', 'checkDatabases', 'updateDevices', 'restart']
+const KINDS: readonly UpgradeStepKind[] = ['download', 'unpack', 'checkConfiguration', 'downloadGvisor', 'installImage', 'checkDatabases', 'restart']
 
 /** The steps with those before `kind` done as a typical update does them, `kind` as `state`, and those after waiting. */
 function stepsAt(kind: UpgradeStepKind, state: StepState): UpgradeStep[] {
@@ -51,15 +51,12 @@ function doneState(kind: UpgradeStepKind): StepState {
       return { state: 'done', tookMs: 9_000, summary: { kind: 'bytes', bytes: 96 * MB } }
     case 'checkDatabases':
       return { state: 'done', tookMs: 800, summary: { kind: 'count', count: 2 } }
-    case 'updateDevices':
-      return { state: 'done', tookMs: 70_000, summary: { kind: 'devices', done: 5, total: 5 } }
     default:
       return { state: 'done', tookMs: 600, summary: { kind: 'none' } }
   }
 }
 
 const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString()
-const later = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString()
 
 function startingAt(moment: UpdatesMoment): ServerUpgrade {
   const offered = { state: 'checked', at: AT, newer: NEWER, notesUrl: NOTES } as const
@@ -77,16 +74,12 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
         check: offered,
         run: { state: 'updating', to: NEWER, steps: stepsAt('download', { state: 'running', started: ago(9), progress: { kind: 'bytes', done: 88 * MB, total: 214 * MB, perSecond: 1.8 * MB } }) },
       }
-    case 'devices':
+    case 'installing':
       return {
         running: RUNNING,
         channel: 'canary',
         check: offered,
-        run: {
-          state: 'updating',
-          to: NEWER,
-          steps: stepsAt('updateDevices', { state: 'running', started: ago(48), progress: { kind: 'devices', done: 3, total: 5, waiting: ['Alex’s MacBook Pro', 'Office iMac'], givesUpAt: later(72) } }),
-        },
+        run: { state: 'updating', to: NEWER, steps: stepsAt('installImage', { state: 'running', started: ago(6), progress: null }) },
       }
     case 'failed':
       return {
@@ -147,14 +140,9 @@ async function update(version: string): Promise<void> {
     steps = at(steps, kind, doneState(kind))
     show()
   }
-  const waiting = ['Alex’s MacBook Pro', 'Office iMac', 'Studio Mac mini']
-  const givesUpAt = later(120)
-  for (let done = 2; done <= 5 && !stopped; done += 1) {
-    steps = at(steps, 'updateDevices', { state: 'running', started, progress: { kind: 'devices', done, total: 5, waiting: waiting.slice(done - 2), givesUpAt } })
-    show()
-    await slow(1200)
-  }
-  steps = at(at(steps, 'updateDevices', doneState('updateDevices')), 'restart', { state: 'running', started: new Date().toISOString(), progress: null })
+  if (stopped)
+    return
+  steps = at(steps, 'restart', { state: 'running', started: new Date().toISOString(), progress: null })
   show()
   await slow(1200)
   productWould(`Restart in ${version}`)

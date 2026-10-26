@@ -48,15 +48,10 @@
       "downloadGvisor": "gVisor 다운로드",
       "installImage": "Cloud 이미지 설치",
       "checkDatabases": "데이터베이스 확인",
-      "updateDevices": "기기의 Demi 업데이트",
       "restart": "Demi 재시작"
     },
     "detail": {
       "of": "{done}/{count}",
-      "and": ", ",
-      "waitingFor": "{names} 기다리는 중",
-      "waitingForMore": "{names} 외 {count}대 기다리는 중",
-      "givesUpIn": "{time} 후 나머지 없이 계속",
       "toUpdate": "{count}개 업데이트",
       "installed": "이미 설치됨",
       "noChanges": "변경 사항 없음"

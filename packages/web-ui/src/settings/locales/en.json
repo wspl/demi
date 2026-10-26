@@ -48,15 +48,10 @@
       "downloadGvisor": "Download gVisor",
       "installImage": "Install the Cloud image",
       "checkDatabases": "Check the databases",
-      "updateDevices": "Update Demi on your devices",
       "restart": "Restart Demi"
     },
     "detail": {
       "of": "{done} of {count}",
-      "and": " and ",
-      "waitingFor": "Waiting for {names}",
-      "waitingForMore": "Waiting for {names} and {count} more",
-      "givesUpIn": "Continues without the rest in {time}",
       "toUpdate": "{count} to update | {count} to update",
       "installed": "Already installed",
       "noChanges": "No changes needed"

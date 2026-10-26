@@ -56,7 +56,6 @@ const WEIGHTS: Record<UpgradeStepKind, number> = {
   downloadGvisor: 5,
   installImage: 10,
   checkDatabases: 2,
-  updateDevices: 45,
   restart: 7,
 }
 
@@ -86,19 +85,6 @@ function stepTitle(kind: UpgradeStepKind, version: string): string {
   return t(`updates.steps.${kind}`, { version })
 }
 
-/** The names a step waits for, as many as fit a line's words, then how many more. */
-function waitingFor(names: readonly string[]): string {
-  if (names.length <= 2)
-    return t('updates.detail.waitingFor', { names: names.join(t('updates.detail.and')) })
-  return t('updates.detail.waitingForMore', { names: names.slice(0, 2).join(', '), count: names.length - 2 })
-}
-
-/** Minutes and seconds until `at`, as a countdown says them. */
-function countdown(at: string): string {
-  const seconds = Math.max(0, Math.round((Date.parse(at) - now.value) / 1000))
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
-}
-
 function progressDetail(progress: StepProgress): string {
   switch (progress.kind) {
     case 'bytes': {
@@ -109,10 +95,6 @@ function progressDetail(progress: StepProgress): string {
         return `${size} · ${formatTimeLeft(null)}`
       const left = Math.max(0, progress.total - progress.done) / progress.perSecond
       return `${size} · ${t('updates.speed', { size: formatBytes(progress.perSecond) })} · ${formatTimeLeft(left)}`
-    }
-    case 'devices': {
-      const count = t('updates.detail.of', { done: progress.done, count: progress.total })
-      return progress.waiting.length ? `${count} · ${waitingFor(progress.waiting)}` : count
     }
     case 'clouds':
     case 'conversations':
@@ -135,8 +117,6 @@ function stateDetail(state: StepState): string {
           return `${formatBytes(state.summary.bytes)} · ${took}`
         case 'count':
           return `${t('updates.detail.toUpdate', { count: state.summary.count }, state.summary.count)} · ${took}`
-        case 'devices':
-          return `${t('updates.detail.of', { done: state.summary.done, count: state.summary.total })} · ${took}`
       }
       return took
     }
@@ -172,10 +152,7 @@ const status = computed<{ label: string, description: string }>(() => {
     const step = current.value
     if (step === null)
       return { label: t('updates.updatingTo', { version: run.to }), description: youHave }
-    let description = t('updates.stepOf', { number: step.number, count: steps.value.length, step: stepTitle(step.step.kind, run.to) })
-    const progress = step.step.state.state === 'running' ? step.step.state.progress : null
-    if (progress?.kind === 'devices')
-      description += ` · ${t('updates.detail.givesUpIn', { time: countdown(progress.givesUpAt) })}`
+    const description = t('updates.stepOf', { number: step.number, count: steps.value.length, step: stepTitle(step.step.kind, run.to) })
     return { label: t('updates.updatingTo', { version: run.to }), description }
   }
   if (run.state === 'failed') {

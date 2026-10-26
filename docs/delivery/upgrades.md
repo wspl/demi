@@ -227,35 +227,12 @@ contract ([What crosses releases](#what-crosses-releases)).
 
 Everything that can fail without stopping anything happens now, while the
 current release serves. Settings › Updates lists these steps, with their
-progress where they have any ([From Settings](#from-settings)):
+progress where they have any ([From Settings](#from-settings)), all but the
+runners', which no step waits for:
 
-1. **Configuration.** The new backend and the new machine manager each check
-   `/opt/demi/config/demi.env` with `--check-config`, which validates every
-   setting as a start would and exits. A failure names the variable.
-2. **gVisor.** `demi-server` fetches the `runsc` version that the new manager
-   pins into `/opt/demi/gvisor/<version>/`, unless it is there
-   (`crates/server/src/gvisor.rs`).
-3. **Cloud image.** The new manager imports the release's `image/` with
-   `demi-machine-manager --import`, beside the running manager. Bases are
-   immutable directories named by their `baseVersion` and published
-   atomically, and the running manager never reads one it was not configured
-   with, so the two do not meet. The import is the slow step of a manager's
-   start, and doing it now keeps it out of the interruption.
-4. **Data.** `demi-server` reads the schema version of each database in the
-   data directory that the configuration names, and compares it with the new
-   backend's. It knows them, because it is built from the same workspace.
-   - The databases whose versions differ are migrated, so they are copied, and
-     the file system must have room for the copy.
-   - A database whose version is neither the new schema's nor in its history
-     stops the upgrade here, naming the file, before anything is interrupted:
-     the new backend could not open it. A development build of another
-     unpublished schema can make such a database.
-5. **Manager state.** `demi-server` reads the format of the manager's state
-   directory. A release that changes the format is marked as one a rollback
-   cannot cross ([Rollback](#rollback)), and `demi-server` says so before it
-   goes on.
-6. **Runners.** `demi-server` tells the running backend the next runner
-   release and the new release's directory that holds its executables.
+1. **Runners.** As the preparation starts, `demi-server` tells the running
+   backend the next runner release and the new release's directory that holds
+   its executables.
    - It does so over the backend's management socket,
      `/run/demi-backend-manage/manage.sock`, which only the backend's user and
      root can open.
@@ -266,11 +243,37 @@ progress where they have any ([From Settings](#from-settings)):
      user's devices.
    - The backend has its connected paired runners download the release ahead
      (`crates/runner/src/update.rs`) and answers as they finish.
-   - `demi-server` prints how many have, *3 of 4 devices have the new runner*.
-     It goes on when all have, or after 2 minutes, naming those that have not:
-     they download after the switch.
+   - `demi-server` prints how many have, *3 of 4 devices have the new runner*,
+     while the next steps run, and waits for none of them. A device that has
+     not finished by the restart downloads after it, and shows as updating
+     until its runner is back.
    - A backend of a release without the socket is told nothing, and its
      runners update after the switch as before.
+2. **Configuration.** The new backend and the new machine manager each check
+   `/opt/demi/config/demi.env` with `--check-config`, which validates every
+   setting as a start would and exits. A failure names the variable.
+3. **gVisor.** `demi-server` fetches the `runsc` version that the new manager
+   pins into `/opt/demi/gvisor/<version>/`, unless it is there
+   (`crates/server/src/gvisor.rs`).
+4. **Cloud image.** The new manager imports the release's `image/` with
+   `demi-machine-manager --import`, beside the running manager. Bases are
+   immutable directories named by their `baseVersion` and published
+   atomically, and the running manager never reads one it was not configured
+   with, so the two do not meet. The import is the slow step of a manager's
+   start, and doing it now keeps it out of the interruption.
+5. **Data.** `demi-server` reads the schema version of each database in the
+   data directory that the configuration names, and compares it with the new
+   backend's. It knows them, because it is built from the same workspace.
+   - The databases whose versions differ are migrated, so they are copied, and
+     the file system must have room for the copy.
+   - A database whose version is neither the new schema's nor in its history
+     stops the upgrade here, naming the file, before anything is interrupted:
+     the new backend could not open it. A development build of another
+     unpublished schema can make such a database.
+6. **Manager state.** `demi-server` reads the format of the manager's state
+   directory. A release that changes the format is marked as one a rollback
+   cannot cross ([Rollback](#rollback)), and `demi-server` says so before it
+   goes on.
 
 ### Switch
 
@@ -371,12 +374,12 @@ to the master and administrators.
    than the current one, and upgrades as above.
 4. While it runs, `demi-server` tells the backend every step of the update
    over the backend's management socket, each with its state and its
-   progress: the bytes downloaded, the devices that have the new runner, the
-   Clouds saved, the databases copied. The administrators' pages list the
-   steps of [Fetch](#fetch) and [Prepare](#prepare) in Settings › Updates.
-   From the stop on, every page shows the update's screen, which lists the
-   steps of [Switch](#switch) and the new backend's own, until the new release
-   serves. A step that fails is marked as failed with its reason.
+   progress: the bytes downloaded, the Clouds saved, the databases copied.
+   The administrators' pages list the steps of [Fetch](#fetch) and
+   [Prepare](#prepare) in Settings › Updates. From the stop on, every page
+   shows the update's screen, which lists the steps of [Switch](#switch) and
+   the new backend's own, until the new release serves. A step that fails is
+   marked as failed with its reason.
 
 The units come with the release, as the services' units do. A server on an
 earlier release gets them with one `sudo demi-server upgrade` to a release

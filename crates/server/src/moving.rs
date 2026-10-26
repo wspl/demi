@@ -25,7 +25,7 @@ use std::{fmt, io, process::Command};
 
 use demi_machine_manager_protocol::{DRAIN_RECORD, DrainRecord, STATE_FORMAT, runtime::RuntimeRelease};
 use demi_runner_protocol::release::{
-    DevicePrefetch, PrefetchState, RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind,
+    RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind,
 };
 use semver::Version;
 
@@ -127,6 +127,12 @@ fn prepare(
     to: &Version,
     notices: &mut Notices,
 ) -> io::Result<Data> {
+    // The paired devices download `to`'s runner while the preparation goes
+    // on, and nothing waits for them.
+    let socket = settings
+        .manage_socket()
+        .unwrap_or_else(|| layout.manage_socket());
+    runners::start_prefetch(&socket, &layout.release(to))?;
     let bin = layout.release(to).join("bin");
     notices.start(UpgradeStepKind::CheckConfiguration);
     run(settings.command(&bin.join("demi-backend")).arg("--check-config"))?;
@@ -178,7 +184,6 @@ fn prepare(
     if data != Data::Snapshot {
         notices.step(UpgradeStepKind::CheckDatabases, StepState::Skipped { why: SkipReason::NoChanges });
     }
-    prefetch(layout, settings, to, notices)?;
     Ok(data)
 }
 
@@ -212,48 +217,6 @@ fn entries(directory: &std::path::Path) -> io::Result<std::collections::BTreeSet
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Default::default()),
         Err(error) => Err(error),
     }
-}
-
-/// The last step of the preparation: the paired devices download `to`'s
-/// runner while the current release serves.
-fn prefetch(layout: &Layout, settings: &Settings, to: &Version, notices: &mut Notices) -> io::Result<()> {
-    let socket = settings
-        .manage_socket()
-        .unwrap_or_else(|| layout.manage_socket());
-    notices.start(UpgradeStepKind::UpdateDevices);
-    let gives_up_at = demi_shared_types::Timestamp::truncate(jiff::Timestamp::now() + runners::WAIT);
-    let mut last = None;
-    runners::prefetch(&socket, &layout.release(to), runners::WAIT, &mut io::stdout(), &mut |progress| {
-        let (done, total) = counted(&progress.devices);
-        notices.progress(
-            UpgradeStepKind::UpdateDevices,
-            StepProgress::Devices {
-                done,
-                total,
-                waiting: progress
-                    .devices
-                    .iter()
-                    .filter(|device| device.state == PrefetchState::Downloading)
-                    .map(|device| device.name.clone())
-                    .collect(),
-                gives_up_at,
-            },
-        );
-        last = Some((done, total));
-    })?;
-    match last {
-        Some((done, total)) if total > 0 => {
-            notices.done(UpgradeStepKind::UpdateDevices, StepSummary::Devices { done, total });
-        }
-        _ => notices.step(UpgradeStepKind::UpdateDevices, StepState::Skipped { why: SkipReason::NoChanges }),
-    }
-    Ok(())
-}
-
-/// The devices that have the new runner, of all asked.
-fn counted(devices: &[DevicePrefetch]) -> (u32, u32) {
-    let done = devices.iter().filter(|device| device.state == PrefetchState::Done).count();
-    (u32::try_from(done).unwrap_or(u32::MAX), u32::try_from(devices.len()).unwrap_or(u32::MAX))
 }
 
 /// The format the manager's state directory records, if any.

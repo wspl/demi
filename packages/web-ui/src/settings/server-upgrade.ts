@@ -23,7 +23,6 @@ export type UpgradeStepKind =
   | 'downloadGvisor'
   | 'installImage'
   | 'checkDatabases'
-  | 'updateDevices'
   | 'restart'
 
 export interface UpgradeStep {

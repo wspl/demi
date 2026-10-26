@@ -48,15 +48,10 @@
       "downloadGvisor": "gVisor をダウンロード",
       "installImage": "Cloud イメージをインストール",
       "checkDatabases": "データベースを確認",
-      "updateDevices": "デバイスの Demi をアップデート",
       "restart": "Demi を再起動"
     },
     "detail": {
       "of": "{done}/{count}",
-      "and": "と",
-      "waitingFor": "{names}を待っています",
-      "waitingForMore": "{names}ほか {count} 台を待っています",
-      "givesUpIn": "{time} 後に残りを待たずに続行",
       "toUpdate": "{count} 件をアップデート",
       "installed": "インストール済み",
       "noChanges": "変更なし"

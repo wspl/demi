@@ -48,15 +48,10 @@
       "downloadGvisor": "下载 gVisor",
       "installImage": "安装 Cloud 镜像",
       "checkDatabases": "检查数据库",
-      "updateDevices": "更新你设备上的 Demi",
       "restart": "重启 Demi"
     },
     "detail": {
       "of": "{done}/{count}",
-      "and": "和",
-      "waitingFor": "正在等待{names}",
-      "waitingForMore": "正在等待{names}等 {count} 台",
-      "givesUpIn": "{time} 后不再等待其余设备",
       "toUpdate": "{count} 个需要更新",
       "installed": "已安装",
       "noChanges": "无需更改"

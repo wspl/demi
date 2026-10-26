@@ -306,19 +306,17 @@ pub enum UpgradeStepKind {
     DownloadGvisor,
     InstallImage,
     CheckDatabases,
-    UpdateDevices,
     Restart,
 }
 
 impl UpgradeStepKind {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 7] = [
         Self::Download,
         Self::Unpack,
         Self::CheckConfiguration,
         Self::DownloadGvisor,
         Self::InstallImage,
         Self::CheckDatabases,
-        Self::UpdateDevices,
         Self::Restart,
     ];
 }
@@ -420,14 +418,6 @@ pub enum StepProgress {
         per_second: Option<u64>,
         left_seconds: Option<u32>,
     },
-    /// The devices that have the new runner, of all asked, and the names of
-    /// those it waits for, until it goes on without them.
-    Devices {
-        done: u32,
-        total: u32,
-        waiting: Vec<String>,
-        gives_up_at: Timestamp,
-    },
     /// The Clouds saved, of those the manager saves.
     Clouds { done: u32, total: u32 },
     /// The conversations updated, of all, with their bytes and the time left.
@@ -452,7 +442,6 @@ pub enum StepSummary {
         bytes: u64,
     },
     Count { count: u32 },
-    Devices { done: u32, total: u32 },
 }
 
 /// Why an update does not need a step.

@@ -73,7 +73,6 @@ function progressDetail(progress: StepProgress): string {
     case 'bytes':
       return t('updating.bytes', { done: formatBytes(progress.done), all: formatBytes(progress.total) })
     case 'clouds':
-    case 'devices':
       return t('updating.of', { done: progress.done, count: progress.total })
     case 'conversations':
       return `${t('updating.of', { done: progress.done, count: progress.total })} · ${t('updating.bytes', { done: formatBytes(progress.bytesDone), all: formatBytes(progress.bytes) })} · ${formatTimeLeft(progress.leftSeconds ?? null)}`
