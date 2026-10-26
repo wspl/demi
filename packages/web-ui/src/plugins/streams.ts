@@ -1,12 +1,12 @@
 /**
  * A plugin's user stream as a page holds it: bytes both ways between the page and
- * the plugin's package on the conversation's Host, over the product's WebSocket or a
- * gallery's fixture.
+ * the plugin's package on the conversation's Host, over a lane of the page connection,
+ * the direct channel or a gallery's fixture.
  *
  * What the bytes mean is the plugin's own protocol.
  */
 
-/** Bytes the page sends: their own buffer, as a socket requires. */
+/** Bytes the page sends: their own buffer, as a lane requires. */
 export type StreamBytes = Uint8Array<ArrayBuffer>
 
 /** One open stream. */

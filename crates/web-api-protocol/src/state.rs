@@ -12,7 +12,7 @@ use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
 use crate::credentials::CredentialDto;
 use crate::devices::{DeviceDto, InstallCommands, StunUrl};
-use demi_conversation_socket_protocol::{Held, Version};
+use demi_conversation_lane_protocol::{Held, Version};
 
 use crate::ids::ConversationId;
 use crate::passkeys::PasskeyDto;
@@ -144,7 +144,7 @@ pub enum PageMessage {
     },
 }
 
-/// A message of the page's synchronization channel, `WS /sync`: the current
+/// A message of the page's synchronization channel, its `sync` lane: the current
 /// value of each part of the product state, and of each settings list, that
 /// changed after the version the page follows it from, each part's in the
 /// order of its changes. A page reads the state by `GET /state` first, then
@@ -286,10 +286,6 @@ pub enum SyncEvent {
     /// The backend stops for an update: every page shows the screen of
     /// `GET /update` until the backend serves again.
     Update { state: UpdateState },
-    /// Nothing else was sent for 30 seconds.
-    Heartbeat,
-    /// The answer to the page's `{ ping: id }`, sent at once.
-    Pong { id: u32 },
 }
 
 /// `GET /update`, which the backend answers without a session, before it

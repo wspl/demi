@@ -8,7 +8,7 @@
  * - Acknowledges what the viewer saw.
  * - Sends the viewer's input while the stream is alive.
  *
- * A view whose stream goes silent for as long as a page socket may is broken,
+ * A view whose stream goes silent for as long as the page connection may is broken,
  * and a view that ends opens again after the page's reconnect waits.
  */
 import { liveViewerMessageSchema, panelReasonSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage, type PanelReason } from '../generated/plugin'

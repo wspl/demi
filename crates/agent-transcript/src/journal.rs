@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use demi_conversation_socket_protocol::{TranscriptPatch, Versions};
+use demi_conversation_lane_protocol::{TranscriptPatch, Versions};
 use demi_shared_types::Block;
 
 /// The patches of one commit, which advances the revision by one.

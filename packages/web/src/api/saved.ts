@@ -21,7 +21,7 @@ function savedPath(conversationId: string, messageId?: string): string {
   return messageId === undefined ? list : `${list}/${encodeURIComponent(messageId)}`
 }
 
-/** The conversation's saved messages, read when it opens and followed from its socket. */
+/** The conversation's saved messages, read when it opens and followed from its lane. */
 export async function listSaved(conversationId: string, signal: AbortSignal): Promise<SavedListing> {
   const response = await apiRequest(savedPath(conversationId), { signal })
   return readResponse(response, savedListingSchema)

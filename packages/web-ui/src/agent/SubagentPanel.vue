@@ -62,7 +62,7 @@ const props = withDefaults(
      */
     readLatest?: (id: string) => Promise<void>
     /**
-     * Whether the page has, or is opening, a session whose socket follows the
+     * Whether the page has, or is opening, a session whose lane follows the
      * child the panel shows and those read ahead, live or finished. Without
      * one, the panel reads the child's latest page when it shows it.
      */
@@ -166,7 +166,7 @@ watch(
 /**
  * The shown child's load while the panel holds none of its transcript, so the
  * panel never shows an empty transcript in its place. A child the session sends
- * loads until its reset arrives, whatever the socket's own state. A page that
+ * loads until its reset arrives, whatever the lane's own state. A page that
  * arrives shows at once.
  */
 const load = computed(() => {

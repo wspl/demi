@@ -22,6 +22,7 @@ pub mod attachments;
 pub mod auth;
 pub mod schedules;
 pub mod cloud;
+pub mod connection;
 pub mod conversations;
 pub mod credentials;
 pub mod devices;
@@ -57,8 +58,8 @@ pub mod users;
 pub mod workflows;
 pub mod workspaces;
 
-/// The largest message a page sends on any of its WebSockets: the
-/// conversation socket, the synchronization channel and a user stream. A frame
+/// The largest message a page sends on any of its lanes: a conversation's,
+/// the synchronization channel's and a user stream's. A frame
 /// refers to an upload and never carries its bytes, and a user stream frames
 /// its own messages, so no page needs a larger one.
 ///

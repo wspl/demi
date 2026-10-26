@@ -5,9 +5,9 @@
 //! anything is created, so a refused one creates nothing.
 //!
 //! A first message the request carries is admitted once the record exists
-//! (`create_conversation_sending`), as the conversation socket admits a
-//! `send` (`socket.rs`, `admit_first_message`): the creation does not wait
-//! for the page's socket, and the conversation exists whether or not the
+//! (`create_conversation_sending`), as the conversation lane admits a
+//! `send` (`lane.rs`, `admit_first_message`): the creation does not wait
+//! for the page's lane, and the conversation exists whether or not the
 //! session takes the message.
 //!
 //! Its directory is selected as a move's is, in the transaction that creates

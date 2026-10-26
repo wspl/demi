@@ -110,6 +110,7 @@
       "name": "@demicodes/browse",
       "version": "0.0.0",
       "dependencies": {
+        "@demicodes/protocol": "workspace:^",
         "@demicodes/web": "workspace:^",
         "playwright": "1.63.0",
         "zod": "^4.0.0",

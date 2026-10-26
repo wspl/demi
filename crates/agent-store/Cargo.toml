@@ -19,7 +19,7 @@ testing = []
 [dependencies]
 bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol" }
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
 demi-host-interface = { path = "../host-interface" }

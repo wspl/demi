@@ -28,7 +28,7 @@ interface Connection {
   opened: number
   client: net.Socket
   server: net.Socket
-  /** The requests seen on it, `GET /api/sync` and so on, the latest last. */
+  /** The requests seen on it, `GET /api/connect` and so on, the latest last. */
   requests: string[]
   /** Whether a request upgraded it to a WebSocket. */
   socket: boolean
@@ -36,7 +36,7 @@ interface Connection {
   paced: boolean
   /** Whether it carries nothing more either way, though it stays open ([`Network.stall`]). */
   stalled: boolean
-  lanes: Lane[]
+  directions: Direction[]
 }
 
 /** How much a way may hold before it stops reading from its sender. */
@@ -46,7 +46,7 @@ const HIGH_WATER = 4 * 1024 * 1024
  * One way of a connection: chunks from `from`, delivered to `to` once the
  * conditions allow, in order.
  */
-class Lane {
+class Direction {
   private readonly queue: { due: number, chunk: Buffer }[] = []
   private queued = 0
   /** When the way is free again under a bandwidth limit. */
@@ -164,7 +164,7 @@ export class Network {
       socket: false,
       paced: false,
       stalled: false,
-      lanes: [],
+      directions: [],
     }
     this.nextId += 1
     this.connections.set(connection.id, connection)
@@ -174,7 +174,7 @@ export class Network {
       : connection.paced
         ? this.conditions
         : { ...NORMAL, reach: this.conditions.reach }
-    connection.lanes = [new Lane(client, server, conditions), new Lane(server, client, conditions)]
+    connection.directions = [new Direction(client, server, conditions), new Direction(server, client, conditions)]
     // A failure on either side ends both at once, as a broken connection
     // does; the connection is gone once both sides have closed.
     let open = 2
@@ -207,8 +207,8 @@ export class Network {
     if (!this.connections.delete(connection.id)) {
       return
     }
-    for (const lane of connection.lanes) {
-      lane.stop()
+    for (const direction of connection.directions) {
+      direction.stop()
     }
     connection.client.destroy()
     connection.server.destroy()
@@ -229,17 +229,17 @@ export class Network {
 
   set(change: Partial<Conditions>): void {
     Object.assign(this.conditions, change)
-    // A lane holds what an offline spell kept, and its timers follow the old
+    // A direction holds what an offline spell kept, and its timers follow the old
     // latency: each looks again under the new conditions.
     for (const connection of this.connections.values()) {
-      for (const lane of connection.lanes) {
-        lane.pump()
+      for (const direction of connection.directions) {
+        direction.pump()
       }
     }
   }
 
   /**
-   * Ends every connection a request of which, such as `GET /api/sync`,
+   * Ends every connection a request of which, such as `GET /api/connect`,
    * matches `pattern` (a part of it, or a regular expression) with a reset,
    * as a lost connection does: the page's socket closes without a close
    * frame. Answers what it cut.

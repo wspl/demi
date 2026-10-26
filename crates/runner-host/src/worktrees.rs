@@ -7,8 +7,8 @@
 //! each one's worktrees whole (`worktrees`) when it is named, and again when
 //! they changed, checked at the moments a change could lead to a move: before
 //! a command's request, a job's end and a folder's listing reach the backend
-//! ([`demi_runner_protocol::wire::Lane::report`]). The report goes into the
-//! lane ahead of that message, so the backend has it first. For example,
+//! ([`demi_runner_protocol::wire::Backlog::report`]). The report goes into the
+//! backlog ahead of that message, so the backend has it first. For example,
 //! `git worktree add ../app-2 && demi host move ../app-2` reports `app-2`
 //! before the move's request.
 //!
@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
-use demi_runner_protocol::wire::{self, Lane, LinkedWorktree, Outbound};
+use demi_runner_protocol::wire::{self, Backlog, LinkedWorktree, Outbound};
 
 /// The projects' directories and what was reported of each; shared by every
 /// connection of the registration.
@@ -69,11 +69,11 @@ impl Worktrees {
         }
     }
 
-    /// Pushes into `lane` the worktrees of each project whose repository
+    /// Pushes into `backlog` the worktrees of each project whose repository
     /// changed since its last report.
-    pub fn report(&self, lane: &Lane) {
+    pub fn report(&self, backlog: &Backlog) {
         let mut followed = self.0.followed.lock().unwrap_or_else(PoisonError::into_inner);
-        report_changed(&mut followed.projects, lane);
+        report_changed(&mut followed.projects, backlog);
     }
 }
 
@@ -89,18 +89,18 @@ impl Naming {
     /// as the backend keeps nothing from an earlier connection's reports. A
     /// naming that a later one overtook changes nothing, so the latest stays
     /// followed.
-    pub fn follow(self, lane: &Lane) {
+    pub fn follow(self, backlog: &Backlog) {
         let mut followed = self.worktrees.0.followed.lock().unwrap_or_else(PoisonError::into_inner);
         if followed.naming > self.number {
             return;
         }
         followed.naming = self.number;
         followed.projects = self.directories.into_iter().map(|directory| (directory, None)).collect();
-        report_changed(&mut followed.projects, lane);
+        report_changed(&mut followed.projects, backlog);
     }
 }
 
-fn report_changed(followed: &mut BTreeMap<String, Option<Stamp>>, lane: &Lane) {
+fn report_changed(followed: &mut BTreeMap<String, Option<Stamp>>, backlog: &Backlog) {
     for (directory, last) in followed.iter_mut() {
         let stamp = stamp(Path::new(directory));
         if last.as_ref() == Some(&stamp) {
@@ -112,7 +112,7 @@ fn report_changed(followed: &mut BTreeMap<String, Option<Stamp>>, lane: &Lane) {
             worktrees,
         }) {
             Ok(frame) => {
-                lane.push(frame);
+                backlog.push(frame);
                 *last = Some(stamp);
             }
             Err(error) => {

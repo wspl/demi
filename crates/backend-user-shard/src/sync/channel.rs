@@ -13,8 +13,6 @@
 //! 3. Waits for marks, and sends each marked part of a followed value as it
 //!    is when the channel takes it, then `synced` with the version the state
 //!    is current as of.
-//! 4. Sends a heartbeat once its page socket has been silent for the heartbeat
-//!    interval.
 //!
 //! It keeps what the page says it shows, which holds back the session's
 //! notifications of that conversation while the channel lives.
@@ -23,44 +21,24 @@
 //! opens and when the choice lands, since `GET /state` is refused until then;
 //! the page reads the state and follows it once the choice landed.
 //!
-//! A page of the build that took a snapshot opens the channel without `build`:
-//! it is sent one `snapshot` message that holds the web build alone, which
-//! that build reloads on, and the channel closes.
-//!
-//! It ends with its session, at shutdown, when the page sends anything else, and
-//! when a part cannot be read.
+//! It ends with its lane, whose connection ends with the session, at shutdown,
+//! when the page sends anything else, and when a part cannot be read.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::convert::Infallible;
 use std::rc::Rc;
 
-use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
-use demi_backend_database::accounts::TokenHash;
+use axum::extract::ws::close_code;
 use demi_backend_page_sync::{Part, Registration, StateVersion};
-use demi_conversation_socket_protocol::{Held, Version};
-use demi_shared_types::Timestamp;
-use demi_web_api_protocol::auth::{Role, UserDto};
+use demi_conversation_lane_protocol::{Held, Version};
+use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::ids::ConversationId;
-use demi_web_api_protocol::sessions::SessionId;
 use demi_web_api_protocol::state::{PageMessage, SyncEvent, SyncFollow, SyncFollowed};
-use futures_util::StreamExt as _;
 
 use crate::conversation::notifications::PageShows;
-use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
-use crate::shard::{PageEnd, PageGone, PageSocket, PageStream, Shard};
-
-/// The close code of a channel whose session ended.
-const SESSION_ENDED: u16 = 4002;
-
-/// The session a page's channel or conversation socket opened with: its
-/// token's hash, its user, and when it expires unless a request renews it.
-pub struct ChannelSession {
-    pub id: SessionId,
-    pub token: TokenHash,
-    pub user: UserDto,
-    pub expires_at: Timestamp,
-}
+use crate::shard::lane::PageSession;
+use crate::shard::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
 
 /// How a channel ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,31 +49,22 @@ enum End {
     UnexpectedMessage,
     /// A part could not be read.
     InternalError,
-    /// The session was signed out, or expired.
-    SessionEnded,
-    /// The page closed the socket, or it broke.
+    /// The page closed the lane, or its connection ended.
     PageGone,
-    /// The message the page of an earlier build waits for was sent.
-    Done,
 }
 
 impl End {
-    /// How the socket ends: with the close frame the backend sends, or as
-    /// the page left it.
-    fn page_end(self) -> PageEnd {
-        let frame = |code, reason| CloseFrame {
-            code,
-            reason: Utf8Bytes::from_static(reason),
-        };
+    /// How the lane ends: with the close the backend sends, or as the page
+    /// left it.
+    fn lane_end(self) -> LaneEnd {
+        let close = |code, reason| LaneClose { code, reason };
         match self {
-            Self::BackendClosing => PageEnd::Close(frame(close_code::AWAY, "backend_closing")),
+            Self::BackendClosing => LaneEnd::Close(close(close_code::AWAY, "backend_closing")),
             Self::UnexpectedMessage => {
-                PageEnd::Close(frame(close_code::POLICY, "unexpected_message"))
+                LaneEnd::Close(close(close_code::POLICY, "unexpected_message"))
             }
-            Self::InternalError => PageEnd::Fail(frame(close_code::ERROR, "internal_error")),
-            Self::SessionEnded => PageEnd::Close(frame(SESSION_ENDED, "session_ended")),
-            Self::PageGone => PageEnd::Gone,
-            Self::Done => PageEnd::Close(frame(close_code::NORMAL, "superseded")),
+            Self::InternalError => LaneEnd::Fail(close(close_code::ERROR, "internal_error")),
+            Self::PageGone => LaneEnd::Gone,
         }
     }
 }
@@ -104,35 +73,27 @@ impl End {
 enum Woke {
     Marked,
     Stale,
-    Heartbeat,
 }
 
 impl Shard {
-    /// Serves a page's synchronization channel, which `origin` opened, until
-    /// its session ends, the page leaves or the shard closes.
+    /// Serves a page's synchronization channel on its lane until the page
+    /// leaves or the shard closes.
     pub async fn serve_sync_channel(
         self: Rc<Self>,
-        socket: WebSocket,
-        session: ChannelSession,
-        origin: PageSocketOrigin,
-        legacy: bool,
+        mut page: Lane,
+        mut from_page: LaneReader,
+        session: PageSession,
     ) {
         // Counted before any wait, so the shard's close waits for this
         // channel; one adopted as the close begins ends at once.
         let _channel = self.sync_channels().token();
-        let (mut page, mut from_page) = open_page_socket(socket, self.services().pages, origin);
         let end = if self.is_closing() {
             End::BackendClosing
-        } else if legacy {
-            self.send_legacy_snapshot(&mut page).await
         } else {
             // What the page shows holds back the session's notifications
             // of it until the channel ends.
             let shows = self.notifications().page(session.id.clone());
-            let registration = self
-                .services()
-                .sync
-                .register(self.user(), session.token.clone());
+            let registration = self.services().sync.watch(self.user());
             let follows = Follows::default();
             let mut channel = Channel {
                 registration: &registration,
@@ -151,22 +112,7 @@ impl Shard {
                 },
             }
         };
-        page.end(from_page, end.page_end()).await;
-    }
-
-    /// Sends the one message a page of the earlier build understands, the
-    /// snapshot of the state with the web build alone, which makes that page
-    /// reload when it is not the build the backend serves.
-    async fn send_legacy_snapshot(&self, page: &mut PageSocket) -> End {
-        let text = serde_json::json!({
-            "type": "snapshot",
-            "state": { "webBuild": self.services().web_build },
-        })
-        .to_string();
-        match page.send(text).await {
-            Ok(()) => End::Done,
-            Err(PageGone) => End::PageGone,
-        }
+        page.end(from_page, end.lane_end());
     }
 }
 
@@ -291,8 +237,8 @@ struct Channel<'a> {
     registration: &'a Registration,
     follows: &'a Follows,
     shard: &'a Shard,
-    page: &'a mut PageSocket,
-    session: ChannelSession,
+    page: &'a mut Lane,
+    session: PageSession,
 }
 
 impl Channel<'_> {
@@ -309,9 +255,7 @@ impl Channel<'_> {
             let woke = tokio::select! {
                 () = self.registration.marked() => Woke::Marked,
                 () = self.follows.wake.notified() => Woke::Stale,
-                () = self.page.silent() => Woke::Heartbeat,
             };
-            self.check_session().await?;
             match woke {
                 Woke::Stale => {
                     let stale = std::mem::take(&mut *self.follows.stale.borrow_mut());
@@ -333,9 +277,6 @@ impl Channel<'_> {
                     let mut current = None;
                     loop {
                         let marked = self.registration.take();
-                        if marked.session_ended {
-                            return Err(End::SessionEnded);
-                        }
                         pending.extend(marked.parts);
                         current = current.max(marked.revision);
                         let Some(part) = pending.pop_first() else {
@@ -351,9 +292,6 @@ impl Channel<'_> {
                             continue;
                         };
                         let marked = self.registration.take();
-                        if marked.session_ended {
-                            return Err(End::SessionEnded);
-                        }
                         pending.extend(marked.parts);
                         current = current.max(marked.revision);
                         if pending.first().is_some_and(|first| *first < part) {
@@ -373,32 +311,6 @@ impl Channel<'_> {
                         self.send(&SyncEvent::Synced { version: Version { epoch, revision } }).await?;
                     }
                 }
-                Woke::Heartbeat => self.send(&SyncEvent::Heartbeat).await?,
-            }
-        }
-    }
-
-    /// Ends the channel once its session expired. Past the expiry it knew,
-    /// it looks at the session again, since a request may have renewed it.
-    async fn check_session(&mut self) -> Result<(), End> {
-        let services = self.shard.services();
-        if services.clock.now() < self.session.expires_at {
-            return Ok(());
-        }
-        match services.sessions.check(&self.session.token).await {
-            Ok(Some(session)) => {
-                self.session.expires_at = session.expires_at;
-                Ok(())
-            }
-            Ok(None) => Err(End::SessionEnded),
-            Err(error) => {
-                tracing::error!(
-                    event = "page_session.read_failed",
-                    user = %self.session.user.id,
-                    error = &error as &dyn std::error::Error,
-                    "a page's session could not be read"
-                );
-                Err(End::InternalError)
             }
         }
     }
@@ -489,22 +401,22 @@ impl Channel<'_> {
         // never refuses.
         let text =
             serde_json::to_string(event).expect("a synchronization message serializes to JSON");
-        self.page.send(text).await.map_err(|PageGone| End::PageGone)
+        self.page.send(text).await.map_err(|LaneGone| End::PageGone)
     }
 }
 
-/// Reads the page's side of the socket until it ends: what it follows, which
+/// Reads the page's side of the lane until it ends: what it follows, which
 /// `follows` and the registration keep, and what it shows, which `shows`
 /// keeps; any other message ends the channel.
 async fn page_messages(
-    from_page: &mut PageStream,
+    from_page: &mut LaneReader,
     shows: &PageShows,
     registration: &Registration,
     follows: &Follows,
 ) -> End {
     loop {
         match from_page.next().await {
-            Some(Ok(Message::Text(text))) => match serde_json::from_str::<PageMessage>(&text) {
+            Some(LaneMessage::Text(text)) => match serde_json::from_str::<PageMessage>(&text) {
                 Ok(PageMessage::Showing { showing }) => {
                     shows.set(showing);
                 }
@@ -526,9 +438,8 @@ async fn page_messages(
                 Ok(PageMessage::Unfollow { value }) => follows.unfollow(value),
                 Err(_) => return End::UnexpectedMessage,
             },
-            Some(Ok(Message::Binary(_))) => return End::UnexpectedMessage,
-            Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-            Some(Ok(Message::Close(_)) | Err(_)) | None => return End::PageGone,
+            Some(LaneMessage::Binary(_)) => return End::UnexpectedMessage,
+            None => return End::PageGone,
         }
     }
 }

@@ -25,7 +25,7 @@ use demi_agent_transcript::{
     estimate::{OutputEstimate, anchor_tokens, blocks_tokens, context_anchor},
     replay,
 };
-use demi_conversation_socket_protocol::{AbortTarget, RequestOutput, TurnSpeed};
+use demi_conversation_lane_protocol::{AbortTarget, RequestOutput, TurnSpeed};
 use demi_provider_common::{
     Ahead, EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, RequestPurpose,
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
@@ -744,7 +744,7 @@ impl SessionCore {
         &self,
         operation: &demi_shared_types::OperationId,
         digest: &str,
-        version: &demi_conversation_socket_protocol::Version,
+        version: &demi_conversation_lane_protocol::Version,
     ) -> Result<EditCheck, EditError> {
         if let Some(receipt) = self
             .edits
@@ -773,7 +773,7 @@ impl SessionCore {
     /// Whether the session admits a rewrite of its path made against the
     /// transcript `version`: settled, with nothing waiting, and nothing
     /// changed since.
-    fn check_settled(&self, version: &demi_conversation_socket_protocol::Version) -> Result<(), EditError> {
+    fn check_settled(&self, version: &demi_conversation_lane_protocol::Version) -> Result<(), EditError> {
         if self.disposing {
             return Err(EditError::Closed);
         }
@@ -795,7 +795,7 @@ impl SessionCore {
         &mut self,
         target: BlockId,
         to: u32,
-        version: &demi_conversation_socket_protocol::Version,
+        version: &demi_conversation_lane_protocol::Version,
     ) -> Result<ActionHandle, EditError> {
         // A target before the window is found by the switch, in the store.
         self.check_settled(version)?;

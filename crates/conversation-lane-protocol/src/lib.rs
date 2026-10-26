@@ -82,7 +82,6 @@ mod agents;
 mod client;
 mod cost;
 mod follow;
-mod ping;
 mod server;
 mod transcript;
 
@@ -92,7 +91,6 @@ pub use client::{
 pub use agents::{AgentEntry, AgentRole, SideQuestion, Subagent};
 pub use cost::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 pub use follow::{Follow, Followed, Held};
-pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, AttachmentSourceDto, CommandView, ConversationAttachment, EditOutcome,
     Failures, JobModel, JobPhase, Refusal,

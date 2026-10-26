@@ -13,10 +13,10 @@ export interface ConversationClientTransport {
   close(): void
 }
 
-/** A frame larger than the backend takes on a page's socket. */
+/** A frame larger than the backend takes on a conversation lane. */
 export class FrameTooLargeError extends Error {
   constructor(bytes: number) {
-    super(`The message is ${bytes} bytes, over the ${MAX_PAGE_MESSAGE_BYTES} bytes the conversation socket takes`)
+    super(`The message is ${bytes} bytes, over the ${MAX_PAGE_MESSAGE_BYTES} bytes the conversation lane takes`)
     this.name = 'FrameTooLargeError'
   }
 }
@@ -45,7 +45,7 @@ export interface WebSocketLike {
 }
 
 /**
- * The conversation socket as a transport.
+ * The conversation lane as a transport.
  *
  * Each message is JSON text: one frame, or an array of the frames the backend
  * had ready at once, as a turn's end. The frames of one message are handed
@@ -77,14 +77,14 @@ export function createWebSocketTransport(socket: WebSocketLike): ConversationCli
   }
   const onMessage = (event: SocketMessage) => {
     if (typeof event.data !== 'string') {
-      end(new Error('The agent socket sent a binary message'))
+      end(new Error('The conversation lane sent a binary message'))
       return
     }
     let message: unknown
     try {
       message = JSON.parse(event.data)
     } catch {
-      end(new Error('The agent socket sent a message that is not JSON'))
+      end(new Error('The conversation lane sent a message that is not JSON'))
       return
     }
     // A handler that ends the connection clears the handlers, so no frame
@@ -96,10 +96,10 @@ export function createWebSocketTransport(socket: WebSocketLike): ConversationCli
     }
   }
   const onClose = (event: SocketClose) => {
-    end(new Error(`The agent socket closed (${[event.code, event.reason].filter(Boolean).join(' ')})`))
+    end(new Error(`The conversation lane closed (${[event.code, event.reason].filter(Boolean).join(' ')})`))
   }
   const onError = () => {
-    end(new Error('The agent socket failed'))
+    end(new Error('The conversation lane failed'))
   }
   socket.addEventListener('message', onMessage)
   socket.addEventListener('close', onClose)

@@ -471,7 +471,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     { immediate: true, flush: 'sync' },
   )
   // The states the plugins hold for the tabs come with the conversation's
-  // metadata, the disk's copy or the socket's opening, under their revisions.
+  // metadata, the disk's copy or the lane's opening, under their revisions.
   watch(
     () => conversations.items.map((item) => [item.id, item.metadata.shown.value?.panelStates] as const),
     (followed) => {

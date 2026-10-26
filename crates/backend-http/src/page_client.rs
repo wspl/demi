@@ -1,6 +1,8 @@
-//! Where a page's socket comes from, which its log lines name.
+//! Where a page connection comes from, which its log lines and its lanes'
+//! spans name.
 //!
 //! - The request ID of its upgrade.
+//! - The page load that opened it.
 //! - The edge's request id and the client's address that a proxy such as
 //!   Cloudflare passes, else the connection's own peer.
 //! - The browser's user agent.
@@ -11,41 +13,23 @@ use axum::extract::{ConnectInfo, FromRequestParts};
 use axum::http::HeaderMap;
 use axum::http::header::USER_AGENT;
 use axum::http::request::Parts;
-use demi_backend_user_shard::shard::page_socket::{PageSocketKind, PageSocketOrigin};
 use demi_shared_types::RequestId;
-use demi_web_api_protocol::ids::UserId;
 
 use super::error::ApiError;
 use super::listener::Peer;
-use super::request_id::CF_RAY;
+use super::request_id::{self, CF_RAY};
 
 /// The client's address as Cloudflare saw it.
 const CF_CONNECTING_IP: &str = "cf-connecting-ip";
 
-/// The client of a page socket's upgrade request.
+/// The client of a page connection's upgrade request.
+#[derive(Debug, Clone)]
 pub(super) struct PageClient {
-    request: RequestId,
-    ray: Option<String>,
-    client: Option<IpAddr>,
-    user_agent: Option<String>,
-}
-
-impl PageClient {
-    /// The origin of a socket of `kind` that this client opened for `user`;
-    /// the caller names what else it serves.
-    pub(super) fn origin(self, kind: PageSocketKind, user: UserId) -> PageSocketOrigin {
-        PageSocketOrigin {
-            kind,
-            request: self.request,
-            user,
-            conversation: None,
-            device: None,
-            stream: None,
-            ray: self.ray,
-            client: self.client,
-            user_agent: self.user_agent,
-        }
-    }
+    pub(super) request: RequestId,
+    pub(super) page: Option<String>,
+    pub(super) ray: Option<String>,
+    pub(super) client: Option<IpAddr>,
+    pub(super) user_agent: Option<String>,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for PageClient {
@@ -56,10 +40,11 @@ impl<S: Send + Sync> FromRequestParts<S> for PageClient {
             .extensions
             .get::<RequestId>()
             .cloned()
-            .ok_or_else(|| ApiError::internal_message("the request reached a socket without its ID"))?;
+            .ok_or_else(|| ApiError::internal_message("the request reached a page connection without its ID"))?;
         let headers = &parts.headers;
         Ok(Self {
             request,
+            page: request_id::page_of(headers, &parts.uri).map(str::to_owned),
             ray: header(headers, CF_RAY),
             client: client_address(parts),
             user_agent: header(headers, USER_AGENT.as_str()),
@@ -67,8 +52,6 @@ impl<S: Send + Sync> FromRequestParts<S> for PageClient {
     }
 }
 
-/// A header's value, when it is there and visible ASCII, which a log line
-/// can carry as it is.
 /// The address the request came from: the one the proxy in front passes,
 /// else the connection's.
 pub(crate) fn client_address(parts: &axum::http::request::Parts) -> Option<std::net::IpAddr> {
@@ -81,6 +64,8 @@ pub(crate) fn client_address(parts: &axum::http::request::Parts) -> Option<std::
     passed.or(peer)
 }
 
+/// A header's value, when it is there and visible ASCII, which a log line
+/// can carry as it is.
 fn header(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)

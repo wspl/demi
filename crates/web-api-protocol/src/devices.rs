@@ -220,8 +220,7 @@ pub enum DirectPeer {
     Live,
 }
 
-/// A message the page sends on a device's direct channel signaling socket,
-/// `WS /devices/:deviceId/direct`.
+/// A message the page sends on a device's direct channel signaling lane.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DirectRequest {
@@ -254,7 +253,7 @@ pub enum DirectRequest {
 }
 
 
-/// A message the backend sends on a direct channel signaling socket.
+/// A message the backend sends on a direct channel signaling lane.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DirectMessage {
@@ -263,13 +262,10 @@ pub enum DirectMessage {
     /// A candidate the runner found after its answer, such as the address a
     /// STUN server saw it at; it may come before the answer.
     Candidate { peer: DirectPeer, candidate: String },
-    /// The runner's answer to the page's probe `id`, or the backend's own,
-    /// at once, to the page's `{ ping: id }`.
+    /// The runner's answer to the page's probe `id`.
     Pong { id: u32 },
     /// The runner did not answer the page's last offer for `peer`.
     Unanswered { peer: DirectPeer, code: Unanswered },
-    /// Nothing else was sent for 30 seconds: the socket is quiet, not dead.
-    Heartbeat,
     /// The runner closed `peer`, since the user turned a plugin on or off:
     /// the page makes a new offer for it at once, whose introduction carries
     /// the user's streams as they are now.

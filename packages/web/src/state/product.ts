@@ -5,10 +5,11 @@ import { schemaRefusal } from '@demicodes/protocol'
 import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
-import { browserOnline, openSocket, pingOn, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { browserOnline, waitToReconnect, type ReconnectWait } from '@demicodes/web-ui/transport/liveness'
+import { Lane, backendRestarting, connectionFailures, openLane } from '@demicodes/web-ui/transport/page-connection'
 import { backendUnreachable, connectionCause, connectionState, type ConnectionState } from '@demicodes/web-ui/transport/connection'
 import { t } from './locales/text'
-import { ApiError, apiRequest, apiUrl, logReadAnswered, logReadFailed, notifySessionEnded, readResponse, unreachable as backendNotReached, waitForBackendWith } from '../api/client'
+import { ApiError, apiRequest, logReadAnswered, logReadFailed, notifySessionEnded, readResponse, unreachable as backendNotReached, waitForBackendWith } from '../api/client'
 import {
   productStateSchema,
   syncEventSchema,
@@ -30,11 +31,11 @@ type ProductState = PageState
 const SESSION_ENDED = 4002
 /** The close of a channel whose backend shuts down, and will be back. */
 const BACKEND_CLOSING = 1001
-/** The close the web browser reports for a socket that ended without a close frame, as one that could not connect. */
+/** The close of a lane that ended without a close of its own, as one that could not open or whose connection broke. */
 const ABNORMAL_CLOSURE = 1006
 
 /** A message that carries one part of the product state, as a write's answer can. */
-export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'heartbeat' | 'pong' | 'synced' | 'stale' | 'update' }>>
+export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'synced' | 'stale' | 'update' }>>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
 export type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
@@ -400,17 +401,14 @@ export const useProduct = defineStore('product', () => {
    */
   const catalogLoad = computed(() => (partLoad('models') === 'ready' ? 'ready' : 'loading'))
   const activeConversationId = ref<string | null>(null)
-  /**
-   * The backend closed the channel because it shuts down, and the state has
-   * not been read since.
-   */
-  const restarting = ref(false)
-  /** Consecutive connections that ended, and reads of the state that failed, before the state was read. */
+  /** Consecutive channels that ended, and reads of the state that failed, before the state was read. */
   const failures = ref(0)
+  /** Consecutive attempts that failed, of the page connection's or the channel's and the state's own. */
+  const failedAttempts = () => Math.max(failures.value, connectionFailures.value)
   const connectionFacts = () => ({
     online: browserOnline.value,
-    restarting: restarting.value,
-    failedAttempts: failures.value,
+    restarting: backendRestarting.value,
+    failedAttempts: failedAttempts(),
     hasSnapshot: snapshot.value !== null,
   })
   /** Whether the page cannot reach the backend. */
@@ -424,7 +422,7 @@ export const useProduct = defineStore('product', () => {
       to,
       cause: connectionCause(connectionFacts()),
       ms_in_from: now - connectionSince,
-      attempt: failures.value,
+      attempt: failedAttempts(),
     })
     connectionSince = now
   })
@@ -433,7 +431,7 @@ export const useProduct = defineStore('product', () => {
    * page loaded while Demi restarts: it says it connects where the app will
    * be.
    */
-  const connecting = computed(() => snapshot.value === null && (failures.value > 0 || !browserOnline.value))
+  const connecting = computed(() => snapshot.value === null && (failedAttempts() > 0 || !browserOnline.value))
   /** The build of the web app the backend serves, as the last read of the state named it. */
   const servedBuild = ref<string | null>(null)
   /**
@@ -458,13 +456,11 @@ export const useProduct = defineStore('product', () => {
   let controller: AbortController | null = null
   /** Undoes the requests' wait for the backend, which `start` sets. */
   let stopWaiting: (() => void) | null = null
-  let socket: WebSocket | null = null
+  let channel: Lane | null = null
   /** Whether the open channel's `open` went: a value followed from then on goes in a `follow`, before it in the `open`. */
   let channelOpen = false
   /** The wait before the channel connects again, while it is closed. */
   let retry: ReconnectWait | null = null
-  /** The open channel's silence watch. */
-  let silence: SilenceWatch | null = null
   /** Ends the open channel's grace, which `established` ends first when it comes. */
   let grace: ReturnType<typeof setTimeout> | null = null
   /**
@@ -479,35 +475,24 @@ export const useProduct = defineStore('product', () => {
   }
 
   /** Forgets the open channel, which then closes without telling this module. */
-  function dropChannel(): WebSocket | null {
-    const channel = socket
-    socket = null
+  function dropChannel(): Lane | null {
+    const dropped = channel
+    channel = null
     channelOpen = false
-    silence?.stop()
-    silence = null
     if (grace !== null) {
       clearTimeout(grace)
       grace = null
     }
-    return channel
+    return dropped
   }
 
-  /**
-   * The channel stayed open, or brought a message: the backend is reached,
-   * so the banner goes and each other socket of the page that waits to
-   * connect connects at once.
-   */
+  /** The channel stayed open, or brought a message: the backend serves it. */
   function established(): void {
     if (grace !== null) {
       clearTimeout(grace)
       grace = null
     }
-    const returned = failures.value > 0 || restarting.value
     failures.value = 0
-    restarting.value = false
-    if (returned) {
-      reconnectNow()
-    }
   }
 
   /** Closes the channel and connects again after the wait. */
@@ -518,19 +503,18 @@ export const useProduct = defineStore('product', () => {
   }
 
   /**
-   * Connects again after the wait while the backend restarts, or else after
-   * the wait for this many failures, or at the page's return.
+   * Connects again after the wait for this many failures, at the page's
+   * return, or as the page connection is back.
    */
   function scheduleRetry(): void {
     if (!controller) {
       return
     }
     clearRetry()
-    const again = () => {
+    retry = waitToReconnect(failures.value, () => {
       retry = null
       connect()
-    }
-    retry = restarting.value ? waitWhileRestarting(again) : waitToReconnect(failures.value, again)
+    })
   }
 
   /**
@@ -552,57 +536,48 @@ export const useProduct = defineStore('product', () => {
     return result
   }
 
-  function send(channel: WebSocket, message: PageMessage): void {
-    channel.send(JSON.stringify(message))
+  function send(lane: Lane, message: PageMessage): void {
+    lane.send(JSON.stringify(message))
   }
 
   /** Follows `value` from what the page holds of it, on the open channel; a closed one follows it in its next `open`. */
   function follow(value: SyncFollowed): void {
-    if (!socket || !channelOpen) {
+    if (!channel || !channelOpen) {
       return
     }
     const held = follows().find((each) => each.value === value)
     if (held) {
-      send(socket, { type: 'follow', ...held })
+      send(channel, { type: 'follow', ...held })
     }
   }
 
   function connect(): void {
-    if (!controller || socket) {
+    if (!controller || channel) {
       return
     }
     clearRetry()
-    const url = new URL(apiUrl('/sync'), window.location.href)
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    // A page of this build says so: the backend sends one that names none a
-    // single message with its build and closes.
-    url.searchParams.set('build', pageBuild() ?? '')
-    const channel = openSocket(url, 'synchronization channel')
-    socket = channel
+    const lane = openLane({ kind: 'sync' }, 'synchronization channel')
+    channel = lane
     let opened = false
-    channel.onopen = () => {
-      if (socket !== channel) {
+    lane.addEventListener('open', () => {
+      if (channel !== lane) {
         return
       }
       opened = true
-      // A channel that brings nothing, heartbeats included, for too long is broken.
-      silence?.stop()
-      silence = watchSilence('synchronization channel', replace, pingOn(channel))
       // The page read what it shows before it opened the channel: the open
       // names each value with the version it holds, and the backend sends what
       // changed since.
-      send(channel, { type: 'open', follows: follows() })
+      send(lane, { type: 'open', follows: follows() })
       channelOpen = true
       if (showing !== null) {
-        sendShowing(channel)
+        sendShowing(lane)
       }
       grace = setTimeout(established, ESTABLISHED_MS)
-    }
-    channel.onmessage = (message) => {
-      if (socket !== channel) {
+    })
+    lane.addEventListener('message', (message) => {
+      if (channel !== lane) {
         return
       }
-      silence?.heard()
       established()
       const parsed = syncEventSchema.safeParse(parse(message.data))
       if (parsed.success) {
@@ -618,18 +593,15 @@ export const useProduct = defineStore('product', () => {
       // follows from what the page holds. The console says what did not read.
       reportError(t('failures.readSync'), schemaRefusal(parsed.error), { site: 'failures.readSync' })
       replace()
-    }
-    channel.onclose = (close) => {
-      if (socket !== channel) {
+    })
+    lane.addEventListener('close', (close) => {
+      if (channel !== lane) {
         return
       }
       dropChannel()
       if (close.code === SESSION_ENDED) {
         notifySessionEnded()
         return
-      }
-      if (close.code === BACKEND_CLOSING) {
-        restarting.value = true
       }
       // Before the state is read, only the backend's own failure, a close it
       // sent, fails the regions; a channel that could not reach it, or that
@@ -638,20 +610,19 @@ export const useProduct = defineStore('product', () => {
       if (!snapshot.value && close.code !== ABNORMAL_CLOSURE && close.code !== BACKEND_CLOSING) {
         load.value = 'failed'
       }
-      // The web browser does not say why an upgrade failed: an ended session
-      // answers this with 401, which ends it on the page as any 401 does.
-      // It does not wait for the backend: the channel is how the page learns
-      // that it reaches the backend, and a failure only means it does not yet.
+      // A refused channel, as of an ended session, asks who the page is: a
+      // 401 ends the session on the page as any 401 does. It does not wait for
+      // the backend: a failure only means the page does not reach it yet.
       if (!opened && controller) {
         void apiRequest('/auth/me', { signal: controller.signal, waits: false }).catch(() => {})
       }
       failures.value += 1
       scheduleRetry()
-    }
+    })
   }
 
-  function sendShowing(channel: WebSocket): void {
-    send(channel, { type: 'showing', showing })
+  function sendShowing(lane: Lane): void {
+    send(lane, { type: 'showing', showing })
   }
 
   /** Says the page shows `conversation`, focused and visible, or none. */
@@ -660,19 +631,12 @@ export const useProduct = defineStore('product', () => {
       return
     }
     showing = conversation
-    if (socket?.readyState === WebSocket.OPEN && channelOpen) {
-      sendShowing(socket)
+    if (channel?.readyState === Lane.OPEN && channelOpen) {
+      sendShowing(channel)
     }
   }
 
   function receive(event: SyncEvent): void {
-    if (event.type === 'heartbeat') {
-      return
-    }
-    if (event.type === 'pong') {
-      silence?.ponged(event.id)
-      return
-    }
     if (event.type === 'synced') {
       // The state is current as of the version: the page follows it from there.
       slot.receive('version', (state) => ({ ...state, version: event.version }))
@@ -755,7 +719,6 @@ export const useProduct = defineStore('product', () => {
         signal.throwIfAborted()
         logReadAnswered(response, began, { read: 'state', stale })
         failures.value = 0
-        restarting.value = false
         slot.replace(withHeldLists(state), { since: at })
         loaded = true
         load.value = 'ready'
@@ -763,7 +726,7 @@ export const useProduct = defineStore('product', () => {
         firstUser.value = null
         stateRead = null
         readHeldLists()
-        if (socket) {
+        if (channel) {
           follow('state')
         } else {
           connect()
@@ -815,7 +778,6 @@ export const useProduct = defineStore('product', () => {
       // cannot read, only names the build to load.
       if (newBuild.value !== null) {
         failures.value = 0
-        restarting.value = false
         throw new StateOfAnotherBuild()
       }
       throw new Error(`The state did not read:\n${schemaRefusal(parsed.error)}`)
@@ -1046,8 +1008,8 @@ export const useProduct = defineStore('product', () => {
       listReads.get(part)?.abort()
       listReads.delete(part)
       listTags.delete(part)
-      if (socket && channelOpen) {
-        send(socket, { type: 'unfollow', value: part })
+      if (channel && channelOpen) {
+        send(channel, { type: 'unfollow', value: part })
       }
     }
   }
@@ -1194,7 +1156,7 @@ export const useProduct = defineStore('product', () => {
       readState(false)
       return
     }
-    if (!socket) {
+    if (!channel) {
       connect()
     }
   }
@@ -1220,7 +1182,6 @@ export const useProduct = defineStore('product', () => {
       delete listLoads[part]
     }
     failures.value = 0
-    restarting.value = false
     servedBuild.value = null
     slot.clear()
     firstUser.value = null

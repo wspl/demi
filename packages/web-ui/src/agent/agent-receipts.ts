@@ -85,7 +85,7 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
  * or a sibling (`crates/agent-store/src/changes.rs`). A message or a report
  * from below is a step of a run, a result the receiver reads, and keeps its
  * row, so the main agent's view shows only rows. A page's light form keeps the
- * words of such a message alone (`crates/conversation-socket-protocol/src/transcript.rs`).
+ * words of such a message alone (`crates/conversation-lane-protocol/src/transcript.rs`).
  */
 export function receivedAsBubble(block: Pick<Extract<Block, { type: 'agent_message' }>, 'message' | 'run'>): boolean {
   return block.message.event.type === 'message' && block.message.sender != null && block.run == null

@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use demi_agent_store::{Kind, StoreError};
 use demi_agent_transcript::{Earlier, TranscriptLog};
-use demi_conversation_socket_protocol::{BlockVersions, Versions, latest_page_start, light};
+use demi_conversation_lane_protocol::{BlockVersions, Versions, latest_page_start, light};
 use demi_shared_types::{Block, BlockId};
 
 use super::SessionShared;
@@ -66,7 +66,7 @@ pub struct LatestPage {
     pub length: usize,
     pub blocks: Vec<Block>,
     pub versions: Vec<BlockVersions>,
-    pub version: demi_conversation_socket_protocol::Version,
+    pub version: demi_conversation_lane_protocol::Version,
 }
 
 /// The latest page of the session's transcript, read from the window as it is
@@ -92,7 +92,7 @@ fn page_of(
     start: usize,
     blocks: &[Block],
     versions: &BTreeMap<usize, Versions>,
-    version: demi_conversation_socket_protocol::Version,
+    version: demi_conversation_lane_protocol::Version,
 ) -> LatestPage {
     let from = start + latest_page_start(blocks);
     let mut light = light(&blocks[from - start..]);

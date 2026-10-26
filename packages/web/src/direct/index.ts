@@ -1,6 +1,6 @@
 /**
  * The page's direct channels (`crates/runner-direct/src/lib.rs`), one per
- * paired device it uses: the device's signaling socket and the choice of path
+ * paired device it uses: the device's signaling lane and the choice of path
  * to it, while its runner is connected. A conversation's operations go to the
  * device its summary names as its Host, in the directory the summary names, so
  * they stop going to a device once the conversation moved.
@@ -30,7 +30,7 @@
  * - when the browser's local network permission changes;
  * - when it comes back online;
  * - when the device's runner connects again;
- * - when its signaling socket reconnects;
+ * - when its signaling lane reconnects;
  * - otherwise after 1, 2, 5 and then every 10 minutes, one attempt at a time.
  *
  * The runners keep the same schedule in Rust
@@ -60,7 +60,7 @@ import { connectPeer } from './peer'
 import { DeviceSignaling, isBusy } from './signaling'
 import { holdsAny } from '../state/account-owner'
 
-/** A device in use, with its signaling socket, its peer for live views and the measuring of its paths. */
+/** A device in use, with its signaling lane, its peer for live views and the measuring of its paths. */
 interface UsedDevice {
   direct: DeviceDirect
   live: DeviceLive
@@ -256,9 +256,9 @@ function use(deviceId: string): UsedDevice {
   const product = useProduct()
   const state = states.get(deviceId) ?? reactive(directState())
   states.set(deviceId, state)
-  // The first open of the socket starts the first attempt, and each open
+  // The first open of the lane starts the first attempt, and each open
   // after one closed is a reason to try again; a peer the backend closed is
-  // made again at once; a socket that dropped took the peers with it, so the
+  // made again at once; a lane that dropped took the peers with it, so the
   // page uses the relay until a new channel is made. A live peer the
   // backend closed is made again by the next live view.
   const signaling = new DeviceSignaling(
@@ -320,7 +320,7 @@ function use(deviceId: string): UsedDevice {
   return device
 }
 
-/** Ends the use of a device whose runner went or that was revoked: its peer closes with its socket. */
+/** Ends the use of a device whose runner went or that was revoked: its peer closes with its lane. */
 function release(deviceId: string): void {
   const device = used.get(deviceId)
   if (!device)

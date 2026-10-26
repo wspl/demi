@@ -20,7 +20,7 @@ testing = []
 bytes.workspace = true
 # Reads a user message's Markdown for the title it gives.
 comrak = { version = "0.56", default-features = false }
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-agent-session = { path = "../agent-session" }
 demi-agent-store = { path = "../agent-store" }
 demi-agent-tools = { path = "../agent-tools" }

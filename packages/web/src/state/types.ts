@@ -22,7 +22,8 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, ConversationWorkflowList, RecentCost, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, ConversationWorkflowList, RecentCost } from '../api/generated/web-api'
+import type { WorkflowChoice } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
@@ -46,7 +47,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** Whether it has schedules, which the sidebar marks. */
   scheduled: boolean
   /**
-   * What a page shows only of an open conversation, as its socket or a read
+   * What a page shows only of an open conversation, as its lane or a read
    * of it brings it and the page's own changes, such as a model chosen, show
    * over it until they land; its fields below follow it.
    */
@@ -136,7 +137,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /**
    * The descriptions of the attachments its replies name, by their ids, such
    * as `a3`, whichever agent uploaded them: what the transcript's frames and
-   * pages and the socket's later uploads bring.
+   * pages and the lane's later uploads bring.
    * An attachment never changes, so a description, once held, stands.
    */
   attachmentDescriptions: Record<string, ConversationAttachment>
@@ -203,7 +204,7 @@ export type Project = SidebarProject & {
 
 /**
  * One side question of a conversation: its node's entry and what the page
- * holds of its side conversation, which the socket's frames keep live while
+ * holds of its side conversation, which the lane's frames keep live while
  * the page subscribes to its node and the transcript routes read by its
  * node.
  */
@@ -232,7 +233,7 @@ export interface SideRecord {
 
 /**
  * A side question's question, follow-up or Retry the page sent, until the
- * conversation's socket shows the server has it.
+ * conversation's lane shows the server has it.
  */
 export interface SentAction {
   /** The transcript the page held when it sent the action. */

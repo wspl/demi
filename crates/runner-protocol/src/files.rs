@@ -144,7 +144,7 @@ pub struct PageSubscription {
     pub suffix: Option<String>,
 }
 
-/// A message the page sends on its file watch, `WS .../fs/watch` or a
+/// A message the page sends on its file watch, a lane of its connection or a
 /// direct `watch` channel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -218,12 +218,10 @@ pub enum FileWatchMessage {
     /// The Host is out of reach or a stopped Cloud: no subscription is live
     /// until the next `live`.
     Offline,
-    /// Nothing else was sent for 30 seconds: the watch is quiet, not dead.
+    /// Nothing else was sent for 30 seconds: a direct channel's watch is
+    /// quiet, not dead. A watch on the page connection carries none: the
+    /// connection's own heartbeat says it is alive.
     Heartbeat,
-    /// The backend's answer to the page's `{ ping: id }` on its socket, sent
-    /// at once; a direct channel's watch, whose far end is the runner, carries
-    /// none.
-    Pong { id: u32 },
 }
 
 impl FileWatchMessage {

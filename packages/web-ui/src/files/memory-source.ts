@@ -143,7 +143,6 @@ function within(path: string, ancestor: string): boolean {
  *   from the number now, or `unavailable`.
  * - It reports a `change` to each subscription it concerns with the change's
  *   number, and acknowledges each renew.
- * - It sends a heartbeat every 30 seconds, as the backend does.
  *
  * A read takes `readAt()` before it reads, as the Host's does.
  */
@@ -158,7 +157,7 @@ export class SimulatedWatch {
     return { epoch: this.epoch, number: this.number }
   }
 
-  /** Opens a connection, which opens in a moment as a socket does. */
+  /** Opens a connection, which opens in a moment as a lane does. */
   readonly open: OpenWatchLink = (handlers) => {
     const link = { handlers, held: new Map<string, Subject>() }
     let closed = false
@@ -166,13 +165,12 @@ export class SimulatedWatch {
       if (!closed)
         handlers.message(message)
     })
-    // Nothing else may come for long: the watch stays known to be alive.
-    const heartbeat = setInterval(() => tell({ type: 'heartbeat' }), 30_000)
     queueMicrotask(() => {
       if (closed)
         return
       this.links.add(link)
-      handlers.opened()
+      // As a lane's, its liveness is its connection's.
+      handlers.opened(false)
     })
     return {
       send: (request) => {
@@ -197,7 +195,6 @@ export class SimulatedWatch {
       },
       close: () => {
         closed = true
-        clearInterval(heartbeat)
         this.links.delete(link)
       },
     }

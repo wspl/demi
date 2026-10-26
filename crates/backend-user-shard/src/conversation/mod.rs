@@ -4,7 +4,7 @@
 //!
 //! - the agent server that hosts each conversation's tree over the
 //!   conversation's database;
-//! - the conversation socket;
+//! - the conversation lane;
 //! - the provider runtimes the sessions infer with;
 //! - the Claude Code CLI's work on the user's Cloud, and the provider test;
 //! - the conversations' summaries and the failure facts of their history;
@@ -38,7 +38,7 @@ pub mod side_questions;
 pub mod search;
 pub mod settings;
 pub mod shares;
-mod socket;
+mod lane;
 mod summary;
 pub(crate) mod small_requests;
 pub(crate) mod titles;

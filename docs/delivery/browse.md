@@ -252,7 +252,8 @@ The following helpers cover the remaining needs of a check:
   since `demi.log.mark(name)`. They include what goes over a direct channel
   (`crates/runner-direct/src/lib.rs`), which no HTTP request shows: each
   operation as `direct <kind> <status> <path>`, the file watch's messages among
-  the sockets'.
+  the sockets'. The page connection's frames are told by their lane, such as
+  `sent lane 3 conversation c-1 {"type":"open",…}`.
 
 ### The product's other parts
 

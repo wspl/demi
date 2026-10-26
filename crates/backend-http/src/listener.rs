@@ -98,7 +98,7 @@ where
 
 /// Small frames leave a network connection at once.
 ///
-/// The runner and conversation sockets carry small messages whose latency
+/// The runner and conversation lanes carry small messages whose latency
 /// matters. With Nagle's algorithm on, a small message written while an earlier
 /// one is unacknowledged waits for the acknowledgement, which the peer may
 /// delay by tens of milliseconds: the device token a claimed runner receives

@@ -89,7 +89,7 @@ export class DeviceLive {
       this.deps.closed()
   }
 
-  /** The peer is gone already, as the backend or a dropped socket said: it is let go. */
+  /** The peer is gone already, as the backend or a dropped lane said: it is let go. */
   lost(): void {
     this.drop()
   }

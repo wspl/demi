@@ -31,7 +31,7 @@ The `events` table has one row per line, whatever wrote it:
 | `origin` | `backend`, `runner`, `page` or `machine_manager` |
 | `level` | `trace`, `debug`, `info`, `warn` or `error` |
 | `event` | What happened, as `noun.verb` in the past tense, such as `command.ended`; the `tracing` target for a backend event that names none, with its message in `fields.message` |
-| `request_id` | The HTTP request, a socket's upgrade included. A page's line carries the request that brought it to the backend |
+| `request_id` | The HTTP request, a page connection's upgrade and a lane's open included. A page's line carries the request that brought it to the backend |
 | `user_id`, `conversation_id`, `turn_id` | The user, conversation and turn the line is about |
 | `host_id` | The Host whose runner wrote the line, or that a backend line is about |
 | `page_id` | The page load that wrote the line, or whose request a backend line serves |
@@ -130,4 +130,4 @@ on a million lines.
   a browser caps a page's `keepalive` bodies in flight at 64 KiB in total,
   and the drafts and preferences saved as the page closes need the rest. A
   page that is signed out keeps its lines until it is signed in. Every request of a page carries its
-  ID in `X-Demi-Page`, and every socket in its URL's `page` parameter.
+  ID in `X-Demi-Page`, and its page connection in its URL's `page` parameter.

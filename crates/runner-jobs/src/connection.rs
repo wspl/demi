@@ -13,8 +13,8 @@
 //! it takes, and fails only once the runner ends. The registration's owner
 //! serves the requests and routes the backend's answers through a [`Relay`].
 //!
-//! A call outlives a connection too: its messages go into the link's lane
-//! ([`ConnectionHandle::lane`]), which each connection writes, and its events
+//! A call outlives a connection too: its messages go into the link's backlog
+//! ([`ConnectionHandle::backlog`]), which each connection writes, and its events
 //! come back through the relay over whichever connection serves. It ends with
 //! its exit, or with the reason the link's session ended for
 //! (`crates/runner/src/connection/link_state.rs`).
@@ -75,7 +75,7 @@ pub struct Live {
 pub struct ConnectionHandle {
     requests: mpsc::UnboundedSender<Request>,
     reach: watch::Receiver<Reach>,
-    lane: wire::Lane,
+    backlog: wire::Backlog,
     /// The latest message each resident told about a conversation, which the
     /// next connection tells the backend again ([`Self::told`]).
     told: Arc<std::sync::Mutex<HashMap<(String, String), serde_json::Value>>>,
@@ -108,17 +108,17 @@ pub enum Request {
 impl ConnectionHandle {
     /// A handle whose requests arrive at the returned receiver, that
     /// reaches the backend as `reach` says, and whose calls' messages wait in
-    /// `lane`.
+    /// `backlog`.
     pub fn new(
         reach: watch::Receiver<Reach>,
-        lane: wire::Lane,
+        backlog: wire::Backlog,
     ) -> (Self, mpsc::UnboundedReceiver<Request>) {
         let (requests, received) = mpsc::unbounded_channel();
         (
             Self {
                 requests,
                 reach,
-                lane,
+                backlog,
                 told: Arc::default(),
             },
             received,
@@ -126,8 +126,8 @@ impl ConnectionHandle {
     }
 
     /// Where a call's messages wait for a connection to write them.
-    pub fn lane(&self) -> &wire::Lane {
-        &self.lane
+    pub fn backlog(&self) -> &wire::Backlog {
+        &self.backlog
     }
 
     /// The connection that serves now, if one does.

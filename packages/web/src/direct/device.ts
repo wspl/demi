@@ -13,7 +13,7 @@
  *
  * - At once for each reason it is given: the browser's local network permission
  *   changed, the page came back online, the device's runner or the signaling
- *   socket connected again.
+ *   lane connected again.
  * - Otherwise after 1, 2 and 5 minutes and then every 10.
  *
  * One attempt runs at a time. A browser that blocks local network access gets
@@ -35,7 +35,7 @@ export const RETRY_MS = [60_000, 120_000, 300_000, 600_000] as const
 /** What a device's choice needs of the page. */
 export interface DeviceDirectDeps {
   /**
-   * Whether an attempt can start: the device's signaling socket is open.
+   * Whether an attempt can start: the device's signaling lane is open.
    * Its opening is a reason to try, so nothing waits for it.
    */
   ready(): boolean

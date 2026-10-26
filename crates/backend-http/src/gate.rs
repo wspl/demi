@@ -171,13 +171,11 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthUser {
 }
 
 /// The session the gate resolved the caller's cookie to: its token's hash,
-/// its id, when it expires unless a request renews it, and when it was last
-/// verified.
+/// its id, and when it was last verified.
 #[derive(Debug, Clone)]
 pub(super) struct CurrentSession {
     pub(super) token: TokenHash,
     pub(super) id: SessionId,
-    pub(super) expires_at: Timestamp,
     pub(super) verified_at: Option<Timestamp>,
 }
 
@@ -249,7 +247,6 @@ pub(super) async fn session(
     request.extensions_mut().insert(CurrentSession {
         token: TokenHash::of(&token),
         id: session.id,
-        expires_at: session.expires_at,
         verified_at: session.verified_at,
     });
     request.extensions_mut().insert(AuthUser(session.user));

@@ -6,14 +6,12 @@
 //! - listing the caller's conversations;
 //! - changing their fields one patch at a time or in a batch;
 //! - forking one, acknowledging its output and deleting it;
-//! - its socket, `WS /conversations/:id/stream`, which moves into the caller's
-//!   shard once upgraded.
+//! - its lane of the page connection, which the caller's shard serves once
+//!   it opened.
 //!
 //! A conversation the caller does not own answers like a missing one.
 
 use axum::Json;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -33,16 +31,15 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
 use super::AppState;
-use super::body::{JsonBody, page_socket};
+use super::body::JsonBody;
+use super::connection::Opened;
 use super::error::ApiError;
-use super::gate::{AuthUser, CurrentSession};
+use super::gate::AuthUser;
 use super::hosts;
-use super::page_client::PageClient;
 use super::query::QueryParams;
-use demi_backend_user_shard::shard::page_socket::{PageSocketKind, PageSocketOrigin};
 use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal};
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::sync::{ChannelSession, etag_of};
+use demi_backend_user_shard::sync::etag_of;
 
 fn not_found() -> ApiError {
     ApiError::new(
@@ -435,18 +432,10 @@ pub(super) async fn read(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `WS /conversations/:id/stream`: the conversation's frames. The socket is
-/// upgraded only for the caller's conversation that is not archived, and
-/// then moves into the caller's shard, which serves it until it closes.
-pub(super) async fn stream(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    session: CurrentSession,
-    Path(id): Path<String>,
-    client: PageClient,
-    upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
-) -> Result<Response, ApiError> {
-    let record = owned(&state.services, &user.id, &id).await?;
+/// The lane of the caller's conversation `id`, which opens only for one that
+/// is not archived, and which the caller's shard serves until it ends.
+pub(super) async fn open_lane(state: &AppState, user: &UserId, id: &str) -> Result<Opened, ApiError> {
+    let record = owned(&state.services, user, id).await?;
     if record.archived {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -454,32 +443,18 @@ pub(super) async fn stream(
             "Use the transcript for an archived conversation's history",
         ));
     }
-    let upgrade = upgrade.map_err(|_| {
-        ApiError::new(
-            StatusCode::UPGRADE_REQUIRED,
-            ErrorCode::UpgradeRequired,
-            "The conversation stream is a WebSocket",
-        )
-    })?;
-    let origin = PageSocketOrigin {
-        conversation: Some(record.id.clone()),
-        ..client.origin(PageSocketKind::Conversation, user.id.clone())
-    };
-    let session = ChannelSession {
-        id: session.id,
-        token: session.token,
-        user: user.clone(),
-        expires_at: session.expires_at,
-    };
-    Ok(page_socket(upgrade, move |socket| async move {
-        let adopted = state
-            .shards
-            .of(&user.id)
-            .adopt(move |shard| shard.serve_conversation_socket(record, socket, origin, session))
-            .await;
-        // A shard that is closing takes no socket: dropping it closes it.
-        if adopted.is_err() {
-            tracing::info!(event = "socket.refused", kind = "conversation", reason = "shutting_down", "a conversation socket arrived while the backend shuts down");
-        }
-    }))
+    let conversation = record.id.clone();
+    let shards = state.shards.clone();
+    let user = user.clone();
+    Ok(Opened {
+        conversation: Some(conversation),
+        ..Opened::new(move |lane, reader| async move {
+            // A shard that is closing takes no lane: it drops, and the
+            // connection closes as the backend does.
+            let _ = shards
+                .of(&user)
+                .adopt(move |shard| shard.serve_conversation_lane(record, lane, reader))
+                .await;
+        })
+    })
 }

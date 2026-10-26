@@ -102,7 +102,7 @@ pub fn module(header: &str) -> String {
     push_doc(
         &mut source,
         Some(
-            "The largest message a page sends on any of its WebSockets.",
+            "The largest message a page sends on any of its lanes.",
         ),
         0,
     );
@@ -113,11 +113,45 @@ pub fn module(header: &str) -> String {
     )
     .expect("writing to a string");
 
+    {
+        use demi_web_api_protocol::connection as connection;
+        for (name, description, value) in [
+            ("CONNECTION_FRAME", "A page connection frame's kind: JSON of the connection's own message.", connection::CONNECTION_FRAME),
+            ("OPEN_FRAME", "A page connection frame's kind: a lane's open.", connection::OPEN_FRAME),
+            ("OPENED_FRAME", "A page connection frame's kind: the backend's word that a lane opened.", connection::OPENED_FRAME),
+            ("REFUSED_FRAME", "A page connection frame's kind: the backend's refusal of a lane's open.", connection::REFUSED_FRAME),
+            ("DATA_FRAME", "A page connection frame's kind: a piece of a lane's message.", connection::DATA_FRAME),
+            ("CLOSE_FRAME", "A page connection frame's kind: a lane's close.", connection::CLOSE_FRAME),
+            ("CREDIT_FRAME", "A page connection frame's kind: the backend's credit for a lane's next messages.", connection::CREDIT_FRAME),
+            ("BINARY_FLAG", "A data frame's flag: the message is binary.", connection::BINARY_FLAG),
+            ("MORE_FLAG", "A data frame's flag: more pieces of the message follow.", connection::MORE_FLAG),
+        ] {
+            source.push('\n');
+            push_doc(&mut source, Some(description), 0);
+            writeln!(source, "export const {name} = {value}").expect("writing to a string");
+        }
+    }
+
     for (name, description, value) in [
         (
+            "LANE_PIECE_BYTES",
+            "The most bytes of a lane's message one data piece carries (`crates/web-api-protocol/src/connection.rs`).",
+            count(demi_web_api_protocol::connection::LANE_PIECE_BYTES),
+        ),
+        (
+            "LANE_CREDIT",
+            "How many of a lane's messages the page may send that the backend has not taken.",
+            u64::from(demi_web_api_protocol::connection::LANE_CREDIT),
+        ),
+        (
+            "MAX_LANES",
+            "The most lanes open on one page connection.",
+            count(demi_web_api_protocol::connection::MAX_LANES),
+        ),
+        (
             "PAGE_BLOCKS",
-            "How many blocks a page of a transcript holds, the one size the page's window and its local copy's reads take (`crates/conversation-socket-protocol/src/transcript.rs`).",
-            count(demi_conversation_socket_protocol::PAGE_BLOCKS),
+            "How many blocks a page of a transcript holds, the one size the page's window and its local copy's reads take (`crates/conversation-lane-protocol/src/transcript.rs`).",
+            count(demi_conversation_lane_protocol::PAGE_BLOCKS),
         ),
         (
             "TEXT_FILE_BYTES",

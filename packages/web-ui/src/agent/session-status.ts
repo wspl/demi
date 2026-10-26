@@ -56,18 +56,18 @@ export const CATCH_UP_WAIT_MS = 500
 
 /**
  * Whether the page is behind the session of a conversation whose transcript,
- * or its Empty pane, shows: its socket is not open, or `catchingUp`, the
+ * or its Empty pane, shows: its lane is not open, or `catchingUp`, the
  * root's transcript is read again.
  */
 export function behindSession(load: SessionLoad, catchingUp: boolean): boolean {
-  return transcriptShown(load) && (socketWaiting(load) || catchingUp)
+  return transcriptShown(load) && (laneWaiting(load) || catchingUp)
 }
 
 /**
- * Whether the conversation's socket is not open: an opening that has not
+ * Whether the conversation's lane is not open: an opening that has not
  * reached it, a first opening that could not make it, or an open one it lost.
  */
-export function socketWaiting(load: SessionLoad): boolean {
+export function laneWaiting(load: SessionLoad): boolean {
   return load === 'opening' || load === 'connecting' || load === 'reconnecting'
 }
 
@@ -123,7 +123,7 @@ export interface SessionFailureNotice {
   /** Retry reopens the session; a refused request has nothing to reopen. */
   retry: boolean
   /**
-   * The request the failure came from, such as the socket that refused a frame.
+   * The request the failure came from, such as the lane that refused a frame.
    */
   requestId: string | null
 }

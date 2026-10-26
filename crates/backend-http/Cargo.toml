@@ -12,7 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-agent-store = { path = "../agent-store" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-backend-accounts = { path = "../backend-accounts" }

@@ -192,7 +192,7 @@ pub async fn serve(
         transport.output.clone(),
         registered.cwd.clone(),
         registered.pipes.clone(),
-        kept.link.lane().clone(),
+        kept.link.backlog().clone(),
     );
     let streams = ResidentStreams::new(
         kept.handle.clone(),
@@ -836,8 +836,8 @@ impl Owner<'_> {
                 // each, which the control loop does not wait for; the naming
                 // is numbered here, so a later one wins however they run.
                 let naming = self.kept.worktrees.named(directories);
-                let lane = self.kept.link.lane().clone();
-                tokio::task::spawn_blocking(move || naming.follow(&lane));
+                let backlog = self.kept.link.backlog().clone();
+                tokio::task::spawn_blocking(move || naming.follow(&backlog));
             }
             Inbound::Forwards { .. }
             | Inbound::ForwardRetry { .. }

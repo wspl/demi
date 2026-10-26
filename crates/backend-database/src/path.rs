@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use demi_agent_store::versions::{Sibling, version_rows, versions_of};
-use demi_conversation_socket_protocol::Versions;
+use demi_conversation_lane_protocol::Versions;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::StorageError;

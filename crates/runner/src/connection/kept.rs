@@ -6,7 +6,7 @@
 //!
 //! - the jobs run on however long it takes;
 //! - their commands' requests wait for the next connection, and their calls
-//!   go on: a call's messages wait for it in the link's lane, and its events
+//!   go on: a call's messages wait for it in the link's backlog, and its events
 //!   come back over the next connection, which carries on the link's session
 //!   from the message the backend got to;
 //! - the messages the runner would have sent about them are not queued, since
@@ -62,7 +62,7 @@ pub struct Kept {
     pub link: LinkState,
     /// How the jobs' commands reach the backend.
     pub handle: ConnectionHandle,
-    /// The projects' worktrees, which the lane reports ahead of a message
+    /// The projects' worktrees, which the backlog reports ahead of a message
     /// that could follow their change.
     pub worktrees: Worktrees,
     requests: mpsc::UnboundedReceiver<Request>,
@@ -92,8 +92,8 @@ impl Kept {
         let link = LinkState::default();
         let worktrees = Worktrees::default();
         let reporter = worktrees.clone();
-        link.lane().set_reporter(Box::new(move |lane| reporter.report(lane)));
-        let (handle, requests) = ConnectionHandle::new(reaching, link.lane().clone());
+        link.backlog().set_reporter(Box::new(move |backlog| reporter.report(backlog)));
+        let (handle, requests) = ConnectionHandle::new(reaching, link.backlog().clone());
         let (jobs_output, forwarded) = mpsc::unbounded_channel();
         let output = watch::Sender::new(None);
         let forwarder = tokio::spawn(forward(forwarded, output.subscribe()));

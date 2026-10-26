@@ -77,8 +77,8 @@ impl From<FileWatchRequest> for ConversationWatchRequest {
     }
 }
 
-/// A message the page sends on a conversation's file watch,
-/// `WS /conversations/:id/fs/watch`: a [`FileWatchRequest`] whose
+/// A message the page sends on a conversation's file watch, a `file_watch`
+/// lane: a [`FileWatchRequest`] whose
 /// subscriptions may name an attached host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]

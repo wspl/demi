@@ -24,7 +24,7 @@ use demi_agent_transcript::{
     estimate::{block_tokens, context_tokens, text_tokens},
     kept_messages, last_assistant_text,
 };
-use demi_conversation_socket_protocol::{AgentCode, Refusal};
+use demi_conversation_lane_protocol::{AgentCode, Refusal};
 use demi_provider_common::{ErrorCode, InferenceItem, RequestLimits, ToolDefinition, UserPart};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{

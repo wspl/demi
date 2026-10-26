@@ -1,5 +1,5 @@
 [package]
-name = "demi-conversation-socket-protocol"
+name = "demi-conversation-lane-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

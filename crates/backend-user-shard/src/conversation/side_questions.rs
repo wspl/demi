@@ -18,7 +18,7 @@ use demi_backend_database::side_questions;
 use demi_backend_host_access::root_of;
 use demi_shared_types::{NodeId, markdown_quote};
 use demi_web_api_protocol::ids::ConversationId;
-use demi_conversation_socket_protocol::SideQuestion;
+use demi_conversation_lane_protocol::SideQuestion;
 use demi_web_api_protocol::side_questions::AskRequest;
 
 use crate::shard::Shard;

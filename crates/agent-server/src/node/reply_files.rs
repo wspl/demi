@@ -43,7 +43,7 @@ use comrak::{Arena, nodes::NodeValue, parse_document};
 use demi_agent_session::{AgentSession, SessionEvent, Subscription};
 use demi_agent_tools::HostResolver;
 use demi_agent_transcript::{has_scheme, markdown_options, picture_path};
-use demi_conversation_socket_protocol::TranscriptPatch;
+use demi_conversation_lane_protocol::TranscriptPatch;
 use demi_shared_types::{Block, BlockId, CodeFile, NodeId, PictureCopy, PictureFailure, TextBlock};
 use futures_util::future::LocalBoxFuture;
 use regex::Regex;

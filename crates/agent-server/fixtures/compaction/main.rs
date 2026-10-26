@@ -41,7 +41,7 @@ use demi_agent_tools::{
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::RandomIds;
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_lane_protocol::{ClientFrame, ServerFrame};
 use demi_host_interface::CommandSet;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
@@ -773,7 +773,7 @@ async fn send(
     let id = TurnId::try_from(uuid()).expect("a uuid is not empty");
     act(
         client,
-        ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
+        ClientFrame::Send(demi_conversation_lane_protocol::SendMessage {
             comments: Vec::new(),
             message_id: id.clone(),
             content: client_text(text),

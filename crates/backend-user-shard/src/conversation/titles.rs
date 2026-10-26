@@ -23,7 +23,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::{Part, UserMarks};
-use demi_conversation_socket_protocol::ClientContent;
+use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::{ModelSelection, NodeId};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;

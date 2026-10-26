@@ -757,7 +757,7 @@ export function createRecordSync(options: {
   }
 
   /**
-   * Takes a draft read or one the socket brought; one no newer than the
+   * Takes a draft read or one the lane brought; one no newer than the
    * draft held, such as this page's own save, whose answer's revision the
    * page holds already, changes nothing. A change restored from this web
    * browser holds only while the backend's draft is the one it was written

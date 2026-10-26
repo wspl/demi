@@ -12,7 +12,7 @@
 //!
 //! A call lives here, not on a connection ([`CallEntry`]): the runner's
 //! `rpc_call` starts a handler that goes on when the connection under it
-//! drops, and the messages the handler sends the runner wait in the call lane
+//! drops, and the messages the handler sends the runner wait in the call backlog
 //! for whichever connection serves next. A call ends without its exit only
 //! when its session ends, its job ends or the device is revoked. The session
 //! holds the standard outputs of its calls that the runner reads over a
@@ -73,7 +73,7 @@ struct Inner {
     instance: Cell<Option<u64>>,
     calls: RefCell<HashMap<String, Rc<CallEntry>>>,
     /// The messages of calls, which wait for a connection to write them.
-    lane: wire::Lane,
+    backlog: wire::Backlog,
     /// The standard outputs of the calls that resume, which outlive their
     /// pipes' records until the runner closed them.
     sinks: Sinks,
@@ -90,7 +90,7 @@ impl DeviceSession {
             numbers: RefCell::new(wire::Session::new()),
             instance: Cell::new(None),
             calls: RefCell::default(),
-            lane: wire::Lane::default(),
+            backlog: wire::Backlog::default(),
             sinks: Arc::new(Mutex::new(HashMap::new())),
             tasks: TaskTracker::new(),
         }))
@@ -139,7 +139,7 @@ impl DeviceSession {
 
     fn restart(&self, reason: Option<&str>) {
         self.0.numbers.borrow_mut().restart();
-        self.0.lane.clear();
+        self.0.backlog.clear();
         self.forget_sinks();
         if let Some(reason) = reason {
             tracing::info!(event = "link.session_ended", cause = reason, "a runner's link session ended");
@@ -294,12 +294,12 @@ impl DeviceSession {
     pub(crate) fn send(&self, message: &Inbound) -> Result<(), HostError> {
         let frame = wire::encode(message)
             .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
-        self.0.lane.push(frame);
+        self.0.backlog.push(frame);
         Ok(())
     }
 
     /// The oldest message of a call, waiting for one; cancel-safe.
     pub(crate) async fn next_message(&self) -> wire::Frame {
-        self.0.lane.next().await
+        self.0.backlog.next().await
     }
 }

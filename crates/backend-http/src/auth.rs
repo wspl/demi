@@ -120,7 +120,7 @@ pub(super) async fn login(
 }
 
 /// Ends the session the cookie names, with the synchronization channels
-/// and conversation sockets that opened with it, and clears the cookie.
+/// and conversation lanes that opened with it, and clears the cookie.
 pub(super) async fn logout(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,

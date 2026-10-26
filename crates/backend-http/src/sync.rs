@@ -1,53 +1,43 @@
-//! `WS /api/sync`: the page's synchronization channel.
+//! The page's synchronization channel, a lane of its connection, which the
+//! user's shard serves until it ends; and `WS /api/sync`, where a page of a
+//! build before the connection opened its channel.
 //!
-//! It requires the session cookie, which it checks without renewing the
-//! session, since only requests renew it. Once upgraded, the socket moves into
-//! the user's shard, which serves it until it closes.
+//! The old route tells every page that the product state it holds is stale,
+//! and closes: that build reads the state again, which names the web build
+//! the backend serves, and reloads on it. No page of that build is served
+//! otherwise.
 
-use axum::extract::{Query, State};
-use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
+use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocketUpgrade, close_code};
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum_extra::extract::CookieJar;
-use demi_backend_database::accounts::TokenHash;
+use demi_backend_user_shard::shard::lane::PageSession;
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::state::{SyncEvent, SyncFollowed};
 
 use super::AppState;
-use super::body::page_socket;
-use super::cookies::SESSION_COOKIE;
+use super::connection::Opened;
 use super::error::ApiError;
-use super::page_client::PageClient;
-use demi_backend_user_shard::shard::page_socket::PageSocketKind;
-use demi_backend_user_shard::sync::ChannelSession;
 
-/// The query of `WS /sync`: a page of this build names its web build, which
-/// the backend does not read; a page of the earlier build names none and is
-/// told the backend's build alone.
-#[derive(Debug, serde::Deserialize)]
-pub(super) struct SyncQuery {
-    build: Option<String>,
+/// The synchronization channel of the session `session`.
+pub(super) fn open(state: &AppState, session: PageSession) -> Opened {
+    let shards = state.shards.clone();
+    Opened::new(move |lane, reader| async move {
+        let user = session.user.id.clone();
+        // A shard that is closing takes no channel: the lane drops, and the
+        // connection closes as the backend does.
+        let _ = shards
+            .of(&user)
+            .adopt(move |shard| shard.serve_sync_channel(lane, reader, session))
+            .await;
+    })
 }
 
-pub(super) async fn channel(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    client: PageClient,
-    Query(query): Query<SyncQuery>,
+/// `WS /api/sync`: the word that sends a page of an earlier build to read the
+/// state, on which it reloads.
+pub(super) async fn legacy(
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
-    let token = jar
-        .get(SESSION_COOKIE)
-        .map(|cookie| TokenHash::of(cookie.value()))
-        .ok_or_else(ApiError::unauthenticated)?;
-    let session = state
-        .services
-        .sessions
-        .check(&token)
-        .await?
-        .ok_or_else(ApiError::unauthenticated)?;
-    // The channel of an account still to choose its password opens and
-    // carries the account alone; its conversation sockets do not open.
     let upgrade = upgrade.map_err(|_| {
         ApiError::new(
             StatusCode::UPGRADE_REQUIRED,
@@ -55,25 +45,18 @@ pub(super) async fn channel(
             "The synchronization channel is a WebSocket",
         )
     })?;
-    let session = ChannelSession {
-        id: session.id,
-        token,
-        user: session.user,
-        expires_at: session.expires_at,
-    };
-    let legacy = query.build.is_none();
-    Ok(page_socket(upgrade, move |socket| async move {
-        let user = session.user.id.clone();
-        let origin = client.origin(PageSocketKind::Sync, user.clone());
-        let adopted = state
-            .shards
-            .of(&user)
-            .adopt(move |shard| shard.serve_sync_channel(socket, session, origin, legacy))
-            .await;
-        // A shard that is closing takes no channel: dropping the socket
-        // closes it, and the page connects again to the next backend.
-        if adopted.is_err() {
-            tracing::info!(event = "socket.refused", kind = "sync", reason = "shutting_down", "a synchronization channel arrived while the backend shuts down");
+    let stale = serde_json::to_string(&SyncEvent::Stale {
+        value: SyncFollowed::State,
+    })
+    .expect("a sync event serializes");
+    Ok(upgrade.on_upgrade(move |mut socket| async move {
+        // A page gone meanwhile hears nothing.
+        if socket.send(Message::Text(stale.into())).await.is_ok() {
+            let frame = CloseFrame {
+                code: close_code::NORMAL,
+                reason: Utf8Bytes::from_static("superseded"),
+            };
+            let _ = socket.send(Message::Close(Some(frame))).await;
         }
     }))
 }

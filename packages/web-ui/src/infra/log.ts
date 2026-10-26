@@ -10,7 +10,7 @@
  * ```
  *
  * - The page names its load with an ID, `PAGE_ID`, which every request carries
- *   in `X-Demi-Page` and every socket in its URL, so the backend's lines of a
+ *   in `X-Demi-Page` and the page connection in its URL, so the backend's lines of a
  *   request this page made are found beside these lines.
  * - A line names things by ID and counts their sizes: scalars only. Text the
  *   user typed and page content never go into one. Nothing is cut: a field is
@@ -84,7 +84,7 @@ function makePageId(): string {
 /** This page load's ID. */
 export const PAGE_ID = makePageId()
 
-/** The header every request of the page carries `PAGE_ID` in, and the parameter of a socket's URL. */
+/** The header every request of the page carries `PAGE_ID` in, and the parameter of the page connection's URL. */
 export const PAGE_HEADER = 'X-Demi-Page'
 export const PAGE_PARAMETER = 'page'
 

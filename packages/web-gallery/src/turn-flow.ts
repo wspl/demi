@@ -23,13 +23,13 @@ import { printLive } from './live-command'
  *   confirms.
  * - `undelivered`: a sent message whose delivery fails, until Retry sends it
  *   again.
- * - `offline`: a message sent while the socket is lost, under Requesting with
- *   the spinner over the transcript's end, which goes once the socket is back.
+ * - `offline`: a message sent while the lane is lost, under Requesting with
+ *   the spinner over the transcript's end, which goes once the lane is back.
  * - `first`: a new conversation's first message, sent with its creation while
- *   its socket opens, under Requesting, which goes on through the opening
+ *   its lane opens, under Requesting, which goes on through the opening
  *   until the answer begins.
  * - `resume` and `retry`: recover an aborted or failed tail.
- * - `connect`: opens over a dropped socket.
+ * - `connect`: opens over a dropped lane.
  * - `stream`: thinking then reply with nothing waited for.
  * - `work`: a turn of many steps, thinking without text and commands in a row,
  *   one failing, two changing files.
@@ -103,7 +103,7 @@ const DELIVERY_ERROR = 'The message couldn’t be sent.'
 const DELIVERY_REQUEST = 'req_ffb05w4w6kxpdtz0'
 /** How long the simulated backend stays out of reach after an offline send. */
 const OFFLINE_MS = 4500
-/** How long the socket of a new conversation takes to open after its first message was sent. */
+/** How long the lane of a new conversation takes to open after its first message was sent. */
 const OPENING_MS = 1500
 const WAIT_MS = 80
 /**
@@ -1455,11 +1455,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
 
     if (kind === 'connect') {
-      // The socket dropped while a turn was running: the spinner over the transcript's end says so until it is back.
+      // The lane dropped while a turn was running: the spinner over the transcript's end says so until it is back.
       state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }])]
       state.phase = 'running'
       state.load = 'reconnecting'
-      // The server tells the wait it went on with once the socket is back.
+      // The server tells the wait it went on with once the lane is back.
       const asked = Date.now()
       at(run, ACK_MS, () => {
         state.load = 'ready'
@@ -1507,9 +1507,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
     state.blocks = []
     if (kind === 'offline') {
-      // The socket is lost: the row says Requesting under the message and the
+      // The lane is lost: the row says Requesting under the message and the
       // spinner over the transcript's end turns; the message goes with its id
-      // once the socket is back.
+      // once the lane is back.
       state.load = 'reconnecting'
       holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
       at(run, OFFLINE_MS, () => {
@@ -1520,7 +1520,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
     if (kind === 'first') {
       // The message went with the conversation's creation, and the session
-      // shows it once the socket has opened: the tail row says Requesting
+      // shows it once the lane has opened: the tail row says Requesting
       // meanwhile.
       state.load = 'opening'
       holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)

@@ -1,10 +1,10 @@
 //! A conversation's side questions: asking one, a follow-up, a Retry and
 //! folding its card. Each is an agent of the conversation, whose entry the
-//! conversation's agents list (`crates/conversation-socket-protocol/src/agents.rs`)
+//! conversation's agents list (`crates/conversation-lane-protocol/src/agents.rs`)
 //! and whose answers are its transcript, which a page reads and follows as any
 //! agent's.
 
-use demi_conversation_socket_protocol::SideQuestion;
+use demi_conversation_lane_protocol::SideQuestion;
 use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

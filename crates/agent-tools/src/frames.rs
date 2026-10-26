@@ -4,7 +4,7 @@
 //! It holds each command's `shell_output`, and the commands a node's transcript
 //! last saw running. A page reads a node's live commands with its latest page.
 
-use demi_conversation_socket_protocol::{CommandView, ServerFrame, ShellStatus};
+use demi_conversation_lane_protocol::{CommandView, ServerFrame, ShellStatus};
 use demi_host_interface::{PageState, PageView};
 use demi_shared_types::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
 

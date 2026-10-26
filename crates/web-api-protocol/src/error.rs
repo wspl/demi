@@ -301,8 +301,11 @@ pub enum ErrorCode {
     ForbiddenOrigin,
     /// No user stream has that name.
     UnknownStream,
-    /// A user stream is a WebSocket, and the request is not an upgrade.
+    /// The page connection is a WebSocket, and the request is not an upgrade.
     UpgradeRequired,
+    /// The page connection holds as many lanes as it may, and refused
+    /// another (`crates/web-api-protocol/src/connection.rs`).
+    TooManyLanes,
     /// The Host could not open the stream: its resident failed to start or
     /// refused it.
     StreamFailed,
@@ -311,10 +314,10 @@ pub enum ErrorCode {
     /// A read acknowledgement names output the conversation does not have
     /// yet.
     InvalidRevision,
-    /// A conversation socket's frame does not match its schema; the socket
+    /// A conversation lane's frame does not match its schema; the socket
     /// stays open.
     InvalidFrame,
-    /// The backend could not prepare a conversation socket's frame for its
+    /// The backend could not prepare a conversation lane's frame for its
     /// session, such as a storage failure; the frames behind it still
     /// arrive.
     FrameDeliveryFailed,

@@ -708,7 +708,7 @@ async fn view(
                             let open = open.clone();
                             let notices = writer.until(&ended);
                             tasks.spawn(async move {
-                                // On the device's input lane, so a second Wake finds
+                                // In the device's input queue, so a second Wake finds
                                 // the screen the first turned on and presses nothing.
                                 let _input = open.inputs.lock().await;
                                 if let Err(error) = open.device.wake().await {

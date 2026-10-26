@@ -11,7 +11,7 @@ the code disagree, the code is right and this document is fixed.
 The following diagram shows the programs and how they talk to each other:
 
 ```text
-web app (packages/web)  --- HTTP, sync and conversation sockets --->
+web app (packages/web)  --- HTTP, the page connection's lanes --->
 backend (crates/backend, backend-*, agent-*, provider-*, plugin-*)
    |                                    |
    | runner wire                        | JSON lines on a Unix socket
@@ -282,7 +282,7 @@ The following table shows where each wire or data family is defined:
 | Wire or data | Defined in |
 | --- | --- |
 | The web app's HTTP routes | `web-api-protocol` |
-| Conversation socket frames, blocks, patches | `conversation-socket-protocol`, `shared-types` |
+| Conversation lane frames, blocks, patches | `conversation-lane-protocol`, `shared-types` |
 | Runner wire, its manifests and the managed boot record | `runner-protocol` |
 | Command invocations | `command-protocol` |
 | One command package's operations | its `command-package-<name>-protocol` |
@@ -373,7 +373,7 @@ Rust crates:
 ```text
 shared-types -> none
 command-protocol -> none
-conversation-socket-protocol -> shared-types
+conversation-lane-protocol -> shared-types
 command-sdk -> shared-artifacts, command-protocol, shared-types
 command-declarations -> none
 command-package-file-protocol -> shared-types
@@ -384,7 +384,7 @@ live-view-protocol -> shared-types
 command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
 machine-manager-protocol -> command-protocol, runner-protocol, shared-types
-web-api-protocol -> conversation-socket-protocol, command-protocol, shared-types, runner-protocol
+web-api-protocol -> conversation-lane-protocol, command-protocol, shared-types, runner-protocol
 shared-gates -> none
 shared-artifacts -> none
 shared-recording-protocol -> shared-types
@@ -403,11 +403,11 @@ provider-codex -> shared-types, provider-common, shared-artifacts
 provider-grok-build -> shared-types, provider-common
 provider-claude-code -> shared-types, provider-common, host-interface, shared-artifacts
 host-interface -> command-protocol, command-declarations, shared-types
-agent-store -> conversation-socket-protocol, command-protocol, shared-types, provider-common, host-interface
-agent-transcript -> conversation-socket-protocol, agent-store, shared-types, provider-common
-agent-session -> conversation-socket-protocol, agent-store, agent-transcript, command-protocol, shared-types, shared-gates, provider-common, host-interface
-agent-tools -> conversation-socket-protocol, agent-session, agent-store, agent-transcript, command-protocol, shared-types, provider-common, host-interface
-agent-server -> conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, shared-types, shared-gates, provider-common, host-interface
+agent-store -> conversation-lane-protocol, command-protocol, shared-types, provider-common, host-interface
+agent-transcript -> conversation-lane-protocol, agent-store, shared-types, provider-common
+agent-session -> conversation-lane-protocol, agent-store, agent-transcript, command-protocol, shared-types, shared-gates, provider-common, host-interface
+agent-tools -> conversation-lane-protocol, agent-session, agent-store, agent-transcript, command-protocol, shared-types, provider-common, host-interface
+agent-server -> conversation-lane-protocol, agent-session, agent-store, agent-tools, agent-transcript, shared-types, shared-gates, provider-common, host-interface
 plugin-interface -> command-declarations, shared-types, host-interface, web-api-protocol
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
@@ -430,7 +430,7 @@ runner-jobs -> command-protocol, command-sdk, command-declarations, runner-proce
 live-view -> command-sdk, live-view-protocol, shared-types
 command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-recording, shared-recording-protocol, shared-types
 backend-page-sync -> backend-database, web-api-protocol
-backend-database -> shared-artifacts, agent-store, conversation-socket-protocol, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
+backend-database -> shared-artifacts, agent-store, conversation-lane-protocol, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-blobs -> agent-store, shared-types, web-api-protocol
 backend-accounts -> backend-database, command-protocol, shared-types, web-api-protocol
 backend-providers -> backend-database, backend-page-sync, command-package-claude-code-protocol, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api-protocol
@@ -440,8 +440,8 @@ backend-cloud -> backend-idle-watch, backend-providers, backend-runners, backend
 backend-plugins -> plugin-interface, command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol, provider-common
 backend-permissions -> command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
-backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-artifacts, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
-backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
+backend-user-shard -> agent-server, conversation-lane-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-artifacts, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
+backend-http -> conversation-lane-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
 backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-bytedance, provider-common, provider-elevenlabs, provider-minimax, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video, plugin-audio
 machine-manager -> shared-artifacts, shared-cli, shared-types, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli, shared-types, web-api-protocol
@@ -451,7 +451,7 @@ command-package-fetch -> command-protocol, command-sdk, command-package-fetch-pr
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli, shared-openh264, shared-recording, shared-recording-protocol
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
 command-package-mobile -> command-package-mobile-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-cli, shared-h264, shared-openh264, shared-recording, shared-recording-protocol, shared-types
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, backend-providers, provider-common, plugin-interface
+xtask -> conversation-lane-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, backend-providers, provider-common, plugin-interface
 ```
 
 ### TypeScript packages

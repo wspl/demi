@@ -1,7 +1,7 @@
 //! The agent server of one user shard.
 //!
 //! It holds each open conversation's live tree and hands out the connections
-//! that attach conversation sockets to them. The backend owns the sockets,
+//! that attach conversation lanes to them. The backend owns the sockets,
 //! decodes each client frame, and passes it to its connection; the connection's
 //! outbox carries every server frame back.
 
@@ -25,7 +25,7 @@ use demi_agent_session::{
     AgentMessageError, Continuation, ForkError, ForkSeed, IdleCompactionDue, ModelSwitch, SessionConfig, fork_seed,
 };
 use demi_agent_store::{AgentTreeStore, NodeRecord, Placement, SideOf, StoreError};
-use demi_conversation_socket_protocol::{AgentEntry, CacheChart, Version};
+use demi_conversation_lane_protocol::{AgentEntry, CacheChart, Version};
 use demi_agent_tools::{
     CALL_WINDOW_MS, ContextSource, HostResolver, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, Toolset, ToolsetSource, Unavailable,

@@ -40,8 +40,8 @@ pub struct HostServer {
     subscriptions: Mutex<Option<Subscriptions>>,
     /// Sends their reports as messages.
     _reports: AbortOnDropHandle<()>,
-    /// The link's lane, which reports the projects' worktrees.
-    lane: wire::Lane,
+    /// The link's backlog, which reports the projects' worktrees.
+    backlog: wire::Backlog,
     cancel: CancellationToken,
 }
 
@@ -53,9 +53,9 @@ impl Drop for HostServer {
 }
 
 impl HostServer {
-    /// `lane` reports what changed of the projects' worktrees before a
+    /// `backlog` reports what changed of the projects' worktrees before a
     /// folder's listing is answered (`crate::worktrees`).
-    pub fn new(output: mpsc::UnboundedSender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient, lane: wire::Lane) -> Self {
+    pub fn new(output: mpsc::UnboundedSender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient, backlog: wire::Backlog) -> Self {
         let cancel = CancellationToken::new();
         // The working tree's changes and the backend's subscriptions share
         // one watch per tree (`crates/runner-host/src/subscriptions.rs`).
@@ -73,7 +73,7 @@ impl HostServer {
             filesystem_capacity: Arc::new(Semaphore::new(32)),
             git: GitService::new(watches, MAX_FILES),
             git_capacity: Arc::new(Semaphore::new(8)),
-            lane,
+            backlog,
             cancel,
         }
     }
@@ -100,15 +100,15 @@ impl HostServer {
         }
         let cwd = self.default_cwd.clone();
         let cancel = self.cancel.clone();
-        let lane = matches!(message, Inbound::FsReaddir { .. }).then(|| self.lane.clone());
+        let backlog = matches!(message, Inbound::FsReaddir { .. }).then(|| self.backlog.clone());
         self.admit(&self.filesystem_capacity, "filesystem", async move {
             let answer = crate::fs::handle(&message, &cwd, &cancel)
                 .await
                 .expect("validated filesystem request");
             // A worktree the listing shows is reported before it, so a move
             // to it the user picks finds its project.
-            if let Some(lane) = lane {
-                lane.report();
+            if let Some(backlog) = backlog {
+                backlog.report();
             }
             answer
         })

@@ -15,7 +15,7 @@ pub mod credentials;
 pub mod cloud;
 pub mod instructions;
 mod host;
-pub mod page_socket;
+pub mod lane;
 mod permissions;
 pub(crate) mod media;
 pub(crate) mod provider_commands;
@@ -31,7 +31,7 @@ pub mod port_forwards;
 pub mod subagents;
 mod worktrees;
 
-pub(crate) use self::page_socket::{PageEnd, PageGone, PageSocket, PageStream};
+pub(crate) use self::lane::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader};
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -117,7 +117,7 @@ pub struct Shard {
     titles: Titles,
     /// What keeps the user's search index in step with the conversations.
     search: SearchIndexer,
-    /// What opens a conversation's tree: the conversation sockets being
+    /// What opens a conversation's tree: the conversation lanes being
     /// served and the restores of trees with no page attached. The close
     /// ends them before the agent shuts down, so no tree opens and no frame
     /// reaches one after.
@@ -373,7 +373,7 @@ impl Shard {
     /// 1. The synchronization channels close.
     /// 2. The idle watches stop, and a retirement already running finishes.
     /// 3. Title requests are aborted.
-    /// 4. The conversation sockets end, and so do the restores of trees with no
+    /// 4. The conversation lanes end, and so do the restores of trees with no
     ///    page attached.
     /// 5. Open file transfers and user streams end, and stay closed.
     /// 6. The agent turns are aborted, and the commands they watched run on.
@@ -387,7 +387,7 @@ impl Shard {
     ///
     /// - The channels go first, so no page is sent what the steps below change; a
     ///   page reads the state again from the next backend.
-    /// - The sockets end before the agents, so no tree opens and no frame reaches a
+    /// - The lanes end before the agents, so no tree opens and no frame reaches a
     ///   tree after its shutdown.
     /// - A root's running turn is marked in `interrupted_turns` before it is
     ///   aborted, so the next start resumes it however far the shutdown got.
@@ -563,7 +563,7 @@ impl ShardRef<'_> {
         answered.await.unwrap_or(Err(ShardUnavailable::Failed))
     }
 
-    /// Moves `work`, such as serving an upgraded socket, into the user's
+    /// Moves `work`, such as serving a page's lane, into the user's
     /// shard, where it runs as the shard's task until it ends. It answers
     /// once the work is queued; a closing shard refuses it, and dropping the
     /// work drops what it holds.
@@ -650,7 +650,7 @@ where
 struct AdoptJob<F> {
     user: UserId,
     work: F,
-    /// The adopter's span, such as a socket's upgrade request's, which the
+    /// The adopter's span, such as a lane's open's, which the
     /// work logs in for its whole life.
     span: tracing::Span,
 }
@@ -678,8 +678,8 @@ where
     }
 
     fn refuse(self: Box<Self>) {
-        // Dropping the work drops what it holds, such as a socket, which
-        // closes it.
+        // Dropping the work drops what it holds, such as a lane, which
+        // ends it.
     }
 }
 

@@ -12,7 +12,7 @@ use demi_shared_types::TurnId;
 use tokio::sync::Notify;
 use tracing::Instrument as _;
 
-use demi_conversation_socket_protocol::AgentCode;
+use demi_conversation_lane_protocol::AgentCode;
 
 use super::{
     ActionReply,

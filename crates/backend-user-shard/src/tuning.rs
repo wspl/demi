@@ -29,7 +29,7 @@ impl Default for LifecycleTuning {
 /// How the backend serves conversations. Tests lower the bounds.
 #[derive(Debug, Clone, Copy)]
 pub struct ConversationTuning {
-    /// The most steps a conversation socket's outbox holds, each the frames
+    /// The most steps a conversation lane's outbox holds, each the frames
     /// of one change; a client that falls this far behind is disconnected as
     /// lagging.
     pub outbox_steps: usize,
@@ -63,16 +63,15 @@ impl Default for ConversationTuning {
     }
 }
 
-/// How the backend times its sockets to a page, the synchronization channel
-/// and the conversation sockets. Tests shorten the times.
+/// How the backend times a page's connection. Tests shorten the times.
 #[derive(Debug, Clone, Copy)]
 pub struct PageTuning {
-    /// A socket that has sent nothing for this long sends a heartbeat, so
-    /// that its page can tell it from a dead one.
+    /// A connection that has written nothing for this long writes a
+    /// heartbeat, so that its page can tell it from a dead one.
     pub heartbeat: Duration,
-    /// How long a socket's close frame waits for a page that does not read;
-    /// a page that has not taken it by then loses the connection without it
-    /// (`crates/backend/src/backend.rs`).
+    /// How long a connection's close frame waits for a page that does not
+    /// read; a page that has not taken it by then loses the connection
+    /// without it (`crates/backend/src/backend.rs`).
     pub close_wait: Duration,
 }
 

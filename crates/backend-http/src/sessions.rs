@@ -195,7 +195,7 @@ pub(super) async fn list(
 }
 
 /// `DELETE /auth/sessions/:id`: signs another session of the account out,
-/// closing its pages' channels and conversation sockets.
+/// closing its pages' channels and conversation lanes.
 pub(super) async fn sign_out(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,

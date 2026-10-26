@@ -10,7 +10,7 @@ use demi_agent_session::{
     ActionEnd, AgentSession, CompactionConfig, Continuation, EditContent, EditSubmission, ModelSwitch, NewContext, SeenContext,
     SessionConfig, SessionDeps, SessionEvent, SessionInit, SessionRuntime, StartedCommand, StepOutcomes, SystemPrompt, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
 };
-use demi_conversation_socket_protocol::AbortTarget;
+use demi_conversation_lane_protocol::AbortTarget;
 use demi_provider_common::{
     EntriesOf, ErrorCode, InferenceItem, MediaBytes, ProviderEvent, ProviderRuntime,
     RequestLimits, ResultPart, ToolDefinition, UserPart,

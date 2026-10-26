@@ -6,6 +6,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
+    "@demicodes/protocol": "workspace:^",
     "@demicodes/web": "workspace:^",
     "playwright": "1.63.0",
     "zod": "^4.0.0"

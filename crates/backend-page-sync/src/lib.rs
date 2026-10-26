@@ -191,11 +191,10 @@ pub struct SyncRegistry(Arc<Mutex<HashMap<UserId, UserEntry>>>);
 
 /// One open channel as the registry marks it.
 struct Channel {
-    /// The session the channel opened with; none for a watch of the
-    /// backend's own, which no sign-out ends.
+    /// The session a page connection's watch follows the end of; none for
+    /// any other watch, which no sign-out ends.
     session: Option<TokenHash>,
-    /// The parts it follows; a conversation socket's watch follows its
-    /// conversation's part and its session's end.
+    /// The parts it follows.
     follows: Follows,
     marked: Mutex<Marked>,
     /// Woken by each mark; a mark while the task is busy leaves a permit, so
@@ -208,6 +207,8 @@ struct Channel {
 enum Follows {
     Every,
     Conversation(ConversationId),
+    /// No part: a page connection's watch of its session alone.
+    Nothing,
 }
 
 /// What was marked on a channel since its task last took it.
@@ -217,7 +218,7 @@ pub struct Marked {
     /// The revision of the latest change of the product state marked here:
     /// the state is current as of it once the parts are sent.
     pub revision: Option<u64>,
-    /// The session the channel opened with was signed out.
+    /// The session a page connection's watch follows was signed out.
     pub session_ended: bool,
 }
 
@@ -245,6 +246,7 @@ impl Channel {
                 Follows::Conversation(id) => {
                     matches!(part, Part::Conversation(changed) | Part::Metadata(changed) if changed == id)
                 }
+                Follows::Nothing => false,
             };
             if follows {
                 marked.parts.insert(part.clone());
@@ -268,26 +270,25 @@ impl SyncRegistry {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Registers a channel of `user`'s page, opened with the session
-    /// `session`, for every change marked from now on, until the
-    /// registration is dropped.
-    pub fn register(&self, user: &UserId, session: TokenHash) -> Registration {
-        self.add(user, Some(session), Follows::Every)
-    }
-
-    /// Registers a watch of `user`'s changes for a part of the backend that
-    /// follows them as a page does, such as the search index, until the
-    /// registration is dropped.
+    /// Registers a watch of `user`'s changes, for a page's synchronization
+    /// channel or a part of the backend that follows them as a page does,
+    /// such as the search index, until the registration is dropped.
     pub fn watch(&self, user: &UserId) -> Registration {
         self.add(user, None, Follows::Every)
     }
 
-    /// Registers a watch of `user`'s conversation `conversation` for a socket
-    /// of it opened with the session `session`: the watch's `marked` returns
-    /// once the conversation's part is marked or the session is signed out,
-    /// and for nothing else.
-    pub fn watch_conversation(&self, user: &UserId, session: TokenHash, conversation: ConversationId) -> Registration {
-        self.add(user, Some(session), Follows::Conversation(conversation))
+    /// Registers a watch of `user`'s conversation `conversation` for a lane of
+    /// it: the watch's `marked` returns once the conversation's part is
+    /// marked, and for nothing else.
+    pub fn watch_conversation(&self, user: &UserId, conversation: ConversationId) -> Registration {
+        self.add(user, None, Follows::Conversation(conversation))
+    }
+
+    /// Registers a watch of the session `session` of `user` for a page
+    /// connection opened with it: the watch's `marked` returns once the
+    /// session is signed out, and for nothing else.
+    pub fn watch_session(&self, user: &UserId, session: TokenHash) -> Registration {
+        self.add(user, Some(session), Follows::Nothing)
     }
 
     fn add(&self, user: &UserId, session: Option<TokenHash>, follows: Follows) -> Registration {
@@ -369,7 +370,7 @@ impl SyncRegistry {
         }
     }
 
-    /// Ends the open channels of `user` that opened with the session
+    /// Ends the page connections of `user` that opened with the session
     /// `session`, which was signed out.
     pub fn end_session(&self, user: &UserId, session: &TokenHash) {
         if let Some(entry) = self.lock().get(user) {

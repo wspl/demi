@@ -53,7 +53,7 @@ export function useActivitySlot(sources: ActivitySlotSources): {
 } {
   const { input, phase, pendingSubmissions, activity, scope } = sources
 
-  // A message on its way that waits for the socket still starts its turn: the
+  // A message on its way that waits for the lane still starts its turn: the
   // row says Requesting from the send.
   const startingTurn = computed(() => turnStartingMessage(phase(), pendingSubmissions()) !== undefined)
   const kind = computed(() => activitySlotKind({

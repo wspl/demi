@@ -19,8 +19,8 @@ import { relayWatchLink, watchReceiver, watchText, type OpenConversationWatchLin
 import { ApiError } from '../api/client'
 import { fileBrowserEntry, fileBrowserError } from '../api/files'
 import { searchEvents } from '../api/file-search'
+import { errorCodeSchema } from '@demicodes/protocol'
 import {
-  errorCodeSchema,
   listedSchema,
   openedSchema,
   readOpenedSchema,
@@ -604,7 +604,7 @@ function openDirect(
 /**
  * A conversation's file watch over either path: a `watch` channel while the
  * choice is `direct` as it opens, which carries the relay's messages, and
- * the relay's socket otherwise or when the runner refuses it. The watch
+ * the relay's lane otherwise or when the runner refuses it. The watch
  * moves when the choice changes (`ConversationWatch.move`).
  */
 export const directWatchLink = (routeOf: RouteOf): OpenConversationWatchLink => (conversationId, handlers) => {
@@ -628,7 +628,7 @@ export const directWatchLink = (routeOf: RouteOf): OpenConversationWatchLink => 
         return
       }
       await channel.answer()
-      handlers.opened()
+      handlers.opened(true)
       for (const request of queued.splice(0))
         link.send(request)
       const receive = watchReceiver(handlers, () => {

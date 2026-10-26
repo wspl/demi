@@ -343,7 +343,7 @@ impl Direct {
         });
     }
 
-    /// Closes peer `peer`, whose page's signaling socket closed, or whose
+    /// Closes peer `peer`, whose page's signaling lane closed, or whose
     /// other runner's side ended.
     pub fn close(&self, peer: &str) {
         // A driver that ended has no peer left to close.

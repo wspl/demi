@@ -43,7 +43,7 @@ function shown(side: SideRecord): ShownSideQuestion {
  * The conversations' side questions, each a node of the conversation's
  * tree: the conversation's agents name them and keep them current
  * (`./activity.ts`), and their answers are their transcripts, which the
- * socket keeps live while the page subscribes to their nodes and the
+ * lane keeps live while the page subscribes to their nodes and the
  * history routes read by their nodes. A question, a follow-up and a fold
  * show at once; a refused one goes back.
  */
@@ -67,7 +67,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
 
   /**
    * The backend took the action `sent` of the side question `side`: it stays
-   * on its way until the socket shows it (`settleSent`).
+   * on its way until the lane shows it (`settleSent`).
    */
   function taken(side: SideRecord, sent: SentAction): void {
     if (side.sent !== null && toRaw(side.sent) === sent) {

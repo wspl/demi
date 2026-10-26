@@ -11,7 +11,7 @@
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use demi_conversation_socket_protocol::JobModel;
+use demi_conversation_lane_protocol::JobModel;
 use demi_agent_store::Placement;
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
 use demi_shared_types::{

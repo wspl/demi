@@ -44,7 +44,7 @@
 //! For the same reason nothing enters a conversation's file gate while it holds
 //! a lease of it. The gate is first-in, first-out, so a reservation queued
 //! between the two entries would wait for the first lease while the second
-//! waits behind the reservation. A conversation socket's frame is therefore
+//! waits behind the reservation. A conversation lane's frame is therefore
 //! handled under one lease, and a frame with uploads is admitted once on the
 //! primary Host through this entry, its uploads written through that admission.
 //!

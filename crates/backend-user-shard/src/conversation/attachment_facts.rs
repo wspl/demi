@@ -23,7 +23,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_attachments::{AttachmentNumber, read_all};
 use demi_backend_database::conversations::ConversationStores;
 use demi_backend_database::shares::{block_attachments, named_attachments};
-use demi_conversation_socket_protocol::{ConversationAttachment, TranscriptPatch};
+use demi_conversation_lane_protocol::{ConversationAttachment, TranscriptPatch};
 use demi_shared_types::{Block, NodeId, TextBlock};
 use demi_web_api_protocol::ids::ConversationId;
 

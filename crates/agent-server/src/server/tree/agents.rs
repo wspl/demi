@@ -36,7 +36,7 @@ use std::{
 };
 
 use demi_agent_store::{NodeRecord, Placement, SideOf};
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     AgentCost, AgentEntry, AgentRole, CacheChart, JobModel, ServerFrame, SideQuestion, Version,
 };
 use demi_shared_types::{NodeId, SessionPhase};

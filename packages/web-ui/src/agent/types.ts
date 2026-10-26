@@ -102,7 +102,7 @@ export interface ConversationState {
   /** The conversation's model settings, which its composer shows. */
   model: ModelSettings
   lastError: ShownError | null
-  /** History restore and the live socket. A new conversation starts `ready`. */
+  /** History restore and the live lane. A new conversation starts `ready`. */
   load: SessionLoad
   /**
    * A recovery sent and not yet acknowledged by a `phase` event; the tail row

@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, rc::Rc, time::Duration};
 
-use demi_conversation_socket_protocol::{AgentEntry, CacheChart, ClientContent, ClientFrame, ServerFrame};
+use demi_conversation_lane_protocol::{AgentEntry, CacheChart, ClientContent, ClientFrame, ServerFrame};
 use demi_agent_tools::HostResolver;
 use demi_shared_types::{NodeId, PictureFailure, SessionPhase};
 use futures_util::future::LocalBoxFuture;

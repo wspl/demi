@@ -7,7 +7,7 @@
 
 use demi_agent_session::EditContent;
 use demi_agent_store::media::HeldMedia;
-use demi_conversation_socket_protocol::{AgentCode, ClientContent, Refusal};
+use demi_conversation_lane_protocol::{AgentCode, ClientContent, Refusal};
 use demi_shared_types::{UserContentBlock, is_blank};
 use futures_util::future::LocalBoxFuture;
 

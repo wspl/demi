@@ -17,16 +17,18 @@
 //! session it opens, a Host operation it sends and a store write it waits for
 //! log under the same ID.
 //!
-//! A socket keeps the ID of its upgrade for its whole life. Work that outlives
-//! a request, such as a turn a socket's frame started, logs under the socket's
-//! ID with its own conversation and turn IDs. What an abandoned request started
+//! A page connection keeps the ID of its upgrade for its whole life, and each
+//! of its lanes is named as its open arrives, as a request is, with a span of
+//! its own that the lane keeps for its whole life. Work that outlives a
+//! request, such as a turn a lane's frame started, logs under the lane's ID
+//! with its own conversation and turn IDs. What an abandoned request started
 //! goes on or stops by that work's own rule; its line only records it.
 
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use axum::extract::Request;
-use axum::http::{HeaderName, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::Response;
 use data_encoding::{Encoding, Specification};
@@ -77,6 +79,12 @@ pub(crate) fn current_or_new() -> RequestId {
     current().unwrap_or_else(generate)
 }
 
+/// Runs `work` as the answer to the request `id`, where [`current`] reads it,
+/// as a lane's open is answered.
+pub(crate) async fn scope<F: Future>(id: RequestId, work: F) -> F::Output {
+    CURRENT.scope(id, work).await
+}
+
 /// Names the request: its extensions carry the ID for the span and the
 /// handlers, the answer is built where [`current`] reads it, and the
 /// response carries it in `X-Request-Id`.
@@ -103,16 +111,12 @@ fn is_page_id(text: &str) -> bool {
 const ALPHABET_SYMBOLS: &[u8] = b"0123456789abcdefghjkmnpqrstvwxyz";
 
 /// The page load the request came from: its `X-Demi-Page`, or the `page`
-/// parameter of a socket's URL, which is the only part of the query read.
-fn page_of<B>(request: &axum::http::Request<B>) -> Option<&str> {
-    let header = request
-        .headers()
-        .get(PAGE_HEADER)
-        .and_then(|value| value.to_str().ok());
+/// parameter of a page connection's URL, which is the only part of the query
+/// read.
+pub(crate) fn page_of<'a>(headers: &'a HeaderMap, uri: &'a Uri) -> Option<&'a str> {
+    let header = headers.get(PAGE_HEADER).and_then(|value| value.to_str().ok());
     let parameter = || {
-        request
-            .uri()
-            .query()?
+        uri.query()?
             .split('&')
             .find_map(|pair| pair.strip_prefix(concat!("page", "=")))
     };
@@ -136,8 +140,34 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
         method = %request.method(),
         path = logged_path(request.uri().path()).as_ref(),
         cf_ray = ray,
-        page_id = page_of(request),
+        page_id = page_of(request.headers(), request.uri()),
         user_id = tracing::field::Empty,
+        conversation_id = tracing::field::Empty,
+        host_id = tracing::field::Empty,
+    )
+}
+
+/// The span every event of a lane is logged in, as a request's is: the ID of
+/// its open, `LANE` and `/lanes/<kind>` for its method and path, the page load
+/// and the `cf-ray` of its connection's upgrade, and its user. The lookup of
+/// the conversation or the device it names records it as `conversation_id` or
+/// `host_id`.
+pub(crate) fn lane_span(
+    id: &RequestId,
+    kind: &str,
+    page: Option<&str>,
+    ray: Option<&str>,
+    user: &demi_web_api_protocol::ids::UserId,
+) -> tracing::Span {
+    tracing::info_span!(
+        parent: None,
+        "request",
+        request_id = %id,
+        method = "LANE",
+        path = format!("/lanes/{kind}"),
+        cf_ray = ray,
+        page_id = page,
+        user_id = %user,
         conversation_id = tracing::field::Empty,
         host_id = tracing::field::Empty,
     )

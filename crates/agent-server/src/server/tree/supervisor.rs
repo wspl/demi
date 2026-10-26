@@ -100,7 +100,7 @@ use demi_agent_session::{
 use demi_agent_store::{ChildDirectory, ClosePhase, Kind, NodeClose, NodeRecord, Placement, Reprofile};
 use demi_agent_transcript::last_failure;
 use demi_agent_tools::{HostResolver, SubagentSource};
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     JobModel, JobPhase, TranscriptPatch,
 };
 use demi_provider_common::ProviderRuntime;

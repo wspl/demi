@@ -121,7 +121,7 @@ pub async fn run(
         }
         _ => None,
     };
-    // Commands on one device take turns in their lane. The agent uses it
+    // Commands on one device take turns in their queue. The agent uses it
     // from its start, the wait for its turn included.
     let turn_of = open.clone();
     let _agent = match &turn_of {
@@ -129,7 +129,7 @@ pub async fn run(
         _ => None,
     };
     let _turn = match &turn_of {
-        Some(open) => Some(turn(open, lane(&operation)).await),
+        Some(open) => Some(turn(open, queue_of(&operation)).await),
         None => None,
     };
     let done = async {
@@ -474,7 +474,7 @@ pub async fn run(
 /// Which of a device's commands an operation takes turns with
 /// (`crates/plugin-mobile/command/src/live.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Lane {
+enum Queue {
     /// It acts: the user's input waits for no read.
     Input,
     /// It reads or waits.
@@ -485,7 +485,7 @@ enum Lane {
     Free,
 }
 
-fn lane(operation: &MobileOperation) -> Lane {
+fn queue_of(operation: &MobileOperation) -> Queue {
     match operation {
         MobileOperation::Tap(_)
         | MobileOperation::Swipe(_)
@@ -494,26 +494,26 @@ fn lane(operation: &MobileOperation) -> Lane {
         | MobileOperation::Rotate(_)
         | MobileOperation::Appearance(_)
         | MobileOperation::Install(_)
-        | MobileOperation::Launch(_) => Lane::Input,
+        | MobileOperation::Launch(_) => Queue::Input,
         MobileOperation::Screenshot(_)
         | MobileOperation::Inspect(_)
         | MobileOperation::Wait(_)
-        | MobileOperation::Record(_) => Lane::Read,
+        | MobileOperation::Record(_) => Queue::Read,
         MobileOperation::Close(_) | MobileOperation::List(_) | MobileOperation::Open(_) | MobileOperation::Erase(_) => {
-            Lane::Both
+            Queue::Both
         }
-        MobileOperation::Logs(_) => Lane::Free,
+        MobileOperation::Logs(_) => Queue::Free,
     }
 }
 
 /// The operation's turn on `open`, held until dropped.
-async fn turn(open: &OpenDevice, lane: Lane) -> Vec<tokio::sync::MutexGuard<'_, ()>> {
-    match lane {
-        Lane::Input => vec![open.inputs.lock().await],
-        Lane::Read => vec![open.reads.lock().await],
+async fn turn(open: &OpenDevice, queue: Queue) -> Vec<tokio::sync::MutexGuard<'_, ()>> {
+    match queue {
+        Queue::Input => vec![open.inputs.lock().await],
+        Queue::Read => vec![open.reads.lock().await],
         // Always the input first, so two that take both never hold one each.
-        Lane::Both => vec![open.inputs.lock().await, open.reads.lock().await],
-        Lane::Free => Vec::new(),
+        Queue::Both => vec![open.inputs.lock().await, open.reads.lock().await],
+        Queue::Free => Vec::new(),
     }
 }
 

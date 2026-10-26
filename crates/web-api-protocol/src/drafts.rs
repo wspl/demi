@@ -2,7 +2,7 @@
 //! backend keeps so that every page of the conversation shows it. The draft is the last one
 //! saved, whichever page saved it.
 
-use demi_conversation_socket_protocol::ClientContent;
+use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, MessageComment};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -38,7 +38,7 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{CutError, Earlier, ForkEnd, TranscriptLog, before_user, fork_prefix, side_end};
 use demi_command_protocol::canonical_digest;
-use demi_conversation_socket_protocol::{
+use demi_conversation_lane_protocol::{
     AgentCode, EditRequest, MediaRef, RegenerateRequest, Refusal, Version,
 };
 use demi_provider_common::ProviderRuntime;

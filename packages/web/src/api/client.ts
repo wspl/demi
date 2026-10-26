@@ -1,16 +1,15 @@
 import { z } from 'zod'
-import { schemaRefusal } from '@demicodes/protocol'
+import { errorBodySchema, errorCodeSchema, schemaRefusal, type ErrorBody, type ErrorCode } from '@demicodes/protocol'
 import { httpStatusLine, isAbortError } from '@demicodes/utils'
 import { coded, environmental, errorFields } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
-import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 import { noteUpdating } from '../state/update'
 
 // Every control operation is an ordinary HTTP request: one answer, a status and an
 // error the caller can show, visible in the network panel and the backend's log, and
 // retryable.
 //
-// A WebSocket carries only what a request cannot: bytes that flow while the user
+// A lane of the page connection carries only what a request cannot: bytes that flow while the user
 // watches and events the backend pushes. An operation is never a message on a stream
 // that a later message may or may not answer, since a lost answer would look exactly
 // like a slow one and nothing would record that it failed.

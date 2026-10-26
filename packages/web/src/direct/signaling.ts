@@ -1,5 +1,5 @@
 /**
- * A device's signaling socket: the page's introduction to the device's runner,
+ * A device's signaling lane: the page's introduction to the device's runner,
  * for both of the page's peers with it, `files` and `live`
  * (`crates/runner-direct/src/lib.rs`), each message naming its peer.
  *
@@ -9,24 +9,17 @@
  * - Each side's candidates found after them.
  * - The page's probes of the relay path, with their answers.
  *
- * A socket that brings nothing, not even a heartbeat, for as long as the page's
- * sockets may is broken. A closed or broken socket connects again after the
- * page's reconnect waits. Its close closes the runner's peers. The backend
- * closes a peer too when the user turns a plugin on or off, which the socket
- * says so that the page offers again at once.
+ * A lane of the page connection: it lives as long as the connection does. A
+ * closed lane opens again after the page's reconnect waits. Its close closes
+ * the runner's peers. The backend closes a peer too when the user turns a
+ * plugin on or off, which the lane says so that the page offers again at
+ * once.
  */
 import { schemaRefusal } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t } from './locales/text'
-import {
-  openSocket,
-  pingOn,
-  waitToReconnect,
-  watchSilence,
-  type ReconnectWait,
-  type SilenceWatch,
-} from '@demicodes/web-ui/transport/liveness'
-import { apiUrl } from '../api/client'
+import { waitToReconnect, type ReconnectWait } from '@demicodes/web-ui/transport/liveness'
+import { Lane, openLane } from '@demicodes/web-ui/transport/page-connection'
 import { directMessageSchema, type DirectMessage, type DirectPeer as PeerName, type DirectRequest } from '../api/generated/web-api'
 import { ChannelFailed, type PeerSignaling } from './peer'
 
@@ -43,7 +36,7 @@ export function isBusy(error: unknown): boolean {
   return error instanceof Unanswered && error.code === 'busy'
 }
 
-/** What the socket holds for one of the page's peers. */
+/** What the lane holds for one of the page's peers. */
 class PeerSlot {
   /** The offer waiting for its answer. */
   answering: PromiseWithResolvers<string> | null = null
@@ -58,8 +51,7 @@ class PeerSlot {
 }
 
 export class DeviceSignaling {
-  private socket: WebSocket | null = null
-  private silence: SilenceWatch | null = null
+  private lane: Lane | null = null
   private waiting: ReconnectWait | null = null
   private failures = 0
   private stopped = false
@@ -68,12 +60,12 @@ export class DeviceSignaling {
   private readonly pongs = new Set<(id: number) => void>()
 
   /**
-   * @param deviceId The paired device the socket introduces the page to.
-   * @param opened Called each time the socket opens: first, and again after it
+   * @param deviceId The paired device the lane introduces the page to.
+   * @param opened Called each time the lane opens: first, and again after it
    *     closed.
    * @param peerClosed Called when the backend closed the runner's peer `peer`,
    *     whose introduction is out of date.
-   * @param dropped Called when the socket closed or was taken as broken: the
+   * @param dropped Called when the lane closed or was taken as broken: the
    *     backend closes the runner's peers then, so the page's peers are gone
    *     too.
    */
@@ -105,11 +97,11 @@ export class DeviceSignaling {
     this.send({ type: 'close', peer })
   }
 
-  /** Sends an offer and answers the runner's answer; fails when the socket is not open or closes first. */
+  /** Sends an offer and answers the runner's answer; fails when the lane is not open or closes first. */
   private offer(peer: PeerName, sdp: string): Promise<string> {
-    const socket = this.socket
-    if (!socket || socket.readyState !== WebSocket.OPEN)
-      return Promise.reject(new ChannelFailed('The signaling socket is not open'))
+    const lane = this.lane
+    if (!lane || lane.readyState !== Lane.OPEN)
+      return Promise.reject(new ChannelFailed('The signaling lane is not open'))
     const slot = this.peers[peer]
     slot.fail(new ChannelFailed('Another offer replaced this one'))
     const answering = Promise.withResolvers<string>()
@@ -118,15 +110,15 @@ export class DeviceSignaling {
     return answering.promise
   }
 
-  /** Sends `request`; one for a socket that is not open has no peer left, or is a probe that is lost. */
+  /** Sends `request`; one for a lane that is not open has no peer left, or is a probe that is lost. */
   private send(request: DirectRequest): void {
-    const socket = this.socket
-    if (!socket || socket.readyState !== WebSocket.OPEN)
+    const lane = this.lane
+    if (!lane || lane.readyState !== Lane.OPEN)
       return
-    socket.send(JSON.stringify(request))
+    lane.send(JSON.stringify(request))
   }
 
-  /** Sends a probe of the relay path; one for a socket that is not open is lost. */
+  /** Sends a probe of the relay path; one for a lane that is not open is lost. */
   ping(id: number): void {
     this.send({ type: 'ping', id })
   }
@@ -137,12 +129,12 @@ export class DeviceSignaling {
     return () => this.pongs.delete(listener)
   }
 
-  /** Whether the socket is open, so an offer can go. */
+  /** Whether the lane is open, so an offer can go. */
   get open(): boolean {
-    return this.socket?.readyState === WebSocket.OPEN
+    return this.lane?.readyState === Lane.OPEN
   }
 
-  /** Closes the socket for good. */
+  /** Closes the lane for good. */
   stop(): void {
     this.stopped = true
     this.waiting?.cancel()
@@ -151,33 +143,29 @@ export class DeviceSignaling {
   }
 
   private connect(): void {
-    const url = new URL(apiUrl(`/devices/${encodeURIComponent(this.deviceId)}/direct`), window.location.href)
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const socket = openSocket(url, 'direct channel signaling socket')
-    this.socket = socket
+    const lane = openLane({ kind: 'signaling', device: this.deviceId }, 'signaling lane')
+    this.lane = lane
     let opened = false
-    socket.addEventListener('open', () => {
-      if (this.socket !== socket)
+    lane.addEventListener('open', () => {
+      if (this.lane !== lane)
         return
       opened = true
-      this.silence = watchSilence('direct channel signaling socket', () => this.lose(socket), pingOn(socket))
       this.failures = 0
       this.opened()
     })
-    socket.addEventListener('message', (event: MessageEvent) => {
-      if (this.socket !== socket)
+    lane.addEventListener('message', (event) => {
+      if (this.lane !== lane)
         return
-      this.silence?.heard()
-      this.receive(socket, event.data)
+      this.receive(lane, event.data)
     })
-    socket.addEventListener('close', () => {
-      if (!opened && this.socket === socket)
+    lane.addEventListener('close', () => {
+      if (!opened && this.lane === lane)
         this.failures += 1
-      this.lose(socket)
+      this.lose(lane)
     })
   }
 
-  private receive(socket: WebSocket, data: unknown): void {
+  private receive(lane: Lane, data: unknown): void {
     let value: unknown = null
     try {
       value = typeof data === 'string' ? JSON.parse(data) : null
@@ -186,25 +174,20 @@ export class DeviceSignaling {
     }
     const parsed = directMessageSchema.safeParse(value)
     if (!parsed.success) {
-      // What did not read is for a developer; the socket starts again.
+      // What did not read is for a developer; the lane starts again.
       reportError(t('failures.readChannel'), schemaRefusal(parsed.error), { site: 'failures.readChannel' })
-      socket.close()
+      lane.close()
       return
     }
     this.answer(parsed.data)
   }
 
   private answer(message: DirectMessage): void {
-    if (message.type === 'heartbeat')
-      return
     if (message.type === 'closed') {
       this.peerClosed(message.peer)
       return
     }
     if (message.type === 'pong') {
-      // The backend's answer to the return's ping and the runner's to a
-      // relay probe are the same message; each side takes the ids it sent.
-      this.silence?.ponged(message.id)
       for (const listener of [...this.pongs])
         listener(message.id)
       return
@@ -223,9 +206,9 @@ export class DeviceSignaling {
       answering?.reject(new Unanswered(message.code))
   }
 
-  /** The socket closed, or is taken as broken: it connects again after its wait. */
-  private lose(socket: WebSocket): void {
-    if (this.socket !== socket)
+  /** The lane closed: it opens again after its wait. */
+  private lose(lane: Lane): void {
+    if (this.lane !== lane)
       return
     this.drop()
     if (this.stopped)
@@ -239,12 +222,10 @@ export class DeviceSignaling {
   }
 
   private drop(): void {
-    this.silence?.stop()
-    this.silence = null
     for (const slot of Object.values(this.peers))
-      slot.fail(new ChannelFailed('The signaling socket closed'))
-    const socket = this.socket
-    this.socket = null
-    socket?.close()
+      slot.fail(new ChannelFailed('The signaling lane closed'))
+    const lane = this.lane
+    this.lane = null
+    lane?.close()
   }
 }
