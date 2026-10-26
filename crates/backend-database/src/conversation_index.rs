@@ -519,13 +519,9 @@ impl ControlService {
         id: ConversationId,
         revision: u64,
     ) -> Result<bool, StorageError> {
-        let revision = revision_column(revision);
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let read = transaction.execute(
-                "UPDATE conversations SET read_revision = ?2 WHERE id = ?1 AND read_revision < ?2",
-                params![id.as_str(), revision],
-            )?;
+            let read = read_output(&transaction, &id, revision)?;
             let requests = transaction.execute(
                 "UPDATE permission_requests SET read = 1 WHERE conversation_id = ?1 AND decision IS NULL AND NOT read",
                 [id.as_str()],
@@ -534,6 +530,14 @@ impl ControlService {
             Ok(read + requests > 0)
         })
         .await
+    }
+
+    /// Acknowledges the output up to `revision` and nothing else, for output
+    /// nobody asked for, such as a compaction while idle: the permission
+    /// requests that wait stay unread. Answers whether it changed.
+    pub async fn mark_output_read(&self, id: ConversationId, revision: u64) -> Result<bool, StorageError> {
+        self.call(move |connection, _| Ok(read_output(connection, &id, revision)? > 0))
+            .await
     }
 
     /// Applies `change` in one transaction. An archived conversation takes
@@ -709,6 +713,14 @@ impl ControlService {
         })
         .await
     }
+}
+
+/// Moves the conversation's read revision forward to `revision`, never back.
+fn read_output(connection: &Connection, id: &ConversationId, revision: u64) -> Result<usize, StorageError> {
+    Ok(connection.execute(
+        "UPDATE conversations SET read_revision = ?2 WHERE id = ?1 AND read_revision < ?2",
+        params![id.as_str(), revision_column(revision)],
+    )?)
 }
 
 /// A conversation as it enters the index, seen live as it is created.

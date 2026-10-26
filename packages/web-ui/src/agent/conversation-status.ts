@@ -1,3 +1,4 @@
+import type { SessionPhase } from '@demicodes/protocol'
 import type { StatusDotTone } from '../ui/StatusDot.vue'
 import type { ConversationState } from './types'
 import { isSubagentRunning, type SubagentRecord } from './subagents'
@@ -36,11 +37,17 @@ export function statusTone(status: ConversationStatus, outcome?: { read: boolean
   }
 }
 
+/** Whether the session compacts, as the user asked or by itself while idle. */
+export function isCompacting(phase: SessionPhase): boolean {
+  return phase === 'compacting' || phase === 'compacting_idle'
+}
+
 /**
  * A conversation remains active until its root and all children finish, and
  * while a command that is not a service runs, whose end wakes its agent. A
- * service runs until stopped, so it never keeps the conversation active; the
- * backend counts the same way (`crates/agent-server/src/server/tree.rs`).
+ * service runs until stopped, so it never keeps the conversation active, nor
+ * does the root's compaction while idle, which nobody asked for; the backend
+ * counts the same way (`crates/agent-server/src/server/tree.rs`).
  */
 export function isConversationActive(
   phase: ConversationState['phase'],
@@ -48,7 +55,7 @@ export function isConversationActive(
   terminals: readonly Pick<TerminalRecord, 'phase' | 'service'>[] = [],
 ): boolean {
   return (
-    phase !== 'idle' ||
+    (phase !== 'idle' && phase !== 'compacting_idle') ||
     subagents.some((agent) => isSubagentRunning(agent.phase)) ||
     terminals.some((terminal) => isTerminalRunning(terminal.phase) && !terminal.service)
   )

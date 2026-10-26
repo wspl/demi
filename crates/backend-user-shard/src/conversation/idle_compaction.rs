@@ -24,6 +24,11 @@
 //!   meanwhile, compacts nothing.
 //! - The preferences are read as the time comes, so the switch and the
 //!   minimum apply to the times stored before they changed.
+//!
+//! Nobody asked for the pass, so it changes nothing the sidebar shows: the
+//! tree does not count it as running, and a conversation whose output was
+//! read when it started is read through its marker once it ends. Until that
+//! is stored, its entry is listed read.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -35,6 +40,8 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::idle_compactions::IdleCompaction;
 use demi_backend_host_access::root_of;
+use demi_backend_page_sync::Part;
+use demi_shared_types::SessionPhase;
 use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
@@ -47,6 +54,9 @@ pub(crate) struct IdleCompactions {
     /// The number of the next timer, which tells a timer that fires whether
     /// it is still its conversation's.
     next: Cell<u64>,
+    /// Each conversation whose pass started over output that was read, and
+    /// whether the pass ended and its marker is being marked read.
+    read: RefCell<HashMap<ConversationId, bool>>,
 }
 
 struct Armed {
@@ -59,6 +69,13 @@ impl IdleCompactions {
     /// start.
     pub(crate) fn clear(&self) {
         self.timers.borrow_mut().clear();
+    }
+
+    /// Whether the conversation's entry is listed read whatever its read
+    /// revision says, while its pass over read output has not been marked
+    /// read.
+    pub(crate) fn keeps_read(&self, conversation: &ConversationId) -> bool {
+        self.read.borrow().contains_key(conversation)
     }
 
     /// Lets go of the timer `number` of `conversation` as it fires, so that it
@@ -169,14 +186,61 @@ impl Shard {
             tracing::warn!(event = "idle_compaction.open_failed", %conversation, %why, "a conversation was not opened to compact while idle");
             return "failed";
         }
+        let read = self.read_through(conversation).await;
         let Some(tree) = self.agent().tree(&root_of(conversation)) else {
             return "closed";
         };
+        if read {
+            self.idle_compactions().read.borrow_mut().insert(conversation.clone(), false);
+        }
         if tree.root().session().compact_idle() {
             "started"
         } else {
+            self.idle_compactions().read.borrow_mut().remove(conversation);
             "busy"
         }
+    }
+
+    /// Whether the user read all of the conversation's output.
+    async fn read_through(&self, conversation: &ConversationId) -> bool {
+        match self.services().control.conversation(conversation.clone()).await {
+            Ok(Some(record)) => self.summary_facts(conversation).await.revision <= record.read_revision,
+            Ok(None) => false,
+            Err(error) => {
+                tracing::warn!(event = "idle_compaction.read_state_failed", %conversation, %error, "a conversation's read revision was not read for an idle compaction");
+                false
+            }
+        }
+    }
+
+    /// Follows the conversation's status: once a pass that started over read
+    /// output no longer runs, marks its output read, the marker it wrote
+    /// included. A message that waited for the pass starts next, and adds no
+    /// output before the mark, which comes as soon as the pass's closing save
+    /// committed.
+    pub(crate) fn follow_idle_compaction_end(&self, conversation: &ConversationId) {
+        let compactions = self.idle_compactions();
+        if compactions.read.borrow().get(conversation) != Some(&false) {
+            return;
+        }
+        let compacting = self
+            .agent()
+            .tree(&root_of(conversation))
+            .is_some_and(|tree| tree.root().session().phase() == SessionPhase::CompactingIdle);
+        if compacting {
+            return;
+        }
+        compactions.read.borrow_mut().insert(conversation.clone(), true);
+        let this = self.this();
+        let conversation = conversation.clone();
+        self.tasks().spawn_local(async move {
+            let revision = this.summary_facts(&conversation).await.revision;
+            if let Err(error) = this.services().control.mark_output_read(conversation.clone(), revision).await {
+                tracing::warn!(event = "idle_compaction.mark_read_failed", %conversation, %error, "an idle compaction's marker was not marked read");
+            }
+            this.idle_compactions().read.borrow_mut().remove(&conversation);
+            this.mark(Part::Conversation(conversation));
+        });
     }
 }
 

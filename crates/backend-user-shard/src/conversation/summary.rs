@@ -75,7 +75,7 @@ impl Shard {
         let facts = self.summary_facts(&record.id).await;
         let resolved = self.host_shard().resolve_target(&record).await?;
         Ok(ConversationSummary {
-            unread: facts.revision > record.read_revision,
+            unread: facts.revision > record.read_revision && !self.idle_compactions().keeps_read(&record.id),
             status: status(live, &facts),
             target: record.target.shown(&resolved),
             worktree: record.target.worktree().map(|worktree| worktree.name.clone()),
@@ -174,7 +174,7 @@ impl Shard {
     /// does not know its schema made, is shown without its facts: it alone
     /// fails to open, and the user's other conversations and pages work on
     /// (`crates/backend-database/src/lib.rs`).
-    async fn summary_facts(&self, id: &ConversationId) -> SummaryFacts {
+    pub(crate) async fn summary_facts(&self, id: &ConversationId) -> SummaryFacts {
         match self.services().conversations.read(id, tree::summary).await {
             Ok(facts) => facts.unwrap_or(SummaryFacts::EMPTY),
             Err(error) => {
