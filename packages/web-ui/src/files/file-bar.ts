@@ -110,7 +110,8 @@ function facts(shown: ShownFile): string[] {
  * The File view's bar for the file at `path` as the view shows it.
  *
  * - A file that is not there names itself and offers nothing.
- * - Any other shows its kind and facts, Preview and Source for Markdown and SVG,
+ * - Any other shows its kind and facts, Preview and Source for Markdown and SVG
+ *   (and HTML, which its view adds where the source shows pages),
  *   Copy of its whole text while the page holds all of it, and Download.
  * - Without a language name, the editor's chunk not being there yet, a text
  *   file's label holds its facts alone, so the bar stands at its size and the

@@ -24,6 +24,11 @@ export function hasSourceView(path: string): boolean {
   return type === 'text/markdown' || type === 'image/svg+xml'
 }
 
+/** HTML, which a source that serves pages shows as one, beside its source. */
+export function isHtml(path: string): boolean {
+  return previewMediaType(path) === 'text/html'
+}
+
 /** What a card says of a file too large for its source to serve or read, unless its view says more. */
 export function tooLargeNote(): string {
   return t('view.tooLargeToShow')

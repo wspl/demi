@@ -143,19 +143,21 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
     )
 }
 
-/// The path as the log holds it: a share's token, which is the key to its
-/// link, is the segment after `shares` and never reaches a line.
+/// The path as the log holds it: a token in a path, the key to a share's link
+/// or to an HTML view, is the segment after `shares` or `html` and never
+/// reaches a line.
 fn logged_path(path: &str) -> std::borrow::Cow<'_, str> {
+    let keyed = |segment: &str| segment == "shares" || segment == "html";
     let mut segments = path.split('/');
-    let mut after_shares = false;
-    if !segments.any(|segment| std::mem::replace(&mut after_shares, segment == "shares")) {
+    let mut after_key = false;
+    if !segments.any(|segment| std::mem::replace(&mut after_key, keyed(segment))) {
         return std::borrow::Cow::Borrowed(path);
     }
     let mut hidden = false;
     let redacted: Vec<&str> = path
         .split('/')
         .map(|segment| {
-            let secret = std::mem::replace(&mut hidden, segment == "shares");
+            let secret = std::mem::replace(&mut hidden, keyed(segment));
             if secret { "{token}" } else { segment }
         })
         .collect();

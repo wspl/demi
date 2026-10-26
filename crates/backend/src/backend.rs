@@ -524,6 +524,7 @@ impl Backend {
                 origin_dropped: AtomicBool::new(false),
             }),
             update: update.clone(),
+            html: Arc::default(),
         };
         let runner_socket = match config.runner_socket.as_deref().map(runner_socket).transpose() {
             Ok(socket) => socket.flatten(),

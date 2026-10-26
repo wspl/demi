@@ -488,7 +488,11 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
         ? { unchanged: true, readAt: at }
         : { value: { text: node.content ?? '', version }, readAt: at }
     },
-    /** An asset's own URL, or a text file's content as a `data:` URL typed by its extension. */
+    /**
+     * An asset's own URL, or a text file's content as a `data:` URL typed by
+     * its extension. An HTML file shows from its text the same way, so what
+     * it loads must be within it: a `data:` page has no files beside it.
+     */
     contents: {
       url(path) {
         const node = lookup(path)
@@ -501,6 +505,11 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
         await wait(path)
         const node = fileAt(path, at)
         return { value: { size: node.size, modifiedAt: node.modifiedAt, version: node.modifiedAt }, readAt: at }
+      },
+      async htmlUrl(path) {
+        await wait(path)
+        const node = fileAt(path, readAt())
+        return `data:text/html;charset=utf-8,${encodeURIComponent(node.content ?? '')}`
       },
       async readStart(path, length) {
         await wait(path)

@@ -49,7 +49,7 @@ use std::rc::Rc;
 use bytes::Bytes;
 use demi_backend_remote_host::{OpenedRead, PipeReader, PipeWriter};
 use demi_host_interface::{
-    ByteRange, FileStat, HostError, WhenExists, WriteOptions,
+    ByteRange, FileStat, HostError, HostFs as _, WhenExists, WriteOptions, names_below,
 };
 use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::ReadAt;
@@ -66,7 +66,7 @@ use crate::lease::Lease;
 /// What a download asks for.
 #[derive(Debug, Clone)]
 pub struct DownloadRequest {
-    pub path: String,
+    pub path: DownloadPath,
     /// The version the page expects the file to still have.
     pub version: Option<String>,
     /// Only the answer's head, as `HEAD` asks.
@@ -75,10 +75,26 @@ pub struct DownloadRequest {
     pub if_none_match: Option<String>,
 }
 
+/// Which file a download reads.
+#[derive(Debug, Clone)]
+pub enum DownloadPath {
+    /// The file at a path the user names, as the File view reads one.
+    Named(String),
+    /// The file at a place under the conversation's working directory, its
+    /// names joined by `/`, as an HTML view loads one: at its real path, read
+    /// in the same admission, which stays inside the directory and names
+    /// nothing hidden below it, so a symbolic link out of the directory reads
+    /// nothing.
+    InWorkspace(String),
+}
+
 /// What a download answers.
 pub enum Download {
     /// Nothing at the path is a regular file.
     NotAFile,
+    /// The place's real path leaves the working directory or names a hidden
+    /// file or folder.
+    OutOfReach,
     /// The file is no longer the version the request named.
     Changed,
     /// The request's condition names the file's version.
@@ -142,6 +158,21 @@ impl dyn HostShard + '_ {
         let admitted = self.admit_host(&record.id, None, waits).await?;
         bind_to(&open, &admitted)?;
         let host = &admitted.host.host;
+        let path = match &request.path {
+            DownloadPath::Named(path) => path.clone(),
+            DownloadPath::InWorkspace(place) => {
+                let root = &admitted.host.root;
+                let real_root = waits.wait(host.realpath(root)).await??;
+                let joined = format!("{}/{place}", root.trim_end_matches('/'));
+                let real = waits.wait(host.realpath(&joined)).await??;
+                let reachable = names_below(&real_root, &real)
+                    .is_some_and(|names| !names.iter().any(|name| name.starts_with('.')));
+                if !reachable {
+                    return Ok(Download::OutOfReach);
+                }
+                real
+            }
+        };
         // The read answers the file's metadata with its first bytes, so it
         // is the one request (`crates/runner-host/src/lib.rs`): it asks for
         // the part the request names, read to the file's end when that
@@ -156,7 +187,7 @@ impl dyn HostShard + '_ {
             offset: 0,
             length: Some(0),
         });
-        let opened = match waits.wait(host.read_pipe(&request.path, read)).await? {
+        let opened = match waits.wait(host.read_pipe(&path, read)).await? {
             Ok(opened) => opened,
             Err(error) if error.code() == Some("EISDIR") => return Ok(Download::NotAFile),
             Err(error) => return Err(error.into()),
@@ -194,7 +225,7 @@ impl dyn HostShard + '_ {
         // A part counted from the end, which the size decides, is read once
         // the size is known.
         if asked.map(|asked| asked.offset) != Some(range.offset) {
-            body = waits.wait(host.read_pipe(&request.path, range)).await??.body;
+            body = waits.wait(host.read_pipe(&path, range)).await??.body;
         }
         // The bytes move at the edge; the shard only holds the admission.
         let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
@@ -206,6 +237,21 @@ impl dyn HostShard + '_ {
             lease,
             read_at,
         })
+    }
+
+    /// Where the file at `path` stands under the conversation's working
+    /// directory on its primary Host, its names joined by `/` as an HTML
+    /// view's URL names them; `None` for a file outside it.
+    pub async fn html_place(
+        &self,
+        id: &ConversationId,
+        path: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Option<String>, HostAccessError> {
+        self.with_unheld_host(id, None, cancel, async |host| {
+            names_below(&host.root, path).map(|names| names.join("/"))
+        })
+        .await
     }
 
     /// Admits a search of the text of the files under `root` on the

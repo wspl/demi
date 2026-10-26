@@ -49,6 +49,7 @@ mod file_watch;
 mod files;
 mod gate;
 mod history;
+mod html_view;
 mod hosts;
 mod install;
 mod instructions;
@@ -70,6 +71,7 @@ mod revalidate;
 mod manage;
 mod runner_socket;
 
+pub use html_view::HtmlGrants;
 pub use manage::manage_socket;
 mod runners;
 mod saved;
@@ -338,6 +340,8 @@ pub struct AppState {
     pub services: Arc<Services>,
     pub shards: Shards,
     pub site: Arc<Site>,
+    /// The tokens of the HTML files the File view shows.
+    pub html: Arc<HtmlGrants>,
     /// The update before this start, which `GET /api/update` says is over.
     pub update: Arc<demi_backend_database::update::Update>,
 }
@@ -609,6 +613,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/conversations/{id}/fs/lists", post(files::lists))
         .route("/conversations/{id}/fs/search", post(files::search))
+        .route("/conversations/{id}/fs/html", post(html_view::grant))
         .route("/conversations/{id}/fs/file", get(files::text))
         .route(
             "/conversations/{id}/fs/raw",
@@ -645,6 +650,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/api/auth/handoff", post(sessions::spend_code))
         .route("/api/sync", get(sync::channel))
         .merge(public_shares())
+        .merge(html_views())
         .method_not_allowed_fallback(no_route)
         .nest("/api", session_api)
         // After the nest, so the check covers every web app route, the
@@ -681,6 +687,15 @@ fn public_shares() -> Router<AppState> {
             get(shares::attachment),
         )
         .layer(middleware::map_response(shares::public_headers))
+}
+
+/// The route of the HTML files the File view shows: no session gate, the token
+/// its only key, each answer in the sandbox.
+fn html_views() -> Router<AppState> {
+    Router::new()
+        .route("/api/html/{token}/", get(html_view::serve_root))
+        .route("/api/html/{token}/{*place}", get(html_view::serve))
+        .layer(middleware::map_response(html_view::headers))
 }
 
 /// The schedules' URLs: no session gate and no check of the page they come
