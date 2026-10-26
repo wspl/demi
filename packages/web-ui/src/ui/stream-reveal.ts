@@ -1,5 +1,5 @@
 import { sliceHead } from '@demicodes/utils'
-import { maskMath, openBlockMathAt } from '../markdown/math-syntax'
+import { openBlockMathAt } from '../markdown/math-syntax'
 import type { TextArrival } from '@demicodes/conversation-client'
 
 /**
@@ -26,7 +26,10 @@ export function stepInterval(backlog: number): number {
   return Math.min(STREAM_PACE.maxStepMs, Math.max(STREAM_PACE.minStepMs, ms))
 }
 
-const TRAILING_OPENERS = /(?:^|[\s(])(?:\*{1,3}|_{1,3}|~{1,2}|`{1,3}|\\)$/
+// A run of marks that ends the text, after a space or within a word, as the
+// `**` of `这是**` or the `_` of `max_`: until the next character, it opens,
+// closes or is text, so it shows with that character.
+const TRAILING_MARKS = /(?:\*{1,3}|_{1,3}|~{1,2}|`{1,3}|\\)$/
 // A link's text, closed or not, with nothing after it yet, or with its target half written.
 const INCOMPLETE_LINK = /\[[^\]]*\]?$|\[[^\]]*\]\([^)]*$/
 /**
@@ -245,53 +248,10 @@ function holdLast(text: string): { visible: string; held: string } {
   const linkAt = text.search(INCOMPLETE_LINK)
   if (linkAt >= 0)
     return { visible: text.slice(0, linkAt), held: text.slice(linkAt) }
-  const markers = text.match(TRAILING_OPENERS)
-  if (markers) {
-    const token = markers[0].replace(/^[(\s]/, '')
-    return { visible: text.slice(0, -token.length), held: token }
-  }
+  const marks = text.match(TRAILING_MARKS)
+  if (marks)
+    return { visible: text.slice(0, -marks[0].length), held: marks[0] }
   return { visible: text, held: '' }
-}
-
-const INLINE_DELIMITER = /(\*{1,3}|_{1,3}|~~|`)/g
-
-/**
- * Closers for emphasis / strikethrough / code left open in the last paragraph, so a
- * half-written `**bold` renders bold instead of showing its asterisks until it closes.
- * Render `text + closers`; the closers add no text, so frontier tracking is unaffected.
- */
-export function closeOpenInlineMarkdown(text: string): string {
-  const paragraphStart = text.lastIndexOf('\n\n')
-  const paragraph = paragraphStart < 0 ? text : text.slice(paragraphStart + 2)
-  if (paragraph.startsWith('```') || paragraph.startsWith('~~~'))
-    return ''
-  const open: string[] = []
-  // What math holds, `p_i` or `a*b`, is no emphasis.
-  const masked = maskMath(paragraph)
-  for (const match of masked.matchAll(INLINE_DELIMITER)) {
-    const run = match[0]
-    const at = match.index
-    const before = masked[at - 1] ?? '\n'
-    const after = masked[at + run.length] ?? ''
-    if (run === '`') {
-      const top = open.at(-1)
-      if (top === '`')
-        open.pop()
-      else open.push('`')
-      continue
-    }
-    if (open.at(-1) === '`')
-      continue
-    const listMarker = (before === '\n') && /\s/.test(after) && run.length === 1
-    const spaced = /\s/.test(before) && /\s/.test(after)
-    if (listMarker || spaced)
-      continue
-    const top = open.at(-1)
-    if (top && top[0] === run[0] && top.length === run.length)
-      open.pop()
-    else open.push(run)
-  }
-  return open.reverse().join('')
 }
 
 /** A part of the text the reader was shown at once, `start` to `end` in the source, at `at` (performance.now()). */

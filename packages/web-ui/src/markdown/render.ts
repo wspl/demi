@@ -15,6 +15,7 @@ import { pictureKey } from './picture-key'
 import { formatBytes } from '../files/format'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
+import { closeOpenBlocks, type CanOpen } from './open-inline'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
 import type { ShownMedium } from '../files/media-viewer'
 import { t } from '../locales/text'
@@ -640,6 +641,27 @@ function separateMedia(blocks: Token[]): void {
 /** The token of an attachment block (`attachment-block.ts`). */
 const ATTACHMENT_BLOCK = 'attachmentBlock'
 
+/**
+ * Whether a run of marks opens, as the message's reader reads it beside the
+ * same two characters with a closing run after them: the reader's rules for
+ * a run, CommonMark's with its CJK text, are its own, and a run is read by
+ * the characters next to it alone. A `\\` before it, which would escape it,
+ * stands for the punctuation it is. The answer for each three is kept for the
+ * render.
+ */
+function readerOpens(): CanOpen {
+  const answers = new Map<string, boolean>()
+  return (run, before, after) => {
+    const probe = `${before === '\\' ? '!' : before}${run}${after}x${run} `
+    let opens = answers.get(probe)
+    if (opens === undefined) {
+      opens = new agentMarked.Lexer(agentMarked.defaults).inlineTokens(probe).some((token) => token.type === 'em' || token.type === 'strong' || token.type === 'del')
+      answers.set(probe, opens)
+    }
+    return opens
+  }
+}
+
 const agentMarked = markdownReader({ breaks: true, renderer: messageRenderer }, scrollingTable)
 // LaTeX math, rendered to HTML whose stylesheet comes with KaTeX (`math.ts`);
 // `throwOnError` keeps malformed math from blowing up the whole message.
@@ -647,6 +669,8 @@ agentMarked.use({ extensions: mathExtensions({ throwOnError: false, output: 'htm
 agentMarked.use({
   hooks: {
     processAllTokens(tokens) {
+      if (activeOptions?.partial)
+        closeOpenBlocks(tokens, readerOpens())
       tightenLinks(tokens)
       separateMedia(tokens)
       return tokens

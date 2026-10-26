@@ -1,6 +1,6 @@
 import { computed, effectScope, onScopeDispose, shallowRef, watch, type ComputedRef, type EffectScope } from 'vue'
 import { messageBlockEnds } from '../markdown/render'
-import { closeOpenInlineMarkdown, wrapSteps, type RevealStep } from '../ui/stream-reveal'
+import { wrapSteps, type RevealStep } from '../ui/stream-reveal'
 
 /** A block of a reply as the page shows it. */
 interface Block<T> {
@@ -32,9 +32,9 @@ export interface MarkdownBlocksOptions<T> {
   /**
    * The HTML of the Markdown `source` gives, sanitized: set up in a block's
    * own scope, which ends with the block, and read again when what it reads
-   * changes.
+   * changes. `last` is the reply's last block, whose text may still go on.
    */
-  render: (source: () => string) => () => string
+  render: (source: () => string, last: boolean) => () => string
   /**
    * What the page needs of a block's nodes, found each time it renders; `fresh`
    * are those the render added.
@@ -82,10 +82,7 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
 
   function newBlock(start: number, text: () => string, last: boolean): Block<T> {
     const scope = effectScope(true)
-    // Closers apply to finished text too: an aborted stream leaves the same
-    // half-open markers.
-    const source = last ? () => text() + closeOpenInlineMarkdown(text()) : text
-    const html = scope.run(() => computed(options.render(source)))!
+    const html = scope.run(() => computed(options.render(text, last)))!
     return { start, text, html, scope, shown: null }
   }
 

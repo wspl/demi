@@ -216,4 +216,9 @@ export interface MarkdownRenderOptions {
    * its text alone.
    */
   agents?: MessageAgents
+  /**
+   * The text is a part of the reply, the rest on its way: what the last line
+   * leaves open, such as `**half wri`, shows as it will once it closes.
+   */
+  partial?: boolean
 }

@@ -42,7 +42,7 @@ I changed the assertion to read the name from the helper, so the next rename can
 expect(response.headers['set-cookie']).toContain(SESSION_COOKIE)
 \`\`\`
 
-All 42 auth tests pass now, including the expired-cookie case you asked about. If you want, I can also add a lint rule that flags string literals matching a cookie name, which would have caught this before the test ran.`,
+All 42 auth tests pass now, including the expired-cookie case you asked about. If you want, I can also add a lint rule that flags string literals matching a cookie name, which would have caught this before the test ran. Its option would sit beside max_retries.`,
   zh: `登录测试失败，是因为它还在找旧的 cookie 名。上周把辅助函数改了名，现在写的是 \`session\`，但 **auth.test.ts** 里的断言还在找 \`sid\`。
 
 ## 改了什么
@@ -61,7 +61,7 @@ All 42 auth tests pass now, including the expired-cookie case you asked about. I
 expect(response.headers['set-cookie']).toContain(SESSION_COOKIE)
 \`\`\`
 
-现在 42 个认证测试全部通过，包括你问到的 cookie 过期的情况。如果需要，我还可以加一条 lint 规则，标出和 cookie 名相同的字符串字面量，这样在跑测试之前就能发现这类问题。`,
+现在 42 个认证测试全部通过，包括你问到的 cookie 过期的情况。如果需要，我还可以加一条 lint 规则，标出和 cookie 名相同的字符串字面量，这样在跑测试之前就能发现这类问题。它的选项会放在 max_retries 旁边。`,
 } as const
 
 const arrival = ref<Arrival>('model')
