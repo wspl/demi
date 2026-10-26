@@ -10,6 +10,7 @@ import { boundedHistory, latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation, SideRecord } from '../state/types'
 import { settleSent, sideRecord } from './side-records'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
+import { isCompactionDivider } from '@demicodes/web-ui/agent/visible-blocks'
 import { followFrame, isTerminalRunning } from '@demicodes/web-ui/agent/terminals'
 import { subagentEntryFields } from '@demicodes/web-ui/agent/subagents'
 
@@ -19,7 +20,10 @@ export function updateLiveStatus(conversation: Conversation): void {
     conversation.status = 'active'
     return
   }
-  const last = latestBlocks(conversation.history).at(-1)
+  // A compaction's divider, and the context after it, end no turn: the status
+  // stays the turn's before it, as the backend's does.
+  const last = latestBlocks(conversation.history)
+    .findLast((block) => !isCompactionDivider(block) && block.type !== 'context')
   conversation.status =
     conversation.lastError || last?.type === 'error'
       ? 'error'

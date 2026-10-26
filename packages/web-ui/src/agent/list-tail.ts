@@ -2,6 +2,7 @@ import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes
 import { nonEmptyString } from '@demicodes/utils'
 import { pendingSteersToRenderBlocks, type MessageListBlock, type PendingCallRenderBlock } from './pending-steers'
 import { queuedMessagesToRenderBlocks } from './queued-messages'
+import { isCompacting } from './conversation-status'
 import { turnStartingMessage } from './send-way'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 
@@ -119,7 +120,7 @@ export function listTailBlocks(input: ListTailInput): ListTail {
   const queued = [...queuedMessagesToRenderBlocks(queue), ...rows((submission) => submission.way === 'queue')]
   return {
     turn: [
-      ...(input.phase === 'compacting'
+      ...(isCompacting(input.phase)
         ? [{ type: 'compaction_progress', id: 'compaction-progress' } as const]
         : []),
       ...(started ? [{ type: 'starting_message', id: `starting:${started.id}`, message: started } as const] : []),

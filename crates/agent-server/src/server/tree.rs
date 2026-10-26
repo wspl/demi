@@ -830,16 +830,23 @@ impl<H: HostResolver> Tree<H> {
     /// Whether the tree will go on working by itself: a child is live, or the
     /// root runs or waits to run.
     pub fn works(&self) -> bool {
-        !self.children.borrow().is_empty()
-            || !self.starting.borrow().is_empty()
-            || !quiescent(&self.root.session().status())
+        self.children_work() || !quiescent(&self.root.session().status())
+    }
+
+    /// Whether a child is live or starting.
+    fn children_work(&self) -> bool {
+        !self.children.borrow().is_empty() || !self.starting.borrow().is_empty()
     }
 
     /// Whether the conversation is running: the tree works, or a command that
     /// is not a service still runs, since its end wakes the agent, as a
-    /// child's does. A service does not count, for it runs until stopped.
+    /// child's does. A service does not count, for it runs until stopped, nor
+    /// does the root's compaction while idle, which nobody asked for.
     pub fn is_running(&self) -> bool {
-        self.works() || self.live.awaits_commands()
+        let session = self.root.session();
+        self.children_work()
+            || (session.phase() != SessionPhase::CompactingIdle && !quiescent(&session.status()))
+            || self.live.awaits_commands()
     }
 
     /// Ends every command of the tree's nodes whose start still waits for

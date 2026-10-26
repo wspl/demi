@@ -263,8 +263,10 @@ pub(super) enum Activity {
     Running(ActionRun),
     /// The action ended and its closing save is in progress. The save
     /// records the session idle, while clients see it running until that
-    /// save has committed.
-    Finishing,
+    /// save has committed; `idle_compaction` is the action's.
+    Finishing {
+        idle_compaction: bool,
+    },
     /// Dispose is complete but for the final save; `interrupted` when it
     /// stopped a running turn, whose final checkpoint says `running`.
     Closed {
@@ -278,6 +280,9 @@ pub(super) struct ActionRun {
     pub(super) turn: TurnId,
     pub(super) cancel: Rc<TurnCancel>,
     pub(super) stage: TurnStage,
+    /// The action is a compaction the session runs by itself while idle,
+    /// which clients see as `compacting_idle` from its start to its end.
+    idle_compaction: bool,
     /// The transcript's revision when the action started: an action that
     /// wrote nothing since has not begun.
     started_at: u64,
@@ -1054,6 +1059,7 @@ impl SessionCore {
             turn: turn.clone(),
             cancel: cancel.clone(),
             stage: TurnStage::Preparing,
+            idle_compaction: matches!(kind, ActionKind::Compact { idle: true }),
             started_at: self.transcript.version().revision,
             unwritten,
             send_now: None,
@@ -1306,7 +1312,8 @@ impl SessionCore {
     /// The action ended; its checkpoint is saved next. The human steers
     /// still pending open the next turn (`start_next`).
     pub(super) fn end_action(&mut self) {
-        self.activity = Activity::Finishing;
+        let idle_compaction = matches!(&self.activity, Activity::Running(run) if run.idle_compaction);
+        self.activity = Activity::Finishing { idle_compaction };
         self.state_cause = "action_ended";
         // The closing save records the session idle, also after an action
         // whose last save recorded it running and that changed nothing
@@ -3165,10 +3172,12 @@ impl SessionCore {
     /// client that sees `idle` can edit at once.
     pub(super) fn phase(&self) -> SessionPhase {
         match &self.activity {
+            Activity::Running(ActionRun { idle_compaction: true, .. })
+            | Activity::Finishing { idle_compaction: true } => SessionPhase::CompactingIdle,
             Activity::Running(run) if run.stage == TurnStage::Compacting => {
                 SessionPhase::Compacting
             }
-            Activity::Running(_) | Activity::Finishing => SessionPhase::Running,
+            Activity::Running(_) | Activity::Finishing { .. } => SessionPhase::Running,
             Activity::Closed { interrupted: true } => SessionPhase::Running,
             Activity::Idle | Activity::Closed { interrupted: false } => SessionPhase::Idle,
         }
@@ -3176,11 +3185,13 @@ impl SessionCore {
 
     /// The phase a checkpoint records. The closing save of an action records
     /// the session idle, so a checkpoint that says an action was running is
-    /// one the process died in.
+    /// one the process died in. A compaction while idle is recorded idle
+    /// throughout: its pass writes its boundary and marker in one save, so a
+    /// process that dies in it leaves no turn unfinished.
     fn recorded_phase(&self) -> SessionPhase {
-        match &self.activity {
-            Activity::Finishing => SessionPhase::Idle,
-            _ => self.phase(),
+        match (&self.activity, self.phase()) {
+            (Activity::Finishing { .. }, _) | (_, SessionPhase::CompactingIdle) => SessionPhase::Idle,
+            (_, phase) => phase,
         }
     }
 
@@ -3191,7 +3202,7 @@ impl SessionCore {
                 TurnStage::Tools => Execution::ToolExecuting,
                 TurnStage::Compacting => Execution::Compacting,
             },
-            Activity::Finishing => Execution::Finalizing,
+            Activity::Finishing { .. } => Execution::Finalizing,
             Activity::Idle | Activity::Closed { .. } if !self.watched.is_empty() => {
                 Execution::Waiting
             }

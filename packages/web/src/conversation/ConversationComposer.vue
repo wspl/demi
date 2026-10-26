@@ -10,6 +10,7 @@ import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vu
 import { inReadingOrder } from '@demicodes/web-ui/agent/comments/comments'
 import { changeEditComments, editComments } from '@demicodes/web-ui/agent/message-editing'
 import { refusedForSize } from '@demicodes/web-ui/agent/session-status'
+import { isCompacting } from '@demicodes/web-ui/agent/conversation-status'
 
 import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -290,7 +291,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @save-edit="store.saveSavedEdit(conversation)"
       focus-on-show
       :running="conversation.phase === 'running' || startingTurn"
-      :compacting="conversation.phase === 'compacting'"
+      :compacting="isCompacting(conversation.phase)"
       :send-while-running="preferences.sendWhileRunning"
       :can-configure="resources.canConfigure"
       :attachments="

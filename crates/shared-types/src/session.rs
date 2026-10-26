@@ -16,6 +16,10 @@ pub enum SessionPhase {
     Idle,
     Running,
     Compacting,
+    /// A compaction the session ran by itself while idle, before its prompt
+    /// cache expired: the conversation shows it as `compacting`, but nothing
+    /// counts it as the conversation's work, which nobody asked for.
+    CompactingIdle,
 }
 
 serde_plain::derive_display_from_serialize!(SessionPhase);
