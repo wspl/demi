@@ -378,8 +378,9 @@ to the master and administrators.
    The administrators' pages list the steps of [Fetch](#fetch) and
    [Prepare](#prepare) in Settings › Updates. From the stop on, every page
    shows the update's screen, which lists the steps of [Switch](#switch) and
-   the new backend's own, until the new release serves. A step that fails is
-   marked as failed with its reason.
+   the new backend's own. Once the new release serves, the screen shows every
+   step done and waits for the user to open Demi. A step that fails is marked
+   as failed with its reason.
 
 The units come with the release, as the services' units do. A server on an
 earlier release gets them with one `sudo demi-server upgrade` to a release

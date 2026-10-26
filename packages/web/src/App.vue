@@ -64,12 +64,13 @@ const product = useProduct()
 usePasskeySignals()
 providePageHost(productPageHost())
 // A page of another build than the backend serves loads itself again, once
-// per build; one that still gets another says so.
+// per build; one that still gets another says so. While the update screen
+// shows, only its Open Demi loads the page.
 const updateFailed = ref(false)
 watch(
-  () => product.newBuild,
-  (newer) => {
-    if (newer === null) {
+  () => [product.newBuild, update.value] as const,
+  ([newer, shows]) => {
+    if (newer === null || shows !== null) {
       return
     }
     pageLog.info('build.differs', { page: import.meta.env.DEMI_WEB_BUILD ?? null, served: newer })
@@ -521,7 +522,7 @@ useAppShortcuts(
   <ToastHost :below="APP_BAR_PX" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
   <Teleport to="body">
-    <UpdatingScreen v-if="update" :progress="update.progress" />
+    <UpdatingScreen v-if="update" :progress="update.progress" :ended="update.ended" @open="reloadPage" />
   </Teleport>
   <MediaViewer :viewer="mediaViewer" />
 </template>

@@ -298,7 +298,18 @@ pub enum SyncEvent {
 #[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum UpdateState {
     /// It serves, or starts with nothing to migrate.
-    None,
+    None {
+        /// The release the backend runs, which tells a page that followed
+        /// an update whether the server moved to the release it updated to
+        /// or returned to the one it left.
+        version: String,
+        /// Every step of the update or the migration this backend started
+        /// from, done, with what each did; none for a start that did
+        /// neither, or a backend started again since. A page that followed
+        /// the update shows them until the user opens Demi.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        updated: Option<Vec<RestartStep>>,
+    },
     /// The server updates, from its restart on, or the backend migrates its
     /// data for a new release and serves nothing else until it is done.
     Updating {

@@ -12,6 +12,10 @@
 //!   as one that only migrates, lists only its own two steps.
 //! - The update screen that `demi-server` runs while no backend does reads
 //!   the record anew at every question.
+//! - A backend that serves says which release it runs, and after an update
+//!   or a migration every step of it done, with what each did, until it
+//!   stops: a page that followed the update shows them until the user opens
+//!   Demi.
 //!
 //! It names no conversation, Cloud or device.
 
@@ -88,6 +92,9 @@ struct State {
     /// The update screen's record, read at every question; the last read
     /// answers when the file cannot be read for a moment.
     screen: Option<(PathBuf, Option<UpdateRecord>)>,
+    /// The update or migration this start did, every step done, once it
+    /// serves.
+    updated: Option<UpdateRecord>,
 }
 
 /// Where the backend is between its start and its stop.
@@ -164,9 +171,12 @@ impl Update {
         self.locked().record = Some(record);
     }
 
-    /// The backend serves.
+    /// The backend serves, after the update or the migration it did, if
+    /// any.
     pub fn ready(&self) {
-        self.locked().phase = Phase::Serving;
+        let mut state = self.locked();
+        state.phase = Phase::Serving;
+        state.updated = updated(&state);
     }
 
     /// The backend stops next for an update of the server, as `record` says,
@@ -217,7 +227,10 @@ impl Update {
         let state = self.locked();
         match (&state.phase, report) {
             (Phase::Restarting(record), _) => updating(record.clone(), record_steps),
-            (_, UpdateReport::Ready | UpdateReport::Restarting) => UpdateState::None,
+            (_, UpdateReport::Ready | UpdateReport::Restarting) => UpdateState::None {
+                version: demi_shared_artifacts::BUILD_VERSION.to_owned(),
+                updated: state.updated.as_ref().map(|record| record.restart.clone()),
+            },
             (_, UpdateReport::Starting) => match &state.record {
                 Some(record) => updating(record.clone(), |record| {
                     let mut steps = record.restart.clone();
@@ -230,7 +243,10 @@ impl Update {
                     }
                     steps
                 }),
-                None => UpdateState::None,
+                None => UpdateState::None {
+                    version: demi_shared_artifacts::BUILD_VERSION.to_owned(),
+                    updated: None,
+                },
             },
             (_, UpdateReport::Updating(progress)) => {
                 // A start that only migrates moves to its own version.
@@ -333,6 +349,45 @@ fn own_steps(
         };
     }
     steps
+}
+
+/// The update or migration a start did, every step done with what it did:
+/// the record's steps, and its own two, as a start's measures say. None for
+/// a start that did neither.
+fn updated(state: &State) -> Option<UpdateRecord> {
+    let mut record = match (&state.record, state.due) {
+        (Some(record), _) => record.clone(),
+        // A start that only migrates moves to its own version.
+        (None, Some(_)) => {
+            let mut record = UpdateRecord::new("", demi_shared_artifacts::BUILD_VERSION);
+            record
+                .restart
+                .retain(|step| matches!(step.kind, RestartStepKind::UpdateControl | RestartStepKind::UpdateConversations));
+            record
+        }
+        (None, None) => return None,
+    };
+    let control_took = state.control_took.unwrap_or_default();
+    let all_took = state.began.map(|began| began.elapsed()).unwrap_or_default();
+    let millis = |took: Duration| u64::try_from(took.as_millis()).unwrap_or(u64::MAX);
+    let skipped = StepState::Skipped { why: SkipReason::NoChanges };
+    for step in &mut record.restart {
+        step.state = match (step.kind, state.due) {
+            (RestartStepKind::UpdateControl, Some(due)) if due.control > 0 => StepState::Done {
+                took_ms: millis(control_took),
+                summary: StepSummary::Bytes { bytes: due.control },
+            },
+            (RestartStepKind::UpdateConversations, Some(due)) if due.conversations > 0 => StepState::Done {
+                took_ms: millis(all_took.saturating_sub(control_took)),
+                summary: StepSummary::Count {
+                    count: u32::try_from(due.conversations).unwrap_or(u32::MAX),
+                },
+            },
+            (RestartStepKind::UpdateControl | RestartStepKind::UpdateConversations, _) => skipped.clone(),
+            _ => continue,
+        };
+    }
+    Some(record)
 }
 
 /// The time `elapsed` before now.

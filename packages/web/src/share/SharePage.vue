@@ -12,6 +12,7 @@ import { provideHistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { errorFields, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
+import { reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
@@ -126,6 +127,6 @@ watchEffect(() => {
   />
   <MediaViewer :viewer="mediaViewer" />
   <Teleport to="body">
-    <UpdatingScreen v-if="update" :progress="update.progress" />
+    <UpdatingScreen v-if="update" :progress="update.progress" :ended="update.ended" @open="reloadPage" />
   </Teleport>
 </template>
