@@ -1457,6 +1457,9 @@ impl<H: HostResolver> Tree<H> {
             ..record.clone()
         };
         self.keep_started_on_path(&record.id, session);
+        // The child's completion is on its way from the step it leaves the
+        // live children until its parent accepted it.
+        let _delivering = Delivering::start(self);
         self.children.borrow_mut().remove(&record.id);
         // In the step it leaves the directory: its entry shows it closed
         // from then on.
@@ -1957,6 +1960,25 @@ impl<H: HostResolver> Drop for LiveSlot<H> {
 struct Starting<H: HostResolver> {
     tree: Rc<Tree<H>>,
     owner: NodeId,
+}
+
+/// A closed child's completion on its way to its parent, which keeps the
+/// tree working (`Tree::is_running`) until it is dropped, the close done or
+/// cancelled.
+struct Delivering<'a, H: HostResolver>(&'a Tree<H>);
+
+impl<'a, H: HostResolver> Delivering<'a, H> {
+    fn start(tree: &'a Tree<H>) -> Self {
+        tree.delivering.set(tree.delivering.get() + 1);
+        Self(tree)
+    }
+}
+
+impl<H: HostResolver> Drop for Delivering<'_, H> {
+    fn drop(&mut self) {
+        self.0.delivering.set(self.0.delivering.get() - 1);
+        self.0.bump();
+    }
 }
 
 impl<H: HostResolver> Starting<H> {

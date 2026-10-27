@@ -95,6 +95,9 @@ pub struct Tree<H: HostResolver> {
     /// The starts under way past their owner's check, by owner: a node
     /// with one is not quiescent, as if the child were live already.
     starting: RefCell<HashMap<NodeId, usize>>,
+    /// The closed children whose completion their parent has not accepted
+    /// yet: the tree works until it has, as the completion wakes the parent.
+    delivering: Cell<usize>,
     /// The starts past the check of the live limit whose child is not yet
     /// in `children`, which that check, in this tree and in every other of
     /// the user's, counts as live.
@@ -585,6 +588,7 @@ impl<H: HostResolver> Tree<H> {
                 changes,
                 starts: KeyedSerialGate::new(),
                 starting: RefCell::new(HashMap::new()),
+                delivering: Cell::new(0),
                 admitted: Cell::new(0),
                 lifecycle: TaskTracker::new(),
                 admission,
@@ -833,20 +837,27 @@ impl<H: HostResolver> Tree<H> {
         self.children_work() || !quiescent(&self.root.session().status())
     }
 
-    /// Whether a child is live or starting.
+    /// Whether a child is live, starting, or closed with its completion on
+    /// its way to its parent.
     fn children_work(&self) -> bool {
-        !self.children.borrow().is_empty() || !self.starting.borrow().is_empty()
+        !self.children.borrow().is_empty() || !self.starting.borrow().is_empty() || self.delivering.get() > 0
     }
 
     /// Whether the conversation is running: the tree works, or a command that
     /// is not a service still runs, since its end wakes the agent, as a
-    /// child's does. A service does not count, for it runs until stopped, nor
-    /// does the root's compaction while idle, which nobody asked for.
+    /// child's does, or the root has the report of one that ended still to
+    /// take in, or holds a report it has not taken in yet; so a command's end
+    /// leaves no moment of rest before its report wakes the root. A service
+    /// does not count, for it runs until stopped, nor does the root's
+    /// compaction while idle, which nobody asked for.
     pub fn is_running(&self) -> bool {
         let session = self.root.session();
+        let status = session.status();
         self.children_work()
-            || (session.phase() != SessionPhase::CompactingIdle && !quiescent(&session.status()))
+            || (session.phase() != SessionPhase::CompactingIdle && !quiescent(&status))
             || self.live.awaits_commands()
+            || status.input
+            || session.awaited_commands().iter().any(|command| self.live.has_ended(command))
     }
 
     /// Ends every command of the tree's nodes whose start still waits for
