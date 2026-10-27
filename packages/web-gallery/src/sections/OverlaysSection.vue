@@ -54,6 +54,9 @@ import { vendorGlyph } from '@demicodes/web-ui/ui/vendor-glyphs'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { namedKeyCap, shortcutFor } from '@demicodes/web-ui/ui/shortcut'
 
+/** A hint far longer than any screen: a change named by its whole script. */
+const longScript = Array.from({ length: 120 }, (_, index) => `sed -i 's/legacyAccountFlag/accountFlag/g' src/main/java/com/example/storefront/account/Settings${index + 1}.kt`).join('\n')
+
 const { view } = useGalleryView()
 
 const hostDevices: HostDeviceOption[] = shownAmong([
@@ -303,7 +306,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'menus'">
       <GallerySection
         title="Tooltip"
-        note="Hover, placement, rich overlay, and suppressed. Copy: the verb alone for a control on the thing it acts on (Archive, Pin, Copy, Edit); the object only away from it (Add project, New folder); a reason is a full sentence."
+        note="Hover, placement, a long text, rich overlay, and suppressed. A hint shows its whole text, wrapped at its width, as the long path shows: a word longer than the width, such as its build hash, breaks. Only a hint longer than the screen has room for, as the long script, shows the lines that fit and ends in an ellipsis. Copy: the verb alone for a control on the thing it acts on (Archive, Pin, Copy, Edit); the object only away from it (Add project, New folder); a reason is a full sentence."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="hover">
@@ -319,6 +322,16 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           <GallerySpecimen variant="bottom">
             <Tooltip content="Model and reasoning" placement="bottom">
               <Button size="md" @click="productWould('Open the Model and Reasoning Menu')">Below</Button>
+            </Tooltip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="long">
+            <Tooltip content="/Users/alex/Projects/storefront/modules/account-settings/build/4f9c2e7a1b3d5f8a0c6e2b4d7f9a1c3e5b7d9f0a2c4e6b8d0f1a3c5e7b9d1f3a/src/main/java/com/example/storefront/account/settings/deletion/DeleteAccountDataFragment.kt">
+              <Button size="md" @click="productWould('Open DeleteAccountDataFragment.kt')">Long Path</Button>
+            </Tooltip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="long script">
+            <Tooltip :content="longScript">
+              <Button size="md" @click="productWould('Open the Change')">Long Script</Button>
             </Tooltip>
           </GallerySpecimen>
           <GallerySpecimen variant="overlay">
