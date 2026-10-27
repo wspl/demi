@@ -201,15 +201,18 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
 
   /**
    * Rows above the view that change height move the rows in view, and the
-   * view moves by as much to keep them still. iOS stops a scroll's momentum
-   * when a page writes the scroll position, so while the reader scrolls
-   * there the rows are drawn `rowsShift` px above their places instead, the
-   * view's own position unwritten; once the scroll ends, the view takes the
-   * shift over in one step that moves nothing on screen. Virtuoso keeps a
-   * list still on iOS the same way. The virtualizer's own deferral on iOS
-   * leaves the rows to move while the reader scrolls and writes the sum
-   * when the scroll ends, which throws the view back by that much: on iOS
-   * the list makes every such correction itself.
+   * view moves by as much to keep them still. The list makes each such
+   * correction itself, never the virtualizer, which scrolls as the row is
+   * measured: the list's box has not grown yet then, so near the end the
+   * browser clamps the position, and the rows in view are pushed down by
+   * what it cut off. The list scrolls once the update that lays the rows out
+   * by their heights has run, before the frame is painted.
+   *
+   * iOS stops a scroll's momentum when a page writes the scroll position, so
+   * while the reader scrolls there the rows are drawn `rowsShift` px above
+   * their places instead, the view's own position unwritten; once the scroll
+   * ends, the view takes the shift over in one step that moves nothing on
+   * screen. Virtuoso keeps a list still on iOS the same way.
    */
   const shiftsRows = typeof navigator !== 'undefined'
     && deviceSystem({ userAgent: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints }) === 'ios'
@@ -222,12 +225,18 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    */
   let settlingTop: number | null = null
   /**
-   * What the rows above the view moved the rows in view by while the reader
-   * did not scroll, on iOS: the view scrolls by as much once the update that
+   * What the rows above the view moved the rows in view by, unless the rows
+   * are shifted for it: the view scrolls by as much once the update that
    * lays the rows out by their heights has run, when the list is tall enough
    * for it.
    */
   let pendingScrollBy = 0
+  /**
+   * Where the scroller stood when the first of those moves came: the view
+   * scrolls from there, as the update that lays the rows out can clamp the
+   * position when the list gets shorter.
+   */
+  let pendingFrom: number | null = null
   /** A finger is on the list. */
   let touching = false
   /** Ends the reader's scroll `MOMENTUM_END_MS` after its last scroll event. */
@@ -241,27 +250,31 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     return touching || momentumEnd !== undefined
   }
   /**
-   * The rows above the view moved the rows in view by `by` px, on iOS: the
-   * view follows them, by the rows' shift while the reader scrolls, by a
+   * The rows above the view moved the rows in view by `by` px: the view
+   * follows them, by the rows' shift while the reader scrolls on iOS, by a
    * scroll after the update otherwise. The virtualizer's place for the view
    * moves at once, so the update draws the rows the view will show.
    */
   function followRowsAbove(by: number): void {
     virtualizer.value.scrollOffset = (virtualizer.value.scrollOffset ?? 0) + by
     scrollOffset.value = virtualizer.value.scrollOffset
-    if (readerScrolls())
+    if (shiftsRows && readerScrolls()) {
       rowsShift.value += by
-    else
-      pendingScrollBy += by
+      return
+    }
+    pendingFrom ??= scrollContainer.value?.scrollTop ?? null
+    pendingScrollBy += by
   }
   /** Scrolls the view by what `followRowsAbove` held for the update that has now run. */
   function scrollPending(): void {
     const el = scrollContainer.value
     const by = pendingScrollBy
+    const from = pendingFrom
     pendingScrollBy = 0
-    if (!el || by === 0)
+    pendingFrom = null
+    if (!el || from === null || by === 0)
       return
-    el.scrollTop += by
+    el.scrollTop = from + by
     scrolledTo = el.scrollTop
   }
   /**
@@ -357,6 +370,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         // superseded, and the rows go back to their places first, as the
         // position it writes is theirs.
         pendingScrollBy = 0
+        pendingFrom = null
         const settled = settleShift(true)
         if (settled) {
           void settled.then(() => {
@@ -846,18 +860,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         const offset = currentInstance.scrollOffset ?? 0
         const isStreamingTail = item.index === blocks.value.length - 1
         const allowCorrection = shouldAutoScroll.value || !isStreamingTail
-        const adjusts = allowCorrection
-          && item.start < offset + currentInstance.scrollAdjustments
+        const adjusts = allowCorrection && item.start < offset
         if (adjusts) {
           // Many a second as rows are measured: counted, and told with the scroll that follows.
           resizeCorrections += 1
           resizeCorrectedPx += Math.round(_delta)
-        }
-        if (adjusts && shiftsRows) {
           followRowsAbove(_delta)
-          return false
         }
-        return adjusts
+        return false
       }
     },
     { immediate: true },
