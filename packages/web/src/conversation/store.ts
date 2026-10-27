@@ -226,9 +226,16 @@ export const useConversations = defineStore('conversations', () => {
    * What the sidebar lists: every conversation not archived; a new
    * conversation whose draft holds nothing yet only while it is the open
    * one, so it shows the moment it opens and goes when it is left empty.
+   *
+   * The same array while it lists the same conversations: it reads each new
+   * conversation's draft, and what follows the list would otherwise draw every
+   * row again at each keystroke there.
    */
-  const listed = computed(() => items.value.filter((item) =>
-    !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
+  const listed = computed<Conversation[]>((previous) => {
+    const next = items.value.filter((item) =>
+      !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId))
+    return previous?.length === next.length && previous.every((item, index) => item === next[index]) ? previous : next
+  })
   /**
    * The writes on their way, by the conversation they change, or by
    * `conversation_order` for a move: each conversation's go one at a time in
