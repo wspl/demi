@@ -2616,6 +2616,7 @@ version = "0.1.65"
 dependencies = [
  "bytes",
  "demi-command-sdk",
+ "demi-live-view",
  "demi-live-view-protocol",
  "demi-shared-types",
  "garde",

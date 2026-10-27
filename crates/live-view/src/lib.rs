@@ -58,5 +58,7 @@ pub mod frames;
 pub mod input;
 mod probe;
 mod rate;
+#[cfg(feature = "testing")]
+pub mod testing;
 pub mod stream;
 pub mod writer;

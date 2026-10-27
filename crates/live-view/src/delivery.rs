@@ -297,6 +297,8 @@ impl Delivery {
             rtt_ms = self.rate.round_trip().map(|rtt| rtt.as_millis() as u64),
             window_bytes = self.rate.window(),
             in_flight = self.rate.in_flight(),
+            limited = self.rate.backoff().0,
+            delivered_share = self.rate.backoff().1.map(|share| (share * 100.0).round() / 100.0),
             "a live view's encoding changed"
         );
         self.applied = Some(encoding);
