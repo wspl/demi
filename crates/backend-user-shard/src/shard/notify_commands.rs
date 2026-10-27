@@ -4,13 +4,17 @@
 //! - `status` says whether one would reach the user.
 //!
 //! Neither needs a permission, and no command changes which events notify, which
-//! each browser chooses.
+//! each browser chooses. When either finds that no browser takes the agent's
+//! notifications, the conversation shows the user a card that turns them on,
+//! unless the user dismissed it there.
+
 
 use std::rc::{Rc, Weak};
 
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::output::{Fields, warning};
+use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::push::PushMessage;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -29,9 +33,12 @@ const SUMMARY: &str = "Notifications to the user: send one from this conversatio
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "A notification to the user's browsers and phone.";
 
-const SEND_SUMMARY: &str = "Send the user a notification: its title and body show in the system's notifications, and a click opens this conversation. At most 3 a minute and 30 an hour per conversation.";
+const SEND_SUMMARY: &str = "Send the user a notification: its title and body show in the system's notifications, and a click opens this conversation. At most 3 a minute and 30 an hour per conversation. When no browser takes it, the conversation shows the user a card that turns notifications on.";
 
-const STATUS_SUMMARY: &str = "Say whether a notification would reach the user: how many of the user's browsers have notifications on, and how many of them take the agent's notifications, with a warning on stderr when none does. The user chooses this in Settings › Notifications; no command changes it.";
+const STATUS_SUMMARY: &str = "Say whether a notification would reach the user: how many of the user's browsers have notifications on, and how many of them take the agent's notifications, with a warning on stderr when none does; the conversation then shows the user a card that turns them on. The user chooses this in Settings › Notifications; no command changes it.";
+
+/// What the warnings add: the user is asked already.
+const CARD: &str = "the conversation shows the user a card that turns them on, unless the user dismissed it here";
 
 /// The input of `send`.
 #[derive(Deserialize, JsonSchema)]
@@ -107,8 +114,9 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     let recipients = shard.recipients(&message, &in_use).await.map_err(failed)?;
     match (recipients.now.len(), recipients.shown) {
         (0, 0) => {
-            let what = "no browser of the user takes the agent's notifications now; `demi notify status` says why";
-            port.stderr(warning(&call.invocation.path.join(" "), what)).await?;
+            ask_to_turn_on(&shard, &conversation).await?;
+            let what = format!("no browser of the user takes the agent's notifications now; {CARD}");
+            port.stderr(warning(&call.invocation.path.join(" "), &what)).await?;
             return Ok(0);
         }
         // The user sees the conversation, on every browser that would
@@ -125,6 +133,7 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
 }
 
 async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let conversation = conversation_of(&call.invocation)?;
     let subscriptions = shard
         .services()
         .push
@@ -142,12 +151,13 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
     };
     let command = call.invocation.path.join(" ");
     let advice = match (status.browsers, status.agent_notifies) {
-        (0, _) => Some("notifications are off in every browser of the user; the user turns them on in Settings › Notifications"),
-        (_, 0) => Some("no browser of the user takes the agent's notifications; the user turns on The agent notifies in Settings › Notifications"),
+        (0, _) => Some("notifications are off in every browser of the user"),
+        (_, 0) => Some("no browser of the user takes the agent's notifications"),
         _ => None,
     };
     if let Some(advice) = advice {
-        port.stderr(warning(&command, advice)).await?;
+        ask_to_turn_on(&shard, &conversation).await?;
+        port.stderr(warning(&command, &format!("{advice}; {CARD}"))).await?;
     }
     if call.invocation.json {
         let text = serde_json::to_string(&status).map_err(failed)?;
@@ -161,4 +171,19 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
         .field("Agent notifications", status.agent_notifies);
     port.stdout(fields.render()).await?;
     Ok(0)
+}
+
+/// Shows the card that asks the user to turn notifications on in
+/// `conversation`, unless it shows it or the user dismissed it there.
+async fn ask_to_turn_on(shard: &Shard, conversation: &ConversationId) -> Result<(), RpcError> {
+    if shard
+        .services()
+        .control
+        .raise_notifications_card(conversation.clone())
+        .await
+        .map_err(failed)?
+    {
+        shard.mark(demi_backend_page_sync::Part::Metadata(conversation.clone()));
+    }
+    Ok(())
 }

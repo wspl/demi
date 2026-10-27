@@ -561,6 +561,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             put(push::subscribe).delete(push::unsubscribe),
         )
         .route(
+            "/conversations/{id}/notifications-card/dismiss",
+            post(push::dismiss_card),
+        )
+        .route(
             "/conversations/{id}/schedules/{schedule}",
             patch(schedules::change).delete(schedules::delete),
         )

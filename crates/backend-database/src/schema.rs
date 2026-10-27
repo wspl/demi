@@ -663,12 +663,17 @@ DROP TABLE idle_compactions;
 ALTER TABLE idle_compactions_next RENAME TO idle_compactions;
 ";
 
-/// From 0.1.5565's control schema to the current one: a push subscription
-/// says whether it stays quiet while the user is on another device, which
-/// every one stored before does, as the switch is on until turned off.
+/// From 0.1.5565's control schema to the current one:
+///
+/// - A push subscription says whether it stays quiet while the user is on
+///   another device, which every one stored before does, as the switch is on
+///   until turned off.
+/// - A conversation keeps the status of its notifications card, none before.
 const CONTROL_FROM_0_1_5565: &str = "
 ALTER TABLE push_subscriptions ADD COLUMN quiet_while_elsewhere INTEGER NOT NULL DEFAULT 1
   CHECK (quiet_while_elsewhere IN (0, 1));
+ALTER TABLE conversations ADD COLUMN notifications_card TEXT
+  CHECK (notifications_card IN ('shown', 'dismissed'));
 ";
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
@@ -5197,6 +5202,10 @@ CREATE TABLE conversations (
   -- Whether its workflow is the worktree's file rather than the project's.
   workflow_worktree INTEGER NOT NULL DEFAULT 0
     CHECK (workflow_worktree IN (0, 1) AND (workflow_worktree = 0 OR workflow_kind = 'workflow')),
+  -- The card that asks the user to turn notifications on, once its agent
+  -- found that no browser takes them: shown, dismissed for good, or null
+  -- (`crates/backend-database/src/push.rs` § The notifications card).
+  notifications_card TEXT CHECK (notifications_card IN ('shown', 'dismissed')),
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)

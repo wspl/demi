@@ -9,6 +9,7 @@
   "failures": {
     "turnOnNotifications": "알림을 켤 수 없음",
     "turnOffNotifications": "알림을 끌 수 없음",
+    "dismissNotificationsCard": "알림 안내를 닫을 수 없음",
     "updateSettings": "설정을 업데이트할 수 없습니다",
     "changeContextLimit": "컨텍스트 길이를 변경할 수 없습니다",
     "updateTimeZoneLanguage": "시간대 및 언어를 업데이트할 수 없습니다",

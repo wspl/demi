@@ -9,6 +9,7 @@
   "failures": {
     "turnOnNotifications": "无法开启通知",
     "turnOffNotifications": "无法关闭通知",
+    "dismissNotificationsCard": "无法忽略通知提醒",
     "updateSettings": "无法更新设置",
     "changeContextLimit": "无法更改上下文上限",
     "updateTimeZoneLanguage": "无法更新时区和语言",

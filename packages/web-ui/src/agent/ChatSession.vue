@@ -82,6 +82,7 @@ import { provideBlockReader, type BlockReader } from './whole-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import { useHeldFor } from '../composables/useHeldFor'
 import RequestCard from '../permissions/RequestCard.vue'
+import NotificationsCard, { type NotificationsCardView } from '../permissions/NotificationsCard.vue'
 import type { CredentialAnswer, PermissionDecision, RequestView } from '../permissions/types'
 
 const props = withDefaults(defineProps<{
@@ -152,6 +153,12 @@ const props = withDefaults(defineProps<{
   permissionRequests?: readonly RequestView[]
   /** A decision on a request is on its way. */
   decidingPermission?: boolean
+  /**
+   * The card that asks the user to turn notifications on, which shows above
+   * the composer once no request waits; absent while the conversation does
+   * not show it.
+   */
+  notificationsCard?: NotificationsCardView | null
   /**
    * What the backend refused the last credential answer for, shown under the
    * card's form.
@@ -332,6 +339,8 @@ const emit = defineEmits<{
   switchVersion: [blockId: string, to: number]
   saveScroll: [id: string, state: PersistedScrollState | null]
   decidePermission: [id: string, decision: PermissionDecision, credential?: CredentialAnswer]
+  turnOnNotifications: []
+  dismissNotificationsCard: []
   /** The block `reveal` names is in view. */
   revealed: []
   /**
@@ -1020,12 +1029,21 @@ watch(
             :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
             @scroll-to-bottom="scrollToBottom"
           >
-            <template v-if="dockShown && permissionRequests?.length" #above>
+            <template v-if="dockShown && (permissionRequests?.length || notificationsCard)" #above>
               <RequestCard
+                v-if="permissionRequests?.length"
                 :requests="permissionRequests"
                 :deciding="decidingPermission"
                 :error="requestError"
                 @decide="(id, decision, credential) => emit('decidePermission', id, decision, credential)"
+              />
+              <NotificationsCard
+                v-else-if="notificationsCard"
+                :permission="notificationsCard.permission"
+                :home-screen-icon="notificationsCard.homeScreenIcon"
+                :turning="notificationsCard.turning"
+                @turn-on="emit('turnOnNotifications')"
+                @dismiss="emit('dismissNotificationsCard')"
               />
             </template>
             <template v-if="dockShown" #chips>
