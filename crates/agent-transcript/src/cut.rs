@@ -3,7 +3,7 @@
 //! blocks; the window compaction summarizes is [`crate::compaction`]'s.
 
 use demi_shared_types::{
-    Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank,
+    AgentMessageBlock, Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank,
 };
 
 use demi_agent_store::Kind;
@@ -289,12 +289,18 @@ pub fn turn_record(blocks: &[Block]) -> Option<&Block> {
 /// It is the last `response`, `error` or `abort` but an error that ended no
 /// turn and a stop a Resume continued.
 pub fn ended_turn(blocks: &[Block]) -> Option<&Block> {
-    blocks.iter().rev().find(|block| match block {
+    blocks.iter().rev().find(|block| ends_turn(block))
+}
+
+/// Whether `block` ends a turn: a response, an error inside one, or a stop
+/// no resume picked up.
+pub fn ends_turn(block: &Block) -> bool {
+    match block {
         Block::Response(_) => true,
         Block::Error(error) => !error.outside_turn,
         Block::Abort(abort) => !abort.is_resumed,
         _ => false,
-    })
+    }
 }
 
 /// The latest ended turn: the block that ended it, as [`ended_turn`] finds it,
@@ -325,6 +331,12 @@ pub fn ended_turn_answer(blocks: &[Block]) -> Option<(&Block, Option<&TextBlock>
     }
     // A text with no input of the turn before it belongs to none.
     Some((end, answer.filter(|_| turn.is_some())))
+}
+
+/// Whether another conversation of the user sent `message`
+/// (`demi conversation send`).
+pub(crate) fn from_another_conversation(message: &AgentMessageBlock) -> bool {
+    message.message.sender.as_ref().is_some_and(|sender| sender.conversation.is_some())
 }
 
 /// The turn the last block of a turn's input belongs to: the last turn.

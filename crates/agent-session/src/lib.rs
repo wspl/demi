@@ -1084,6 +1084,23 @@ impl AgentSession {
         })
     }
 
+    /// Takes the latest turn the user asked for that ended with an answer
+    /// or an error since the last take, as it ended; none when none did.
+    ///
+    /// The user asked for a turn that their own message or steer started or
+    /// joined, or that continues work they last asked for; not one a
+    /// schedule's message or another conversation's started, nor one that
+    /// continues it, until the user writes again. Each turn is judged as its
+    /// inputs and its end arrive, so a compaction or a retry since changes
+    /// nothing.
+    pub fn take_turn_end_asked_by_user(&self) -> Option<EndedTurn> {
+        self.shared.update(|core| core.transcript.take_asked_end()).map(|end| EndedTurn {
+            id: end.id,
+            outcome: if end.failed { TurnOutcome::Failed } else { TurnOutcome::Answered },
+            answer: end.answer,
+        })
+    }
+
     /// The record of the last turn when it failed: the `error` block that
     /// left it unfinished.
     pub fn failed_turn(&self) -> Option<ErrorBlock> {

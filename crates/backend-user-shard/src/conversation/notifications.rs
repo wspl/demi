@@ -2,8 +2,8 @@
 //!
 //! Three things notify:
 //!
-//! - a turn of the root that ends, with an answer or an error, once the
-//!   conversation no longer runs;
+//! - a turn of the root that the user asked for and that ends, with an
+//!   answer or an error, once the conversation no longer runs;
 //! - a request that asks the user;
 //! - what the agent sends with `demi notify send`.
 //!
@@ -12,6 +12,12 @@
 //! conversation, as the pages say on their synchronization channels. A page that
 //! closes or loses its connection therefore stops holding its conversation's
 //! notifications back. The accounts service's sender delivers it.
+//!
+//! A turn notifies only when the user asked for it: one a schedule's message
+//! or another conversation's started notifies nothing
+//! (`demi_agent_session::AgentSession::take_turn_end_asked_by_user`), and its
+//! agent tells what is worth telling with `demi notify send`. A schedule's
+//! run queued behind the user's turn never hides it (§ Telling turns apart).
 //!
 //! A turn the user stopped notifies nothing, since the user was there, and
 //! the end of a turn notifies no session one of whose pages is in front of
@@ -32,9 +38,11 @@
 //!
 //! A turn's end is told apart from the turns that ended before by the turn that
 //! had ended last when the tree started to work, which the shard keeps while it
-//! works. As the tree rests, the turn that ended last then is the one notified
-//! of, read from the session at once, so a turn that starts after it never
-//! stands in for it.
+//! works. The session keeps the latest end of a turn the user asked for, judged
+//! as the turn's inputs and end arrived, and the shard takes it at each rest:
+//! the one it took at the rest after work is the one notified of, so a turn
+//! that starts after it never stands in for it, and a compaction or a retry
+//! since changes nothing.
 //!
 //! - A turn that starts and ends between two status changes still notifies.
 //! - Work that ends no turn, such as a compaction or a retry the user stopped,
@@ -195,9 +203,9 @@ impl Shard {
     }
 
     /// Follows the conversation's status: as its tree starts to run, notes
-    /// the turn that had ended last; as it rests, notifies of the turn that
-    /// ended last then, if it is another. Called on each change of the
-    /// tree's status.
+    /// the turn that had ended last; as it rests, notifies of the latest
+    /// turn the user asked for that ended since, unless the user stopped
+    /// the last one. Called on each change of the tree's status.
     pub(crate) fn follow_turn_end(&self, conversation: &ConversationId) {
         if self.is_closing() {
             return;
@@ -215,15 +223,23 @@ impl Shard {
                 working.remove(conversation);
             }
             Some(tree) => {
+                let session = tree.root().session();
+                // Taken at every rest, whatever follows, so a turn is
+                // notified of at most once, and only at the rest after it.
+                let asked = session.take_turn_end_asked_by_user();
                 let Some(before) = working.remove(conversation) else {
                     return;
                 };
-                let Some(ended) = tree.root().session().ended_turn_result() else {
+                let Some(last) = session.ended_turn_result() else {
                     return;
                 };
-                if before.as_ref() == Some(&ended.id) || ended.outcome == TurnOutcome::Stopped {
+                // A turn the user stopped last says the user was there.
+                if before.as_ref() == Some(&last.id) || last.outcome == TurnOutcome::Stopped {
                     return;
                 }
+                let Some(ended) = asked else {
+                    return;
+                };
                 let this = self.this();
                 let conversation = conversation.clone();
                 self.tasks()
@@ -232,8 +248,8 @@ impl Shard {
         }
     }
 
-    /// Notifies of `ended`, a turn the conversation's root ended with an
-    /// answer or an error.
+    /// Notifies of `ended`, a turn the user asked for that the
+    /// conversation's root ended with an answer or an error.
     async fn notify_turn_end(&self, conversation: ConversationId, ended: EndedTurn) {
         let Some(title) = self.conversation_title(&conversation).await else {
             return;
