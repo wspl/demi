@@ -63,12 +63,6 @@ const HingedDevice = defineAsyncComponent(() => import('./HingedDevice.vue'))
 const hinged = ref<{ posture(to: number): void } | null>(null)
 const hinge = computed(() => device.fold?.kind === 'hinge' && drawsWebgl() ? device.fold : null)
 
-/** Moves the device's hinge, as `demi mobile fold` does: the angle it got to, or none when it refused. */
-async function moveHinge(degrees: number): Promise<number | null> {
-  const folded = await props.session.fold(props.data.device, String(Math.round(degrees)))
-  return folded?.degrees ?? null
-}
-
 /** Where the page reads the device's 3D body: the file on the Host, through its files. */
 const bodyUrl = computed(() => {
   const body = hinge.value?.body
@@ -164,7 +158,6 @@ const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => 
       :session="device"
       :fold="hinge"
       :shown="shown"
-      :hinge="moveHinge"
       :body-url="bodyUrl"
       :downloads="session.api.downloading()"
     />

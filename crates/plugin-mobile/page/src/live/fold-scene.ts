@@ -1,7 +1,9 @@
 /**
  * A hinged foldable in 3D, for the device view of iPhone Duo: the device's
- * body, the live picture on the display the guest lit, the hinge at an
- * angle and the view turned about the device's upright axis.
+ * body, each display's live picture on its own face, as Xcode's Device Hub
+ * shows them, the hinge at an angle and the view turned about the device's
+ * upright axis. A display wears its own dark finish until its first picture,
+ * and the one the guest lit takes the pointer.
  *
  * The body is Apple's own, the USDZ Xcode installs (`./apple-body.ts`), or,
  * where there is none or it does not fit, a stand-in of two slabs. Either
@@ -119,14 +121,22 @@ export function standIn(outer: Size, inner: Size): Body {
   }
 }
 
+/** A display's live picture on its face. */
+interface Face {
+  readonly picture: HTMLCanvasElement
+  texture: THREE.CanvasTexture
+  /** The picture's size the texture holds: WebGL keeps a texture's size, so a new size takes a new texture. */
+  size: Size
+  readonly material: THREE.MeshBasicMaterial
+  /** Whether it wears the picture, which it does from the picture's first paint. */
+  worn: boolean
+}
+
 export class FoldScene {
   private readonly renderer: THREE.WebGLRenderer
   private readonly scene = new THREE.Scene()
   private readonly camera = new THREE.PerspectiveCamera(22, 1, 1, 100000)
-  private texture: THREE.CanvasTexture
-  /** The picture's size the texture holds: WebGL keeps a texture's size, so a new size takes a new texture. */
-  private textureSize: Size = { width: 0, height: 0 }
-  private readonly lit: THREE.MeshBasicMaterial
+  private readonly faces: Record<LitDisplay, Face>
   private readonly dark = new THREE.MeshBasicMaterial({ color: 0x050505 })
   /** Each display mesh's own material, which it wears while dark. */
   private readonly own = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>()
@@ -143,7 +153,7 @@ export class FoldScene {
 
   constructor(
     readonly canvas: HTMLCanvasElement,
-    private readonly picture: HTMLCanvasElement,
+    pictures: Record<LitDisplay, HTMLCanvasElement>,
     outer: Size,
     inner: Size,
   ) {
@@ -153,8 +163,12 @@ export class FoldScene {
     // A room to reflect, so the body's metal does not show black.
     const environment = new THREE.PMREMGenerator(this.renderer).fromScene(new RoomEnvironment(), 0.04)
     this.scene.environment = environment.texture
-    this.texture = this.pictureTexture()
-    this.lit = new THREE.MeshBasicMaterial({ map: this.texture, toneMapped: false })
+    const face = (picture: HTMLCanvasElement): Face => {
+      const texture = this.pictureTexture(picture)
+      const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
+      return { picture, texture, size: { width: picture.width, height: picture.height }, material, worn: false }
+    }
+    this.faces = { outer: face(pictures.outer), inner: face(pictures.inner) }
     this.body = standIn(outer, inner)
     this.wear(this.body)
   }
@@ -176,7 +190,17 @@ export class FoldScene {
     }
     this.scene.add(body.object)
     body.fold(this.degrees)
-    this.light(this.shown)
+    for (const display of ['outer', 'inner'] as const) {
+      this.wearFace(display)
+    }
+  }
+
+  /** `display`'s meshes wear its picture once it has one, else their own dark finish. */
+  private wearFace(display: LitDisplay): void {
+    const face = this.faces[display]
+    for (const mesh of this.body.displays[display]) {
+      mesh.material = face.worn ? face.material : this.own.get(mesh) ?? this.dark
+    }
   }
 
   setDegrees(degrees: number): void {
@@ -191,7 +215,9 @@ export class FoldScene {
   /** Holds the device `quarters` quarter turns clockwise from upright, as its screen reports. */
   setTurn(quarters: number): void {
     this.quarters = ((quarters % 4) + 4) % 4
-    this.turnPicture(this.texture)
+    for (const face of Object.values(this.faces)) {
+      this.turnPicture(face.texture)
+    }
   }
 
   /** The picture comes upright for the viewer: on its display it turns back as far as the device turned. */
@@ -200,12 +226,17 @@ export class FoldScene {
     texture.rotation = (this.quarters * Math.PI) / 2
   }
 
-  /** The display the guest lit, which shows the picture; the other wears its own dark finish. */
+  /** Whether `display`'s picture painted, which its face wears from then on. */
+  painted(display: LitDisplay, painted: boolean): void {
+    if (this.faces[display].worn !== painted) {
+      this.faces[display].worn = painted
+      this.wearFace(display)
+    }
+  }
+
+  /** The display the guest lit, which takes the pointer. */
   light(display: LitDisplay): void {
     this.shown = display
-    for (const [mesh, own] of this.own) {
-      mesh.material = this.body.displays[display].includes(mesh) ? this.lit : own
-    }
   }
 
   resize(width: number, height: number, ratio: number): void {
@@ -227,8 +258,8 @@ export class FoldScene {
     return Math.min(turned, 180 - turned) / 2
   }
 
-  private pictureTexture(): THREE.CanvasTexture {
-    const texture = new THREE.CanvasTexture(this.picture)
+  private pictureTexture(picture: HTMLCanvasElement): THREE.CanvasTexture {
+    const texture = new THREE.CanvasTexture(picture)
     texture.colorSpace = THREE.SRGBColorSpace
     // The picture comes about the size the display shows it, and changes
     // every frame: mipmaps, made again for each, would show it from a
@@ -236,18 +267,22 @@ export class FoldScene {
     texture.generateMipmaps = false
     texture.minFilter = THREE.LinearFilter
     this.turnPicture(texture)
-    this.textureSize = { width: this.picture.width, height: this.picture.height }
     return texture
   }
 
-  /** Draws the device with the picture's latest paint. */
+  /** Draws the device with each picture's latest paint. */
   render(): void {
-    if (this.picture.width !== this.textureSize.width || this.picture.height !== this.textureSize.height) {
-      this.texture.dispose()
-      this.texture = this.pictureTexture()
-      this.lit.map = this.texture
+    for (const display of ['outer', 'inner'] as const) {
+      const face = this.faces[display]
+      const { width, height } = face.picture
+      if (width !== face.size.width || height !== face.size.height) {
+        face.texture.dispose()
+        face.texture = this.pictureTexture(face.picture)
+        face.material.map = face.texture
+        face.size = { width, height }
+      }
+      face.texture.needsUpdate = face.worn
     }
-    this.texture.needsUpdate = true
     // The camera keeps one distance, at which the open device fits the view however it turns about its
     // upright axis, so the device keeps its size, and stays whole, in every posture and turn: across,
     // the circle its width sweeps; upright, its height at its nearest edge.
@@ -297,16 +332,19 @@ export class FoldScene {
       return null
     }
     // The display's point, turned as the picture is onto it.
-    this.texture.updateMatrix()
-    const at = hit.uv.clone().applyMatrix3(this.texture.matrix)
+    const texture = this.faces[this.shown].texture
+    texture.updateMatrix()
+    const at = hit.uv.clone().applyMatrix3(texture.matrix)
     return { x: at.x, y: 1 - at.y }
   }
 
   dispose(): void {
     this.body.dispose()
     this.renderer.dispose()
-    this.texture.dispose()
-    this.lit.dispose()
+    for (const face of Object.values(this.faces)) {
+      face.texture.dispose()
+      face.material.dispose()
+    }
     this.dark.dispose()
   }
 }

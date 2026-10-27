@@ -45,12 +45,17 @@ pub struct LiveInput {}
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveViewerMessage {
     /// First, and once: the viewer's platform, and the device the stream
-    /// carries, its only one.
+    /// carries, its only one: the pictures of its lit display, or of a
+    /// hinged foldable's `display`, lit or not, which its 3D view shows on
+    /// that display's face.
     Hello {
         #[garde(skip)]
         platform: Platform,
         #[garde(skip)]
         device: DeviceId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        display: Option<FoldDisplay>,
     },
     /// Whether the stream is looked at: whether a view of it shows in a
     /// visible page. A stream starts not looked at; while it is not, the
@@ -88,6 +93,17 @@ pub enum LiveViewerMessage {
         width: u32,
         #[garde(range(min = 1, max = 16384))]
         height: u32,
+    },
+    /// The view shows none of the stream's pictures, as a hinged foldable's
+    /// 3D view shows its displays' own: the stream's capture ends until the
+    /// view asks for a frame or says a size again.
+    Unshown {},
+    /// The viewer turns a hinged foldable's hinge towards `degrees`, from
+    /// where it is, as its postures and slider do; nothing answers, and the
+    /// device's state follows the display it lights.
+    Hinge {
+        #[garde(range(max = 180))]
+        degrees: u16,
     },
 }
 

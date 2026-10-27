@@ -386,6 +386,20 @@ pub trait Device: Send + Sync + 'static {
         let _ = degrees;
         Box::pin(async { Err(DriverError::Failed("the device does not fold".into())) })
     }
+    /// Turns a hinged foldable's hinge towards `degrees` at once, from where
+    /// it is, as a view's slider drags it; returns before it gets there,
+    /// and [`Self::screen`] follows the display the device then lights.
+    fn hinge(&self, degrees: u16) -> BoxFuture<'_, Result<()>> {
+        let _ = degrees;
+        Box::pin(async { Err(DriverError::Failed("the device does not fold on a hinge".into())) })
+    }
+    /// The screen of a hinged foldable's `display` as it shows now, lit or
+    /// not, as [`Self::screen`] is the lit display's; none for a device that
+    /// does not fold on a hinge.
+    fn display_screen(&self, display: FoldDisplay) -> Option<watch::Receiver<Screen>> {
+        let _ = display;
+        None
+    }
     fn appearance(&self) -> BoxFuture<'_, Result<Appearance>>;
     fn set_appearance(&self, appearance: Appearance) -> BoxFuture<'_, Result<()>>;
     /// Hands `sink` every picture the device draws from now on that differs
@@ -411,12 +425,14 @@ pub trait Device: Send + Sync + 'static {
     fn frame_changes(&self) -> watch::Receiver<()> {
         watch::channel(()).1
     }
-    /// Starts encoding the screen at `size` pixels.
+    /// Starts encoding the lit display at `size` pixels, or a hinged
+    /// foldable's `display`, lit or not.
     fn capture(
         &self,
         size: (u32, u32),
         fps: u32,
         bitrate: u32,
+        display: Option<FoldDisplay>,
     ) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>>;
     /// Installs the build `file`, an .apk or an .app, replacing the app's
     /// installed version and keeping its data.

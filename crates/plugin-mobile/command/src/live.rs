@@ -20,9 +20,14 @@
 //! A device is a source of the shared live view:
 //!
 //! - Viewers of one device share its capture.
-//! - Its pictures are the screen turned upright.
+//! - Its pictures are the screen turned upright: its lit display's, or, on a
+//!   stream whose hello names one, a hinged foldable's outer or inner
+//!   display's, lit or not, as its 3D view shows each on its own face. Each
+//!   display is a source of its own, `m1.outer` and `m1.inner` beside the lit
+//!   display's `m1`, with its own capture.
 //! - The viewer's input reaches it as touches and keys in the order it arrives,
-//!   beside the agent's, whose activity the view shows.
+//!   beside the agent's, whose activity the view shows. A move of the hinge
+//!   goes at once, outside that order, so it turns a fold under way.
 
 use std::{
     collections::HashMap,
@@ -41,7 +46,7 @@ use tokio_util::{
 
 use demi_command_package_mobile_protocol::{
     live::{INPUT_FAILED, LiveCorners, LiveDevice, LiveFold, LivePoints, NO_FOCUSED_FIELD, LiveModuleMessage, LiveViewerMessage},
-    mobile::Orientation,
+    mobile::{FoldDisplay, Orientation},
 };
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{InvocationContext, ResidentError};
@@ -75,11 +80,13 @@ pub struct Layout {
     pub points: Points,
 }
 
-/// The captures of the Host's looked-at devices, one per device, shared by
-/// its viewers.
+/// The captures of the Host's looked-at devices, one per device and display
+/// a view shows, shared by its viewers: a device's lit display, and a hinged
+/// foldable's outer and inner displays that its 3D view shows on their
+/// faces.
 #[derive(Default)]
 pub struct Hub {
-    streams: Mutex<HashMap<String, (Arc<StreamHandle<Layout>>, Fit)>>,
+    streams: Mutex<HashMap<(String, Option<FoldDisplay>), (Arc<StreamHandle<Layout>>, Fit)>>,
     viewers: AtomicU64,
     tasks: TaskTracker,
 }
@@ -117,16 +124,22 @@ fn show(fit: &Fit, viewer: u64, share: f64) {
 }
 
 impl Hub {
-    /// Viewer `viewer`'s view of `open`'s pictures.
-    fn join(&self, open: &Arc<OpenDevice>, viewer: u64) -> (Arc<StreamHandle<Layout>>, Fit, StreamView<Layout>) {
+    /// Viewer `viewer`'s view of the pictures `shows` of `open`.
+    fn join(
+        &self,
+        open: &Arc<OpenDevice>,
+        shows: &Shows,
+        viewer: u64,
+    ) -> (Arc<StreamHandle<Layout>>, Fit, StreamView<Layout>) {
         let mut streams = self.streams.lock().expect("the streams are intact");
         let (handle, fit) = streams
-            .entry(open.native_id.clone())
+            .entry((open.native_id.clone(), shows.display))
             .or_insert_with(|| {
                 let fit = Arc::new(watch::Sender::new(HashMap::new()));
                 let handle = StreamHandle::start(
                     DeviceSource {
                         open: open.clone(),
+                        shows: shows.clone(),
                         fit: fit.clone(),
                     },
                     &self.tasks,
@@ -142,11 +155,11 @@ impl Hub {
 
     /// Viewer `viewer` stops watching `open`: a device nobody watches is no
     /// longer captured.
-    fn leave(&self, open: &OpenDevice, handle: &StreamHandle<Layout>, viewer: u64) {
+    fn leave(&self, open: &OpenDevice, shows: &Shows, handle: &StreamHandle<Layout>, viewer: u64) {
         handle.leave(viewer);
         let mut streams = self.streams.lock().expect("the streams are intact");
         if handle.is_empty() {
-            streams.remove(&open.native_id);
+            streams.remove(&(open.native_id.clone(), shows.display));
         }
     }
 
@@ -157,9 +170,40 @@ impl Hub {
     }
 }
 
-/// A device as a source of pictures.
+/// What of a device a view's stream shows: its lit display, or a hinged
+/// foldable's `display`, with that display's screen.
+#[derive(Clone)]
+struct Shows {
+    display: Option<FoldDisplay>,
+    screen: watch::Receiver<Screen>,
+}
+
+impl Shows {
+    /// The pictures of `open` a hello asked for; none of a display a device
+    /// that does not fold on a hinge lacks.
+    fn of(open: &OpenDevice, display: Option<FoldDisplay>) -> Option<Self> {
+        let screen = match display {
+            Some(display) => open.device.display_screen(display)?,
+            None => open.device.screen(),
+        };
+        Some(Self { display, screen })
+    }
+
+    /// The source its pictures name: the device's handle, and the display's
+    /// name after it, as `m1.inner`.
+    fn source(&self, open: &OpenDevice) -> SourceId {
+        let name = match self.display {
+            Some(display) => format!("{}.{display}", open.handle),
+            None => open.handle.to_string(),
+        };
+        SourceId::try_from(name.as_str()).expect("a handle and a display fit a picture's source")
+    }
+}
+
+/// A device's display as a source of pictures.
 struct DeviceSource {
     open: Arc<OpenDevice>,
+    shows: Shows,
     fit: Fit,
 }
 
@@ -198,7 +242,7 @@ impl Source for DeviceSource {
     type Layout = Layout;
 
     fn name(&self) -> String {
-        format!("{} ({})", self.open.handle, self.open.name)
+        format!("{} ({})", self.shows.source(&self.open).as_str(), self.open.name)
     }
 
     fn ended(&self) -> CancellationToken {
@@ -206,7 +250,7 @@ impl Source for DeviceSource {
     }
 
     fn layout(&mut self, scale: f64) -> (Layout, (u32, u32)) {
-        let screen = *self.open.device.screen().borrow();
+        let screen = *self.shows.screen.borrow();
         let (width, height) = screen.pixels;
         // Scaled to the largest panel's size before it is encoded.
         let share = self.fit.borrow().values().copied().reduce(f64::max).unwrap_or(1.0);
@@ -227,7 +271,7 @@ impl Source for DeviceSource {
     }
 
     fn changed(&mut self, _stopped: bool) -> impl std::future::Future<Output = Change> + Send {
-        let mut screen = self.open.device.screen();
+        let mut screen = self.shows.screen.clone();
         let mut fit = self.fit.subscribe();
         let closed = self.open.closed.clone();
         async move {
@@ -253,11 +297,12 @@ impl Source for DeviceSource {
         stop: &CancellationToken,
     ) -> impl std::future::Future<Output = Result<Option<DeviceCaptureOf>, StartError>> + Send {
         let device = self.open.device.clone();
+        let display = self.shows.display;
         let stop = stop.clone();
         async move {
             tokio::select! {
                 _ = stop.cancelled() => Ok(None),
-                started = device.capture(size, fps, bitrate) => match started {
+                started = device.capture(size, fps, bitrate, display) => match started {
                     Ok(capture) => Ok(Some(DeviceCaptureOf(capture))),
                     Err(error) => Err(StartError::Failed(error.to_string())),
                 },
@@ -463,9 +508,11 @@ fn finger(held: &mut Held, message: &ViewerInput) -> Option<(TouchPhase, Points)
 /// The device while its stream is looked at, and what the view hears of it.
 struct Watched {
     source: SourceId,
-    handle: Arc<StreamHandle<Layout>>,
-    fit: Fit,
-    stream: StreamView<Layout>,
+    /// The screen of the display its pictures show.
+    shows: watch::Receiver<Screen>,
+    /// The viewer's place in the device's capture; none while its views show
+    /// none of the pictures (`LiveViewerMessage::Unshown`).
+    joined: Option<Joined>,
     activity: watch::Receiver<demi_live_view_protocol::LiveActivity>,
     /// The device's screen, whose turns turn its frame.
     screen: watch::Receiver<crate::driver::Screen>,
@@ -474,6 +521,52 @@ struct Watched {
     /// Announces a frame the device came to know, until the device says
     /// it announces none.
     reframes: Option<watch::Receiver<()>>,
+}
+
+/// A viewer's place in a device's capture, which it receives the pictures
+/// of.
+struct Joined {
+    handle: Arc<StreamHandle<Layout>>,
+    fit: Fit,
+    stream: StreamView<Layout>,
+}
+
+impl Joined {
+    /// Viewer `viewer` joins the capture of what `shows` shows, fitted to the
+    /// size its view shows the screen at when it said one, else to the area
+    /// it lays the device out in.
+    fn new(
+        hub: &Hub,
+        open: &Arc<OpenDevice>,
+        shows: &Shows,
+        viewer: u64,
+        delivery: &mut Delivery,
+        shown: Option<(u32, u32)>,
+        area: Option<FrameArea>,
+    ) -> Self {
+        delivery.rewatch();
+        let (handle, fit, stream) = hub.join(open, shows, viewer);
+        let pixels = shows.screen.borrow().pixels;
+        match (shown, area) {
+            (Some(shown), _) => show(&fit, viewer, self::fit(shown, pixels)),
+            (None, Some(area)) => show(&fit, viewer, bound(area, pixels)),
+            (None, None) => {}
+        }
+        if let Some((bitrate, fps, scale)) = delivery.applied() {
+            stream.encoding(bitrate, fps, scale);
+        }
+        Self { handle, fit, stream }
+    }
+
+    /// Viewer `viewer` leaves the capture: a device nobody watches is no
+    /// longer captured.
+    fn leave(self, hub: &Hub, open: &OpenDevice, shows: &Shows, viewer: u64, delivery: &mut Delivery) {
+        self.fit.send_modify(|shares| {
+            shares.remove(&viewer);
+        });
+        hub.leave(open, shows, &self.handle, viewer);
+        delivery.rewatch();
+    }
 }
 
 /// A frame drawn for the page, in a task of its own, so neither the page's
@@ -589,10 +682,10 @@ async fn view(
         ..
     } = context;
     let (mut inbound, _reading) = read(Reader::new(page));
-    let device = tokio::select! {
+    let (device, display) = tokio::select! {
         _ = cancellation.cancelled() => return Err(None),
         first = inbound.recv() => match first.transpose().map_err(Some)? {
-            Some(FromPage::Message(LiveViewerMessage::Hello { device, .. })) => device,
+            Some(FromPage::Message(LiveViewerMessage::Hello { device, display, .. })) => (device, display),
             Some(_) => return Err(Some("a view starts with hello".into())),
             None => return Ok(()),
         },
@@ -608,6 +701,9 @@ async fn view(
         // Not taken back yet: the view ends and opens again.
         Err(error) => return Err(Some(error.to_string())),
     };
+    let Some(shows) = Shows::of(&open, display) else {
+        return Err(Some(format!("{} does not fold on a hinge", open.handle)));
+    };
     let tasks = TaskTracker::new();
     let ended = CancellationToken::new();
     let _ended = ended.clone().drop_guard();
@@ -618,6 +714,22 @@ async fn view(
             notices: writer.until(&ended),
         },
     );
+    // The view's moves of the hinge, the latest only, one at a time and in
+    // their order: a move that came while another went out replaces any that
+    // waited, so the hinge ends at the last angle asked.
+    let (hinge, mut hinges) = watch::channel::<Option<u16>>(None);
+    {
+        let open = open.clone();
+        let notices = writer.until(&ended);
+        tasks.spawn(async move {
+            while hinges.changed().await.is_ok() {
+                let Some(degrees) = *hinges.borrow_and_update() else { continue };
+                if let Err(error) = open.device.hinge(degrees).await {
+                    notices.notice(INPUT_FAILED, &error.to_string()).await;
+                }
+            }
+        });
+    }
     let mut changes = open.changes();
     let mut watched: Option<Watched> = None;
     let mut delivery = Delivery::new();
@@ -629,6 +741,9 @@ async fn view(
     // The size the view shows the screen at, which a capture that starts
     // when the stream is looked at again fits at once.
     let mut shown: Option<(u32, u32)> = None;
+    // Whether the views show none of the pictures, until one asks for a
+    // frame or says a size again.
+    let mut unshown = false;
     let result = loop {
         let due = delivery.due();
         // The device's pictures and the agent's activity on it, while the
@@ -636,7 +751,12 @@ async fn view(
         let from_device = async {
             match watched.as_mut() {
                 Some(watched) => tokio::select! {
-                    event = watched.stream.events.recv() => FromDevice::Event(event),
+                    event = async {
+                        match watched.joined.as_mut() {
+                            Some(joined) => joined.stream.events.recv().await,
+                            None => std::future::pending().await,
+                        }
+                    } => FromDevice::Event(event),
                     changed = watched.activity.changed() => FromDevice::Activity(changed.is_ok()),
                     changed = watched.screen.changed() => FromDevice::Screen(changed.is_ok()),
                     changed = watched.awake.changed() => FromDevice::Power(changed.is_ok()),
@@ -671,18 +791,18 @@ async fn view(
                 Err(error) => break Err(Some(error)),
                 Ok(None) => break Ok(()),
                 Ok(Some(FromPage::Acks(acks))) => {
-                    delivery.acknowledged(&acks, watched.as_ref().map(|watched| &watched.stream));
+                    delivery.acknowledged(&acks, joined_stream(&watched));
                 }
                 Ok(Some(FromPage::Message(message))) => match message {
                     LiveViewerMessage::Hello { .. } => break Err(Some("a view says hello once".into())),
                     LiveViewerMessage::Looked { looked } => {
                         if looked && watched.is_none() {
-                            watched = Some(look(hub, &open, viewer, &input, &mut delivery, shown, area, writer).await);
+                            watched = Some(look(hub, &open, &shows, viewer, &input, &mut delivery, shown, area, unshown, writer).await);
                             state(&open, writer).await;
                             // A frame the view asked for while nobody looked is drawn now.
                             drawing = draw(&open, area, framed);
                         } else if !looked && watched.is_some() {
-                            unlook(hub, &open, &mut watched, viewer, &input, &mut delivery, writer).await;
+                            unlook(hub, &open, &shows, &mut watched, viewer, &input, &mut delivery, writer).await;
                             drawing = None;
                         }
                     }
@@ -692,7 +812,7 @@ async fn view(
                         }
                     }
                     LiveViewerMessage::Keyframe(LiveKeyframe { generation }) => {
-                        delivery.key_frame(generation, watched.as_ref().map(|watched| &watched.stream));
+                        delivery.key_frame(generation, joined_stream(&watched));
                     }
                     LiveViewerMessage::Release(LiveRelease {}) => input.control(Item::Release).await,
                     LiveViewerMessage::Frame { width, height, scale } => {
@@ -701,15 +821,35 @@ async fn view(
                         // The page asks for a frame it lacks, such as one it
                         // could not show: it is drawn whatever was sent before.
                         framed = None;
-                        if let Some(watched) = watched.as_ref() {
+                        unshown = false;
+                        if let Some(watched) = watched.as_mut() {
                             // A request the page made since replaces the frame under way.
                             drawing = draw(&open, area, framed);
-                            // The screen shows no larger than the area, which
-                            // the capture fits until the view says its size.
-                            if shown.is_none() {
-                                show(&watched.fit, viewer, bound(laid, open.device.screen().borrow().pixels));
+                            match watched.joined.as_ref() {
+                                // The screen shows no larger than the area, which
+                                // the capture fits until the view says its size.
+                                Some(joined) if shown.is_none() => {
+                                    show(&joined.fit, viewer, bound(laid, shows.screen.borrow().pixels));
+                                }
+                                Some(_) => {}
+                                None => {
+                                    watched.joined = Some(Joined::new(hub, &open, &shows, viewer, &mut delivery, shown, area));
+                                }
                             }
                         }
+                    }
+                    LiveViewerMessage::Unshown {} => {
+                        shown = None;
+                        area = None;
+                        unshown = true;
+                        if let Some(joined) = watched.as_mut().and_then(|watched| watched.joined.take()) {
+                            joined.leave(hub, &open, &shows, viewer, &mut delivery);
+                        }
+                    }
+                    // Not in the device's input queue, where a fold under way
+                    // would hold it: the hinge turns from where it is.
+                    LiveViewerMessage::Hinge { degrees } => {
+                        hinge.send_replace(Some(degrees));
                     }
                     LiveViewerMessage::Wake {} => {
                         if watched.is_some() {
@@ -727,9 +867,17 @@ async fn view(
                     }
                     LiveViewerMessage::Shown { width, height } => {
                         shown = Some((width, height));
-                        if let Some(watched) = watched.as_ref() {
-                            let pixels = open.device.screen().borrow().pixels;
-                            show(&watched.fit, viewer, fit((width, height), pixels));
+                        unshown = false;
+                        if let Some(watched) = watched.as_mut() {
+                            match watched.joined.as_ref() {
+                                Some(joined) => {
+                                    let pixels = shows.screen.borrow().pixels;
+                                    show(&joined.fit, viewer, fit((width, height), pixels));
+                                }
+                                None => {
+                                    watched.joined = Some(Joined::new(hub, &open, &shows, viewer, &mut delivery, shown, area));
+                                }
+                            }
                         }
                     }
                 },
@@ -737,13 +885,13 @@ async fn view(
             from_device = from_device => match from_device {
                 FromDevice::Event(Some(event)) => {
                     if let Some(current) = watched.as_ref() {
-                        picture(&open, current, event, &mut delivery, writer).await;
+                        picture(current, event, &mut delivery, writer).await;
                     }
                 }
                 // The device's capture ended with the device, whose close
                 // ends the view, or with the resident.
                 FromDevice::Event(None) => {
-                    unlook(hub, &open, &mut watched, viewer, &input, &mut delivery, writer).await;
+                    unlook(hub, &open, &shows, &mut watched, viewer, &input, &mut delivery, writer).await;
                 }
                 FromDevice::Activity(true) => {
                     if let Some(watched) = &watched {
@@ -803,13 +951,23 @@ async fn view(
             }
         }
     };
-    unlook(hub, &open, &mut watched, viewer, &input, &mut delivery, writer).await;
+    unlook(hub, &open, &shows, &mut watched, viewer, &input, &mut delivery, writer).await;
     drop(input);
     let _released = tokio::time::timeout(FLUSH, input_task).await;
     ended.cancel();
     tasks.close();
     tasks.wait().await;
     result
+}
+
+/// The capture `watched`'s viewer has joined, if it looks at the stream and
+/// its views show the pictures.
+fn joined_stream(watched: &Option<Watched>) -> Option<&StreamView<Layout>> {
+    watched.as_ref().and_then(joined_stream_of)
+}
+
+fn joined_stream_of(watched: &Watched) -> Option<&StreamView<Layout>> {
+    watched.joined.as_ref().map(|joined| &joined.stream)
 }
 
 /// What the device said while its stream is looked at.
@@ -876,26 +1034,19 @@ fn live_fold(fold: Folded, body: Option<String>) -> LiveFold {
 async fn look(
     hub: &Hub,
     open: &Arc<OpenDevice>,
+    shows: &Shows,
     viewer: u64,
     input: &Input<DeviceInput>,
     delivery: &mut Delivery,
     shown: Option<(u32, u32)>,
     area: Option<FrameArea>,
+    unshown: bool,
     writer: &Writer<LiveModuleMessage>,
 ) -> Watched {
     writer.silent(false);
     input.control(Item::Watch(Some(open.clone()))).await;
     delivery.rewatch();
-    let (handle, fit, stream) = hub.join(open, viewer);
-    let pixels = open.device.screen().borrow().pixels;
-    match (shown, area) {
-        (Some(shown), _) => show(&fit, viewer, self::fit(shown, pixels)),
-        (None, Some(area)) => show(&fit, viewer, bound(area, pixels)),
-        (None, None) => {}
-    }
-    if let Some((bitrate, fps, scale)) = delivery.applied() {
-        stream.encoding(bitrate, fps, scale);
-    }
+    let joined = (!unshown).then(|| Joined::new(hub, open, shows, viewer, delivery, shown, area));
     writer
         .control(&LiveModuleMessage::Inputs {
             inputs: LiveInputs {
@@ -909,10 +1060,9 @@ async fn look(
     let mut awake = open.device.awake();
     awake.borrow_and_update();
     let watched = Watched {
-        source: SourceId::try_from(open.handle.as_str()).expect("a handle fits a picture's source"),
-        handle,
-        fit,
-        stream,
+        source: shows.source(open),
+        shows: shows.screen.clone(),
+        joined,
         activity,
         screen: open.device.screen(),
         awake,
@@ -928,6 +1078,7 @@ async fn look(
 async fn unlook(
     hub: &Hub,
     open: &OpenDevice,
+    shows: &Shows,
     watched: &mut Option<Watched>,
     viewer: u64,
     input: &Input<DeviceInput>,
@@ -935,10 +1086,9 @@ async fn unlook(
     writer: &Writer<LiveModuleMessage>,
 ) {
     let Some(previous) = watched.take() else { return };
-    previous.fit.send_modify(|shares| {
-        shares.remove(&viewer);
-    });
-    hub.leave(open, &previous.handle, viewer);
+    if let Some(joined) = previous.joined {
+        joined.leave(hub, open, shows, viewer, delivery);
+    }
     input.control(Item::Watch(None)).await;
     delivery.rewatch();
     writer.silent(true);
@@ -993,7 +1143,6 @@ fn draw(
 }
 
 async fn picture(
-    open: &OpenDevice,
     watched: &Watched,
     event: Event<Layout>,
     delivery: &mut Delivery,
@@ -1008,10 +1157,10 @@ async fn picture(
             scale,
             sequence,
         } => {
-            let generation = delivery.restart(epoch, width, height, scale, sequence, Some(&watched.stream));
+            let generation = delivery.restart(epoch, width, height, scale, sequence, joined_stream_of(watched));
             // The share of the screen's pixels the pictures have, the
             // panel's fit and the path's scale together.
-            let pixels = open.device.screen().borrow().pixels;
+            let pixels = watched.shows.borrow().pixels;
             let share = fit((width, height), pixels);
             writer
                 .control(&LiveModuleMessage::Stream {
@@ -1025,7 +1174,7 @@ async fn picture(
                 })
                 .await;
         }
-        Event::Frame(frame) => delivery.frame(&watched.source, &frame, Some(&watched.stream)),
+        Event::Frame(frame) => delivery.frame(&watched.source, &frame, joined_stream_of(watched)),
         Event::Unavailable(reason) => {
             writer
                 .notice(demi_command_package_mobile_protocol::live::CAPTURE_UNAVAILABLE, &reason)

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { RegionStatus, type HostDownload } from '@demicodes/plugin-sdk'
-import type { DeviceSession } from './session'
-import { deviceStatus } from './status'
+import { deviceStatus, type ShownPictures } from './status'
 import { t } from '../locales/text'
 
 /**
@@ -11,7 +10,7 @@ import { t } from '../locales/text'
  * stream that stalls or opens again under the last picture.
  */
 const props = defineProps<{
-  session: DeviceSession
+  session: ShownPictures
   downloads: readonly HostDownload[]
   /** Whether the view says the wait on the device's screen itself. */
   waitOnScreen: boolean

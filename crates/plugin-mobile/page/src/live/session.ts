@@ -69,6 +69,7 @@ import {
   type FoldDisplay,
   type LiveFold,
 } from '../generated/plugin'
+import { DisplayPictures } from './display-pictures'
 
 export { REFUSED_FRAME, SILENT_STREAM, type LiveConnection } from '@demicodes/plugin-sdk'
 
@@ -238,13 +239,14 @@ export interface DeviceSessionOptions {
 
 const IDLE: LiveActivity = { active: false }
 
-type Frame = { kind: 'message'; message: LiveModuleMessage } | Extract<LiveRawFrame, { kind: 'video' }>
+export type Frame = { kind: 'message'; message: LiveModuleMessage } | Extract<LiveRawFrame, { kind: 'video' }>
 
 /** JSON is UTF-8, so a control message that is not is refused rather than repaired. */
 const strictDecoder = new TextDecoder('utf-8', { fatal: true })
 
 /** The `mobile` stream's frames, its control messages checked against the protocol. */
-class DeviceFrames {
+/** Reads a device stream's frames: its pictures, and its messages as the protocol has them. */
+export class DeviceFrames {
   private readonly raw = new LiveFrameReader()
 
   read(chunk: Uint8Array): Frame[] {
@@ -324,6 +326,8 @@ export class DeviceSession {
   private nextTurn = 1
   private canvasElement: HTMLCanvasElement | null = null
   private pictures: CanvasPictures<DeviceStream> | null = null
+  /** A hinged foldable's displays' own pictures, made as its 3D view first asks, which live as the device's stream does. */
+  private readonly displays = new Map<FoldDisplay, DisplayPictures>()
 
   constructor(private readonly options: DeviceSessionOptions) {
     this.link = new LiveLink(this.state, {
@@ -434,12 +438,67 @@ export class DeviceSession {
     this.enabled = true
     this.link.start()
     this.update()
+    for (const pictures of this.displays.values()) {
+      pictures.enable()
+    }
   }
 
   /** The page became visible or hidden. */
   visibility(visible: boolean): void {
     this.visible = visible
     this.update()
+    for (const pictures of this.displays.values()) {
+      pictures.visibility(visible)
+    }
+  }
+
+  /** A hinged foldable's `display`'s own pictures, which its 3D view shows on that display's face. */
+  displayPictures(display: FoldDisplay): DisplayPictures {
+    const kept = this.displays.get(display)
+    if (kept) {
+      return kept
+    }
+    const pictures = new DisplayPictures({
+      open: this.options.open,
+      platform: this.options.platform,
+      device: this.options.device,
+      display,
+      defect: this.options.defect,
+      now: this.options.now,
+    })
+    this.displays.set(display, pictures)
+    pictures.visibility(this.visible)
+    if (this.enabled) {
+      pictures.enable()
+    }
+    return pictures
+  }
+
+  /**
+   * The views show none of the stream's pictures, as a hinged foldable's 3D
+   * view shows its displays' own: the Host captures none until a view asks
+   * for a frame or says a size again.
+   */
+  unshow(): void {
+    this.area = null
+    this.screenSize = null
+    this.asked = null
+    if (this.link.connected) {
+      this.send({ type: 'unshown' })
+    }
+  }
+
+  /**
+   * Turns a hinged foldable's hinge towards `degrees` at once, from where it
+   * is; the device's state follows the display it lights. Says whether it
+   * went: none goes while the stream is not connected.
+   */
+  hinge(degrees: number): boolean {
+    if (!this.link.connected) {
+      return false
+    }
+    this.send({ type: 'hinge', degrees: Math.min(180, Math.max(0, Math.round(degrees))) })
+    return true
   }
 
   /** `view` of the device shows, or no longer does. */
@@ -912,6 +971,9 @@ export class DeviceSession {
   /** Without a byte for a second the connection is stalled, and what the viewer holds is let go. */
   tick(): void {
     this.link.tick()
+    for (const pictures of this.displays.values()) {
+      pictures.tick()
+    }
   }
 
   /**
@@ -968,6 +1030,9 @@ export class DeviceSession {
   close(): void {
     this.link.close()
     this.pictures?.stop()
+    for (const pictures of this.displays.values()) {
+      pictures.close()
+    }
   }
 }
 

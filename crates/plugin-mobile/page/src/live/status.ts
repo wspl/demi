@@ -1,7 +1,20 @@
 import { computed } from 'vue'
 import { downloadProgress, formatByteRatio, type HostDownload } from '@demicodes/plugin-sdk'
-import type { DeviceSession } from './session'
+import type { DeviceWait, LiveConnection, PicturelessReason } from './session'
 import { t } from '../locales/text'
+
+/** What a view's status reads of the stream its pictures come on: the device's own, or one display's (`./display-pictures.ts`). */
+export interface ShownPictures {
+  readonly state: {
+    connection: LiveConnection
+    pictureless: PicturelessReason | null
+    frameFailed: boolean
+    look: { picture: unknown } | null
+  }
+  readonly waiting: DeviceWait
+  readonly reconnecting: boolean
+  retryFrame(): void
+}
 
 /**
  * What a device's view says of its stream, in every view of a device: what
@@ -9,7 +22,7 @@ import { t } from '../locales/text'
  * plugin's program came meanwhile, and a stream that stalls or opens again
  * while the last picture shows.
  */
-export function deviceStatus(props: { session: DeviceSession; downloads: readonly HostDownload[] }) {
+export function deviceStatus(props: { session: ShownPictures; downloads: readonly HostDownload[] }) {
   const look = computed(() => props.session.state.look)
   /** How far the Host's download came, while the stream waits for it; null when there is none. */
   const progress = computed(() => downloadProgress(props.downloads))
