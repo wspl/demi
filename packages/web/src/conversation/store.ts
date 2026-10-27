@@ -615,7 +615,17 @@ export const useConversations = defineStore('conversations', () => {
     { flush: 'sync' },
   )
 
+  /** A copy of the conversation's draft as this web browser stores it, which holds no proxy. */
   function persisted(conversation: Conversation): SavedDraft {
+    return plainCopy(draftOf(conversation))
+  }
+
+  /**
+   * The conversation's draft as this web browser stores it, read through the
+   * conversation's proxies: an effect that reads it deeply depends on each
+   * value stored.
+   */
+  function draftOf(conversation: Conversation): SavedDraft {
     const local = conversation.persistence !== 'synced'
     // The web browser keeps the composer's text only while the backend does not
     // have it: a new conversation's, or a change not yet confirmed.
@@ -625,8 +635,7 @@ export const useConversations = defineStore('conversations', () => {
     // its capsules, then those of the sends not yet accepted.
     const ids = new Set([...(unsaved ? conversation.attachmentIds : []), ...sending])
     const files = filesById(conversation, [...ids])
-    // One copy of the whole: what the web browser stores holds no proxy.
-    return plainCopy({
+    return {
       messageEdit: conversation.messageEdit,
       pendingSends: conversation.pendingSends,
       local:
@@ -666,7 +675,7 @@ export const useConversations = defineStore('conversations', () => {
           : file,
       ),
       scroll: conversation.scroll,
-    })
+    }
   }
 
   /**
@@ -851,15 +860,9 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  watch(
-    () =>
-      items.value.map((item) => ({
-        id: item.id,
-        draft: persisted(item),
-      })),
-    saveDrafts,
-    { flush: 'sync' },
-  )
+  // Each change of what a draft stores saves the drafts: the watch reads every
+  // draft deeply, with no copy, as `saveDrafts` makes its own of those it saves.
+  watch(() => items.value.map(draftOf), saveDrafts, { flush: 'sync', deep: true })
 
   /**
    * Makes `change` as one step of the drafts this web browser keeps: the
