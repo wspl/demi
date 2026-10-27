@@ -404,6 +404,13 @@ pub async fn run(
                 };
                 open.device.fold_to(degrees).await?;
                 let screen = *open.device.screen().borrow();
+                // A fold that shows the other display is done as a person
+                // sees it once it shows: an app lays itself out anew for it,
+                // and a touch sent before its first picture there may be lost
+                // in the change. A hinge that moves on, as a slider drags it,
+                // waits for nothing.
+                let shown = screen.fold.map(Folded::display);
+                let settled = shown == Some(fold.display()) || settle(&open).await.settled;
                 let scale = Scale::of(&screen);
                 let fold = screen.fold.unwrap_or(fold);
                 let (posture, degrees, display) = (fold.posture(), fold.degrees(), fold.display());
@@ -415,7 +422,7 @@ pub async fn run(
                     scale.width,
                     scale.height
                 );
-                Outcome::result(
+                let mut outcome = Outcome::result(
                     FoldResult {
                         device: open.handle.clone(),
                         posture,
@@ -425,7 +432,11 @@ pub async fn run(
                         height: scale.height,
                     },
                     text,
-                )
+                )?;
+                if !settled {
+                    outcome.notes.push(unsettled(call));
+                }
+                Ok(outcome)
             }
             (MobileOperation::Appearance(input), Some(open)) => {
                 let appearance = match input.appearance {

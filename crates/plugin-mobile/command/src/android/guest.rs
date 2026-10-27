@@ -80,6 +80,12 @@ pub trait Guest: Send + Sync + 'static {
     /// as Android announces it, until the stream is dropped or the
     /// emulator ends.
     fn display(&self) -> BoxFuture<'_, Result<BoxStream<'static, bool>>>;
+    /// Whether a touchscreen takes touches on the display Android shows
+    /// first, a display of `pixels`, portrait: Android drops what a
+    /// touchscreen sends while its display is not the one shown, and a
+    /// foldable that changed the display it shows takes the other's
+    /// touchscreen up some time after.
+    fn touchable(&self, pixels: (f64, f64)) -> BoxFuture<'_, Result<bool>>;
     /// Presses the wake key, which turns the screen on and leaves one
     /// that is on as it is.
     fn wake(&self) -> BoxFuture<'_, Result<()>>;
@@ -440,6 +446,13 @@ impl Guest for U2 {
         })
     }
 
+    fn touchable(&self, pixels: (f64, f64)) -> BoxFuture<'_, Result<bool>> {
+        Box::pin(async move {
+            let viewports = self.adb.shell(&self.serial, "dumpsys input | grep 'Viewport INTERNAL: displayId=0,'").await?;
+            Ok(takes_touches(&viewports, pixels))
+        })
+    }
+
     fn night(&self) -> BoxFuture<'_, Result<bool>> {
         Box::pin(async move {
             let said = self.adb.shell(&self.serial, "cmd uimode night").await?;
@@ -629,6 +642,29 @@ pub fn tree(xml: &str, keyboard: Option<&str>) -> Result<(u8, Vec<RawElement>)> 
         elements.extend(element(window, keyboard));
     }
     Ok((rotation, elements))
+}
+
+/// Whether one of the input viewports Android lists in `viewports`, as
+/// `dumpsys input` writes them, is the first display's, its logical frame of
+/// `pixels`, portrait or turned, and active: Android 12 and later say whether
+/// one is; an earlier Android lists the display's only while it is.
+fn takes_touches(viewports: &str, pixels: (f64, f64)) -> bool {
+    let size = |line: &str| {
+        let from = line.find("logicalFrame=[")? + "logicalFrame=[".len();
+        let frame: Vec<f64> = line[from..].split(']').next()?.split(',').filter_map(|part| part.trim().parse().ok()).collect();
+        match frame.as_slice() {
+            [left, top, right, bottom] => Some((right - left, bottom - top)),
+            _ => None,
+        }
+    };
+    viewports.lines().filter(|line| line.contains("displayId=0,")).any(|line| {
+        let active = !line.contains("isActive=[0]");
+        let fits = size(line).is_some_and(|(width, height)| {
+            ((width - pixels.0).abs() < 1.0 && (height - pixels.1).abs() < 1.0)
+                || ((width - pixels.1).abs() < 1.0 && (height - pixels.0).abs() < 1.0)
+        });
+        active && fits
+    })
 }
 
 /// The text of the focused node in the helper's tree `xml`; none when no

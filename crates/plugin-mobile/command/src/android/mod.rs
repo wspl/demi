@@ -73,7 +73,7 @@ pub use guest::Guest;
 pub use demi_shared_openh264::{Codec, Load};
 pub use process::Process;
 use proto::{
-    ImageFormat, KeyboardEvent, ParameterValue, PhysicalModelValue, Touch, TouchEvent, VmRunState,
+    ImageFormat, KeyboardEvent, MouseEvent, ParameterValue, PhysicalModelValue, VmRunState,
     image_format::ImgFormat, keyboard_event, notification, physical_model_value, posture::PostureValue, rotation::SkinRotation,
     vm_run_state::RunState,
 };
@@ -84,8 +84,6 @@ const BOOTING: Duration = Duration::from_secs(300);
 const SHUTTING_DOWN: Duration = Duration::from_secs(60);
 /// The density at which a pixel is a point, Android's `mdpi`.
 const BASE_DENSITY: f64 = 160.0;
-/// The finger a touch moves.
-const FINGER: i32 = 1;
 /// How long an app may take to show a paste.
 const PASTING: Duration = Duration::from_secs(2);
 /// How long the emulator's pictures may take to show a turn; they follow
@@ -423,9 +421,12 @@ impl Driver for Android {
     }
 }
 
-/// How long a fold waits for the emulator to show the other display, which
-/// takes it a fraction of a second.
+/// How long a fold waits for the emulator to show the other display, and
+/// Android to take it up, which takes them a fraction of a second.
 const FOLD_LIMIT: Duration = Duration::from_secs(5);
+/// How often a fold asks whether Android took up the other display, which
+/// each answer of `dumpsys input` takes tens of milliseconds to say.
+const TOUCHABLE_POLL: Duration = Duration::from_millis(50);
 
 /// How long the log waits to be followed again once logcat ended, as when
 /// the emulator restarts its log daemon.
@@ -1007,15 +1008,17 @@ impl AndroidDevice {
     }
 }
 
+/// Touches the display shown at `at`, or lifts the finger, as Android
+/// Studio's clicks do: through the emulator's mouse, whose primary button is
+/// a finger on that display's touchscreen. The emulator's own touches are
+/// scaled by the size of the first display when it has no window, so a
+/// closed foldable, which shows its second, takes them elsewhere than sent.
 async fn send_touch(mut client: emulator::Client, at: (i32, i32), down: bool) -> Result<()> {
     client
-        .send_touch(TouchEvent {
-            touches: vec![Touch {
-                x: at.0,
-                y: at.1,
-                identifier: FINGER,
-                pressure: i32::from(down),
-            }],
+        .send_mouse(MouseEvent {
+            x: at.0,
+            y: at.1,
+            buttons: i32::from(down),
             display: 0,
         })
         .await
@@ -1396,7 +1399,8 @@ impl Device for AndroidDevice {
                 FOLD_LIMIT,
                 screen.wait_for(|screen| screen.fold == Some(Folded::Twofold { open })),
             )
-            .await;
+            .await
+            .map(|seen| seen.map(drop));
             tracing::info!(
                 event = "mobile_fold.ended",
                 serial = %self.serial,
@@ -1406,7 +1410,30 @@ impl Device for AndroidDevice {
                 "a fold ended"
             );
             match shown {
-                Ok(Ok(_)) => Ok(()),
+                Ok(Ok(_)) => {
+                    // The emulator shows the other display before Android
+                    // takes it up: a touch sent at once is dropped, its
+                    // touchscreen's display not yet the one shown. The fold
+                    // is done once a touchscreen takes touches there. What
+                    // the display then shows is the screen's to settle.
+                    let pixels = self.panels.geometry(!open).panel;
+                    let taken_up = async {
+                        while !self.guest.touchable(pixels).await? {
+                            tokio::time::sleep(TOUCHABLE_POLL).await;
+                        }
+                        Ok::<(), DriverError>(())
+                    };
+                    let left = FOLD_LIMIT.saturating_sub(started.elapsed());
+                    let ms = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    // The fold happened: a check that fails or runs out of
+                    // time leaves it done, as the emulator shows it.
+                    match tokio::time::timeout(left, taken_up).await {
+                        Ok(Ok(())) => tracing::info!(event = "mobile_fold.taken_up", serial = %self.serial, open, ms = ms(), "Android took up the display a fold shows"),
+                        Ok(Err(error)) => tracing::warn!(event = "mobile_fold.unchecked", serial = %self.serial, open, %error, "whether Android took up the display a fold shows was not read"),
+                        Err(_) => tracing::warn!(event = "mobile_fold.not_taken_up", serial = %self.serial, open, ms = ms(), "Android did not take up the display a fold shows in time"),
+                    }
+                    Ok(())
+                }
                 Ok(Err(_)) => Err(DriverError::Lost("the emulator is gone".into())),
                 Err(_) => Err(DriverError::Failed(format!(
                     "the emulator did not show its {} display within {} seconds",

@@ -28,7 +28,9 @@ import "google/protobuf/empty.proto";
 service EmulatorController {
     rpc setPhysicalModel(PhysicalModelValue) returns (google.protobuf.Empty) {}
     rpc sendKey(KeyboardEvent) returns (google.protobuf.Empty) {}
-    rpc sendTouch(TouchEvent) returns (google.protobuf.Empty) {}
+    // The pointer of the emulator's own window: its primary button is a
+    // finger on the touchscreen of the display shown.
+    rpc sendMouse(MouseEvent) returns (google.protobuf.Empty) {}
     rpc getStatus(google.protobuf.Empty) returns (EmulatorStatus) {}
     rpc getScreenshot(ImageFormat) returns (Image) {}
     rpc streamScreenshot(ImageFormat) returns (stream Image) {}
@@ -128,17 +130,13 @@ message KeyboardEvent {
     string key = 4;
 }
 
-message Touch {
+message MouseEvent {
+    // The point, in the pixels of the display shown.
     int32 x = 1;
     int32 y = 2;
-    int32 identifier = 3;
-    // Non-zero while the finger touches; zero lifts it.
-    int32 pressure = 4;
-}
-
-message TouchEvent {
-    repeated Touch touches = 1;
-    int32 display = 2;
+    // The buttons held: 1 for the primary one, 0 for none.
+    int32 buttons = 3;
+    int32 display = 4;
 }
 
 message Entry {
