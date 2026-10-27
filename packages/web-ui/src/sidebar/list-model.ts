@@ -22,12 +22,13 @@ export type ListLine = ListEntry & { hidden: boolean }
 
 /**
  * Every line the list holds, in display order: plain rows, then each project header
- * and, unless the project is folded, its rows.
+ * and its rows.
  *
- * A folded group hides its lines but keeps the conversation open in the page, which
- * stays under the label even in a folded project, and in Projects its project's
- * header above it, so its place still shows. The hidden lines stay listed so their
- * fold can animate. The keyboard reaches the lines that are not hidden.
+ * A fold, of a project or of a group, keeps the conversation open in the page in
+ * sight, so its place still shows: a folded project lists only that row under its
+ * header, and a folded group shows it under the label, in Projects with its
+ * project's header above it. A folded group's hidden lines stay listed so their fold
+ * can animate. The keyboard reaches the lines that are not hidden.
  */
 export function listLines(
   plain: readonly SidebarConversation[],
@@ -52,7 +53,7 @@ export function listLines(
     const projectFolded = foldedProjects.has(group.project.id)
     for (const conversation of group.items) {
       const open = conversation.id === openId
-      if (projectFolded && !(projectsFolded && open))
+      if (projectFolded && !open)
         continue
       lines.push(
         {

@@ -40,7 +40,6 @@ import SidebarProjectHeader from './SidebarProjectHeader.vue'
 import { projectHostName, projectQualifiers } from './project-hosts'
 import { projectEntries, selectionEntries } from './selection-menu'
 import SidebarRow from './SidebarRow.vue'
-import { useRevealOpen } from './reveal-open'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 import ProjectDeleteDialog from './ProjectDeleteDialog.vue'
 import SavedScopeDialog from './SavedScopeDialog.vue'
@@ -51,8 +50,8 @@ import SavedScopeDialog from './SavedScopeDialog.vue'
  * - Top: the app and its entries: New, Search, then the entries the host gives, such
  *   as a plugin's settings section, then Archived. Each but New and Search opens its
  *   settings section.
- * - Middle: plain conversations, then every project as a collapsible group of its
- *   conversations, with one selection across all of them. The Conversations and
+ * - Middle: plain conversations, then each project that holds one as a collapsible
+ *   group of its conversations, with one selection across all of them. The Conversations and
  *   Projects groups each fold under their label.
  * - Bottom: the account and settings, and, for an administrator, the
  *   server's update while one is offered or runs: green, as Chrome's Update
@@ -119,19 +118,20 @@ const listRef = ref<HTMLElement>()
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 /** The element the list scrolls in. */
 const scroller = computed(() => scrollArea.value?.el)
+const plain = computed(() => plainConversations(props.conversations))
+const groups = computed(() => projectGroups(props.projects, props.conversations))
+/** The projects the list shows: those that hold a listed conversation. */
+const shownProjects = computed(() => groups.value.map((group) => group.project))
 const drag = useSidebarDrag(
   scroller,
-  () => props.projects,
+  () => shownProjects.value,
   () => props.conversations,
   request => emit('reorder', request),
 )
-
-const plain = computed(() => plainConversations(props.conversations))
-const groups = computed(() => projectGroups(props.projects, props.conversations))
 const foldedSet = computed(() => {
-  // Hide all project children while their headers are being reordered.
+  // Fold every project while a project's header is dragged; each keeps only the open conversation.
   if (drag.source.value?.kind === 'project') {
-    return new Set(props.projects.map(project => project.id))
+    return new Set(shownProjects.value.map(project => project.id))
   }
   return new Set(collapsedProjects.value)
 })
@@ -151,7 +151,7 @@ const byId = computed(
 )
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
 /** The projects whose row names its host, since a project of the same name runs on another. */
-const qualifiers = computed(() => projectQualifiers(props.projects))
+const qualifiers = computed(() => projectQualifiers(shownProjects.value))
 /** Each group's label, in list order, with the dot it carries while folded. */
 const groupLabels = computed(() => {
   const label = (group: SidebarGroup, text: string, conversations: readonly SidebarConversation[]) => {
@@ -320,12 +320,6 @@ watch(
   },
 )
 
-useRevealOpen({
-  openProject: () => (props.activeId ? byId.value.get(props.activeId)?.projectId ?? null : null),
-  isFolded,
-  unfold: (projectId) => setFolded(projectId, false),
-})
-
 // The open conversation is the selection until the user makes a wider one.
 watch(() => props.activeId, (id) => {
   if (id && !list.isSelected(id))
@@ -417,7 +411,7 @@ function onListKeydown(event: KeyboardEvent): void {
     if (!entry)
       return
     event.preventDefault()
-    const peers = reorderPeers(entry, props.projects, props.conversations)
+    const peers = reorderPeers(entry, shownProjects.value, props.conversations)
     const index = peers.indexOf(entry.id)
     if (event.key === 'ArrowUp' && index > 0) {
       emit('reorder', {
