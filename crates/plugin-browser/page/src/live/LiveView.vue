@@ -103,7 +103,8 @@ const painted = ref(false)
 let pictures: CanvasPictures<LiveStream> | null = null
 let ticking: ReturnType<typeof setInterval> | null = null
 let move: { x: number; y: number; event: PointerEvent } | null = null
-let moving: ReturnType<typeof setInterval> | null = null
+/** The frame that sends the hover move held, asked for when one is held. */
+let moving: number | null = null
 let composing = false
 let committed: string | undefined
 const clicks = new ClickCount()
@@ -147,8 +148,13 @@ function pointerMove(event: PointerEvent): void {
     props.session?.input(inputMessage(props.tab.id, pointerInput('move', at, event)))
     return
   }
-  // Hover moves are worth at most one message a frame.
+  // Hover moves are worth at most one message a frame: the last of a frame
+  // goes with it, and a pointer at rest asks for no frame.
   move = { ...at, event }
+  moving ??= requestAnimationFrame(() => {
+    moving = null
+    flushMove()
+  })
 }
 
 function pointerUp(event: PointerEvent): void {
@@ -308,6 +314,15 @@ async function paste(): Promise<void> {
   }
 }
 
+/**
+ * A hidden page's frames wait for it to show again: the hover move they hold
+ * is of a pointer that has gone since, and goes.
+ */
+function dropHiddenMove(): void {
+  if (document.hidden)
+    move = null
+}
+
 /** Leaving the view releases what the viewer holds in the page. */
 function release(): void {
   move = null
@@ -369,8 +384,8 @@ onMounted(() => {
   }
   takePictures()
   ticking = setInterval(() => props.session?.tick(), 250)
-  moving = setInterval(flushMove, 16)
   addEventListener('blur', release)
+  document.addEventListener('visibilitychange', dropHiddenMove)
 })
 
 watch([() => props.session, () => props.shown], takePictures)
@@ -385,11 +400,12 @@ watch(() => props.shown, (shown) => {
 
 onBeforeUnmount(() => {
   removeEventListener('blur', release)
+  document.removeEventListener('visibilitychange', dropHiddenMove)
   if (ticking !== null) {
     clearInterval(ticking)
   }
   if (moving !== null) {
-    clearInterval(moving)
+    cancelAnimationFrame(moving)
   }
   keepPicture()
   pictures?.stop()
