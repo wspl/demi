@@ -13,6 +13,7 @@
     "@demicodes/plugin-sdk": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "@lucide/vue": "^1.40.0",
+    "three": "^0.186.1",
     "vue": "^3.5.38",
     "zod": "^4.0.0"
   },
@@ -21,6 +22,7 @@
     "typecheck": "bun ../../../scripts/typecheck-vue.ts tsconfig.json"
   },
   "devDependencies": {
+    "@types/three": "^0.186.0",
     "@vue/tsconfig": "^0.9.1",
     "pinia": "^3.0.3",
     "typescript": "^6.0.3"

@@ -13,11 +13,14 @@ import { PluginCallError, type ConversationPlugin, type HostDownload, type OpenU
 import {
   appearanceResultSchema,
   closeResultSchema,
+  foldResultSchema,
   keyResultSchema,
   panelReasonSchema,
   recordResultSchema,
   rotateResultSchema,
   savedSchema,
+  type FoldDevice,
+  type FoldResult,
   type OnDevice,
   type PanelButton,
   type PanelReason,
@@ -57,6 +60,7 @@ export class MobileError extends Error {
 export interface MobileApi {
   close(device: string): Promise<void>
   rotate(device: string, turn: Turn): Promise<RotateResult>
+  fold(device: string, to: string): Promise<FoldResult>
   toggleAppearance(device: string): Promise<void>
   press(device: string, button: PanelButton): Promise<void>
   screenshot(device: string): Promise<Saved>
@@ -85,6 +89,9 @@ export function mobileApi(plugin: ConversationPlugin): MobileApi {
     },
     rotate: async (device, turn) => {
       return await call('rotate', { device, turn } satisfies RotateDevice, rotateResultSchema)
+    },
+    fold: async (device, to) => {
+      return await call('fold', { device, to } satisfies FoldDevice, foldResultSchema)
     },
     toggleAppearance: async (device) => {
       await call('toggleAppearance', { device } satisfies OnDevice, appearanceResultSchema)

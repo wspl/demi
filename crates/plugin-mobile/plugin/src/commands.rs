@@ -43,6 +43,7 @@ operations! {
     "type" => TypeInput, TypeResult, ["device", "text"], "Type text into the focused field, or tap --into <element> first, such as --into id=email or --into text=Email, checking that it landed and saying what the field holds, or, when the screen's tree names no focused field, as a field an app hides behind boxes it draws, sending the keys unchecked; --replace sets the field's text at once instead of adding to it.";
     "key" => KeyInput, KeyResult, ["device", "key"], "Press home, lock, volume-up or volume-down, or the keyboard's enter, delete, tab or escape.";
     "rotate" => RotateInput, RotateResult, ["device", "orientation"], "Turn the device portrait or landscape, or a quarter turn left or right; screenshots and coordinates follow it.";
+    "fold" => FoldInput, FoldResult, ["device", "to"], "Fold or open a foldable: closed, half-open or open, or the hinge's angle from 0 (closed) to 180 (flat) on iPhone Duo; closed or open on an Android foldable. Screenshots and coordinates follow the display that is lit, and refs from an earlier inspect no longer hold.";
     "appearance" => AppearanceInput, AppearanceResult, ["device", "appearance"], "Switch the system to light or dark, or toggle it.";
     "wait" => WaitInput, WaitResult, ["device"], "Wait until an element shows --text, an element appears (--element) or is gone (--gone), such as --gone text=Loading, re-reading the tree; 30 s by default.";
     "record" => RecordInput, RecordResult, ["target", "action"], record_about("device", "m1");

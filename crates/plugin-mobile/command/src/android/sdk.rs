@@ -413,7 +413,7 @@ impl Sdk for Installed {
         })
     }
 
-    fn device_art(&self, device: &str) -> Option<PathBuf> {
+    fn device_art(&self, device: &str) -> Option<art::Folders> {
         let installations = art::installations(art::System::current(), &art::Places::current());
         art::find(&installations, device)
     }

@@ -7,9 +7,11 @@ use std::fmt::Write;
 use demi_shared_types::output::{Cell, Table};
 
 use demi_command_package_mobile_protocol::mobile::{
-    DeviceId, Element, ElementSummary, Frame, InspectResult, LOG_BYTES, LaunchResult, ListResult, LogEntry, LogLevel,
-    LogsResult, Orientation, MobilePlatform, PowerState, Simulator,
+    DeviceId, Element, ElementSummary, FoldDisplay, Frame, InspectResult, LOG_BYTES, LaunchResult, ListResult, LogEntry, LogLevel,
+    LogsResult, Orientation, MobilePlatform, Posture, PowerState, Simulator,
 };
+
+use crate::driver::Folded;
 
 
 /// `text` quoted, as JSON quotes a string.
@@ -81,9 +83,10 @@ pub fn summary(element: &ElementSummary) -> String {
     }
 }
 
-pub fn inspect(result: &InspectResult, name: &str) -> String {
+pub fn inspect(result: &InspectResult, name: &str, fold: Option<Folded>) -> String {
+    let folded = fold.map(|fold| format!(" · {}", folded(fold))).unwrap_or_default();
     let mut text = format!(
-        "Device: {} · {name} · {} · {}×{}\n\n",
+        "Device: {} · {name} · {} · {}×{}{folded}\n\n",
         result.device,
         orientation(result.orientation),
         result.width,
@@ -216,4 +219,30 @@ fn plain(text: &str) -> String {
             if c.is_control() { Box::new(c.escape_default()) } else { Box::new(std::iter::once(c)) }
         })
         .collect()
+}
+
+/// A posture in the words of `fold`'s output.
+pub fn posture(posture: Posture) -> &'static str {
+    match posture {
+        Posture::Closed => "closed",
+        Posture::HalfOpen => "half open",
+        Posture::Open => "open",
+    }
+}
+
+/// How a foldable is folded, as `open`, `inspect` and `fold` say it:
+/// `half open at 130°`, or `closed` for one without a hinge's angle.
+pub fn folded(fold: Folded) -> String {
+    match fold.degrees() {
+        Some(degrees) => format!("{} at {degrees}°", posture(fold.posture())),
+        None => posture(fold.posture()).to_owned(),
+    }
+}
+
+/// A foldable's display in the words of `fold`'s output.
+pub fn fold_display(display: FoldDisplay) -> &'static str {
+    match display {
+        FoldDisplay::Outer => "outer",
+        FoldDisplay::Inner => "inner",
+    }
 }

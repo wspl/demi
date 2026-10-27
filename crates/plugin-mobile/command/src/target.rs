@@ -122,7 +122,10 @@ pub fn referenced(open: &OpenDevice, element: &RawElement) -> (ElementRef, Liste
         identifier: element.identifier.clone(),
         frame: element.frame,
     };
-    let reference = open.refs.lock().expect("the refs are intact").add(listed.clone());
+    let display = open.device.screen().borrow().fold.map(crate::driver::Folded::display);
+    let mut refs = open.refs.lock().expect("the refs are intact");
+    refs.on(display);
+    let reference = refs.add(listed.clone());
     (reference, listed)
 }
 

@@ -15,6 +15,7 @@
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveActivity, type ViewerInput } from '@demicodes/protocol'
 import {
   closeResultSchema,
+  foldDeviceSchema,
   onDeviceSchema,
   pressButtonSchema,
   recordDeviceSchema,
@@ -22,6 +23,7 @@ import {
   type LiveButtonMark,
   type LiveCorner,
   type LiveCorners,
+  type LiveFold,
   type LiveFrame,
   type LiveModuleMessage,
   type LiveViewerMessage,
@@ -67,9 +69,16 @@ interface GallerySimulator {
   model: string
   os: string
   nativeId: string
+  /** The screen upright in points; a foldable's outer display, the one lit while it is closed. */
   points: { width: number; height: number }
   corners: LiveCorners
   buttons: readonly LiveButtonMark[]
+  /**
+   * How a foldable folds, and its inner display, lit while it is open: on a
+   * hinge, as iPhone Duo, which its view shows in 3D, or open or closed, as
+   * an Android foldable.
+   */
+  fold?: { kind: LiveFold['kind']; inner: { width: number; height: number } }
 }
 
 /** Four corners alike, as a screen's are. */
@@ -109,6 +118,11 @@ interface OpenDevice {
   recording: boolean
   /** Whether the panel's Record started the running or last recording, whose video its next Stop takes even after the agent ended it. */
   panelRecording: boolean
+  /** A foldable's hinge, from 0° closed to 180° flat; an Android foldable is at one or the other. */
+  degrees: number
+  /** A hinged foldable's lit display, which the guest keeps between the angles that switch it. */
+  lit: 'outer' | 'inner'
+
 }
 
 /** Settings' rows, in groups, longer than a screen so the wheel scrolls them. */
@@ -168,13 +182,68 @@ const SIMULATORS: readonly GallerySimulator[] = [
       { side: 'right', start: 0.3, length: 0.13 },
     ],
   },
+  {
+    name: 'Duo',
+    platform: 'ios',
+    model: 'iPhone Duo',
+    os: 'iOS 27.1',
+    nativeId: '3C9A7E21-5B4D-4F86-A0C2-7D1E9B3F6A58',
+    points: { width: 466, height: 678 },
+    corners: alike({ kind: 'round', radius: 44 }),
+    buttons: [],
+    fold: { kind: 'hinge', inner: { width: 951, height: 669 } },
+  },
+  {
+    name: 'Pixel 10 Pro Fold API 36',
+    platform: 'android',
+    model: 'Pixel 10 Pro Fold',
+    os: 'Android 16',
+    nativeId: 'Pixel_10_Pro_Fold_API_36',
+    points: { width: 411, height: 901 },
+    corners: alike(PIXEL_CORNER),
+    buttons: [
+      { side: 'right', start: 0.18, length: 0.06 },
+      { side: 'right', start: 0.27, length: 0.12 },
+    ],
+    fold: { kind: 'twofold', inner: { width: 791, height: 820 } },
+  },
 ]
 
 const LANDSCAPE: readonly Orientation[] = ['landscape-left', 'landscape-right']
 
-/** The screen as the picture shows it, in points. */
+/** Whether a foldable shows its inner display: the one its hinge lit, or open at all for an Android foldable. */
+function innerLit(device: OpenDevice): boolean {
+  const fold = device.simulator.fold
+  return !!fold && (fold.kind === 'hinge' ? device.lit === 'inner' : device.degrees > 0)
+}
+
+/**
+ * The display a hinge moved from `from` to `degrees` lights, as the iOS
+ * guest does: past 90° in one go the inner one, below 20° the outer one, and
+ * moved by less than 20°, as a slider drags it, the outer one stays up to
+ * 120°.
+ */
+function litAfter(degrees: number, from: number, lit: 'outer' | 'inner'): 'outer' | 'inner' {
+  if (degrees < 20) {
+    return 'outer'
+  }
+  return degrees > (Math.abs(degrees - from) < 20 ? 120 : 90) ? 'inner' : lit
+}
+
+/** How the device folds and is folded, as the Host says; none for one that does not fold. */
+function foldOf(device: OpenDevice): LiveFold | null {
+  const fold = device.simulator.fold
+  if (!fold) {
+    return null
+  }
+  return fold.kind === 'hinge'
+    ? { kind: 'hinge', degrees: device.degrees, display: device.lit, outer: device.simulator.points, inner: fold.inner, body: null }
+    : { kind: 'twofold', open: device.degrees > 0 }
+}
+
+/** The screen as the picture shows it, in points: a foldable's lit display's. */
 function upright(device: OpenDevice): { width: number; height: number } {
-  const { width, height } = device.simulator.points
+  const { width, height } = innerLit(device) ? device.simulator.fold!.inner : device.simulator.points
   return LANDSCAPE.includes(device.orientation) ? { width: height, height: width } : { width, height }
 }
 
@@ -218,6 +287,8 @@ export interface GalleryMobile {
   agentTaps(): void
   /** The agent starts or stops recording the first open device, as `demi mobile record` does. */
   agentRecords(): void
+  /** The agent opens the first open foldable that is closed, or closes it, as `demi mobile fold` does. */
+  agentFolds(): Promise<void>
   /** Each open device's screen turns off by itself, as a device's sleep turns it. */
   devicesSleep(): void
   /** The Host sends each looked-at view a frame whose image does not decode, as a damaged frame would be. */
@@ -283,7 +354,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
     let shown = [...open.values()].find((each) => each.simulator === simulator)
     if (!shown) {
       numbers += 1
-      shown = { id: `m${numbers}`, simulator, orientation: 'portrait', dark: false, screen: 'home', scrolled: 0, off: false, touch: null, activity: { active: false }, recording: false, panelRecording: false }
+      shown = { id: `m${numbers}`, simulator, orientation: 'portrait', dark: false, screen: 'home', scrolled: 0, off: false, touch: null, activity: { active: false }, recording: false, panelRecording: false, degrees: 0, lit: 'outer' }
       open.set(shown.id, shown)
     }
     if (!panel.all.some((tab) => tab.kind === 'mobile' && shows(tab) === shown.id)) {
@@ -322,6 +393,38 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
         restart(id)
         const size = upright(shown)
         return { device: id, orientation: shown.orientation, width: size.width * SCALE, height: size.height * SCALE }
+      }
+      case 'fold': {
+        const { device: id, to } = foldDeviceSchema.parse(params)
+        const shown = device(id)
+        const fold = shown.simulator.fold
+        if (!fold) {
+          throw new PluginCallError('usage', `${id} does not fold`, { type: 'status', status: '400 Bad Request' })
+        }
+        const named: Record<string, number> = { 'closed': 0, 'half-open': 130, 'open': 180 }
+        const degrees = named[to] ?? Number(to)
+        if (!Number.isInteger(degrees) || degrees < 0 || degrees > 180 || (fold.kind === 'twofold' && degrees !== 0 && degrees !== 180)) {
+          throw new PluginCallError('usage', `${to} is not a fold of ${id}`, { type: 'status', status: '400 Bad Request' })
+        }
+        const wasInner = innerLit(shown)
+        await beat(fold.kind === 'hinge' ? 0 : 500)
+        shown.lit = litAfter(degrees, shown.degrees, shown.lit)
+        shown.degrees = degrees
+        changed(id)
+        // The other display lights: its pictures come at its size, in its frame.
+        if (innerLit(shown) !== wasInner) {
+          restart(id)
+        }
+        const size = upright(shown)
+        const posture = degrees === 0 ? 'closed' : degrees === 180 ? 'open' : 'half-open'
+        return {
+          device: id,
+          posture,
+          degrees: fold.kind === 'hinge' ? degrees : null,
+          display: innerLit(shown) ? 'inner' : 'outer',
+          width: size.width * SCALE,
+          height: size.height * SCALE,
+        }
       }
       case 'toggleAppearance': {
         const { device: id } = onDeviceSchema.parse(params)
@@ -474,6 +577,15 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       record(first, !first.recording)
       agentUsed(first)
     },
+    agentFolds: async () => {
+      const foldable = [...open.values()].find((each) => each.simulator.fold)
+      if (!foldable) {
+        productWould('The agent has no foldable open to fold.')
+        return
+      }
+      await call('fold', { device: foldable.id, to: foldable.degrees === 0 ? 'open' : 'closed' })
+      agentUsed(foldable)
+    },
     sendsBrokenFrames: () => {
       const looked = [...views].filter((view) => view.looked)
       if (looked.length === 0) {
@@ -598,6 +710,7 @@ class MobileView {
         model: each.simulator.model,
         recording: each.recording,
         orientation: each.orientation,
+        fold: foldOf(each),
       },
     })
   }

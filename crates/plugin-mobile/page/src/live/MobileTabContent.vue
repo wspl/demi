@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { Toolbar, downloadUrl, usePage, type ToolbarAction } from '@demicodes/plugin-sdk'
 import DeviceView from './DeviceView.vue'
+import { drawsWebgl } from './webgl'
 import type { MobileDevicesController } from './controller'
-import { deviceControls, type DeviceControl } from './controls'
+import { POSTURE_DEGREES, deviceControls, type DeviceControl } from './controls'
 import { MobilePlatformLogo, type MobileTabData } from './kind'
+import type { Posture } from '../generated/plugin'
 import { t } from '../locales/text'
 
 /**
@@ -51,7 +53,27 @@ watch(recording, (now, was) => {
  */
 const model = computed(() => device.model)
 /** The controls of the device's platform, the tab's until the Host says: Back on Android alone. */
-const controls = computed(() => deviceControls(device.platform ?? props.data.platform))
+const controls = computed(() => deviceControls(device.platform ?? props.data.platform, device.fold?.kind ?? null))
+/**
+ * A device on a hinge shows in 3D with its bar, where the browser draws
+ * WebGL 2, which three.js needs; in its lit display's 2D frame elsewhere.
+ */
+// three.js loads only for a device that folds on a hinge.
+const HingedDevice = defineAsyncComponent(() => import('./HingedDevice.vue'))
+const hinged = ref<{ posture(to: number): void } | null>(null)
+const hinge = computed(() => device.fold?.kind === 'hinge' && drawsWebgl() ? device.fold : null)
+
+/** Moves the device's hinge, as `demi mobile fold` does: the angle it got to, or none when it refused. */
+async function moveHinge(degrees: number): Promise<number | null> {
+  const folded = await props.session.fold(props.data.device, String(Math.round(degrees)))
+  return folded?.degrees ?? null
+}
+
+/** Where the page reads the device's 3D body: the file on the Host, through its files. */
+const bodyUrl = computed(() => {
+  const body = hinge.value?.body
+  return body ? files(props.conversation).workspace?.source.contents?.url(body) ?? null : null
+})
 
 /** The file a control left on the Host goes to the user's computer, as a download does. */
 function save(path: string | null): void {
@@ -73,7 +95,17 @@ function save(path: string | null): void {
  * (`crates/plugin-mobile/page/src/index.ts`).
  */
 function act(control: DeviceControl): Promise<void> | undefined {
-  const call = control.call(props.data.device, { recording: recording.value })
+  const state = { recording: recording.value, fold: device.fold }
+  const call = control.call(props.data.device, state)
+  if (call.method === 'fold') {
+    // A posture the device is in moves it there again, as a fold outside
+    // Demi may have left it elsewhere; a hinged one's view moves the hinge
+    // as it shows it.
+    if (hinged.value && hinge.value) {
+      hinged.value.posture(POSTURE_DEGREES[call.params.to as Posture])
+      return undefined
+    }
+  }
   if (call.method === 'record') {
     // Stop takes the video itself; only a start leaves one to come.
     startedHere.value = call.params.action === 'start'
@@ -87,14 +119,14 @@ function act(control: DeviceControl): Promise<void> | undefined {
 
 /** The toolbar's actions, in the controls' order; those a narrow panel has no room for go into More. */
 const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => {
-  const state = { recording: recording.value }
+  const state = { recording: recording.value, fold: device.fold }
   const pressed = control.pressed?.(state) ?? false
   return {
     label: t(control.label(state)),
     icon: control.icon(state),
     group: control.group,
     pressed,
-    indicator: pressed ? 'danger' : undefined,
+    indicator: pressed && control.alerts ? 'danger' : undefined,
     run: () => act(control),
   }
 }))
@@ -126,6 +158,16 @@ const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => 
     >
       {{ t('region.unsupported') }}
     </div>
+    <HingedDevice
+      v-else-if="hinge"
+      ref="hinged"
+      :session="device"
+      :fold="hinge"
+      :shown="shown"
+      :hinge="moveHinge"
+      :body-url="bodyUrl"
+      :downloads="session.api.downloading()"
+    />
     <DeviceView v-else :session="device" :shown="shown" :downloads="session.api.downloading()" />
   </div>
 </template>

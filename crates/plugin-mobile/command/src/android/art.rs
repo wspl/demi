@@ -2,7 +2,9 @@
 //!
 //! For each device, such as `pixel_10`, a folder in Android Studio's
 //! installation holds the frame's image, the screen's mask and a `layout` in
-//! the emulator's skin format that places the screen in the frame.
+//! the emulator's skin format that places the screen in the frame. A
+//! foldable's folder, such as `pixel_fold`, holds one such folder per
+//! posture: `default` open and `closed` folded.
 //!
 //! The art is drawn as Android Studio's emulator window draws it
 //! (`SkinDefinition` in its `adt-ui`):
@@ -167,15 +169,28 @@ fn places_of(system: System, places: &Places) -> Vec<PathBuf> {
 }
 
 /// The art for `device` in the first of `installations` that has it.
-pub fn find(installations: &[PathBuf], device: &str) -> Option<PathBuf> {
+pub fn find(installations: &[PathBuf], device: &str) -> Option<Folders> {
     // The device's name is a folder's, never a path.
     if device.is_empty() || device.contains(['/', '\\']) || device.starts_with('.') {
         return None;
     }
-    installations
-        .iter()
-        .map(|installation| ART.iter().fold(installation.clone(), |path, part| path.join(part)).join(device))
-        .find(|folder| folder.join("layout").is_file())
+    let art = |folder: PathBuf| folder.join("layout").is_file().then_some(folder);
+    installations.iter().find_map(|installation| {
+        let device = ART.iter().fold(installation.clone(), |path, part| path.join(part)).join(device);
+        // A foldable's art is a folder per posture.
+        match art(device.join("default")) {
+            Some(open) => Some(Folders { open, closed: art(device.join("closed")) }),
+            None => art(device).map(|open| Folders { open, closed: None }),
+        }
+    })
+}
+
+/// The folders of a device's art: open, which is every device's, and
+/// closed, a foldable's folded.
+#[derive(Debug, Clone)]
+pub struct Folders {
+    pub open: PathBuf,
+    pub closed: Option<PathBuf>,
 }
 
 /// A block of a skin layout: its values and its blocks, by name, in order.

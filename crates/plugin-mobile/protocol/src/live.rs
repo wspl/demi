@@ -16,7 +16,7 @@ use demi_live_view_protocol::{
     ModuleMessage, Platform, ViewerInput,
 };
 
-use crate::mobile::{DeviceId, Orientation, MobilePlatform};
+use crate::mobile::{DeviceId, FoldDisplay, Orientation, MobilePlatform};
 
 /// The declared operation that serves a view (`crates/runner-jobs/src/commands/streams.rs`).
 pub const OPERATION: &str = "mobile.live";
@@ -225,6 +225,49 @@ pub enum LiveFrame {
     },
 }
 
+/// A display's size in points, upright.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LivePoints {
+    #[garde(range(min = 1.0, max = 4096.0))]
+    pub width: f64,
+    #[garde(range(min = 1.0, max = 4096.0))]
+    pub height: f64,
+}
+
+/// How a device folds, and how it is folded now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+pub enum LiveFold {
+    /// A hinge from 0° (closed) to 180° (flat), as iPhone Duo's, which the
+    /// view shows in 3D, with the display the guest lit, the outer one
+    /// closed or the inner one across both halves, and its two displays
+    /// upright in points.
+    Hinge {
+        #[garde(range(max = crate::mobile::FLAT_DEGREES))]
+        degrees: u16,
+        #[garde(skip)]
+        display: FoldDisplay,
+        #[garde(dive)]
+        outer: LivePoints,
+        #[garde(dive)]
+        inner: LivePoints,
+        /// The file of the device's 3D body Xcode installs, a USDZ on the
+        /// Host, which the page reads through the Host's files; none where
+        /// Xcode installs none, and the view draws a stand-in.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<String>")]
+        #[garde(skip)]
+        body: Option<String>,
+    },
+    /// Open or closed, as an Android foldable folds, which the view shows
+    /// in its 2D frame.
+    Twofold {
+        #[garde(skip)]
+        open: bool,
+    },
+}
+
 /// The stream's device as it is now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -247,6 +290,12 @@ pub struct LiveDevice {
     /// Its orientation as its screen reports it when the state is sent.
     #[garde(skip)]
     pub orientation: Orientation,
+    /// How it folds, and how it is folded; none for a device that does not
+    /// fold.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<LiveFold>")]
+    #[garde(dive)]
+    pub fold: Option<LiveFold>,
 }
 
 /// What the resident sends on one device's stream, only while the stream is

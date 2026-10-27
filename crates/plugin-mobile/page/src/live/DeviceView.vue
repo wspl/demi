@@ -5,23 +5,21 @@ import {
   IndeterminateSpinner,
   LiveActivityOverlay,
   LiveDrawnFrame,
-  RegionStatus,
   SQUARE_CORNERS,
-  keyInput,
   observeSettledSize,
   scaledCorners,
   drawnFramePictureClip,
   type ScreenCorners,
   touchInput,
   wheelInput,
-  downloadProgress,
-  formatByteRatio,
   type HostDownload,
 } from '@demicodes/plugin-sdk'
 import type { DeviceSession } from './session'
 import type { LiveFrame } from '../generated/plugin'
 import { areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, turnedBox, turnedFrame, type Placement, type Size } from './view'
-import { insertedText } from './typed'
+import DeviceKeys from './DeviceKeys.vue'
+import DeviceStatus from './DeviceStatus.vue'
+import { deviceStatus } from './status'
 import { t } from '../locales/text'
 
 /**
@@ -30,7 +28,8 @@ import { t } from '../locales/text'
  * tab. The view draws the session's look and nothing else, so the screen and
  * its frame show together or not at all.
  *
- * - A click or a finger on it is a touch, a drag a swipe, and the keyboard types.
+ * - A click or a finger on it is a touch, a drag a swipe, and the keyboard types
+ *   (`./DeviceKeys.vue`).
  * - Over it show the agent's activity: the note that it is using the device and the
  *   ring where it acted.
  * - A screen that is off keeps its last picture, dimmed under Screen Off with Wake;
@@ -52,7 +51,7 @@ const props = defineProps<{
 
 const area = ref<HTMLDivElement | null>(null)
 const screenBox = ref<HTMLDivElement | null>(null)
-const keys = ref<HTMLInputElement | null>(null)
+const keys = ref<InstanceType<typeof DeviceKeys> | null>(null)
 const size = ref<Size>({ width: 0, height: 0 })
 /** The area's size once a change of it has held, as after a drag of the panel's edge. */
 const settledSize = ref<Size>({ width: 0, height: 0 })
@@ -191,31 +190,9 @@ const mark = computed(() => {
   const point = activity.value.point
   return point && screen.value && placement.value ? areaPoint(point, screen.value, placement.value) : null
 })
-const stalled = computed(() => props.session.state.connection === 'stalled')
-/** The stream ended and opens again, while the view still shows the last picture. */
-const reconnecting = computed(() => props.session.reconnecting && !!look.value?.picture)
 const painted = computed(() => !!look.value?.picture)
 const screenOff = computed(() => painted.value && props.session.state.screenOff)
-/** How far the Host's download came, while the stream waits for it; null when there is none. */
-const progress = computed(() => downloadProgress(props.downloads))
-/** How far the download came, in words, or a blank line that keeps its room. */
-const progressText = computed(() => progress.value ? formatByteRatio(progress.value.received, progress.value.size) : '\u00a0')
-/** What the view waits for, in words, while it shows no picture. */
-const waitingLabel = computed(() => {
-  switch (props.session.waiting) {
-    case 'connecting':
-      return progress.value ? t('region.downloading') : t('region.connecting')
-    case 'reconnecting':
-      return progress.value ? t('region.downloading') : t('region.reconnecting')
-    case 'frame':
-      return t('region.frame')
-    case 'screen':
-      return t('region.screen')
-    // A failure is no wait: the view says it and offers Retry.
-    default:
-      return null
-  }
-})
+const { progress, progressText, waitingLabel } = deviceStatus(props)
 
 // The Host captures the screen no larger than the view shows it, in device
 // pixels, once the area's size settled: a larger size restarts its capture,
@@ -333,14 +310,10 @@ function point(event: MouseEvent): { x: number; y: number } | null {
 
 function down(event: PointerEvent): void {
   event.preventDefault()
-  // The field follows the tap, so an input method's candidate window opens
-  // where the viewer is typing. It takes no pointer events.
   const bounds = area.value?.getBoundingClientRect()
-  if (keys.value && bounds) {
-    keys.value.style.left = `${Math.max(0, Math.min(bounds.width - 2, event.clientX - bounds.left))}px`
-    keys.value.style.top = `${Math.max(0, Math.min(bounds.height - 2, event.clientY - bounds.top))}px`
+  if (bounds) {
+    keys.value?.focusAt(event.clientX - bounds.left, event.clientY - bounds.top, bounds.width, bounds.height)
   }
-  keys.value?.focus({ preventScroll: true })
   // A tap on a screen that is off wakes it, as on the device.
   if (screenOff.value) {
     props.session.wake()
@@ -392,42 +365,6 @@ function wheel(event: WheelEvent): void {
   }
 }
 
-function key(event: KeyboardEvent, action: 'down' | 'up'): void {
-  if (event.isComposing) {
-    return
-  }
-  event.preventDefault()
-  // A key on a screen that is off wakes it, as on the device.
-  if (screenOff.value) {
-    if (action === 'down' && !event.repeat) {
-      props.session.wake()
-    }
-    return
-  }
-  props.session.input(keyInput(action, event))
-}
-
-function inserted(event: Event): void {
-  if (!(event instanceof InputEvent)) {
-    return
-  }
-  const text = insertedText(event)
-  if (text) {
-    props.session.input({ type: 'text', text })
-  }
-  if (keys.value && !event.isComposing) {
-    keys.value.value = ''
-  }
-}
-
-function composed(event: CompositionEvent): void {
-  if (event.data) {
-    props.session.input({ type: 'text', text: event.data })
-  }
-  if (keys.value) {
-    keys.value.value = ''
-  }
-}
 </script>
 
 <template>
@@ -497,44 +434,8 @@ function composed(event: CompositionEvent): void {
         }"
       >
     </div>
-    <RegionStatus
-      v-if="session.state.pictureless"
-      class="absolute inset-0 bg-surface"
-      status="failed"
-      :label="t('region.couldntShow')"
-      :detail="t(`reasons.${session.state.pictureless}`)"
-    />
-    <RegionStatus
-      v-else-if="session.state.frameFailed"
-      class="absolute inset-0 bg-surface"
-      status="failed"
-      :label="t('region.couldntShow')"
-      :detail="t('region.frameFailed')"
-      :on-retry="() => session.retryFrame()"
-    />
-    <RegionStatus
-      v-else-if="waitingLabel && !layout"
-      class="absolute inset-0"
-      status="loading"
-      :label="waitingLabel"
-      :progress="progress"
-    />
-    <input
-      ref="keys"
-      class="pointer-events-none absolute left-0 top-0 h-[2px] w-[2px] border-0 bg-transparent p-0 text-transparent caret-transparent outline-none"
-      :aria-label="t('keyboard')"
-      autocomplete="off"
-      autocorrect="off"
-      spellcheck="false"
-      @keydown="key($event, 'down')"
-      @keyup="key($event, 'up')"
-      @input="inserted"
-      @compositionend="composed"
-      @blur="session.release()"
-    >
+    <DeviceKeys ref="keys" :session="session" :screen-off="screenOff" />
     <LiveActivityOverlay :active="activity.active" :label="t('activity')" :mark="mark" />
-    <div v-if="stalled || reconnecting" role="status" class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-2">
-      <span class="rounded-md bg-surface px-2 py-1 text-[12px] text-fg-subtle shadow">{{ reconnecting ? (progress ? `${t('region.downloading')} ${progressText}` : t('region.reconnecting')) : t('region.waiting') }}</span>
-    </div>
+    <DeviceStatus :session="session" :downloads="downloads" :wait-on-screen="!!layout" />
   </div>
 </template>

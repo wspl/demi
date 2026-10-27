@@ -14,6 +14,14 @@
     "stopRecording": "Stop Recording",
     "more": "More"
   },
+  "fold": {
+    "closed": "Closed",
+    "halfOpen": "Half Open",
+    "open": "Open",
+    "hinge": "Hinge Angle",
+    "degrees": "{degrees}°",
+    "reset": "Face the Device"
+  },
   "activity": "The agent is using this device",
   "keyboard": "Simulator Keyboard",
   "screenOff": {

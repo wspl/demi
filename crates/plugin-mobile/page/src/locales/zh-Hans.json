@@ -14,6 +14,14 @@
     "stopRecording": "停止录制",
     "more": "更多"
   },
+  "fold": {
+    "closed": "合上",
+    "halfOpen": "半开",
+    "open": "展开",
+    "hinge": "铰链角度",
+    "degrees": "{degrees}°",
+    "reset": "回到正面"
+  },
   "activity": "智能体正在使用这台设备",
   "keyboard": "模拟器键盘",
   "screenOff": {
