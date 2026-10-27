@@ -230,6 +230,11 @@ export class FoldScene {
   private pictureTexture(): THREE.CanvasTexture {
     const texture = new THREE.CanvasTexture(this.picture)
     texture.colorSpace = THREE.SRGBColorSpace
+    // The picture comes about the size the display shows it, and changes
+    // every frame: mipmaps, made again for each, would show it from a
+    // smaller copy, blurred, wherever it is drawn slanted or a little smaller.
+    texture.generateMipmaps = false
+    texture.minFilter = THREE.LinearFilter
     this.turnPicture(texture)
     this.textureSize = { width: this.picture.width, height: this.picture.height }
     return texture
