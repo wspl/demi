@@ -48,9 +48,7 @@ use std::rc::Rc;
 
 use bytes::Bytes;
 use demi_backend_remote_host::{OpenedRead, PipeReader, PipeWriter};
-use demi_host_interface::{
-    ByteRange, FileStat, HostError, HostFs as _, WhenExists, WriteOptions, names_below,
-};
+use demi_host_interface::{ByteRange, FileStat, Host as _, HostError, WhenExists, WriteOptions};
 use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::ReadAt;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -80,21 +78,18 @@ pub struct DownloadRequest {
 pub enum DownloadPath {
     /// The file at a path the user names, as the File view reads one.
     Named(String),
-    /// The file at a place under the conversation's working directory, its
-    /// names joined by `/`, as an HTML view loads one: at its real path, read
-    /// in the same admission, which stays inside the directory and names
-    /// nothing hidden below it, so a symbolic link out of the directory reads
-    /// nothing.
-    InWorkspace(String),
+    /// The file at a place, as an HTML view's URL names it: its path's names
+    /// joined by `/`, read in the Host's form of paths
+    /// ([`demi_host_interface::HostPaths::place`]).
+    Place(String),
 }
 
 /// What a download answers.
 pub enum Download {
     /// Nothing at the path is a regular file.
     NotAFile,
-    /// The place's real path leaves the working directory or names a hidden
-    /// file or folder.
-    OutOfReach,
+    /// The place names no path on the Host.
+    NoPath,
     /// The file is no longer the version the request named.
     Changed,
     /// The request's condition names the file's version.
@@ -160,18 +155,10 @@ impl dyn HostShard + '_ {
         let host = &admitted.host.host;
         let path = match &request.path {
             DownloadPath::Named(path) => path.clone(),
-            DownloadPath::InWorkspace(place) => {
-                let root = &admitted.host.root;
-                let real_root = waits.wait(host.realpath(root)).await??;
-                let joined = format!("{}/{place}", root.trim_end_matches('/'));
-                let real = waits.wait(host.realpath(&joined)).await??;
-                let reachable = names_below(&real_root, &real)
-                    .is_some_and(|names| !names.iter().any(|name| name.starts_with('.')));
-                if !reachable {
-                    return Ok(Download::OutOfReach);
-                }
-                real
-            }
+            DownloadPath::Place(place) => match host.identity().paths.at_place(place) {
+                Some(path) => path,
+                None => return Ok(Download::NoPath),
+            },
         };
         // The read answers the file's metadata with its first bytes, so it
         // is the one request (`crates/runner-host/src/lib.rs`): it asks for
@@ -239,17 +226,16 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// Where the file at `path` stands under the conversation's working
-    /// directory on its primary Host, its names joined by `/` as an HTML
-    /// view's URL names them; `None` for a file outside it.
+    /// The place of the file at `path` on the conversation's primary Host, as
+    /// an HTML view's URL names it.
     pub async fn html_place(
         &self,
         id: &ConversationId,
         path: &str,
         cancel: &CancellationToken,
-    ) -> Result<Option<String>, HostAccessError> {
+    ) -> Result<String, HostAccessError> {
         self.with_unheld_host(id, None, cancel, async |host| {
-            names_below(&host.root, path).map(|names| names.join("/"))
+            host.host.identity().paths.place(path)
         })
         .await
     }

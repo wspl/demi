@@ -320,7 +320,7 @@ pub(super) fn download_answer(
             ErrorCode::NotFound,
             "Not a regular file",
         )),
-        Download::OutOfReach => Err(ApiError::new(
+        Download::NoPath => Err(ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::NotFound,
             "No such file",

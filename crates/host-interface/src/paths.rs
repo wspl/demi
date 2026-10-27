@@ -80,6 +80,30 @@ impl HostPaths {
         }
     }
 
+    /// The names of the absolute `path` from its root, after `.` and `..`
+    /// are taken out, joined by `/` as a URL's path names them: `/Users/alex`
+    /// is `Users/alex`, `C:\Users\alex` is `C:/Users/alex` and
+    /// `\\server\share\docs` is `//server/share/docs`. [`Self::at_place`]
+    /// reads it back.
+    pub fn place(self, path: &str) -> String {
+        let path = self.resolve(self.root(path).as_str(), path);
+        match self {
+            Self::Posix => path.trim_start_matches('/').to_owned(),
+            Self::Windows => path.replace('\\', "/"),
+        }
+    }
+
+    /// The path a [`Self::place`] names; none for a place that starts at no
+    /// drive or share on Windows, as a relative URL that climbs above the
+    /// drive's root asks for.
+    pub fn at_place(self, place: &str) -> Option<String> {
+        let path = match self {
+            Self::Posix => format!("/{place}"),
+            Self::Windows => place.replace('/', "\\"),
+        };
+        self.is_absolute(&path).then_some(path)
+    }
+
     /// The last component of `path`: the name of what it names.
     pub fn file_name(self, path: &str) -> &str {
         let path = path.trim_end_matches(|c| self.separates(c));
@@ -154,17 +178,6 @@ pub fn relative_to(directory: &str, path: &str) -> Option<String> {
     let directory = typed_path::Utf8TypedPath::derive(directory).normalize();
     let relative = path.strip_prefix(&directory).ok()?.to_string();
     Some(if relative.is_empty() { ".".to_owned() } else { relative })
-}
-
-/// The names of `path` below `directory`, none for `directory` itself, after
-/// `.` and `..` are taken out; none when `path` is outside it. Each path is
-/// read in the form its text has, as [`relative_to`] reads it, so on a Posix
-/// Host a `\` is part of a name.
-pub fn names_below(directory: &str, path: &str) -> Option<Vec<String>> {
-    let path = typed_path::Utf8TypedPath::derive(path).normalize();
-    let directory = typed_path::Utf8TypedPath::derive(directory).normalize();
-    let below = path.strip_prefix(&directory).ok()?;
-    Some(below.components().map(|name| name.as_str().to_owned()).collect())
 }
 
 /// Whether `path` is `directory` or inside it, judged by their parts after `.`
