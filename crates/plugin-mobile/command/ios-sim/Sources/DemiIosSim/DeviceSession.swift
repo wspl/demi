@@ -568,9 +568,17 @@ final class DeviceSession: @unchecked Sendable {
 
   // MARK: Input
 
-  /// The portrait point the HID takes for the upright point `x`, `y`.
+  /// The point the HID takes for the upright point `x`, `y`. On the primary
+  /// display, the HID takes the framebuffer's portrait points, whichever way
+  /// the screen turns; on iPhone Duo's inner display it takes the upright
+  /// points themselves, held either way, as it turns them by the display's
+  /// own rotation (iOS 27.1: a tap at the portrait point of the Settings icon
+  /// on the open device missed it, one at its upright point opened it).
   private func devicePoint(_ x: Double, _ y: Double) -> (Double, Double) {
-    let (turn, points) = lock.withLock { (self.turn, portraitPoints) }
+    let (turn, points, primary) = lock.withLock { () -> (Turn, CGSize, Bool) in
+      (self.turn, portraitPoints, layout?.fold.map { display == $0.outer.uniqueID } ?? true)
+    }
+    guard primary else { return (x, y) }
     let width = points.width
     let height = points.height
     switch turn {
