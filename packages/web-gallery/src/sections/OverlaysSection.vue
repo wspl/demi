@@ -1226,7 +1226,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             <div class="w-80">
               <Toast
                 v-if="pinUnexpectedToast"
-                title="Something Went Wrong"
+                title="Something went wrong"
                 message="Cannot read properties of undefined (reading 'id')"
                 tone="danger"
                 one-line
@@ -1244,7 +1244,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             <div class="w-80">
               <Toast
                 v-if="pinUnexpectedLongToast"
-                title="Something Went Wrong"
+                title="Something went wrong"
                 message="Failed to execute 'removeChild' on 'Node': the node to be removed is not a child of this node, while patching the transcript block"
                 tone="danger"
                 one-line

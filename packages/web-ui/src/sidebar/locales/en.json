@@ -82,7 +82,7 @@
     "files": "Files on {host} are not deleted."
   },
   "savedScope": {
-    "title": "Keep Saved Messages per Conversation?",
+    "title": "Keep saved messages per conversation?",
     "body": "The project’s saved message moves to one conversation. | The project’s {count} saved messages move to one conversation.",
     "to": "Move To",
     "action": "Move"

@@ -22,7 +22,7 @@
     "headers": "Headers"
   },
   "updateFailed": {
-    "title": "This Page Could Not Be Updated",
+    "title": "This page could not be updated",
     "body": "Demi has a newer version. Reloading still shows the old one."
   },
   "updating": {

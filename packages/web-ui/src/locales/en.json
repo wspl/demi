@@ -325,7 +325,7 @@
     "untitled": "New conversation"
   },
   "markdown": {
-    "mathUnavailable": "Math Formatting Is Unavailable",
+    "mathUnavailable": "Math formatting is unavailable",
     "attachmentMissing": "No attachment {id} in this conversation",
     "pictureMissing": "The file isn’t on the host",
     "pictureTooLarge": "The file is {size}, too large to keep",
