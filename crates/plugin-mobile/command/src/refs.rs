@@ -4,11 +4,12 @@
 //! Each `inspect` numbers the elements it lists on from the last number the
 //! device gave, so a reference from an older inspect is never another
 //! element's. An action resolves a reference to the centre of the frame the
-//! inspect listed.
+//! inspect listed. A foldable that lights its other display leaves the
+//! references listed on the one before stale, whoever folded it.
 
 use std::collections::HashMap;
 
-use demi_command_package_mobile_protocol::mobile::ElementRef;
+use demi_command_package_mobile_protocol::mobile::{ElementRef, FoldDisplay};
 
 use crate::driver::{RawElement, Rect};
 
@@ -38,6 +39,8 @@ pub struct Refs {
     last: u64,
     /// The last inspect's elements.
     listed: HashMap<ElementRef, Listed>,
+    /// The foldable's display they were listed on.
+    display: Option<FoldDisplay>,
 }
 
 impl Refs {
@@ -45,6 +48,15 @@ impl Refs {
     /// referenced.
     pub fn renew(&mut self) {
         self.listed.clear();
+    }
+
+    /// The elements are listed on `display` from now on: those listed on
+    /// another are no longer referenced.
+    pub fn on(&mut self, display: Option<FoldDisplay>) {
+        if self.display != display {
+            self.listed.clear();
+            self.display = display;
+        }
     }
 
     /// The reference of the next listed element.
@@ -55,7 +67,12 @@ impl Refs {
         reference
     }
 
-    pub fn get(&self, reference: &ElementRef) -> Option<&Listed> {
+    /// The element `reference` names, while `display` is the one it was
+    /// listed on.
+    pub fn get(&self, reference: &ElementRef, display: Option<FoldDisplay>) -> Option<&Listed> {
+        if self.display != display {
+            return None;
+        }
         self.listed.get(reference)
     }
 }

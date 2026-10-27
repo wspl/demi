@@ -46,11 +46,7 @@ pub mod proto {
     tonic::include_proto!("android.emulation.control");
 }
 
-use std::{
-    path::PathBuf,
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use futures_util::{StreamExt as _, future::BoxFuture};
 use tokio::sync::watch;
@@ -64,7 +60,7 @@ use demi_command_package_mobile_protocol::{
 
 use crate::{
     driver::{
-        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, InstalledApp, KeyPress,
+        Booting, Button, Device, DeviceCapture, Driver, DriverError, Folded, Frame, FrameArea, Framed, InstalledApp, KeyPress,
         Launched, Png, Points, RawElement, Rect, Result, Screen, Simulator, TouchPhase,
     },
     keys,
@@ -78,7 +74,7 @@ pub use demi_shared_openh264::{Codec, Load};
 pub use process::Process;
 use proto::{
     ImageFormat, KeyboardEvent, ParameterValue, PhysicalModelValue, Touch, TouchEvent, VmRunState,
-    image_format::ImgFormat, keyboard_event, notification, physical_model_value, rotation::SkinRotation,
+    image_format::ImgFormat, keyboard_event, notification, physical_model_value, posture::PostureValue, rotation::SkinRotation,
     vm_run_state::RunState,
 };
 
@@ -168,9 +164,9 @@ pub trait Sdk: Send + Sync + 'static {
     fn terminate(&self, process: Process) -> BoxFuture<'_, Result<()>>;
     /// What Demi does inside the emulator adb names `serial`.
     fn guest<'a>(&'a self, serial: &'a str) -> BoxFuture<'a, Result<Arc<dyn Guest>>>;
-    /// The folder of Android Studio's device art for the AVD's `device`,
+    /// The folders of Android Studio's device art for the AVD's `device`,
     /// such as `pixel_10`, when an installation on the Host has it.
-    fn device_art(&self, device: &str) -> Option<PathBuf>;
+    fn device_art(&self, device: &str) -> Option<art::Folders>;
 }
 
 /// The Host's Android emulators.
@@ -356,6 +352,11 @@ impl Driver for Android {
             });
             let panel = (config("hw.lcd.width")?, config("hw.lcd.height")?);
             let density = config("hw.lcd.density")? / BASE_DENSITY;
+            // A foldable shows a region of its panel while closed, as its
+            // hinge's sensors say.
+            let folded = hardware(&status, "hw.sensor.hinge.fold_to_displayRegion.0.1_at_posture")
+                .and_then(|_| Some((hardware(&status, "hw.displayRegion.0.1.width")?, hardware(&status, "hw.displayRegion.0.1.height")?)))
+                .filter(|(width, height)| *width > 0.0 && *height > 0.0);
             // The emulator does not say which device it emulates; its
             // AVD's files do.
             let art = self
@@ -374,15 +375,23 @@ impl Driver for Android {
             if let Err(error) = guest.skip_keyboard_tutorials().await {
                 tracing::info!(event = "android_tutorials.skip_failed", %error, "the keyboard's tutorials stay on");
             }
-            let geometry = Geometry { panel, density };
+            let panels = Panels { open: panel, folded, density };
             let ended = CancellationToken::new();
-            let first = geometry.screen(0);
+            let first = panels.screen(0, false);
+            // The stream is asked for at most the larger panel's pixels.
+            let (largest, largest_points) = match folded {
+                Some(folded) if folded.0.max(folded.1) > panel.0.max(panel.1) => {
+                    let screen = panels.screen(0, true);
+                    (screen.pixels, screen.points)
+                }
+                _ => (first.pixels, first.points),
+            };
             let device = Arc::new(AndroidDevice {
                 _emulator: connected,
                 pictures: screen::Screen::new(
                     client.clone(),
-                    first.pixels,
-                    (first.points.x.round() as u32, first.points.y.round() as u32),
+                    largest,
+                    (largest_points.x.round() as u32, largest_points.y.round() as u32),
                     demi_shared_h264::hardware(),
                 ),
                 client,
@@ -391,14 +400,14 @@ impl Driver for Android {
                 hardware_keyboard,
                 injected_modifiers: std::sync::Mutex::default(),
                 codec: self.codec.clone(),
-                geometry,
-                screen: watch::Sender::new(geometry.screen(0)),
+                panels,
+                screen: watch::Sender::new(first),
                 drawn: watch::Sender::new(0),
                 awake: watch::Sender::new(true),
                 ended: ended.clone(),
                 watching: CancellationToken::new(),
-                art_folder: art,
-                art: tokio::sync::OnceCell::new(),
+                art_folders: art,
+                art: Default::default(),
                 corners: Arc::default(),
                 corners_read: std::sync::Once::new(),
                 frame_known: watch::Sender::new(()),
@@ -413,6 +422,10 @@ impl Driver for Android {
         })
     }
 }
+
+/// How long a fold waits for the emulator to show the other display, which
+/// takes it a fraction of a second.
+const FOLD_LIMIT: Duration = Duration::from_secs(5);
 
 /// How long the log waits to be followed again once logcat ended, as when
 /// the emulator restarts its log daemon.
@@ -511,6 +524,42 @@ struct Geometry {
     density: f64,
 }
 
+/// The emulator's panel open and, for a foldable, the region of it the
+/// device shows folded, which the panel is while it is.
+#[derive(Debug, Clone, Copy)]
+struct Panels {
+    open: (f64, f64),
+    folded: Option<(f64, f64)>,
+    /// Pixels per point.
+    density: f64,
+}
+
+impl Panels {
+    fn geometry(self, folded: bool) -> Geometry {
+        Geometry {
+            panel: if folded { self.folded.unwrap_or(self.open) } else { self.open },
+            density: self.density,
+        }
+    }
+
+    /// The screen held `turns` quarter turns counterclockwise, folded or
+    /// not.
+    fn screen(self, turns: u8, folded: bool) -> Screen {
+        Screen {
+            fold: self.folded.map(|_| Folded::Twofold { open: !folded }),
+            ..self.geometry(folded).screen(turns)
+        }
+    }
+}
+
+/// Whether a picture of `format` shows a foldable folded: the region it
+/// shows of the panel.
+fn folded(format: Option<&ImageFormat>) -> bool {
+    format
+        .and_then(|format| format.folded_display.as_ref())
+        .is_some_and(|region| region.width > 0 && region.height > 0)
+}
+
 impl Geometry {
     /// The screen held `turns` quarter turns counterclockwise.
     fn screen(&self, turns: u8) -> Screen {
@@ -524,6 +573,7 @@ impl Geometry {
             },
             pixels,
             screenshot: emulator_fit(pixels, SCREENSHOT_LONG_SIDE),
+            fold: None,
         }
     }
 
@@ -625,7 +675,7 @@ struct AndroidDevice {
     codec: Arc<dyn Codec>,
     /// The emulator's pictures, which the live view and a recording share.
     pictures: Arc<screen::Screen>,
-    geometry: Geometry,
+    panels: Panels,
     screen: watch::Sender<Screen>,
     drawn: watch::Sender<u64>,
     /// Whether the display is on, as Android announces it.
@@ -634,9 +684,10 @@ struct AndroidDevice {
     /// Stops following the pictures and the log as the device is let go.
     watching: CancellationToken,
     /// Android Studio's device art for the device, where the Host has it.
-    art_folder: Option<PathBuf>,
+    art_folders: Option<art::Folders>,
     /// The art, read the first time it is drawn; none when it does not read.
-    art: tokio::sync::OnceCell<Option<Arc<art::Art>>>,
+    /// The art open and folded, each read the first time it is asked for.
+    art: [tokio::sync::OnceCell<Option<Arc<art::Art>>>; 2],
     /// The screen's corners, once read in the background (`read_corners`).
     corners: Arc<std::sync::OnceLock<corners::PanelCorners>>,
     /// Starts that read the first time the drawn frame needs it; the
@@ -647,10 +698,12 @@ struct AndroidDevice {
 }
 
 impl AndroidDevice {
-    /// The device's art, read the first time it is asked for.
-    async fn art(&self) -> Option<Arc<art::Art>> {
-        let folder = self.art_folder.clone()?;
-        self.art
+    /// The device's art open or folded, read the first time it is asked
+    /// for; none folded where the art has no closed posture.
+    async fn art(&self, folded: bool) -> Option<Arc<art::Art>> {
+        let folders = self.art_folders.as_ref()?;
+        let folder = if folded { folders.closed.clone()? } else { folders.open.clone() };
+        self.art[usize::from(folded)]
             .get_or_init(|| async move {
                 let read = tokio::task::spawn_blocking(move || art::Art::load(&folder).map_err(|error| (folder, error))).await;
                 match read {
@@ -715,7 +768,7 @@ impl AndroidDevice {
         let corners = self.corners.clone();
         let known = self.frame_known.clone();
         let (watching, ended) = (self.watching.clone(), self.ended.clone());
-        let density = self.geometry.density;
+        let density = self.panels.density;
         tokio::spawn(async move {
             tokio::select! {
                 _ = watching.cancelled() => {}
@@ -748,18 +801,20 @@ impl AndroidDevice {
         let drawn = self.drawn.clone();
         let ended = self.ended.clone();
         let watching = self.watching.clone();
-        let geometry = self.geometry;
-        // The first picture says how the device is held now.
+        let panels = self.panels;
+        // The first picture says how the device is held and folded now.
         let first = stream.message().await.map_err(failed("the emulator's screen"))?;
         if let Some(image) = &first {
-            screen.send_replace(geometry.screen(picture_turns(image.format.as_ref())));
+            let format = image.format.as_ref();
+            screen.send_replace(panels.screen(picture_turns(format), folded(format)));
         }
         tokio::spawn(async move {
             let followed = async {
                 while let Ok(Some(image)) = stream.message().await {
                     drawn.send_modify(|count| *count += 1);
-                    let turned = geometry.screen(picture_turns(image.format.as_ref()));
-                    screen.send_if_modified(|current| std::mem::replace(current, turned) != turned);
+                    let format = image.format.as_ref();
+                    let shown = panels.screen(picture_turns(format), folded(format));
+                    screen.send_if_modified(|current| std::mem::replace(current, shown) != shown);
                 }
             };
             tokio::select! {
@@ -833,11 +888,17 @@ impl AndroidDevice {
         turns(self.screen.borrow().orientation)
     }
 
+    /// The panel as the device is folded now.
+    fn geometry(&self) -> Geometry {
+        self.panels.geometry(matches!(self.screen.borrow().fold, Some(Folded::Twofold { open: false })))
+    }
+
     /// `at`, a point of the picture, in the panel's own pixels, which the
     /// emulator's touches take whatever the display shows.
     fn panel_point(&self, at: Points) -> (i32, i32) {
-        let pixels = (at.x * self.geometry.density, at.y * self.geometry.density);
-        let (x, y) = self.geometry.to_panel(pixels, self.picture_turns());
+        let geometry = self.geometry();
+        let pixels = (at.x * geometry.density, at.y * geometry.density);
+        let (x, y) = geometry.to_panel(pixels, self.picture_turns());
         (x.round() as i32, y.round() as i32)
     }
 
@@ -1200,7 +1261,7 @@ impl Device for AndroidDevice {
                     place(&mut element.children, geometry, display, picture);
                 }
             }
-            place(&mut elements, &self.geometry, display, picture);
+            place(&mut elements, &self.geometry(), display, picture);
             Ok(elements)
         })
     }
@@ -1316,6 +1377,46 @@ impl Device for AndroidDevice {
         })
     }
 
+    fn fold_to(&self, degrees: u16) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            if self.panels.folded.is_none() {
+                return Err(DriverError::Failed("the device does not fold".into()));
+            }
+            let open = degrees > 0;
+            let posture = if open { PostureValue::PostureOpened } else { PostureValue::PostureClosed };
+            let started = std::time::Instant::now();
+            let mut screen = self.screen.subscribe();
+            self.client
+                .clone()
+                .set_posture(proto::Posture { value: posture.into() })
+                .await
+                .map_err(failed("the fold"))?;
+            // The emulator shows the other display within a picture or two.
+            let shown = tokio::time::timeout(
+                FOLD_LIMIT,
+                screen.wait_for(|screen| screen.fold == Some(Folded::Twofold { open })),
+            )
+            .await;
+            tracing::info!(
+                event = "mobile_fold.ended",
+                serial = %self.serial,
+                open,
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                outcome = if matches!(shown, Ok(Ok(_))) { "shown" } else { "unshown" },
+                "a fold ended"
+            );
+            match shown {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(_)) => Err(DriverError::Lost("the emulator is gone".into())),
+                Err(_) => Err(DriverError::Failed(format!(
+                    "the emulator did not show its {} display within {} seconds",
+                    if open { "inner" } else { "outer" },
+                    FOLD_LIMIT.as_secs()
+                ))),
+            }
+        })
+    }
+
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             let angle = match orientation {
@@ -1377,11 +1478,12 @@ impl Device for AndroidDevice {
             // Android Studio's frame where the Host has its art; the
             // frame the view draws otherwise, once the corners it follows
             // are known.
-            let Some(art) = self.art().await else {
+            let folded = matches!(screen.fold, Some(Folded::Twofold { open: false }));
+            let Some(art) = self.art(folded).await else {
                 self.corners_read.call_once(|| self.read_corners());
                 return Ok(self.corners.get().map(|corners| Framed {
                     frame: Frame::Drawn {
-                        corners: corners.turned(turns, 1.0 / self.geometry.density),
+                        corners: corners.turned(turns, 1.0 / self.panels.density),
                     },
                     screen,
                 }));

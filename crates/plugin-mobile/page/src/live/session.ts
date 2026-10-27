@@ -66,6 +66,8 @@ import {
   type Orientation,
   type PanelReason,
   type Turn,
+  type FoldDisplay,
+  type LiveFold,
 } from '../generated/plugin'
 
 export { REFUSED_FRAME, SILENT_STREAM, type LiveConnection } from '@demicodes/plugin-sdk'
@@ -369,6 +371,11 @@ export class DeviceSession {
   }
 
   /** Whether the device records now, as the device says, whoever started it. */
+  /** How the device folds and is folded, as the Host says; none for one that does not fold. */
+  get fold(): LiveFold | null {
+    return this.state.device?.fold ?? null
+  }
+
   get recording(): boolean {
     return this.state.device?.recording ?? false
   }
@@ -486,6 +493,13 @@ export class DeviceSession {
     switch (message.type) {
       case 'state':
         this.link.live()
+        if (this.state.device && litDisplay(message.device.fold) !== litDisplay(this.state.device.fold)) {
+          // A foldable that lit its other display shows in that display's
+          // frames, which the Host draws anew or the cache keeps.
+          this.state.frames = {}
+          this.readying.clear()
+          this.asked = null
+        }
         this.state.device = message.device
         this.keepOrientation(message.device.orientation)
         // The device's model and orientation are known now, which its cached
@@ -756,7 +770,8 @@ export class DeviceSession {
    */
   private frameKey(orientation: Orientation, area: FrameArea): string | null {
     const model = this.model
-    return model ? `frame:${model}:${area.width}x${area.height}@${area.scale}:${orientation}` : null
+    const lit = litDisplay(this.state.device?.fold)
+    return model ? `frame:${model}:${area.width}x${area.height}@${area.scale}:${orientation}${lit ? `:${lit}` : ''}` : null
   }
 
   /** The disk cache's key of the device's last orientation. */
@@ -953,5 +968,17 @@ export class DeviceSession {
   close(): void {
     this.link.close()
     this.pictures?.stop()
+  }
+}
+
+/** The display a foldable shows, whose frame is its own; none for a device that does not fold. */
+function litDisplay(fold: LiveFold | null | undefined): FoldDisplay | null {
+  switch (fold?.kind) {
+    case 'hinge':
+      return fold.display
+    case 'twofold':
+      return fold.open ? 'inner' : 'outer'
+    default:
+      return null
   }
 }

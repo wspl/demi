@@ -36,6 +36,29 @@ service EmulatorController {
     // The current states at once, then each change: here, that the guest
     // finished booting.
     rpc streamNotification(google.protobuf.Empty) returns (stream Notification) {}
+    // Folds a foldable to a posture, as its hinge's sensors define them.
+    rpc setPosture(Posture) returns (google.protobuf.Empty) {}
+}
+
+message Posture {
+    enum PostureValue {
+        POSTURE_UNKNOWN = 0;
+        POSTURE_CLOSED = 1;
+        POSTURE_HALF_OPENED = 2;
+        POSTURE_OPENED = 3;
+        POSTURE_FLIPPED = 4;
+        POSTURE_TENT = 5;
+        POSTURE_MAX = 6;
+    }
+    PostureValue value = 3;
+}
+
+// [Output Only] The region of the unfolded screen a folded foldable shows.
+message FoldedDisplay {
+    uint32 width = 1;
+    uint32 height = 2;
+    uint32 xOffset = 3;
+    uint32 yOffset = 4;
 }
 
 message BootCompletedNotification {
@@ -167,6 +190,9 @@ message ImageFormat {
     // How the pixels reach the reader: in the message, or in a file both
     // map.
     ImageTransport transport = 6;
+    // [Output Only] The region a folded foldable shows: none, zero, while it
+    // is open, and the picture is that region alone while it is folded.
+    FoldedDisplay foldedDisplay = 7;
 }
 
 message ImageTransport {

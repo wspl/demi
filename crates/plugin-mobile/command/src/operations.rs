@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::mobile::{
     Appearance, AppearanceChoice, ElementSummary, AppearanceResult, CloseResult, Direction, ElementRef, EraseResult,
-    InstallResult, LaunchResult,
+    FLAT_DEGREES, FoldResult, FoldTo, InstallResult, LaunchResult, Posture,
     InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
     MobilePlatform, RecordAction, RecordInput, RecordTarget, Rotation, RotateResult,
     FIND_SECONDS, ScreenshotResult, SwipeResult, TapResult, TypeResult, TypedField, WAIT_SECONDS, WaitResult,
@@ -24,7 +24,7 @@ use demi_shared_recording::{Answer, Library, Reading, started};
 
 use crate::{
     devices::{Devices, OpenDevice},
-    driver::{Button, KeyPress, Points},
+    driver::{Button, Folded, KeyPress, Points},
     error::MobileError,
     refs::Listed,
     scale::Scale,
@@ -205,6 +205,7 @@ pub async fn run(
                 let scale = Scale::of(&screen);
                 let elements = {
                     let mut refs = open.refs.lock().expect("the refs are intact");
+                    refs.on(screen.fold.map(Folded::display));
                     tree::elements(&raw, input.keyboard == Some(true), &scale, &mut refs)
                 };
                 let result = InspectResult {
@@ -215,7 +216,7 @@ pub async fn run(
                     settled,
                     elements,
                 };
-                let text = text::inspect(&result, &open.name);
+                let text = text::inspect(&result, &open.name, screen.fold);
                 let mut outcome = Outcome::result(result, text)?;
                 if !settled {
                     outcome.notes.push(unsettled(call));
@@ -386,6 +387,46 @@ pub async fn run(
                     text,
                 )
             }
+            (MobileOperation::Fold(input), Some(open)) => {
+                let Some(fold) = open.device.screen().borrow().fold else {
+                    return Err(MobileError::Usage(format!("{} does not fold", open.handle)));
+                };
+                let to = FoldTo::parse(&input.to).ok_or_else(|| {
+                    MobileError::Usage(format!("{:?} is not closed, half-open, open or an angle from 0 to 180", input.to))
+                })?;
+                let degrees = match (fold, to) {
+                    (Folded::Hinge { .. }, to) => to.degrees(),
+                    (Folded::Twofold { .. }, FoldTo::Posture(Posture::Closed)) => 0,
+                    (Folded::Twofold { .. }, FoldTo::Posture(Posture::Open)) => FLAT_DEGREES,
+                    (Folded::Twofold { .. }, _) => {
+                        return Err(MobileError::Usage(format!("{} only folds closed or opens", open.handle)));
+                    }
+                };
+                open.device.fold_to(degrees).await?;
+                let screen = *open.device.screen().borrow();
+                let scale = Scale::of(&screen);
+                let fold = screen.fold.unwrap_or(fold);
+                let (posture, degrees, display) = (fold.posture(), fold.degrees(), fold.display());
+                let text = format!(
+                    "{} is {}: the {} display shows, {}×{}.\n",
+                    open.handle,
+                    text::folded(fold),
+                    text::fold_display(display),
+                    scale.width,
+                    scale.height
+                );
+                Outcome::result(
+                    FoldResult {
+                        device: open.handle.clone(),
+                        posture,
+                        degrees,
+                        display,
+                        width: scale.width,
+                        height: scale.height,
+                    },
+                    text,
+                )
+            }
             (MobileOperation::Appearance(input), Some(open)) => {
                 let appearance = match input.appearance {
                     AppearanceChoice::Light => Appearance::Light,
@@ -492,6 +533,7 @@ fn queue_of(operation: &MobileOperation) -> Queue {
         | MobileOperation::Type(_)
         | MobileOperation::Key(_)
         | MobileOperation::Rotate(_)
+        | MobileOperation::Fold(_)
         | MobileOperation::Appearance(_)
         | MobileOperation::Install(_)
         | MobileOperation::Launch(_) => Queue::Input,
@@ -531,8 +573,9 @@ async fn open_device(devices: &Arc<Devices>, call: &Call<'_>, query: &str) -> Re
         (MobilePlatform::Android, Some(serial)) => format!("AVD {} · adb serial {serial}", open.native_id),
         (MobilePlatform::Android, None) => format!("AVD {}", open.native_id),
     };
+    let folded = screen.fold.map(|fold| format!(" · {}", text::folded(fold))).unwrap_or_default();
     let text = format!(
-        "{}  {} · {} · {}×{} · {native}\n",
+        "{}  {} · {} · {}×{}{folded} · {native}\n",
         open.handle, open.name, open.os, scale.width, scale.height
     );
     Outcome::result(
@@ -546,6 +589,7 @@ async fn open_device(devices: &Arc<Devices>, call: &Call<'_>, query: &str) -> Re
             orientation: screen.orientation,
             width: scale.width,
             height: scale.height,
+            posture: screen.fold.map(Folded::posture),
             booted: open.booted,
         },
         text,
@@ -661,8 +705,9 @@ async fn element(open: &OpenDevice, target: &str, timeout: Option<u64>) -> Resul
 
 /// The element `reference` names in the device's last inspect.
 fn listed(open: &OpenDevice, reference: ElementRef) -> Result<(ElementRef, Listed), MobileError> {
+    let display = open.device.screen().borrow().fold.map(Folded::display);
     let refs = open.refs.lock().expect("the refs are intact");
-    match refs.get(&reference) {
+    match refs.get(&reference, display) {
         Some(listed) => Ok((reference, listed.clone())),
         None => Err(MobileError::StaleRef(reference)),
     }
@@ -680,7 +725,9 @@ fn summary(reference: ElementRef, listed: &Listed) -> demi_command_package_mobil
 /// says of them.
 fn typed_text(open: &OpenDevice, characters: usize, typed: &typing::Typed) -> (Vec<TypedField>, String) {
     let fields: Vec<TypedField> = {
+        let display = open.device.screen().borrow().fold.map(Folded::display);
         let mut refs = open.refs.lock().expect("the refs are intact");
+        refs.on(display);
         typed
             .fields
             .iter()

@@ -14,6 +14,14 @@
     "stopRecording": "収録を停止",
     "more": "その他"
   },
+  "fold": {
+    "closed": "閉じる",
+    "halfOpen": "半開き",
+    "open": "開く",
+    "hinge": "ヒンジの角度",
+    "degrees": "{degrees}°",
+    "reset": "正面に戻す"
+  },
   "activity": "エージェントがこのデバイスを操作しています",
   "keyboard": "シミュレータのキーボード",
   "screenOff": {

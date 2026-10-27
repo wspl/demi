@@ -16,7 +16,7 @@
 //!   {id 4, method: tap, params} ───▶
 //!                               ◀─── {id 4, result: {}}
 //!                               ◀─── {event: drawn, udid}
-//!                               ◀─── {event: turned, udid, screen}
+//!                               ◀─── {event: screen, udid, screen}
 //!                               ◀─── video: capture 2, sequence 17, …
 //! ```
 
@@ -78,8 +78,9 @@ pub enum Event {
     Drawn { udid: String },
     /// The device went away.
     Lost { udid: String, reason: String },
-    /// The device's screen turned, whoever asked for it.
-    Turned { udid: String, screen: super::Turned },
+    /// The device's screen changed, as it turns or as a foldable lights its
+    /// other display, whoever asked for it.
+    Screen { udid: String, screen: super::HelperScreen },
     /// A capture failed or ended.
     Capture {
         capture: u32,

@@ -92,7 +92,9 @@ final class Server: @unchecked Sendable {
     if method == "attach" {
       let session = try await DeviceSession.attach(udid: udid, output: output)
       lock.withLock { devices[udid] = session }
-      return (session.screenJSON(), nil)
+      var attached = session.screenJSON()
+      if let body = session.body { attached["body"] = body }
+      return (attached, nil)
     }
     let session = try session(udid)
     switch method {
@@ -141,6 +143,8 @@ final class Server: @unchecked Sendable {
       return (session.screenJSON(), nil)
     case "appearance":
       return (["appearance": try await session.appearance()], nil)
+    case "fold":
+      return (try await session.fold(to: Int(double(params["degrees"]))), nil)
     case "setAppearance":
       try await session.setAppearance(params["appearance"] as? String ?? "")
       return ([:], nil)

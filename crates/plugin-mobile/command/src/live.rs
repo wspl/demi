@@ -40,7 +40,7 @@ use tokio_util::{
 };
 
 use demi_command_package_mobile_protocol::{
-    live::{INPUT_FAILED, LiveCorners, LiveDevice, NO_FOCUSED_FIELD, LiveModuleMessage, LiveViewerMessage},
+    live::{INPUT_FAILED, LiveCorners, LiveDevice, LiveFold, LivePoints, NO_FOCUSED_FIELD, LiveModuleMessage, LiveViewerMessage},
     mobile::Orientation,
 };
 use demi_command_protocol::{CommandError, Completion};
@@ -60,7 +60,7 @@ use demi_live_view_protocol::{
 use crate::{
     error::MobileError,
     devices::{Devices, OpenDevice},
-    driver::{DeviceCapture, FrameArea, Framed, KeyPress, Points, Screen, TouchPhase},
+    driver::{DeviceCapture, Folded, FrameArea, Framed, KeyPress, Points, Screen, TouchPhase},
     keys,
 };
 
@@ -478,11 +478,19 @@ struct Watched {
 
 /// A frame drawn for the page, in a task of its own, so neither the page's
 /// messages nor the pictures wait for it: the area it was drawn for and the
-/// orientation of the screen it was drawn for.
+/// screen it was drawn for.
 struct Drawn {
     area: FrameArea,
-    orientation: Orientation,
+    shown: Shown,
     message: LiveModuleMessage,
+}
+
+/// What of the screen a frame is drawn for: its orientation and its size,
+/// which a foldable's other display changes.
+type Shown = (Orientation, (u32, u32));
+
+fn shown(screen: &crate::driver::Screen) -> Shown {
+    (screen.orientation, screen.pixels)
 }
 
 /// Serves one device's stream of a conversation's page.
@@ -616,7 +624,7 @@ async fn view(
     // The size the view lays the device out at, which its frame fits, and
     // the size and orientation of the frame the view has.
     let mut area: Option<FrameArea> = None;
-    let mut framed: Option<(FrameArea, Orientation)> = None;
+    let mut framed: Option<(FrameArea, Shown)> = None;
     let mut drawing: Option<AbortOnDropHandle<Drawn>> = None;
     // The size the view shows the screen at, which a capture that starts
     // when the stream is looked at again fits at once.
@@ -630,7 +638,7 @@ async fn view(
                 Some(watched) => tokio::select! {
                     event = watched.stream.events.recv() => FromDevice::Event(event),
                     changed = watched.activity.changed() => FromDevice::Activity(changed.is_ok()),
-                    changed = watched.screen.changed() => FromDevice::Turned(changed.is_ok()),
+                    changed = watched.screen.changed() => FromDevice::Screen(changed.is_ok()),
                     changed = watched.awake.changed() => FromDevice::Power(changed.is_ok()),
                     changed = async {
                         match watched.reframes.as_mut() {
@@ -747,11 +755,11 @@ async fn view(
                 FromDevice::Activity(false) => {}
                 // A turned device's frame turns with it, and the page hears
                 // of its orientation.
-                FromDevice::Turned(true) => {
+                FromDevice::Screen(true) => {
                     drawing = draw(&open, area, framed);
                     state(&open, writer).await;
                 }
-                FromDevice::Turned(false) => {}
+                FromDevice::Screen(false) => {}
                 FromDevice::Power(true) => {
                     if let Some(watched) = &watched {
                         screen_state(watched, writer).await;
@@ -774,12 +782,12 @@ async fn view(
             drawn = drawn => {
                 drawing = None;
                 // A draw that panicked leaves the view with the frame it has.
-                if let Some(Drawn { area: drawn_for, orientation, message }) = drawn
+                if let Some(Drawn { area: drawn_for, shown, message }) = drawn
                     && watched.is_some()
                     && area == Some(drawn_for)
                 {
                     if matches!(&message, LiveModuleMessage::Frame { frame: Some(_), .. }) {
-                        framed = Some((drawn_for, orientation));
+                        framed = Some((drawn_for, shown));
                     }
                     writer.control(&message).await;
                 }
@@ -809,8 +817,9 @@ enum FromDevice<E> {
     Event(Option<E>),
     /// Whether the activity changed, false once its sender is gone.
     Activity(bool),
-    /// Whether the screen changed, false once the device is gone.
-    Turned(bool),
+    /// Whether the screen changed, as it turns or a foldable lights its
+    /// other display, false once the device is gone.
+    Screen(bool),
     /// Whether the screen turned on or off, false once the device is gone.
     Power(bool),
     /// Whether the device came to know its frame, false once it announces
@@ -833,8 +842,32 @@ async fn state(open: &OpenDevice, writer: &Writer<LiveModuleMessage>) {
         model: (!open.model.is_empty()).then(|| open.model.clone()),
         recording: open.recording().is_some(),
         orientation: open.device.screen().borrow().orientation,
+        fold: open.device.screen().borrow().fold.map(|fold| live_fold(fold, open.device.body())),
     };
     writer.control(&LiveModuleMessage::State { device }).await;
+}
+
+/// How the page hears of a fold.
+fn live_fold(fold: Folded, body: Option<String>) -> LiveFold {
+    let points = |points: Points| LivePoints {
+        width: points.x,
+        height: points.y,
+    };
+    match fold {
+        Folded::Hinge {
+            degrees,
+            display,
+            outer,
+            inner,
+        } => LiveFold::Hinge {
+            degrees,
+            display,
+            outer: points(outer),
+            inner: points(inner),
+            body,
+        },
+        Folded::Twofold { open } => LiveFold::Twofold { open },
+    }
 }
 
 /// The stream is looked at: the viewer joins the device's capture, fitted
@@ -912,16 +945,16 @@ async fn unlook(
 }
 
 /// Draws the device's frame for `area` in a task, when the view does not
-/// have it at that size and the screen's orientation yet. The frame is
-/// sent for the screen the driver drew it for, which a turn meanwhile may
-/// have left: the page keeps it for that orientation.
+/// have it at that size and for the screen as it is shown yet. The frame is
+/// sent for the screen the driver drew it for, which a turn or a fold
+/// meanwhile may have left: the page keeps it for that orientation.
 fn draw(
     open: &Arc<OpenDevice>,
     area: Option<FrameArea>,
-    framed: Option<(FrameArea, Orientation)>,
+    framed: Option<(FrameArea, Shown)>,
 ) -> Option<AbortOnDropHandle<Drawn>> {
     let area = area?;
-    if framed == Some((area, open.device.screen().borrow().orientation)) {
+    if framed == Some((area, shown(&open.device.screen().borrow()))) {
         return None;
     }
     let open = open.clone();
@@ -945,7 +978,7 @@ fn draw(
         tracing::debug!(event = "live_frame.drawn", name = %open.name, ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX), "a frame was drawn");
         Drawn {
             area,
-            orientation,
+            shown: shown(&screen),
             message: LiveModuleMessage::Frame {
                 width: area.width,
                 height: area.height,

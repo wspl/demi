@@ -126,6 +126,75 @@ closed_set! {
 }
 
 closed_set! {
+    /// How far a foldable is open, as its view's buttons name the postures.
+    pub enum Posture {
+        Closed = "closed",
+        HalfOpen = "half-open",
+        Open = "open",
+    }
+}
+
+closed_set! {
+    /// Which of a foldable's two displays is lit.
+    pub enum FoldDisplay {
+        Outer = "outer",
+        Inner = "inner",
+    }
+}
+
+/// Where `fold` moves a foldable: a posture, or a hinge's angle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FoldTo {
+    Posture(Posture),
+    /// From 0 (closed) to [`FLAT_DEGREES`].
+    Degrees(u16),
+}
+
+/// A hinge's angle when the device lies flat, fully open.
+pub const FLAT_DEGREES: u16 = 180;
+/// The hinge's angle Half Open moves it to, as Xcode's Device Hub sets it.
+pub const HALF_OPEN_DEGREES: u16 = 130;
+
+impl FoldTo {
+    /// What `fold`'s `to` names: closed, half-open, open, or whole degrees.
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim() {
+            "closed" => Some(Self::Posture(Posture::Closed)),
+            "half-open" => Some(Self::Posture(Posture::HalfOpen)),
+            "open" => Some(Self::Posture(Posture::Open)),
+            degrees => degrees
+                .trim_end_matches('°')
+                .parse::<u16>()
+                .ok()
+                .filter(|degrees| *degrees <= FLAT_DEGREES)
+                .map(Self::Degrees),
+        }
+    }
+
+    /// The hinge's angle it moves to.
+    pub fn degrees(self) -> u16 {
+        match self {
+            Self::Posture(Posture::Closed) => 0,
+            Self::Posture(Posture::HalfOpen) => HALF_OPEN_DEGREES,
+            Self::Posture(Posture::Open) => FLAT_DEGREES,
+            Self::Degrees(degrees) => degrees,
+        }
+    }
+}
+
+impl Posture {
+    /// The posture a hinge at `degrees` is in: closed shut, open flat, half
+    /// open between.
+    pub fn of(degrees: u16) -> Self {
+        match degrees {
+            0 => Self::Closed,
+            FLAT_DEGREES.. => Self::Open,
+            _ => Self::HalfOpen,
+        }
+    }
+}
+
+closed_set! {
     /// The system's light or dark appearance.
     pub enum Appearance {
         Light = "light",
@@ -351,6 +420,7 @@ operations! {
     "type" => Type(TypeInput) -> TypeResult;
     "key" => Key(KeyInput) -> KeyResult;
     "rotate" => Rotate(RotateInput) -> RotateResult;
+    "fold" => Fold(FoldInput) -> FoldResult;
     "appearance" => Appearance(AppearanceInput) -> AppearanceResult;
     "wait" => Wait(WaitInput) -> WaitResult;
     "record" => Record(RecordInput) -> RecordResult;
@@ -437,6 +507,9 @@ pub struct OpenResult {
     /// The screenshot's size.
     pub width: u32,
     pub height: u32,
+    /// How far a foldable is open; none for a device that does not fold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub posture: Option<Posture>,
     /// Whether this open booted it, so closing it shuts it down.
     pub booted: bool,
 }
@@ -645,6 +718,31 @@ pub struct RotateResult {
     /// unless the app in front refused it.
     pub orientation: Orientation,
     /// The screenshot's size in that orientation.
+    pub width: u32,
+    pub height: u32,
+}
+
+device_input! {
+    /// `fold`: folds or opens a foldable.
+    pub struct FoldInput {
+        /// closed, half-open or open, or the hinge's angle in degrees from 0 (closed) to 180 (flat); an Android foldable takes closed or open
+        #[garde(length(chars, min = 1))]
+        pub to: String,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FoldResult {
+    pub device: DeviceId,
+    pub posture: Posture,
+    /// The hinge's angle; none on a device that only folds or opens.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "demi_shared_types::Nullable<u16>")]
+    pub degrees: Option<u16>,
+    /// The display that is lit after the fold, which screenshots show.
+    pub display: FoldDisplay,
+    /// The screenshot's size on that display.
     pub width: u32,
     pub height: u32,
 }

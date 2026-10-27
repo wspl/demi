@@ -8,7 +8,7 @@
 import { ref, watch, type Ref } from 'vue'
 import { clientPlatform } from '@demicodes/utils'
 import { pageVisibility, picturesSupported, type HeadlineText, type PluginCache } from '@demicodes/plugin-sdk'
-import { LIVE_NO_FOCUSED_FIELD, type PanelReason } from '../generated/plugin'
+import { LIVE_NO_FOCUSED_FIELD, type FoldResult, type PanelReason } from '../generated/plugin'
 import { MobileError, type MobileApi } from '../devices'
 import { DeviceSession } from './session'
 import type { MobileTabData } from './kind'
@@ -140,6 +140,19 @@ export class MobileDevicesController {
   }
 
   /**
+   * Folds `device` to `to`, as `demi mobile fold` does: answers how it is
+   * folded once it got there, or none when it refused, which is a toast.
+   */
+  async fold(device: string, to: string): Promise<FoldResult | null> {
+    try {
+      return await this.api.fold(device, to)
+    } catch (error) {
+      this.errors.report(t('failures.control'), error)
+      return null
+    }
+  }
+
+  /**
    * Runs a toolbar control's call; answers the file on the Host that
    * Screenshot or a stopped Record left, which the content saves on the
    * user's computer. A refusal is a toast. Whether a device records is the
@@ -163,6 +176,9 @@ export class MobileDevicesController {
           session?.turnAnswered(press, answered.orientation)
           return null
         }
+        case 'fold':
+          await this.fold(call.params.device, call.params.to)
+          return null
         case 'toggleAppearance':
           await this.api.toggleAppearance(call.params.device)
           return null

@@ -24,14 +24,14 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::{
     live::{LiveCorner, LiveCornerPoint, LiveCorners},
-    mobile::{Appearance, Orientation, MobilePlatform, PowerState, SCREENSHOT_LONG_SIDE},
+    mobile::{Appearance, FoldDisplay, Orientation, MobilePlatform, PowerState, SCREENSHOT_LONG_SIDE},
 };
 use demi_live_view::stream::CaptureEvent;
 use demi_shared_recording::Sink;
 
 use crate::{
     driver::{
-        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, InstalledApp, KeyPress, Launched,
+        Booting, Button, Device, DeviceCapture, Driver, DriverError, Folded, Frame, FrameArea, Framed, InstalledApp, KeyPress, Launched,
         PixelRect, Png, Points, RawElement, Rect, Result, Screen, Simulator, TouchPhase,
     },
     keys,
@@ -303,7 +303,8 @@ impl Driver for Ios {
     fn attach<'a>(&'a self, conversation: &'a str, native_id: &'a str, log: Arc<Log>) -> BoxFuture<'a, Result<Arc<dyn Device>>> {
         Box::pin(async move {
             let session = self.session(conversation).await?;
-            let screen: Turned = session.helper.call("attach", json!({ "udid": native_id })).await?;
+            let attached: Attached = session.helper.call("attach", json!({ "udid": native_id })).await?;
+            let screen = attached.screen;
             let state = Arc::new(DeviceState {
                 screen: watch::Sender::new(screen.screen()),
                 held: Mutex::new(Orientation::Portrait),
@@ -328,6 +329,7 @@ impl Driver for Ios {
             Ok(Arc::new(IosDevice {
                 session,
                 udid: native_id.to_owned(),
+                body: attached.body,
                 state,
                 log,
                 following,
@@ -368,7 +370,7 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
                     device.drawn.send_modify(|count| *count += 1);
                 }
             }
-            Event::Turned { udid, screen } => {
+            Event::Screen { udid, screen } => {
                 if let Some(device) = devices.get(&udid) {
                     let screen = screen.screen();
                     device.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
@@ -387,12 +389,33 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
 }
 
 /// The screen as the helper answers it, upright, in the orientation its
-/// display shows.
+/// display shows, and how a foldable is folded.
 #[derive(Debug, Clone, Deserialize)]
-pub struct Turned {
+pub struct HelperScreen {
     orientation: HelperOrientation,
     points: Size,
     pixels: PixelSize,
+    #[serde(default)]
+    fold: Option<HelperFold>,
+}
+
+/// A foldable's hinge as the helper answers it.
+#[derive(Debug, Clone, Deserialize)]
+struct HelperFold {
+    degrees: u16,
+    display: FoldDisplay,
+    outer: Size,
+    inner: Size,
+}
+
+/// The helper's answer to `attach`: the screen, and the file of a
+/// foldable's 3D body.
+#[derive(Debug, Deserialize)]
+struct Attached {
+    #[serde(flatten)]
+    screen: HelperScreen,
+    #[serde(default)]
+    body: Option<String>,
 }
 
 /// An orientation as the helper names it.
@@ -428,7 +451,7 @@ struct PixelSize {
     height: u32,
 }
 
-impl Turned {
+impl HelperScreen {
     fn screen(&self) -> Screen {
         Screen {
             orientation: self.orientation.into(),
@@ -439,6 +462,18 @@ impl Turned {
             pixels: (self.pixels.width, self.pixels.height),
             // The helper draws the screenshot by the same rule.
             screenshot: crate::scale::fitted((self.pixels.width, self.pixels.height), SCREENSHOT_LONG_SIDE),
+            fold: self.fold.as_ref().map(|fold| Folded::Hinge {
+                degrees: fold.degrees,
+                display: fold.display,
+                outer: Points {
+                    x: fold.outer.width,
+                    y: fold.outer.height,
+                },
+                inner: Points {
+                    x: fold.inner.width,
+                    y: fold.inner.height,
+                },
+            }),
         }
     }
 }
@@ -505,6 +540,8 @@ impl From<Element> for RawElement {
 struct IosDevice {
     session: Arc<Session>,
     udid: String,
+    /// The file of a foldable's 3D body, as the helper found it.
+    body: Option<String>,
     state: Arc<DeviceState>,
     log: Arc<Log>,
     /// Stops following the log as the device is let go.
@@ -726,7 +763,7 @@ impl Device for IosDevice {
             let answer = self
                 .call("orient", json!({ "orientation": orientation_name(orientation) }))
                 .await?;
-            let turned: Turned = serde_json::from_value(answer.result)
+            let turned: HelperScreen = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the turned screen does not read: {error}")))?;
             *self.state.held.lock().expect("the held orientation is intact") = orientation;
             // The orientation the screen took, which an app may have refused.
@@ -740,6 +777,33 @@ impl Device for IosDevice {
                 ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 outcome = if screen.orientation == orientation { "turned" } else { "refused" },
                 "a rotation ended"
+            );
+            Ok(())
+        })
+    }
+
+    fn body(&self) -> Option<String> {
+        self.body.clone()
+    }
+
+    fn fold_to(&self, degrees: u16) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            if self.state.screen.borrow().fold.is_none() {
+                return Err(DriverError::Failed("the device does not fold".into()));
+            }
+            let started = std::time::Instant::now();
+            let answer = self.call("fold", json!({ "degrees": degrees })).await?;
+            let folded: HelperScreen = serde_json::from_value(answer.result)
+                .map_err(|error| DriverError::Failed(format!("the folded screen does not read: {error}")))?;
+            let screen = folded.screen();
+            self.state.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
+            tracing::info!(
+                event = "mobile_fold.ended",
+                udid = %self.udid,
+                degrees,
+                display = ?screen.fold.map(Folded::display),
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                "a fold ended"
             );
             Ok(())
         })
@@ -805,8 +869,8 @@ impl Device for IosDevice {
             #[derive(Deserialize)]
             #[serde(rename_all_fields = "camelCase", untagged)]
             enum Answered {
-                Drawn { r#for: Turned, width: u32, height: u32, screen: Placed, png_bytes: usize },
-                Undrawn { r#for: Turned, corner: Vec<LiveCornerPoint> },
+                Drawn { r#for: HelperScreen, width: u32, height: u32, screen: Placed, png_bytes: usize },
+                Undrawn { r#for: HelperScreen, corner: Vec<LiveCornerPoint> },
             }
             #[derive(Deserialize)]
             struct Placed {

@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::{
     live::LiveCorners,
-    mobile::{Appearance, Orientation, MobilePlatform, PowerState},
+    mobile::{Appearance, FoldDisplay, Orientation, MobilePlatform, Posture, PowerState},
 };
 use demi_live_view::stream::CaptureEvent;
 use demi_shared_recording::Sink;
@@ -107,6 +107,53 @@ pub struct Screen {
     /// [`SCREENSHOT_LONG_SIDE`](demi_command_package_mobile_protocol::mobile::SCREENSHOT_LONG_SIDE)
     /// by the rule of the platform that draws it.
     pub screenshot: (u32, u32),
+    /// How a foldable is folded, whose lit display the screen is; none for
+    /// a device that does not fold.
+    pub fold: Option<Folded>,
+}
+
+/// How a foldable is folded now.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Folded {
+    /// A hinge at `degrees`, as iPhone Duo's, with `display` lit, and its
+    /// two displays upright, in points.
+    Hinge {
+        degrees: u16,
+        display: FoldDisplay,
+        outer: Points,
+        inner: Points,
+    },
+    /// Open or closed, as an Android foldable folds: its inner display lit
+    /// while open.
+    Twofold { open: bool },
+}
+
+impl Folded {
+    /// The posture it is in.
+    pub fn posture(self) -> Posture {
+        match self {
+            Self::Hinge { degrees, .. } => Posture::of(degrees),
+            Self::Twofold { open: true } => Posture::Open,
+            Self::Twofold { open: false } => Posture::Closed,
+        }
+    }
+
+    /// The hinge's angle; none for a device that only folds or opens.
+    pub fn degrees(self) -> Option<u16> {
+        match self {
+            Self::Hinge { degrees, .. } => Some(degrees),
+            Self::Twofold { .. } => None,
+        }
+    }
+
+    /// The display it lights.
+    pub fn display(self) -> FoldDisplay {
+        match self {
+            Self::Hinge { display, .. } => display,
+            Self::Twofold { open: true } => FoldDisplay::Inner,
+            Self::Twofold { open: false } => FoldDisplay::Outer,
+        }
+    }
 }
 
 /// One element of the screen's tree as the platform's accessibility
@@ -326,6 +373,19 @@ pub trait Device: Send + Sync + 'static {
     /// turn, which [`Self::screen`] then shows, or once it is clear that the
     /// app in front refused it, the screen unchanged.
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>>;
+    /// The file of a hinged foldable's 3D body that Xcode installs, a USDZ
+    /// on this Host, which the view draws the device as; none where it
+    /// installs none.
+    fn body(&self) -> Option<String> {
+        None
+    }
+    /// Moves a foldable's hinge to `degrees`, or folds it shut at 0 and opens
+    /// it at any other angle where it only folds or opens; returns once the
+    /// display lit after it shows, which [`Self::screen`] then follows.
+    fn fold_to(&self, degrees: u16) -> BoxFuture<'_, Result<()>> {
+        let _ = degrees;
+        Box::pin(async { Err(DriverError::Failed("the device does not fold".into())) })
+    }
     fn appearance(&self) -> BoxFuture<'_, Result<Appearance>>;
     fn set_appearance(&self, appearance: Appearance) -> BoxFuture<'_, Result<()>>;
     /// Hands `sink` every picture the device draws from now on that differs

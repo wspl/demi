@@ -14,6 +14,14 @@
     "stopRecording": "停止錄製",
     "more": "更多"
   },
+  "fold": {
+    "closed": "闔上",
+    "halfOpen": "半開",
+    "open": "展開",
+    "hinge": "鉸鏈角度",
+    "degrees": "{degrees}°",
+    "reset": "回到正面"
+  },
   "activity": "智慧代理正在使用這部裝置",
   "keyboard": "模擬器鍵盤",
   "screenOff": {

@@ -28,6 +28,13 @@ struct Tree {
       format: .complete, keys: keys, remoteContentOptions: AccessibilityRemoteContentOptions())
     let read = try await native.describe(.frontmost, options: options)
     var elements = try Self.elements(of: read)
+    let space = Self.space(of: elements, on: session.screenTurn)
+    session.read(in: space)
+    if session.screenTurn.natural != 0, let application = elements.first {
+      // On a display with a turn of its own, the application's frame reads
+      // as the primary display's.
+      application.frame = CGRect(origin: .zero, size: space.size)
+    }
     let point = AccessibilityRequestOptions(format: .complete, keys: keys)
     try await Self.fillChildless(elements) { at in
       do {
@@ -50,7 +57,35 @@ struct Tree {
         elements = Self.graft(content, into: elements)
       }
     }
+    if space.quarters != 0 {
+      for element in elements { element.turn(to: space) }
+    }
     return elements.map { $0.json }
+  }
+
+  /// The space `elements` read in on a display shown upright as `screen`
+  /// says: an application that takes the display's own turn reads upright,
+  /// as iPhone Duo's Settings does on its inner display; SpringBoard reads
+  /// in the display's unturned points. Which it is, the read does not say,
+  /// nor does the application's frame: an element reaching across past the
+  /// unturned width reads upright. Its height says nothing, since a list
+  /// lists the rows scrolled away.
+  static func space(of elements: [Node], on screen: ScreenTurn) -> AccessibilitySpace {
+    let upright = AccessibilitySpace(quarters: 0, size: screen.upright)
+    guard screen.natural != 0 else { return upright }
+    let unturned = AccessibilitySpace(
+      quarters: screen.natural,
+      size: screen.natural % 2 == 1 ? CGSize(width: screen.upright.height, height: screen.upright.width) : screen.upright)
+    var extent = CGRect.null
+    func reach(_ node: Node) {
+      extent = extent.union(node.frame)
+      node.children.forEach(reach)
+    }
+    // The application's own frame says nothing.
+    elements.first?.children.forEach(reach)
+    elements.dropFirst().forEach(reach)
+    let slack: CGFloat = 1
+    return !extent.isNull && extent.maxX > unturned.size.width + slack ? upright : unturned
   }
 
   /// An element as the read serializes it.
@@ -62,7 +97,7 @@ struct Tree {
     let label: String?
     let value: String?
     let identifier: String?
-    let frame: CGRect
+    var frame: CGRect
     let enabled: Bool?
     let focused: Bool?
     let traits: [String]
@@ -86,6 +121,12 @@ struct Tree {
       traits = object["traits"] as? [String] ?? []
       pid = (object["pid"] as? NSNumber)?.int32Value
       children = (object["children"] as? [[String: Any]] ?? []).map(Node.init)
+    }
+
+    /// Takes the frames of this element and its own upright from `space`.
+    func turn(to space: AccessibilitySpace) {
+      frame = space.upright(frame)
+      for child in children { child.turn(to: space) }
     }
 
     var json: [String: Any] {

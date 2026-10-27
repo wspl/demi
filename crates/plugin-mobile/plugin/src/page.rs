@@ -9,7 +9,7 @@ use demi_command_declarations::NativeOperation;
 use demi_command_package_mobile_protocol::PACKAGE;
 use demi_command_package_mobile_protocol::mobile::{
     AppearanceChoice, AppearanceInput, AppearanceResult, CloseInput, CloseResult, DeviceId,
-    FailureDocument, Key, KeyInput, KeyResult, ListInput, ListResult, MobileErrorCode,
+    FailureDocument, FoldInput, FoldResult, Key, KeyInput, KeyResult, ListInput, ListResult, MobileErrorCode,
     MobileOperation, PREFIX, RecordAction, RecordInput, RecordResult, RecordTarget, RotateInput, RotateResult,
     Rotation, ScreenshotInput, ScreenshotResult,
 };
@@ -52,6 +52,14 @@ pub enum Turn {
 pub struct RotateDevice {
     pub device: String,
     pub turn: Turn,
+}
+
+/// `fold { device, to }`: a posture, or a hinge's angle in degrees.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FoldDevice {
+    pub device: String,
+    pub to: String,
 }
 
 /// A button the panel presses.
@@ -116,6 +124,7 @@ pub(crate) fn page() -> Page {
         .panel_kind(KIND)
         .method(Method::new::<OnDevice, CloseResult>("close", Scope::Conversation).calls(operation("close")))
         .method(Method::new::<RotateDevice, RotateResult>("rotate", Scope::Conversation).calls(operation("rotate")))
+        .method(Method::new::<FoldDevice, FoldResult>("fold", Scope::Conversation).calls(operation("fold")))
         .method(
             Method::new::<OnDevice, AppearanceResult>("toggleAppearance", Scope::Conversation)
                 .calls(operation("appearance")),
@@ -173,6 +182,11 @@ pub(crate) async fn call(
                 orientation,
             };
             to_value(operate::<RotateResult, _>(port, MobileOperation::Rotate, input).await?)
+        }
+        "fold" => {
+            let FoldDevice { device, to } = decode(params)?;
+            let input = FoldInput { device: device_id(device)?, to };
+            to_value(operate::<FoldResult, _>(port, MobileOperation::Fold, input).await?)
         }
         "toggleAppearance" => {
             let OnDevice { device } = decode(params)?;
