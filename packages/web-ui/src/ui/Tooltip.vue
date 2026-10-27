@@ -47,6 +47,7 @@ import {
   offset as offsetMiddleware,
   flip,
   shift,
+  size,
   limitShift,
   autoUpdate,
   getOverflowAncestors
@@ -205,6 +206,24 @@ const placer: Middleware = {
     return next === placement ? {} : { reset: { placement: next } }
   },
 }
+/**
+ * A plain hint's text and the padding above and below it, in pixels
+ * (`leading-4` and `py-1.5` below).
+ */
+const HINT_LINE_PX = 16
+const HINT_PADDING_PX = 12
+/**
+ * Shows as many whole lines of a plain hint's text as the side it took has
+ * room for, so a hint far longer than the screen, such as a script, ends in
+ * an ellipsis on the screen and never runs off it.
+ */
+const fitLines = size({
+  padding: 8,
+  apply({ availableHeight, elements }) {
+    const lines = Math.max(1, Math.floor((availableHeight - HINT_PADDING_PX) / HINT_LINE_PX))
+    elements.floating.style.setProperty('--hint-lines', String(lines))
+  },
+})
 const { floatingStyles } = useFloating(triggerRef, floatingRef, {
   placement: computed(() => props.placement ?? surroundingPlacement),
   strategy: 'fixed',
@@ -212,6 +231,7 @@ const { floatingStyles } = useFloating(triggerRef, floatingRef, {
     ...(props.placeBy ? [placer] : []),
     offsetMiddleware(props.offset),
     ...(props.placeBy ? [] : [flip()]),
+    ...(props.card || hasOverlay.value ? [] : [fitLines]),
     shift({ padding: 8, limiter: limitShift() }),
   ]),
   whileElementsMounted: autoUpdate,
@@ -507,7 +527,11 @@ onBeforeUnmount(() => {
       <!-- A hint describes whatever is under the pointer, so it sits above
            dialogs, popovers and toasts, including hints opened from those surfaces.
            A hint as wide as its text wraps at its cap, never wider than the
-           screen less the margin `shift` keeps. -->
+           screen less the margin `shift` keeps. It shows its whole text, as a
+           path a capsule cuts, breaking a word longer than the cap, but for the
+           lines past the screen's (`fitLines`). An element inside the padding
+           cuts the lines: a box cut with its padding shows the top of the next
+           line in it. -->
       <div
         v-if="visible"
         ref="floatingRef"
@@ -518,13 +542,13 @@ onBeforeUnmount(() => {
               'rounded-md',
               hasOverlay
                 ? [wide ? 'max-w-[min(42rem,calc(100vw-1rem))]' : 'max-w-[min(20rem,calc(100vw-1rem))]', 'px-3 py-2 text-xs leading-relaxed']
-                : 'line-clamp-2 max-w-[min(24rem,calc(100vw-1rem))] px-2.5 py-1.5 text-[12px] leading-4',
+                : 'max-w-[min(24rem,calc(100vw-1rem))] px-2.5 py-1.5 text-[12px] leading-4 wrap-break-word',
             ]"
         :style="{ ...floatingStyles, '--elevation': elevation, zIndex: z() }"
         role="tooltip"
       >
         <slot v-if="hasOverlay" name="overlay" />
-        <template v-else>{{ props.content }}</template>
+        <span v-else class="line-clamp-(--hint-lines)">{{ props.content }}</span>
       </div>
     </Transition>
   </Teleport>
