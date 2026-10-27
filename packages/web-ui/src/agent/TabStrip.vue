@@ -623,13 +623,14 @@ defineExpose({ el })
     </div>
     <!--
       The divider after the leading tabs, while the strip has a tab of its own
-      after it.
+      after it. Like the dividers between the strip's tabs, it fades out, its
+      room kept, while the tab on either side of it is selected or hovered.
     -->
     <span
       v-if="$slots.leading"
       aria-hidden="true"
       data-leading-divider
-      class="mx-0.5 hidden h-3.5 w-px shrink-0 bg-line [&:has(+*_[role=tab])]:block"
+      class="mx-0.5 hidden h-3.5 w-px shrink-0 bg-line transition-opacity duration-150 [&:has(+*_[role=tab])]:block [:has(>[role=tab]:last-child[aria-selected=true])+&]:opacity-0 [:has(>[role=tab]:last-child:hover)+&]:opacity-0 [&:has(+*>*>[role=tab]:first-child[aria-selected=true])]:opacity-0 [&:has(+*>*>[role=tab]:first-child:hover)]:opacity-0"
     />
     <!--
       Its own stacking context, so the fades lie over the scrolled tabs and
