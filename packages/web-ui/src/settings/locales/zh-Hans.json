@@ -195,6 +195,8 @@
     "browser": {
       "title": "浏览器",
       "label": "浏览器通知",
+      "quietWhileElsewhere": "在其他设备上使用时不提醒",
+      "quietWhileElsewhereDescription": "你在其他设备上使用 Demi 时，这里不提醒轮次完成或失败；离开那台设备 {minutes} 分钟后恢复。权限请求和智能体的通知始终会提醒。",
       "blocked": "已在此浏览器的网站设置中阻止。",
       "thisBrowser": "仅限此浏览器。即使关闭 Demi 也会收到。",
       "unsupported": "此浏览器不支持通知。"
@@ -322,6 +324,7 @@
     "notifications": {
       "keywords": "浏览器,提醒",
       "browserKeywords": "通知",
+      "quietKeywords": "不提醒,其他设备,手机,电脑,离开",
       "finishesKeywords": "完成,结束",
       "failsKeywords": "错误,出错",
       "permissionKeywords": "权限请求,请求许可",

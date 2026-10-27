@@ -112,6 +112,15 @@ pub fn module(header: &str) -> String {
     source.push('\n');
     push_doc(
         &mut source,
+        Some("How long a session stays in use after the last input to one of its pages,\nin minutes."),
+        0,
+    );
+    writeln!(source, "export const IN_USE_MINUTES = {}", demi_web_api_protocol::push::IN_USE_MINUTES)
+        .expect("writing to a string");
+
+    source.push('\n');
+    push_doc(
+        &mut source,
         Some(
             "The largest message a page sends on any of its lanes.",
         ),

@@ -135,13 +135,23 @@ pub enum PageMessage {
     /// The value's view closed.
     Unfollow { value: SyncFollowed },
     /// The conversation the page shows while it is focused and visible, or
-    /// null, each time that changes; no push notification of it reaches the
-    /// session's browser while it does.
+    /// null, and whether it is focused and visible, in front of the user,
+    /// each time either changes. No push notification of the conversation
+    /// it shows reaches the session's browser, and none of a turn's end
+    /// while it is in front.
     Showing {
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "demi_shared_types::Nullable<ConversationId>")]
         showing: Option<ConversationId>,
+        /// False from a page that does not say it.
+        #[serde(default)]
+        front: bool,
     },
+    /// The user acted on the page while it was visible: a key, a click, a
+    /// scroll or a pointer's move. Sent at the first input after the
+    /// channel opened, then at most once a minute while input goes on;
+    /// the session is in use for `IN_USE_MINUTES` after it.
+    Used,
 }
 
 /// A message of the page's synchronization channel, its `sync` lane: the current

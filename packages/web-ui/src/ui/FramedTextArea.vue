@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useElementSize, useWindowSize } from '@vueuse/core'
 import { mirrorPage } from './frame-mirror'
+import { passInput } from './user-input'
 
 /**
  * A text area in a document of its own, a same-origin frame, so that the focus
@@ -25,7 +26,8 @@ import { mirrorPage } from './frame-mirror'
  * exposes.
  *
  * A key with ⌘ or Control that the text area leaves goes on to the page, as
- * it would from a field of the page's own, so the app's shortcuts work in it.
+ * it would from a field of the page's own, so the app's shortcuts work in it,
+ * and the page hears of every input to it (`user-input.ts`).
  */
 defineOptions({ inheritAttrs: false })
 
@@ -47,10 +49,12 @@ function take(): void {
     return
   release()
   const unmirror = mirrorPage(inside)
+  const unpass = passInput(view, window)
   view.addEventListener('keydown', passOn)
   view.addEventListener('keyup', passOn)
   release = () => {
     unmirror()
+    unpass()
     view.removeEventListener('keydown', passOn)
     view.removeEventListener('keyup', passOn)
   }

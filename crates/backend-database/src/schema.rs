@@ -135,6 +135,8 @@ impl ReadBlob for NoBlobs {
 ///   compacted while idle and the server kept settings of its own.
 /// - 0.1.5541's, which 0.1.5495 to 0.1.5527 shipped too, before an idle
 ///   compaction kept the tokens its request carried.
+/// - 0.1.5565's, which 0.1.5551 shipped too, before a push subscription
+///   said whether it stays quiet while the user is on another device.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -326,6 +328,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.5541.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_5541),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5565.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_5565),
         },
     ],
 };
@@ -640,7 +646,7 @@ CREATE TABLE server_settings (
 ) STRICT;
 ";
 
-/// From 0.1.5541's control schema to the current one: an idle compaction
+/// From 0.1.5541's control schema to 0.1.5565's: an idle compaction
 /// keeps the tokens its request carried, which the user's minimum context
 /// is compared with. The rows stored before it qualified from 200,000
 /// tokens, the minimum until then.
@@ -655,6 +661,14 @@ INSERT INTO idle_compactions_next (conversation_id, due_at, lifetime_ms, carried
   SELECT conversation_id, due_at, lifetime_ms, 200000 FROM idle_compactions;
 DROP TABLE idle_compactions;
 ALTER TABLE idle_compactions_next RENAME TO idle_compactions;
+";
+
+/// From 0.1.5565's control schema to the current one: a push subscription
+/// says whether it stays quiet while the user is on another device, which
+/// every one stored before does, as the switch is on until turned off.
+const CONTROL_FROM_0_1_5565: &str = "
+ALTER TABLE push_subscriptions ADD COLUMN quiet_while_elsewhere INTEGER NOT NULL DEFAULT 1
+  CHECK (quiet_while_elsewhere IN (0, 1));
 ";
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
@@ -4722,7 +4736,8 @@ CREATE INDEX web_sessions_of_user ON web_sessions (user_id, created_at);
 -- A browser's push subscription of a user (turns.md § Notifications), one
 -- per session, which it serves and which takes it along when it ends: its
 -- push service's endpoint, which names the browser's subscription, its two
--- keys and the events it chose.
+-- keys, the events it chose and whether it stays quiet while the user is
+-- on another device.
 CREATE TABLE push_subscriptions (
   session_id       TEXT PRIMARY KEY REFERENCES web_sessions (id) ON DELETE CASCADE,
   endpoint         TEXT NOT NULL UNIQUE,
@@ -4733,7 +4748,8 @@ CREATE TABLE push_subscriptions (
   turn_fails       INTEGER NOT NULL CHECK (turn_fails IN (0, 1)),
   needs_permission INTEGER NOT NULL CHECK (needs_permission IN (0, 1)),
   agent_notifies   INTEGER NOT NULL CHECK (agent_notifies IN (0, 1)),
-  created_at       INTEGER NOT NULL
+  created_at       INTEGER NOT NULL,
+  quiet_while_elsewhere INTEGER NOT NULL CHECK (quiet_while_elsewhere IN (0, 1))
 ) STRICT;
 CREATE INDEX push_subscriptions_of_user ON push_subscriptions (user_id);
 

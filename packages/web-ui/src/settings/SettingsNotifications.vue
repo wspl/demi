@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { IN_USE_MINUTES } from '@demicodes/protocol'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Switch from '../ui/Switch.vue'
@@ -11,7 +12,8 @@ import SettingsRow from './SettingsRow.vue'
 
 /**
  * Settings › Notifications: whether this browser notifies at all, by push, so
- * with every Demi page closed too, and what notifies, the agent's own
+ * with every Demi page closed too, whether the end of a turn notifies while
+ * the user is on another device, and what notifies, the agent's own
  * notifications among it.
  *
  * - The setting belongs to the browser. Turning it on asks the browser for
@@ -44,6 +46,8 @@ const turnFails = defineModel<boolean>('turnFails', { required: true })
 const needsPermission = defineModel<boolean>('needsPermission', { required: true })
 /** The agent's own notifications, `demi notify send`. */
 const agentNotifies = defineModel<boolean>('agentNotifies', { required: true })
+/** The end of a turn does not notify while the user is on another device. */
+const quietWhileElsewhere = defineModel<boolean>('quietWhileElsewhere', { required: true })
 
 /** The steps to add Demi to the Home Screen are open. */
 const sheetOpen = ref(false)
@@ -108,6 +112,16 @@ async function turn(value: boolean): Promise<void> {
           :disabled="unsupported || asking"
           :disabled-reason="unsupported ? t('notifications.browser.unsupported') : undefined"
           @update:model-value="turn"
+        />
+      </SettingsRow>
+      <SettingsRow
+        :label="t('notifications.browser.quietWhileElsewhere')"
+        :description="t('notifications.browser.quietWhileElsewhereDescription', { minutes: IN_USE_MINUTES })"
+      >
+        <Switch
+          v-model="quietWhileElsewhere"
+          :disabled="!on"
+          :disabled-reason="t('notifications.when.turnOnFirst')"
         />
       </SettingsRow>
     </SettingsGroup>

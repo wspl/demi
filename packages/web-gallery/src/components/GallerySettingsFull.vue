@@ -335,6 +335,7 @@ function resetShortcuts() {
     v-model:turn-fails="s.notifications.turnFails"
     v-model:needs-permission="s.notifications.needsPermission"
     v-model:agent-notifies="s.notifications.agentNotifies"
+    v-model:quiet-while-elsewhere="s.notifications.quietWhileElsewhere"
     :permission="s.notifications.iphone ? 'unsupported' : s.notifications.permission"
     :request-permission="askBrowser"
     :home-screen-icon="s.notifications.iphone ? APP_ICON : undefined"

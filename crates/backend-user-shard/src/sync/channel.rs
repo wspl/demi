@@ -15,7 +15,8 @@
 //!    is current as of.
 //!
 //! It keeps what the page says it shows, which holds back the session's
-//! notifications of that conversation while the channel lives.
+//! notifications of that conversation, and when the user last acted on it,
+//! which keeps the session in use, while the channel lives.
 //!
 //! An account still to choose its password is sent its account alone, when it
 //! opens and when the choice lands, since `GET /state` is refused until then;
@@ -36,7 +37,7 @@ use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::state::{PageMessage, SyncEvent, SyncFollow, SyncFollowed};
 
-use crate::conversation::notifications::PageShows;
+use crate::conversation::notifications::OpenPage;
 use crate::shard::lane::PageSession;
 use crate::shard::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
 
@@ -90,9 +91,9 @@ impl Shard {
         let end = if self.is_closing() {
             End::BackendClosing
         } else {
-            // What the page shows holds back the session's notifications
-            // of it until the channel ends.
-            let shows = self.notifications().page(session.id.clone());
+            // What the page shows and its use count for the session's
+            // notifications until the channel ends.
+            let open_page = self.notifications().page(session.id.clone());
             let registration = self.services().sync.watch(self.user());
             let follows = Follows::default();
             let mut channel = Channel {
@@ -105,7 +106,7 @@ impl Shard {
             tokio::select! {
                 biased;
                 () = self.closed() => End::BackendClosing,
-                end = page_messages(&mut from_page, &shows, &registration, &follows) => end,
+                end = page_messages(&mut from_page, &open_page, &registration, &follows) => end,
                 end = channel.serve() => match end {
                     Ok(never) => match never {},
                     Err(end) => end,
@@ -406,20 +407,19 @@ impl Channel<'_> {
 }
 
 /// Reads the page's side of the lane until it ends: what it follows, which
-/// `follows` and the registration keep, and what it shows, which `shows`
-/// keeps; any other message ends the channel.
+/// `follows` and the registration keep, and what it shows and when it was
+/// used, which `open_page` keeps; any other message ends the channel.
 async fn page_messages(
     from_page: &mut LaneReader,
-    shows: &PageShows,
+    open_page: &OpenPage,
     registration: &Registration,
     follows: &Follows,
 ) -> End {
     loop {
         match from_page.next().await {
             Some(LaneMessage::Text(text)) => match serde_json::from_str::<PageMessage>(&text) {
-                Ok(PageMessage::Showing { showing }) => {
-                    shows.set(showing);
-                }
+                Ok(PageMessage::Showing { showing, front }) => open_page.show(showing, front),
+                Ok(PageMessage::Used) => open_page.used(),
                 Ok(PageMessage::Open { follows: opened }) => {
                     if follows.opened.replace(true) {
                         return End::UnexpectedMessage;

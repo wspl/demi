@@ -195,6 +195,8 @@
     "browser": {
       "title": "ブラウザー",
       "label": "ブラウザー通知",
+      "quietWhileElsewhere": "ほかのデバイスを使用中は通知しない",
+      "quietWhileElsewhereDescription": "ほかのデバイスで Demi を使っている間は、ターンの完了や失敗をここでは通知しません。そのデバイスから離れて {minutes} 分たつと再開します。許可のリクエストとエージェントの通知は常に届きます。",
       "blocked": "このブラウザーのサイト設定でブロックされています。",
       "thisBrowser": "このブラウザーのみ。Demi を閉じていても届きます。",
       "unsupported": "このブラウザーは通知に対応していません。"
@@ -322,6 +324,7 @@
     "notifications": {
       "keywords": "ブラウザー,アラート",
       "browserKeywords": "通知",
+      "quietKeywords": "通知しない,ほかのデバイス,スマートフォン,コンピューター,離席",
       "finishesKeywords": "完了,終了",
       "failsKeywords": "エラー",
       "permissionKeywords": "許可のリクエスト",

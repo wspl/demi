@@ -103,15 +103,22 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     // Counted now, so the agent is told at once; delivery goes on in the
     // background, and a browser its push service no longer knows is
     // dropped then.
-    let recipients = shard.recipients(&message).await.map_err(failed)?;
-    match recipients.len() {
-        0 => {
+    let in_use = shard.notifications().in_use();
+    let recipients = shard.recipients(&message, &in_use).await.map_err(failed)?;
+    match (recipients.now.len(), recipients.shown) {
+        (0, 0) => {
             let what = "no browser of the user takes the agent's notifications now; `demi notify status` says why";
             port.stderr(warning(&call.invocation.path.join(" "), what)).await?;
             return Ok(0);
         }
-        1 => port.stdout("Sending to 1 browser.\n").await?,
-        n => port.stdout(format!("Sending to {n} browsers.\n")).await?,
+        // The user sees the conversation, on every browser that would
+        // notify, so none does.
+        (0, _) => {
+            port.stdout("Not sent: the user has this conversation open.\n").await?;
+            return Ok(0);
+        }
+        (1, _) => port.stdout("Sending to 1 browser.\n").await?,
+        (n, _) => port.stdout(format!("Sending to {n} browsers.\n")).await?,
     }
     shard.push(message, Some(recipients));
     Ok(0)
