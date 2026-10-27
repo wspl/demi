@@ -117,6 +117,7 @@ import { createConversationHistoryReads } from './history'
 import { createConversationCopies } from './offline'
 import { readConversationCopy, readNodeCopy } from '../state/offline'
 import { t } from './locales/text'
+import { attending } from '../state/attention'
 import { EMPTY_TRANSCRIPT, addPage, heldEdge } from '@demicodes/web-ui/transport/protocol'
 import {
   deleteDraft,
@@ -2799,7 +2800,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Marks what the conversation shows as read, at once, once it shows its
-   * transcript; the write follows the conversation's earlier ones. Marks
+   * transcript while the user attends the page (`state/attention.ts`); the
+   * write follows the conversation's earlier ones. Marks
    * made while one waits for its turn join it, so it acknowledges the
    * newest revision shown, once.
    */
@@ -2809,7 +2811,7 @@ export const useConversations = defineStore('conversations', () => {
       !conversation ||
       !transcriptShown(conversation.load) ||
       !(conversation.unread || conversation.needsYou) ||
-      document.visibilityState !== 'visible'
+      !attending()
     ) {
       return Promise.resolve()
     }

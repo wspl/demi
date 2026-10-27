@@ -56,6 +56,7 @@ import { usePasskeySignals } from './auth/passkeys'
 import { useSessions } from './auth/handoff'
 import { usePasskeyOffer } from './auth/passkey-offer'
 import PasswordChoice from './auth/PasswordChoice.vue'
+import { attend, attended } from './state/attention'
 provideBlobUrl(blobUrl)
 provideKeepPicture(keepPicture)
 /** How many recent conversations the search window lists before the user types. */
@@ -268,9 +269,14 @@ const asideOpen = computed({
     }
   },
 })
+// The shown conversation is read while the user attends the page, and a
+// change of it is the user's action, from the sidebar, a link, Back or a
+// notification.
+watch(activeId, () => attend(), { immediate: true })
 watch(
   [
     activeId,
+    attended,
     () => conversations.items.find((item) => item.id === activeId.value)?.unread,
     () => conversations.items.find((item) => item.id === activeId.value)?.needsYou,
     () => conversations.items.find((item) => item.id === activeId.value)?.load,
@@ -286,8 +292,7 @@ watch(
 const productShown = computed(() => session.signedIn && route.path !== '/handoff')
 // The tab says what the sidebar's dots say, and a sign-in page only its name.
 onScopeDispose(followTabAttention({
-  conversations: () => (productShown.value ? sidebarConversations.value : []),
-  openId: () => activeId.value,
+  conversations: () => (!session.signedIn ? [] : productShown.value ? sidebarConversations.value : null),
   openTitle: () => {
     const shown = productShown.value ? conversations.items.find((item) => item.id === activeId.value) : undefined
     return shown ? conversationTitle(shown.title) : null

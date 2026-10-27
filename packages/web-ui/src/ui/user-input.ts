@@ -1,22 +1,26 @@
 /**
  * The user's input to the page, which tells that someone is at it: a key, a
- * click, a scroll or a pointer's move.
+ * click, a scroll or a pointer's move. All of it but the pointer's move acts
+ * on the page; the pointer passes over the page on its way back to it.
  *
  * A frame of the page's own, such as the text area of `FramedTextArea.vue`,
  * keeps its input to itself, so it tells the page's window of each with
- * `FRAME_INPUT`.
+ * `FRAME_INPUT`, whose detail is the input's event type.
  */
 
 /** The events of a window that are the user's input. */
 export const USER_INPUT_EVENTS = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'touchstart'] as const
 
-/** What a frame of the page's own dispatches on the page's window at the user's input to it. */
+/** The events of the user's input that act on the page. */
+export const USER_ACTION_EVENTS = ['keydown', 'pointerdown', 'wheel', 'touchstart'] as const
+
+/** What a frame of the page's own dispatches on the page's window at the user's input to it: a `CustomEvent` whose detail is the input's type. */
 export const FRAME_INPUT = 'demi-frame-input'
 
 /** Tells `page` of each input to `frame`, a window of the page's own, until the answer is called. */
 export function passInput(frame: Window, page: Window): () => void {
-  const pass = (): void => {
-    page.dispatchEvent(new Event(FRAME_INPUT))
+  const pass = (event: Event): void => {
+    page.dispatchEvent(new CustomEvent(FRAME_INPUT, { detail: event.type }))
   }
   for (const input of USER_INPUT_EVENTS) {
     frame.addEventListener(input, pass, { capture: true, passive: true })
