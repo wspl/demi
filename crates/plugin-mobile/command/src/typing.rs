@@ -9,7 +9,7 @@
 //! the tree tells whether the focus moved on:
 //!
 //! ```text
-//!   the focused field ---- none ----> fails
+//!   the focused field ---- none ----> the text unchecked
 //!     |  a password field: keys 50 ms apart, not read back
 //!   the first character alone, the tree read until it shows
 //!     +-- the focus moved to another field: a row; each next character
@@ -21,10 +21,16 @@
 //! ```
 //!
 //! Enter and Tab act on the app, a submit or a move of the focus, so the
-//! text from the first of them on goes in unchecked. A screen whose tree
-//! names no focused field while the software keyboard shows, as a web page
-//! whose accessibility is still loading, has a field that takes keys: the
-//! text goes in unchecked, and the command says so.
+//! text from the first of them on goes in unchecked.
+//!
+//! A screen whose tree names no focused field may still have one that takes
+//! keys: a web page whose accessibility is still loading, or a verification
+//! code's boxes that the app draws over a field it hides from the tree. The
+//! keys go in as a hardware keyboard's would, unchecked, and the command
+//! says so, for the agent to see on the screen where they went. The tree
+//! is read for the focus for [`FOCUS_WATCH`] when the software keyboard
+//! shows then, and for [`LANDING`] when it does not, as when the hardware
+//! keyboard is connected.
 
 use std::{sync::Arc, time::Duration};
 
@@ -273,7 +279,8 @@ async fn single(
 }
 
 /// The focused field, once one shows in the tree; none when the tree names
-/// none while the software keyboard shows.
+/// none, after [`FOCUS_WATCH`] while the software keyboard shows, or else
+/// after [`LANDING`].
 async fn focused_field(device: &Arc<dyn Device>) -> Result<Option<Field>, MobileError> {
     let started = Instant::now();
     loop {
@@ -282,13 +289,9 @@ async fn focused_field(device: &Arc<dyn Device>) -> Result<Option<Field>, Mobile
         if let Some(field) = focused(&tree) {
             return Ok(Some(Field::of(field)));
         }
-        if started.elapsed() >= FOCUS_WATCH && crate::tree::find(&tree, &|element| element.keyboard_key).is_some() {
+        let keyboard = || crate::tree::find(&tree, &|element| element.keyboard_key).is_some();
+        if started.elapsed() >= LANDING || (started.elapsed() >= FOCUS_WATCH && keyboard()) {
             return Ok(None);
-        }
-        if started.elapsed() >= LANDING {
-            return Err(MobileError::Failed(
-                "no field has the keyboard focus; tap one first, or name it with --into".into(),
-            ));
         }
         tokio::time::sleep_until(read + READ_GAP).await;
     }

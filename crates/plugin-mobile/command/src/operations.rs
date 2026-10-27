@@ -700,7 +700,7 @@ fn typed_text(open: &OpenDevice, characters: usize, typed: &typing::Typed) -> (V
     };
     let mut text = match fields.as_slice() {
         [] => format!(
-            "Typed {characters} characters; the screen's tree names no focused field, though the keyboard shows, so they were not checked"
+            "Typed {characters} characters; the screen's tree names no focused field, so they went to whatever takes the keys, unchecked: a screenshot shows where they went"
         ),
         [field] => format!("Typed {characters} characters into {}", text::summary(&field.element)),
         fields => {
