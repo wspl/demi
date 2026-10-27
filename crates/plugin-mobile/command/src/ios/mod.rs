@@ -307,6 +307,9 @@ impl Driver for Ios {
             let screen = attached.screen;
             let state = Arc::new(DeviceState {
                 screen: watch::Sender::new(screen.screen()),
+                displays: screen.fold.as_ref().map(|_| {
+                    [FoldDisplay::Outer, FoldDisplay::Inner].map(|display| watch::Sender::new(screen.display_screen(display)))
+                }),
                 held: Mutex::new(Orientation::Portrait),
                 drawn: watch::Sender::new(0),
                 awake: watch::Sender::new(true),
@@ -348,6 +351,9 @@ struct Session {
 /// What the helper's events tell of a device.
 struct DeviceState {
     screen: watch::Sender<Screen>,
+    /// A hinged foldable's outer and inner displays, as [`Self::screen`] is
+    /// the lit one's; none for a device that does not fold.
+    displays: Option<[watch::Sender<Screen>; 2]>,
     /// The orientation the device was last turned to, which the app in
     /// front may have refused: portrait once attached.
     held: Mutex<Orientation>,
@@ -356,6 +362,20 @@ struct DeviceState {
     /// reports nothing of it.
     awake: watch::Sender<bool>,
     ended: CancellationToken,
+}
+
+impl DeviceState {
+    /// The device shows `screen` now, on each of its displays.
+    fn show(&self, screen: &HelperScreen) {
+        let lit = screen.screen();
+        self.screen.send_if_modified(|current| std::mem::replace(current, lit) != lit);
+        if let Some(displays) = &self.displays {
+            for (sender, display) in displays.iter().zip([FoldDisplay::Outer, FoldDisplay::Inner]) {
+                let shown = screen.display_screen(display);
+                sender.send_if_modified(|current| std::mem::replace(current, shown) != shown);
+            }
+        }
+    }
 }
 
 /// Hands the helper's events to the devices they are about, while the
@@ -372,8 +392,7 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
             }
             Event::Screen { udid, screen } => {
                 if let Some(device) = devices.get(&udid) {
-                    let screen = screen.screen();
-                    device.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
+                    device.show(&screen);
                 }
             }
             Event::Lost { udid, reason } => {
@@ -399,13 +418,33 @@ pub struct HelperScreen {
     fold: Option<HelperFold>,
 }
 
-/// A foldable's hinge as the helper answers it.
+/// A foldable's hinge as the helper answers it, with what each of its
+/// displays shows.
 #[derive(Debug, Clone, Deserialize)]
 struct HelperFold {
     degrees: u16,
     display: FoldDisplay,
     outer: Size,
     inner: Size,
+    displays: HelperDisplays,
+}
+
+/// What each of a foldable's displays shows, lit or not; none of one whose
+/// framebuffer the helper could not attach.
+#[derive(Debug, Clone, Deserialize)]
+struct HelperDisplays {
+    #[serde(default)]
+    outer: Option<HelperShown>,
+    #[serde(default)]
+    inner: Option<HelperShown>,
+}
+
+/// A display's picture, upright.
+#[derive(Debug, Clone, Deserialize)]
+struct HelperShown {
+    orientation: HelperOrientation,
+    points: Size,
+    pixels: PixelSize,
 }
 
 /// The helper's answer to `attach`: the screen, and the file of a
@@ -453,15 +492,34 @@ struct PixelSize {
 
 impl HelperScreen {
     fn screen(&self) -> Screen {
+        self.shown(self.orientation, &self.points, &self.pixels)
+    }
+
+    /// The screen as a foldable's `display` shows it, lit or not; the lit
+    /// display's where the helper shows none of it.
+    fn display_screen(&self, display: FoldDisplay) -> Screen {
+        let shown = self.fold.as_ref().and_then(|fold| match display {
+            FoldDisplay::Outer => fold.displays.outer.as_ref(),
+            FoldDisplay::Inner => fold.displays.inner.as_ref(),
+        });
+        match shown {
+            Some(shown) => self.shown(shown.orientation, &shown.points, &shown.pixels),
+            None => self.screen(),
+        }
+    }
+
+    /// The screen with a picture of `pixels` turned `orientation`, its
+    /// `points`, and how the device is folded.
+    fn shown(&self, orientation: HelperOrientation, points: &Size, pixels: &PixelSize) -> Screen {
         Screen {
-            orientation: self.orientation.into(),
+            orientation: orientation.into(),
             points: Points {
-                x: self.points.width,
-                y: self.points.height,
+                x: points.width,
+                y: points.height,
             },
-            pixels: (self.pixels.width, self.pixels.height),
+            pixels: (pixels.width, pixels.height),
             // The helper draws the screenshot by the same rule.
-            screenshot: crate::scale::fitted((self.pixels.width, self.pixels.height), SCREENSHOT_LONG_SIDE),
+            screenshot: crate::scale::fitted((pixels.width, pixels.height), SCREENSHOT_LONG_SIDE),
             fold: self.fold.as_ref().map(|fold| Folded::Hinge {
                 degrees: fold.degrees,
                 display: fold.display,
@@ -632,6 +690,11 @@ impl Device for IosDevice {
         self.state.screen.subscribe()
     }
 
+    fn display_screen(&self, display: FoldDisplay) -> Option<watch::Receiver<Screen>> {
+        let displays = self.state.displays.as_ref()?;
+        Some(displays[usize::from(display == FoldDisplay::Inner)].subscribe())
+    }
+
     fn held(&self) -> Orientation {
         *self.state.held.lock().expect("the held orientation is intact")
     }
@@ -767,8 +830,8 @@ impl Device for IosDevice {
                 .map_err(|error| DriverError::Failed(format!("the turned screen does not read: {error}")))?;
             *self.state.held.lock().expect("the held orientation is intact") = orientation;
             // The orientation the screen took, which an app may have refused.
+            self.state.show(&turned);
             let screen = turned.screen();
-            self.state.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
             tracing::info!(
                 event = "mobile_rotation.ended",
                 udid = %self.udid,
@@ -795,8 +858,8 @@ impl Device for IosDevice {
             let answer = self.call("fold", json!({ "degrees": degrees })).await?;
             let folded: HelperScreen = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the folded screen does not read: {error}")))?;
+            self.state.show(&folded);
             let screen = folded.screen();
-            self.state.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
             tracing::info!(
                 event = "mobile_fold.ended",
                 udid = %self.udid,
@@ -806,6 +869,15 @@ impl Device for IosDevice {
                 "a fold ended"
             );
             Ok(())
+        })
+    }
+
+    fn hinge(&self, degrees: u16) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            if self.state.displays.is_none() {
+                return Err(DriverError::Failed("the device does not fold on a hinge".into()));
+            }
+            self.done("hinge", json!({ "degrees": degrees })).await
         })
     }
 
@@ -918,17 +990,22 @@ impl Device for IosDevice {
         })
     }
 
-    fn capture(&self, size: (u32, u32), fps: u32, bitrate: u32) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>> {
+    fn capture(
+        &self,
+        size: (u32, u32),
+        fps: u32,
+        bitrate: u32,
+        display: Option<FoldDisplay>,
+    ) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>> {
         Box::pin(async move {
             let helper = self.session.helper.clone();
             let capture = helper.next_capture();
             let frames = helper.frames(capture);
-            let started = self
-                .done(
-                    "captureStart",
-                    json!({ "capture": capture, "width": size.0, "height": size.1, "fps": fps, "bitrate": bitrate }),
-                )
-                .await;
+            let mut params = json!({ "capture": capture, "width": size.0, "height": size.1, "fps": fps, "bitrate": bitrate });
+            if let Some(display) = display {
+                params["display"] = json!(display);
+            }
+            let started = self.done("captureStart", params).await;
             if let Err(error) = started {
                 helper.forget(capture);
                 return Err(error);

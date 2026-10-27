@@ -241,6 +241,12 @@ function foldOf(device: OpenDevice): LiveFold | null {
     : { kind: 'twofold', open: device.degrees > 0 }
 }
 
+/** A hinged foldable's `display` as its pictures show it upright, in points, lit or not. */
+function displayPoints(device: OpenDevice, display: 'outer' | 'inner'): { width: number; height: number } {
+  const { width, height } = display === 'inner' ? device.simulator.fold!.inner : device.simulator.points
+  return LANDSCAPE.includes(device.orientation) ? { width: height, height: width } : { width, height }
+}
+
 /** The screen as the picture shows it, in points: a foldable's lit display's. */
 function upright(device: OpenDevice): { width: number; height: number } {
   const { width, height } = innerLit(device) ? device.simulator.fold!.inner : device.simulator.points
@@ -520,7 +526,12 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
   let download: ReturnType<typeof setInterval> | null = null
 
   const stream: OpenUserStream = (handlers) => {
-    const view = new MobileView(handlers, () => [...open.values()], (shown) => power(shown, true))
+    const view = new MobileView(
+      handlers,
+      () => [...open.values()],
+      (shown) => power(shown, true),
+      (shown, degrees) => void call('fold', { device: shown.id, to: String(degrees) }),
+    )
     if (performance.now() < restartingUntil) {
       setTimeout(() => view.dropped('the runner is restarting'), 0)
     }
@@ -648,11 +659,14 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
 /**
  * One device's stream of a page, as a `demi-mobile` resident serves it: the
  * device its hello names, and whether it is looked at, while which alone it
- * speaks.
+ * speaks. A hello that names a hinged foldable's display carries that
+ * display's pictures, black while the other is lit.
  */
 class MobileView {
   /** The device the stream carries, once its hello named it. */
   watching: string | null = null
+  /** The foldable's display whose pictures it carries; none for the lit one. */
+  private display: 'outer' | 'inner' | null = null
   looked = false
   private encoder: VideoEncoder | null = null
   private painting: ReturnType<typeof setInterval> | null = null
@@ -670,6 +684,8 @@ class MobileView {
     private readonly handlers: UserStreamHandlers,
     private readonly devices: () => OpenDevice[],
     private readonly wake: (device: OpenDevice) => void,
+    /** Turns a hinged foldable's hinge, as the view's postures and slider do. */
+    private readonly hinge: (device: OpenDevice, degrees: number) => void,
   ) {
     this.heartbeat = setInterval(() => {
       if (this.looked) {
@@ -742,10 +758,18 @@ class MobileView {
     switch (value.type) {
       case 'hello':
         this.watching = value.device
+        this.display = value.display ?? null
         if (!this.device()) {
           this.send({ type: 'gone' })
         }
         break
+      case 'hinge': {
+        const device = this.device()
+        if (device) {
+          this.hinge(device, value.degrees)
+        }
+        break
+      }
       case 'looked':
         this.looked = value.looked
         if (value.looked) {
@@ -772,6 +796,7 @@ class MobileView {
         }
         break
       // The gallery draws its pictures at one size, whatever the panel shows.
+      case 'unshown':
       case 'shown':
       case 'keyframe':
       case 'release':
@@ -862,7 +887,7 @@ class MobileView {
     if (!device) {
       return
     }
-    const points = upright(device)
+    const points = this.display ? displayPoints(device, this.display) : upright(device)
     // The live view's long side, as demi-mobile scales the pictures.
     const scale = Math.min(1, 1568 / (Math.max(points.width, points.height) * SCALE))
     const size = {
@@ -898,7 +923,7 @@ class MobileView {
         const data = new Uint8Array(chunk.byteLength)
         chunk.copyTo(data)
         this.handlers.data(encodeVideo({
-          source: device.id,
+          source: this.display ? `${device.id}.${this.display}` : device.id,
           generation,
           sequence: this.sequence,
           key: chunk.type === 'key',
@@ -921,8 +946,16 @@ class MobileView {
       avc: { format: 'annexb' },
     })
     let frames = 0
+    const display = this.display
     this.painting = setInterval(() => {
-      this.paint(device, points, size.width / points.width)
+      // A display the device does not light is black.
+      if (display && display !== (innerLit(device) ? 'inner' : 'outer')) {
+        const context = this.canvas.getContext('2d')
+        context?.setTransform(1, 0, 0, 1, 0, 0)
+        context?.fillRect(0, 0, this.canvas.width, this.canvas.height)
+      } else {
+        this.paint(device, points, size.width / points.width)
+      }
       const frame = new VideoFrame(this.canvas, { timestamp: Math.round((performance.now() - this.started) * 1000) })
       try {
         this.encoder?.encode(frame, { keyFrame: frames % (FPS * 2) === 0 })

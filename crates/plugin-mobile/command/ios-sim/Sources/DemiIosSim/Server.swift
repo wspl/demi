@@ -63,9 +63,11 @@ final class Server: @unchecked Sendable {
   ]
 
   /// The name of the queue `method` on `udid` takes turns in: the input and a
-  /// capture's control wait for no read of the tree or screenshot.
+  /// capture's control wait for no read of the tree or screenshot, and a
+  /// move of the hinge for no fold, which it turns.
   static func queueName(_ method: String, udid: String) -> String {
     if inputs.contains(method) { return "\(udid)/input" }
+    if method == "hinge" { return "\(udid)/hinge" }
     if method.hasPrefix("capture") { return "\(udid)/capture" }
     return udid
   }
@@ -145,6 +147,9 @@ final class Server: @unchecked Sendable {
       return (["appearance": try await session.appearance()], nil)
     case "fold":
       return (try await session.fold(to: Int(double(params["degrees"]))), nil)
+    case "hinge":
+      try session.hinge(to: Int(double(params["degrees"])))
+      return ([:], nil)
     case "setAppearance":
       try await session.setAppearance(params["appearance"] as? String ?? "")
       return ([:], nil)
@@ -162,6 +167,7 @@ final class Server: @unchecked Sendable {
     case "captureStart":
       try session.captureStart(
         capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0),
+        display: (params["display"] as? String).flatMap(FoldDisplay.init(rawValue:)),
         width: Int(double(params["width"])), height: Int(double(params["height"])),
         fps: Int(double(params["fps"])), bitrate: Int(double(params["bitrate"])))
       return ([:], nil)

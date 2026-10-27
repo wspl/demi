@@ -1,5 +1,6 @@
-// One capture of the live view: the upright picture scaled to the size the view
-// asked for, encoded with VideoToolbox as H.264 High, Annex B, in real time
+// One capture of the live view: the upright picture of the lit display, or of
+// a foldable's display the capture names, scaled to the size the view asked
+// for, encoded with VideoToolbox as H.264 High, Annex B, in real time
 // without B-frames (`crates/plugin-mobile/command/src/ios/mod.rs`).
 //
 // A still screen sends no frame. A key frame asked for is sent at once, of the
@@ -14,6 +15,8 @@ import VideoToolbox
 
 final class Encoder: @unchecked Sendable {
   private let capture: UInt32
+  /// The foldable's display it shows; none for the lit display.
+  let display: FoldDisplay?
   private let width: Int
   private let height: Int
   private weak var session: DeviceSession?
@@ -43,11 +46,15 @@ final class Encoder: @unchecked Sendable {
   private var waiting = false
   private var stopped = false
 
-  init(capture: UInt32, width: Int, height: Int, fps: Int, bitrate: Int, session: DeviceSession, output: Output) throws {
+  init(
+    capture: UInt32, display: FoldDisplay?, width: Int, height: Int, fps: Int, bitrate: Int, session: DeviceSession,
+    output: Output
+  ) throws {
     // H.264 needs even sides.
     self.width = max(2, width & ~1)
     self.height = max(2, height & ~1)
     self.capture = capture
+    self.display = display
     self.session = session
     self.output = output
     self.interval = 1 / Double(max(1, fps))
@@ -174,7 +181,7 @@ final class Encoder: @unchecked Sendable {
 
   /// Encodes the picture as it is now, on the encoder's queue.
   private func encode() {
-    guard let session, let image = session.upright(), let pool,
+    guard let session, let image = session.upright(display), let pool,
       let (compression, key, repeated) = lock.withLock({ () -> (VTCompressionSession, Bool, Bool)? in
         guard !stopped, let compression else { return nil }
         let key = forceKey

@@ -55,7 +55,7 @@ use tokio_util::sync::CancellationToken;
 use demi_shared_recording::Sink;
 
 use demi_command_package_mobile_protocol::{
-    mobile::{Appearance, MobilePlatform, Orientation, PowerState, SCREENSHOT_LONG_SIDE},
+    mobile::{Appearance, FoldDisplay, MobilePlatform, Orientation, PowerState, SCREENSHOT_LONG_SIDE},
 };
 
 use crate::{
@@ -1537,8 +1537,18 @@ impl Device for AndroidDevice {
         self.frame_known.subscribe()
     }
 
-    fn capture(&self, size: (u32, u32), fps: u32, bitrate: u32) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>> {
+    fn capture(
+        &self,
+        size: (u32, u32),
+        fps: u32,
+        bitrate: u32,
+        display: Option<FoldDisplay>,
+    ) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>> {
         Box::pin(async move {
+            // An emulator shows its lit display only.
+            if display.is_some() {
+                return Err(DriverError::Failed("the device does not fold on a hinge".into()));
+            }
             // The first view of an emulator fetches the encoder.
             let load = self.codec.library().await.map_err(|error| DriverError::Failed(error.to_string()))?;
             Ok(Box::new(capture::AndroidCapture::start(&self.pictures, load, size, fps, bitrate)) as Box<dyn DeviceCapture>)
