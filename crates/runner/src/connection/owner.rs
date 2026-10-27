@@ -782,6 +782,7 @@ impl Owner<'_> {
                 self.host.handle_watch(message)?
             }
             Inbound::ResidentOpen { .. } => self.streams.handle_open(message)?,
+            Inbound::ResidentClose { ref stream_id } => self.streams.handle_close(stream_id),
             Inbound::DirectOffer {
                 id,
                 peer,

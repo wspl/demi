@@ -83,7 +83,10 @@ use tokio_util::sync::CancellationToken;
 
 use demi_runner_process::private_files::chmod;
 
-use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
+use crate::{
+    ArtifactResolver, ArtifactSource, RuntimeError,
+    askers::{Askers, Asking},
+};
 
 /// What this process found when it checked the image's copy of each digest:
 /// the file or the archive's entry, or none when the copy failed its check.
@@ -134,7 +137,7 @@ type Sharing = BoxFuture<'static, Result<PathBuf, Arc<RuntimeError>>>;
 /// that leaves drops it.
 struct InFlight {
     install: WeakShared<Sharing>,
-    callers: Arc<Mutex<Callers>>,
+    callers: Askers,
     progress: Arc<Mutex<Reported>>,
 }
 
@@ -145,44 +148,6 @@ impl InFlight {
         self.install
             .upgrade()
             .filter(|install| install.peek().is_none())
-    }
-}
-
-/// The callers waiting for an install, in the order they joined, each with
-/// the resolver that locates the artifact for its work.
-#[derive(Default)]
-struct Callers {
-    next: u64,
-    waiting: Vec<Caller>,
-}
-
-struct Caller {
-    id: u64,
-    resolver: Arc<dyn ArtifactResolver>,
-    /// Cancelled when the caller is cancelled or leaves.
-    left: CancellationToken,
-}
-
-impl Callers {
-    fn lock(callers: &Mutex<Self>) -> MutexGuard<'_, Self> {
-        callers.lock().expect("the waiting callers are intact")
-    }
-
-    fn add(&mut self, resolver: Arc<dyn ArtifactResolver>, cancel: &CancellationToken) -> u64 {
-        let id = self.next;
-        self.next += 1;
-        self.waiting.push(Caller {
-            id,
-            resolver,
-            left: cancel.child_token(),
-        });
-        id
-    }
-
-    fn remove(&mut self, id: u64) {
-        if let Some(index) = self.waiting.iter().position(|caller| caller.id == id) {
-            self.waiting.remove(index).left.cancel();
-        }
     }
 }
 
@@ -200,54 +165,13 @@ impl Reported {
     }
 }
 
-/// Locates a shared download's artifact by the resolver of the first caller
-/// still waiting.
-///
-/// The caller that started the download may have left by the time an expired
-/// URL or a retry asks again. A caller that leaves while its resolver answers
-/// hands the question to the next.
-struct Waiting(Arc<Mutex<Callers>>);
-
-impl ArtifactResolver for Waiting {
-    fn resolve<'a>(
-        &'a self,
-        artifact: &'a PackageArtifact,
-        cancel: &'a CancellationToken,
-    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
-        Box::pin(async move {
-            loop {
-                let first = Callers::lock(&self.0)
-                    .waiting
-                    .iter()
-                    .find(|caller| !caller.left.is_cancelled())
-                    .map(|caller| (caller.resolver.clone(), caller.left.clone()));
-                // With nobody waiting, the install is about to be dropped.
-                let Some((resolver, left)) = first else {
-                    return Err(RuntimeError::Cancelled);
-                };
-                let resolved = tokio::select! {
-                    biased;
-                    _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
-                    _ = left.cancelled() => continue,
-                    resolved = resolver.resolve(artifact, &left) => resolved,
-                };
-                match resolved {
-                    Err(_) if left.is_cancelled() => continue,
-                    resolved => return resolved,
-                }
-            }
-        })
-    }
-}
-
 /// One caller's share of an install. Dropping it, as the caller ends or is
 /// dropped, takes the caller off the install's waiting callers, and the
 /// install off the table once nobody waits for it or it ended.
 struct Joined<'a> {
     installs: &'a Mutex<HashMap<String, InFlight>>,
     sha256: &'a str,
-    callers: Arc<Mutex<Callers>>,
-    id: u64,
+    asking: Option<Asking>,
     install: Option<Shared<Sharing>>,
 }
 
@@ -255,7 +179,7 @@ impl Drop for Joined<'_> {
     fn drop(&mut self) {
         // The share goes first, so the table sees whether another remains.
         drop(self.install.take());
-        Callers::lock(&self.callers).remove(self.id);
+        drop(self.asking.take());
         let mut installs = self.installs.lock().expect("the installs in flight are intact");
         if installs
             .get(self.sha256)
@@ -771,10 +695,10 @@ impl ArtifactCache {
                             let _heard = reported.sender.send(event);
                         }
                     });
-                    let callers = Arc::new(Mutex::new(Callers::default()));
+                    let callers = Askers::default();
                     let token = CancellationToken::new();
                     let guard = token.clone().drop_guard();
-                    let started = start(report, Arc::new(Waiting(callers.clone())), token);
+                    let started = start(report, Arc::new(callers.clone()), token);
                     let install = async move {
                         let _cancel_when_dropped = guard;
                         started.await.map_err(Arc::new)
@@ -795,7 +719,7 @@ impl ArtifactCache {
                     (install, callers, reported)
                 }
             };
-            let id = Callers::lock(&callers).add(resolver, cancel);
+            let asking = callers.join(resolver, cancel);
             let (events, last) = {
                 let reported = Reported::lock(&reported);
                 (reported.sender.subscribe(), reported.last)
@@ -803,8 +727,7 @@ impl ArtifactCache {
             let joined = Joined {
                 installs: &self.installs,
                 sha256,
-                callers,
-                id,
+                asking: Some(asking),
                 install: Some(install),
             };
             (joined, events, last)

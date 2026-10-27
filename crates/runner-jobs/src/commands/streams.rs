@@ -18,7 +18,9 @@
 //! - The input pipe ending ends the invocation's input.
 //! - The invocation's completion ends the output pipe, which is how the backend
 //!   learns the stream is over.
-//! - A failing pipe or a closed connection cancels it.
+//! - A failing pipe or a closed connection cancels it, and so does
+//!   `resident_close`, the backend's word that it gave the stream up, which
+//!   alone reaches a stream still opening: its pipes connect once it opened.
 //! - `resident_done` carries the exit code and the bounded tail of standard
 //!   error. A one-shot call has no page to tell, so its caller learns a failure
 //!   and its words from this message, not from a stream that merely ended.
@@ -79,6 +81,9 @@ pub struct ResidentStreams {
     /// Ends every open stream: cancelled by `close` and by the host
     /// connection's shutdown.
     cancel: CancellationToken,
+    /// Each stream's own token while it lasts, by its id, which
+    /// `resident_close` cancels.
+    open: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl ResidentStreams {
@@ -99,6 +104,15 @@ impl ResidentStreams {
             draining,
             streams: TaskTracker::new(),
             cancel,
+            open: Arc::default(),
+        }
+    }
+
+    /// The backend gave up the stream `stream_id`: it ends, opened or still
+    /// opening. A stream that already ended is nothing to end.
+    pub fn handle_close(&self, stream_id: &str) {
+        if let Some(stream) = self.open.lock().expect("the open streams are intact").get(stream_id) {
+            stream.cancel();
         }
     }
 
@@ -137,6 +151,7 @@ impl ResidentStreams {
         let pipes = self.pipes.clone();
         let reply = self.control.clone();
         let stream = self.cancel.child_token();
+        let held = Held::new(self.open.clone(), stream_id.clone(), stream.clone());
         let start = StreamStart {
             stream_id: stream_id.clone(),
             context,
@@ -148,6 +163,7 @@ impl ResidentStreams {
         };
         let opening = self.opener().begin(&start);
         self.streams.spawn(async move {
+            let _held = held;
             let opened = match opening.open(start, &stream).await {
                 Ok(opened) => opened,
                 Err(StreamRefusal::Cancelled) => return,
@@ -212,6 +228,25 @@ impl ResidentStreams {
         self.streams.close();
         self.streams.wait().await;
         self.bindings.clear();
+    }
+}
+
+/// A stream's token in the open streams while its task lasts.
+struct Held {
+    open: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    stream_id: String,
+}
+
+impl Held {
+    fn new(open: Arc<Mutex<HashMap<String, CancellationToken>>>, stream_id: String, stream: CancellationToken) -> Self {
+        open.lock().expect("the open streams are intact").insert(stream_id.clone(), stream);
+        Self { open, stream_id }
+    }
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.open.lock().expect("the open streams are intact").remove(&self.stream_id);
     }
 }
 

@@ -1407,7 +1407,9 @@ pub struct ResidentEnd {
 }
 
 /// An open user stream. Closing it, or dropping it, ends the answers to its
-/// artifact requests.
+/// artifact requests and ends it on the runner, which may still be opening it:
+/// only its ending tells the runner, whose ends of its pipes connect once it
+/// opened.
 pub struct ResidentStream {
     link: Link,
     stream_id: String,
@@ -1433,6 +1435,10 @@ impl Drop for ResidentStream {
         if let Some(resident) = resident {
             resident.cancel.cancel();
         }
+        // A link that went has ended the runner's streams already.
+        let _gone = self.link.send(&Inbound::ResidentClose {
+            stream_id: self.stream_id.clone(),
+        });
     }
 }
 
