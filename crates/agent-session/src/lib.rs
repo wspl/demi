@@ -1638,6 +1638,12 @@ impl AgentSession {
         *self.shared.status.borrow()
     }
 
+    /// The commands the session's calls left running whose end it waits for,
+    /// each until its end's report is in (`crates/agent-session/src/reports.rs`).
+    pub fn awaited_commands(&self) -> Vec<demi_shared_types::CommandId> {
+        self.shared.read(|core| core.watched.awaited())
+    }
+
     /// What the session is doing now, as a supervisor observes it.
     pub fn execution(&self) -> Execution {
         self.shared.read(SessionCore::execution)

@@ -38,7 +38,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     rc::{Rc, Weak},
     time::Duration,
 };
@@ -71,6 +71,9 @@ pub(crate) struct LiveOutput {
     /// The commands that run, in every node of the tree, whether or not a
     /// connection is attached, each with whether it is a service.
     running: watch::Sender<BTreeMap<CommandId, bool>>,
+    /// The root's commands that ran and ended, whose report the root, when
+    /// it waits for one, may not have taken in yet.
+    ended: RefCell<BTreeSet<CommandId>>,
 }
 
 /// A command whose new output waits: its view is read when it is sent.
@@ -90,6 +93,7 @@ impl LiveOutput {
             sent: Cell::new(None),
             wake: Notify::new(),
             running: watch::Sender::new(BTreeMap::new()),
+            ended: RefCell::default(),
         })
     }
 
@@ -101,6 +105,11 @@ impl LiveOutput {
     /// waits for.
     pub(crate) fn awaits_commands(&self) -> bool {
         self.running.borrow().values().any(|service| !service)
+    }
+
+    /// Whether `command`, the root's, ran and has ended.
+    pub(crate) fn has_ended(&self, command: &CommandId) -> bool {
+        self.ended.borrow().contains(command)
     }
 
     /// Changes whenever a command of the tree starts or ends.
@@ -125,6 +134,13 @@ impl LiveOutput {
             let record = record.borrow();
             (record.command_id().clone(), record.is_running(), record.is_service())
         };
+        if subagent.is_none() {
+            if running {
+                self.ended.borrow_mut().remove(&command);
+            } else {
+                self.ended.borrow_mut().insert(command.clone());
+            }
+        }
         self.running.send_if_modified(|commands| {
             if running {
                 commands.insert(command.clone(), service) != Some(service)

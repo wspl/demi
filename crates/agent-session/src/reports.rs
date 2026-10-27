@@ -125,6 +125,16 @@ impl Watched {
         self.commands.is_empty()
     }
 
+    /// The commands watched that are not services: those whose end the node
+    /// waits for.
+    pub(super) fn awaited(&self) -> Vec<CommandId> {
+        self.commands
+            .iter()
+            .filter(|watched| watched.watch != Watch::Service)
+            .map(|watched| watched.command.clone())
+            .collect()
+    }
+
     /// Whether a command that is not a service is watched: one whose end the
     /// node waits for.
     pub(super) fn awaits(&self) -> bool {
