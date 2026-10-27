@@ -1,8 +1,9 @@
 //! The HTML files the File view shows as pages, from a conversation's files.
 //!
 //! An HTML file loads from `/api/html/<token>/<place>`, where `<place>` is its
-//! place under the conversation's working directory, so its relative URLs
-//! resolve as a web server's would and reach the files beside it. Every answer
+//! path's names from the root of the conversation's Host, so its relative
+//! URLs resolve as a web server's would and reach the files around it, as the
+//! File view reads them. Every answer
 //! keeps what loads in an opaque origin (`sandbox`): its scripts hold no
 //! session of the product and read nothing of the page around them. Its
 //! requests carry no cookie, which is why a token in the path opens the route,
@@ -11,11 +12,6 @@
 //! A token stands for one session's conversation and lives in memory, until a
 //! request finds its session ended or the backend stops; the File view asks
 //! for the URL each time it shows a file.
-//!
-//! The route answers 404 for a name that starts with `.`, in the URL or along
-//! the file's real path, and for a real path that leaves the working
-//! directory, so a hidden file, or a symbolic link out of the directory, is
-//! never read.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -43,13 +39,15 @@ use super::gate::{AuthUser, CurrentSession};
 use super::listener::Peer;
 
 /// What a name in a URL's path keeps encoded: what would end it or start a
-/// query or a fragment, and what is not printable.
+/// query or a fragment, a `:`, which would make a redirect's relative URL,
+/// `a:b/`, read as a scheme, and what is not printable.
 const NAME: &AsciiSet = &CONTROLS
     .add(b' ')
     .add(b'"')
     .add(b'#')
     .add(b'%')
     .add(b'/')
+    .add(b':')
     .add(b'<')
     .add(b'>')
     .add(b'?')
@@ -117,7 +115,7 @@ impl HtmlGrants {
 }
 
 /// `POST /conversations/:id/fs/html { path }`: where the HTML file at `path`
-/// loads, or 404 for a file outside the conversation's working directory.
+/// loads.
 pub(super) async fn grant(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -136,8 +134,7 @@ pub(super) async fn grant(
                 .html_place(&asked, path.as_str(), &cancel)
                 .await
         })
-        .await??
-        .ok_or_else(not_found)?;
+        .await??;
     let token = state.html.token(&session.token, &conversation);
     let place: Vec<String> = place
         .split('/')
@@ -148,9 +145,9 @@ pub(super) async fn grant(
     }))
 }
 
-/// `GET` and `HEAD /api/html/:token/*place`: the file at `place` under the
-/// working directory of the conversation the token's session may read, a
-/// folder's `index.html` for a folder.
+/// `GET` and `HEAD /api/html/:token/*place`: the file at `place` on the Host
+/// of the conversation the token's session may read, a folder's `index.html`
+/// for a folder.
 pub(super) async fn serve(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<Peer>,
@@ -161,7 +158,8 @@ pub(super) async fn serve(
     answer(state, peer, method, headers, token, place).await
 }
 
-/// `GET` and `HEAD /api/html/:token/`: the working directory's `index.html`.
+/// `GET` and `HEAD /api/html/:token/`: the `index.html` at the root of a
+/// Posix Host.
 pub(super) async fn serve_root(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<Peer>,
@@ -185,14 +183,11 @@ async fn answer(
         state.html.end(&grant.session);
         return Err(not_found());
     };
-    if place.split('/').any(|name| name.starts_with('.')) {
-        return Err(not_found());
-    }
     // A folder is its `index.html`, once: a folder named so is no file.
     for _ in 0..2 {
         let conversation = grant.conversation.clone();
         let request = DownloadRequest {
-            path: DownloadPath::InWorkspace(place.clone()),
+            path: DownloadPath::Place(place.clone()),
             version: None,
             head: method == Method::HEAD,
             range: header(&headers, RANGE),

@@ -172,7 +172,7 @@ pub struct HtmlRequest {
 }
 
 /// Where the HTML file loads, under `/api/html/`: the session's token for the
-/// conversation, then the file's place under its working directory.
+/// conversation, then the names of the file's path from its Host's root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HtmlUrl {

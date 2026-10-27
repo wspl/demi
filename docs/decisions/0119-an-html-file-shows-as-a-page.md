@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0131
 ---
 
 # An HTML file shows as a page
