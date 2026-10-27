@@ -8,6 +8,8 @@ use std::{
     process::Command,
 };
 
+use demi_web_api_protocol::server_upgrade::UpgradeChannel;
+
 pub struct Settings {
     variables: Vec<(String, String)>,
 }
@@ -45,6 +47,18 @@ impl Settings {
             .value(name)
             .ok_or_else(|| io::Error::other(format!("the configuration names no {name}")))?;
         Ok(PathBuf::from(value))
+    }
+
+    /// The channel the installation came from, `DEMI_UPGRADE_CHANNEL`, which
+    /// Settings › Updates shows until an administrator chooses another:
+    /// Beta when the configuration names none, as the backend reads it.
+    pub fn upgrade_channel(&self) -> io::Result<UpgradeChannel> {
+        match self.value("DEMI_UPGRADE_CHANNEL") {
+            None => Ok(UpgradeChannel::Beta),
+            Some(value) => value
+                .parse()
+                .map_err(|_| io::Error::other(format!("DEMI_UPGRADE_CHANNEL names no channel: {value}"))),
+        }
     }
 
     /// The backend's data directory.

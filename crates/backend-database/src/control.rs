@@ -397,20 +397,8 @@ impl ControlService {
     /// The channel the server's updates come from: `installed`, the
     /// installation's, until an administrator chose another.
     pub async fn upgrade_channel(&self, installed: UpgradeChannel) -> Result<UpgradeChannel, StorageError> {
-        self.call(move |connection, _| {
-            let channel: Option<String> = connection
-                .query_row("SELECT upgrade_channel FROM server_settings WHERE id = 1", [], |row| row.get(0))
-                .optional()?;
-            Ok(match channel {
-                Some(channel) => channel.parse().map_err(|_| StorageError::Corrupt {
-                    table: "server_settings",
-                    column: "upgrade_channel",
-                    reason: format!("{channel} is no channel"),
-                })?,
-                None => installed,
-            })
-        })
-        .await
+        self.call(move |connection, _| Ok(chosen_upgrade_channel(connection)?.unwrap_or(installed)))
+            .await
     }
 
     pub async fn set_upgrade_channel(&self, channel: UpgradeChannel) -> Result<(), StorageError> {
@@ -690,4 +678,43 @@ pub(crate) fn later(now: Timestamp, by: SignedDuration) -> Result<Timestamp, Sto
         .checked_add(by)
         .map(Timestamp::truncate)
         .map_err(StorageError::Time)
+}
+
+/// The channel an administrator chose in Settings › Updates, if one did.
+fn chosen_upgrade_channel(connection: &Connection) -> Result<Option<UpgradeChannel>, StorageError> {
+    let channel: Option<String> = connection
+        .query_row("SELECT upgrade_channel FROM server_settings WHERE id = 1", [], |row| row.get(0))
+        .optional()?;
+    channel
+        .map(|channel| {
+            channel.parse().map_err(|_| StorageError::Corrupt {
+                table: "server_settings",
+                column: "upgrade_channel",
+                reason: format!("{channel} is no channel"),
+            })
+        })
+        .transpose()
+}
+
+/// The channel an administrator chose in Settings › Updates, read from the
+/// control database at `path` without changing it, while the backend may
+/// run; none when no one chose one, or when the database or its table does
+/// not exist yet.
+pub fn stored_upgrade_channel(path: &Path) -> Result<Option<UpgradeChannel>, StorageError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let connection = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    let settings: bool = connection.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'server_settings')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !settings {
+        return Ok(None);
+    }
+    chosen_upgrade_channel(&connection)
 }

@@ -49,13 +49,12 @@ You need the following:
 - A domain name, served over HTTPS in front of the server
   ([HTTPS setup](docs/delivery/installation.md#https)).
 
-Demi has no stable release yet, so the command names a channel: Beta, the
-releases Demi publishes, or Canary, every build first. Run one of these
-commands on the server:
+Run the command on the server. It installs Beta, the releases Demi
+publishes; `--canary` installs Canary, which gets every build first:
 
 ```sh
 # Beta
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+curl -fsSL https://demi.sh/install.sh | sudo bash
 # Canary
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```

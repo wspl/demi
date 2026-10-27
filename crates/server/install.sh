@@ -3,11 +3,11 @@
 # given, and goes on into its setup (docs/delivery/installation.md § The
 # bootstrap):
 #
-#   curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+#   curl -fsSL https://demi.sh/install.sh | sudo bash
 #
-# Demi has no stable release yet, so the script takes no default: `--beta`
-# installs the newest release Demi publishes, `--canary` the newest build, a
-# deploy's pre-releases included, and `--version <version>` that release.
+# Without a parameter, as with `--beta`, it installs the newest release Demi
+# publishes; `--canary` installs the newest build, a deploy's pre-releases
+# included, and `--version <version>` that release.
 # The other parameters go to `demi-server setup`. At a terminal, setup asks
 # for what is missing; without one, as an agent runs it, it prints its
 # guide.
@@ -79,11 +79,7 @@ for parameter do
 done
 [ -z "$versioned" ] || [ -n "$version" ] || fail '--version names a version, such as --version 0.1.22'
 [ -z "$channel" ] || [ -z "$versioned" ] || fail "--$channel installs the newest release of its channel: give it or --version, not both"
-if [ -z "$channel" ] && [ -z "$versioned" ]; then
-  fail 'Demi has no stable release yet: choose a channel.
-  The releases Demi publishes:  curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
-  The newest build:             curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary'
-fi
+[ -n "$channel" ] || [ -n "$versioned" ] || channel=beta
 [ "$(uname -s)" = Linux ] || fail 'Demi servers run on Linux'
 [ "$(id -u)" = 0 ] || fail 'run as root: curl ... | sudo bash'
 case "$(uname -m)" in

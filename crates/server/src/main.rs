@@ -82,6 +82,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_runner_protocol::release::{SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind};
 use demi_shared_artifacts::releases::Channel;
+use demi_web_api_protocol::server_upgrade::UpgradeChannel;
 
 use crate::{journal::Journal, layout::Layout, notices::Notices, services::Systemd, settings::Settings};
 
@@ -95,11 +96,6 @@ struct Cli {
     #[arg(long, global = true, hide = true, default_value = "/")]
     root: PathBuf,
 }
-
-/// Why a command that takes the newest release needs a channel: Demi has
-/// published no stable release, so none is the default.
-pub(crate) const NO_STABLE: &str =
-    "Demi has no stable release yet: choose a channel, --beta for the releases Demi publishes or --canary for every build";
 
 /// The channel whose newest release a command takes, one at most.
 #[derive(clap::Args)]
@@ -130,7 +126,7 @@ enum Action {
     #[command(long_about = setup::GUIDE)]
     Setup(setup::Options),
     /// Moves the server to a newer release: the one named, or the newest of
-    /// a channel.
+    /// a channel, the server's update channel when none is named.
     Upgrade {
         version: Option<Version>,
         #[command(flatten)]
@@ -403,6 +399,21 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
 
 impl std::error::Error for moving::Failure {}
 
+/// The server's update channel, as Settings › Updates shows it: the one an
+/// administrator chose there, or the one the installation came from.
+fn server_channel(layout: &Layout) -> Result<Channel, Box<dyn std::error::Error>> {
+    let settings = Settings::read(&layout.config())?;
+    let control = settings.backend_data()?.join("control.sqlite");
+    let channel = match demi_backend_database::control::stored_upgrade_channel(&control)? {
+        Some(channel) => channel,
+        None => settings.upgrade_channel()?,
+    };
+    Ok(match channel {
+        UpgradeChannel::Beta => Channel::Beta,
+        UpgradeChannel::Canary => Channel::Canary,
+    })
+}
+
 fn upgrade(
     layout: &Layout,
     version: Option<Version>,
@@ -422,7 +433,14 @@ fn upgrade(
         (None, Some(channel), _) => runtime.block_on(fetch::newest(&source, channel))?,
         // A directory's newest is its highest version, of no channel.
         (None, None, fetch::Source::Directory(_)) => runtime.block_on(fetch::newest(&source, Channel::Canary))?,
-        (None, None, fetch::Source::GitHub) => return Err(NO_STABLE.into()),
+        (None, None, fetch::Source::GitHub) => {
+            let channel = server_channel(layout)?;
+            println!("Moving along the server's update channel, {}", match channel {
+                Channel::Beta => "Beta",
+                Channel::Canary => "Canary",
+            });
+            runtime.block_on(fetch::newest(&source, channel))?
+        }
     };
     if version == current {
         println!("The server runs {version} already");
