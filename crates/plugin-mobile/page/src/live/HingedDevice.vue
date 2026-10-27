@@ -19,9 +19,9 @@ import { t } from '../locales/text'
  *   (`./DeviceKeys.vue`).
  * - While the device is partly open, a drag anywhere else turns the view
  *   about the device's upright axis, at most `MAX_YAW` either way; Reset
- *   faces it again. Closed or open flat, a flat device faces the user and
- *   does not turn: the turn eases out over the last `FLAT_EASE` degrees of
- *   the hinge, so the view never jumps.
+ *   turns it back to face the device over `FACE_MS`. Closed or open flat,
+ *   a flat device faces the user and does not turn: the turn eases out over
+ *   the last `FLAT_EASE` degrees of the hinge, so the view never jumps.
  * - A posture, from the toolbar, moves the hinge over `SWEEP_MS`, the
  *   slider as it is dragged; the device follows, as `demi mobile fold`
  *   moves it, one fold at a time, to the latest angle asked. A fold the
@@ -42,6 +42,8 @@ const props = defineProps<{
 
 /** How long a posture takes to move the hinge, as Xcode's Device Hub moves it. */
 const SWEEP_MS = 600
+/** How long Reset takes to turn the view back to face the device. */
+const FACE_MS = 400
 /** Degrees the view turns per CSS pixel of a drag. */
 const TURN_PER_PX = 0.4
 /** The hinge's degrees before flat over which the view's turn eases out. */
@@ -63,6 +65,17 @@ const activity = computed(() => props.shown ? props.session.state.activity : { a
 /** The angle the view moves the hinge to, while it moves it: the device's own reports wait until it got there. */
 let moving: number | null = null
 let sweep: { from: number; to: number; started: number } | null = null
+/** The view's turn back to face the device, while Reset turns it. */
+let facing: { from: number; started: number } | null = null
+
+/** `progress` from 0 to 1 eased out, as the hinge's and the view's turns move. */
+function easedOut(progress: number): number {
+  return 1 - Math.pow(1 - progress, 3)
+}
+
+function face(): void {
+  facing = { from: yaw.value, started: performance.now() }
+}
 
 watch(() => props.fold.display, (display) => scene.value?.light(display))
 watch(quarters, (turn) => scene.value?.setTurn(turn))
@@ -124,10 +137,16 @@ function draw(): void {
   }
   if (sweep) {
     const progress = Math.min(1, (performance.now() - sweep.started) / SWEEP_MS)
-    const eased = 1 - Math.pow(1 - progress, 3)
-    degrees.value = sweep.from + (sweep.to - sweep.from) * eased
+    degrees.value = sweep.from + (sweep.to - sweep.from) * easedOut(progress)
     if (progress >= 1) {
       sweep = null
+    }
+  }
+  if (facing) {
+    const progress = Math.min(1, (performance.now() - facing.started) / FACE_MS)
+    yaw.value = facing.from * (1 - easedOut(progress))
+    if (progress >= 1) {
+      facing = null
     }
   }
   drawing.setDegrees(degrees.value)
@@ -249,6 +268,8 @@ function down(event: PointerEvent): void {
   if (!turnable()) {
     return
   }
+  // A drag takes the view from where Reset left it.
+  facing = null
   turning = { pointer: event.pointerId, x: event.clientX, y: event.clientY, yaw: yaw.value }
   canvas.value?.setPointerCapture(event.pointerId)
   cursor.value = 'grabbing'
@@ -341,6 +362,6 @@ defineExpose({ posture })
       <LiveActivityOverlay :active="activity.active" :label="t('activity')" :mark="null" />
       <DeviceStatus :session="session" :downloads="downloads" :wait-on-screen="false" />
     </div>
-    <FoldBar :degrees="degrees" :turned="Math.abs(yaw) > 0.5" @hinge="slide" @reset="yaw = 0" />
+    <FoldBar :degrees="degrees" :turned="Math.abs(yaw) > 0.5" @hinge="slide" @reset="face" />
   </div>
 </template>
