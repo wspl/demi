@@ -38,6 +38,7 @@
 //!
 //! The crate implements no command, parses no argv and knows no connection.
 
+mod askers;
 pub mod cache;
 mod invocations;
 mod process;

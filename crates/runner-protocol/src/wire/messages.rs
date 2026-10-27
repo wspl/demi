@@ -334,6 +334,11 @@ pub enum Inbound {
         input: PipeRef,
         output: PipeRef,
     },
+    /// The backend gave up the user stream `stream_id`, opened or still
+    /// opening: the runner ends it.
+    ResidentClose {
+        stream_id: String,
+    },
     /// Send the Host's log lines after `since`, then each new line as it is
     /// written: the highest `seq` the backend stored for this Host, none for
     /// a Host it has no line of.
@@ -1003,6 +1008,7 @@ impl Inbound {
             | Self::JobRead { .. }
             | Self::JobMediaRead { .. }
             | Self::ResidentOpen { .. }
+            | Self::ResidentClose { .. }
             | Self::LogFollow { .. }
             | Self::ArtifactLocation { .. }
             | Self::NumbersReserved { .. }

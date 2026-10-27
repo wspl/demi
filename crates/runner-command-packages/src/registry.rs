@@ -18,6 +18,11 @@
 //! - the release the connection's user streams bound last, one per package,
 //!   until the connection ends or a stream binds another release.
 //!
+//! Callers that want one resident while it starts share its start, which
+//! locates its executable through whichever of them is still waiting
+//! (`askers`): the caller that asked first may leave, as a stream its page
+//! gave up does, and the start goes on for the others.
+//!
 //! A resident whose leases all ended is asked which conversations it holds:
 //!
 //! - An answer counts only when no lease came or went and no release ended
@@ -68,6 +73,7 @@ use demi_command_protocol::host_target;
 const PROGRAM: &str = "program";
 
 use crate::{
+    askers::{Askers, Asking},
     ArtifactResolver, ResidentBackend, RuntimeError,
     cache::{ArtifactCache, Downloading, Wanted},
     invocations::{Invocations, Invoking, ResidentArtifacts},
@@ -172,6 +178,8 @@ enum Request {
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
         backend: Arc<dyn ResidentBackend>,
+        /// The caller's cancellation, which takes it off the start's askers.
+        cancel: CancellationToken,
         reply: oneshot::Sender<Result<Acquired, RuntimeError>>,
     },
     Release {
@@ -213,6 +221,8 @@ const QUIET_INSTALL: Duration = Duration::from_secs(2);
 struct Acquired {
     /// Held while the caller waits for the start.
     _waiting: ResidentLease,
+    /// The caller's place among the start's askers while it waits.
+    _asking: Asking,
     state: watch::Receiver<State>,
 }
 
@@ -334,6 +344,7 @@ impl ResidentHandle {
                 descriptor: descriptor.clone(),
                 resolver,
                 backend,
+                cancel: cancel.clone(),
                 reply,
             })
             .await
@@ -511,6 +522,8 @@ struct Current {
     stop: CancellationToken,
     state: watch::Sender<State>,
     checking: bool,
+    /// The callers waiting for its start.
+    askers: Askers,
 }
 
 struct Checked {
@@ -596,9 +609,10 @@ impl Owner {
                 descriptor,
                 resolver,
                 backend,
+                cancel,
                 reply,
             } => {
-                let acquired = self.acquire(descriptor, resolver, backend);
+                let acquired = self.acquire(descriptor, resolver, backend, &cancel);
                 // A caller that gave up drops its lease with the answer.
                 let _gave_up = reply.send(acquired);
             }
@@ -628,6 +642,7 @@ impl Owner {
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
         backend: Arc<dyn ResidentBackend>,
+        cancel: &CancellationToken,
     ) -> Result<Acquired, RuntimeError> {
         if self.stop.is_cancelled() {
             return Err(RuntimeError::Cancelled);
@@ -653,6 +668,7 @@ impl Owner {
         {
             return Ok(Acquired {
                 _waiting: waiting,
+                _asking: current.askers.join(resolver, cancel),
                 state: current.state.subscribe(),
             });
         }
@@ -660,12 +676,15 @@ impl Owner {
         let generation = self.generation;
         let (state, receiver) = watch::channel(State::Starting(None));
         let stop = self.stop.child_token();
+        let askers = Askers::default();
+        let asking = askers.join(resolver, cancel);
         entry.current = Some(Current {
             generation,
             id: descriptor.id.clone(),
             stop: stop.clone(),
             state: state.clone(),
             checking: false,
+            askers: askers.clone(),
         });
         let cache = self.cache.clone();
         let cwd = self.cwd.clone();
@@ -676,7 +695,7 @@ impl Owner {
                 artifact: &artifact,
                 descriptor: &descriptor,
                 invocations,
-                resolver,
+                resolver: Arc::new(askers),
                 backend,
                 cwd: &cwd,
                 env: &env,
@@ -686,6 +705,7 @@ impl Owner {
         });
         Ok(Acquired {
             _waiting: waiting,
+            _asking: asking,
             state: receiver,
         })
     }
