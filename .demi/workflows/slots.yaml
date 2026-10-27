@@ -15,7 +15,7 @@ instructions: |
   - Merge on `origin/feat/demi-next` only when the user approves, then delete the branch on origin and run `bun xtask sweep` in your slot.
 
   Review before a commit
-  1. Before you commit code, the review profile reads the change once: the uncommitted diff in your slot against `origin/feat/demi-next`. A commit of documents alone has no review.
+  1. Before you commit code, the review profile reads the change once: the uncommitted diff in your slot against `origin/feat/demi-next`. A commit of documents, styles or UI text alone has no review.
   2. You doubt every finding. A finding stands only when you reproduce it, with a test, a probe or steps on the running product, and see the problem happen. Drop each one you cannot reproduce.
   3. You, not the review, judge whether each finding that stands needs a fix. A finding that a wrong design causes, such as a structure the framework or this project's rules advise against, or work done again for what did not change, is fixed however little it costs the user. A finding that only more code would improve is fixed only when what it costs the user is worth that code.
   4. Tell the user each finding that stands: why it happens (the code and how you reproduced it), what it does to the user or their data, and how you fixed it or why you left it. Then commit.
