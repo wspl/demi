@@ -127,6 +127,16 @@ export function demoProjects(): SidebarProject[] {
       savedScope: 'conversation',
       savedCount: 0,
     },
+    {
+      id: 'p-scratch',
+      // No conversation runs in it, so the list does not show it.
+      name: 'scratch',
+      hostKind: 'device',
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
+      path: '/Users/alex/scratch',
+      savedScope: 'conversation',
+      savedCount: 0,
+    },
   ]
 }
 
@@ -284,6 +294,70 @@ export function demoConversations(): SidebarConversation[] {
       updatedAt: ago(12 * DAY),
       status: 'idle',
       projectId: 'p-dotfiles',
+      pinned: false,
+      unread: false
+    },
+    // The other projects, one conversation each, so the list shows them.
+    {
+      id: 'c-mini-build',
+      title: 'Build the release on the mini',
+      updatedAt: ago(5 * DAY),
+      status: 'idle',
+      projectId: 'p-demi-mini',
+      pinned: false,
+      unread: false
+    },
+    {
+      id: 'c-api-pages',
+      title: 'Paginate the orders endpoint',
+      updatedAt: ago(6 * DAY),
+      status: 'idle',
+      projectId: 'p-api-work',
+      pinned: false,
+      unread: false
+    },
+    {
+      id: 'c-api-port',
+      title: 'Port the old auth middleware',
+      updatedAt: ago(20 * DAY),
+      status: 'idle',
+      projectId: 'p-api-old',
+      pinned: false,
+      unread: false
+    },
+    {
+      id: 'c-album',
+      title: 'Group the photos by trip',
+      updatedAt: ago(7 * DAY),
+      status: 'idle',
+      projectId: 'p-photo-album',
+      pinned: false,
+      unread: false
+    },
+    {
+      id: 'c-build-ssh',
+      title: 'Copy the SSH config to the build box',
+      updatedAt: ago(14 * DAY),
+      status: 'idle',
+      projectId: 'p-dotfiles-build',
+      pinned: false,
+      unread: false
+    },
+    {
+      id: 'c-old-parser',
+      title: 'Try a hand-written parser',
+      updatedAt: ago(30 * DAY),
+      status: 'idle',
+      projectId: 'p-old',
+      pinned: false,
+      unread: false
+    },
+    {
+      id: 'c-notebook',
+      title: 'Plot last month’s signups',
+      updatedAt: ago(8 * DAY),
+      status: 'idle',
+      projectId: 'p-notebooks',
       pinned: false,
       unread: false
     },

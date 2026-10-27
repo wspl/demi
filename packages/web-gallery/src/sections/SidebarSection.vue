@@ -118,11 +118,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Conversations outside projects: those that run in their Host’s home, or on the Cloud in a directory of their own. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): its system’s logo with a dot for its state, or the plain computer without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Conversations outside projects: those that run in their Host’s home, or on the Cloud in a directory of their own. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): its system’s logo with a dot for its state, or the plain computer without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. New opens an empty draft, listed first as New conversation while it is open; one left empty leaves the list, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
-    'Every directory a conversation runs in but a home, in manual order: moving a conversation to a directory makes its project, and moving it to the home takes it out; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s mark, its system’s logo with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every directory a conversation runs in but a home, in manual order: moving a conversation to a directory makes its project, and moving it to the home takes it out; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s mark, its system’s logo with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. A folded project keeps the open conversation under its header, as Slack’s folded sections keep the channel shown, so its place still shows; the fold stays as the user left it. A project shows only while it holds a conversation, the open one included: one whose last conversation is archived or deleted leaves the list (scratch here holds none), and Add project on its folder brings it back with a new conversation.'
   ],
   [
     'Row',
@@ -156,17 +156,49 @@ function reorder(request: SidebarReorder): void {
       conversations.value = moveBefore(conversations.value, item, before)
   }
 }
-function select(id: string): void {
+/** The new conversations the specimen opened, whose drafts hold nothing: each is listed only while it is open. */
+const emptyDrafts = new Set<string>()
+
+/** Shows the conversation `id`; an empty draft left behind leaves the list, as the product's does. */
+function show(id: string): void {
   activeId.value = id
+  conversations.value = conversations.value.filter(
+    (conversation) => conversation.id === id || !emptyDrafts.has(conversation.id),
+  )
+}
+
+function select(id: string): void {
+  show(id)
   conversations.value = conversations.value.map((conversation) => (
     conversation.id === id ? read(conversation) : conversation
   ))
 }
 
-/** New opens an empty draft, which the sidebar lists only once it holds a character or a file: no row is selected. */
+/** The open conversation was sent to: it holds a message now, so it stays listed when the user leaves it. */
+function keepDraft(): void {
+  if (activeId.value)
+    emptyDrafts.delete(activeId.value)
+}
+
+/**
+ * New opens an empty draft, listed first as New conversation while it is open, in its project
+ * when it has one; an empty one already in that project opens again rather than a second.
+ */
 function create(projectId: string | null): void {
-  activeId.value = null
-  productWould(projectId ? 'Start a New Conversation in the Project' : 'Start a New Conversation')
+  const empty = conversations.value.find(
+    (conversation) => emptyDrafts.has(conversation.id) && conversation.projectId === projectId,
+  )
+  if (empty) {
+    show(empty.id)
+    return
+  }
+  const id = `c-draft-${nextId++}`
+  emptyDrafts.add(id)
+  conversations.value = [
+    { id, title: null, updatedAt: new Date().toISOString(), status: 'idle', projectId, pinned: false, unread: false },
+    ...conversations.value,
+  ]
+  show(id)
 }
 
 /** Adds a project and opens a new conversation in it, as the product's New Project does. */
@@ -354,6 +386,11 @@ function markRows(): SidebarConversation[] {
     row('m-cloud', 'How does limitShift differ from shift?', null, false),
     row('m-chromium-1', 'Takeover handoff', 'm-chromium', false),
     row('m-demi-1', 'New file icons look wrong', 'm-demi-mac', false),
+    row('m-demi-2', 'Build the release on the mini', 'm-demi-mini', false),
+    row('m-dotfiles-1', 'zsh prompt shows the worktree branch', 'm-dotfiles-mac', false),
+    row('m-dotfiles-2', 'Copy the SSH config to the build box', 'm-dotfiles-build', false),
+    row('m-old-1', 'Try a hand-written parser', 'm-old', false),
+    row('m-notebooks-1', 'Plot last month’s signups', 'm-notebooks', false),
   ]
 }
 const markProjectList = ref(markProjects())
@@ -638,7 +675,7 @@ onBeforeUnmount(() => {
                 :compacting="session.phase === 'compacting'"
                 :usage="session.contextUsage ?? undefined"
                 :flow="sessionFlow"
-                @send="sessionFlow.turn"
+                @send="(...message) => { keepDraft(); sessionFlow.turn(...message) }"
                 @steer="sessionFlow.steer"
                 @queue="sessionFlow.queue"
                 @stop="sessionFlow.stop"
@@ -806,7 +843,7 @@ onBeforeUnmount(() => {
                 :conversations="markConversations"
                 :active-id="markActive"
                 @search="productWould('Open the Search Window')"
-                @create="create"
+                @create="(projectId) => productWould(projectId ? 'Start a New Conversation in the Project' : 'Start a New Conversation')"
                 @add-project="productWould('Add a Project')"
                 @remove-project="(id) => deleteProject('marks', id)"
                 @switch-saved-scope="(id, scope, to) => (markProjectList = savedScopeSwitched(markProjectList, id, scope, to))"
@@ -971,7 +1008,7 @@ onBeforeUnmount(() => {
               @switch-saved-scope="(id, scope, to) => savedScopeSwitched(fixedProjects, id, scope, to)"
               :conversations="[]"
               :active-id="null"
-              @create="create"
+              @create="(projectId) => productWould(projectId ? 'Start a New Conversation in the Project' : 'Start a New Conversation')"
               @open-settings="wouldOpenSettings"
               @hand-off-to-phone="wouldHandOffToPhone"
               @sign-out="productWould('Sign Out')"

@@ -26,17 +26,19 @@ export function plainConversations(
 }
 
 /**
- * Every project in the supplied project order. A project with no
- * conversations still lists, so an opened checkout has a place before its first turn.
+ * The projects that hold a listed conversation, in the supplied project
+ * order. A project with none has nothing to show, so it is not listed; the
+ * open conversation is always listed, so a new conversation's project shows
+ * from the moment it opens.
  */
 export function projectGroups(
   projects: readonly SidebarProject[],
   conversations: readonly SidebarConversation[],
 ): ProjectGroup[] {
-  return projects.map((project) => {
+  return projects.flatMap((project) => {
     const items = sortConversations(
       conversations.filter((conversation) => conversation.projectId === project.id),
     )
-    return { project, items }
+    return items.length > 0 ? [{ project, items }] : []
   })
 }
