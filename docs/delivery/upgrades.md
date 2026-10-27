@@ -10,7 +10,7 @@ the following command, or a master or an administrator clicks **Update Now**
 in Settings › Updates ([From Settings](#from-settings)):
 
 ```sh
-sudo demi-server upgrade --beta
+sudo demi-server upgrade
 ```
 
 `demi-server` takes these steps:
@@ -169,15 +169,16 @@ A server upgrades from any release in the history to any later one directly.
 
 ## The upgrade
 
-`demi-server upgrade` takes the release to move to in one of three ways:
+`demi-server upgrade` takes the release to move to in one of four ways:
 
 - With `--beta`, it moves to the newest release Demi published.
 - With `--canary`, it moves to the newest release, a deploy's pre-releases
   included.
 - With a version, as in `demi-server upgrade 0.2.0`, it moves to that one.
-
-Demi has no stable release yet, so with none of them it moves nowhere and
-says to choose a channel.
+- With none of them, it moves to the newest release of the server's update
+  channel, the one Settings › Updates shows: the channel an administrator
+  chose there, or else the one the server was installed from,
+  `DEMI_UPGRADE_CHANNEL` in the configuration, Beta when that names none.
 
 The newest release is the highest version among the repository's releases
 tagged `v<version>`. `releases/latest` gives it for published releases, and

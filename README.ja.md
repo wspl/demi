@@ -43,11 +43,11 @@ Demi は、どのブラウザからでも使えるセルフホスト型の AI �
   - Arch Linux
 - ドメイン名と、サーバーの前段で提供する HTTPS（[HTTPS の設定方法](docs/delivery/installation.md#https)）。
 
-Demi にはまだ安定版がないため、コマンドでチャンネルを指定します。Beta は Demi が公開するリリース、Canary はすべてのビルドをいち早く受け取ります。サーバーでどちらかのコマンドを実行します:
+サーバーでこのコマンドを実行します。Demi が公開するリリースである Beta がインストールされます。`--canary` を付けると、すべてのビルドをいち早く受け取る Canary がインストールされます:
 
 ```sh
 # Beta
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+curl -fsSL https://demi.sh/install.sh | sudo bash
 # Canary
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```

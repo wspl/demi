@@ -27,12 +27,12 @@ When a person runs the first command in a terminal, the command asks for the
 domain, the mode and the listening address instead, and sets the server up
 with the answers.
 
-Demi has no stable release yet, so the command names a channel, as
-Settings › Updates does ([From Settings](upgrades.md#from-settings)), or a
-version:
+The command installs a channel, as Settings › Updates names them
+([From Settings](upgrades.md#from-settings)), or a version:
 
-- `--beta` installs the newest release Demi publishes, GitHub's latest
-  release. While Demi has published none, it says so and installs nothing.
+- Without a parameter, or with `--beta`, it installs Beta, the newest
+  release Demi publishes, GitHub's latest release. While Demi has published
+  none, it says so and installs nothing.
 - `--canary` installs the newest build, a deploy's pre-releases included
   ([A development build on a server](upgrades.md#a-development-build-on-a-server)).
 - `--version <version>` installs that release.
@@ -40,15 +40,15 @@ version:
 The following commands show the three:
 
 ```sh
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+curl -fsSL https://demi.sh/install.sh | sudo bash
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --version 0.1.22
 ```
 
-Without any of them, `install.sh` installs nothing and prints the first two
-commands. The server's channel in Settings › Updates starts on the one it
-was installed from: Canary after `--canary`, Beta after `--beta`, and for
-`--version` the channel whose releases include that version. `setup` writes
+The server's channel in Settings › Updates starts on the one it was
+installed from: Beta without a parameter or with `--beta`, Canary after
+`--canary`, and for `--version` the channel whose releases include that
+version. `setup` writes
 it into the configuration as `DEMI_UPGRADE_CHANNEL`, and an administrator's
 choice in Settings replaces it.
 

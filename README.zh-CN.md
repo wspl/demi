@@ -43,11 +43,11 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
   - Arch Linux
 - 一个域名，并在服务器前提供 HTTPS（[HTTPS 配置方法](docs/delivery/installation.md#https)）。
 
-Demi 还没有正式版，所以命令要指明通道：Beta 是 Demi 发布的版本，Canary 最先收到每个新构建。在服务器上运行其中一条命令：
+在服务器上运行这条命令。它安装 Beta，即 Demi 发布的版本；加上 `--canary` 则安装 Canary，最先收到每个新构建：
 
 ```sh
 # Beta
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --beta
+curl -fsSL https://demi.sh/install.sh | sudo bash
 # Canary
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```

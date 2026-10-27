@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0134
 ---
 
 # A server takes whole releases of the channel it names
