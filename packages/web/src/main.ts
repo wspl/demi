@@ -57,6 +57,7 @@ import HandoffPage from './auth/HandoffPage.vue'
 import App from './App.vue'
 import { SETTINGS_ROUTE } from './settings/address'
 import { returnAddress, signInAddress } from './auth/return'
+import { attendNotification, followAttention } from './state/attention'
 import './style.css'
 
 // The page's text instance, before anything reads a text; it speaks the
@@ -208,7 +209,11 @@ const stopIdentity = watch(
     if (id) {
       void conversations.initialize()
       // A click on a notification opens its conversation.
-      notifications.start((conversationId) => void router.push(`/chat/${conversationId}`))
+      // A click on a notification acts on its conversation, the one shown already too.
+      notifications.start((conversationId) => {
+        attendNotification()
+        void router.push(`/chat/${conversationId}`)
+      })
     }
   },
   { immediate: true },
@@ -383,11 +388,8 @@ const refreshVisible = () => {
     return
   }
   void preferences.reportBrowser()
-  const id = product.activeConversationId
-  if (id) {
-    void conversations.markRead(id)
-  }
 }
+followAttention(startup.signal)
 window.addEventListener('focus', refreshVisible)
 document.addEventListener('visibilitychange', refreshVisible)
 const stopPhonePage = installPhonePage()

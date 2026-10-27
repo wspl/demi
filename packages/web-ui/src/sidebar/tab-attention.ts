@@ -1,4 +1,4 @@
-import { computed, effectScope, ref, shallowRef, watch, watchEffect } from 'vue'
+import { computed, effectScope, shallowRef, watch, watchEffect } from 'vue'
 import { errorFields } from '../infra/errors'
 import { pageLog } from '../infra/log'
 import { followAppearance, pageTopColor } from '../theme/themeColor'
@@ -13,7 +13,9 @@ import type { SidebarConversation } from './types'
  * - The tab's icon wears a dot of the most urgent of those colors.
  * - An installed app's icon carries their number.
  *
- * All of it follows the sidebar's dots, read from the same rows by the same rule.
+ * All of it follows the sidebar's dots, read from the same rows by the same rule,
+ * so a mark stays on the tab exactly as long as its dot stays in the sidebar:
+ * until its conversation is read, the open one included.
  */
 
 /** The product's name, as the tab says it. */
@@ -80,60 +82,26 @@ function readColors(): Readonly<Record<News | 'ring', string>> {
   }
 }
 
-/** What the tab tells of: the rows the sidebar lists, the open one, and its title. */
+/** What the tab tells of: the rows the sidebar lists and the open conversation's title. */
 export interface TabAttentionSource {
-  /** The sidebar's rows; none on a page that shows no sidebar, such as a sign-in page. */
-  conversations: () => readonly Pick<SidebarConversation, 'id' | 'status' | 'needsYou' | 'unread'>[]
-  /** The conversation open in the page, which a focused page reads as it happens. */
-  openId: () => string | null
+  /**
+   * The sidebar's rows: none where nobody is signed in; null on a page that
+   * shows no sidebar for a signed-in account, such as a handoff code's,
+   * which knows nothing of its news and leaves the badge, which the
+   * account's other pages share, as they set it.
+   */
+  conversations: () => readonly Pick<SidebarConversation, 'status' | 'needsYou' | 'unread'>[] | null
   /** The open conversation's title as it shows, or null where none is open. */
   openTitle: () => string | null
 }
 
-/** The channel on which a page that comes forward tells the user's other pages, so the badge follows it. */
-const FORWARD_CHANNEL = 'demi-tab-forward'
-
 /**
  * Keeps the page's title, its tab icon and an installed app's badge on the
- * sidebar's news as it changes; returns the release, which leaves the plain icon
- * and no badge.
- *
- * Coming back clears the reminder. When the page comes forward, visible and
- * focused, it counts nothing, and from then on only the conversations whose dot
- * lights after that moment, while the sidebar's dots stay until each conversation
- * is opened.
- *
- * The badge follows the page that came forward last, which tells the user's other
- * pages so on a broadcast channel.
+ * sidebar's news as it changes; returns the release, which leaves the plain
+ * icon, and the badge to the user's other pages.
  */
 export function followTabAttention(source: TabAttentionSource): () => void {
   const scope = effectScope(true)
-  const inFront = () => document.visibilityState === 'visible' && document.hasFocus()
-  const front = ref(inFront())
-  /** The conversations whose dot lit since the page was last in front. */
-  const lit = shallowRef<ReadonlySet<string>>(new Set())
-  /** Whether the page has been in front since it opened: until then every lit dot is news. */
-  let beenInFront = front.value
-  /** The page writes the badge while it is the one that came forward last. */
-  const badgeOwner = ref(front.value)
-  const forward = new BroadcastChannel(FORWARD_CHANNEL)
-  // Any message is another page coming forward; it carries nothing to read.
-  forward.onmessage = () => {
-    badgeOwner.value = false
-  }
-  const followFront = () => {
-    const now = inFront()
-    if (now && !front.value) {
-      beenInFront = true
-      lit.value = new Set()
-      badgeOwner.value = true
-      forward.postMessage(null)
-    }
-    front.value = now
-  }
-  window.addEventListener('focus', followFront)
-  window.addEventListener('blur', followFront)
-  document.addEventListener('visibilitychange', followFront)
   const colors = shallowRef(readColors())
   const stopAppearance = followAppearance(() => {
     colors.value = readColors()
@@ -187,31 +155,12 @@ export function followTabAttention(source: TabAttentionSource): () => void {
   }
 
   scope.run(() => {
-    /** Each listed conversation's news, by its sidebar dot: red, yellow or green, or none. */
-    const tones = computed(() => new Map(source.conversations().map((conversation) => {
-      const tone = conversationDotTone(conversation)
-      return [conversation.id, tone === 'danger' || tone === 'attention' || tone === 'success' ? tone : null]
-    })))
-    // A dot lights when it takes a color of news it did not wear: green after the
-    // running blue, red after green. A row the page sees for the first time, as
-    // the list arrives, lit before the page came forward, so it is news only to a
-    // page never in front; a new conversation arrives settled and lights later.
-    watch(tones, (now, before) => {
-      const next = new Set([...lit.value].filter((id) => now.get(id)))
-      for (const [id, tone] of now) {
-        const lights = before?.has(id) ? before.get(id) !== tone : !beenInFront
-        if (tone && lights)
-          next.add(id)
-      }
-      if (next.size !== lit.value.size || [...next].some((id) => !lit.value.has(id)))
-        lit.value = next
-    }, { immediate: true })
+    /** How many listed conversations wear each dot of news. */
     const news = computed<TabNews>(() => {
-      const read = front.value ? source.openId() : null
       const counts = { danger: 0, attention: 0, success: 0 }
-      for (const id of lit.value) {
-        const tone = tones.value.get(id)
-        if (tone && id !== read)
+      for (const conversation of source.conversations() ?? []) {
+        const tone = conversationDotTone(conversation)
+        if (tone === 'danger' || tone === 'attention' || tone === 'success')
           counts[tone] += 1
       }
       return counts
@@ -226,9 +175,9 @@ export function followTabAttention(source: TabAttentionSource): () => void {
       { immediate: true },
     )
     watch(
-      [badgeOwner, () => news.value.danger + news.value.attention + news.value.success],
-      ([owner, count]) => {
-        if (owner)
+      () => (source.conversations() === null ? null : news.value.danger + news.value.attention + news.value.success),
+      (count) => {
+        if (count !== null)
           showBadge(count)
       },
       { immediate: true },
@@ -238,12 +187,6 @@ export function followTabAttention(source: TabAttentionSource): () => void {
   return () => {
     scope.stop()
     stopAppearance()
-    forward.close()
-    window.removeEventListener('focus', followFront)
-    window.removeEventListener('blur', followFront)
-    document.removeEventListener('visibilitychange', followFront)
     showDot(null, '')
-    if (badgeOwner.value)
-      showBadge(0)
   }
 }
