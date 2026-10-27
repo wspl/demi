@@ -5,8 +5,11 @@
 //! device. A session's end deletes its subscription, and one whose session
 //! expired is not sent to. Each is decoded as it is read, and encoded only as
 //! it is written.
+//!
+//! The module also keeps each conversation's notifications card, which asks
+//! the user to turn notifications on (§ The notifications card).
 
-use demi_web_api_protocol::ids::UserId;
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::push::{BrowserAuth, BrowserKey, PushEndpoint, PushEvents, PushSubscriptionKeys};
 use demi_web_api_protocol::sessions::SessionId;
 use rusqlite::{OptionalExtension as _, Row, params};
@@ -148,6 +151,88 @@ impl ControlService {
             ))?;
             let rows = statement.query_map(params![user.as_str(), now.as_millisecond()], |row| Ok(subscription(row)))?;
             rows.map(|row| row?).collect()
+        })
+        .await
+    }
+}
+
+/// Whether a browser of the conversation's user takes the agent's
+/// notifications, in a statement on `conversations` that binds the time now
+/// as `?2`: a subscription that chose them, whose session has not expired.
+const AGENT_REACHES: &str = "EXISTS (SELECT 1 FROM push_subscriptions p
+                  JOIN web_sessions s ON s.id = p.session_id
+                 WHERE p.user_id = conversations.user_id AND p.agent_notifies AND s.expires_at > ?2)";
+
+/// # The notifications card
+///
+/// A conversation whose agent found that no browser of the user takes its
+/// notifications shows the user a card that turns them on. Its status is
+/// none, `shown` or `dismissed`: the agent's check raises it from none to
+/// `shown`, a subscription that takes the agent's notifications sets every
+/// `shown` of its user back to none, and Dismiss sets `dismissed`, which
+/// stays, so the conversation never shows it again.
+///
+/// Each change reads the subscriptions in the statement that writes it, so a
+/// check that read them before a subscription changed cannot show the card
+/// to a user it reaches, nor a late clear take it from one it does not.
+impl ControlService {
+    /// Shows the card in `conversation` unless it shows it or the user
+    /// dismissed it there. Answers whether it now shows it newly.
+    pub async fn raise_notifications_card(&self, conversation: ConversationId) -> Result<bool, StorageError> {
+        self.call(move |connection, now| {
+            let changed = connection.execute(
+                &format!(
+                    "UPDATE conversations SET notifications_card = 'shown'
+                      WHERE id = ?1 AND notifications_card IS NULL AND NOT {AGENT_REACHES}"
+                ),
+                params![conversation.as_str(), now.as_millisecond()],
+            )?;
+            Ok(changed > 0)
+        })
+        .await
+    }
+
+    /// Takes the card from every conversation of `user` that shows it, while
+    /// a browser of the user takes the agent's notifications. Answers those
+    /// conversations.
+    pub async fn clear_notifications_cards(&self, user: UserId) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, now| {
+            let mut statement = connection.prepare_cached(&format!(
+                "UPDATE conversations SET notifications_card = NULL
+                  WHERE user_id = ?1 AND notifications_card = 'shown' AND {AGENT_REACHES} RETURNING id"
+            ))?;
+            let rows = statement.query_map(params![user.as_str(), now.as_millisecond()], |row| row.get::<_, String>(0))?;
+            rows.map(|id| decode("conversations", "id", ConversationId::try_from(id?)))
+                .collect()
+        })
+        .await
+    }
+
+    /// Dismisses the card in `conversation` for good. Answers whether it
+    /// showed it.
+    pub async fn dismiss_notifications_card(&self, conversation: ConversationId) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let changed = connection.execute(
+                "UPDATE conversations SET notifications_card = 'dismissed'
+                  WHERE id = ?1 AND notifications_card IS NOT 'dismissed'",
+                params![conversation.as_str()],
+            )?;
+            Ok(changed > 0)
+        })
+        .await
+    }
+
+    /// Whether `conversation` shows the card.
+    pub async fn notifications_card(&self, conversation: ConversationId) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let shown = connection
+                .query_row(
+                    "SELECT notifications_card = 'shown' FROM conversations WHERE id = ?1",
+                    params![conversation.as_str()],
+                    |row| row.get::<_, Option<bool>>(0),
+                )
+                .optional()?;
+            Ok(shown.flatten().unwrap_or(false))
         })
         .await
     }

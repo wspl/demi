@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { z } from 'zod'
 import { errorFields, reportError } from '@demicodes/web-ui/infra/errors'
 import { logStorageFailed, pageLog } from '@demicodes/web-ui/infra/log'
@@ -261,6 +261,48 @@ export const useNotifications = defineStore('notifications', () => {
     return answer
   }
 
+  /** Turning notifications on from a conversation's card is under way. */
+  const turningOn = ref(false)
+
+  /**
+   * Turns notifications on in this browser, the agent's with them, as a
+   * conversation's card asks: the browser asks for its permission first.
+   * The backend takes the card from every conversation once the
+   * subscription is kept.
+   */
+  async function turnOnForAgent(): Promise<void> {
+    turningOn.value = true
+    try {
+      if (permission.value !== 'granted' && (await requestPermission()) !== 'granted') {
+        return
+      }
+      const on = settings.value.enabled && settings.value.agentNotifies
+      settings.value.enabled = true
+      settings.value.agentNotifies = true
+      // The subscription follows the settings once they are watched; with
+      // them on already, as after a subscription that failed, it is tried
+      // again.
+      await nextTick()
+      if (on) {
+        followAgain?.()
+      }
+      await changing
+    } finally {
+      turningOn.value = false
+    }
+  }
+
+  /** Dismisses the card in `conversation`, which never shows it again. */
+  async function dismissCard(conversation: string): Promise<void> {
+    try {
+      await apiRequest(`/conversations/${encodeURIComponent(conversation)}/notifications-card/dismiss`, { method: 'POST' })
+    } catch (error) {
+      reportError(t('failures.dismissNotificationsCard'), error, { site: 'failures.dismissNotificationsCard' })
+    }
+  }
+
+  /** Tries the subscription the settings want again, from `start` to `stop`. */
+  let followAgain: (() => void) | null = null
   /** Set from `start` to `stop`. */
   let lifetime: AbortController | null = null
   /** The browser's subscription as the backend keeps it, while it does. */
@@ -406,6 +448,7 @@ export const useNotifications = defineStore('notifications', () => {
       () => follow(signal, session()),
       { immediate: true },
     )
+    followAgain = () => follow(signal, session())
     const stopWords = watch(pageLanguage, () => {
       if (subscribed) {
         void leaveWords().catch((error: unknown) => pageLog.warn('notification_words.leave_failed', errorFields(error)))
@@ -427,8 +470,9 @@ export const useNotifications = defineStore('notifications', () => {
   function stop(): void {
     lifetime?.abort()
     lifetime = null
+    followAgain = null
     subscribed = null
   }
 
-  return { settings, permission, homeScreen, requestPermission, start, stop }
+  return { settings, permission, homeScreen, requestPermission, turningOn, turnOnForAgent, dismissCard, start, stop }
 })

@@ -9,6 +9,7 @@
   "failures": {
     "turnOnNotifications": "通知をオンにできませんでした",
     "turnOffNotifications": "通知をオフにできませんでした",
+    "dismissNotificationsCard": "通知のお知らせを閉じられませんでした",
     "updateSettings": "設定を更新できませんでした",
     "changeContextLimit": "コンテキストの上限を変更できませんでした",
     "updateTimeZoneLanguage": "タイムゾーンと言語を更新できませんでした",

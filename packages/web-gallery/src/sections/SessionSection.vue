@@ -28,6 +28,8 @@ import { stepPlaces } from '../fixtures/step-places'
 import GalleryEditSelection from '../components/GalleryEditSelection.vue'
 import GalleryFilePills from '../components/GalleryFilePills.vue'
 import RequestCard from '@demicodes/web-ui/permissions/RequestCard.vue'
+import NotificationsCard from '@demicodes/web-ui/permissions/NotificationsCard.vue'
+import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
 import {
   afterDecision,
   type PermissionDecision,
@@ -268,6 +270,32 @@ const stepPlaceCases = stepPlaces()
  * deny that one) and says what the product would tell the agent; Show Again
  * brings the requests back.
  */
+/** The notifications card in each state of the browser it shows in; Turn On and Dismiss act on the specimen. */
+const notificationsCardSpecimens = reactive(
+  (
+    [
+      { variant: 'not asked yet · Turn On asks the browser', permission: 'default' },
+      { variant: 'allowed · the agent’s notifications are off here', permission: 'granted' },
+      { variant: 'blocked in the browser’s site settings', permission: 'denied' },
+      { variant: 'a browser that cannot notify', permission: 'unsupported' },
+      { variant: 'Safari on iPhone outside the Home Screen', permission: 'unsupported', iphone: true },
+    ] as const
+  ).map((specimen) => ({ ...specimen, shown: true, turning: false })),
+)
+
+/** The card over the composer, as a conversation shows it. */
+const dockNotificationsCard = reactive({ shown: true, turning: false })
+
+/** Turn On in a specimen: the browser's answer comes after a moment, and the card leaves as it leaves every conversation. */
+function turnOnNotifications(specimen: { shown: boolean; turning: boolean }): void {
+  specimen.turning = true
+  setTimeout(() => {
+    specimen.turning = false
+    specimen.shown = false
+    showToast({ title: 'Notifications Turned On', message: 'The product turns them on in this browser, and the card leaves every conversation.', tone: 'neutral' })
+  }, 800)
+}
+
 const permissionSpecimens = reactive<
   {
     variant: string
@@ -2042,6 +2070,57 @@ onBeforeUnmount(() => {
               <div v-else class="flex items-center gap-3 text-chrome text-fg-subtle">
                 Every request is decided.
                 <Button size="sm" @click="specimen.requests = specimen.fixture(); specimen.error = specimen.refusal">Show Again</Button>
+              </div>
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="NotificationsCard"
+        note="An agent ran demi notify status or demi notify send and found that no browser of the user takes its notifications: the conversation shows this card where a request waits, once a request no longer does, one card at most however often the agent checks. It holds no command. Turn On Notifications turns notifications on in the browser it is clicked in, the agent’s with them, as Settings › Notifications does, the browser asking for its permission first; once any browser takes the agent’s notifications the card leaves every conversation. In Safari on an iPhone outside the Home Screen it opens the sheet that shows how to add Demi there. A browser that blocks Demi’s notifications, or cannot notify, says so under the text and offers Dismiss alone. Dismiss removes the card from this conversation, which never shows it again. Here Turn On is answered after a moment, with a toast naming what the product does."
+      >
+        <div class="specimen-stack">
+          <GallerySpecimen
+            v-for="specimen in notificationsCardSpecimens"
+            :key="specimen.variant"
+            :variant="specimen.variant"
+            wide
+          >
+            <div class="w-full max-w-[44rem]">
+              <NotificationsCard
+                v-if="specimen.shown"
+                :permission="specimen.permission"
+                :home-screen-icon="'iphone' in specimen ? APP_ICON : undefined"
+                :turning="specimen.turning"
+                @turn-on="turnOnNotifications(specimen)"
+                @dismiss="specimen.shown = false"
+              />
+              <div v-else class="flex items-center gap-3 text-chrome text-fg-subtle">
+                The card is gone.
+                <Button size="sm" @click="specimen.shown = true">Show Again</Button>
+              </div>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="over the composer · as the conversation shows it" wide>
+            <div class="flex w-full max-w-[44rem] flex-col gap-3">
+              <div v-if="!dockNotificationsCard.shown" class="flex items-center gap-3 text-chrome text-fg-subtle">
+                The card is gone.
+                <Button size="sm" @click="dockNotificationsCard.shown = true">Show Again</Button>
+              </div>
+              <!-- The card stands over the dock's top, as a request's does: the frame leaves it room above. -->
+              <div class="flex min-h-[18rem] flex-col justify-end rounded-lg bg-surface p-3">
+                <SessionDock>
+                  <template v-if="dockNotificationsCard.shown" #above>
+                    <NotificationsCard
+                      permission="default"
+                      :turning="dockNotificationsCard.turning"
+                      @turn-on="turnOnNotifications(dockNotificationsCard)"
+                      @dismiss="dockNotificationsCard.shown = false"
+                    />
+                  </template>
+                  <GalleryComposer />
+                </SessionDock>
               </div>
             </div>
           </GallerySpecimen>

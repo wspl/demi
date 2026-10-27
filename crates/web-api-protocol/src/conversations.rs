@@ -266,6 +266,10 @@ pub struct ConversationMetadata {
     /// user has since turned on or off, so a reload would change them
     /// (`crates/backend-plugins/src/lib.rs`).
     pub plugins_changed: bool,
+    /// Whether the conversation shows the card that asks the user to turn
+    /// notifications on, as its agent found that no browser of the user
+    /// takes them.
+    pub notifications_card: bool,
     /// What the conversation's rows of no agent cost, such as its titles';
     /// each agent's own is its entry's, and the conversation's is their sum.
     #[garde(dive)]

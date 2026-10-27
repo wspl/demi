@@ -25,6 +25,9 @@ import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
 import { usePermissions } from './permissions'
+import { useNotifications } from '../state/notifications'
+import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
+import type { NotificationsCardView } from '@demicodes/web-ui/permissions/NotificationsCard.vue'
 import { useSideQuestions } from './side-questions'
 import { conversationFiles } from './files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
@@ -70,6 +73,17 @@ const product = useProduct()
 const preferences = usePreferences()
 const work = useWorkPanel()
 const permissions = usePermissions()
+const notifications = useNotifications()
+/** The card that asks the user to turn notifications on, while the conversation shows it, as this browser can answer it. */
+const notificationsCard = computed((): NotificationsCardView | null =>
+  conversation.value?.metadata.shown.value?.notificationsCard
+    ? {
+        permission: notifications.permission,
+        homeScreenIcon: notifications.homeScreen ? APP_ICON : undefined,
+        turning: notifications.turningOn,
+      }
+    : null,
+)
 const sideQuestions = useSideQuestions()
 /**
  * The open conversation, from the address the page shows: under open
@@ -369,6 +383,9 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :deciding-permission="permissions.stateFor(conversation.id).deciding"
     :request-error="permissions.stateFor(conversation.id).error"
     @decide-permission="(id, decision, credential) => permissions.decide(conversation!.id, id, decision, credential)"
+    :notifications-card="notificationsCard"
+    @turn-on-notifications="void notifications.turnOnForAgent()"
+    @dismiss-notifications-card="void notifications.dismissCard(conversation!.id)"
     :pending-submissions="store.submissions(conversation)"
     :removing="conversation.removing"
     @retry-undelivered="store.retrySends(conversation)"

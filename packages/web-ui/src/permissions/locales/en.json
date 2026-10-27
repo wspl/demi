@@ -57,5 +57,13 @@
       "action": "change its workflow",
       "description": "Choose the workflow this conversation works with, as the composer’s Workflow menu does."
     }
+  },
+  "notificationsCard": {
+    "title": "The agent can’t notify you",
+    "body": "None of your browsers has notifications on. Turn them on to hear when the agent finishes or needs you, even with Demi closed.",
+    "blocked": "Notifications are blocked in this browser’s site settings.",
+    "unsupported": "This browser doesn’t support notifications.",
+    "dismiss": "Dismiss",
+    "turnOn": "Turn On Notifications"
   }
 }

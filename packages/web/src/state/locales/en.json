@@ -9,6 +9,7 @@
   "failures": {
     "turnOnNotifications": "Could Not Turn On Notifications",
     "turnOffNotifications": "Could Not Turn Off Notifications",
+    "dismissNotificationsCard": "Could Not Dismiss the Notifications Reminder",
     "updateSettings": "Could Not Update Settings",
     "changeContextLimit": "Could Not Change the Context Limit",
     "updateTimeZoneLanguage": "Could Not Update Time Zone and Language",

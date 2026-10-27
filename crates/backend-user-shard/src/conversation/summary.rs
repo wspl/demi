@@ -145,6 +145,7 @@ impl Shard {
             .unwrap_or_default();
         let first_call_at = services.control.conversation_first_call(record.id.clone()).await?;
         let schedules = self.conversation_schedules(&record.id).await?;
+        let notifications_card = services.control.notifications_card(record.id.clone()).await?;
         Ok(ConversationMetadata {
             model: record.model.as_ref().map(settings).transpose()?,
             workflow: record.workflow,
@@ -152,6 +153,7 @@ impl Shard {
             last_turn: facts.last_turn.as_ref().map(last_turn),
             turn_speed: facts.turn_speed,
             plugins_changed,
+            notifications_card,
             other_cost,
             first_call_at,
             panel_states,
