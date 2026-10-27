@@ -213,13 +213,25 @@ pub struct PushEvents {
 /// `PUT /push/subscription`: the browser's subscription for the caller's
 /// session, which replaces what the session had.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[garde(allow_unvalidated)]
 pub struct PushSubscriptionBody {
     pub endpoint: PushEndpoint,
     pub keys: PushSubscriptionKeys,
     pub events: PushEvents,
+    /// Whether the browser is not notified of the end of a turn while
+    /// another session of the account is in use and its own is not, its
+    /// Quiet While I'm on Another Device switch.
+    pub quiet_while_elsewhere: bool,
 }
+
+/// How long a session stays in use after the last input to one of its
+/// pages, in minutes, which Settings › Notifications says.
+///
+/// A web page sees only the input to itself: the user who reads or works in
+/// another app counts as away once this passes, the away timeout of chat
+/// apps that read the system's idle time.
+pub const IN_USE_MINUTES: u64 = 10;
 
 /// What a push tells the page's service worker, by its `kind`, each of a
 /// conversation, whose title is null while it has none. The worker words
@@ -296,6 +308,16 @@ impl PushMessage {
             | Self::TurnFailed { conversation_id, .. }
             | Self::Permission { conversation_id, .. }
             | Self::Agent { conversation_id, .. } => conversation_id,
+        }
+    }
+
+    /// Whether a browser quiet while the user is on another device leaves
+    /// it out: the end of a turn does; a request that needs the user and
+    /// what the agent sends reach every browser.
+    pub fn can_stay_quiet(&self) -> bool {
+        match self {
+            Self::TurnFinished { .. } | Self::TurnFailed { .. } => true,
+            Self::Permission { .. } | Self::Agent { .. } => false,
         }
     }
 

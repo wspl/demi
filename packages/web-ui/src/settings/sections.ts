@@ -74,6 +74,7 @@ export function settingsSections(): SettingsNavGroup[] {
           keywords: words(t('sections.notifications.keywords')),
           settings: [
             { label: t('notifications.browser.label'), keywords: words(t('sections.notifications.browserKeywords')) },
+            { label: t('notifications.browser.quietWhileElsewhere'), keywords: words(t('sections.notifications.quietKeywords')) },
             { label: t('notifications.when.turnFinishes'), keywords: words(t('sections.notifications.finishesKeywords')) },
             { label: t('notifications.when.turnFails'), keywords: words(t('sections.notifications.failsKeywords')) },
             { label: t('notifications.when.needsPermission'), keywords: words(t('sections.notifications.permissionKeywords')) },

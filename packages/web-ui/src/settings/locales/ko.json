@@ -195,6 +195,8 @@
     "browser": {
       "title": "브라우저",
       "label": "브라우저 알림",
+      "quietWhileElsewhere": "다른 기기 사용 중에는 알리지 않음",
+      "quietWhileElsewhereDescription": "다른 기기에서 Demi를 사용하는 동안에는 턴 완료나 실패를 여기서 알리지 않습니다. 그 기기를 {minutes}분 동안 사용하지 않으면 다시 알립니다. 권한 요청과 에이전트의 알림은 항상 받습니다.",
       "blocked": "이 브라우저의 사이트 설정에서 차단되었습니다.",
       "thisBrowser": "이 브라우저에서만 적용됩니다. Demi를 닫아도 받습니다.",
       "unsupported": "이 브라우저는 알림을 지원하지 않습니다."
@@ -322,6 +324,7 @@
     "notifications": {
       "keywords": "브라우저,알림",
       "browserKeywords": "알림",
+      "quietKeywords": "알리지 않음,다른 기기,휴대폰,컴퓨터,자리 비움",
       "finishesKeywords": "완료,끝",
       "failsKeywords": "오류",
       "permissionKeywords": "권한 요청",

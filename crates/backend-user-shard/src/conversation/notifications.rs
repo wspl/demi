@@ -13,7 +13,20 @@
 //! closes or loses its connection therefore stops holding its conversation's
 //! notifications back. The accounts service's sender delivers it.
 //!
-//! A turn the user stopped notifies nothing, since the user was there.
+//! A turn the user stopped notifies nothing, since the user was there, and
+//! the end of a turn notifies no session one of whose pages is in front of
+//! the user, focused and visible: the page shows it.
+//!
+//! # The device in use
+//!
+//! A session is in use for [`IN_USE_MINUTES`] after one of its pages said
+//! the user acted on it, while that page's channel lives. While another
+//! session is in use and its own is not, a subscription quiet while the user
+//! is on another device is not notified of the end of a turn: the user is at
+//! the other device, which notifies. Who is notified is decided as the turn
+//! ends, and nothing is sent to it later. A request
+//! that needs the user and what the agent sends reach every subscription that
+//! chose them.
 //!
 //! # Telling turns apart
 //!
@@ -30,6 +43,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::Duration;
 
 use demi_agent_session::{EndedTurn, TurnOutcome};
 use demi_backend_database::StorageError;
@@ -38,14 +52,28 @@ use demi_backend_host_access::root_of;
 use demi_shared_types::BlockId;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::permissions::PermissionRequestId;
-use demi_web_api_protocol::push::{ANSWER_START_CHARS, PushAsk, PushMessage};
+use demi_web_api_protocol::push::{ANSWER_START_CHARS, IN_USE_MINUTES, PushAsk, PushMessage};
 use demi_web_api_protocol::sessions::SessionId;
+use tokio::time::Instant;
 
 use crate::shard::Shard;
 
-/// What each session's open pages show, by page: the conversation of each
-/// that is focused and visible.
-type Shown = Rc<RefCell<HashMap<SessionId, HashMap<u64, ConversationId>>>>;
+/// How long a session stays in use after the last input to one of its pages.
+const IN_USE_FOR: Duration = Duration::from_secs(IN_USE_MINUTES * 60);
+
+/// Each session's open pages, by page: what each said on its channel.
+type Pages = Rc<RefCell<HashMap<SessionId, HashMap<u64, PageSays>>>>;
+
+/// What one page said on its synchronization channel.
+#[derive(Default)]
+struct PageSays {
+    /// The conversation it shows, focused and visible.
+    showing: Option<ConversationId>,
+    /// Whether it is focused and visible, in front of the user.
+    front: bool,
+    /// When the user last acted on it, by the backend's clock.
+    used: Option<Instant>,
+}
 
 /// What the shard keeps for the notifications of its conversations.
 #[derive(Default)]
@@ -53,7 +81,7 @@ pub(crate) struct Notifications {
     /// Each conversation whose tree works, with the block that ended its
     /// latest ended turn when the work started.
     working: RefCell<HashMap<ConversationId, Option<BlockId>>>,
-    shown: Shown,
+    pages: Pages,
     /// The number the next page's synchronization channel is known by.
     next_page: Cell<u64>,
     /// Held while one notification is delivered, so the next goes after it,
@@ -61,59 +89,103 @@ pub(crate) struct Notifications {
     delivering: tokio::sync::Mutex<()>,
 }
 
-/// What one page's synchronization channel shows, held while the channel
-/// lives: it forgets what it showed when it ends.
-pub(crate) struct PageShows {
-    shown: Shown,
+/// One page's synchronization channel as the notifications know it, held
+/// while the channel lives: what the page shows and when it was used, which
+/// the backend forgets when the channel ends.
+pub(crate) struct OpenPage {
+    pages: Pages,
     session: SessionId,
     page: u64,
 }
 
-impl PageShows {
+impl OpenPage {
     /// Notes that the page shows `conversation`, focused and visible, or
-    /// none.
-    pub(crate) fn set(&self, conversation: Option<ConversationId>) {
-        let mut shown = self.shown.borrow_mut();
-        let pages = shown.entry(self.session.clone()).or_default();
-        match conversation {
-            Some(conversation) => {
-                pages.insert(self.page, conversation);
+    /// none, and whether it is in front of the user.
+    pub(crate) fn show(&self, conversation: Option<ConversationId>, front: bool) {
+        self.says(|says| {
+            says.showing = conversation;
+            says.front = front;
+        });
+    }
+
+    /// Notes that the user acted on the page now.
+    pub(crate) fn used(&self) {
+        self.says(|says| says.used = Some(Instant::now()));
+    }
+
+    fn says(&self, change: impl FnOnce(&mut PageSays)) {
+        let mut pages = self.pages.borrow_mut();
+        change(
+            pages
+                .entry(self.session.clone())
+                .or_default()
+                .entry(self.page)
+                .or_default(),
+        );
+    }
+}
+
+impl Drop for OpenPage {
+    fn drop(&mut self) {
+        let mut pages = self.pages.borrow_mut();
+        if let Some(session) = pages.get_mut(&self.session) {
+            session.remove(&self.page);
+            if session.is_empty() {
+                pages.remove(&self.session);
             }
-            None => {
-                pages.remove(&self.page);
-            }
-        }
-        if pages.is_empty() {
-            shown.remove(&self.session);
         }
     }
 }
 
-impl Drop for PageShows {
-    fn drop(&mut self) {
-        self.set(None);
-    }
+/// Where a notification goes now: the subscriptions that chose it, but
+/// those it leaves out.
+pub(crate) struct Recipients {
+    /// The subscriptions it is delivered to.
+    pub(crate) now: Vec<StoredPushSubscription>,
+    /// How many a page of their session holds back, as it shows the
+    /// conversation or, for the end of a turn, is in front of the user.
+    pub(crate) shown: usize,
+    /// How many stay quiet as the user is on another device.
+    elsewhere: usize,
 }
 
 impl Notifications {
-    /// What a page of `session` that opens its synchronization channel
-    /// shows, nothing until it says.
-    pub(crate) fn page(&self, session: SessionId) -> PageShows {
+    /// A page of `session` that opens its synchronization channel, which
+    /// shows nothing and was not used until it says.
+    pub(crate) fn page(&self, session: SessionId) -> OpenPage {
         let page = self.next_page.get();
         self.next_page.set(page + 1);
-        PageShows {
-            shown: self.shown.clone(),
+        OpenPage {
+            pages: self.pages.clone(),
             session,
             page,
         }
     }
 
-    /// Whether a page of `session` shows `conversation`.
-    fn shows(&self, session: &SessionId, conversation: &ConversationId) -> bool {
-        self.shown
+    /// Whether a page of `session` shows `conversation`, or is in front of
+    /// the user while `front` counts.
+    fn shows(&self, session: &SessionId, conversation: &ConversationId, front: bool) -> bool {
+        self.pages.borrow().get(session).is_some_and(|pages| {
+            pages
+                .values()
+                .any(|says| says.showing.as_ref() == Some(conversation) || (front && says.front))
+        })
+    }
+
+    /// The sessions in use now.
+    pub(crate) fn in_use(&self) -> Vec<SessionId> {
+        let now = Instant::now();
+        self.pages
             .borrow()
-            .get(session)
-            .is_some_and(|pages| pages.values().any(|shown| shown == conversation))
+            .iter()
+            .filter(|(_, pages)| {
+                pages
+                    .values()
+                    .filter_map(|says| says.used)
+                    .any(|used| used + IN_USE_FOR > now)
+            })
+            .map(|(session, _)| session.clone())
+            .collect()
     }
 }
 
@@ -216,44 +288,55 @@ impl Shard {
         }
     }
 
-    /// The subscriptions `message` goes to now: those that chose it, but
-    /// those of a session a page of which shows its conversation.
-    pub(crate) async fn recipients(&self, message: &PushMessage) -> Result<Vec<StoredPushSubscription>, StorageError> {
-        Ok(self.split_recipients(message).await?.0)
-    }
-
-    /// [`Self::recipients`], with the count of the subscriptions that chose
-    /// `message` and were left out because a page of their session shows its
-    /// conversation.
-    async fn split_recipients(&self, message: &PushMessage) -> Result<(Vec<StoredPushSubscription>, u64), StorageError> {
+    /// Where `message` goes now: to the subscriptions that chose it, but
+    /// those of a session a page of which shows its conversation, and,
+    /// for the end of a turn, those quiet while the user is on another
+    /// device, when another session is in use and theirs is not.
+    ///
+    /// `in_use` are the sessions in use when the notification came, which
+    /// decide it however long it waits for the ones before.
+    pub(crate) async fn recipients(&self, message: &PushMessage, in_use: &[SessionId]) -> Result<Recipients, StorageError> {
         let subscriptions = self.services().push.subscriptions(self.user().clone()).await?;
-        let mut suppressed = 0;
-        let mut recipients = Vec::new();
+        let mut recipients = Recipients {
+            now: Vec::new(),
+            shown: 0,
+            elsewhere: 0,
+        };
         for subscription in subscriptions {
             if !message.chosen_by(&subscription.events) {
                 continue;
             }
-            if self.notifications.shows(&subscription.session, message.conversation()) {
-                suppressed += 1;
+            if self
+                .notifications
+                .shows(&subscription.session, message.conversation(), message.can_stay_quiet())
+            {
+                recipients.shown += 1;
+            } else if message.can_stay_quiet()
+                && subscription.quiet_while_elsewhere
+                && !in_use.is_empty()
+                && !in_use.contains(&subscription.session)
+            {
+                recipients.elsewhere += 1;
             } else {
-                recipients.push(subscription);
+                recipients.now.push(subscription);
             }
         }
-        Ok((recipients, suppressed))
+        Ok(recipients)
     }
 
     /// Delivers `message` in the background, after the notifications before
     /// it: to `recipients`, or else to the subscriptions it goes to then. A
     /// failure is logged.
-    pub(crate) fn push(&self, message: PushMessage, recipients: Option<Vec<StoredPushSubscription>>) {
+    pub(crate) fn push(&self, message: PushMessage, recipients: Option<Recipients>) {
         let this = self.this();
+        let in_use = self.notifications.in_use();
         self.tasks().spawn_local(async move {
             let _turn = this.notifications.delivering.lock().await;
             let started = std::time::Instant::now();
-            let (recipients, suppressed) = match recipients {
-                Some(recipients) => (recipients, 0),
-                None => match this.split_recipients(&message).await {
-                    Ok(split) => split,
+            let recipients = match recipients {
+                Some(recipients) => recipients,
+                None => match this.recipients(&message, &in_use).await {
+                    Ok(recipients) => recipients,
                     Err(error) => {
                         tracing::warn!(event = "push_subscriptions.read_failed", user = %this.user(), %error, "the push subscriptions were not read");
                         return;
@@ -266,15 +349,19 @@ impl Shard {
                 PushMessage::Permission { .. } => "ask",
                 PushMessage::Agent { .. } => "agent",
             };
+            let Recipients { now: recipients, shown: suppressed, elsewhere } = recipients;
             if recipients.is_empty() {
                 // No browser chose its kind, or each that did had a page
-                // showing its conversation, as `suppressed_by_page` counts.
+                // showing its conversation, as `suppressed_by_page` counts,
+                // or stays quiet as the user is on another device, as
+                // `quiet_elsewhere` counts.
                 tracing::info!(
                     event = "notification.unsent",
                     user = %this.user(),
                     conversation = %message.conversation(),
                     kind,
                     suppressed_by_page = suppressed,
+                    quiet_elsewhere = elsewhere,
                     "a notification went to no browser"
                 );
                 return;
@@ -297,6 +384,7 @@ impl Shard {
                 kind,
                 recipients = recipients.len(),
                 suppressed_by_page = suppressed,
+                quiet_elsewhere = elsewhere,
                 removed_gone = removed,
                 ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 "a notification was sent to the push services of its browsers"

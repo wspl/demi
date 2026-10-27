@@ -1109,6 +1109,7 @@ export function createSettingsState() {
       /** What the stand-in browser answers when it is asked. */
       answer: 'granted' as 'granted' | 'denied',
       agentNotifies: true,
+      quietWhileElsewhere: true,
       /** The stand-in browser is Safari on an iPhone, outside the Home Screen, which cannot push. */
       iphone: false,
     },

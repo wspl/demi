@@ -456,6 +456,7 @@ function resetShortcuts(): void {
       v-model:turn-fails="notifications.settings.turnFails"
       v-model:needs-permission="notifications.settings.needsPermission"
       v-model:agent-notifies="notifications.settings.agentNotifies"
+      v-model:quiet-while-elsewhere="notifications.settings.quietWhileElsewhere"
       :permission="notifications.permission"
       :request-permission="notifications.requestPermission"
       :home-screen-icon="notifications.homeScreen ? homeScreenIcon : undefined"

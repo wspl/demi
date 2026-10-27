@@ -289,6 +289,13 @@ function keepVendors(catalog: VendorCatalog): void {
  */
 const ESTABLISHED_MS = 1_000
 
+/**
+ * How often an open channel is told the user acts on the page, at most: the
+ * backend counts the session in use for minutes after each, so once a
+ * minute keeps it in use without a message per keystroke.
+ */
+const USED_EVERY_MS = 60_000
+
 /** How long a read of the state after a break may wait, at a random point, so that pages told at once do not read at once. */
 const RESTART_SPREAD_MS = 2_000
 
@@ -469,6 +476,14 @@ export const useProduct = defineStore('product', () => {
    * new connection tells it again, as the backend forgets it with the last.
    */
   let showing: string | null = null
+  /** Whether the page is focused and visible, which the channel tells with `showing`: no turn's end notifies this session's browser while it is. */
+  let front = false
+  /**
+   * When the page last told the open channel the user acted on it, by
+   * `performance.now()`; null until it does, as the backend forgets it
+   * with each connection.
+   */
+  let usedSent: number | null = null
   function clearRetry(): void {
     retry?.cancel()
     retry = null
@@ -479,6 +494,7 @@ export const useProduct = defineStore('product', () => {
     const dropped = channel
     channel = null
     channelOpen = false
+    usedSent = null
     if (grace !== null) {
       clearTimeout(grace)
       grace = null
@@ -569,7 +585,7 @@ export const useProduct = defineStore('product', () => {
       // changed since.
       send(lane, { type: 'open', follows: follows() })
       channelOpen = true
-      if (showing !== null) {
+      if (showing !== null || front) {
         sendShowing(lane)
       }
       grace = setTimeout(established, ESTABLISHED_MS)
@@ -622,15 +638,34 @@ export const useProduct = defineStore('product', () => {
   }
 
   function sendShowing(lane: Lane): void {
-    send(lane, { type: 'showing', showing })
+    send(lane, { type: 'showing', showing, front })
   }
 
-  /** Says the page shows `conversation`, focused and visible, or none. */
-  function show(conversation: string | null): void {
-    if (conversation === showing) {
+  /**
+   * Says the user acted on the page: at once on an open channel that was
+   * not told yet, then at most once a minute, since the backend counts the
+   * session in use for minutes after it. A closed channel is told at the
+   * first input after it opens.
+   */
+  function used(): void {
+    if (!channel || !channelOpen) {
+      return
+    }
+    const now = performance.now()
+    if (usedSent !== null && now - usedSent < USED_EVERY_MS) {
+      return
+    }
+    usedSent = now
+    send(channel, { type: 'used' })
+  }
+
+  /** Says the page shows `conversation`, focused and visible, or none, and whether it is focused and visible. */
+  function show(conversation: string | null, inFront: boolean): void {
+    if (conversation === showing && inFront === front) {
       return
     }
     showing = conversation
+    front = inFront
     if (channel?.readyState === Lane.OPEN && channelOpen) {
       sendShowing(channel)
     }
@@ -1190,6 +1225,7 @@ export const useProduct = defineStore('product', () => {
     vendorError.value = null
     activeConversationId.value = null
     showing = null
+    front = false
     load.value = 'loading'
   }
 
@@ -1211,6 +1247,7 @@ export const useProduct = defineStore('product', () => {
     partLoad,
     activeConversationId,
     show,
+    used,
     hold,
     listLoad,
     retryList,

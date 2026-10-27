@@ -195,6 +195,8 @@
     "browser": {
       "title": "Browser",
       "label": "Browser notifications",
+      "quietWhileElsewhere": "Quiet while I’m on another device",
+      "quietWhileElsewhereDescription": "Turns that finish or fail don’t notify here while you’re using Demi on another device, until you’ve been away from it for {minutes} minutes. Permission requests and the agent’s notifications always come.",
       "blocked": "Blocked in this browser’s site settings.",
       "thisBrowser": "On this browser only. They come even with Demi closed.",
       "unsupported": "This browser doesn’t support notifications."
@@ -322,6 +324,7 @@
     "notifications": {
       "keywords": "browser,alert",
       "browserKeywords": "notify",
+      "quietKeywords": "quiet,other device,phone,computer,away",
       "finishesKeywords": "done,complete",
       "failsKeywords": "error",
       "permissionKeywords": "permission request",

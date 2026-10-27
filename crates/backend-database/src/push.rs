@@ -1,9 +1,10 @@
 //! The users' push subscriptions: one per session, which it serves.
 //!
-//! A subscription holds its push service's endpoint, the browser's keys and the
-//! events it chose. A session's end deletes its subscription, and one whose
-//! session expired is not sent to. Each is decoded as it is read, and encoded only
-//! as it is written.
+//! A subscription holds its push service's endpoint, the browser's keys, the
+//! events it chose and whether it stays quiet while the user is on another
+//! device. A session's end deletes its subscription, and one whose session
+//! expired is not sent to. Each is decoded as it is read, and encoded only as
+//! it is written.
 
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::push::{BrowserAuth, BrowserKey, PushEndpoint, PushEvents, PushSubscriptionKeys};
@@ -15,13 +16,15 @@ use super::columns::decode;
 use super::control::ControlService;
 
 /// A browser's subscription as it is kept: the session it serves, one per
-/// session, its endpoint, its keys and the events it chose.
+/// session, its endpoint, its keys, the events it chose and whether it
+/// stays quiet while the user is on another device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredPushSubscription {
     pub session: SessionId,
     pub endpoint: PushEndpoint,
     pub keys: PushSubscriptionKeys,
     pub events: PushEvents,
+    pub quiet_while_elsewhere: bool,
 }
 
 /// What became of a subscription a session puts.
@@ -35,7 +38,7 @@ pub enum PutPush {
 }
 
 const COLUMNS: &str = "p.session_id, p.endpoint, p.p256dh, p.auth, p.turn_finishes, p.turn_fails,
-     p.needs_permission, p.agent_notifies";
+     p.needs_permission, p.agent_notifies, p.quiet_while_elsewhere";
 
 impl ControlService {
     /// Keeps `subscription` for `user`'s session, replacing what the session
@@ -52,6 +55,7 @@ impl ControlService {
                 endpoint,
                 keys,
                 events,
+                quiet_while_elsewhere,
             } = subscription;
             let transaction = connection.transaction()?;
             let holder: Option<(String, Option<i64>)> = transaction
@@ -73,13 +77,15 @@ impl ControlService {
             }
             transaction.execute(
                 "INSERT INTO push_subscriptions (session_id, endpoint, user_id, p256dh, auth,
-                     turn_finishes, turn_fails, needs_permission, agent_notifies, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                     turn_finishes, turn_fails, needs_permission, agent_notifies, created_at,
+                     quiet_while_elsewhere)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                  ON CONFLICT (session_id) DO UPDATE SET endpoint = excluded.endpoint,
                      p256dh = excluded.p256dh, auth = excluded.auth,
                      turn_finishes = excluded.turn_finishes, turn_fails = excluded.turn_fails,
                      needs_permission = excluded.needs_permission,
                      agent_notifies = excluded.agent_notifies,
+                     quiet_while_elsewhere = excluded.quiet_while_elsewhere,
                      created_at = CASE WHEN push_subscriptions.endpoint = excluded.endpoint
                        THEN push_subscriptions.created_at ELSE excluded.created_at END",
                 params![
@@ -93,6 +99,7 @@ impl ControlService {
                     events.needs_permission,
                     events.agent_notifies,
                     now.as_millisecond(),
+                    quiet_while_elsewhere,
                 ],
             )?;
             transaction.commit()?;
@@ -161,5 +168,6 @@ fn subscription(row: &Row<'_>) -> Result<StoredPushSubscription, StorageError> {
             needs_permission: row.get("needs_permission")?,
             agent_notifies: row.get("agent_notifies")?,
         },
+        quiet_while_elsewhere: row.get("quiet_while_elsewhere")?,
     })
 }

@@ -6,6 +6,7 @@ import { logStorageFailed, pageLog } from '@demicodes/web-ui/infra/log'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { pageLanguage } from '@demicodes/web-ui/i18n/text'
 import { requestTitleWords } from '@demicodes/web-ui/permissions/types'
+import { FRAME_INPUT, USER_INPUT_EVENTS } from '@demicodes/web-ui/ui/user-input'
 import { t } from './locales/text'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -23,11 +24,18 @@ import { useProduct } from './product'
  * settings live in its storage. While they are on and the browser allows them,
  * the page:
  *
- * - Keeps the browser subscribed for its session, with the events it chose.
- * - Tells the backend on its synchronization channel which conversation it
- *   shows, focused and visible, so that conversation is not notified to this
- *   browser.
+ * - Keeps the browser subscribed for its session, with the events it chose
+ *   and whether it stays quiet while the user is on another device.
+ * - Tells the backend on its synchronization channel whether it is in front
+ *   of the user, focused and visible, and which conversation it shows then:
+ *   no turn's end is notified to this browser while it is, and nothing of
+ *   that conversation.
  * - Leaves the service worker the words it says notifications in.
+ *
+ * Whatever the settings, the page tells the backend when the user acts on it
+ * while it is visible, which keeps its session in use: the browsers of the
+ * user's other sessions that stay quiet then are not notified of the end of
+ * a turn.
  *
  * A click on a notification opens its conversation.
  *
@@ -44,6 +52,8 @@ const settingsSchema = z.object({
   turnFails: z.boolean(),
   needsPermission: z.boolean(),
   agentNotifies: z.boolean(),
+  /** The end of a turn does not notify while the user is on another device; on for a setting stored before it. */
+  quietWhileElsewhere: z.boolean().default(true),
 })
 export type NotificationSettings = z.infer<typeof settingsSchema>
 
@@ -54,6 +64,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   turnFails: true,
   needsPermission: true,
   agentNotifies: true,
+  quietWhileElsewhere: true,
 }
 
 /** The setting belongs to the browser, not the account, so one key holds it for every user of the browser. */
@@ -126,6 +137,7 @@ export function needsHomeScreen(browser: object): boolean {
   return Reflect.get(browser, 'standalone') === false
 }
 
+
 /** The events `settings` chose. */
 function eventsOf(settings: NotificationSettings): PushEvents {
   return {
@@ -153,11 +165,12 @@ async function leaveWords(): Promise<void> {
 }
 
 /** A subscription's endpoint and keys, as the backend keeps them. */
-function subscriptionBody(subscription: PushSubscription, events: PushEvents): PushSubscriptionBody {
+function subscriptionBody(subscription: PushSubscription, events: PushEvents, quietWhileElsewhere: boolean): PushSubscriptionBody {
   return {
     endpoint: subscription.endpoint,
     keys: pushSubscriptionKeysSchema.parse(subscription.toJSON().keys),
     events,
+    quietWhileElsewhere,
   }
 }
 
@@ -255,11 +268,9 @@ export const useNotifications = defineStore('notifications', () => {
   /** The change of the subscription under way, which the next waits for. */
   let changing: Promise<void> = Promise.resolve()
 
-  /** The conversation in front of the user; none while the page is hidden or not focused. */
-  function front(): string | null {
+  /** Whether the page is in front of the user: visible and focused. */
+  function inFront(): boolean {
     return document.visibilityState === 'visible' && document.hasFocus()
-      ? product.activeConversationId
-      : null
   }
 
   /**
@@ -270,6 +281,7 @@ export const useNotifications = defineStore('notifications', () => {
   function follow(signal: AbortSignal, session: string | undefined): void {
     const wanted = settings.value.enabled && permission.value === 'granted'
     const events = eventsOf(settings.value)
+    const quiet = settings.value.quietWhileElsewhere
     if (wanted && session === undefined) {
       // The session is known once the state arrives, which follows again.
       return
@@ -280,7 +292,7 @@ export const useNotifications = defineStore('notifications', () => {
       }
       try {
         if (wanted && session !== undefined) {
-          await subscribe(session, events, signal)
+          await subscribe(session, events, quiet, signal)
         } else {
           await unsubscribe(signal)
         }
@@ -294,7 +306,7 @@ export const useNotifications = defineStore('notifications', () => {
     })
   }
 
-  async function subscribe(session: string, events: PushEvents, signal: AbortSignal): Promise<void> {
+  async function subscribe(session: string, events: PushEvents, quiet: boolean, signal: AbortSignal): Promise<void> {
     const registration = await navigator.serviceWorker.ready
     subscribed = await subscribeFor(session, {
       current: () => registration.pushManager.getSubscription(),
@@ -303,7 +315,7 @@ export const useNotifications = defineStore('notifications', () => {
         return registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey })
       },
       put: async (subscription) => {
-        await apiRequest('/push/subscription', { method: 'PUT', signal, ...jsonBody(subscriptionBody(subscription, events)) })
+        await apiRequest('/push/subscription', { method: 'PUT', signal, ...jsonBody(subscriptionBody(subscription, events, quiet)) })
       },
       maker: subscriptionMaker,
       remember: rememberMaker,
@@ -323,19 +335,39 @@ export const useNotifications = defineStore('notifications', () => {
     await subscription.unsubscribe()
   }
 
-  /** Tells the backend, on the synchronization channel, the conversation this page shows, focused and visible. */
+  /**
+   * Tells the backend, on the synchronization channel, whether the page is
+   * in front of the user and the conversation it shows then: no turn's end
+   * notifies this browser while it is, and nothing of that conversation.
+   */
   function reportShowing(): void {
-    product.show(front())
+    const front = inFront()
+    product.show(front ? product.activeConversationId : null, front)
+  }
+
+  /** Tells the channel the user acted on the page, while it is visible. */
+  function reportUse(): void {
+    if (document.visibilityState === 'visible') {
+      product.used()
+    }
   }
 
   /** Notifies from now on, until `stop`; a click on a notification calls `open` with its conversation. */
   function start(open: (id: string) => void): void {
-    if (lifetime || permission.value === 'unsupported') {
+    if (lifetime) {
       return
     }
     const current = new AbortController()
     lifetime = current
     const { signal } = current
+    // A browser that cannot notify still says it is in use, which holds
+    // back the user's other browsers.
+    for (const input of [...USER_INPUT_EVENTS, FRAME_INPUT]) {
+      window.addEventListener(input, reportUse, { capture: true, passive: true, signal })
+    }
+    if (permission.value === 'unsupported') {
+      return
+    }
     // The user may allow or block the site in the browser's settings while the page is open.
     void navigator.permissions?.query({ name: 'notifications' }).then((status) => {
       if (!signal.aborted) {
@@ -364,7 +396,13 @@ export const useNotifications = defineStore('notifications', () => {
     // come again after each subscription the backend keeps, as each says
     // whether its browser has notifications on.
     const stopFollowing = watch(
-      [() => settings.value.enabled, permission, session, () => JSON.stringify(eventsOf(settings.value))],
+      [
+        () => settings.value.enabled,
+        permission,
+        session,
+        () => JSON.stringify(eventsOf(settings.value)),
+        () => settings.value.quietWhileElsewhere,
+      ],
       () => follow(signal, session()),
       { immediate: true },
     )

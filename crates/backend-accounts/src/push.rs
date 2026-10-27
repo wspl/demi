@@ -260,7 +260,12 @@ impl Pusher {
     /// whose end removes it, once its endpoint's host is a public one and
     /// unless another live session holds it.
     pub async fn subscribe(&self, user: UserId, session: SessionId, body: PushSubscriptionBody) -> Result<(), PushError> {
-        let PushSubscriptionBody { endpoint, keys, events } = body;
+        let PushSubscriptionBody {
+            endpoint,
+            keys,
+            events,
+            quiet_while_elsewhere,
+        } = body;
         self.transport.admit(&endpoint).await.map_err(PushError::NotPublic)?;
         let kept = self
             .control
@@ -271,6 +276,7 @@ impl Pusher {
                     endpoint,
                     keys,
                     events,
+                    quiet_while_elsewhere,
                 },
             )
             .await?;
