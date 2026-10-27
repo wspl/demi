@@ -32,6 +32,7 @@ import { keepShownLanguage, lastShownLanguage, resolveLanguage } from '@demicode
 import { errorFields, reportPageErrorsWith, showUnexpectedErrors } from '@demicodes/web-ui/infra/errors'
 import { reportUncaughtErrors } from '@demicodes/web-ui/infra/uncaught'
 import { logPageError, logPageWith, pageLog, pageLogSignedIn } from '@demicodes/web-ui/infra/log'
+import { logLongFrames } from '@demicodes/web-ui/infra/long-frames'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
@@ -130,6 +131,8 @@ const stopLog = logPageWith(sendPageLog)
 // and keeps them until it is.
 const stopLogSession = watch(() => session.signedIn, pageLogSignedIn, { immediate: true })
 const stopReports = reportPageErrorsWith(logPageError)
+// The page's stutters go to the log too, with the conversation they showed in.
+const stopLongFrames = logLongFrames(() => product.activeConversationId ?? null)
 // The synchronization channel starts beside the session check; a page the check
 // finds signed out has no channel.
 product.start()
@@ -398,6 +401,7 @@ if (import.meta.hot) {
     stopUncaught()
     stopShowingErrors()
     stopReports()
+    stopLongFrames()
     stopLog()
     stopLogSession()
     stopIdentity()
