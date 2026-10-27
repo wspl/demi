@@ -33,6 +33,8 @@ const SESSION_ENDED = 4002
 const BACKEND_CLOSING = 1001
 /** The close of a lane that ended without a close of its own, as one that could not open or whose connection broke. */
 const ABNORMAL_CLOSURE = 1006
+/** The close of a channel whose backend refused what the page said, as one of another build does. */
+const POLICY_VIOLATION = 1008
 
 /** A message that carries one part of the product state, as a write's answer can. */
 export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'synced' | 'stale' | 'update' }>>
@@ -410,6 +412,8 @@ export const useProduct = defineStore('product', () => {
   const activeConversationId = ref<string | null>(null)
   /** Consecutive channels that ended, and reads of the state that failed, before the state was read. */
   const failures = ref(0)
+  /** How many times in a row the backend refused what the page said on the channel (`POLICY_VIOLATION`), which the wait before the next read grows with. */
+  let refusals = 0
   /** Consecutive attempts that failed, of the page connection's or the channel's and the state's own. */
   const failedAttempts = () => Math.max(failures.value, connectionFailures.value)
   const connectionFacts = () => ({
@@ -509,6 +513,7 @@ export const useProduct = defineStore('product', () => {
       grace = null
     }
     failures.value = 0
+    refusals = 0
   }
 
   /** Closes the channel and connects again after the wait. */
@@ -633,6 +638,23 @@ export const useProduct = defineStore('product', () => {
         void apiRequest('/auth/me', { signal: controller.signal, waits: false }).catch(() => {})
       }
       failures.value += 1
+      // The backend refused what the page said, as a backend of a newer
+      // build does: saying it again would be refused again. After the wait,
+      // the page reads the state, which names the build the backend serves,
+      // and connects from what it read; a page of another build loads that
+      // build instead.
+      // An account still to choose its password has no state to read.
+      if (close.code === POLICY_VIOLATION && !choosing) {
+        // The wait grows with each refusal: a read of the state starts the
+        // failures over, a refusal does not.
+        refusals += 1
+        clearRetry()
+        retry = waitToReconnect(refusals, () => {
+          retry = null
+          readState(false)
+        })
+        return
+      }
       scheduleRetry()
     })
   }
@@ -761,6 +783,11 @@ export const useProduct = defineStore('product', () => {
         firstUser.value = null
         stateRead = null
         readHeldLists()
+        // A page of another build has nothing to say to this backend: it
+        // loads that build, or says it could not.
+        if (newBuild.value !== null) {
+          return
+        }
         if (channel) {
           follow('state')
         } else {
