@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '../infra/keep-same'
 import { t } from './locales/text'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
@@ -145,7 +146,7 @@ const emit = defineEmits<{
  * Whether the card shows the context's part, the usage limits, or neither, when
  * the meter is not there.
  */
-const parts = computed(() => contextCardParts(props.usage ?? null, props.limits ?? null, props.isCompacting === true))
+const parts = keptComputed(() => contextCardParts(props.usage ?? null, props.limits ?? null, props.isCompacting === true))
 const rows = computed<ContextCardRow[]>(() => (parts.value.context && props.usage ? contextCardRows(props.usage) : []))
 const instructionList = computed(() => (parts.value.context ? instructionRows(props.instructions ?? []) : []))
 const filled = computed(() => (props.usage ? contextFilled(props.usage) : 0))

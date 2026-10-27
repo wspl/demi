@@ -1,3 +1,4 @@
+import { withAdded } from '@demicodes/web-ui/infra/keep-same'
 import {
   EMPTY_TRANSCRIPT,
   addPage,
@@ -254,18 +255,15 @@ export function createHistoryReads<T extends HistoryHolder>(
     }
     if (node === null) {
       holder.history = boundedHistory(addPage(holder.history, page, live(holder, null)), holder, pageRange)
-      holder.failures = { ...holder.failures, ...failures }
+      holder.failures = withAdded(holder.failures, failures)
       holder.instructions = page.instructions
-      holder.summaries = {
-        ...holder.summaries,
-        ...Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens])),
-      }
+      holder.summaries = withAdded(holder.summaries, Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens])))
       return
     }
     const agent = agentOf(holder, node)
     if (agent) {
       agent.history = boundedHistory(addPage(agent.history, page, live(holder, node)), agent, pageRange)
-      agent.failures = { ...agent.failures, ...failures }
+      agent.failures = withAdded(agent.failures, failures)
     }
   }
 
@@ -312,11 +310,11 @@ export function createHistoryReads<T extends HistoryHolder>(
         { start: disk.window.start, end: disk.window.start + disk.window.blocks.length },
       )
       if (node === null) {
-        holder.failures = { ...holder.failures, ...disk.failures }
+        holder.failures = withAdded(holder.failures, disk.failures)
       } else {
         const agent = agentOf(holder, node)
         if (agent) {
-          agent.failures = { ...agent.failures, ...disk.failures }
+          agent.failures = withAdded(agent.failures, disk.failures)
         }
       }
       return
@@ -438,13 +436,13 @@ export function createHistoryReads<T extends HistoryHolder>(
       const { block, failures } = await readResponse(response, wholeBlockSchema)
       if (node === null) {
         holder.history = withWholeBlock(holder.history, block)
-        holder.failures = { ...holder.failures, ...failures }
+        holder.failures = withAdded(holder.failures, failures ?? {})
         return block
       }
       const agent = agentOf(holder, node)
       if (agent) {
         agent.history = withWholeBlock(agent.history, block)
-        agent.failures = { ...agent.failures, ...failures }
+        agent.failures = withAdded(agent.failures, failures ?? {})
       }
       return block
     }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '../infra/keep-same'
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
 import type { ShownError } from '../infra/errors'
@@ -264,6 +265,17 @@ watch(() => props.schedules?.length ?? 0, (count) => {
 })
 
 const sharing = useShare(() => props.share)
+// The functions the lists below take are made once, so a list is not drawn
+// again for a new one each time the session is.
+function shareAnswer(blockId: string): void {
+  void sharing.start({ kind: 'answer', blockId })
+}
+function shownOutput() {
+  return transcriptShown(props.conversation.load) ? props.conversation.requestOutputs[props.conversation.id] ?? null : null
+}
+function agentOutput(id: string) {
+  return props.conversation.requestOutputs[id] ?? null
+}
 const shareConversation = { kind: 'conversation' } as const
 
 const emit = defineEmits<{
@@ -436,8 +448,8 @@ const shownAsking = computed<ReplyAsking | undefined>(() => props.asking && {
   },
 })
 /** What the root does now, as the conversation holds it. */
-const activity = computed(() => rootActivity(props.conversation))
-const shownEdges = computed(() => windowEdges(props.conversation.history, shown.value))
+const activity = keptComputed(() => rootActivity(props.conversation))
+const shownEdges = keptComputed(() => windowEdges(props.conversation.history, shown.value))
 const shownLatest = computed(() => shown.value === latestWindow(props.conversation.history) || shownEdges.value.atEnd)
 /**
  * The blocks at the transcript's end, which a turn, its recovery and the
@@ -698,7 +710,7 @@ function scrollToBottom(): void {
  * current path. A child of another version of a message stays stored and comes
  * back with its version.
  */
-const shownAgents = computed(() => props.conversation.subagents.filter((agent) => agent.onPath))
+const shownAgents = keptComputed(() => props.conversation.subagents.filter((agent) => agent.onPath))
 const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
   useSessionPanels(
     () => shownAgents.value,
@@ -996,7 +1008,7 @@ watch(
             :removing="removing"
             :read-only="!canEdit"
             :fork="fork"
-            :share="share ? (blockId) => sharing.start({ kind: 'answer', blockId }) : undefined"
+            :share="share ? shareAnswer : undefined"
             :edit-target-id="messageEdit?.kind === 'message' ? messageEdit.request.targetBlockId : undefined"
             :commenting="commenting"
             :asking="shownAsking"
@@ -1024,7 +1036,7 @@ watch(
           <SessionDock
             :catching-up="catchingUpShown"
             :show-scroll-to-bottom="!shownLatest || (!!list && !list.isAtBottom)"
-            :output="() => (transcriptShown(conversation.load) ? conversation.requestOutputs[conversation.id] ?? null : null)"
+            :output="shownOutput"
             :scope="conversation.id"
             :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
             @scroll-to-bottom="scrollToBottom"
@@ -1122,7 +1134,7 @@ watch(
             @revealed="emit('revealed')"
             :usage-limits="usageLimits"
             :agent-cost="subagentCost"
-            :output="(id) => conversation.requestOutputs[id] ?? null"
+            :output="agentOutput"
             @compact-agent="(id) => emit('compactSubagent', id)"
             @refresh-limits="(providerId, account) => emit('refreshLimits', providerId, account)"
             @open-instruction="(entry) => emit('openInstruction', entry)"

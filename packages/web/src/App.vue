@@ -13,6 +13,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SavedScope, SidebarConversation, SidebarReorder, SidebarUpdate } from '@demicodes/web-ui/sidebar/types'
+import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { updateOffered } from '@demicodes/web-ui/settings/server-upgrade'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { followTabAttention } from '@demicodes/web-ui/sidebar/tab-attention'
@@ -100,8 +101,11 @@ const passkeyOffer = usePasskeyOffer()
  * The sidebar's rows: each conversation's own fields and the device it runs on. Every field is
  * named, so a field the row type gains fails to compile here, and a row reads none of the
  * conversation's other state, which changes as it streams.
+ *
+ * A row that says what it said stays the same object, so a change of one conversation,
+ * such as its status as it starts or ends, draws its row alone again.
  */
-const sidebarConversations = computed(() =>
+const sidebarConversations = keptComputed(() =>
   conversations.listed.map(
     (conversation): { [Field in keyof Required<SidebarConversation>]: SidebarConversation[Field] } => ({
       id: conversation.id,
@@ -165,7 +169,7 @@ const activeConversations = computed<SearchRow[]>(() =>
     })),
 )
 /** What the search window lists before the user types: the conversations most recently active. */
-const recentConversations = computed(() => activeConversations.value.slice(0, RECENT_CONVERSATIONS))
+const recentConversations = keptComputed(() => activeConversations.value.slice(0, RECENT_CONVERSATIONS))
 // Send to Conversation: the search window's sources, and the words go to the end of the chosen draft.
 provideSendTargets({
   recent: () => activeConversations.value,

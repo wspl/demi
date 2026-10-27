@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { keptComputed } from '../infra/keep-same'
 import { t } from './locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { Archive, CircleArrowUp, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { closeContextMenu, shownContextMenu, vContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
+import { closeContextMenu, shownContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
@@ -144,14 +145,14 @@ const lines = computed(() => listLines(
 ))
 /** The lines the keyboard reaches: those no folded group hides. */
 const entries = computed(() => lines.value.filter((line) => !line.hidden))
-const byId = computed(
+const byId = keptComputed(
   () => new Map(
     props.conversations.map((conversation) => [conversation.id, conversation])
   )
 )
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
 /** The projects whose row names its host, since a project of the same name runs on another. */
-const qualifiers = computed(() => projectQualifiers(shownProjects.value))
+const qualifiers = keptComputed(() => projectQualifiers(shownProjects.value))
 /** Each group's label, in list order, with the dot it carries while folded. */
 const groupLabels = computed(() => {
   const label = (group: SidebarGroup, text: string, conversations: readonly SidebarConversation[]) => {
@@ -172,7 +173,7 @@ const groupLabels = computed(() => {
     projects: label('projects', t('groups.projects'), groups.value.flatMap((group) => group.items)),
   }
 })
-const displayEntries = computed(() => [
+const displayEntries = keptComputed(() => [
   groupLabels.value.conversations,
   ...lines.value.filter(
     (line) => line.kind === 'conversation' && line.projectId === null
@@ -570,6 +571,22 @@ function submitRename(id: string, title: string): void {
 }
 
 // A cancelled rename gives the keys back to the list too, as a submitted one does.
+function startRename(id: string): void {
+  renamingId.value = id
+}
+
+function archiveRow(id: string): void {
+  emit('archive', [id])
+}
+
+function unpinRow(id: string): void {
+  emit('pin', [id], false)
+}
+
+function createIn(projectId: string): void {
+  emit('create', projectId)
+}
+
 function cancelRename(): void {
   renamingId.value = null
   if (listRef.value)
@@ -747,9 +764,9 @@ function selectProjectConversations(project: SidebarProject): void {
                 :qualifier="qualifiers.get(entry.id)"
                 :collapsed="isFolded(entry.id)"
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
-                @toggle="list.onProjectClick(entry.id)"
-                @create="emit('create', entry.id)"
-                v-context-menu="projectMenu(projectById.get(entry.id)!)"
+                :menu="projectMenu"
+                @toggle="list.onProjectClick"
+                @create="createIn"
               />
               <SidebarRow
                 v-else
@@ -760,13 +777,13 @@ function selectProjectConversations(project: SidebarProject): void {
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
                 :menu-open="rowMenuOpenFor(entry.id)"
                 :renaming="renamingId === entry.id"
-                @click="(event) => list.onRowClick(entry.id, event)"
-                v-context-menu="rowMenu(entry.id)"
-                @archive="emit('archive', [entry.id])"
-                @rename-start="renamingId = entry.id"
-                @rename-submit="(title) => submitRename(entry.id, title)"
+                :menu="rowMenu"
+                @click="list.onRowClick"
+                @archive="archiveRow"
+                @rename-start="startRename"
+                @rename-submit="submitRename"
                 @rename-cancel="cancelRename"
-                @unpin="emit('pin', [entry.id], false)"
+                @unpin="unpinRow"
               />
             </Fold>
           </div>

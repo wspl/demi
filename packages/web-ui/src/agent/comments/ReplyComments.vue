@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '../../infra/keep-same'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { MessageCircleQuestionMark, MessageSquarePlus } from '@lucide/vue'
 import type { MediaSource, MessageComment } from '@demicodes/protocol'
@@ -50,7 +51,7 @@ const props = defineProps<{
 
 const phone = usePhone()
 
-const marked = computed<MarkedComment[]>(() => [
+const marked = keptComputed<MarkedComment[]>(() => [
   ...props.sent.map((comment) => ({ ...comment, sent: true })),
   ...props.commenting.waiting.map((comment) => ({ ...comment, sent: false })),
 ])
@@ -242,7 +243,7 @@ function prune(keys: ReadonlySet<string>): void {
 
 // --- Side questions: each card under its line, open or folded to its header.
 
-const questions = computed(() => props.asking?.questions ?? [])
+const questions = keptComputed(() => props.asking?.questions ?? [])
 /** Each card's Reply field, open or not, and what it holds. */
 const replies = ref<Record<string, { open: boolean; text: string }>>({})
 /** The reads of the cards' transcripts asked for, each once (`readKey`). */
@@ -371,6 +372,19 @@ function insidePlace(node: Node): boolean {
 watch(() => props.root, (root, _before, onCleanup) => {
   if (!root)
     return
+  root.addEventListener('copy', copyWords)
+  placedWidth = 0
+  onCleanup(() => root.removeEventListener('copy', copyWords))
+}, { immediate: true })
+
+/** Whether a comment or a side question stands on the replies, whose places follow the words. */
+const placing = computed(() => marked.value.length > 0 || questions.value.length > 0)
+
+// The words are followed only while something stands on them: a reply that
+// streams with nothing to place is measured for nothing.
+watch([() => props.root, placing], ([root, any], _before, onCleanup) => {
+  if (!root || !any)
+    return
   // This layer stands in the root too: its own changes move no reply.
   const mutations = new MutationObserver((records) => {
     if (records.some((record) => !layer.value?.contains(record.target) && !insidePlace(record.target)))
@@ -380,13 +394,10 @@ watch(() => props.root, (root, _before, onCleanup) => {
   mutations.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] })
   const sizes = new ResizeObserver(schedule)
   sizes.observe(root)
-  root.addEventListener('copy', copyWords)
-  placedWidth = 0
   schedule()
   onCleanup(() => {
     mutations.disconnect()
     sizes.disconnect()
-    root.removeEventListener('copy', copyWords)
   })
 }, { immediate: true })
 

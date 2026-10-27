@@ -1,3 +1,4 @@
+import { keptComputed } from '../infra/keep-same'
 import { computed, ref, toRaw, watch, type ComputedRef } from 'vue'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { assistantFooterIds, replyEndIds } from './assistant-footer'
@@ -275,7 +276,7 @@ export function useMessageRows(
     }
     return before
   })
-  const rows = computed<MessageListBlock[]>(() => {
+  const rows = keptComputed<MessageListBlock[]>(() => {
     const failure = source().failure
     const tailRows: MessageListBlock[] = [
       ...otherTurnBlocks.value,
@@ -323,7 +324,7 @@ export function useMessageRows(
   // already, so the answer before it keeps its footer while the turn starts
   // and the message is written. A complete answer has it from the moment its
   // text is complete.
-  const footerIds = computed(() => assistantFooterIds(
+  const footerIds = keptComputed(() => assistantFooterIds(
     visibleBlocks.value,
     replyEndIds(visibleBlocks.value, {
       phase: source().phase,

@@ -1,3 +1,4 @@
+import { withAdded } from '../infra/keep-same'
 import { shallowRef, triggerRef } from 'vue'
 import { errorCode, shownError } from '../infra/errors'
 import {
@@ -791,7 +792,7 @@ export class ConversationRuntime {
             state,
             { start: event.start, end: event.start + event.blocks.length },
           )
-          state.failures = { ...state.failures, ...event.failures }
+          state.failures = withAdded(state.failures, event.failures)
         }
         break
       case 'transcript_patch':
@@ -800,7 +801,7 @@ export class ConversationRuntime {
             applyTranscriptPatches(state.history, event.patches, performance.now(), event.version),
             state,
           )
-          state.failures = { ...state.failures, ...event.failures }
+          state.failures = withAdded(state.failures, event.failures)
         }
         break
       case 'agents':

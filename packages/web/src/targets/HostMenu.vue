@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed } from 'vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import type { HostChoice, HostMenuHost } from '@demicodes/web-ui/hosts/types'
@@ -23,8 +24,8 @@ const emit = defineEmits<{
 const resources = useResources()
 const store = useConversations()
 
-const primaryHost = computed(() => primaryHostOf(executionFor(props.conversation)))
-const devices = computed(() => hostDeviceOptions(resources.devices))
+const primaryHost = keptComputed(() => primaryHostOf(executionFor(props.conversation)))
+const devices = keptComputed(() => hostDeviceOptions(resources.devices))
 const attachedHosts = computed<HostMenuHost[]>(() =>
   (props.conversation.attachedHosts.shown.value ?? []).map((host) => {
     const device = resources.deviceById(host.deviceId)

@@ -1,3 +1,4 @@
+import { withAdded } from '@demicodes/web-ui/infra/keep-same'
 import { toRaw } from 'vue'
 import {
   EMPTY_TRANSCRIPT,
@@ -130,10 +131,7 @@ export function applyConversationEvent(
       // The root's page brings what its context card and its compaction
       // dividers tell; its messages are the runtime's.
       conversation.instructions = event.instructions
-      conversation.summaries = {
-        ...conversation.summaries,
-        ...Object.fromEntries(event.summaries.map((summary) => [summary.marker, summary.summaryTokens])),
-      }
+      conversation.summaries = withAdded(conversation.summaries, Object.fromEntries(event.summaries.map((summary) => [summary.marker, summary.summaryTokens])))
     }
     // The root's messages are the runtime's.
     const record = event.node === conversation.id ? undefined : nodeRecord(conversation, event.node)
@@ -144,7 +142,7 @@ export function applyConversationEvent(
           : applyTranscriptPatches(record.history, event.patches, performance.now(), event.version),
         record,
       )
-      record.failures = { ...record.failures, ...event.failures }
+      record.failures = withAdded(record.failures, event.failures)
       if ('sent' in record) {
         settleSent(record)
       }

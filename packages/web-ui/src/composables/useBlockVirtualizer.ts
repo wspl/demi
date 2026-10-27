@@ -1,3 +1,4 @@
+import { keptComputed } from '../infra/keep-same'
 import { computed, nextTick, onScopeDispose, readonly, ref, shallowRef, type Ref, watch } from 'vue'
 import { elementScroll, measureElement as measureRow, observeElementOffset, useVirtualizer, type Range, type VirtualItem, type Virtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
@@ -439,7 +440,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     return Math.max(0, virtualizer.value.getTotalSize() - window.innerHeight)
   }
 
-  const virtualItems = computed(() => {
+  const virtualItems = keptComputed(() => {
     const items = virtualizer.value.getVirtualItems()
     // A row the virtualizer draws that the list no longer holds is a defect of
     // the page, which a render then fails on: the window says what it was.

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '../infra/keep-same'
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useElementSize, useEventListener } from '@vueuse/core'
 
@@ -54,7 +55,7 @@ useEventListener(band, 'animationiteration', () => {
   finishing.value = false
 })
 
-const sweep = computed(() => {
+const sweep = keptComputed(() => {
   if (!shown.value || !root.value) {
     return undefined
   }
