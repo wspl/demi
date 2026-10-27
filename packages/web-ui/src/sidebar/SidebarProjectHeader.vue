@@ -6,6 +6,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RowSpinner from '@demicodes/web-ui/ui/RowSpinner.vue'
 import { provideRowTarget } from '@demicodes/web-ui/ui/operations'
+import { vContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
@@ -25,6 +26,8 @@ const props = defineProps<{
   collapsed: boolean
   /** The keyboard cursor is here. */
   focused: boolean
+  /** The menu of the project. */
+  menu: (project: SidebarProject) => ContextMenuDeclaration
 }>()
 
 // An operation on the project, such as Remove Project from its menu, shows the spinner where the host's mark stands.
@@ -33,9 +36,12 @@ const working = provideRowTarget(() => projectTarget(props.project.id))
 const phone = usePhone()
 const icons = useIconPx()
 
+// Each event names the project, so the list binds the same handler to every
+// header, and a header whose props stay as they were is not drawn again when
+// the list is.
 const emit = defineEmits<{
-  create: []
-  toggle: []
+  create: [id: string]
+  toggle: [id: string]
 }>()
 </script>
 
@@ -45,7 +51,8 @@ const emit = defineEmits<{
     :aria-expanded="!collapsed"
     class="group/project relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-1.5 text-chrome text-fg transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:pr-0.5 phone:text-[16px]"
     :class="[focused ? 'focus-ring-shown' : '']"
-    @click="emit('toggle')"
+    v-context-menu="menu(project)"
+    @click="emit('toggle', project.id)"
   >
     <component
       :is="collapsed ? Folder : FolderOpen"
@@ -102,9 +109,9 @@ const emit = defineEmits<{
           variant="ghost"
           :aria-label="t('project.newConversation')"
           tabindex="0"
-          @keydown.enter.stop.prevent="emit('create')"
-          @keydown.space.stop.prevent="emit('create')"
-          @click.stop="emit('create')"
+          @keydown.enter.stop.prevent="emit('create', project.id)"
+          @keydown.space.stop.prevent="emit('create', project.id)"
+          @click.stop="emit('create', project.id)"
         />
       </Tooltip>
     </span>

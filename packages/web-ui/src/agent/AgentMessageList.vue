@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '../infra/keep-same'
 import type { ShownError } from '../infra/errors'
 import { pageLog } from '../infra/log'
 import { viewReady } from '../infra/view-timing'
@@ -215,7 +216,7 @@ const comments = ref<InstanceType<typeof ReplyComments>>()
  * The comments the messages sent, those still on their way or waiting for the
  * agent included, which mark their replies dimmer.
  */
-const sent = computed(() => [
+const sent = keptComputed(() => [
   ...props.blocks.flatMap(sentComments),
   ...[...props.pendingSteers, ...props.queue, ...(props.pendingSubmissions ?? [])].flatMap((message) => message.comments ?? []),
 ])
@@ -230,8 +231,31 @@ provideReplySelectionTools({
  * Share on the answer the text block `blockId` ends, which its footer's button
  * starts.
  */
-function answerShare(blockId: string): AnswerShare {
-  return { start: () => props.share!(blockId) }
+/**
+ * What a row does to its block, made once for the block's id: a row given
+ * the same values as before is not drawn again when the list is.
+ */
+interface RowActions {
+  fork: () => Promise<void>
+  share: AnswerShare
+  'onUpdate:open': (open: boolean) => void
+}
+const rowActions = new Map<string, RowActions>()
+function rowActionsOf(id: string): RowActions {
+  let actions = rowActions.get(id)
+  if (!actions) {
+    actions = {
+      fork: () => forkMessage(id),
+      share: { start: () => props.share!(id) },
+      'onUpdate:open': (open) => {
+        const row = renderBlocks.value.find((block) => block.id === id)
+        if (row)
+          runs.setOpen(row, open)
+      },
+    }
+    rowActions.set(id, actions)
+  }
+  return actions
 }
 
 /** The conversation the list's lines are written under; none for an agent's list that was not told which. */
@@ -277,7 +301,7 @@ function regenerate(): void {
  * - Anything waits to be sent.
  * - The page offers no edit (`readOnly`).
  */
-const versionChoices = computed(() => {
+const versionChoices = keptComputed(() => {
   const choices = new Map<string, VersionChoice>()
   if (props.node) {
     return choices
@@ -289,14 +313,24 @@ const versionChoices = computed(() => {
       index: place.index,
       count: place.count,
       disabled: busy,
-      choose: (to) => emit('switchVersion', place.blockId, to),
+      choose: chooserOf(place.blockId),
     })
   }
   return choices
 })
+/** Each block's choice of its versions, made once, so a choice that says what it said stays the same. */
+const versionChoosers = new Map<string, (to: number) => void>()
+function chooserOf(blockId: string): (to: number) => void {
+  let choose = versionChoosers.get(blockId)
+  if (!choose) {
+    choose = (to) => emit('switchVersion', blockId, to)
+    versionChoosers.set(blockId, choose)
+  }
+  return choose
+}
 // The summary size each compaction divider tells, by the id of the block that
 // shows it.
-const summaryTokens = computed(() => new Map([
+const summaryTokens = keptComputed(() => new Map([
   ...Object.entries(props.summaries ?? {}),
   ...compactionSummaryTokens(props.blocks),
 ]))
@@ -319,7 +353,7 @@ const paneStatus = computed(() =>
     ? null
     : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot' && row.type !== 'session_failure')),
 )
-const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
+const mutedIds = keptComputed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // The transcript's requests, which its rows' file pills read for what each
 // opens. Every streamed delta re-renders the visible rows, so the lookup must
 // not rescan the transcript per row.
@@ -347,7 +381,7 @@ provideTranscript({
   directory: (blockId) => directories.value?.get(blockId) ?? props.cwd ?? null,
   pictures: () => pictures.value,
 })
-const transcriptIndexById = computed(
+const transcriptIndexById = keptComputed(
   () =>
     new Map(visibleTranscriptBlocks.value.map((block, index) => [block.id, index]))
 )
@@ -740,9 +774,9 @@ defineExpose({
                   :is-text-streaming="isStreamingTextAt(item.index)"
                   :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"
                   :thinking-ended-at="thinkingEndedAt(item.index)"
-                  :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
+                  :fork="fork ? rowActionsOf(renderBlocks[item.index]!.id).fork : undefined"
                   :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
-                  :share="share ? answerShare(renderBlocks[item.index]!.id) : undefined"
+                  :share="share ? rowActionsOf(renderBlocks[item.index]!.id).share : undefined"
                   :hide-fork="hideFork"
                   :failure="failures?.[renderBlocks[item.index]!.id]"
                   :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
@@ -750,7 +784,7 @@ defineExpose({
                   :editable="renderBlocks[item.index]!.id === editableUserId"
                   :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
                   :versions="versionChoices.get(renderBlocks[item.index]!.id)"
-                  @update:open="(open) => runs.setOpen(renderBlocks[item.index]!, open)"
+                  v-bind="{ 'onUpdate:open': rowActionsOf(renderBlocks[item.index]!.id)['onUpdate:open'] }"
                   @recall-steer="(id) => emit('recallSteer', id)"
                   @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
                   @recall-queued="(id) => emit('recallQueued', id)"

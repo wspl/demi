@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { coded } from '@demicodes/web-ui/infra/errors'
@@ -115,7 +116,7 @@ const schedules = computed(() => conversation.value?.metadata.shown.value?.sched
 /** The header's place, which carries out a move the offline primary Host's card asks for. */
 const place = useTemplateRef<InstanceType<typeof WorkspaceInfo>>('place')
 /** Where the conversation runs now, live over the account's device states: Resume runs there. */
-const primaryHost = computed(() =>
+const primaryHost = keptComputed(() =>
   conversation.value ? primaryHostOf(executionFor(conversation.value)) : null,
 )
 /**
@@ -338,11 +339,37 @@ const asking = computed(() => {
 })
 
 /** What the header's menu and an answer's footer share with, once the conversation has a record and the page knows the backend's public address. */
-const share = computed(() => {
+const shareTarget = keptComputed(() => {
   const current = conversation.value
   const publicUrl = product.snapshot?.publicUrl
-  return current?.persistence === 'synced' && publicUrl ? conversationShareService(current.id, publicUrl) : undefined
+  return current?.persistence === 'synced' && publicUrl ? { id: current.id, publicUrl } : null
 })
+const share = computed(() => shareTarget.value ? conversationShareService(shareTarget.value.id, shareTarget.value.publicUrl) : undefined)
+
+// What the session view shows of the conversation and its runtime, each a
+// value of its own: the runtime tells of every event of the session, and a
+// value read in the template would draw the page again for each.
+const catchingUp = computed(() => conversation.value ? store.catchingUp(conversation.value) : false)
+const pendingSubmissions = keptComputed(() => conversation.value ? store.submissions(conversation.value) : [])
+const editVersion = keptComputed(() => conversation.value ? store.editVersion(conversation.value) : null)
+const subagentsStreamed = computed(() => conversation.value ? store.streamsSubagents(conversation.value) : false)
+const listed = keptComputed(() => {
+  const current = conversation.value
+  return current?.persistence === 'synced' && !current.archived ? { pinned: current.pinned } : undefined
+})
+async function readBlock(node: string | null, id: string): Promise<void> {
+  if (conversation.value)
+    await store.history.readWhole(conversation.value, node, id)
+}
+function revealCommandOf(id: string) {
+  return revealCommand(conversation.value!, id)
+}
+function readSubagentLatest(id: string) {
+  return store.history.readLatest(conversation.value!, id)
+}
+function subagentCost(id: string) {
+  return conversation.value ? store.costShown(conversation.value, id) : null
+}
 
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
@@ -362,7 +389,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     v-model:dock-window-share="dockWindowShare"
     @dock-window-resize-end="resources.dockWindowShare = $event"
     :conversation="conversation"
-    :catching-up="store.catchingUp(conversation)"
+    :catching-up="catchingUp"
     :has-provider="hasProvider"
     :credential-kinds="credentialKinds"
     :is-exposed="exposedPorts.isExposed"
@@ -386,7 +413,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :notifications-card="notificationsCard"
     @turn-on-notifications="void notifications.turnOnForAgent()"
     @dismiss-notifications-card="void notifications.dismissCard(conversation!.id)"
-    :pending-submissions="store.submissions(conversation)"
+    :pending-submissions="pendingSubmissions"
     :removing="conversation.removing"
     @retry-undelivered="store.retrySends(conversation)"
     @edit-submission="store.editSend(conversation, $event)"
@@ -396,7 +423,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @open-providers="void settingsAddress.open('models')"
     @expose-port="(deviceId, port) => conversation && exposeAndResume(conversation, deviceId, port)"
     @rename="store.rename(conversation.id, $event)"
-    :listed="conversation.persistence === 'synced' && !conversation.archived ? { pinned: conversation.pinned } : undefined"
+    :listed="listed"
     @pin="void store.pin([conversation.id], $event)"
     @archive="void store.archive([conversation.id])"
     @delete="void store.remove([conversation.id])"
@@ -408,7 +435,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @send-queued="store.sendQueued(conversation, $event)"
     @recall-steer="store.recall(conversation, $event)"
     @interrupt-pending-steer="store.interruptWithSteer(conversation, $event)"
-    :edit-version="store.editVersion(conversation)"
+    :edit-version="editVersion"
     :message-edit="conversation.messageEdit"
     :aside-open="work.stateFor(conversation.id).open"
     :panel-tabs="work.stateFor(conversation.id).panel.tabs.length"
@@ -420,13 +447,13 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @revealed="store.reveal = null"
     @reveal="(at) => (store.reveal = { conversationId: conversation!.id, ...at })"
     @open-conversation="(at) => navigation.openAt(at.conversationId, at.node, at.blockId)"
-    :read-block="async (node, id) => { await store.history.readWhole(conversation!, node, id) }"
-    :reveal-command="(id) => revealCommand(conversation!, id)"
+    :read-block="readBlock"
+    :reveal-command="revealCommandOf"
     @read-before="readHistory(store.history.readBefore(conversation!, null))"
     @read-after="readHistory(store.history.readAfter(conversation!, null))"
     @show-latest="store.history.showAt(conversation!, null, null)"
-    :read-subagent-latest="(id) => store.history.readLatest(conversation!, id)"
-    :subagents-streamed="store.streamsSubagents(conversation)"
+    :read-subagent-latest="readSubagentLatest"
+    :subagents-streamed="subagentsStreamed"
     @read-subagent="(id) => readHistory(store.history.readBefore(conversation!, id))"
     @read-subagent-after="(id) => readHistory(store.history.readAfter(conversation!, id))"
     @shown="(node, block, within) => store.history.showAt(conversation!, node, block, within)"
@@ -434,7 +461,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @open-aside="work.setOpen(conversation.id, true)"
     :usage-limits="card.limitsOf"
     @compact-subagent="store.compact(conversation, $event)"
-    :subagent-cost="(id) => store.costShown(conversation!, id)"
+    :subagent-cost="subagentCost"
     @refresh-limits="card.refreshLimits"
     @open-instruction="card.openInstruction"
     :schedules="schedules"

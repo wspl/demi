@@ -9,6 +9,7 @@ import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
+import { vContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
 import type { SidebarConversation } from './types'
 import ConversationDot from './ConversationDot.vue'
 import DeviceMark from './DeviceMark.vue'
@@ -27,16 +28,21 @@ const props = defineProps<{
   /** The row's menu is showing, so it stays lit and its actions stay out. */
   menuOpen: boolean
   renaming: boolean
+  /** The menu of the conversation by its id. */
+  menu: (id: string) => ContextMenuDeclaration
 }>()
 
+// Each event names the row's conversation, so the list binds the same
+// handler to every row, and a row whose props stay as they were is not drawn
+// again when the list is.
 const emit = defineEmits<{
-  click: [event: MouseEvent]
-  archive: []
+  click: [id: string, event: MouseEvent]
+  archive: [id: string]
   /** A double-click on the title: the row names itself in place, as Rename in its menu does. */
-  renameStart: []
-  renameSubmit: [title: string]
+  renameStart: [id: string]
+  renameSubmit: [id: string, title: string]
   renameCancel: []
-  unpin: []
+  unpin: [id: string]
 }>()
 
 // The dot's look is `ConversationDot`'s. An unread answer also shows in the title's emphasis.
@@ -123,7 +129,8 @@ const rowClass = computed(() => [
     class="group/row relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-1.5 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:pr-0.5 phone:text-[16px]"
     :class="rowClass"
     :aria-selected="selected"
-    @click="emit('click', $event)"
+    v-context-menu="menu(conversation.id)"
+    @click="emit('click', conversation.id, $event)"
   >
     <ConversationDot :conversation="conversation" />
     <TitleInput
@@ -131,7 +138,7 @@ const rowClass = computed(() => [
       class="flex-1"
       size="sm"
       :title="shownTitle"
-      @submit="emit('renameSubmit', $event)"
+      @submit="emit('renameSubmit', conversation.id, $event)"
       @cancel="emit('renameCancel')"
     />
     <!-- The title has the row until hover; then it yields the end to the actions. A cut title ends
@@ -145,7 +152,7 @@ const rowClass = computed(() => [
       placement="bottom-start"
       class="min-w-0 flex-1 overflow-clip text-ellipsis whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
       :class="[conversation.unread && !open ? 'text-fg-emphasis' : '', titleMargin]"
-      @dblclick="emit('renameStart')"
+      @dblclick="emit('renameStart', conversation.id)"
     >{{ shownTitle }}</Tooltip>
     <!-- The pin's glyph, the alarm clock, the worktree's mark and the device's mark end the row, in the flow, so the title never
          reaches them. The marks stay on hover; the pin gives its place to Archive. -->
@@ -197,7 +204,7 @@ const rowClass = computed(() => [
           :icon-size="ICON_PX.in24"
           variant="ghost"
           :aria-label="t('row.unpin')"
-          @click.stop="emit('unpin')"
+          @click.stop="emit('unpin', conversation.id)"
         />
       </Tooltip>
       <Tooltip :content="t('row.archive')" class="flex items-center">
@@ -208,7 +215,7 @@ const rowClass = computed(() => [
           variant="ghost"
           :aria-label="t('row.archive')"
           :disabled="conversation.status === 'active'"
-          @click.stop="emit('archive')"
+          @click.stop="emit('archive', conversation.id)"
         />
       </Tooltip>
     </span>

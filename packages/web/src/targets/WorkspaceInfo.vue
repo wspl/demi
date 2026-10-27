@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed, ref } from 'vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
@@ -29,10 +30,10 @@ const props = defineProps<{
 const resources = useResources()
 const conversations = useConversations()
 const directory = ref<InstanceType<typeof WorkspaceDirectoryMenu>>()
-const execution = computed(() => executionFor(props.conversation))
+const execution = keptComputed(() => executionFor(props.conversation))
 const locked = computed(() => moveLock(props.conversation, conversations.pendingChanges))
 /** The projects on the Host the conversation runs on, which the directory menu lists. */
-const hostProjects = computed(() =>
+const hostProjects = keptComputed(() =>
   resources.projects
     .filter((project) => project.deviceId === execution.value.deviceId)
     .map((project) => ({
@@ -41,7 +42,7 @@ const hostProjects = computed(() =>
       disabled: project.hostKind === 'device' && !(project.device.kind === 'paired' && project.device.state === 'online'),
     })),
 )
-const hosts = computed(() =>
+const hosts = keptComputed(() =>
   browserHosts(resources.devices).map((host) => {
     const device = resources.devices.find((device) => device.id === host.id)!
     return {

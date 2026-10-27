@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed, ref, watch } from 'vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -78,6 +79,11 @@ function referenced(file: ProductAttachment): ProductAttachment {
   return file.upload ? { ...file, reference: { type: 'stored', sha256: file.upload.sha256, mediaType: file.upload.mediaType } } : file
 }
 
+/** The composer's files, those of a message on its way left out. */
+const attachments = keptComputed(() => props.conversation.files.filter(
+  (file) => !props.conversation.pendingSends.some((pending) => pending.fileIds.includes(file.id)),
+).map(referenced))
+
 /** The store takes the files; their capsules go into the message where the composer said they would land. */
 function addFiles(files: File[]) {
   composer.value?.insertCapsules(store.addFiles(props.conversation, files).map(composerCapsule))
@@ -92,7 +98,8 @@ const paste = computed(() => store.pasteHost(props.conversation))
  * its edit: the page's write of it is on its way, or waits in the queue the
  * web browser keeps, whose text the row shows.
  */
-const savedRows = computed<SavedRow[]>(() => {
+const savedRows = keptComputed(savedRowsNow)
+function savedRowsNow(): SavedRow[] {
   const record = props.conversation.record
   const shown = record.shown.value?.saved ?? []
   const kept = new Set(record.read.value?.saved.map((message) => message.id))
@@ -117,7 +124,7 @@ const savedRows = computed<SavedRow[]>(() => {
         : row(message.id, message.opening, message.files, kept.has(message.id) ? 'saved' : 'saving', message.length > [...message.opening].length)
     }),
   ]
-})
+}
 /** The list stands open while this composer shows; another conversation's starts closed. */
 const savedOpen = ref(false)
 watch(() => props.conversation.id, () => {
@@ -147,7 +154,7 @@ const sentEdit = computed(() => {
   return edit?.kind === 'message' && edit.phase !== 'regenerating' ? edit : null
 })
 /** The comments the pill lists: the shown edit's, else the draft's. */
-const carriedComments = computed(() => {
+const carriedComments = keptComputed(() => {
   if (sentEdit.value) {
     return editComments(sentEdit.value)
   }
@@ -167,11 +174,13 @@ const sizeRefused = computed(() => refusedForSize(latestBlocks(props.conversatio
 
 const card = useContextCard(() => props.openFile)
 /** What the context card shows of the usage limits of the account the conversation's model runs on. */
-const limits = computed(() =>
+const limits = keptComputed(() =>
   card.limitsOf(props.conversation.model.providerId, props.conversation.contextUsage?.account ?? null),
 )
+/** What the conversation cost, which the context card shows. */
+const cost = keptComputed(() => store.costShown(props.conversation))
 
-const execution = computed(() => executionFor(props.conversation))
+const execution = keptComputed(() => executionFor(props.conversation))
 
 /**
  * The Workflow menu's choice, as the metadata shows it with the changes on
@@ -184,12 +193,12 @@ const workflowList = useConversationWorkflows(() => props.conversation)
  * The record's choice, with the changes on their way; a new conversation's
  * own until its record is made, whatever the channel already brought of it.
  */
-const workflow = computed(() => ({
+const workflow = keptComputed(() => ({
   choice: props.conversation.persistence === 'synced' && record.value ? record.value.workflow : props.conversation.workflow,
   list: workflowList.value,
 }))
 /** The profiles the Workflow menu's choice offers now, whose subagents the cost's Profiles part shows. */
-const costProfiles = computed(() => workflowProfiles(
+const costProfiles = keptComputed(() => workflowProfiles(
   workflow.value.choice,
   workflow.value.list,
   product.snapshot?.subagents ?? { enabled: false, profiles: [] },
@@ -212,7 +221,7 @@ const hold = computed(() =>
  * conversation's work is idle; a Host chosen there is the header's to move
  * the conversation to.
  */
-const offlineHost = computed<OfflineHost | null>(() => {
+const offlineHost = keptComputed<OfflineHost | null>(() => {
   const primary = execution.value
   if (primary.kind !== 'device' || primary.state !== 'offline') {
     return null
@@ -229,7 +238,7 @@ const offlineHost = computed<OfflineHost | null>(() => {
       }
     : null
 })
-const remoteHosts = computed(() => {
+const remoteHosts = keptComputed(() => {
   const primary = execution.value
   const hosts = [
     ...(primary.deviceId
@@ -294,11 +303,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :compacting="isCompacting(conversation.phase)"
       :send-while-running="preferences.sendWhileRunning"
       :can-configure="resources.canConfigure"
-      :attachments="
-        conversation.files.filter(
-          (file) => !conversation.pendingSends.some((pending) => pending.fileIds.includes(file.id)),
-        ).map(referenced)
-      "
+      :attachments="attachments"
       :providers="resources.providerInfos"
       :models="resources.models"
       :model-settings="conversation.model"
@@ -306,7 +311,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :size-refused="sizeRefused"
       :instructions="instructions"
       :limits="limits"
-      :cost="store.costShown(conversation)"
+      :cost="cost"
       :cost-profiles="costProfiles"
       @refresh-limits="card.refreshLimits(conversation.model.providerId, conversation.contextUsage?.account ?? null)"
       :remote-files="remoteHosts.length > 0"

@@ -226,9 +226,16 @@ export const useConversations = defineStore('conversations', () => {
    * What the sidebar lists: every conversation not archived; a new
    * conversation whose draft holds nothing yet only while it is the open
    * one, so it shows the moment it opens and goes when it is left empty.
+   *
+   * The same array while it lists the same conversations: it reads each new
+   * conversation's draft, and what follows the list would otherwise draw every
+   * row again at each keystroke there.
    */
-  const listed = computed(() => items.value.filter((item) =>
-    !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
+  const listed = computed<Conversation[]>((previous) => {
+    const next = items.value.filter((item) =>
+      !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId))
+    return previous?.length === next.length && previous.every((item, index) => item === next[index]) ? previous : next
+  })
   /**
    * The writes on their way, by the conversation they change, or by
    * `conversation_order` for a move: each conversation's go one at a time in
@@ -615,7 +622,17 @@ export const useConversations = defineStore('conversations', () => {
     { flush: 'sync' },
   )
 
+  /** A copy of the conversation's draft as this web browser stores it, which holds no proxy. */
   function persisted(conversation: Conversation): SavedDraft {
+    return plainCopy(draftOf(conversation))
+  }
+
+  /**
+   * The conversation's draft as this web browser stores it, read through the
+   * conversation's proxies: an effect that reads it deeply depends on each
+   * value stored.
+   */
+  function draftOf(conversation: Conversation): SavedDraft {
     const local = conversation.persistence !== 'synced'
     // The web browser keeps the composer's text only while the backend does not
     // have it: a new conversation's, or a change not yet confirmed.
@@ -625,8 +642,7 @@ export const useConversations = defineStore('conversations', () => {
     // its capsules, then those of the sends not yet accepted.
     const ids = new Set([...(unsaved ? conversation.attachmentIds : []), ...sending])
     const files = filesById(conversation, [...ids])
-    // One copy of the whole: what the web browser stores holds no proxy.
-    return plainCopy({
+    return {
       messageEdit: conversation.messageEdit,
       pendingSends: conversation.pendingSends,
       local:
@@ -666,7 +682,7 @@ export const useConversations = defineStore('conversations', () => {
           : file,
       ),
       scroll: conversation.scroll,
-    })
+    }
   }
 
   /**
@@ -851,15 +867,9 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  watch(
-    () =>
-      items.value.map((item) => ({
-        id: item.id,
-        draft: persisted(item),
-      })),
-    saveDrafts,
-    { flush: 'sync' },
-  )
+  // Each change of what a draft stores saves the drafts: the watch reads every
+  // draft deeply, with no copy, as `saveDrafts` makes its own of those it saves.
+  watch(() => items.value.map(draftOf), saveDrafts, { flush: 'sync', deep: true })
 
   /**
    * Makes `change` as one step of the drafts this web browser keeps: the

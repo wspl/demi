@@ -1,3 +1,4 @@
+import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, moveBefore } from '@demicodes/utils'
@@ -75,7 +76,7 @@ export const useResources = defineStore('resources', () => {
   const selectedProviderId = ref<string | null>(null)
   const providerDetailOpen = ref(false)
   /** The sidebar's entries of the plugin pages the user has on, each opening its settings section. */
-  const sectionEntries = computed(() =>
+  const sectionEntries = keptComputed(() =>
     sidebarEntries(PLUGIN_PAGES, (plugin) => pluginEnabled(product.snapshot, plugin)),
   )
   const targetOpen = ref(false)
@@ -128,8 +129,8 @@ export const useResources = defineStore('resources', () => {
       product.snapshot?.mode === 'isolated' || product.snapshot?.user?.role === 'master',
   )
   const appearance = computed(() => preferences.appearance)
-  const keys = computed(() => preferences.keys)
-  const devices = computed<Device[]>(() =>
+  const keys = keptComputed(() => preferences.keys)
+  const devices = keptComputed<Device[]>(() =>
     (product.snapshot?.devices ?? [])
       .filter((device) => device.kind === 'user')
       .map((device) => productDevice(device, product.snapshot?.devices ?? [])),
@@ -155,7 +156,9 @@ export const useResources = defineStore('resources', () => {
   function conversationDevice(target: ConversationTarget): SidebarDevice | undefined {
     return target.kind === 'device' && product.snapshot ? sidebarDevice(target.deviceId) : undefined
   }
-  const projects = computed<Project[]>(() =>
+  // A project that says what it said stays the same object, so its header is
+  // not drawn again at each change of the state (`keepSame`).
+  const projects = keptComputed((): Project[] =>
     (product.snapshot?.workspaces ?? []).map((workspace): Project => {
       const device = product.snapshot?.devices?.find(
         (candidate) => candidate.id === workspace.deviceId,
@@ -186,7 +189,7 @@ export const useResources = defineStore('resources', () => {
   )
   // A provider that needs a process runs it on the user's Cloud, which is
   // always there to be woken, so no provider depends on the conversation's target.
-  const providerInfos = computed(() => {
+  const providerInfos = keptComputed(() => {
     const catalog = product.catalog
     return (product.snapshot?.providers ?? []).map(provider => {
       const setup = setupOf(catalog.find(item => item.providerId === provider.id))
@@ -220,7 +223,7 @@ export const useResources = defineStore('resources', () => {
    * The models the model menus offer, the composer's and a subagent
    * profile's alike: the catalog's, less the ones this browser hides.
    */
-  const models = computed(() =>
+  const models = keptComputed(() =>
     Object.fromEntries(
       Object.entries(catalogModels.value).map(([providerId, list]) => [
         providerId,

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
 import { t } from './locales/text'
 import { computed, onUnmounted, ref, watch } from 'vue'
@@ -82,7 +83,7 @@ const withUsers = computed(() =>
     !!product.snapshot?.serverUpgrade,
   ),
 )
-const sections = computed(() =>
+const sections = keptComputed(() =>
   withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>
     pluginEnabled(product.snapshot, plugin),
   ).map((group) => ({
