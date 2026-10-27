@@ -266,21 +266,17 @@ impl Shard {
                 PushMessage::Permission { .. } => "ask",
                 PushMessage::Agent { .. } => "agent",
             };
-            let sent = |recipients: usize, removed: bool| {
+            if recipients.is_empty() {
+                // No browser chose its kind, or each that did had a page
+                // showing its conversation, as `suppressed_by_page` counts.
                 tracing::info!(
-                    event = "notification.sent",
+                    event = "notification.unsent",
                     user = %this.user(),
                     conversation = %message.conversation(),
                     kind,
-                    recipients,
                     suppressed_by_page = suppressed,
-                    removed_gone = removed,
-                    ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-                    "a notification was delivered"
+                    "a notification went to no browser"
                 );
-            };
-            if recipients.is_empty() {
-                sent(0, false);
                 return;
             }
             let services = this.services();
@@ -293,7 +289,18 @@ impl Shard {
                 .push
                 .deliver(this.user(), &message, &recipients, contact.as_str())
                 .await;
-            sent(recipients.len(), removed);
+            // A push service that refused one is logged by the sender.
+            tracing::info!(
+                event = "notification.sent",
+                user = %this.user(),
+                conversation = %message.conversation(),
+                kind,
+                recipients = recipients.len(),
+                suppressed_by_page = suppressed,
+                removed_gone = removed,
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                "a notification was sent to the push services of its browsers"
+            );
             // Each session says whether its browser has notifications on.
             if removed {
                 this.mark(demi_backend_page_sync::Part::Sessions);
