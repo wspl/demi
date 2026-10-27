@@ -1,8 +1,9 @@
-import { computed, nextTick, onScopeDispose, ref, shallowRef, type Ref, watch } from 'vue'
-import { elementScroll, measureElement as measureRow, useVirtualizer, type Range, type VirtualItem, type Virtualizer } from '@tanstack/vue-virtual'
+import { computed, nextTick, onScopeDispose, readonly, ref, shallowRef, type Ref, watch } from 'vue'
+import { elementScroll, measureElement as measureRow, observeElementOffset, useVirtualizer, type Range, type VirtualItem, type Virtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
 import { pageLog } from '../infra/log'
+import { deviceSystem } from '../auth/device-unlock'
 import { revealOffset } from '../ui/reveal'
 import { moveRows, rowsBefore, rowTails, scrolledRows, type RowsBefore, type RowTail } from './row-motion'
 
@@ -121,6 +122,13 @@ export interface PersistedScrollState {
 const MISSING_LINES = 5
 /** How long the scroll stays still before the list writes where it stopped. */
 const SCROLL_SETTLE_MS = 250
+/**
+ * How long after its last scroll event, or the finger's lifting, a scroll
+ * has ended, momentum included, which goes on sending scroll events while it
+ * runs. Longer than the 150 ms the virtualizer holds its own corrections back
+ * on iOS after either, so none it holds back is left to it.
+ */
+const MOMENTUM_END_MS = 200
 
 export interface BlockVirtualizerOptions<Block extends VirtualizedBlock> {
   /** The conversation and agent the list shows, which its lines are written under. */
@@ -151,7 +159,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const rows = virtualizer.value.measurementsCache
     if (!el || rows.length === 0)
       return null
-    const { startIndex, endIndex } = rowsInView(rows, { offset: el.scrollTop, height: el.clientHeight })
+    const { startIndex, endIndex } = rowsInView(rows, { offset: viewTop(el), height: el.clientHeight })
     return { first: startIndex, last: endIndex }
   }
   /** What the virtualizer moved the view by to keep the row in view, since the last line of the scroll. */
@@ -191,12 +199,108 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   let revealing: { key: string, coveredBottom: number, part: { selector: string, until: number } | null } | null = null
   const isRestored = ref(false)
 
+  /**
+   * Rows above the view that change height move the rows in view, and the
+   * view moves by as much to keep them still. iOS stops a scroll's momentum
+   * when a page writes the scroll position, so while the reader scrolls
+   * there the rows are drawn `rowsShift` px above their places instead, the
+   * view's own position unwritten; once the scroll ends, the view takes the
+   * shift over in one step that moves nothing on screen. Virtuoso keeps a
+   * list still on iOS the same way. The virtualizer's own deferral on iOS
+   * leaves the rows to move while the reader scrolls and writes the sum
+   * when the scroll ends, which throws the view back by that much: on iOS
+   * the list makes every such correction itself.
+   */
+  const shiftsRows = typeof navigator !== 'undefined'
+    && deviceSystem({ userAgent: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints }) === 'ios'
+  /** How far above their places the rows are drawn, with the list's box. */
+  const rowsShift = ref(0)
+  /**
+   * Where the view starts in the list while a settled shift is written: the
+   * update that draws the rows at their places runs before the scroller
+   * takes the shift over.
+   */
+  let settlingTop: number | null = null
+  /**
+   * What the rows above the view moved the rows in view by while the reader
+   * did not scroll, on iOS: the view scrolls by as much once the update that
+   * lays the rows out by their heights has run, when the list is tall enough
+   * for it.
+   */
+  let pendingScrollBy = 0
+  /** A finger is on the list. */
+  let touching = false
+  /** Ends the reader's scroll `MOMENTUM_END_MS` after its last scroll event. */
+  let momentumEnd: ReturnType<typeof setTimeout> | undefined
+  /** Where the view starts in the list: the scroller's position, and the rows' shift below it. */
+  function viewTop(el: HTMLElement): number {
+    return settlingTop ?? el.scrollTop + rowsShift.value
+  }
+  /** The reader scrolls the list now: a finger is on it, or its scroll has not ended. */
+  function readerScrolls(): boolean {
+    return touching || momentumEnd !== undefined
+  }
+  /**
+   * The rows above the view moved the rows in view by `by` px, on iOS: the
+   * view follows them, by the rows' shift while the reader scrolls, by a
+   * scroll after the update otherwise. The virtualizer's place for the view
+   * moves at once, so the update draws the rows the view will show.
+   */
+  function followRowsAbove(by: number): void {
+    virtualizer.value.scrollOffset = (virtualizer.value.scrollOffset ?? 0) + by
+    scrollOffset.value = virtualizer.value.scrollOffset
+    if (readerScrolls())
+      rowsShift.value += by
+    else
+      pendingScrollBy += by
+  }
+  /** Scrolls the view by what `followRowsAbove` held for the update that has now run. */
+  function scrollPending(): void {
+    const el = scrollContainer.value
+    const by = pendingScrollBy
+    pendingScrollBy = 0
+    if (!el || by === 0)
+      return
+    el.scrollTop += by
+    scrolledTo = el.scrollTop
+  }
+  /**
+   * The view takes the rows' shift over: the rows are drawn at their places
+   * and, once that update has run, the scroller moves by as much, which moves
+   * nothing on screen. It waits while the reader scrolls, and while iOS
+   * bounces the list past an edge, where a written position ends the bounce
+   * early, unless `now` asks for it, as when the list scrolls itself or the
+   * view reaches an edge the shift keeps it from passing.
+   */
+  function settleShift(now = false): Promise<void> | undefined {
+    const el = scrollContainer.value
+    if (!el || rowsShift.value === 0)
+      return undefined
+    if (!now && (readerScrolls() || el.scrollTop < 0 || el.scrollTop > el.scrollHeight - el.clientHeight))
+      return undefined
+    // Taken before the box changes height, which would clamp the position.
+    const target = viewTop(el)
+    const by = rowsShift.value
+    settlingTop = target
+    rowsShift.value = 0
+    return nextTick(() => {
+      settlingTop = null
+      el.scrollTop = target
+      scrolledTo = el.scrollTop
+      // The rows stand where the reader saw them: no row moved.
+      if (seen)
+        seen = { ...seen, scrollTop: seen.scrollTop + by }
+      logList('debug', 'list.anchor_corrected', { reason: 'rows_shift_settled', delta_px: Math.round(by) })
+    })
+  }
+
   /** The virtualizer exists: what reads it may. */
   const created = shallowRef(false)
   /** Where the view is and how tall, as the scroller says it now. */
   function view(instance: Virtualizer<HTMLElement, HTMLElement>): { offset: number, height: number } {
+    const el = scrollContainer.value
     return {
-      offset: scrollContainer.value?.scrollTop ?? instance.scrollOffset ?? 0,
+      offset: el ? viewTop(el) : instance.scrollOffset ?? 0,
       height: instance.scrollRect?.height ?? window.innerHeight,
     }
   }
@@ -242,7 +346,25 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       // exceeds: the first render covers the view, at worst a little more.
       initialRect: { width: 0, height: window.innerHeight },
       getScrollElement: () => scrollContainer.value ?? null,
+      // The virtualizer places the view in the list: on the scroller, below
+      // the rows' shift. The position is read when it is reported: the
+      // virtualizer also reports, once a scroll ends, the one it read last.
+      observeElementOffset: (instance, report) =>
+        observeElementOffset(instance, (offset, isScrolling) =>
+          report(scrollContainer.value ? viewTop(scrollContainer.value) : offset + rowsShift.value, isScrolling)),
       scrollToFn: (offset, options, instance) => {
+        // The list scrolls itself: what it held for the reader's scroll is
+        // superseded, and the rows go back to their places first, as the
+        // position it writes is theirs.
+        pendingScrollBy = 0
+        const settled = settleShift(true)
+        if (settled) {
+          void settled.then(() => {
+            elementScroll(offset, options, instance)
+            scrolledTo = scrollContainer.value?.scrollTop ?? Number.NaN
+          })
+          return
+        }
         // The virtualizer scrolls to follow a row's growth or shrinking inside
         // the observer's callback, before the list is updated: the rows are
         // read before the scroll moves them.
@@ -456,11 +578,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       return
     // The virtualizer's offset moves with the scroller's in the same step, as
     // it does when rows are added above the view.
-    const target = el.scrollTop + moved
-    virtualizer.value.scrollOffset = target
-    el.scrollTop = target
+    virtualizer.value.scrollOffset = viewTop(el) + moved
+    el.scrollTop += moved
     scrolledTo = el.scrollTop
-    scrollOffset.value = el.scrollTop
+    scrollOffset.value = viewTop(el)
     logList('debug', 'list.anchor_corrected', { reason: 'reader_control', delta_px: Math.round(moved) })
   }
 
@@ -605,6 +726,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       }
       const onTouchStart = (e: TouchEvent) => {
         touchStartY = e.touches[0]?.clientY ?? 0
+        touching = true
+      }
+      const onTouchEnd = (e: TouchEvent) => {
+        if (e.touches.length > 0)
+          return
+        touching = false
+        // A touch that scrolled nothing sends no scroll event to settle the shift.
+        endMomentumLater()
       }
       const onTouchMove = (e: TouchEvent) => {
         const touchY = e.touches[0]?.clientY ?? touchStartY
@@ -623,7 +752,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       el.addEventListener('wheel', onWheel, { passive: true })
       el.addEventListener('touchstart', onTouchStart, { passive: true })
       el.addEventListener('touchmove', onTouchMove, { passive: true })
+      el.addEventListener('touchend', onTouchEnd, { passive: true })
+      el.addEventListener('touchcancel', onTouchEnd, { passive: true })
       onCleanup(() => {
+        el.removeEventListener('touchend', onTouchEnd)
+        el.removeEventListener('touchcancel', onTouchEnd)
         el.removeEventListener('click', readerChangesLayout, { capture: true })
         el.removeEventListener('keydown', onKeydown, { capture: true })
         el.removeEventListener('wheel', onWheel)
@@ -685,6 +818,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
   watch(layout, seeRows, { flush: 'pre' })
   watch(layout, () => {
+    scrollPending()
     const el = scrollContainer.value
     if (el && seen)
       moveRows(el, seen, placedHeights(), shouldAutoScroll.value)
@@ -719,6 +853,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
           resizeCorrections += 1
           resizeCorrectedPx += Math.round(_delta)
         }
+        if (adjusts && shiftsRows) {
+          followRowsAbove(_delta)
+          return false
+        }
         return adjusts
       }
     },
@@ -731,7 +869,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const el = scrollContainer.value
     if (!el || blocks.value.length === 0)
       return
-    const st = el.scrollTop
+    const st = viewTop(el)
     const containerTop = el.getBoundingClientRect().top
     for (const item of virtualizer.value.getVirtualItems()) {
       // The loading row at an edge is no content: a page that arrives above
@@ -766,7 +904,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const rows = virtualizer.value.measurementsCache
     if (!el || rows.length === 0)
       return null
-    const top = el.scrollTop
+    const top = viewTop(el)
     const bottom = top + el.clientHeight
     const first = rows.findIndex((row) => row.end > top - reach)
     const last = rows.findLastIndex((row) => row.start < bottom + reach)
@@ -776,7 +914,16 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   function onScroll() {
     const el = scrollContainer.value
     if (el) {
-      scrollOffset.value = el.scrollTop
+      scrollOffset.value = viewTop(el)
+      if (shiftsRows) {
+        endMomentumLater()
+        // The view reached the scroller's top while rows are shifted: above
+        // it are rows it cannot scroll to, or a gap where they are drawn
+        // below their places. The reader's scroll stops there in any case.
+        const top = el.scrollTop
+        if (top >= 0 && (rowsShift.value > 0 ? top < 1 : top + rowsShift.value < 0))
+          void settleShift(true)
+      }
       // What the reader scrolled is no move of any row: a place kept from before
       // it stands further along.
       if (seen && Math.abs(el.scrollTop - scrolledTo) >= 1)
@@ -796,11 +943,21 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     updateAnchor()
   }
 
+  /** Ends the reader's scroll once no scroll event came for `MOMENTUM_END_MS`, and settles the rows' shift then. */
+  function endMomentumLater(): void {
+    clearTimeout(momentumEnd)
+    momentumEnd = setTimeout(() => {
+      momentumEnd = undefined
+      settleShift()
+    }, MOMENTUM_END_MS)
+  }
+  onScopeDispose(() => clearTimeout(momentumEnd))
+
   /** Where the current scroll began, and the timer that ends it once the view stays still. */
   let scrolledFrom = 0
   let scrollSettle: ReturnType<typeof setTimeout> | undefined
   function scrollOffsetAtStart(el: HTMLElement): number {
-    return lastScrollTop ?? el.scrollTop
+    return lastScrollTop ?? viewTop(el)
   }
   /** The scroll position the list last wrote a line at, or knew at the last settle. */
   let lastScrollTop: number | undefined
@@ -809,9 +966,9 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const el = scrollContainer.value
     if (!el)
       return
-    const to = Math.round(el.scrollTop)
+    const to = Math.round(viewTop(el))
     const from = Math.round(scrolledFrom)
-    lastScrollTop = el.scrollTop
+    lastScrollTop = viewTop(el)
     const inView = viewRows()
     if (from !== to || resizeCorrections > 0) {
       logList('debug', 'list.scrolled', {
@@ -926,9 +1083,9 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       // which comes after the new rows are measured; corrected from the old
       // offset, they would pull the view back. So its offset moves with the
       // scroller's, in the same step.
-      const target = (virtualizer.value.scrollOffset ?? el.scrollTop) + moved - anchor.start
+      const target = (virtualizer.value.scrollOffset ?? viewTop(el)) + moved - anchor.start
       virtualizer.value.scrollOffset = target
-      el.scrollTop = target
+      el.scrollTop = target - rowsShift.value
       scrolledTo = el.scrollTop
       logList('debug', 'list.anchor_corrected', {
         reason: moved > anchor.start ? 'rows_added_above' : 'rows_removed_above',
@@ -949,7 +1106,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         blockId: lastAnchor.blockId,
         anchorIndex: lastAnchor.anchorIndex,
         offsetPx: lastAnchor.offsetPx,
-        scrollTop: scrollContainer.value?.scrollTop ?? lastAnchor.scrollTop
+        scrollTop: scrollContainer.value ? viewTop(scrollContainer.value) : lastAnchor.scrollTop
       },
       // The virtualizer's own measurements, keyed by block id, over the
       // heights it was given and has not measured again.
@@ -973,6 +1130,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     reveal,
     rowsNear,
     onScroll,
+    /** Where the view starts in the list, as `scrollOffset` says after a scroll. */
+    viewTop: (): number => (scrollContainer.value ? viewTop(scrollContainer.value) : 0),
+    /** How far above their places the rows and their box are drawn (iOS, while the reader scrolls). */
+    rowsShift: readonly(rowsShift),
     getPersistedState,
     /**
      * The id of the row at the top of the view now, none before the list has

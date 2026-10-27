@@ -400,6 +400,8 @@ const {
   reveal,
   rowsNear,
   onScroll,
+  viewTop,
+  rowsShift,
   getPersistedState,
   anchorId,
 } =
@@ -655,7 +657,7 @@ watch(
   () => {
     const wasAtBottom = isAtBottom.value
     nextTick(() => {
-      scrollOffset.value = scrollContainer.value?.scrollTop ?? 0
+      scrollOffset.value = viewTop()
       if (wasAtBottom)
         scrollToBottom()
     })
@@ -711,7 +713,7 @@ defineExpose({
         class="w-full px-[var(--session-gutter,0px)] pt-2"
         :style="{ paddingBottom: 'var(--transcript-clearance)' }"
       >
-        <div ref="rowsRoot" class="relative w-full" :style="{ height: `${totalSize}px` }">
+        <div ref="rowsRoot" class="relative w-full" :style="{ height: `${totalSize - rowsShift}px` }">
           <DrawnSelection :root="rowsRoot" />
           <ReplyComments v-if="commenting" ref="comments" :root="rowsRoot" :commenting="commenting" :sent="sent" :asking="asking" />
           <!--
@@ -728,7 +730,7 @@ defineExpose({
               :data-row-key="String(item.key)"
               :ref="(el) => measureElement(el as Element)"
               class="absolute inset-x-0 top-0 [--found-inset-x:max(0px,calc(var(--agent-pad-x,2rem)-0.5rem))]"
-              :style="{ transform: `translateY(${item.start}px)` }"
+              :style="{ transform: `translateY(${item.start - rowsShift}px)` }"
             >
               <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">
                 <AgentMessageVirtualBlock
