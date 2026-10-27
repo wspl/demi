@@ -21,8 +21,9 @@ export type SentenceText = string
  * dialog's title.
  *
  * - A fragment takes title style ("Rename Failed").
- * - A complete sentence takes sentence style with its ending punctuation ("Remove
- *   this project?").
+ * - A complete sentence takes sentence style, with no period, and with its
+ *   question mark when it asks ("This page could not be updated", "Remove this
+ *   project?").
  * - What an empty list says is not a headline: it is sentence style without a period
  *   ("No results").
  */

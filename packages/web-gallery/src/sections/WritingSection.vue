@@ -128,9 +128,17 @@ const rules: readonly ElementRule[] = [
     kind: 'Alert or toast title',
     where: 'reportError and showToast title, a confirmation’s heading',
     style: 'headline',
-    right: ['Could Not Revoke Device', 'Remove this project?'],
-    wrong: ['Could not revoke device', 'Remove This Project?'],
-    source: { label: 'HIG: Alerts', href: `${HIG}/alerts` },
+    right: ['Could Not Revoke Device', 'Something went wrong', 'Remove this project?'],
+    wrong: ['Could not revoke device', 'Something Went Wrong', 'Something went wrong.', 'Remove This Project?'],
+    source: { label: 'HIG: Alerts; no period after a sentence, as Chrome’s This site can’t be reached', href: `${HIG}/alerts` },
+  },
+  {
+    kind: 'Screen title',
+    where: 'The heading of a screen that stands in for the whole page, as while Demi restarts',
+    style: 'headline',
+    right: ['Restarting Demi', 'This page could not be updated'],
+    wrong: ['This Page Could Not Be Updated'],
+    source: { label: 'Works like an alert’s title (HIG: Alerts)', href: `${HIG}/alerts` },
   },
   {
     kind: 'Empty state',
@@ -249,7 +257,7 @@ const wordRules = [
     items: [
       'A name keeps its spelling: iPhone, macOS, GitHub, Claude Code, Cloud',
       'An ellipsis (…, one character) ends a command that needs more input before it acts: it opens a dialog to fill in, or always asks to confirm. A command that acts at once, or opens a panel to look at, has none.',
-      'A title has no ending punctuation and no colon. A sentence ends with its period or question mark, except a tooltip that is a fragment.',
+      'A title has no ending punctuation and no colon; so has a headline that is a sentence, except the question mark of one that asks. Any other sentence ends with its period or question mark, except a tooltip that is a fragment.',
       'A sentence names another element in that element’s capitals, without its ellipsis: Choose Add Source to add one.',
     ],
   },
@@ -473,7 +481,9 @@ const sources: readonly Required<Source>[] = [
     <div class="max-w-3xl space-y-3 text-[13px] leading-6 text-fg-body">
       <p>
         Demi writes its UI text the way macOS does. A menu item, a button or a
-        title is in title style: <span class="text-fg-emphasis">Add Source…</span>.
+        title is in title style: <span class="text-fg-emphasis">Add Source…</span>,
+        unless the title is a whole sentence, as an alert’s can be, which is in
+        sentence style: <span class="text-fg-emphasis">Something went wrong</span>.
         A switch, a settings row, a tooltip or a message is in sentence style:
         <span class="text-fg-emphasis">Show scroll bars</span>. Where Apple names
         no style for an element Demi has, the table below maps it to the macOS

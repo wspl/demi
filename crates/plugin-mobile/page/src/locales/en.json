@@ -40,7 +40,7 @@
     "unsupported": "This browser can’t show live video."
   },
   "failures": {
-    "control": "The Simulator Couldn’t Do That",
+    "control": "The simulator couldn’t do that",
     "save": "Couldn’t Save the File",
     "hostFilesUnreachable": "The device’s files can’t be reached right now."
   },
