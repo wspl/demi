@@ -535,10 +535,12 @@ fn group(row: &Row<'_>) -> Result<UsageGroup, StorageError> {
     })
 }
 
-/// A cache miss writes again more than this share of the call's prompt.
+/// A cache miss reads less of the cache than its agent's previous call did,
+/// by more than this share of what that call read and by at least
+/// [`MISS_TOKENS`], as Claude Code's own diagnosis of a cache break counts one.
+/// A call that only adds to the prompt reads all its previous call read and
+/// writes what it adds, so what it writes is no measure of a miss.
 const MISS_SHARE: f64 = 0.05;
-/// And at least this many tokens, as Claude Code's own cache diagnosis
-/// counts one.
 const MISS_TOKENS: u64 = 2_000;
 /// How long a vendor keeps a prompt after a write, and after a write kept
 /// for an hour.
@@ -579,9 +581,9 @@ struct KeptCall {
 /// the agent's previous call: its number, whether an answered compaction of
 /// the agent came between them and why it missed the cache.
 ///
-/// A call missed when it wrote again more than [`MISS_SHARE`] of its prompt and
-/// at least [`MISS_TOKENS`], except the first call and the first after a
-/// compaction, which start a new prompt.
+/// A call missed when it read less of the cache than the previous call by
+/// [`MISS_SHARE`] and [`MISS_TOKENS`], except the first call and the first
+/// after a compaction, which start a new prompt.
 fn next_call(
     connection: &Connection,
     conversation: &str,
@@ -591,7 +593,7 @@ fn next_call(
     let agent = column_count(agent);
     let previous = connection
         .prepare_cached(
-            "SELECT rowid, call_number, model_id, system_hash, tools_hash, ended_at FROM usage_ledger
+            "SELECT rowid, call_number, model_id, system_hash, tools_hash, ended_at, cache_read_tokens FROM usage_ledger
              WHERE conversation_id = ?1 AND agent = ?2 AND call_number IS NOT NULL AND rowid < ?3
              ORDER BY rowid DESC LIMIT 1",
         )?
@@ -603,10 +605,11 @@ fn next_call(
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, Option<String>>(4)?,
                 row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
             ))
         })
         .optional()?;
-    let Some((rowid, number, model, system_hash, tools_hash, ended_at)) = previous else {
+    let Some((rowid, number, model, system_hash, tools_hash, ended_at, read)) = previous else {
         return Ok(KeptCall {
             number: 1,
             after_compaction: false,
@@ -628,11 +631,8 @@ fn next_call(
             miss: None,
         });
     }
-    let usage = facts.usage;
-    let written = written_tokens(&usage);
-    let prompt = prompt_tokens(&usage);
-    let missed = written >= MISS_TOKENS && written as f64 > prompt as f64 * MISS_SHARE;
-    let miss = if missed {
+    let read = decode("usage_ledger", "cache_read_tokens", u64::try_from(read))?;
+    let miss = if missed(read, facts.usage.cache_read_tokens) {
         let changed = |before: Option<&str>, after: Option<&str>| matches!((before, after), (Some(before), Some(after)) if before != after);
         // Whether the latest write of the call's model was kept for an hour.
         let hour_write: Option<i64> = connection
@@ -662,6 +662,13 @@ fn next_call(
     })
 }
 
+/// Whether a call that read `read` tokens from the cache missed it, when its
+/// agent's previous call read `previous`.
+fn missed(previous: u64, read: u64) -> bool {
+    let lost = previous.saturating_sub(read);
+    lost >= MISS_TOKENS && lost as f64 > previous as f64 * MISS_SHARE
+}
+
 /// The hour-long part of the latest cache write of agent `?2` of
 /// conversation `?1` by model `?4`, before rowid `?3`: found by
 /// `usage_ledger_cache_writes` directly, however many rows the agent has.
@@ -678,16 +685,10 @@ struct RowCost {
     usd: Option<f64>,
 }
 
-/// The tokens of a call's prompt that the cache did not serve: sent uncached
-/// or written to the cache.
-fn written_tokens(usage: &TokenUsage) -> u64 {
-    usage.input_tokens + usage.cache_write_tokens
-}
-
-/// The tokens of a call's prompt: those the cache did not serve and those it
-/// read.
+/// The tokens of a call's prompt: those sent uncached, written to the cache
+/// and read from it.
 fn prompt_tokens(usage: &TokenUsage) -> u64 {
-    written_tokens(usage) + usage.cache_read_tokens
+    usage.input_tokens + usage.cache_write_tokens + usage.cache_read_tokens
 }
 
 /// What a row costs: its tokens' price or, for a call whose tokens have no
@@ -911,6 +912,9 @@ struct ChartCall {
     price: Option<f64>,
     after_compaction: bool,
     miss: Option<CacheMiss>,
+    /// The tokens its agent's previous call read from the cache and it did
+    /// not; 0 for the agent's first.
+    lost: u64,
 }
 
 /// The calls each point stands for and the number of the first call a
@@ -926,7 +930,9 @@ fn chart_window(last: u64) -> (u64, u64) {
 fn agent_chart(connection: &Connection, conversation: &str, agent: u64, last: u64) -> Result<CacheChart, StorageError> {
     let (size, first) = chart_window(last);
     // The window's calls are the agent's latest turn calls, so the scan
-    // back from its latest row stops at the window's first.
+    // back from its latest row stops at the window's first, or at the call
+    // before it, which says what the first one lost.
+    let from = first.saturating_sub(1).max(1);
     let mut statement = connection.prepare_cached(
         "SELECT call_number, started_at, ended_at, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
            api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
@@ -938,14 +944,20 @@ fn agent_chart(connection: &Connection, conversation: &str, agent: u64, last: u6
     let mut rows = statement.query(params![
         conversation,
         column_count(agent),
-        column_count(first),
-        column_count(last.saturating_sub(first) + 1)
+        column_count(from),
+        column_count(last.saturating_sub(from) + 1)
     ])?;
     let mut calls = Vec::new();
     while let Some(row) = rows.next()? {
         calls.push(chart_call(row)?);
     }
     calls.reverse();
+    for index in 1..calls.len() {
+        calls[index].lost = calls[index - 1].usage.cache_read_tokens.saturating_sub(calls[index].usage.cache_read_tokens);
+    }
+    if calls.first().is_some_and(|call| call.number < first) {
+        calls.remove(0);
+    }
     Ok(count_chart(size, &calls))
 }
 
@@ -991,7 +1003,7 @@ fn count_chart(size: u64, calls: &[ChartCall]) -> CacheChart {
                     misses,
                     after_compaction: group.iter().any(|call| call.after_compaction),
                     price: (!prices.is_empty()).then(|| prices.iter().sum()),
-                    rewritten: (group.len() == 1).then(|| written_tokens(&head.usage)),
+                    rewritten: (group.len() == 1 && head.miss.is_some()).then_some(head.lost),
                 }
             })
             .collect()
@@ -1027,6 +1039,7 @@ fn chart_call(row: &Row<'_>) -> Result<ChartCall, StorageError> {
         price: row_price(parts, usd),
         after_compaction: row.get("after_compaction")?,
         miss,
+        lost: 0,
     })
 }
 
@@ -1036,6 +1049,53 @@ fn corrupt(column: &'static str, problem: &'static str) -> StorageError {
         column,
         reason: format!("the row sets {problem}"),
     }
+}
+
+/// Judges every turn call's cache miss again against its agent's previous
+/// call, as [`next_call`] judges a call as it is written: the migration that
+/// changed how a miss is judged (`crates/backend-database/src/schema.rs`).
+/// The calls' numbers and compactions stay as they were kept.
+pub(crate) fn judge_misses(connection: &Connection) -> Result<(), StorageError> {
+    let mut rows = connection.prepare(
+        "SELECT rowid, conversation_id, agent, model_id, input_tokens, output_tokens, cache_read_tokens,
+           cache_write_tokens, started_at, ended_at, system_hash, tools_hash, miss
+         FROM usage_ledger WHERE call_number IS NOT NULL ORDER BY rowid",
+    )?;
+    let mut rows = rows.query([])?;
+    let mut judge = connection.prepare("UPDATE usage_ledger SET miss = ?2 WHERE rowid = ?1")?;
+    while let Some(row) = rows.next()? {
+        let rowid: i64 = row.get("rowid")?;
+        let conversation: String = row.get("conversation_id")?;
+        let agent = decode("usage_ledger", "agent", u64::try_from(row.get::<_, i64>("agent")?))?;
+        let usage = row_usage(row)?.ok_or_else(|| corrupt("input_tokens", "no token counts for a turn call"))?;
+        let model: String = row.get("model_id")?;
+        let system_hash: Option<String> = row.get("system_hash")?;
+        let tools_hash: Option<String> = row.get("tools_hash")?;
+        let kept: Option<String> = row.get("miss")?;
+        let ended_at = instant(row, "usage_ledger", "ended_at")?;
+        let started_at = match row.get::<_, Option<i64>>("started_at")? {
+            Some(_) => instant(row, "usage_ledger", "started_at")?,
+            None => ended_at,
+        };
+        let call = next_call(
+            connection,
+            &conversation,
+            agent,
+            &CallFacts {
+                before: rowid,
+                model: &model,
+                usage,
+                started_at,
+                system_hash: system_hash.as_deref(),
+                tools_hash: tools_hash.as_deref(),
+            },
+        )?;
+        let miss = call.miss.map(|miss| miss.to_string());
+        if miss != kept {
+            judge.execute(params![rowid, miss])?;
+        }
+    }
+    Ok(())
 }
 
 /// Numbers every turn call of the ledger, judges each against its agent's

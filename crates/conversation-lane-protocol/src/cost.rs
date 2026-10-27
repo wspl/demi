@@ -128,9 +128,9 @@ pub struct ChartPoint {
     #[schemars(with = "Nullable<f64>")]
     #[garde(skip)]
     pub price: Option<f64>,
-    /// For a point of one call, the tokens the call sent uncached or wrote
-    /// to the cache, which its tip names when it missed; null for a point
-    /// of several.
+    /// For a point of one call that missed the cache, the tokens its
+    /// agent's previous call read from the cache and it did not, which its
+    /// tip names; null for any other point.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<u64>")]
     #[garde(range(max = MAX_SAFE_INTEGER))]

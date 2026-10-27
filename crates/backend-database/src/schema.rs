@@ -137,6 +137,8 @@ impl ReadBlob for NoBlobs {
 ///   compaction kept the tokens its request carried.
 /// - 0.1.5565's, which 0.1.5551 shipped too, before a push subscription
 ///   said whether it stays quiet while the user is on another device.
+/// - 0.1.5586's, before a turn call missed the cache only when it read less
+///   of it than its agent's previous call.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -332,6 +334,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.5565.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_5565),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5586.sql"),
+            migration: Migration::Code(control_from_0_1_5586),
         },
     ],
 };
@@ -663,7 +669,7 @@ DROP TABLE idle_compactions;
 ALTER TABLE idle_compactions_next RENAME TO idle_compactions;
 ";
 
-/// From 0.1.5565's control schema to the current one:
+/// From 0.1.5565's control schema to 0.1.5586's:
 ///
 /// - A push subscription says whether it stays quiet while the user is on
 ///   another device, which every one stored before does, as the switch is on
@@ -675,6 +681,14 @@ ALTER TABLE push_subscriptions ADD COLUMN quiet_while_elsewhere INTEGER NOT NULL
 ALTER TABLE conversations ADD COLUMN notifications_card TEXT
   CHECK (notifications_card IN ('shown', 'dismissed'));
 ";
+
+/// From 0.1.5586's control schema to the current one: each turn call's cache
+/// miss is judged again by what it read of the cache, as a call written now
+/// is (`crates/backend-database/src/usage.rs`); one that only added to its
+/// prompt missed nothing.
+fn control_from_0_1_5586(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    super::usage::judge_misses(transaction).map_err(storage)
+}
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
 /// the Mac's set, since all of them are written in its notation; the PC's set
@@ -5586,7 +5600,8 @@ CREATE TABLE usage_ledger (
   tools_hash            TEXT,
   -- A turn call's number among its agent's turn calls, from 1, whether its
   -- agent answered a compaction since its previous one, and why it missed
-  -- the cache, judged as it is written; null for every other row.
+  -- the cache, judged as it is written by how much less of the cache it
+  -- read than its previous call; null for every other row.
   call_number           INTEGER CHECK (call_number >= 1),
   after_compaction      INTEGER CHECK (after_compaction IN (0, 1)),
   miss                  TEXT CHECK (miss IN ('model_changed', 'tools_changed', 'system_prompt_changed', 'cache_expired', 'not_cached')),

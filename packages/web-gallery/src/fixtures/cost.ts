@@ -172,7 +172,7 @@ export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', shape: C
       misses,
       afterCompaction,
       price: priced ? price : null,
-      rewritten: count === 1 ? Math.round(fresh ? 24_000 + random() * 12_000 : 400 + random() * 2_000) : null,
+      rewritten: count === 1 && misses.length > 0 ? Math.round(24_000 + random() * 12_000) : null,
     })
   }
   // The calls before the window, which the chart no longer draws.
