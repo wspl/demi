@@ -17,11 +17,12 @@ import { t } from '../locales/text'
  * - On the lit display a click is a touch and a drag a swipe, wherever the
  *   view is turned and however the device is folded; the keyboard types
  *   (`./DeviceKeys.vue`).
- * - While the device is partly open, a drag anywhere else turns the view
- *   about the device's upright axis, at most `MAX_YAW` either way; Reset
- *   turns it back to face the device over `FACE_MS`. Closed or open flat,
- *   a flat device faces the user and does not turn: the turn eases out over
- *   the last `FLAT_EASE` degrees of the hinge, so the view never jumps.
+ * - While the device is partly open, a drag anywhere else turns the device
+ *   about its upright axis the way the pointer moves, as Quick Look turns a
+ *   model, at most `MAX_YAW` either way; Reset turns it back to face the
+ *   user over `FACE_MS`. Closed or open flat, a flat device faces the user
+ *   and does not turn: the turn eases out over the last `FLAT_EASE` degrees
+ *   of the hinge, so the view never jumps.
  * - A posture, from the toolbar, moves the hinge over `SWEEP_MS`, the
  *   slider as it is dragged; the device follows, as `demi mobile fold`
  *   moves it, one fold at a time, to the latest angle asked. A fold the
@@ -283,7 +284,7 @@ function turnable(): boolean {
 
 function move(event: PointerEvent): void {
   if (turning?.pointer === event.pointerId) {
-    yaw.value = Math.max(-MAX_YAW, Math.min(MAX_YAW, turning.yaw + across(turning, event) * TURN_PER_PX))
+    yaw.value = Math.max(-MAX_YAW, Math.min(MAX_YAW, turning.yaw - across(turning, event) * TURN_PER_PX))
     return
   }
   const at = displayPoint(event)
