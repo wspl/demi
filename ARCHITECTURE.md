@@ -257,13 +257,16 @@ Inside a crate, these rules apply:
 
 ### Test binaries
 
-Demi keeps one test binary, the compaction tests'
-(`crates/agent-session/tests/agent-session`). These rules apply:
+A crate whose tests [Testing](docs/delivery/testing.md) admits keeps them in
+one test binary of its own, so that no crate's tests make another crate's
+binary depend on it. There are two: the compaction tests'
+(`crates/agent-session/tests/agent-session`) and the live view's rate
+control's (`crates/live-view/tests/live-view`). These rules apply:
 
 -   The library and every executable set `test = false`. Every library sets
     `doctest = false` and `bench = false`. Otherwise, `--all-targets` compiles
     each library twice.
--   A test gets a binary of its own only when it changes or exhausts
+-   A test gets a second binary in its crate only when it changes or exhausts
     process-wide state (such as the open-file limit), or needs what others
     must not have (such as root). Its file says so at the top.
 

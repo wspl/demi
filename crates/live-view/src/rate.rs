@@ -18,9 +18,10 @@
 //!   pictures alone rarely fill it. A rising delay lowers the rate. A loss
 //!   whose retransmission only delays a chunk does not.
 //! - A still picture sends next to nothing, so the sender is
-//!   application-limited (`bwe::alr`) most of the time: once it sends at its
-//!   rate again, the acknowledged rate follows at once, and a large drop is
-//!   probed back (`probe`).
+//!   application-limited (`bwe::alr`) most of the time: an overuse then backs
+//!   off from the estimate unless the path delivered clearly less than it was
+//!   sent (`bwe`), once it sends at its rate again the acknowledged rate
+//!   follows at once, and a large drop is probed back (`probe`).
 //! - A view's new stream after [`STALE`] without sending starts the estimate
 //!   over, as a new view does: the path may have changed meanwhile, and an
 //!   estimate far above it fills the path with seconds of pictures before
@@ -212,6 +213,12 @@ impl Rate {
         (f64::from(self.target()) / 8.0 * span.as_secs_f64()) as usize
     }
 
+    /// Whether an overuse backs off from the estimate (`bwe`), and the
+    /// acknowledged rate as a share of the sent one: why the estimate fell.
+    pub fn backoff(&self) -> (bool, Option<f64>) {
+        (self.estimate.limited(), self.estimate.delivered_share())
+    }
+
     /// Bytes sent and not acknowledged.
     pub fn in_flight(&self) -> usize {
         self.in_flight
@@ -302,7 +309,7 @@ impl Rate {
             self.limited_until = Some(now);
         }
         self.limited = limited;
-        let recovered = !acked.is_empty() && self.estimate.update(acked, probed.map(|(_, measured)| measured), now);
+        let recovered = !acked.is_empty() && self.estimate.update(acked, probed.map(|(_, measured)| measured), limited, now);
         if let Some((cluster, measured)) = probed {
             tracing::debug!(
                 event = "live_view.probed",
@@ -370,3 +377,4 @@ impl Rate {
         }
     }
 }
+

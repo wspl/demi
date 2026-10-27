@@ -1,11 +1,23 @@
 //! The delay-based half of Google Congestion Control (GoogCC) and its probe
 //! estimator, ported from str0m 0.24.1's `src/bwe/` with their algorithm
-//! unchanged, and what str0m leaves out of libwebrtc's handling of an
+//! unchanged but for the backoff of an application-limited sender below,
+//! and what str0m leaves out of libwebrtc's handling of an
 //! application-limited sender (`alr`): once the sender sends at its rate
 //! again, the acknowledged bit rate follows it at once, as libwebrtc's
 //! `AcknowledgedBitrateEstimator::SetAlrEndedTime` has it. A still picture
 //! sends next to nothing, and a decrease that took that rate as what the path
 //! carries would drop the estimate to its floor.
+//!
+//! An overuse while the sender is application-limited backs off from the
+//! estimate, not from the acknowledged rate, as libwebrtc's
+//! WebRTC-Bwe-AlrLimitedBackoff did and as BBR keeps a sample taken while
+//! the sender was application-limited from lowering its estimate. The page
+//! stamps a chunk when its main thread takes it, so a page busy with a layout
+//! looks to the trendline like a queue on the path. Only when the path
+//! delivered clearly less than it was sent, the acknowledged rate measured
+//! against the rate those chunks were sent at as libwebrtc's probe estimator
+//! tells a saturated link, does the path limit the rate, and an overuse backs
+//! off from what it delivered.
 //!
 //! The port holds the arrival groups, the trendline estimator, the AIMD rate
 //! control and the acknowledged bit rate estimator, which str0m ported from
@@ -58,6 +70,15 @@ mod time;
 
 use acked_bitrate_estimator::AckedBitrateEstimator;
 use delay::DelayController;
+
+/// The share of the rate the acknowledged chunks were sent at below which
+/// the path delivered clearly less than it was given: it limits the rate.
+/// libwebrtc's probe estimator takes a link as saturated below 90% of the
+/// sent rate. The page's receive times count its main thread's delay too, so
+/// a page that falls behind looks like a slower path: below half, it takes
+/// fewer than half the chunks, as one busy for seconds does, and fewer
+/// pictures then are what it can show.
+const SATURATED: f64 = 0.5;
 
 /// str0m's windows for the acknowledged bit rate (`bwe/mod.rs`).
 const INITIAL_BITRATE_WINDOW: Duration = Duration::from_millis(500);
@@ -141,9 +162,15 @@ fn already_happened() -> Instant {
 pub struct DelayBasedEstimate {
     delay_controller: DelayController,
     acked_bitrate_estimator: AckedBitrateEstimator,
+    /// The rate the acknowledged chunks were sent at, measured as the
+    /// acknowledged rate is, from their send times.
+    sent_bitrate_estimator: AckedBitrateEstimator,
     /// When the sender stopped being application-limited, until a chunk
     /// sent after it is acknowledged.
     alr_ended: Option<Instant>,
+    /// Whether the sender sends less than the path carries, as of the last
+    /// acknowledgements: then an overuse backs off from the estimate.
+    limited: bool,
 }
 
 impl DelayBasedEstimate {
@@ -154,7 +181,12 @@ impl DelayBasedEstimate {
                 INITIAL_BITRATE_WINDOW,
                 BITRATE_WINDOW,
             ),
+            sent_bitrate_estimator: AckedBitrateEstimator::new(
+                INITIAL_BITRATE_WINDOW,
+                BITRATE_WINDOW,
+            ),
             alr_ended: None,
+            limited: false,
         }
     }
 
@@ -164,10 +196,11 @@ impl DelayBasedEstimate {
     }
 
     /// Takes in a batch of acknowledged chunks, as str0m takes a TWCC
-    /// report's, with what a probe among them measured, and answers the
-    /// estimate. A probe's result becomes the estimate. Answers whether the
-    /// path recovered from an overuse among them.
-    pub fn update(&mut self, mut acked: Vec<AckedPacket>, probe: Option<Bitrate>, now: Instant) -> bool {
+    /// report's, with what a probe among them measured and whether the
+    /// sender is application-limited, and answers the estimate. A probe's
+    /// result becomes the estimate. Answers whether the path recovered from
+    /// an overuse among them.
+    pub fn update(&mut self, mut acked: Vec<AckedPacket>, probe: Option<Bitrate>, limited: bool, now: Instant) -> bool {
         acked.sort_by(AckedPacket::order_by_receive_time);
         for packet in &acked {
             if self.alr_ended.is_some_and(|ended| packet.local_send_time > ended) {
@@ -177,8 +210,14 @@ impl DelayBasedEstimate {
             self.acked_bitrate_estimator
                 .update(packet.remote_recv_time, packet.size);
         }
+        let mut by_send = acked.clone();
+        by_send.sort_by_key(|packet| packet.local_send_time);
+        for packet in &by_send {
+            self.sent_bitrate_estimator.update(packet.local_send_time, packet.size);
+        }
         let acked_bitrate = self.acked_bitrate_estimator.current_estimate();
-        self.delay_controller.update(&acked, acked_bitrate, probe, now)
+        self.limited = limited && !self.path_limited(acked_bitrate);
+        self.delay_controller.update(&acked, acked_bitrate, probe, self.limited, now)
     }
 
     /// When [`Self::handle_timeout`] is due.
@@ -188,7 +227,31 @@ impl DelayBasedEstimate {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.delay_controller
-            .handle_timeout(self.acked_bitrate_estimator.current_estimate(), now);
+            .handle_timeout(self.acked_bitrate_estimator.current_estimate(), self.limited, now);
+    }
+
+    /// Whether an overuse backs off from the estimate, the sender sending
+    /// less than the path carries, as of the last acknowledgements.
+    pub fn limited(&self) -> bool {
+        self.limited
+    }
+
+    /// The acknowledged rate as a share of the rate those chunks were sent
+    /// at; none before both are measured.
+    pub fn delivered_share(&self) -> Option<f64> {
+        let acked = self.acked_bitrate_estimator.current_estimate()?;
+        let sent = self.sent_bitrate_estimator.current_estimate()?;
+        Some(acked.as_f64() / sent.as_f64().max(1.0))
+    }
+
+    /// Whether the path delivered clearly less than the sender sent: then it
+    /// limits the rate, whatever the sender's own budget left unused, and
+    /// what was acknowledged is what it carries.
+    fn path_limited(&self, acked: Option<Bitrate>) -> bool {
+        match (acked, self.sent_bitrate_estimator.current_estimate()) {
+            (Some(acked), Some(sent)) => acked.as_f64() < sent.as_f64() * SATURATED,
+            _ => false,
+        }
     }
 
     /// The estimate, which starts at the initial bit rate.

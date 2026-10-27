@@ -55,7 +55,8 @@ cargo check --workspace --all-targets
 cargo test --workspace
 ```
 
-Add `--test agent-session` to run the compaction tests alone; never
+Add `--test agent-session` to run the compaction tests alone, or
+`--test live-view` the live view's rate control's; never
 `-p <crate>`.
 
 ## Resources

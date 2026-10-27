@@ -61,6 +61,7 @@ impl DelayController {
         acked: &[AckedPacket],
         acked_bitrate: Option<Bitrate>,
         probe_bitrate: Option<Bitrate>,
+        limited: bool,
         now: Instant,
     ) -> bool {
         let mut max_rtt = None;
@@ -103,6 +104,7 @@ impl DelayController {
             new_hypothesis,
             acked_bitrate,
             probe_bitrate,
+            limited,
             self.get_smoothed_rtt(),
             now,
         );
@@ -119,7 +121,7 @@ impl DelayController {
         self.next_timeout
     }
 
-    pub fn handle_timeout(&mut self, acked_bitrate: Option<Bitrate>, now: Instant) {
+    pub fn handle_timeout(&mut self, acked_bitrate: Option<Bitrate>, limited: bool, now: Instant) {
         if !self.trendline_hypothesis_valid(now) {
             // We haven't received a TWCC report in a while. The trendline hypothesis can
             // no longer be considered valid. We need another TWCC report before we can update
@@ -139,6 +141,7 @@ impl DelayController {
             self.trendline_estimator.hypothesis(),
             acked_bitrate,
             None,
+            limited,
             self.get_smoothed_rtt(),
             now,
         );
@@ -185,9 +188,20 @@ impl DelayController {
         hypothesis: BandwidthUsage,
         observed_bitrate: Option<Bitrate>,
         probe_bitrate: Option<Bitrate>,
+        limited: bool,
         mean_max_rtt: Option<Duration>,
         now: Instant,
     ) {
+        // An application-limited sender sends far less than the path
+        // carries, so what was acknowledged says nothing of the path, and an
+        // overuse backs off from the estimate instead, as libwebrtc's
+        // WebRTC-Bwe-AlrLimitedBackoff did (webrtc:10144). Backed off from
+        // the acknowledged rate, a still picture's few bytes took the
+        // estimate to its floor at the first overuse.
+        let observed_bitrate = match (hypothesis, limited) {
+            (BandwidthUsage::Overuse, true) => self.last_estimate.or(observed_bitrate),
+            _ => observed_bitrate,
+        };
         // WebRTC's logic from delay_based_bwe.cc MaybeUpdateEstimate():
         // - If we have a probe result, apply it directly and skip delay-based updates
         // - Otherwise, apply normal delay-based rate control
