@@ -19,7 +19,8 @@
     "loadFailed": "インテグレーションを読み込めませんでした",
     "addFailed": "インテグレーションを追加できませんでした",
     "saveFailed": "インテグレーションを変更できませんでした",
-    "replaceFailed": "トークンを置き換えられませんでした"
+    "replaceFailed": "トークンを置き換えられませんでした",
+    "deleteFailed": "インテグレーションを削除できませんでした"
   },
   "exposedPorts": {
     "exposeFailed": "ポートを公開できませんでした",

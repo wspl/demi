@@ -17,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it.
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 7;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -44,6 +44,8 @@ pub enum MachineCall {
     Hibernate(#[garde(dive)] HibernateParams),
     Checkpoint(#[garde(dive)] CheckpointParams),
     Reset(#[garde(dive)] ResetParams),
+    Delete(#[garde(dive)] DeleteParams),
+    DeleteShared(#[garde(dive)] DeleteSharedParams),
 }
 
 impl MachineCall {
@@ -58,6 +60,8 @@ impl MachineCall {
             Self::Hibernate(_) => "hibernate",
             Self::Checkpoint(_) => "checkpoint",
             Self::Reset(_) => "reset",
+            Self::Delete(_) => "delete",
+            Self::DeleteShared(_) => "delete_shared",
         }
     }
 }
@@ -131,6 +135,27 @@ pub struct WakeParams {
     /// Which machine the device is, whose memory limit the sandbox gets.
     #[garde(skip)]
     pub machine: SandboxMachine,
+    /// The shared folder the sandbox mounts, made at `capacity` on its
+    /// first use; none for a device of no integration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub shared: Option<SharedFolder>,
+}
+
+/// An integration's shared folder (`crate::shared`): an image of its own,
+/// which every sandbox that names it mounts, writable, at `path`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedFolder {
+    /// The image's name, the integration's id.
+    #[garde(length(min = 1))]
+    pub id: String,
+    #[garde(skip)]
+    pub capacity_bytes: NonZeroU64,
+    /// The absolute path in the sandbox, which [`crate::shared::mount_path`]
+    /// answered.
+    #[garde(length(min = 2))]
+    pub path: String,
 }
 
 /// Which managed machine a sandbox runs
@@ -183,6 +208,23 @@ pub struct ResetParams {
     /// Which machine the device is, whose generations the save keeps.
     #[garde(skip)]
     pub machine: SandboxMachine,
+}
+
+/// Stop a device's sandbox and remove all its storage, once per device:
+/// a device that has none answers at once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteParams {
+    #[garde(length(min = 1))]
+    pub device_id: String,
+}
+
+/// Remove a shared folder's image; refused while a sandbox mounts it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteSharedParams {
+    #[garde(length(min = 1))]
+    pub id: String,
 }
 
 /// A message from the manager: the reply to a request, or the death of a
@@ -284,6 +326,8 @@ operations! {
     HibernateParams => Hibernate: (),
     CheckpointParams => Checkpoint: (),
     ResetParams => Reset: (),
+    DeleteParams => Delete: (),
+    DeleteSharedParams => DeleteShared: (),
 }
 
 /// A line that is not a message of this wire.

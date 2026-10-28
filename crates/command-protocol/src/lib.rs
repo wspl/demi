@@ -74,7 +74,7 @@ pub use edits::{
     EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange, TextRefusal, text_of,
 };
 pub use invocation::{
-    COMMAND_LOCALE_LANGUAGES, PROVIDER_SCOPE_PREFIX, is_conversation_scope, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
+    COMMAND_LOCALE_LANGUAGES, DEVICE_SCOPE_PREFIX, PROVIDER_SCOPE_PREFIX, is_conversation_scope, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
     ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, Viewable, conversation_name,
     recordings_directory, recordings_in, scratch_name, without_nul,
 };

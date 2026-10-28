@@ -19,7 +19,8 @@
     "loadFailed": "통합을 불러올 수 없음",
     "addFailed": "통합을 추가할 수 없음",
     "saveFailed": "통합을 변경할 수 없음",
-    "replaceFailed": "토큰을 교체할 수 없음"
+    "replaceFailed": "토큰을 교체할 수 없음",
+    "deleteFailed": "통합을 삭제할 수 없음"
   },
   "exposedPorts": {
     "exposeFailed": "포트를 공개할 수 없음",

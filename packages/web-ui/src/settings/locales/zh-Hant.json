@@ -208,7 +208,20 @@
       "schedules": "排程",
       "schedulesDescription": "在指定時間或發生變化時喚醒對話。",
       "attachments": "附件",
-      "attachmentsDescription": "在回覆中附加檔案。"
+      "attachmentsDescription": "在回覆中附加檔案。",
+      "save": "儲存",
+      "initScript": "初始化指令碼",
+      "initScriptDescription": "每台 Cloud 在系統全新時（首次使用及每次重設後）以 demi 身分在 ~ 中執行它，對話中的指令會等它執行完畢。修改後，每台 Cloud 會在下次啟動時換上新系統，主目錄保留。",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "共享檔案夾",
+      "sharedPathDescription": "從下次啟動起，此整合的每台 Cloud 都會在這裡看到同一個檔案夾。",
+      "sharedPathProblem": "請輸入以 ~/ 或 / 開頭的路徑。",
+      "delete": "刪除整合",
+      "deleteDescription": "會刪除它的對話、Cloud 和共享檔案夾。用量紀錄會保留。",
+      "deleteButton": "刪除整合…",
+      "deleteTitle": "要刪除「{name}」嗎？",
+      "deleteBody": "它的對話、Cloud 和共享檔案夾會被刪除，權杖會立即失效。此操作無法復原。",
+      "deleteConfirm": "刪除"
     }
   },
   "keyboard": {

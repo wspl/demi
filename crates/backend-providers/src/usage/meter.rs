@@ -15,7 +15,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_backend_database::control::ControlService;
-use demi_backend_database::usage::{ApiPrice, ObservedWindow, UsageRow, merge_windows};
+use demi_backend_database::usage::{ApiPrice, Attribution, ObservedWindow, UsageRow, merge_windows};
 use demi_provider_common::{
     Ahead, CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderRun,
     ProviderRuntime, RequestLimits, RequestPurpose, VendorCall,
@@ -41,7 +41,14 @@ pub struct Ledger {
     /// written, so a price the catalog learns or corrects applies from the
     /// next call (`crates/backend-database/src/usage.rs`).
     pub prices: ModelPrices,
+    /// Whose work an agent's call is, asked as each run starts, since an
+    /// agent may move to another Host between its runs.
+    pub attribution: Attributions,
 }
+
+/// Whose work a call of the agent numbered is, none for a call outside a
+/// session.
+pub type Attributions = Rc<dyn Fn(Option<u64>) -> LocalBoxFuture<'static, Attribution>>;
 
 /// The catalog's prices of the model named, at the moment it is asked;
 /// none when the catalog has none.
@@ -122,6 +129,9 @@ impl Outcome {
 /// cancelled, and that call's row is written then.
 struct Calls {
     ledger: Rc<Ledger>,
+    /// Whose work the run is, found as it starts, which every row of it
+    /// carries, a cancelled one's written on drop among them.
+    attribution: Attribution,
     agent: Option<u64>,
     turn: Option<String>,
     purpose: RequestPurpose,
@@ -163,6 +173,7 @@ impl Calls {
             model: request.model_id.clone(),
             request: request.request_id.clone(),
             ledger,
+            attribution: Attribution::default(),
             open,
             observed: Vec::new(),
             first_output: None,
@@ -288,6 +299,7 @@ impl Calls {
             price: None,
             system_hash: self.system_hash.clone(),
             tools_hash: self.tools_hash.clone(),
+            attribution: self.attribution.clone(),
         }
     }
 
@@ -380,6 +392,7 @@ impl ProviderRuntime for MeteredRuntime {
         let mut calls = Calls::new(self.ledger.clone(), &request, span.clone());
         let mut events = span.in_scope(|| self.inner.run(request));
         let run = async_stream::stream! {
+            calls.attribution = (calls.ledger.attribution)(calls.agent).await;
             while let Some(event) = events.next().await {
                 calls.output(&event);
                 match event {

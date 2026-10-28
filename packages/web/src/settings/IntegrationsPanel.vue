@@ -19,6 +19,12 @@ async function add(): Promise<void> {
     await address.show('integrations', id)
 }
 
+/** Delete Integration: the list shows again once it is gone. */
+async function remove(id: string): Promise<void> {
+  if (await settings.remove(id))
+    await address.show('integrations', null)
+}
+
 /** The integration whose page the address opens. */
 const shown = computed(() => (address.section.value === 'integrations' ? address.detail.value : null))
 </script>
@@ -33,6 +39,7 @@ const shown = computed(() => (address.section.value === 'integrations' ? address
     :on-add="add"
     :on-change="settings.change"
     :on-replace-token="settings.replaceToken"
+    :on-delete="remove"
     @retry="settings.read()"
     @show="address.show('integrations', $event)"
   />

@@ -58,7 +58,7 @@ impl dyn CloudShard {
     }
 
     /// The managed machine `device`, woken when it is stopped.
-    async fn access(&self, device: DeviceRecord) -> Result<MachineAccess, CloudError> {
+    pub async fn access(&self, device: DeviceRecord) -> Result<MachineAccess, CloudError> {
         let admission = self.admit_cloud(&device).await?;
         let home = self.devices().home(&device.id).ok_or_else(|| {
             CloudError::Failed("The machine did not report its home directory".into())

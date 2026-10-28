@@ -42,8 +42,10 @@ use demi_runner_client::Admission;
 use demi_backend_runners::codes::new_device_token;
 use demi_host_interface::{HostError, HostErrorKind};
 use demi_backend_database::control::ControlService;
+use demi_machine_manager_protocol::shared::mount_path;
 use demi_machine_manager_protocol::{
-    Capacity, HibernateParams, RuntimeState, RuntimeStateParams, SandboxMachine, WakeParams,
+    Capacity, CurrentBaseVersionParams, HibernateParams, ResetParams, RuntimeState, RuntimeStateParams, SandboxMachine,
+    SharedFolder, WakeParams,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
@@ -92,6 +94,35 @@ pub(crate) async fn capacity(
         system_bytes: bytes(storage.system_bytes()),
         home_bytes: bytes(storage.home_bytes()),
     })
+}
+
+/// The shared folder a Cloud of an integration mounts, at its home's
+/// capacity, where the integration's settings say; none for a Cloud of no
+/// integration. A path the settings no longer allow, which no change lets
+/// through, mounts none.
+pub(crate) async fn shared_folder(
+    control: &ControlService,
+    device: &DeviceId,
+    capacity: Capacity,
+) -> Result<Option<SharedFolder>, StorageError> {
+    let Some(cloud) = control.integration_cloud(device.clone()).await? else {
+        return Ok(None);
+    };
+    let Some(integration) = control.integration(cloud.integration).await? else {
+        return Ok(None);
+    };
+    let path = match mount_path(&integration.shared_path) {
+        Ok(path) => path,
+        Err(reason) => {
+            tracing::warn!(event = "cloud.shared_path_refused", host_id = %device, %reason, "an integration's shared folder path was not mounted");
+            return Ok(None);
+        }
+    };
+    Ok(Some(SharedFolder {
+        id: integration.id.to_string(),
+        capacity_bytes: capacity.home_bytes,
+        path,
+    }))
 }
 
 /// Why the Cloud admits no operation, or why one of its transitions failed.
@@ -170,6 +201,13 @@ impl Cloud {
     /// The machine of `device`, once its first need made it.
     fn machine(&self, device: &DeviceId) -> Option<Rc<Machine>> {
         self.machines.borrow().get(device).cloned()
+    }
+
+    /// Forgets the machine of `device`, which was deleted.
+    pub(crate) fn forget(&self, device: &DeviceId) {
+        if let Some(machine) = self.machines.borrow_mut().remove(device) {
+            machine.stop_schedules();
+        }
     }
 
     /// Every managed machine the shard made.
@@ -596,6 +634,9 @@ impl dyn CloudShard {
     /// the sandbox wrote, best effort, and lets its runner go.
     pub(crate) async fn boot(&self, machine: &Machine) -> Result<(), CloudError> {
         let started = std::time::Instant::now();
+        if self.owes_reset(&machine.device.id).await {
+            self.rebuild(machine).await?;
+        }
         let booted = self.start_sandbox(machine).await;
         operation_ended(&machine.device.id, "boot", started, booted.is_ok());
         if let Err(error) = &booted {
@@ -614,6 +655,30 @@ impl dyn CloudShard {
         booted
     }
 
+    /// Gives the stopped machine the new system it owes, on the configured
+    /// base with its home kept, as a reset's disk step does. Nothing runs on
+    /// it, so no conversation is held: the boot that follows waits for it,
+    /// and the conversations that reach the Cloud hear of it as of a reset.
+    async fn rebuild(&self, machine: &Machine) -> Result<(), CloudError> {
+        let device = &machine.device.id;
+        let operation = OperationId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
+        let base_version = self.cloud_services().machines.call(CurrentBaseVersionParams {}).await?;
+        let reset = ResetParams {
+            device_id: device.to_string(),
+            operation_id: operation.to_string(),
+            base_version: base_version.to_string(),
+            capacity: capacity(self.control(), &machine.device).await?,
+            machine: sandbox_machine(&machine.device),
+        };
+        self.cloud_services().machines.call(reset).await?;
+        machine.clear_deaths();
+        self.control()
+            .announce_cloud_reset(self.user().clone(), operation, device.clone())
+            .await?;
+        self.reset_paid(device).await;
+        Ok(())
+    }
+
     async fn start_sandbox(&self, machine: &Machine) -> Result<(), CloudError> {
         let device = &machine.device.id;
         let token = new_device_token();
@@ -625,14 +690,16 @@ impl dyn CloudShard {
             .get()
             .cloned()
             .ok_or_else(|| CloudError::Failed("The backend does not listen yet".into()))?;
+        let capacity = capacity(self.control(), &machine.device).await?;
         let wake = WakeParams {
             device_id: device.to_string(),
-            capacity: capacity(self.control(), &machine.device).await?,
+            capacity,
             boot: ManagedBoot {
                 backend_url,
                 device_token: token,
             },
             machine: sandbox_machine(&machine.device),
+            shared: shared_folder(self.control(), device, capacity).await?,
         };
         let cloud = self.cloud_services();
         cloud.machines.call(wake).await?;

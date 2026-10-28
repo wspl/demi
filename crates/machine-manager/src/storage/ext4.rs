@@ -110,6 +110,27 @@ pub async fn make_home(
     Ok(())
 }
 
+/// An empty filesystem of an integration's shared folder, whose root
+/// belongs to the sandboxes' user `owner`, so every Cloud's `demi` writes it.
+pub async fn make_shared(tools: &Tools, image: &Path, bytes: NonZeroU64, owner: u32) -> Result<(), Ext4Error> {
+    let size = kibibytes(bytes);
+    let root_owner = format!("root_owner={owner}:{owner}");
+    let args = [
+        OsStr::new("-q"),
+        OsStr::new("-t"),
+        OsStr::new("ext4"),
+        OsStr::new("-F"),
+        OsStr::new("-L"),
+        OsStr::new("shared"),
+        OsStr::new("-E"),
+        OsStr::new(&root_owner),
+        image.as_os_str(),
+        OsStr::new(&size),
+    ];
+    tools.run(Tool::Mke2fs, args, Some(MKE2FS_DEADLINE)).await?;
+    Ok(())
+}
+
 /// Checks an unmounted image, then syncs it and returns its capacity. A
 /// check runs as long as it needs.
 pub async fn recover(tools: &Tools, image: &Path) -> Result<NonZeroU64, Ext4Error> {

@@ -17,9 +17,11 @@ use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, mpsc};
 
 use demi_backend_database::StorageError;
+use demi_backend_database::usage::Attribution;
+use demi_machine_manager_protocol::shared::mount_path;
 use demi_backend_database::conversation_index::{ConversationRecord, ConversationStart, Creation, RecordChange};
 use demi_backend_database::integrations::{
-    IntegrationCloud, IntegrationConversation, IntegrationPatch as StoredPatch, IntegrationRecord,
+    InitState, IntegrationCloud, IntegrationConversation, IntegrationPatch as StoredPatch, IntegrationRecord,
 };
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_conversation_lane_protocol::{AgentEntry, AgentRole, ClientContent, ClientFrame, Refusal, SendMessage};
@@ -60,18 +62,40 @@ impl Shard {
         &self,
         id: IntegrationId,
         patch: IntegrationPatch,
-    ) -> Result<Option<IntegrationDto>, StorageError> {
+    ) -> Result<Option<IntegrationDto>, IntegrationRefusal> {
         if self.own_integration(&id).await?.is_none() {
             return Ok(None);
         }
         let stored = StoredPatch {
             name: patch.name.map(|name| name.into_string()),
             capabilities: patch.capabilities,
+            init_script: patch.init_script,
+            shared_path: patch.shared_path,
         };
-        match self.services().control.update_integration(id, stored).await? {
+        match self.change_integration(id, stored).await? {
             Some(record) => Ok(Some(self.integration_dto(record).await?)),
             None => Ok(None),
         }
+    }
+
+    /// Applies `patch` to the integration `id`, as its page or its program
+    /// asks: a script of blanks is none, and a shared folder's path is
+    /// one a Cloud can mount. Answers the integration as it is now; none
+    /// for one that is gone.
+    pub async fn change_integration(
+        &self,
+        id: IntegrationId,
+        mut patch: StoredPatch,
+    ) -> Result<Option<IntegrationRecord>, IntegrationRefusal> {
+        if let Some(Some(script)) = &patch.init_script
+            && script.trim().is_empty()
+        {
+            patch.init_script = Some(None);
+        }
+        if let Some(path) = &patch.shared_path {
+            mount_path(path).map_err(IntegrationRefusal::Invalid)?;
+        }
+        Ok(self.services().control.update_integration(id, patch).await?)
     }
 
     /// Replace Token: a new token for the user's integration `id`, which the
@@ -108,6 +132,8 @@ impl Shard {
             name: record.name,
             capabilities: record.capabilities,
             created_at: record.created_at,
+            init_script: record.init_script,
+            shared_path: record.shared_path,
             clouds,
             conversations,
         })
@@ -121,6 +147,9 @@ pub enum IntegrationRefusal {
     NotFound(&'static str),
     #[error("{0}")]
     Refused(String),
+    /// A value the request gave that no integration takes.
+    #[error("{0}")]
+    Invalid(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -177,6 +206,10 @@ impl Shard {
         integration: &IntegrationRecord,
         key: Option<String>,
     ) -> Result<api::Cloud, IntegrationRefusal> {
+        let _lease = self
+            .integration_deletions
+            .lease(&[integration.id.as_str()])
+            .ok_or_else(|| IntegrationRefusal::Refused("the integration or its Cloud is being deleted".to_owned()))?;
         let cloud = self
             .services()
             .control
@@ -208,6 +241,10 @@ impl Shard {
             .reset_machine(&record, operation)
             .await
             .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
+        // Its new system runs the script again; a reset refused leaves the
+        // Cloud owing what it owed. The reset holds the Cloud, so no work
+        // reaches it before this is written.
+        self.services().control.rerun_cloud_init(device.clone()).await?;
         self.integration_cloud(integration, device)
             .await?
             .ok_or(IntegrationRefusal::NotFound("Cloud"))
@@ -218,10 +255,27 @@ impl Shard {
             return Ok(None);
         };
         let state = self.cloud_shard().machine_state(&device).await?;
+        let scripted = self
+            .services()
+            .control
+            .integration(cloud.integration.clone())
+            .await?
+            .is_some_and(|integration| integration.init_script.is_some());
+        let init = scripted.then(|| api::CloudInit {
+            state: match cloud.init.state {
+                InitState::Reset | InitState::Pending => api::InitState::Pending,
+                InitState::Running => api::InitState::Running,
+                InitState::Done => api::InitState::Done,
+                InitState::Failed => api::InitState::Failed,
+            },
+            exit_code: cloud.init.exit_code,
+            output: cloud.init.output,
+        });
         Ok(Some(api::Cloud {
             id: cloud.device,
             key: cloud.key,
             state,
+            init,
         }))
     }
 
@@ -253,6 +307,10 @@ impl Shard {
         {
             return self.integration_conversation_of(integration, &id).await;
         }
+        let _lease = self
+            .integration_deletions
+            .lease(&[integration.id.as_str(), request.cloud.as_str()])
+            .ok_or_else(|| IntegrationRefusal::Refused("the integration or its Cloud is being deleted".to_owned()))?;
         if self.integration_cloud(integration, &request.cloud).await?.is_none() {
             return Err(IntegrationRefusal::NotFound("Cloud"));
         }
@@ -321,7 +379,14 @@ impl Shard {
         patch: api::ConversationPatch,
     ) -> Result<api::Conversation, IntegrationRefusal> {
         let id = &self.integration_conversation_of(integration, id).await?.id;
+        // Held until the move is written.
+        let mut _lease = None;
         if let Some(cloud) = patch.cloud {
+            _lease = Some(
+                self.integration_deletions
+                    .lease(&[cloud.as_str()])
+                    .ok_or_else(|| IntegrationRefusal::Refused("the integration or its Cloud is being deleted".to_owned()))?,
+            );
             if self.integration_cloud(integration, &cloud).await?.is_none() {
                 return Err(IntegrationRefusal::NotFound("Cloud"));
             }
@@ -348,7 +413,11 @@ impl Shard {
     ) -> Result<api::MessageAnswer, IntegrationRefusal> {
         let id = &self.integration_conversation_of(integration, id).await?.id;
         let message_id = message.id.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
-        let content = vec![ClientContent::Text { text: message.text }];
+        let mut content = vec![ClientContent::Text { text: message.text }];
+        content.extend(message.attachments.into_iter().map(|file| ClientContent::Upload {
+            r#ref: file.id,
+            file_name: file.name,
+        }));
         let frame = if message.steer {
             ClientFrame::Steer {
                 steer_id: BlockId::try_from(message_id.clone())
@@ -378,6 +447,85 @@ impl Shard {
         let id = &self.integration_conversation_of(integration, id).await?.id;
         self.delete_conversation(id).await?;
         Ok(())
+    }
+
+    /// Deletes the integration's Cloud `device`, its storage and its key;
+    /// refused while one of the integration's conversations works on it,
+    /// named so the program can delete or move them first.
+    pub async fn delete_integration_cloud(
+        self: &Rc<Self>,
+        integration: &IntegrationRecord,
+        device: &DeviceId,
+    ) -> Result<(), IntegrationRefusal> {
+        if self.integration_cloud(integration, device).await?.is_none() {
+            return Err(IntegrationRefusal::NotFound("Cloud"));
+        }
+        // From here no conversation is made on it or moved to it.
+        let _deleting = self
+            .integration_deletions
+            .delete(device.as_str())
+            .await
+            .ok_or_else(|| IntegrationRefusal::Refused("the Cloud is being deleted".to_owned()))?;
+        let mut using = Vec::new();
+        for conversation in self.integration_conversations(integration).await? {
+            if conversation.cloud.as_ref() == Some(device) {
+                using.push(conversation.id.to_string());
+            }
+        }
+        if !using.is_empty() {
+            return Err(IntegrationRefusal::Refused(format!(
+                "the Cloud is the one of these conversations, which move to another Cloud or go first: {}",
+                using.join(", ")
+            )));
+        }
+        self.delete_cloud(device).await
+    }
+
+    /// Deletes the Cloud `device`, whose conversations are gone: its machine,
+    /// then its device record and with it its key.
+    async fn delete_cloud(&self, device: &DeviceId) -> Result<(), IntegrationRefusal> {
+        let control = &self.services().control;
+        let Some(record) = control.device(device.clone()).await? else {
+            return Ok(());
+        };
+        self.cloud_shard()
+            .delete_machine(&record)
+            .await
+            .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
+        control.delete_device(device.clone()).await?;
+        Ok(())
+    }
+
+    /// Delete Integration: the user's integration `id` with its
+    /// conversations, its Clouds, its shared folder and its token, whose
+    /// sockets close; its usage stays. False for one that is not the
+    /// user's.
+    pub async fn delete_integration(self: &Rc<Self>, id: &IntegrationId) -> Result<bool, IntegrationRefusal> {
+        let Some(integration) = self.own_integration(id).await? else {
+            return Ok(false);
+        };
+        let control = &self.services().control;
+        // No request adds a Cloud or a conversation to it from here on, and
+        // those under way have ended: what is listed below is all it holds.
+        let _deleting = self
+            .integration_deletions
+            .delete(id.as_str())
+            .await
+            .ok_or_else(|| IntegrationRefusal::Refused("the integration is being deleted".to_owned()))?;
+        // No program reaches it from here on.
+        control.replace_integration_token(id.clone()).await?;
+        self.integration_events.close(id);
+        for kept in control.integration_conversations(integration.id.clone()).await? {
+            self.delete_conversation(&kept.conversation).await?;
+        }
+        for cloud in control.integration_clouds(integration.id.clone()).await? {
+            self.delete_cloud(&cloud.device).await?;
+        }
+        self.cloud_shard()
+            .delete_shared_folder(integration.id.as_str())
+            .await
+            .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
+        Ok(control.delete_integration(integration.id).await?)
     }
 
     /// Stops every agent of the integration's conversation `id`, as Stop does.
@@ -791,5 +939,152 @@ impl Shard {
                 );
             }
         });
+    }
+}
+
+impl Shard {
+    /// Whose work a call of the conversation's agent numbered `agent` is:
+    /// the device it works on now, and the integration whose conversation it
+    /// is.
+    pub(crate) async fn attribution(&self, conversation: &ConversationId, agent: Option<u64>) -> Attribution {
+        let control = &self.services().control;
+        let integration = control
+            .integration_conversation(conversation.clone())
+            .await
+            .ok()
+            .flatten()
+            .map(|kept| kept.integration);
+        let device = match agent {
+            Some(number) => self.agent_device(conversation, number).await,
+            None => None,
+        };
+        Attribution { device, integration }
+    }
+
+    /// The device the conversation's agent numbered `number` works on: its
+    /// own Host, else the conversation's.
+    async fn agent_device(&self, conversation: &ConversationId, number: u64) -> Option<DeviceId> {
+        let own = self.agent().tree(&root_of(conversation)).and_then(|tree| {
+            tree.nodes()
+                .into_iter()
+                .map(|node| node.record())
+                .find(|record| record.number == number)
+                .and_then(|record| record.placement)
+                .and_then(|placement| placement.device)
+        });
+        if let Some(device) = own {
+            return DeviceId::try_from(device).ok();
+        }
+        let control = &self.services().control;
+        let record = control.conversation(conversation.clone()).await.ok()??;
+        let target = self.host_shard().resolve_target(&record).await.ok()?;
+        match target.device() {
+            Some(device) => Some(device.clone()),
+            // The owner's own Cloud.
+            None => control.managed_device(record.owner.clone()).await.ok()?.map(|device| device.id),
+        }
+    }
+}
+
+/// What an integration's deletions and the requests that add to it agree
+/// on, by key, a Cloud's or an integration's: a request that makes a
+/// conversation or a Cloud, or moves a conversation, holds a lease of what
+/// it adds to from its check to its write; a deletion refuses new leases,
+/// then waits for those held, so it sees every addition that passed its
+/// check.
+#[derive(Default)]
+pub(crate) struct Deletions {
+    keys: RefCell<HashMap<String, Held>>,
+    released: Notify,
+}
+
+#[derive(Default)]
+struct Held {
+    leases: u32,
+    deleting: bool,
+}
+
+/// A request's lease of the keys it adds to.
+pub(crate) struct Lease<'a> {
+    deletions: &'a Deletions,
+    keys: Vec<String>,
+}
+
+/// A deletion's hold of its key; new leases are refused until it drops.
+pub(crate) struct Deleting<'a> {
+    deletions: &'a Deletions,
+    key: String,
+}
+
+impl Deletions {
+    /// A lease of `keys`, none while one of them is being deleted.
+    pub(crate) fn lease(&self, keys: &[&str]) -> Option<Lease<'_>> {
+        let mut held = self.keys.borrow_mut();
+        if keys.iter().any(|key| held.get(*key).is_some_and(|held| held.deleting)) {
+            return None;
+        }
+        for key in keys {
+            held.entry((*key).to_owned()).or_default().leases += 1;
+        }
+        Some(Lease {
+            deletions: self,
+            keys: keys.iter().map(|key| (*key).to_owned()).collect(),
+        })
+    }
+
+    /// Starts deleting `key`: new leases of it are refused, and this waits
+    /// until the held ones end. None while another deletion of it runs.
+    pub(crate) async fn delete(&self, key: &str) -> Option<Deleting<'_>> {
+        {
+            let mut held = self.keys.borrow_mut();
+            let entry = held.entry(key.to_owned()).or_default();
+            if entry.deleting {
+                return None;
+            }
+            entry.deleting = true;
+        }
+        let deleting = Deleting {
+            deletions: self,
+            key: key.to_owned(),
+        };
+        loop {
+            let released = self.released.notified();
+            tokio::pin!(released);
+            released.as_mut().enable();
+            if self.keys.borrow().get(key).is_none_or(|held| held.leases == 0) {
+                return Some(deleting);
+            }
+            released.await;
+        }
+    }
+
+    fn forget_if_unused(held: &mut HashMap<String, Held>, key: &str) {
+        if held.get(key).is_some_and(|held| held.leases == 0 && !held.deleting) {
+            held.remove(key);
+        }
+    }
+}
+
+impl Drop for Lease<'_> {
+    fn drop(&mut self) {
+        let mut held = self.deletions.keys.borrow_mut();
+        for key in &self.keys {
+            if let Some(entry) = held.get_mut(key) {
+                entry.leases -= 1;
+            }
+            Deletions::forget_if_unused(&mut held, key);
+        }
+        drop(held);
+        self.deletions.released.notify_waiters();
+    }
+}
+
+impl Drop for Deleting<'_> {
+    fn drop(&mut self) {
+        let mut held = self.deletions.keys.borrow_mut();
+        if let Some(entry) = held.get_mut(&self.key) {
+            entry.deleting = false;
+        }
+        Deletions::forget_if_unused(&mut held, &self.key);
     }
 }

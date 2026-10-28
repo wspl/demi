@@ -69,6 +69,11 @@ impl RunnerProcess {
     }
 
     /// Whether the runner process still runs.
+    /// Its home, where the Cloud's `~` is.
+    pub fn home(&self) -> &str {
+        &self.home_path
+    }
+
     pub fn running(&mut self) -> bool {
         self.child
             .as_mut()

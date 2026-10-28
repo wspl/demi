@@ -208,7 +208,20 @@
       "schedules": "Schedules",
       "schedulesDescription": "Wake a conversation at a time or on a change.",
       "attachments": "Attachments",
-      "attachmentsDescription": "Attach files to replies."
+      "attachmentsDescription": "Attach files to replies.",
+      "save": "Save",
+      "initScript": "Init Script",
+      "initScriptDescription": "Each Cloud runs it as demi in ~ once its system is new: at its first use and after every reset. Its conversations’ commands wait for it. After a change, each Cloud gets a new system at its next start; its home stays.",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "Shared Folder",
+      "sharedPathDescription": "Every Cloud of this integration sees one folder here, from its next start.",
+      "sharedPathProblem": "Enter a path that starts with ~/ or /.",
+      "delete": "Delete Integration",
+      "deleteDescription": "Its conversations, Clouds and shared folder are deleted. Its usage stays.",
+      "deleteButton": "Delete Integration…",
+      "deleteTitle": "Delete “{name}”?",
+      "deleteBody": "Its conversations, Clouds and shared folder are deleted, and its token stops working at once. You can’t undo this.",
+      "deleteConfirm": "Delete"
     }
   },
   "keyboard": {

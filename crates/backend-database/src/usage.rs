@@ -41,7 +41,7 @@
 use demi_conversation_lane_protocol::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 use demi_shared_types::{Cost, Currency, ModelCost, QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
 use demi_web_api_protocol::conversations::{CostWindow, RecentAgent};
-use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, CredentialId, DeviceId, IntegrationId, ProviderId, UserId};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::usage::{UsageGroup, UserUsage};
 use std::collections::BTreeMap;
@@ -121,6 +121,20 @@ pub struct UsageRow {
     /// sent; none for a request outside a session.
     pub system_hash: Option<String>,
     pub tools_hash: Option<String>,
+    /// Whose work the call was.
+    pub attribution: Attribution,
+}
+
+/// Whose work a call was, beyond its user and conversation, fixed as its
+/// row is written: an integration's usage stays its own after the
+/// conversation and the Cloud are deleted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Attribution {
+    /// The device the call's agent worked on; none outside a session, or
+    /// when it worked on none.
+    pub device: Option<DeviceId>,
+    /// The integration whose conversation it was; none for the user's own.
+    pub integration: Option<IntegrationId>,
 }
 
 /// What each kind of a call's tokens would cost on the vendor's API, in
@@ -252,7 +266,82 @@ fn column_count(count: u64) -> i64 {
     i64::try_from(count).unwrap_or(i64::MAX)
 }
 
+/// What an integration's usage is grouped by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageKey {
+    Device,
+    Conversation,
+    Model,
+}
+
+/// One group of an integration's usage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeyedUsage {
+    /// The group's device, conversation or model; none for calls of no
+    /// device.
+    pub key: Option<String>,
+    pub requests: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    /// What the calls would cost on their vendors' APIs; none when a call
+    /// that reported counts has no price.
+    pub api_cost: Option<f64>,
+}
+
 impl ControlService {
+    /// The integration's usage of the calls that ended in `from..to`, a
+    /// group per `key`, most expensive first.
+    pub async fn integration_usage(
+        &self,
+        integration: IntegrationId,
+        from: Option<Timestamp>,
+        to: Option<Timestamp>,
+        key: UsageKey,
+    ) -> Result<Vec<KeyedUsage>, StorageError> {
+        self.call(move |connection, _| {
+            let column = match key {
+                UsageKey::Device => "device_id",
+                UsageKey::Conversation => "conversation_id",
+                UsageKey::Model => "model_id",
+            };
+            // A call priced has all four prices or none (`api_price_input`).
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {column}, COUNT(*),
+                   COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                   COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0),
+                   SUM(api_price_input + api_price_cache_write + api_price_cache_read + api_price_output),
+                   SUM(input_tokens IS NOT NULL AND api_price_input IS NULL)
+                 FROM usage_ledger
+                 WHERE integration_id = ?1 AND ended_at >= ?2 AND ended_at < ?3
+                 GROUP BY {column}
+                 ORDER BY 7 DESC, 2 DESC"
+            ))?;
+            let mut rows = statement.query(params![
+                integration.as_str(),
+                from.map_or(i64::MIN, Timestamp::as_millisecond),
+                to.map_or(i64::MAX, Timestamp::as_millisecond),
+            ])?;
+            let count = |value: i64| u64::try_from(value).unwrap_or(0);
+            let mut groups = Vec::new();
+            while let Some(row) = rows.next()? {
+                let unpriced: i64 = row.get(7)?;
+                groups.push(KeyedUsage {
+                    key: row.get(0)?,
+                    requests: count(row.get(1)?),
+                    input_tokens: count(row.get(2)?),
+                    output_tokens: count(row.get(3)?),
+                    cache_read_tokens: count(row.get(4)?),
+                    cache_write_tokens: count(row.get(5)?),
+                    api_cost: if unpriced > 0 { None } else { Some(row.get::<_, Option<f64>>(6)?.unwrap_or(0.0)) },
+                });
+            }
+            Ok(groups)
+        })
+        .await
+    }
+
     /// Writes the row, adds it to its conversation's kept cost, announces it
     /// and answers its id.
     pub async fn append_usage(&self, row: UsageRow) -> Result<String, StorageError> {
@@ -296,9 +385,9 @@ impl ControlService {
                    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
                    cache_write_1h_tokens, outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency,
                    api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
-                   system_hash, tools_hash, call_number, after_compaction, miss)
+                   system_hash, tools_hash, call_number, after_compaction, miss, device_id, integration_id)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                   ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32)",
+                   ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34)",
                 params![
                     id,
                     row.user.as_str(),
@@ -332,6 +421,8 @@ impl ControlService {
                     call.map(|call| column_count(call.number)),
                     call.map(|call| call.after_compaction),
                     call.and_then(|call| call.miss).map(|miss| miss.to_string()),
+                    row.attribution.device.as_ref().map(DeviceId::as_str),
+                    row.attribution.integration.as_ref().map(IntegrationId::as_str),
                 ],
             )?;
             // Asked after the insert: a transaction that has read cannot wait for

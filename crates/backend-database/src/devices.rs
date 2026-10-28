@@ -376,7 +376,8 @@ impl ControlService {
     }
 
     /// Deletes the device with its attachments to conversations, its
-    /// projects, the port forwards it is an end of and its exposed ports, one transaction. The projects' conversations first move
+    /// projects, the port forwards it is an end of, its exposed ports and a
+    /// Cloud's resets, one transaction. The projects' conversations first move
     /// off them, each to its project's directory, or its worktree's,
     /// on the device as a direct device target, which no longer runs. A project is a pointer: no file goes.
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
@@ -478,6 +479,8 @@ impl ControlService {
             )?;
             transaction.execute("DELETE FROM exposed_ports WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM host_workflows WHERE device_id = ?1", [device.as_str()])?;
+            // A Cloud's resets go with it.
+            transaction.execute("DELETE FROM managed_operations WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
             Ok(DeviceRemoval {

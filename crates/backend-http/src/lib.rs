@@ -573,7 +573,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(schedules::change).delete(schedules::delete),
         )
         .route("/integrations", get(integrations::list).post(integrations::create))
-        .route("/integrations/{id}", patch(integrations::patch))
+        .route("/integrations/{id}", patch(integrations::patch).delete(integrations::delete))
         .route("/integrations/{id}/token", post(integrations::replace_token))
         .route("/port-forwards", get(port_forwards::list).post(port_forwards::create))
         .route(

@@ -130,6 +130,7 @@ impl Sandbox {
         runner_release: &str,
         boot: &ManagedBoot,
         machine: SandboxMachine,
+        shared: Option<(&Path, &str)>,
     ) -> Result<(), SandboxError> {
         if boot.backend_url.url() != &core.config.backend_url {
             return Err(SandboxError::Allowlist);
@@ -197,6 +198,7 @@ impl Sandbox {
             }),
             runner_release,
             backend_socket: &backend_socket,
+            shared,
         })?;
         let directory = self.directory.clone();
         let log = blocking::run(move |off| -> io::Result<_> {

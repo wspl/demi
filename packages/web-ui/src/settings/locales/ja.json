@@ -208,7 +208,20 @@
       "schedules": "スケジュール",
       "schedulesDescription": "指定した時刻や変化があったときに会話を再開します。",
       "attachments": "添付ファイル",
-      "attachmentsDescription": "返信にファイルを添付します。"
+      "attachmentsDescription": "返信にファイルを添付します。",
+      "save": "保存",
+      "initScript": "初期化スクリプト",
+      "initScriptDescription": "各 Cloud はシステムが新しくなったとき、つまり最初の使用時とリセットのたびに、~ で demi として実行します。会話のコマンドは完了を待ちます。変更後は、各 Cloud が次回の起動時に新しいシステムになります。ホームはそのまま残ります。",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "共有フォルダ",
+      "sharedPathDescription": "次回の起動から、このインテグレーションのすべての Cloud がここで 1 つのフォルダを共有します。",
+      "sharedPathProblem": "~/ または / で始まるパスを入力してください。",
+      "delete": "インテグレーションを削除",
+      "deleteDescription": "会話、Cloud、共有フォルダが削除されます。使用量は残ります。",
+      "deleteButton": "インテグレーションを削除…",
+      "deleteTitle": "“{name}”を削除しますか？",
+      "deleteBody": "会話、Cloud、共有フォルダが削除され、トークンはすぐに使えなくなります。この操作は取り消せません。",
+      "deleteConfirm": "削除"
     }
   },
   "keyboard": {

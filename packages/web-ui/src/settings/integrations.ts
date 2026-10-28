@@ -32,6 +32,10 @@ export interface SettingsIntegration {
   name: string
   capabilities: IntegrationCapabilities
   createdAt: string
+  /** The shell script each of its Clouds runs once its system is new; null for none. */
+  initScript: string | null
+  /** Where each of its Clouds mounts its shared folder: `~/...` or a top-level directory. */
+  sharedPath: string
   clouds: number
   conversations: number
 }
@@ -40,6 +44,8 @@ export interface SettingsIntegration {
 export interface IntegrationChange {
   name?: string
   capabilities?: IntegrationCapabilities
+  initScript?: string | null
+  sharedPath?: string
 }
 
 /** What an integration's row says under its name: *2 Clouds · 14 conversations*. */

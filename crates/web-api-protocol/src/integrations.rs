@@ -5,7 +5,7 @@ use demi_shared_types::{IntegrationCapabilities, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_with::rust::unwrap_or_skip;
+use serde_with::rust::{double_option, unwrap_or_skip};
 
 use crate::ids::IntegrationId;
 use crate::text::Trimmed;
@@ -19,6 +19,11 @@ pub struct IntegrationDto {
     pub name: String,
     pub capabilities: IntegrationCapabilities,
     pub created_at: Timestamp,
+    /// The shell script each of its Clouds runs once its system is new;
+    /// none for none.
+    pub init_script: Option<String>,
+    /// Where each of its Clouds mounts its shared folder.
+    pub shared_path: String,
     /// How many Clouds it holds.
     pub clouds: u32,
     /// How many conversations it holds.
@@ -60,4 +65,13 @@ pub struct IntegrationPatch {
     #[schemars(with = "IntegrationCapabilities")]
     #[garde(skip)]
     pub capabilities: Option<IntegrationCapabilities>,
+    /// A new init script, or null for none.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub init_script: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub shared_path: Option<String>,
 }

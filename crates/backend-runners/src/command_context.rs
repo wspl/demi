@@ -4,9 +4,9 @@
 
 use demi_command_protocol::{
     ColorScheme, CommandCaller, CommandContext, CommandLocale,
-    PROVIDER_SCOPE_PREFIX,
+    DEVICE_SCOPE_PREFIX, PROVIDER_SCOPE_PREFIX,
 };
-use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::settings::BrowserLocale;
 
 use demi_backend_database::StorageError;
@@ -46,6 +46,16 @@ pub async fn provider_context(
         CommandCaller::User {},
     )
     .await
+}
+
+/// The context of `user`'s work on `device` that belongs to no conversation,
+/// such as an integration Cloud's init script: it names the device.
+pub async fn device_context(
+    control: &ControlService,
+    user: &UserId,
+    device: &DeviceId,
+) -> Result<CommandContext, StorageError> {
+    context(control, user, format!("{DEVICE_SCOPE_PREFIX}{device}"), CommandCaller::User {}).await
 }
 
 async fn context(

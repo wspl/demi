@@ -192,6 +192,11 @@ impl ImageStore {
         Ok(devices)
     }
 
+    /// Everything the store holds of a device: `<data>/images/<device>`.
+    pub fn device_directory(&self, device: &DeviceId) -> PathBuf {
+        self.root.join(device)
+    }
+
     /// The images of one of a device's generations.
     pub fn images(&self, device: &DeviceId, generation: &GenerationId) -> ImagePair<PathBuf> {
         ImagePair::in_directory(&self.root.join(device).join("generations").join(generation))

@@ -146,6 +146,8 @@ impl ReadBlob for NoBlobs {
 ///   record named their own.
 /// - The development form before integrations.
 /// - The development form before an integration declared a plugin.
+/// - The development form before an integration had an init script and a
+///   shared folder, and a ledger row its device and integration.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -366,6 +368,10 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.65-dev.undeclared-integrations.sql"),
             migration: Migration::Sql(CONTROL_FROM_UNDECLARED_INTEGRATIONS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.65-dev.uninitialized-integrations.sql"),
+            migration: Migration::Sql(CONTROL_FROM_UNINITIALIZED_INTEGRATIONS),
+        },
     ],
 };
 
@@ -511,6 +517,21 @@ CREATE UNIQUE INDEX devices_one_claude_code ON devices (user_id) WHERE machine =
 /// From the form before an integration declared a plugin: none has
 /// declared one.
 const CONTROL_FROM_UNDECLARED_INTEGRATIONS: &str = "ALTER TABLE integrations ADD COLUMN declaration TEXT;";
+
+/// Gives integrations an init script and a shared folder's path, and
+/// their Clouds the state of their script's run.
+const CONTROL_FROM_UNINITIALIZED_INTEGRATIONS: &str = r"
+ALTER TABLE integrations ADD COLUMN init_script TEXT;
+ALTER TABLE integrations ADD COLUMN shared_path TEXT NOT NULL DEFAULT '~/shared';
+ALTER TABLE integration_clouds ADD COLUMN init TEXT NOT NULL DEFAULT 'pending'
+  CHECK (init IN ('reset', 'pending', 'running', 'done', 'failed'));
+ALTER TABLE integration_clouds ADD COLUMN init_exit_code INTEGER;
+ALTER TABLE integration_clouds ADD COLUMN init_output TEXT;
+ALTER TABLE usage_ledger ADD COLUMN device_id TEXT;
+ALTER TABLE usage_ledger ADD COLUMN integration_id TEXT;
+CREATE INDEX usage_ledger_integration ON usage_ledger (integration_id, ended_at)
+  WHERE integration_id IS NOT NULL;
+";
 
 /// From the form before integrations: their tables.
 const CONTROL_FROM_NO_INTEGRATIONS: &str = r"
@@ -5970,9 +5991,17 @@ CREATE TABLE usage_ledger (
   call_number           INTEGER CHECK (call_number >= 1),
   after_compaction      INTEGER CHECK (after_compaction IN (0, 1)),
   miss                  TEXT CHECK (miss IN ('model_changed', 'tools_changed', 'system_prompt_changed', 'cache_expired', 'not_cached')),
+  -- The device the call's agent worked on, and the integration whose
+  -- conversation it was, as the row was written; null for none, and in a
+  -- row written before the ledger kept them.
+  device_id             TEXT,
+  integration_id        TEXT,
   CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
+-- An integration's rows by their end.
+CREATE INDEX usage_ledger_integration ON usage_ledger (integration_id, ended_at)
+  WHERE integration_id IS NOT NULL;
 -- A conversation's rows by their end: its first call and its last hour.
 CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id, ended_at);
 -- An agent's rows, newest last: its previous call and its recent calls.
@@ -6036,7 +6065,13 @@ CREATE TABLE integrations (
   created_at   INTEGER NOT NULL,
   -- The plugin its program last declared, Declaration as JSON; none before
   -- its first declaration.
-  declaration  TEXT
+  declaration  TEXT,
+  -- The shell script each of its Clouds runs once its system is new; none
+  -- for none.
+  init_script  TEXT,
+  -- Where each of its Clouds mounts its shared folder from its next
+  -- start: a path in the home, `~/...`, or a top-level directory.
+  shared_path  TEXT NOT NULL DEFAULT '~/shared'
 ) STRICT;
 CREATE INDEX integrations_by_user ON integrations (user_id);
 CREATE TABLE integration_conversations (
@@ -6054,7 +6089,16 @@ CREATE UNIQUE INDEX integration_conversations_by_key
 CREATE TABLE integration_clouds (
   device_id      TEXT PRIMARY KEY REFERENCES devices (id) ON DELETE CASCADE,
   integration_id TEXT NOT NULL REFERENCES integrations (id),
-  external_key   TEXT
+  external_key   TEXT,
+  -- Where its run of the init script is: 'reset' owes a reset at its next
+  -- start, since the script changed; 'pending' runs the script at its next
+  -- use.
+  init           TEXT NOT NULL DEFAULT 'pending'
+    CHECK (init IN ('reset', 'pending', 'running', 'done', 'failed')),
+  -- The last run's exit code and the end of its output; none before a run
+  -- ended.
+  init_exit_code INTEGER,
+  init_output    TEXT
 ) STRICT;
 CREATE UNIQUE INDEX integration_clouds_by_key
   ON integration_clouds (integration_id, external_key) WHERE external_key IS NOT NULL;

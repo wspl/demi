@@ -19,7 +19,8 @@
     "loadFailed": "Could Not Load Integrations",
     "addFailed": "Could Not Add the Integration",
     "saveFailed": "Could Not Change the Integration",
-    "replaceFailed": "Could Not Replace the Token"
+    "replaceFailed": "Could Not Replace the Token",
+    "deleteFailed": "Could Not Delete the Integration"
   },
   "exposedPorts": {
     "exposeFailed": "Could Not Expose the Port",

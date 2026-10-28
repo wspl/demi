@@ -106,7 +106,9 @@
 pub mod schedules;
 pub mod conversation;
 pub mod integration_plugins;
+mod integration_inits;
 pub mod integrations;
+mod scripts;
 pub mod lifecycle;
 pub mod provider_settings;
 pub mod services;

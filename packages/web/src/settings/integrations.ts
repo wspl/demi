@@ -17,6 +17,11 @@ function refusedField(error: unknown): boolean {
   return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 404
 }
 
+/** An integration as the page shows it: an answer that leaves out its script has none. */
+function shown(integration: IntegrationDto): SettingsIntegration {
+  return { ...integration, initScript: integration.initScript ?? null }
+}
+
 /**
  * The user's integrations as Settings › Integrations reads and changes them
  * (`crates/backend-user-shard/src/integrations.rs`). The list is read when the
@@ -28,7 +33,8 @@ export const useIntegrationSettings = defineStore('integration-settings', () => 
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
   const tokens = ref<Record<string, string>>({})
 
-  function put(integration: IntegrationDto): void {
+  function put(answer: IntegrationDto): void {
+    const integration = shown(answer)
     const list = integrations.value
     integrations.value = list.some((candidate) => candidate.id === integration.id)
       ? list.map((candidate) => (candidate.id === integration.id ? integration : candidate))
@@ -39,7 +45,7 @@ export const useIntegrationSettings = defineStore('integration-settings', () => 
     load.value = 'loading'
     try {
       const response = await apiRequest('/integrations')
-      integrations.value = (await readResponse(response, integrationListSchema)).integrations
+      integrations.value = (await readResponse(response, integrationListSchema)).integrations.map(shown)
       load.value = 'ready'
     } catch (error) {
       load.value = 'failed'
@@ -88,10 +94,24 @@ export const useIntegrationSettings = defineStore('integration-settings', () => 
     }
   }
 
+  /** Delete Integration: answers whether it went, so its page closes. */
+  async function remove(id: string): Promise<boolean> {
+    try {
+      await apiRequest(`/integrations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      integrations.value = integrations.value.filter((integration) => integration.id !== id)
+      const { [id]: _gone, ...kept } = tokens.value
+      tokens.value = kept
+      return true
+    } catch (error) {
+      reportError(t('integrations.deleteFailed'), error, { site: 'integrations.deleteFailed', userVisible: true })
+      return false
+    }
+  }
+
   /** The page closed: the tokens it showed go. */
   function forgetTokens(): void {
     tokens.value = {}
   }
 
-  return { integrations, load, tokens, read, add, change, replaceToken, forgetTokens }
+  return { integrations, load, tokens, read, add, change, replaceToken, remove, forgetTokens }
 })

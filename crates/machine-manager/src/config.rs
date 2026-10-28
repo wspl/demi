@@ -368,6 +368,11 @@ impl Config {
         self.data.join("images")
     }
 
+    /// The integrations' shared folders: `<data>/shared`.
+    pub fn shared(&self) -> PathBuf {
+        self.data.join("shared")
+    }
+
     /// The runtime directory: `/run/demi-machine-manager`.
     pub fn runtime(&self) -> &Path {
         Path::new(RUNTIME_DIRECTORY)

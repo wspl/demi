@@ -927,7 +927,9 @@ impl dyn HostShard + '_ {
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot
     /// under way, or waits for a running reset to finish (`managed`).
     async fn enter_cloud(&self, device: &DeviceRecord) -> Result<CloudAdmission, CloudError> {
-        self.cloud_shard().admit_cloud(device).await
+        let admission = self.cloud_shard().admit_cloud(device).await?;
+        self.ready_machine(device).await;
+        Ok(admission)
     }
 
     /// The Host an operation reaches and where its work starts, found

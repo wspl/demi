@@ -208,7 +208,20 @@
       "schedules": "定时任务",
       "schedulesDescription": "在指定时间或发生变化时唤醒对话。",
       "attachments": "附件",
-      "attachmentsDescription": "在回复中附加文件。"
+      "attachmentsDescription": "在回复中附加文件。",
+      "save": "保存",
+      "initScript": "初始化脚本",
+      "initScriptDescription": "每台 Cloud 在系统全新时（首次使用及每次重置后）以 demi 身份在 ~ 中运行它，会话中的命令会等它运行完。修改后，每台 Cloud 会在下次启动时换上新系统，主目录保留。",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "共享文件夹",
+      "sharedPathDescription": "从下次启动起，此集成的每台 Cloud 都会在这里看到同一个文件夹。",
+      "sharedPathProblem": "请输入以 ~/ 或 / 开头的路径。",
+      "delete": "删除集成",
+      "deleteDescription": "会删除它的会话、Cloud 和共享文件夹。用量记录会保留。",
+      "deleteButton": "删除集成…",
+      "deleteTitle": "要删除“{name}”吗？",
+      "deleteBody": "它的会话、Cloud 和共享文件夹会被删除，令牌会立即失效。此操作无法撤销。",
+      "deleteConfirm": "删除"
     }
   },
   "keyboard": {

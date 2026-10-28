@@ -5,6 +5,7 @@
 //! - The record of a device's stored images.
 //! - The Cloud image manifest.
 //! - The pinned gVisor runtime.
+//! - Where an integration's shared folder may be mounted.
 //!
 //! Both ends link this crate, so each is defined once.
 //!
@@ -37,6 +38,7 @@
 
 pub mod image;
 pub mod runtime;
+pub mod shared;
 pub mod store;
 mod state;
 mod wire;
@@ -63,10 +65,10 @@ pub use state::{
     is_image_name,
 };
 pub use wire::{
-    Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,
+    Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, DeleteParams, DeleteSharedParams, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
-    SandboxMachine, WakeParams, decode_request, decode_response, encode_line,
+    SandboxMachine, SharedFolder, WakeParams, decode_request, decode_response, encode_line,
 };
 
 /// The room a large write to a server's disk leaves free: the backend's

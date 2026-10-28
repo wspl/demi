@@ -107,6 +107,7 @@
 pub mod access;
 pub mod capacity;
 pub mod client;
+pub mod deletion;
 pub mod machine;
 mod maintenance;
 pub mod reset;
@@ -218,6 +219,12 @@ pub trait CloudShard {
     /// The Cloud `device` stopped, and with it whatever its command
     /// packages kept for its conversations (`crates/command-protocol/src/messages.rs`).
     fn packages_lost(&self, device: &DeviceId);
+    /// Whether the stopped Cloud `device` owes a new system before its next
+    /// boot, as an integration's Cloud does once its init script changed
+    /// (`crates/backend-user-shard/src/integration_inits.rs`).
+    fn owes_reset<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, bool>;
+    /// The Cloud `device` got the new system it owed.
+    fn reset_paid<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, ()>;
 }
 
 /// What the shard holds of one conversation for an idle stop or a reset of

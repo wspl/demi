@@ -19,7 +19,8 @@
     "loadFailed": "無法載入整合",
     "addFailed": "無法加入整合",
     "saveFailed": "無法更改整合",
-    "replaceFailed": "無法替換權杖"
+    "replaceFailed": "無法替換權杖",
+    "deleteFailed": "無法刪除整合"
   },
   "exposedPorts": {
     "exposeFailed": "無法公開連接埠",

@@ -13,34 +13,120 @@ struct Route {
     method: &'static str,
     path: &'static str,
     summary: &'static str,
-    body: Option<fn(&mut SchemaGenerator) -> Schema>,
+    /// The object whose fields are its query's parameters.
+    query: Option<Make>,
+    body: Option<Content>,
     /// The status of a success and its body; none for an empty one.
-    answer: (u16, Option<fn(&mut SchemaGenerator) -> Schema>),
+    answer: (u16, Option<Content>),
+}
+
+type Make = fn(&mut SchemaGenerator) -> Schema;
+
+/// A request's or an answer's body.
+enum Content {
+    Json(Make),
+    /// A file's bytes, of any media type.
+    Bytes,
 }
 
 fn of<T: JsonSchema>(generator: &mut SchemaGenerator) -> Schema {
     generator.subschema_for::<T>()
 }
 
+/// A route that takes and answers JSON or nothing.
+fn json(method: &'static str, path: &'static str, summary: &'static str, body: Option<Make>, answer: (u16, Option<Make>)) -> Route {
+    Route {
+        method,
+        path,
+        summary,
+        query: None,
+        body: body.map(Content::Json),
+        answer: (answer.0, answer.1.map(Content::Json)),
+    }
+}
+
 /// Every route of the integration API, in the order the document lists them.
 fn routes() -> Vec<Route> {
     vec![
-        Route { method: "get", path: "/integration", summary: "The integration", body: None, answer: (200, Some(of::<Integration>)) },
-        Route { method: "patch", path: "/integration", summary: "Change the integration's capabilities", body: Some(of::<IntegrationPatch>), answer: (200, Some(of::<Integration>)) },
-        Route { method: "get", path: "/models", summary: "The models a conversation may run on", body: None, answer: (200, Some(of::<ModelList>)) },
-        Route { method: "get", path: "/clouds", summary: "The integration's Clouds", body: None, answer: (200, Some(of::<CloudList>)) },
-        Route { method: "post", path: "/clouds", summary: "Make a Cloud, or find the one of a key", body: Some(of::<CreateCloud>), answer: (201, Some(of::<Cloud>)) },
-        Route { method: "get", path: "/clouds/{cloud}", summary: "A Cloud", body: None, answer: (200, Some(of::<Cloud>)) },
-        Route { method: "post", path: "/clouds/{cloud}/reset", summary: "Reset a Cloud's system; /home stays", body: None, answer: (200, Some(of::<Cloud>)) },
-        Route { method: "get", path: "/conversations", summary: "The integration's conversations", body: None, answer: (200, Some(of::<ConversationList>)) },
-        Route { method: "post", path: "/conversations", summary: "Make a conversation, or find the one of a key", body: Some(of::<CreateConversation>), answer: (201, Some(of::<Conversation>)) },
-        Route { method: "get", path: "/conversations/{conversation}", summary: "A conversation with its agents", body: None, answer: (200, Some(of::<ConversationDetail>)) },
-        Route { method: "patch", path: "/conversations/{conversation}", summary: "Move a conversation to another Cloud, or rename it", body: Some(of::<ConversationPatch>), answer: (200, Some(of::<Conversation>)) },
-        Route { method: "delete", path: "/conversations/{conversation}", summary: "Delete a conversation", body: None, answer: (204, None) },
-        Route { method: "post", path: "/conversations/{conversation}/messages", summary: "Send a message", body: Some(of::<SendMessage>), answer: (200, Some(of::<MessageAnswer>)) },
-        Route { method: "post", path: "/conversations/{conversation}/stop", summary: "Stop every agent of a conversation", body: None, answer: (204, None) },
-        Route { method: "get", path: "/conversations/{conversation}/agents/{agent}/transcript", summary: "An agent's latest transcript", body: None, answer: (200, Some(of::<Transcript>)) },
+        json("get", "/integration", "The integration", None, (200, Some(of::<Integration>))),
+        json("patch", "/integration", "Change the integration's settings", Some(of::<IntegrationPatch>), (200, Some(of::<Integration>))),
+        json("get", "/models", "The models a conversation may run on", None, (200, Some(of::<ModelList>))),
+        json("get", "/clouds", "The integration's Clouds", None, (200, Some(of::<CloudList>))),
+        json("post", "/clouds", "Make a Cloud, or find the one of a key", Some(of::<CreateCloud>), (201, Some(of::<Cloud>))),
+        json("get", "/clouds/{cloud}", "A Cloud", None, (200, Some(of::<Cloud>))),
+        json("delete", "/clouds/{cloud}", "Delete a Cloud no conversation works on", None, (204, None)),
+        json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))),
+        json("get", "/conversations", "The integration's conversations", None, (200, Some(of::<ConversationList>))),
+        json("post", "/conversations", "Make a conversation, or find the one of a key", Some(of::<CreateConversation>), (201, Some(of::<Conversation>))),
+        json("get", "/conversations/{conversation}", "A conversation with its agents", None, (200, Some(of::<ConversationDetail>))),
+        json("patch", "/conversations/{conversation}", "Move a conversation to another Cloud, or rename it", Some(of::<ConversationPatch>), (200, Some(of::<Conversation>))),
+        json("delete", "/conversations/{conversation}", "Delete a conversation", None, (204, None)),
+        json("post", "/conversations/{conversation}/messages", "Send a message", Some(of::<SendMessage>), (200, Some(of::<MessageAnswer>))),
+        json("post", "/conversations/{conversation}/stop", "Stop every agent of a conversation", None, (204, None)),
+        json("get", "/conversations/{conversation}/agents/{agent}/transcript", "An agent's latest transcript", None, (200, Some(of::<Transcript>))),
+        json("get", "/conversations/{conversation}/attachments/{attachment}", "An attachment a conversation holds, such as an agent's `a3`", None, (200, Some(of::<ConversationAttachment>))),
+        Route {
+            method: "post",
+            path: "/attachments",
+            summary: "Upload a file a message carries, at most 25 MiB, sent with its media type",
+            query: Some(of::<UploadQuery>),
+            body: Some(Content::Bytes),
+            answer: (201, Some(Content::Json(of::<Attachment>))),
+        },
+        Route {
+            method: "get",
+            path: "/blobs/{sha256}",
+            summary: "A file's bytes, such as one an agent attached to its reply",
+            query: None,
+            body: None,
+            answer: (200, Some(Content::Bytes)),
+        },
+        Route {
+            method: "get",
+            path: "/usage",
+            summary: "The integration's usage in a period, grouped",
+            query: Some(of::<UsageQuery>),
+            body: None,
+            answer: (200, Some(Content::Json(of::<Usage>))),
+        },
     ]
+}
+
+/// A body's content in the document.
+fn content(body: &Content, generator: &mut SchemaGenerator) -> Value {
+    match body {
+        Content::Json(make) => json!({ "application/json": { "schema": make(generator) } }),
+        Content::Bytes => json!({ "*/*": { "schema": { "type": "string", "contentMediaType": "application/octet-stream" } } }),
+    }
+}
+
+/// The query parameters of the object `make` describes, each field one.
+fn query_parameters(make: Make, generator: &mut SchemaGenerator) -> Vec<Value> {
+    let reference = make(generator);
+    let name = reference
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|path| path.rsplit('/').next())
+        .map(str::to_owned);
+    let definitions = generator.definitions();
+    let object = name.and_then(|name| definitions.get(&name)).cloned().unwrap_or(Value::Null);
+    let required: Vec<&str> = object
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|names| names.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    object
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| {
+            properties
+                .iter()
+                .map(|(name, schema)| {
+                    json!({ "name": name, "in": "query", "required": required.contains(&name.as_str()), "schema": schema })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The document, its routes under `server` and [`PREFIX`].
@@ -53,26 +139,28 @@ pub fn openapi(server: &str) -> Value {
     let client = of::<ClientMessage>(&mut generator);
     let mut paths = Map::new();
     for route in routes() {
-        let parameters: Vec<Value> = route
+        let mut parameters: Vec<Value> = route
             .path
             .split('/')
             .filter_map(|part| part.strip_prefix('{').and_then(|part| part.strip_suffix('}')))
             .map(|name| json!({ "name": name, "in": "path", "required": true, "schema": { "type": "string" } }))
             .collect();
+        if let Some(query) = route.query {
+            parameters.extend(query_parameters(query, &mut generator));
+        }
         let mut operation = json!({
             "summary": route.summary,
             "parameters": parameters,
             "responses": {
-                route.answer.0.to_string(): match route.answer.1 {
-                    Some(schema) => json!({ "description": "Done", "content": { "application/json": { "schema": schema(&mut generator) } } }),
+                route.answer.0.to_string(): match &route.answer.1 {
+                    Some(body) => json!({ "description": "Done", "content": content(body, &mut generator) }),
                     None => json!({ "description": "Done" }),
                 },
                 "default": { "description": "Refused", "content": { "application/json": { "schema": error.clone() } } },
             },
         });
-        if let Some(body) = route.body {
-            operation["requestBody"] =
-                json!({ "required": true, "content": { "application/json": { "schema": body(&mut generator) } } });
+        if let Some(body) = &route.body {
+            operation["requestBody"] = json!({ "required": true, "content": content(body, &mut generator) });
         }
         let path = paths.entry(route.path.to_owned()).or_insert_with(|| json!({}));
         path[route.method] = operation;

@@ -74,7 +74,7 @@ use super::devices::{DeviceRecord, cloud_device_in, device_in, managed_device_in
 use super::projects::{ProjectRecord, new_project_id, project_at};
 
 /// The Cloud's home directory, before its runner reports one.
-pub const CLOUD_HOME: &str = "/home/demi";
+pub const CLOUD_HOME: &str = demi_machine_manager_protocol::shared::SANDBOX_HOME;
 
 /// A conversation's selection.
 #[derive(Debug, Clone, PartialEq, Eq)]

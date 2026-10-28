@@ -18,7 +18,7 @@ mod linux {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeleteParams, DeleteSharedParams, DeviceId, DrainRecord, HibernateParams, ImageStateParams, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
         ResetParams, RuntimeState, RuntimeStateParams, WakeParams,
     };
     use tokio::{
@@ -41,7 +41,10 @@ mod linux {
         recovery,
         sandbox::runsc::Runsc,
         server::MachineService,
-        storage::store::{ImageStore, Retention},
+        storage::{
+            shared::SharedImages,
+            store::{ImageStore, Retention},
+        },
         tools::Tools,
     };
 
@@ -57,6 +60,9 @@ mod linux {
         pub store: ImageStore,
         pub network: CloudNetwork,
         pub slots: SlotPool,
+        /// The shared folders mounted, which the sandboxes that name
+        /// them take and give back.
+        pub shared: SharedImages,
     }
 
     impl Core {
@@ -74,6 +80,7 @@ mod linux {
                 network,
                 tools,
                 config,
+                shared: SharedImages::default(),
             }
         }
     }
@@ -333,6 +340,7 @@ mod linux {
                         boot: params.boot,
                         machine: params.machine,
                         capacity: params.capacity,
+                        shared: params.shared,
                     };
                     self.run(&device, op).await?;
                     Ok(reply::<WakeParams>(()))
@@ -364,6 +372,16 @@ mod linux {
                     };
                     self.run(&device, op).await?;
                     Ok(reply::<ResetParams>(()))
+                }
+                MachineCall::Delete(params) => {
+                    let device = DeviceId::parse(params.device_id)?;
+                    self.run(&device, DeviceOp::Delete).await?;
+                    Ok(reply::<DeleteParams>(()))
+                }
+                MachineCall::DeleteShared(params) => {
+                    let _admitted = self.admission.enter().await?;
+                    self.core.shared.delete(&self.core, &params.id).await?;
+                    Ok(reply::<DeleteSharedParams>(()))
                 }
             }
         }

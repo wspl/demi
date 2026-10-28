@@ -25,7 +25,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId, IntegrationId};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_with::rust::unwrap_or_skip;
+use serde_with::rust::{double_option, unwrap_or_skip};
 
 pub use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 pub use openapi::openapi;
@@ -47,9 +47,16 @@ pub struct Integration {
     pub id: IntegrationId,
     pub name: String,
     pub capabilities: IntegrationCapabilities,
+    /// The shell script each of its Clouds runs as `demi` in `~` once its
+    /// system is new: at its first use, and after every reset. Null for
+    /// none.
+    pub init_script: Option<String>,
+    /// Where each of its Clouds mounts its shared folder: `~/...`, or a
+    /// top-level directory such as `/data`.
+    pub shared_path: String,
 }
 
-/// `PATCH /integration`: a change of its capabilities.
+/// `PATCH /integration`: a change of its settings; a field left out stays.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct IntegrationPatch {
@@ -57,6 +64,19 @@ pub struct IntegrationPatch {
     #[schemars(with = "IntegrationCapabilities")]
     #[garde(skip)]
     pub capabilities: Option<IntegrationCapabilities>,
+    /// A new init script, or null for none. Each Cloud whose system an
+    /// earlier script made is reset at its next start, and runs the new one
+    /// then.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub init_script: Option<Option<String>>,
+    /// A new mount path of the shared folder, which each Cloud takes at
+    /// its next start.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub shared_path: Option<String>,
 }
 
 /// One of the integration's Clouds.
@@ -67,6 +87,35 @@ pub struct Cloud {
     /// The key the integration made it with; null for none.
     pub key: Option<String>,
     pub state: CloudState,
+    /// Its run of the integration's init script; null while the integration
+    /// has none.
+    pub init: Option<CloudInit>,
+}
+
+/// A Cloud's run of its integration's init script.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudInit {
+    pub state: InitState,
+    /// How its last run ended; null before one ended.
+    pub exit_code: Option<i32>,
+    /// The last 64 KiB of its last run's output, standard output and error
+    /// as they came; null before one ended.
+    pub output: Option<String>,
+}
+
+/// Where a Cloud's run of the init script is. A Cloud whose run failed
+/// still serves its conversations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum InitState {
+    /// It runs at the Cloud's next use, after a reset when the script
+    /// changed.
+    Pending,
+    /// It runs; the Cloud's conversations' commands wait for it.
+    Running,
+    Done,
+    Failed,
 }
 
 /// `POST /clouds`: a Cloud, or with `key` the one that has it.
@@ -170,6 +219,106 @@ pub struct SendMessage {
     #[serde(default)]
     #[garde(skip)]
     pub steer: bool,
+    /// Files it carries, which the agent finds on its Cloud.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub attachments: Vec<MessageAttachment>,
+}
+
+/// A file a message carries: an upload of `POST /attachments`, and the name
+/// it is written under on the Cloud.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MessageAttachment {
+    pub id: String,
+    /// A file name: no `/`, `\` or NUL, and neither `.` nor `..`.
+    pub name: String,
+}
+
+/// `POST /attachments`: a file in the user's blobs, which a message carries
+/// by its id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Attachment {
+    pub id: String,
+    /// The media type read from its bytes.
+    pub media_type: String,
+    pub size_bytes: u64,
+    /// Its SHA-256 in hexadecimal, which `GET /blobs/{sha256}` reads it by.
+    pub sha256: String,
+}
+
+/// A file a conversation holds, which a message or a reply names as `a3`:
+/// an agent's attachment to its reply, or a file a message carried.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationAttachment {
+    /// Its number in the conversation, such as `a3`.
+    pub id: String,
+    pub name: String,
+    pub media_type: String,
+    pub size_bytes: u64,
+    /// Its SHA-256 in hexadecimal, which `GET /blobs/{sha256}` reads it by.
+    pub sha256: String,
+}
+
+/// `POST /attachments?name=`: the name of the file whose bytes the body
+/// holds, sent with its media type as `Content-Type`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UploadQuery {
+    #[garde(length(chars, min = 1, max = 255))]
+    pub name: String,
+}
+
+/// `GET /usage`: the integration's usage between `from` and `to`, grouped by
+/// `by`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UsageQuery {
+    /// The period's start, inclusive; none for the first request.
+    #[serde(default)]
+    #[garde(skip)]
+    pub from: Option<Timestamp>,
+    /// The period's end, exclusive; none for now.
+    #[serde(default)]
+    #[garde(skip)]
+    pub to: Option<Timestamp>,
+    #[garde(skip)]
+    pub by: UsageGrouping,
+}
+
+/// What `GET /usage` groups its rows by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum UsageGrouping {
+    Cloud,
+    Conversation,
+    Model,
+}
+
+/// The integration's usage, a row per group, most expensive first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    pub rows: Vec<UsageRow>,
+}
+
+/// One group's usage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageRow {
+    /// The group: a Cloud's or a conversation's id, or a model's id; null
+    /// for requests of no Cloud, such as a title's.
+    pub key: Option<String>,
+    pub requests: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    /// What the requests would cost on their vendors' APIs, in dollars;
+    /// null when a model of them has no price.
+    pub api_cost: Option<f64>,
 }
 
 /// What a sent message became.

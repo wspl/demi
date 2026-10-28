@@ -131,7 +131,7 @@ mod service {
         preflight, recovery,
         sandbox::cgroup,
         server::{self, Socket},
-        storage::{base, durable, room, state, store::ImageStore},
+        storage::{base, durable, room, shared, state, store::ImageStore},
         tools::Tools,
     };
     use demi_shared_types::LogLine;
@@ -228,6 +228,7 @@ mod service {
             blocking::run(move |off| lock::verify_inherited(off, &data)).await?;
             preflight::release_probes(&core.config.data).await?;
             recovery::fence_and_save(&core, &[]).await?;
+            shared::unmount_left(&core).await?;
             return Ok(());
         }
         let (data, runtime) = (core.config.data.clone(), core.config.runtime().to_owned());
@@ -245,6 +246,8 @@ mod service {
         let (working, images) = (core.config.working(), core.config.images());
         blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
         recovery::fence_and_save(&core, &[]).await?;
+        // No sandbox runs: no shared folder is in use.
+        shared::unmount_left(&core).await?;
         if core.config.mode == Mode::Recover {
             return Ok(());
         }

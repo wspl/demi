@@ -162,6 +162,10 @@ pub trait HostShard {
     /// Starts the conversation's idle watch unless one runs, as each Host
     /// admission does (`crates/backend-user-shard/src/lifecycle/mod.rs`).
     fn track_idle(&self, conversation: &ConversationId);
+    /// Once the Cloud `device` admitted a conversation's work: the wait for
+    /// what it runs before any such work, if anything
+    /// (`crates/backend-user-shard/src/integration_inits.rs`).
+    fn ready_machine<'a>(&'a self, device: &'a demi_backend_database::devices::DeviceRecord) -> LocalBoxFuture<'a, ()>;
     /// The Host directories of the user's plugins that the Host of `device`
     /// holds, which each job installs before it starts: an integration's
     /// Cloud holds those of the plugins its capabilities allow.

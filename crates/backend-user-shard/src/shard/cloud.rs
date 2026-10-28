@@ -126,6 +126,14 @@ impl CloudShard for Shard {
         Some(held)
     }
 
+    fn owes_reset<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, bool> {
+        Box::pin(Shard::owes_reset(self, device))
+    }
+
+    fn reset_paid<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, ()> {
+        Box::pin(Shard::reset_paid(self, device))
+    }
+
     fn packages_lost(&self, device: &DeviceId) {
         let shard = self
             .this

@@ -44,7 +44,7 @@ fn too_large() -> ApiError {
 /// The media type `headers` send the upload's bytes as: one `type/subtype`,
 /// with its parameters. A `multipart/*` form is an envelope, not a file's
 /// bytes.
-fn sent_media_type(headers: &HeaderMap) -> Result<String, ApiError> {
+pub(super) fn sent_media_type(headers: &HeaderMap) -> Result<String, ApiError> {
     let refused =
         || ApiError::invalid_body("Send the file's bytes with its media type as Content-Type");
     let value = headers.get(CONTENT_TYPE).ok_or_else(refused)?;
@@ -108,12 +108,25 @@ pub(super) async fn upload(
             Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })).into_response())
         }
         (false, None) => {
-            let sha256 = blobs.put(bytes.clone()).await?;
-            let size = bytes.len() as u64;
-            let attachment = uploaded(bytes, size, sha256, false).await?;
+            let attachment = store(&services, &user.id, &query.name, &sent, bytes).await?;
             Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })).into_response())
         }
     }
+}
+
+/// Keeps the upload `bytes` of the file `name`, sent as `sent`, in the
+/// user's blobs with one attachment record, as the composer's and an
+/// integration's uploads are.
+pub(super) async fn store(
+    services: &Services,
+    user: &UserId,
+    name: &str,
+    sent: &str,
+    bytes: Bytes,
+) -> Result<AttachmentDto, ApiError> {
+    let sha256 = services.blobs.for_user(user).put(bytes.clone()).await?;
+    let size = bytes.len() as u64;
+    record(services, user, name, sent, &bytes, size, sha256, false).await
 }
 
 /// Records an upload of the blob `sha256` names, read from `opening`, the

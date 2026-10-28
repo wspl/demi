@@ -12,7 +12,7 @@ use std::{path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
 use demi_machine_manager_protocol::{
-    BaseVersion, Capacity, DeviceId, MachineImageState, SandboxMachine, Volume,
+    BaseVersion, Capacity, DeviceId, MachineImageState, SandboxMachine, SharedFolder, Volume,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::{mpsc, oneshot};
@@ -54,6 +54,7 @@ pub enum DeviceOp {
         boot: ManagedBoot,
         machine: SandboxMachine,
         capacity: Capacity,
+        shared: Option<SharedFolder>,
     },
     /// Stop and save; also what shutdown does to every device.
     Hibernate { retention: Retention },
@@ -64,6 +65,8 @@ pub enum DeviceOp {
         capacity: Capacity,
         retention: Retention,
     },
+    /// Stop, and remove all the device's storage.
+    Delete,
 }
 
 pub struct DeviceWorker {
@@ -73,6 +76,9 @@ pub struct DeviceWorker {
     base: BaseVersion,
     working: WorkingPair,
     runtime: Option<Sandbox>,
+    /// The shared folder the running sandbox took, which its stop gives
+    /// back.
+    shared: Option<String>,
     deaths: mpsc::Sender<DeviceId>,
     /// Told this device's id each time an operation ended, since it may
     /// have changed the device's stored image.
@@ -124,6 +130,7 @@ impl DeviceWorker {
             core,
             base,
             runtime: None,
+            shared: None,
             deaths,
             changes,
         }
@@ -167,7 +174,8 @@ impl DeviceWorker {
                 boot,
                 machine,
                 capacity,
-            } => self.wake(&boot, machine, capacity).await,
+                shared,
+            } => self.wake(&boot, machine, capacity, shared.as_ref()).await,
             DeviceOp::Hibernate { retention } => {
                 self.stop().await?;
                 self.save(retention).await
@@ -179,7 +187,36 @@ impl DeviceWorker {
                 capacity,
                 retention,
             } => self.reset(&operation, &base, capacity, retention).await,
+            DeviceOp::Delete => self.delete().await,
         }
+    }
+
+    /// Stops the sandbox, if any, and removes the working pair and every
+    /// committed generation. Each is first renamed to a stage in the working
+    /// directory, on the same filesystem as the store, which recovery
+    /// removes: a crash midway never leaves half a device that a wake would
+    /// boot.
+    async fn delete(&mut self) -> Result<(), OpError> {
+        self.stop().await?;
+        let working = self.working.directory().to_owned();
+        let committed = self.core.store.device_directory(&self.device);
+        let stages = (
+            self.core.config.working().join(format!(".deleted-{}", uuid::Uuid::new_v4())),
+            self.core.config.working().join(format!(".deleted-{}", uuid::Uuid::new_v4())),
+        );
+        blocking::run(move |off| -> std::io::Result<()> {
+            for (directory, stage) in [(working, stages.0), (committed, stages.1)] {
+                match fs_err::rename(&directory, &stage) {
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    renamed => renamed?,
+                }
+                sync(off, stage.parent().expect("a stage lies in its directory"))?;
+                remove_tree(off, &stage)?;
+            }
+            Ok(())
+        })
+        .await?;
+        Ok(())
     }
 
     /// The sandbox exited without being asked to: stop what remains, save
@@ -230,7 +267,19 @@ impl DeviceWorker {
             self.runtime = Some(sandbox);
             return Err(error.into());
         }
+        self.give_back_shared().await;
         Ok(())
+    }
+
+    /// Gives back the shared folder the sandbox that stopped took; a
+    /// failure is logged, and the mount left behind serves the next start,
+    /// or goes with a deletion or the manager's next start.
+    async fn give_back_shared(&mut self) {
+        if let Some(id) = self.shared.take()
+            && let Err(error) = self.core.shared.release(&self.core, &id).await
+        {
+            tracing::warn!(event = "shared_folder.release_failed", host_id = %self.device, %error, "a shared folder stays mounted");
+        }
     }
 
     /// Publishes the working pair, which no sandbox may be writing, keeping
@@ -254,6 +303,7 @@ impl DeviceWorker {
         boot: &ManagedBoot,
         machine: SandboxMachine,
         capacity: Capacity,
+        shared: Option<&SharedFolder>,
     ) -> Result<(), OpError> {
         if self.runtime.is_some() {
             return Ok(());
@@ -275,6 +325,14 @@ impl DeviceWorker {
         stage.remove().await;
         copied?;
         let lease = self.core.slots.take()?;
+        let mount = match shared {
+            Some(folder) => {
+                let source = self.core.shared.acquire(&self.core, &folder.id, folder.capacity_bytes).await?;
+                self.shared = Some(folder.id.clone());
+                Some((source, folder.path.clone()))
+            }
+            None => None,
+        };
         let mut sandbox = Sandbox::new(&self.core, lease);
         let started = sandbox
             .start(
@@ -285,6 +343,7 @@ impl DeviceWorker {
                 &runner_release,
                 boot,
                 machine,
+                mount.as_ref().map(|(source, path)| (source.as_path(), path.as_str())),
             )
             .await;
         let Err(error) = started else {
@@ -292,7 +351,10 @@ impl DeviceWorker {
             return Ok(());
         };
         match sandbox.close(&self.core, &self.working).await {
-            Ok(()) => Err(error.into()),
+            Ok(()) => {
+                self.give_back_shared().await;
+                Err(error.into())
+            }
             Err(cleanup) => {
                 self.runtime = Some(sandbox);
                 Err(OpError::StartAndCleanup(Parts(vec![

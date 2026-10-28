@@ -19,7 +19,8 @@
     "loadFailed": "无法载入集成",
     "addFailed": "无法添加集成",
     "saveFailed": "无法更改集成",
-    "replaceFailed": "无法替换令牌"
+    "replaceFailed": "无法替换令牌",
+    "deleteFailed": "无法删除集成"
   },
   "exposedPorts": {
     "exposeFailed": "无法公开端口",

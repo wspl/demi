@@ -13,6 +13,9 @@ import { slow } from '../fixtures/slow'
  *   page with its token shown this once.
  * - The name and the switches change the integration.
  * - Replace Token shows a new token in place of the hidden one.
+ * - The init script saves, and the shared folder's path takes a path in ~ or
+ *   a top-level directory, as the backend checks it.
+ * - Delete Integration removes it and shows the list again.
  */
 const all = {
   subagents: true,
@@ -31,6 +34,8 @@ const integrations = ref<SettingsIntegration[]>([
     name: 'Team Chat Bot',
     capabilities: { ...all, mobile: false, media: false },
     createdAt: '2026-10-02T09:12:00Z',
+    initScript: 'sudo apt-get install -y ripgrep jq\nnpm install -g @example/chat-cli\n',
+    sharedPath: '~/team',
     clouds: 14,
     conversations: 238,
   },
@@ -39,6 +44,8 @@ const integrations = ref<SettingsIntegration[]>([
     name: 'Support Desk',
     capabilities: { ...all, subagents: false, browser: false, mobile: false, schedules: false },
     createdAt: '2026-10-20T16:40:00Z',
+    initScript: null,
+    sharedPath: '~/shared',
     clouds: 1,
     conversations: 12,
   },
@@ -64,17 +71,29 @@ async function add(): Promise<void> {
   const id = `new${made}`
   integrations.value = [
     ...integrations.value,
-    { id, name, capabilities: { ...all }, createdAt: new Date().toISOString(), clouds: 0, conversations: 0 },
+    { id, name, capabilities: { ...all }, createdAt: new Date().toISOString(), initScript: null, sharedPath: '~/shared', clouds: 0, conversations: 0 },
   ]
   tokens.value = { ...tokens.value, [id]: token() }
   shown.value = id
 }
 
+/** The directories every Cloud's system has, which a shared folder never covers. */
+const SYSTEM = ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'media', 'mnt', 'opt', 'proc', 'root', 'run', 'sbin', 'srv', 'sys', 'tmp', 'usr', 'var']
+
 async function change(id: string, change: IntegrationChange): Promise<void> {
   await slow()
+  const top = change.sharedPath?.match(/^\/([^/]+)/)?.[1]
+  if (top && SYSTEM.includes(top))
+    throw new Error(`/${top} holds what a Cloud needs to run; choose a path in ~ or a new top-level directory such as /data`)
   integrations.value = integrations.value.map((integration) =>
     integration.id === id ? { ...integration, ...change } : integration,
   )
+}
+
+async function remove(id: string): Promise<void> {
+  await slow()
+  integrations.value = integrations.value.filter((integration) => integration.id !== id)
+  shown.value = null
 }
 
 async function replaceToken(id: string): Promise<void> {
@@ -93,6 +112,7 @@ async function replaceToken(id: string): Promise<void> {
     :on-add="add"
     :on-change="change"
     :on-replace-token="replaceToken"
+    :on-delete="remove"
     @retry="() => {}"
     @show="shown = $event"
   />

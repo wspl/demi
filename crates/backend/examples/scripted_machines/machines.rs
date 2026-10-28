@@ -14,6 +14,11 @@
 //!
 //! It mounts no image and isolates nothing:
 //!
+//! - An integration's shared folder is a temporary directory, linked into
+//!   each runner's home where the integration's path says: `~/shared` at
+//!   `shared` in the home, and a top-level directory such as `/data` at
+//!   `data` in the home, since a runner here has no root of its own.
+//!
 //! - A stop clears the runner's state but its log and its job directories, as
 //!   a Cloud's `/run/demi` goes with it while its system image, which holds
 //!   those two, stays.
@@ -45,11 +50,15 @@ struct Guest {
     runner: Option<RunnerProcess>,
     image: MachineImageState,
     generations: u64,
+    /// The shared folder its last wake mounted.
+    shared: Option<String>,
 }
 
 #[derive(Default)]
 struct State {
     guests: HashMap<String, Guest>,
+    /// The shared folders, by id.
+    shared: HashMap<String, tempfile::TempDir>,
     /// One operation at a time per device.
     workers: HashMap<String, Arc<Semaphore>>,
 }
@@ -257,7 +266,9 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                         capacity.home_bytes.get(),
                     ),
                     generations: 1,
+                    shared: None,
                 });
+                guest.shared = params.shared.as_ref().map(|shared| shared.id.clone());
                 // A smaller disk is enlarged to the capacity named, a larger
                 // one kept.
                 guest.image.system_bytes = guest.image.system_bytes.max(capacity.system_bytes);
@@ -286,7 +297,31 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                     Some(RunnerProcess::start_program(shared.runner.clone(), &backend, options))
                 }
             };
+            if let (Some(folder), Some(runner)) = (&params.shared, &runner) {
+                mount_shared(shared, folder, runner.home());
+            }
             shared.lock().guests.get_mut(&device).unwrap().runner = runner;
+            json(serde_json::Value::Null)
+        }
+        MachineCall::Delete(params) => {
+            let device = params.device_id;
+            let worker = shared.worker(&device);
+            let _turn = worker.acquire().await.unwrap();
+            stop_runner(shared, &device).await;
+            // The guest's home goes with its runner.
+            shared.lock().guests.remove(&device);
+            json(serde_json::Value::Null)
+        }
+        MachineCall::DeleteShared(params) => {
+            let mut state = shared.lock();
+            let mounted = state.guests.values_mut().any(|guest| {
+                guest.shared.as_deref() == Some(params.id.as_str())
+                    && guest.runner.as_mut().is_some_and(RunnerProcess::running)
+            });
+            if mounted {
+                return Err(format!("the shared folder {} is mounted", params.id));
+            }
+            state.shared.remove(&params.id);
             json(serde_json::Value::Null)
         }
         MachineCall::Hibernate(params) => {
@@ -333,6 +368,32 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             json(serde_json::Value::Null)
         }
     }
+}
+
+/// Links the shared folder `folder`, made on its first use, into the
+/// runner home `home` where its path says.
+fn mount_shared(shared: &Shared, folder: &demi_machine_manager_protocol::SharedFolder, home: &str) {
+    let source = {
+        let mut state = shared.lock();
+        let directory = state
+            .shared
+            .entry(folder.id.clone())
+            .or_insert_with(|| tempfile::tempdir().expect("a shared folder's directory"));
+        directory.path().to_path_buf()
+    };
+    let inside = folder
+        .path
+        .strip_prefix(demi_machine_manager_protocol::shared::SANDBOX_HOME)
+        .unwrap_or(&folder.path)
+        .trim_start_matches('/');
+    let target = Path::new(home).join(inside);
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    // A link of an earlier wake, to the same directory or an earlier path's,
+    // is replaced.
+    let _ = std::fs::remove_file(&target);
+    std::os::unix::fs::symlink(&source, &target).expect("a shared folder's link");
 }
 
 /// Stops the device's runner, if it runs, and clears its state but its

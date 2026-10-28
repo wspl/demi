@@ -1003,6 +1003,7 @@ impl Asking for ImageCall {
     ) -> Result<MadeImage, MediaFailure> {
         let images = maker.images().expect("an image call's maker makes images");
         let (mut row, span) = making.open_row("image", account);
+        row.attribute().await;
         let request = ImageRequest { model: making.name.clone(), ..self.request.clone() };
         let answer = images
             .make(&making.http(), making.catalog, request)
@@ -1065,6 +1066,7 @@ impl Asking for AudioCall {
     ) -> Result<MadeAudio, MediaFailure> {
         let audio = maker.audio().expect("an audio call's maker makes audio");
         let (mut row, span) = making.open_row("audio", account);
+        row.attribute().await;
         let asked_speed = self.request.speed;
         let speed = asked_speed.map(|speed| audio::sent_speed(audio, speed));
         let request = AudioRequest { model: making.name.clone(), speed, ..self.request.clone() };
@@ -1176,6 +1178,7 @@ impl Asking for VideoCall {
     ) -> Result<(AskedVideo, VideoJob), MediaFailure> {
         let videos = maker.videos().expect("a video call's maker makes videos");
         let (mut row, span) = making.open_row("video", account);
+        row.attribute().await;
         let request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
         let http = making.http();
         // The job's bound counts from its ask, the ask's own wait
@@ -1586,6 +1589,8 @@ impl Making<'_> {
             price: None,
             system_hash: None,
             tools_hash: None,
+            // Found once the call starts (`OpenRow::attribute`).
+            attribution: Default::default(),
         };
         (OpenRow { row: Some(row), shard: self.shard.this() }, span)
     }
@@ -1617,6 +1622,14 @@ struct OpenRow {
 impl OpenRow {
     fn is_open(&self) -> bool {
         self.row.is_some()
+    }
+
+    /// Finds whose work the call is, which its row carries however it
+    /// ends, dropped included.
+    async fn attribute(&mut self) {
+        let (conversation, agent) = (self.row().conversation.clone(), self.row().agent);
+        let attribution = self.shard.attribution(&conversation, agent).await;
+        self.row().attribution = attribution;
     }
 
     fn row(&mut self) -> &mut UsageRow {
