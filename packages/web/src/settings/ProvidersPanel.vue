@@ -81,6 +81,7 @@ watch(
     v-model:selected-id="resources.selectedProviderId"
     v-model:detail-open="resources.providerDetailOpen"
     :providers="providers"
+    :shared-api-keys="product.snapshot?.manages?.apiKeys === false"
     :load="product.load"
     :vendor-load="product.vendorLoad"
     :model-load="product.catalogLoad"

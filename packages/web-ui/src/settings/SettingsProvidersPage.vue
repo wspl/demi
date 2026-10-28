@@ -170,6 +170,12 @@ const props = defineProps<{
    * entry reaches it, as on a shared instance (`crates/backend-user-shard/src/shard/exposed_ports.rs`); null for any other endpoint. Absent, none is.
    */
   sharedDevice?: (endpoint: string) => string | null
+  /**
+   * Whether the user infers with API keys another user shares, which
+   * `providers` then holds none of: the API Keys group lists and adds none,
+   * and says whose they are.
+   */
+  sharedApiKeys?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -893,10 +899,13 @@ function endpointCheck(value: string) {
               >{{ t('providers.apiKeys') }}</span
             >
             <!-- data-add-provider: the product checks open Add Provider through it in any language (`browse.md`). -->
-            <Button size="xs" class="ml-auto" data-add-provider @click="addOpen = true"
+            <Button v-if="!sharedApiKeys" size="xs" class="ml-auto" data-add-provider @click="addOpen = true"
               ><Plus :size="12" /> {{ uiText('common.add') }}</Button
             >
           </div>
+          <p v-if="sharedApiKeys" class="select-none px-1 py-1 text-xs text-fg-subtle">
+            {{ t('providers.apiKeysShared') }}
+          </p>
           <div ref="keyList" class="contents">
           <SettingsListItem
             v-for="p in apiKeys"

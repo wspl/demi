@@ -95,8 +95,8 @@ const sections = keptComputed(() =>
     ),
   })),
 )
-/** The parts of the state the rail's sections follow: the role, the instance's mode and the plugins. */
-const SECTION_PARTS = ['user', 'mode', 'plugins'] as const
+/** The parts of the state the rail's sections follow: the role, the instance's mode, the kinds of entries the user manages and the plugins. */
+const SECTION_PARTS = ['user', 'mode', 'manages', 'plugins'] as const
 const address = useSettingsAddress()
 /** Settings are open while the address is theirs (`address.ts`). */
 const open = computed(() => address.section.value !== undefined)

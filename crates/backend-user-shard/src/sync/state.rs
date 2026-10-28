@@ -6,6 +6,7 @@
 //! not be: its version is taken before it is read, so a change made while it
 //! is read is one after the version, which the page follows the state from.
 
+use demi_backend_providers::vault::entries::Vault;
 use demi_backend_accounts::passkeys::{passkey_list, relying_party_id};
 use demi_backend_database::StorageError;
 use demi_backend_database::accounts::TokenHash;
@@ -100,6 +101,7 @@ impl Shard {
             user,
             mode: services.vault.mode(),
             shared_subscriptions: services.vault.shared_subscriptions(),
+            manages: services.vault.managed_kinds(self.user()).await?,
             preferences,
             providers,
             models,
@@ -157,6 +159,7 @@ impl Shard {
             },
             Part::Instance => SyncEvent::Instance {
                 mode: self.services().vault.mode(),
+                manages: self.services().vault.managed_kinds(self.user()).await?,
             },
             Part::Preferences => SyncEvent::Preferences {
                 preferences: control.preferences(self.user().clone()).await?,
@@ -289,10 +292,9 @@ impl Shard {
     /// One entry that cannot be read leaves the others intact.
     async fn provider_states(&self, user: &UserDto) -> Result<Vec<ProviderState>, StorageError> {
         let services = self.services();
-        let owner = services.vault.owner_for(&user.id).await?;
-        let entries = services.vault.entries(owner).await?;
-        let disclose = services.vault.configures(user);
+        let entries = services.vault.entries_for(&user.id).await?;
         let providers = join_all(entries.iter().map(|entry| async move {
+            let disclose = Vault::manages(&user.id, entry);
             let details = match services.provider_registry.details(entry, disclose).await {
                 Ok(details) => ProviderReading::Read(Box::new(details)),
                 Err(error) => ProviderReading::Failed {

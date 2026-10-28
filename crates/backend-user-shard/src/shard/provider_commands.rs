@@ -13,6 +13,7 @@
 //! piped there, since a key typed into a conversation would sit in its
 //! transcript and reach the model's vendor.
 
+use demi_backend_providers::vault::entries::Vault;
 use std::rc::Rc;
 
 use demi_backend_host_access::host_commands::conversation_of;
@@ -661,12 +662,17 @@ async fn order(shard: Rc<Shard>, call: Call<OrderArgs>, port: RpcPort) -> Result
     let entries = entries(&shard).await.map_err(failed)?;
     let mut ids = Vec::new();
     for name in &call.args.entry {
-        let id = named(&entries, name).map_err(failed)?.id.clone();
-        if !ids.contains(&id) {
-            ids.push(id);
+        let entry = named(&entries, name).map_err(failed)?;
+        if !Vault::manages(&user.id, entry) {
+            return Err(failed(ProviderRefusal::NotConfiguring));
+        }
+        if !ids.contains(&entry.id) {
+            ids.push(entry.id.clone());
         }
     }
-    for entry in &entries {
+    // The order is of the user's own entries: another's, which a shared
+    // instance lends them, keep the order their owner gave them.
+    for entry in entries.iter().filter(|entry| Vault::manages(&user.id, entry)) {
         if !ids.contains(&entry.id) {
             ids.push(entry.id.clone());
         }
@@ -1116,7 +1122,7 @@ async fn shown(
 ) -> Result<ShownEntry, RpcError> {
     let services = shard.services();
     let accounts = match entry.credential {
-        EntryCredential::Subscription { .. } if services.vault.configures(user) => services
+        EntryCredential::Subscription { .. } if Vault::manages(&user.id, entry) => services
             .vault
             .accounts(entry.id.clone())
             .await

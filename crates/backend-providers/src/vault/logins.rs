@@ -86,8 +86,9 @@ pub enum LoginRefusal {
     /// The family has no login.
     #[error("{0} has no login")]
     NoLoginFlow(String),
-    /// The instance offers no subscription now, as a shared one does not.
-    #[error("Subscriptions aren’t offered while providers are shared")]
+    /// The starter infers with the master's subscriptions, which a shared
+    /// instance gives every user when `DEMI_SHARED_SUBSCRIPTIONS` says so.
+    #[error("Subscriptions are shared by the instance owner")]
     NotOffered,
     /// The owner already holds the family's subscription entry.
     #[error("This scope already has a {0} subscription")]
@@ -257,12 +258,11 @@ impl LoginFlows {
     }
 
     /// Starts `starter`'s login of `family`, which the request `request`
-    /// asked for: into `existing`, or into a new entry of `owner`'s
+    /// asked for: into `existing`, or into a new entry of the starter's
     /// labelled `label`. A login that runs a process runs it on the Claude
     /// Code machine. Only `starter` reads, answers and cancels it.
     pub async fn start(
         self: &Arc<Self>,
-        owner: UserId,
         starter: UserId,
         family: String,
         label: String,
@@ -276,9 +276,15 @@ impl LoginFlows {
         if registered.credential() != CredentialKind::Subscription {
             return Err(LoginRefusal::NoLoginFlow(family));
         }
-        if !self.vault.offers_subscriptions() {
+        let owners = self
+            .vault
+            .owners(&starter)
+            .await
+            .map_err(|error| RegistryError::from(StoreError::new(error)))?;
+        if !owners.manages(CredentialKind::Subscription) {
             return Err(LoginRefusal::NotOffered);
         }
+        let owner = starter.clone();
         let id = LoginId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         let provider_id = existing.as_ref().map(|entry| entry.id.clone());
         // The entry the login adds to or makes is held from here, so a

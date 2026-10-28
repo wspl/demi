@@ -454,12 +454,12 @@
       "own": "Each User’s Own",
       "shared": "Shared",
       "description": "When shared, every user uses the providers you set up.",
-      "descriptionApiKeys": "When shared, every user uses the API keys you set up.",
+      "descriptionApiKeys": "When shared, every user uses the API keys you set up and their own subscriptions.",
       "share": {
         "title": "Share your providers with every user?",
         "action": "Share",
         "body": "Every user’s model menu offers your providers instead of their own. Theirs stay saved and come back if you stop sharing.",
-        "subscriptions": "Subscriptions, yours included, aren’t offered while providers are shared."
+        "subscriptions": "Each user keeps their own subscriptions, which nobody else can use."
       },
       "stop": {
         "title": "Stop sharing your providers?",
@@ -616,6 +616,7 @@
     "loading": "Loading providers…",
     "subscriptions": "Subscriptions",
     "apiKeys": "API Keys",
+    "apiKeysShared": "The master shares API keys with every user.",
     "name": "Provider name",
     "rename": "Rename",
     "remove": "Remove Provider…",

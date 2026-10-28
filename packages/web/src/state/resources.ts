@@ -125,8 +125,7 @@ export const useResources = defineStore('resources', () => {
     () => product.snapshot?.user?.email ?? session.user?.email ?? '',
   )
   const canConfigure = computed(
-    () =>
-      product.snapshot?.mode === 'isolated' || product.snapshot?.user?.role === 'master',
+    () => !!product.snapshot?.manages && (product.snapshot.manages.apiKeys || product.snapshot.manages.subscriptions),
   )
   const appearance = computed(() => preferences.appearance)
   const keys = keptComputed(() => preferences.keys)

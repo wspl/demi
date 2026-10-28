@@ -90,7 +90,7 @@ pub async fn activate(
     if !selected {
         return Err(AccountRefusal::NotFound);
     }
-    vault.mark_changed(&entry.owner);
+    vault.mark_changed(&entry.owner, entry.kind()).await;
     provider_registry.invalidate(&entry.id).await?;
     Ok(account)
 }
@@ -110,7 +110,7 @@ pub async fn reorder(
     if !ordered {
         return Err(AccountRefusal::Order);
     }
-    vault.mark_changed(&entry.owner);
+    vault.mark_changed(&entry.owner, entry.kind()).await;
     Ok(())
 }
 
@@ -142,7 +142,7 @@ pub async fn remove(
         .remove_account(entry, account.clone())
         .await?;
     provider_registry.quotas().forget_account(&entry.id, &account);
-    vault.mark_changed(&entry.owner);
+    vault.mark_changed(&entry.owner, entry.kind()).await;
     provider_registry.invalidate(&entry.id).await?;
     Ok(active)
 }

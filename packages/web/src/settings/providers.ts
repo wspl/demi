@@ -96,7 +96,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   /** The provider operations on their way, by provider: each provider's in order. */
   const writes = new SerialQueue()
   const providers = computed(() => {
-    const configured = resources.providers.map((provider) => ({
+    // The page lists the entries of the kinds the user manages: on a shared
+    // instance another's API keys, or subscriptions, are only inferred with.
+    const manages = product.snapshot?.manages
+    const configured = resources.providers.filter((provider) =>
+      provider.kind === 'subscription' ? manages?.subscriptions !== false : manages?.apiKeys !== false,
+    ).map((provider) => ({
       ...provider,
       ...testResults.value[provider.id],
       ...(provider.cliPackage === null ? {} : { cli: cliOf(provider.id) }),
@@ -104,10 +109,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }))
     // The signed-in subscriptions in the user's order, which generated
     // media follow, then each one nobody signed in to, in the vendors' order,
-    // as what could be added follows what was; none while the instance
-    // offers no subscription, whose entries the backend then sends none of.
-    const offered = product.snapshot?.mode !== 'shared' || product.snapshot.sharedSubscriptions
-    const placeholders = (offered ? product.vendors?.subscriptions ?? [] : []).flatMap((subscription) =>
+    // as what could be added follows what was.
+    const placeholders = (manages?.subscriptions !== false ? product.vendors?.subscriptions ?? [] : []).flatMap((subscription) =>
       configured.some(
         (provider) =>
           provider.kind === 'subscription' &&
@@ -696,10 +699,18 @@ export const useProviderSettings = defineStore('provider-settings', () => {
    * with a toast.
    */
   function reorderProviders(ids: string[]): Promise<void> {
-    const shown = product.change('providers', (state) => ({
-      ...state,
-      providers: ids.flatMap((id) => known(state.providers, 'providers').filter((entry) => entry.id === id)),
-    }))
+    // The entries the user only infers with, another's on a shared
+    // instance, are not in the order and keep their place after it.
+    const shown = product.change('providers', (state) => {
+      const providers = known(state.providers, 'providers')
+      return {
+        ...state,
+        providers: [
+          ...ids.flatMap((id) => providers.filter((entry) => entry.id === id)),
+          ...providers.filter((entry) => !ids.includes(entry.id)),
+        ],
+      }
+    })
     const current = lifetime
     return writes
       // After every entry's earlier writes, which the order must not overtake.

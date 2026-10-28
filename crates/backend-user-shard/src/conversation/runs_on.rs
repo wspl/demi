@@ -19,11 +19,7 @@ pub async fn runs_on(
     user: &UserId,
     selections: &[ModelSelection],
 ) -> Vec<JobModel> {
-    let entries = match services.vault.owner_for(user).await {
-        Ok(owner) => services.vault.entries(owner).await,
-        Err(error) => Err(error),
-    };
-    let entries = entries.unwrap_or_else(|error| {
+    let entries = services.vault.entries_for(user).await.unwrap_or_else(|error| {
         // The names only fall back to the selection's; the job still shows.
         tracing::warn!(event = "subagent_model.entries_read_failed", %error, "the provider entries were not read for a subagent's model");
         Vec::new()

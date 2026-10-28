@@ -454,12 +454,12 @@
       "own": "各使用者自己的",
       "shared": "共享",
       "description": "共享時，每位使用者都使用你設定的供應商。",
-      "descriptionApiKeys": "共享時，每位使用者都使用你設定的 API 金鑰。",
+      "descriptionApiKeys": "共享時，每位使用者都使用你設定的 API 金鑰和自己的訂閱。",
       "share": {
         "title": "與所有使用者共享你的供應商？",
         "action": "共享",
         "body": "每位使用者的模型選單將提供你的供應商，而不是他們自己的。他們的供應商會保留，停止共享後恢復。",
-        "subscriptions": "共享期間不提供訂閱，包括你自己的。"
+        "subscriptions": "每個人仍使用自己的訂閱，其他人用不到。"
       },
       "stop": {
         "title": "停止共享你的供應商？",
@@ -616,6 +616,7 @@
     "loading": "正在載入供應商…",
     "subscriptions": "訂閱",
     "apiKeys": "API 金鑰",
+    "apiKeysShared": "擁有者與所有使用者共享 API 金鑰。",
     "name": "供應商名稱",
     "rename": "重新命名",
     "remove": "移除供應商…",

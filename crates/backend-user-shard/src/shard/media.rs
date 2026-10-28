@@ -42,6 +42,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_database::usage::{UsageRow, merge_windows};
+use demi_backend_providers::vault::entries::Vault;
 use demi_plugin_host::VideoJob;
 use demi_provider_registry::store::StoreError;
 use demi_provider_registry::registry::{RegistryError, MakerOf};
@@ -139,9 +140,8 @@ async fn routes(
     kind: MediaKind,
 ) -> Result<Vec<Route>, RegistryError> {
     let preferences = services.control.preferences(user.clone()).await.map_err(StoreError::new)?;
-    let owner = services.vault.owner_for(user).await.map_err(StoreError::new)?;
     let mut routes = Vec::new();
-    for entry in services.vault.entries(owner).await.map_err(StoreError::new)? {
+    for entry in services.vault.entries_for(user).await.map_err(StoreError::new)? {
         if !services.provider_registry.media_shapes(&entry).makes(kind) {
             continue;
         }
@@ -298,17 +298,10 @@ pub async fn entry_media_models(
     Ok(entries)
 }
 
-/// Whether the user manages the entries they make media with, and so may
-/// read their accounts and check their keys.
-async fn manages(shard: &Shard) -> Result<bool, PortFailure> {
-    let user = shard.user();
-    Ok(shard.services().vault.owner_for(user).await.map_err(failed)? == *user)
-}
-
 /// The active account's label of `route`'s entry, for a user who manages
 /// it.
-async fn account_of(shard: &Shard, route: &Route, manages: bool) -> Option<String> {
-    let active = route.entry.active().filter(|_| manages)?;
+async fn account_of(shard: &Shard, route: &Route) -> Option<String> {
+    let active = route.entry.active().filter(|_| Vault::manages(shard.user(), &route.entry))?;
     let record = shard.services().vault.account(route.entry.id.clone(), active.clone()).await.ok().flatten();
     Some(record.map_or_else(|| active.to_string(), |record| record.label))
 }
@@ -319,8 +312,7 @@ async fn offerings(
     shard: &Shard,
     catalog: &Catalog,
     routes: &[Route],
-    manages: bool,
-) -> (Vec<Vec<MediaModelInfo>>, Vec<MediaUnlisted>, Option<(String, MediaFailure)>) {
+) -> (Vec<Vec<MediaModelInfo>>, Vec<MediaUnlisted>, Option<(String, MediaFailure, bool)>) {
     let mut offered = Vec::new();
     let mut unlisted = Vec::new();
     let mut first_failure = None;
@@ -329,11 +321,12 @@ async fn offerings(
             Ok(models) => offered.push(models),
             Err(failure) => {
                 let vendor = route.media().name().to_owned();
+                let manages = Vault::manages(shard.user(), &route.entry);
                 unlisted.push(MediaUnlisted {
                     provider: route.entry.label.clone(),
                     refusal: vendor_refusal(failure.clone(), vendor.clone(), None, manages),
                 });
-                first_failure.get_or_insert((vendor, failure));
+                first_failure.get_or_insert((vendor, failure, manages));
                 offered.push(Vec::new());
             }
         }
@@ -405,9 +398,8 @@ fn listed_name<'a>(listing: &[MediaModelInfo], names: &'a [String]) -> Option<&'
 pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<MediaListing, PortFailure> {
     let services = shard.services();
     let routes = routes(services, shard.user(), kind).await.map_err(failed)?;
-    let manages = manages(shard).await?;
     let catalog = services.media.current();
-    let (offered, unlisted, _) = offerings(shard, &catalog, &routes, manages).await;
+    let (offered, unlisted, _) = offerings(shard, &catalog, &routes).await;
     // An alias is a name of a model, not a model: a model is one row, with
     // its aliases among its facts, and every entry that offers any of its
     // names.
@@ -452,7 +444,7 @@ pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<Media
                 provider: route.entry.label.clone(),
                 provider_id: route.entry.id.as_str().to_owned(),
                 subscription: route.subscription(),
-                account: account_of(shard, route, manages).await,
+                account: account_of(shard, route).await,
                 confirmed: route.media().confirms_model(),
                 status,
             });
@@ -835,9 +827,8 @@ impl Call<'_> {
             let node = shard.agent().node(&root_of(self.conversation), &caller.node)?;
             Some(node.record().number)
         });
-        let manages = manages(shard).await?;
         let catalog = services.media.current();
-        let (offered, _, unread) = offerings(shard, &catalog, &routes, manages).await;
+        let (offered, _, unread) = offerings(shard, &catalog, &routes).await;
         // Each entry that offers any name of the model, with the name it is
         // sent: the one asked when it lists it, else another of the model's.
         let names = model_names(&catalog, kind, &model);
@@ -874,8 +865,7 @@ impl Call<'_> {
                     Err(message) => {
                         // An entry that makes none of the kind is named as
                         // one that does not offer the model.
-                        let owner = services.vault.owner_for(shard.user()).await.map_err(failed)?;
-                        let all = services.vault.entries(owner).await.map_err(failed)?;
+                        let all = services.vault.entries_for(shard.user()).await.map_err(failed)?;
                         let Ok(other) = named(&all, name) else {
                             return Err(failed(message));
                         };
@@ -929,7 +919,7 @@ impl Call<'_> {
                 shard,
                 catalog: &catalog,
                 listed,
-                manages,
+                manages: Vault::manages(shard.user(), &route.entry),
                 turn: self.caller.and_then(|caller| caller.turn.clone()),
                 route: &route,
                 model: model_of(&name),
@@ -966,7 +956,7 @@ impl Call<'_> {
         if !routes.iter().any(|route| route.entry.generates(kind)) {
             return Err(refused(none_made(&routes)));
         }
-        if let Some((vendor, failure)) = unread {
+        if let Some((vendor, failure, manages)) = unread {
             return Err(refused(vendor_refusal(failure, vendor, None, manages)));
         }
         Err(refused(MediaRefusal::UnknownModel { model }))

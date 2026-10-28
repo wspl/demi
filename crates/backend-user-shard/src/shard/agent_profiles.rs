@@ -206,8 +206,7 @@ impl Shard {
     /// The user's provider entries, their catalogs and preferences now.
     pub(crate) async fn scope(&self) -> Result<Scope, StorageError> {
         let services = self.services();
-        let owner = services.vault.owner_for(self.user()).await?;
-        let entries = services.vault.entries(owner).await?;
+        let entries = services.vault.entries_for(self.user()).await?;
         let catalog = services.provider_registry.model_catalog(&entries, false).await;
         let preferences = services.control.preferences(self.user().clone()).await?;
         Ok(Scope {

@@ -229,9 +229,7 @@ impl SubagentSource for ShardSubagents {
 
 /// The provider entries in the user's scope.
 pub(crate) async fn entries(shard: &Shard) -> Result<Vec<ProviderEntry>, StorageError> {
-    let vault = &shard.services().vault;
-    let owner = vault.owner_for(shard.user()).await?;
-    vault.entries(owner).await
+    shard.services().vault.entries_for(shard.user()).await
 }
 
 /// The profile a change wrote, as the agent reads it.

@@ -13,6 +13,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_provider_registry::registry::RegistryError;
 use demi_provider_registry::entry::ProviderEntry;
+use demi_backend_providers::vault::entries::Vault;
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::Provider;
 use demi_provider_common::quota::QuotaError;
@@ -31,9 +32,15 @@ use demi_backend_user_shard::provider_settings::ProviderRefusal;
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::Shards;
 
-/// Refuses a user who does not configure the scope's entries.
-pub(super) fn configures(services: &Services, user: &UserDto) -> Result<(), ApiError> {
-    services.may_configure(user).map_err(refused)
+/// The entry the path names, when the caller infers with it and manages
+/// it; one they only infer with is refused, and any other answers like a
+/// missing one.
+pub(super) async fn managed(
+    services: &Services,
+    user: &UserDto,
+    id: &str,
+) -> Result<ProviderEntry, ApiError> {
+    services.managed_entry(&user.id, id).await.map_err(refused)
 }
 
 /// The entry the path names, when it is one of the caller's scope; any
@@ -97,8 +104,7 @@ pub(super) async fn list(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<Providers>, ApiError> {
-    let owner = services.vault.owner_for(&user.id).await?;
-    let entries = services.vault.entries(owner).await?;
+    let entries = services.vault.entries_for(&user.id).await?;
     Ok(Json(Providers {
         providers: entries
             .iter()
@@ -207,7 +213,7 @@ pub(super) async fn status(
     Path(id): Path<String>,
 ) -> Result<Json<ProviderDetails>, ApiError> {
     let entry = scoped(&services, &user, &id).await?;
-    let disclose = services.vault.configures(&user);
+    let disclose = Vault::manages(&user.id, &entry);
     match services.provider_registry.details(&entry, disclose).await {
         Ok(details) => Ok(Json(details)),
         Err(RegistryError::Storage(error)) => Err(error.into()),
@@ -246,8 +252,7 @@ pub(super) async fn quota(
     Path(id): Path<String>,
     OptionalJsonBody(request): OptionalJsonBody<QuotaRequest>,
 ) -> Result<Json<QuotaAnswer>, ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
+    let entry = managed(&services, &user, &id).await?;
     let provider = account_provider(&services, &entry, request.credential_id.as_ref()).await?;
     let Some(quota) = provider.quota() else {
         return Ok(Json(QuotaAnswer { quota: None }));
@@ -284,8 +289,7 @@ pub(super) async fn test(
     Path(id): Path<String>,
     JsonBody(request): JsonBody<TestRequest>,
 ) -> Result<Json<TestResult>, ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
+    let entry = managed(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
     let account = request.credential_id;
     let provider = account_provider(&services, &entry, account.as_ref()).await?;
