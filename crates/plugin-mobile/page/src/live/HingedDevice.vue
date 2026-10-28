@@ -7,7 +7,7 @@ import DeviceKeys from './DeviceKeys.vue'
 import DeviceStatus from './DeviceStatus.vue'
 import FoldBar from './FoldBar.vue'
 import { FoldScene, MAX_YAW } from './fold-scene'
-import { appleBody, bodyBytes, sha256 } from './apple-body'
+import { appleBody } from './apple-body'
 import { t } from '../locales/text'
 
 /**
@@ -182,6 +182,7 @@ onMounted(() => {
     { outer: pictures.outer.canvas, inner: pictures.inner.canvas },
     props.fold.outer,
     props.fold.inner,
+    !!props.bodyUrl,
   )
   drawing.light(props.fold.display)
   drawing.painted('outer', !!pictures.outer.state.look)
@@ -192,9 +193,10 @@ onMounted(() => {
   if (props.bodyUrl) {
     const url = props.bodyUrl
     void (async () => {
-      const bytes = await bodyBytes(url)
-      const body = await appleBody(bytes, await sha256(bytes), props.fold.outer, props.fold.inner)
+      const body = await appleBody(url, props.fold.outer, props.fold.inner)
       if (!body) {
+        // The file does not fit: the stand-in shows the device.
+        drawing.useStandIn()
         return
       }
       // A view that went meanwhile leaves the body unused.
@@ -202,8 +204,9 @@ onMounted(() => {
         body.dispose()
       }
     })().catch((error: unknown) => {
-      // The stand-in stays: the file could not be read, or not as a body.
+      // The stand-in shows the device: the file could not be read, or not as a body.
       console.warn('iPhone Duo\'s body did not load', error)
+      drawing.useStandIn()
     })
   }
   // Each display's pictures come no larger than the view shows the device.

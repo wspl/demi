@@ -3,166 +3,170 @@
  * type's product class (`./fold-scene.ts`), read on the page from the Host
  * and kept for the session, never stored.
  *
- * - The package's first layer only picks a color variant, which three.js's
- *   composer cannot read; the body is its model layer, in its own finish.
- * - Its names are scrambled, so its two displays are found by their shape:
- *   flat, with the aspect of the device's displays.
- * - Its one animation folds the hinge over a stretch of its time, flat to
- *   closed, measured for the file of a known SHA-256, and taken alike from
- *   a file of another hash whose animation is as long. Any other file does
- *   not fit, and the view keeps its stand-in.
+ * A worker reads it (`./apple-body-worker.ts`), so the page never waits on
+ * its unzipping, parsing and composing, once a session for each file and
+ * device: every view after the first takes a copy of the body the first
+ * read, and poses it on a mixer of its own. A copy has geometries, materials
+ * and textures of its own that share the read body's arrays and images, so
+ * nothing large is copied, and a view that goes disposes of them: a renderer
+ * holds on to each resource it drew until that resource is disposed of, and
+ * a resource the session kept and every view shared would hold every
+ * renderer the session ever made.
  *
  * The model lies in its XZ plane, its inner display towards +Y, the hinge
- * along Z; the scene stands it up in the XY plane.
+ * along Z; the worker stands it up in the XY plane.
  */
-/// <reference path="./three-usd.d.ts" />
 import * as THREE from 'three'
-import { USDCParser, type UsdLayer } from 'three/addons/loaders/usd/USDCParser.js'
-import { USDComposer } from 'three/addons/loaders/usd/USDComposer.js'
-import { unzipSync } from 'three/addons/libs/fflate.module.js'
-import type { Body, LitDisplay, Size } from './fold-scene'
+import { clone } from 'three/addons/utils/SkeletonUtils.js'
+import { decode } from './body-transfer'
+import type { BodyReply, BodyRequest, FoldStretch } from './apple-body-worker'
+import type { Body, Size } from './fold-scene'
 
-/** The stretch of a body's animation that folds it: flat at `from`, closed at `to`, in seconds. */
-interface FoldStretch {
-  from: number
-  to: number
+/** A body as the session keeps it, which each view copies. */
+interface Kept {
+  object: THREE.Object3D
+  clip: THREE.AnimationClip
+  stretch: FoldStretch
+  displays: { inner: number; outer: number }
+  flat: Size
 }
 
-/** The stretch measured for each file, by its SHA-256: Xcode 27.1's iPhone Duo. */
-const MEASURED: Record<string, FoldStretch> = {
-  fd315e57c38fde5666d50de6e19b444e3d145450008126e85838119b682b7940: { from: 5.4167, to: 10.4167 },
-}
-/** The measured file's animation's length, in seconds, by which a file of another hash is taken alike. */
-const MEASURED_LENGTH = 37.5
-const MEASURED_STRETCH: FoldStretch = { from: 5.4167, to: 10.4167 }
+/** Each body the session read, by its file's URL and the device's displays. */
+const kept = new Map<string, Promise<Kept | null>>()
 
-/** How far a display mesh's aspect may be from its display's, as a share of it. */
-const ASPECT_SLACK = 0.06
-
-/** Each body's file as the page read it, by its URL, kept for the session. */
-const read = new Map<string, Promise<ArrayBuffer>>()
-
-/** The file at `url`, read once a session. */
-export function bodyBytes(url: string): Promise<ArrayBuffer> {
-  let bytes = read.get(url)
-  if (!bytes) {
-    bytes = fetch(url, { credentials: 'include' }).then((response) => {
-      if (!response.ok) {
-        throw new Error(`the body's file answered ${response.status}`)
-      }
-      return response.arrayBuffer()
-    })
+/** The body in the file at `url`, for displays of `outer` and `inner` points; none when it does not fit. */
+export async function appleBody(url: string, outer: Size, inner: Size): Promise<Body | null> {
+  const key = `${url} ${outer.width}x${outer.height} ${inner.width}x${inner.height}`
+  let body = kept.get(key)
+  if (!body) {
+    body = read(url, outer, inner)
     // A read that failed is tried again by the next view.
-    bytes.catch(() => read.delete(url))
-    read.set(url, bytes)
+    body.catch(() => kept.delete(key))
+    kept.set(key, body)
   }
-  return bytes
+  const found = await body
+  return found && copy(found)
 }
 
-/** The hex SHA-256 of `bytes`; none where the page's context has no Web Crypto. */
-export async function sha256(bytes: ArrayBuffer): Promise<string | null> {
-  if (!globalThis.crypto?.subtle) {
-    return null
+async function read(url: string, outer: Size, inner: Size): Promise<Kept | null> {
+  const response = await fetch(url, { credentials: 'include' })
+  if (!response.ok) {
+    throw new Error(`the body's file answered ${response.status}`)
   }
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
-/** The body in `bytes`, a USDZ, for displays of `outer` and `inner` points; none when it does not fit. */
-export async function appleBody(bytes: ArrayBuffer, hash: string | null, outer: Size, inner: Size): Promise<Body | null> {
-  const files = unzipSync(new Uint8Array(bytes))
-  const names = Object.keys(files)
-  const assets: Record<string, UsdLayer | Uint8Array> = {}
-  for (const name of names) {
-    const file = files[name]!
-    if (/\.(png|jpe?g)$/i.test(name)) {
-      assets[name] = file
-    } else if (name.endsWith('.usdc')) {
-      assets[name] = new USDCParser().parseData(file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer)
+  const bytes = await response.arrayBuffer()
+  const worker = new Worker(new URL('./apple-body-worker.ts', import.meta.url), { type: 'module' })
+  try {
+    const reply = await new Promise<BodyReply>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<BodyReply>) => resolve(event.data)
+      worker.onerror = (event) => reject(new Error(event.message || 'the worker that reads the body failed'))
+      worker.onmessageerror = () => reject(new Error('the body could not be read from the worker'))
+      // The sizes may be a view's reactive props, which a message cannot carry.
+      const request: BodyRequest = {
+        bytes,
+        outer: { width: outer.width, height: outer.height },
+        inner: { width: inner.width, height: inner.height },
+      }
+      worker.postMessage(request, [bytes])
+    })
+    if ('error' in reply) {
+      throw new Error(reply.error)
     }
+    if (!reply.body) {
+      return null
+    }
+    const { model, clip } = decode(reply.body.model)
+    if (!clip) {
+      return null
+    }
+    return { object: model, clip, stretch: reply.body.stretch, displays: reply.body.displays, flat: reply.body.flat }
+  } finally {
+    worker.terminate()
   }
-  const layerName = names.find((name, index) => index > 0 && name.endsWith('.usdc'))
-  const layer = layerName ? assets[layerName] : undefined
-  if (!layerName || !layer || layer instanceof Uint8Array) {
-    return null
-  }
-  const composer = new USDComposer()
-  const model = composer.compose(layer, assets, {}, layerName.slice(0, layerName.lastIndexOf('/')))
-  await Promise.all(composer.texturePromises)
-  const clip = model.animations[0]
-  const stretch = (hash ? MEASURED[hash] : undefined)
-    ?? (clip && Math.abs(clip.duration - MEASURED_LENGTH) < 0.01 ? MEASURED_STRETCH : undefined)
-  if (!clip || !stretch) {
-    return null
-  }
+}
+
+/** A view's copy of `body`, posed flat. */
+function copy(body: Kept): Body {
+  const object = clone(body.object)
+  const nodes: THREE.Object3D[] = []
+  object.traverse((node) => nodes.push(node))
+  const owned = own(object)
+  const model = object.children[0]!
   const mixer = new THREE.AnimationMixer(model)
-  const action = mixer.clipAction(clip)
+  const action = mixer.clipAction(body.clip)
   action.play()
   action.paused = true
-  const pose = (degrees: number) => {
+  const { stretch } = body
+  const fold = (degrees: number) => {
     action.time = stretch.from + ((180 - degrees) / 180) * (stretch.to - stretch.from)
     mixer.update(0)
     model.updateMatrixWorld(true)
   }
-  pose(180)
-  const found = displays(model, outer, inner)
-  if (!found) {
-    return null
-  }
-  // Laid out in the displays' points, standing, the inner display towards +Z.
-  const object = new THREE.Group()
-  const innerBox = new THREE.Box3().setFromObject(found.inner, true)
-  const scale = inner.width / innerBox.getSize(new THREE.Vector3()).x
-  model.rotation.x = Math.PI / 2
-  model.scale.setScalar(scale)
-  object.add(model)
-  const whole = new THREE.Box3().setFromObject(model, true).getSize(new THREE.Vector3())
+  fold(180)
   return {
     object,
-    flat: { width: whole.x, height: whole.y },
-    displays: { inner: [found.inner], outer: [found.outer] },
-    fold: pose,
+    flat: body.flat,
+    displays: { inner: [nodes[body.displays.inner] as THREE.Mesh], outer: [nodes[body.displays.outer] as THREE.Mesh] },
+    fold,
     dispose() {
       mixer.stopAllAction()
-      model.traverse((part) => {
-        if (part instanceof THREE.Mesh) {
-          part.geometry.dispose()
-          for (const material of [part.material].flat()) {
-            material.dispose()
-          }
-        }
-      })
+      mixer.uncacheRoot(model)
+      for (const resource of owned) {
+        resource.dispose()
+      }
     },
   }
 }
 
 /**
- * The model's two displays laid flat: the largest plane of each display's
- * aspect, the outer one under the inner. A display is a plane with no
- * depth; the glass over it, of nearly its aspect and larger, has some.
+ * Gives each mesh of `object` a geometry, materials and textures of its own,
+ * over the same attributes and images; answers them, for the view to
+ * dispose of.
  */
-function displays(model: THREE.Object3D, outer: Size, inner: Size): Record<LitDisplay, THREE.Mesh> | null {
-  const flat: { mesh: THREE.Mesh; size: THREE.Vector3; center: THREE.Vector3 }[] = []
-  model.traverse((part) => {
-    if (!(part instanceof THREE.Mesh)) {
-      return
+function own(object: THREE.Object3D): { dispose(): void }[] {
+  const geometries = new Map<THREE.BufferGeometry, THREE.BufferGeometry>()
+  const materials = new Map<THREE.Material, THREE.Material>()
+  const textures = new Map<THREE.Texture, THREE.Texture>()
+  const geometryOf = (shared: THREE.BufferGeometry) => {
+    let geometry = geometries.get(shared)
+    if (!geometry) {
+      geometry = new THREE.BufferGeometry()
+      for (const [name, attribute] of Object.entries(shared.attributes)) {
+        geometry.setAttribute(name, attribute)
+      }
+      geometry.setIndex(shared.index)
+      for (const group of shared.groups) {
+        geometry.addGroup(group.start, group.count, group.materialIndex)
+      }
+      geometries.set(shared, geometry)
     }
-    const box = new THREE.Box3().setFromObject(part, true)
-    const size = box.getSize(new THREE.Vector3())
-    if (size.x > 0 && size.z > 0 && size.y <= Math.max(size.x, size.z) * 1e-4) {
-      flat.push({ mesh: part, size, center: box.getCenter(new THREE.Vector3()) })
+    return geometry
+  }
+  const materialOf = (shared: THREE.Material) => {
+    let material = materials.get(shared)
+    if (!material) {
+      material = shared.clone()
+      const fields = material as unknown as Record<string, unknown>
+      for (const [key, value] of Object.entries(fields)) {
+        if (value instanceof THREE.Texture) {
+          let texture = textures.get(value)
+          if (!texture) {
+            // A clone shares its image.
+            texture = value.clone()
+            textures.set(value, texture)
+          }
+          fields[key] = texture
+        }
+      }
+      materials.set(shared, material)
+    }
+    return material
+  }
+  object.traverse((node) => {
+    if (node instanceof THREE.Mesh) {
+      node.geometry = geometryOf(node.geometry)
+      const material = node.material as THREE.Material | THREE.Material[]
+      node.material = Array.isArray(material) ? material.map(materialOf) : materialOf(material)
     }
   })
-  const largest = (display: Size, keep: (center: THREE.Vector3) => boolean) => {
-    const aspect = display.width / display.height
-    return flat
-      .filter(({ size, center }) => Math.abs(size.x / size.z - aspect) <= aspect * ASPECT_SLACK && keep(center))
-      .sort((a, b) => b.size.x * b.size.z - a.size.x * a.size.z)[0]
-  }
-  const innerDisplay = largest(inner, () => true)
-  if (!innerDisplay) {
-    return null
-  }
-  const outerDisplay = largest(outer, (center) => center.y < innerDisplay.center.y)
-  return outerDisplay ? { inner: innerDisplay.mesh, outer: outerDisplay.mesh } : null
+  return [...geometries.values(), ...materials.values(), ...textures.values()]
 }

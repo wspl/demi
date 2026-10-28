@@ -13,12 +13,20 @@ declare module 'three/addons/loaders/usd/USDCParser.js' {
 }
 
 declare module 'three/addons/loaders/usd/USDComposer.js' {
-  import type { Group } from 'three'
+  import type { Group, Texture, Wrapping } from 'three'
   import type { UsdLayer } from 'three/addons/loaders/usd/USDCParser.js'
 
   export class USDComposer {
     /** The textures the composed scene loads, which it shows once they settle. */
     texturePromises: Promise<unknown>[]
     compose(layer: UsdLayer, assets: Record<string, UsdLayer | Uint8Array>, variants: Record<string, string>, base: string): Group
+    /** Makes a texture of an image's bytes; a worker's composer reads them without `Image`. */
+    _createTextureFromData(
+      data: Uint8Array | ArrayBuffer | string | null,
+      textureAttrs: Record<string, unknown> | undefined,
+      transformAttrs: Record<string, unknown> | undefined,
+    ): Texture | null
+    _getWrapMode(mode: unknown): Wrapping
+    _applyTextureTransforms(texture: Texture, transformAttrs: Record<string, unknown> | undefined): void
   }
 }

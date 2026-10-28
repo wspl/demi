@@ -32,6 +32,9 @@ export interface Size {
 
 export type LitDisplay = 'outer' | 'inner'
 
+/** How long a frame may spend putting a new body's textures on the GPU, so the view keeps its pace. */
+const UPLOAD_BUDGET_MS = 6
+
 /** How far the viewer may turn the view either way, in degrees: past it the display is too slanted to read or tap. */
 export const MAX_YAW = 60
 
@@ -158,12 +161,22 @@ export class FoldScene {
    */
   private posed: { degrees: number; meshes: Map<THREE.Mesh, THREE.Mesh> } | null = null
 
+  /**
+   * Whether the scene waits for Apple's body and draws nothing meanwhile:
+   * the stand-in shows only where there is no body to wait for, never for
+   * the moment before it.
+   */
+  private waiting: boolean
+
   constructor(
     readonly canvas: HTMLCanvasElement,
     pictures: Record<LitDisplay, HTMLCanvasElement>,
     outer: Size,
     inner: Size,
+    /** Whether Apple's body is on its way, which the scene waits for. */
+    bodyComing: boolean,
   ) {
+    this.waiting = bodyComing
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -182,12 +195,25 @@ export class FoldScene {
 
   /**
    * Draws the device as `body` from now on, as Apple's once it loaded, once
-   * its shaders are compiled: compiled at its first draw, they held that
-   * frame back for a quarter of a second. Answers whether the scene took it,
-   * which a scene disposed of meanwhile does not.
+   * its shaders are compiled and its textures are on the GPU: compiled at
+   * its first draw, they held that frame back for a quarter of a second, and
+   * its textures took 20 ms more. The textures go a few in each frame, as
+   * many as fit in [`UPLOAD_BUDGET_MS`](#UPLOAD_BUDGET_MS). Answers whether
+   * the scene took it, which a scene disposed of meanwhile does not.
    */
   async useBody(body: Body): Promise<boolean> {
     await this.renderer.compileAsync(body.object, this.camera, this.scene)
+    let frame = performance.now()
+    for (const texture of texturesOf(body.object)) {
+      if (this.disposed) {
+        return false
+      }
+      if (performance.now() - frame > UPLOAD_BUDGET_MS) {
+        await new Promise(requestAnimationFrame)
+        frame = performance.now()
+      }
+      this.renderer.initTexture(texture)
+    }
     if (this.disposed) {
       return false
     }
@@ -197,7 +223,13 @@ export class FoldScene {
     this.posed = null
     this.body = body
     this.wear(body)
+    this.waiting = false
     return true
+  }
+
+  /** Apple's body did not come: the stand-in shows from now on. */
+  useStandIn(): void {
+    this.waiting = false
   }
 
   private wear(body: Body): void {
@@ -289,6 +321,9 @@ export class FoldScene {
 
   /** Draws the device with each picture's latest paint. */
   render(): void {
+    if (this.waiting) {
+      return
+    }
     for (const display of ['outer', 'inner'] as const) {
       const face = this.faces[display]
       const { width, height } = face.picture
@@ -333,6 +368,9 @@ export class FoldScene {
    * front of the lit one.
    */
   displayPoint(x: number, y: number): DisplayPoint | null {
+    if (this.waiting) {
+      return null
+    }
     const pointer = new THREE.Vector2((x / this.size.width) * 2 - 1, -(y / this.size.height) * 2 + 1)
     this.raycaster.setFromCamera(pointer, this.camera)
     const meshes = this.posedMeshes()
@@ -411,4 +449,22 @@ function posedCopies(object: THREE.Object3D): Map<THREE.Mesh, THREE.Mesh> {
     meshes.set(copy, each)
   })
   return meshes
+}
+
+/** Each texture the materials of `object`'s meshes use, once. */
+function texturesOf(object: THREE.Object3D): Set<THREE.Texture> {
+  const textures = new Set<THREE.Texture>()
+  object.traverse((each) => {
+    if (!(each instanceof THREE.Mesh)) {
+      return
+    }
+    for (const material of [each.material].flat() as THREE.Material[]) {
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) {
+          textures.add(value)
+        }
+      }
+    }
+  })
+  return textures
 }
