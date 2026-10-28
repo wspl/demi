@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0287
 ---
 
 # A move applies at once and stops nothing

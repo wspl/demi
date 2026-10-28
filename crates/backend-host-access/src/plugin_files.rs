@@ -106,10 +106,10 @@ impl dyn HostShard + '_ {
         self.read_files_on(id, None, reads, cancel).await
     }
 
-    /// [`read_files`](Self::read_files), on the primary Host of `device`
-    /// alone when one is named: [`ReadFilesError::Moved`] once the
-    /// conversation works on another, so what a search of one Host finds is
-    /// never read on another.
+    /// [`read_files`](Self::read_files), on the Host of `device` alone when
+    /// one is named, the primary one or one a live subagent works on:
+    /// [`ReadFilesError::Moved`] once the conversation works on neither, so
+    /// what a search of one Host finds is never read on another.
     pub async fn read_files_on(
         &self,
         id: &ConversationId,
@@ -117,10 +117,12 @@ impl dyn HostShard + '_ {
         reads: &[HostRead],
         cancel: &CancellationToken,
     ) -> Result<(Vec<HostFile>, ReadAt), ReadFilesError> {
-        let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
-        if device.is_some_and(|device| *device != access.device) {
+        if let Some(device) = device
+            && !self.works_on(id, device).await?
+        {
             return Err(ReadFilesError::Moved);
         }
+        let access = self.admit_stream(id, device, Attention::Looks, cancel).await?;
         let waits = Waits::until_ended(cancel, &access.open.ended);
         let found = waits.wait(read_host_files(&access.host.host, &self.blobs(), reads)).await?;
         Ok(found.map_err(HostAccessError::Host)?)
@@ -152,17 +154,23 @@ impl dyn HostShard + '_ {
         Ok(found.map_err(HostAccessError::Host)?.0)
     }
 
-    /// A holder of subscriptions on the conversation's primary Host
-    /// (`crates/runner-host/src/subscriptions.rs`), and that Host's device, admitted as
+    /// A holder of subscriptions on the Host of `device`
+    /// (`crates/runner-host/src/subscriptions.rs`), the conversation's primary
+    /// one or one a live subagent works on, admitted as
     /// [`read_files`](Self::read_files) is: a stopped Cloud or an offline
-    /// device is not running and is not woken. The holder keeps no
+    /// device is not running and is not woken, and a device the conversation
+    /// works on no longer is [`ReadFilesError::Moved`]. The holder keeps no
     /// admission, so it keeps no Cloud awake and no transition waits for it.
     pub async fn watch_files(
         &self,
         id: &ConversationId,
+        device: &DeviceId,
         cancel: &CancellationToken,
     ) -> Result<(DeviceId, HostSubscriber), ReadFilesError> {
-        let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
+        if !self.works_on(id, device).await? {
+            return Err(ReadFilesError::Moved);
+        }
+        let access = self.admit_stream(id, Some(device), Attention::Looks, cancel).await?;
         let subscriber = access
             .host
             .host

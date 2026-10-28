@@ -16,6 +16,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_server::instructions::ProjectFile;
+use demi_agent_store::Placement;
 use demi_backend_database::Selection;
 use demi_backend_database::conversation_index::ExecutionTarget;
 use demi_backend_host_access::access::HostAccessError;
@@ -190,8 +191,9 @@ impl Shard {
         })
     }
 
-    /// The instruction files of `cwd` for the conversation `id`.
-    pub(crate) async fn kept_instructions(&self, id: &ConversationId, cwd: &str) -> Rc<[ProjectFile]> {
+    /// The instruction files of the directory `placement` names, on its Host
+    /// or else the conversation `id`'s.
+    pub(crate) async fn kept_instructions(&self, id: &ConversationId, placement: &Placement) -> Rc<[ProjectFile]> {
         let at = match self.kept_at(id).await {
             Ok(at) => at,
             Err(error) => {
@@ -199,12 +201,18 @@ impl Shard {
                 return Rc::from([]);
             }
         };
-        let Some(device) = at.device else {
-            return Rc::from([]);
+        // A subagent's own Host, or the conversation's.
+        let device = match placement.device.as_deref().map(|device| DeviceId::try_from(device.to_owned())) {
+            Some(Ok(device)) => device,
+            Some(Err(_)) => return Rc::from([]),
+            None => match at.device {
+                Some(device) => device,
+                None => return Rc::from([]),
+            },
         };
         self.project_files()
             .instructions
-            .get(id, &device, cwd.to_owned(), at.loaded)
+            .get(id, &device, placement.directory.clone(), at.loaded)
             .await
             // A refusal is logged where the search met it.
             .ok()
@@ -433,15 +441,16 @@ fn subjects(watch: &[WatchSubject]) -> Vec<Subject> {
         .collect()
 }
 
-/// Subscriptions on a conversation's primary Host, through its host access.
+/// Subscriptions on a Host the conversation works on, its primary one or a
+/// live subagent's, through its host access.
 fn subscribe(shard: Weak<Shard>) -> Subscribe {
-    Box::new(move |conversation| {
+    Box::new(move |conversation, device| {
         let shard = shard.clone();
         Box::pin(async move {
             let shard = shard.upgrade().ok_or_else(closing)?;
             let watching = shard
                 .host_shard()
-                .watch_files(&conversation, &CancellationToken::new())
+                .watch_files(&conversation, &device, &CancellationToken::new())
                 .await?;
             Ok(watching)
         })

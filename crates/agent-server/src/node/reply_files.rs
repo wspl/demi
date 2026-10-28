@@ -293,8 +293,13 @@ async fn ask<H: HostResolver>(
         let Some(runtime) = runtime.upgrade() else {
             return;
         };
-        let cwd = match runtime.placement().await {
-            Ok(now) => runtime.directory_at(&now),
+        let cwd = match runtime.conversation_placement().await {
+            // The paths a child names on another Host than the conversation's
+            // are not the files the conversation's panels show.
+            Ok(now) => match runtime.placement_at(&now) {
+                placement if placement.device == now.device => placement.directory,
+                _ => return keep(&session, &text.id, Vec::new()),
+            },
             Err(error) => {
                 tracing::warn!(
                     event = "reply_paths.look_failed",
@@ -357,10 +362,10 @@ async fn copy<H: HostResolver>(
             session.settle_picture(&text.id, target, copy);
         }
     };
-    let (device, cwd) = match runtime.placement().await {
+    let (device, cwd) = match runtime.conversation_placement().await {
         Ok(now) => {
-            let cwd = runtime.directory_at(&now);
-            (now.device, cwd)
+            let placement = runtime.placement_at(&now);
+            (placement.device, placement.directory)
         }
         Err(error) => {
             tracing::warn!(

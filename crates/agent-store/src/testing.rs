@@ -18,8 +18,8 @@ use futures_util::future::LocalBoxFuture;
 use demi_conversation_lane_protocol::Versions;
 
 use crate::{
-    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, EarlierRows, Kind, NodeClose,
-    NodeRecord, Reprofile, Rows, RunningCommand, SessionStore, StoreError, StoredCommand, StoredPrefix, StoredSubagent, Switched, SwitchedBefore,
+    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, EarlierRows, Kind, NodeClose,
+    NodeRecord, Placement, Reprofile, Rows, RunningCommand, SessionStore, StoreError, StoredCommand, StoredPrefix, StoredSubagent, Switched, SwitchedBefore,
     media::BlobStore,
     versions::{Sibling, version_rows, versions_of},
 };
@@ -752,15 +752,15 @@ impl AgentTreeStore for MemoryTreeStore {
         })
     }
 
-    fn set_cwd<'a>(
+    fn set_placement<'a>(
         &'a self,
         id: &'a NodeId,
-        cwd: &'a ChildDirectory,
+        placement: &'a Placement,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             let mut stored = self.stored.borrow_mut();
             let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
-            node.record.cwd = Some(cwd.clone());
+            node.record.placement = Some(placement.clone());
             Ok(())
         })
     }

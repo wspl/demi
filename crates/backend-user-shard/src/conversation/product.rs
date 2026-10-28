@@ -29,6 +29,7 @@ use demi_backend_host_access::{HostShard, conversation_of};
 use demi_plugin_host::ContextAsk;
 use demi_runner_client::RemoteHost;
 use demi_agent_store::Placement;
+use demi_web_api_protocol::ids::DeviceId;
 use demi_host_interface::{HostError, HostErrorKind};
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
@@ -263,7 +264,8 @@ fn profile_of(profile: SubagentProfile, entries: &[ProviderEntry]) -> Profile {
     }
 }
 
-/// Where a shard's conversations run: each conversation's current primary Host.
+/// Where a shard's agents run: a subagent's own Host, and each conversation's
+/// current primary Host for its root.
 pub(crate) struct ShardHosts {
     /// Weak: the shard owns the agent server that holds the resolver.
     pub(crate) shard: Weak<Shard>,
@@ -277,10 +279,11 @@ impl HostResolver for ShardHosts {
             .shard
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
-        shard
-            .host_shard()
-            .conversation_host(&conversation_of(context.root))
-            .await
+        let conversation = conversation_of(context.root);
+        match agent_device(context.placement) {
+            Some(device) => shard.host_shard().agent_host(&conversation, &device).await,
+            None => shard.host_shard().conversation_host(&conversation).await,
+        }
     }
 
     async fn adopted_host(&self, context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
@@ -288,10 +291,17 @@ impl HostResolver for ShardHosts {
             .shard
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
-        shard
-            .host_shard()
-            .adopting_host(&conversation_of(context.root))
-            .await
+        let conversation = conversation_of(context.root);
+        match agent_device(context.placement) {
+            Some(device) => shard.host_shard().adopting_agent_host(&conversation, &device).await,
+            None => shard.host_shard().adopting_host(&conversation).await,
+        }
+    }
+
+    async fn host_name(&self, device: &str) -> Option<String> {
+        let shard = self.shard.upgrade()?;
+        let device = DeviceId::try_from(device.to_owned()).ok()?;
+        shard.services().control.device(device).await.ok().flatten().map(|record| record.name)
     }
 
     /// The conversation's target, read without reaching the Host.
@@ -305,6 +315,14 @@ impl HostResolver for ShardHosts {
             .await
             .map_err(|error| HostError::new(HostErrorKind::Failed { code: None }, error.to_string()))
     }
+}
+
+/// The device of a subagent's own Host, by its `placement`; none for the
+/// root, and for a subagent on the user's Cloud not made yet, which works
+/// where the conversation does until it is made.
+fn agent_device(placement: Option<&Placement>) -> Option<DeviceId> {
+    let device = placement?.device.clone()?;
+    DeviceId::try_from(device).ok()
 }
 
 /// The context source that announces a change of the conversation's
@@ -365,9 +383,10 @@ impl ContextSource for PluginContext {
                 .await
                 .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
             let cwd = shard
-                .node_directory(node)
+                .node_placement(node)
                 .await
-                .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
+                .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?
+                .directory;
             // A plugin the user has off keeps nothing, and is not asked.
             let searches = shard
                 .plugins()

@@ -105,7 +105,7 @@ const PAIR_SUMMARY: &str = "Pair the computer whose installer shows `<code>` wit
 
 const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi host list`, at once; this conversation's commands that run there end.";
 
-const LIST_SUMMARY: &str = "List the Hosts this conversation can reach with `demi host shell --host`: name, id, status, role (primary or attached) and the directory commands start in.";
+const LIST_SUMMARY: &str = "List the Hosts this conversation can reach with `demi host shell --host`: name, id, status, role (primary, attached, or subagent for a Host only a subagent works on) and the directory commands start in.";
 
 const CURRENT_SUMMARY: &str = "Show the primary host, where the shell tool's commands run: its name, id, status, project and directory.";
 
@@ -438,7 +438,8 @@ struct ListedHost {
     id: String,
     /// `online` or `offline`.
     status: &'static str,
-    /// `primary` or `attached`.
+    /// `primary`, `attached`, or `subagent` for a Host only a subagent works
+    /// on.
     role: &'static str,
     /// Where a shell there starts; null when it is not known yet.
     directory: Option<String>,
@@ -448,6 +449,7 @@ fn role_word(role: HostRole) -> &'static str {
     match role {
         HostRole::Primary => "primary",
         HostRole::Attached => "attached",
+        HostRole::Agent => "subagent",
     }
 }
 
@@ -574,8 +576,8 @@ struct ListedDevice {
     /// `online`, `updating`, `offline`, or `stopped` for a Cloud that wakes
     /// for work.
     status: &'static str,
-    /// What it is to this conversation, `primary` or `attached`; null for
-    /// neither.
+    /// What it is to this conversation, `primary`, `attached`, or
+    /// `subagent` for a Host only a subagent works on; null for none.
     role: Option<&'static str>,
     /// The name this conversation reaches it by; null when it does not.
     host: Option<String>,
@@ -710,6 +712,12 @@ async fn detach(
     if host.role == HostRole::Primary {
         return Err(RpcError::Failed(format!(
             "{}: this conversation's primary host, which cannot be detached",
+            host.name
+        )));
+    }
+    if host.role == HostRole::Agent {
+        return Err(RpcError::Failed(format!(
+            "{}: not attached to this conversation; a subagent works there",
             host.name
         )));
     }
@@ -985,7 +993,7 @@ async fn run_on_host(
             let _held = shard
                 .conversations()
                 .slot(conversation)
-                .hold_job(target.device.clone(), None, withdrawal.clone());
+                .hold_job(target.device.clone(), true, None, withdrawal.clone());
             // A detach of the Host that committed since the admission, or
             // that comes while the directories install, ends the call here,
             // before the job starts.
