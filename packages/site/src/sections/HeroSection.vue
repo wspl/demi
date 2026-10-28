@@ -44,7 +44,7 @@ const SRCSET = `${shore1x} 2172w, ${shore2x} 4344w, ${shore3x} 6516w`
           <RequirementsNote class="requirements" />
         </div>
       </div>
-      <DemoStage class="stage" demo="hero" label="Demi turns three photographed receipts into an expense report on a Mac, on a desktop browser and on a phone at once." />
+      <DemoStage class="stage" demo="hero" lifts label="From a browser, Demi fixes a bug on a Mac and tests it on a Windows PC; from a phone, it ships the release to a VPS and copies the VPS's data to a home lab." />
     </div>
   </section>
 </template>
@@ -85,9 +85,9 @@ const SRCSET = `${shore1x} 2172w, ${shore2x} 4344w, ${shore3x} 6516w`
 
 /* A very wide window keeps the product at a size that reads; the copy stays beside it. */
 .stage {
-  width: 100%;
-  max-width: 1040px;
-  justify-self: end;
+  width: 88%;
+  max-width: 920px;
+  justify-self: center;
 }
 
 h1 {

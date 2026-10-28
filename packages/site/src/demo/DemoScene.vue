@@ -26,7 +26,7 @@ import type { DemoId } from '@/features'
 import { Conversation, MODEL_SETTINGS, MODELS, PROVIDERS, Stopped } from './conversation'
 import PhoneNotice from './PhoneNotice.vue'
 import { CLOUD, PROJECTS, SCENES, sidebarRows, type DemoHosts, type Form, type Notice } from './scenes'
-import { CAMERA_MS, tellCamera, tellTab, type CameraRect } from './message'
+import { CAMERA_MS, tellCamera, tellShot, tellTab, type CameraRect, type DeviceShot } from './message'
 import { HARBOR } from './harbor'
 import { SHOP } from './shop'
 import { animateEntrances } from './entrances'
@@ -54,10 +54,8 @@ const devices = scene.devices ?? []
 const projectName = () => conversation.state.cwd.split('/').filter(Boolean).at(-1) ?? null
 const moveQuestion = useMoveQuestion()
 
-/** A device's home, where a move there starts the conversation's work. */
-function homeOf(name: string): string {
-  return `/Users/${name.split('-')[0]}`
-}
+/** The user's home on every device, where a move there starts the conversation's work: the demo's user is alex everywhere. */
+const HOME = '/Users/alex'
 
 /**
  * The user chose a Host in the header's menu: once they confirm, the
@@ -68,7 +66,7 @@ function choose(choice: HostChoice): void {
   const device = choice.kind === 'device' ? devices.find((each) => each.id === choice.id) : undefined
   if (!device)
     return
-  const home = homeOf(device.name)
+  const home = HOME
   const path = `${home}/Projects/${projectName() ?? ''}`
   void moveQuestion.ask(
     { host: device.name, directory: homePath(path, home), from: hosts.primary.name, fromCloud: hosts.primary.kind === 'cloud' },
@@ -126,8 +124,27 @@ async function look(target: Element | string | CameraRect | null): Promise<void>
   await conversation.wait(CAMERA_MS)
 }
 
+/** Whether the stage shows a shot beside the app, which a scene that stops takes back. */
+let shooting = false
+function shoot(shot: DeviceShot | null): void {
+  if (props.form !== 'desktop')
+    return
+  shooting = shot !== null
+  tellShot(shot)
+}
+
+async function compose(text: string, ms: number): Promise<void> {
+  const letters = [...text]
+  for (let i = 1; i <= letters.length; i++) {
+    draft.value = letters.slice(0, i).join('')
+    await conversation.wait(ms / letters.length)
+  }
+  draft.value = ''
+  await conversation.send(text)
+}
+
 // The scene starts before the first render, so the conversation never shows empty.
-scene.play({ conversation, work, form: props.form, notice, closed, hosts, open, look }).catch((error: unknown) => {
+scene.play({ conversation, work, form: props.form, notice, closed, hosts, open, look, shoot, compose }).catch((error: unknown) => {
   if (!(error instanceof Stopped))
     throw error
 })
@@ -140,6 +157,8 @@ onBeforeUnmount(() => {
   window.getSelection()?.removeAllRanges()
   if (closed.value)
     tellTab(false)
+  if (shooting)
+    tellShot(null)
 })
 </script>
 

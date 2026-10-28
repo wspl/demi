@@ -2,10 +2,11 @@
 // recording (`recording.ts`) for the screen the frame stands for, so the
 // frame shows Demi's own app as it looked, with none of the app's script.
 // The page tells it which demo to play (`src/demo/message.ts`); each
-// time, the recording starts over.
-import { isDemoId, type DemoId } from '@/features'
+// time, the recording starts over, and a demo that loops starts over by
+// itself once its seconds have run.
+import { DEMOS, isDemoId, type DemoId } from '@/features'
 import { aim } from '@/demo/camera'
-import { cameraOf, readPlay, tellCamera, tellReady, tellTab } from '@/demo/message'
+import { cameraOf, readPlay, shotOf, tellCamera, tellReady, tellShot, tellTab } from '@/demo/message'
 import type { RecordedChild, RecordedEvent, RecordedNode, RecordedRange, Recording } from './recording'
 
 const SVG = 'http://www.w3.org/2000/svg'
@@ -50,7 +51,11 @@ class Play {
    */
   private readonly start: number
 
-  constructor(private readonly recording: Recording) {
+  /**
+   * Plays `recording`, and calls `again` once `loopMs` have run from its
+   * start, for a demo that loops.
+   */
+  constructor(private readonly recording: Recording, private readonly loop?: { loopMs: number; again: () => void }) {
     const [rootId, rootAttributes] = recording.root
     const root = document.documentElement
     for (const name of root.getAttributeNames())
@@ -96,8 +101,13 @@ class Play {
   private readonly tick = (): void => {
     if (this.stopped)
       return
-    this.until(this.start + performance.now() - this.began)
-    if (this.next < this.recording.events.length)
+    const ran = performance.now() - this.began
+    if (this.loop && ran >= this.loop.loopMs) {
+      this.loop.again()
+      return
+    }
+    this.until(this.start + ran)
+    if (this.next < this.recording.events.length || this.loop)
       requestAnimationFrame(this.tick)
   }
 
@@ -290,6 +300,9 @@ class Play {
         const data = event[2] as { demi?: string; closed?: unknown } | null
         if (data?.demi === 'tab' && typeof data.closed === 'boolean')
           tellTab(data.closed)
+        const device = shotOf(data)
+        if (device !== undefined)
+          tellShot(device)
         const shot = cameraOf(data)
         if (shot !== undefined) {
           // A shot the play reaches at once, before its first screen shows, cuts.
@@ -382,7 +395,8 @@ async function play(demo: DemoId): Promise<void> {
   playing?.stop()
   CSS.highlights.clear()
   document.getSelection()?.removeAllRanges()
-  playing = new Play(recording)
+  const entry = DEMOS.find((each) => each.id === demo)
+  playing = new Play(recording, entry?.loops ? { loopMs: entry.seconds * 1000, again: () => void play(demo) } : undefined)
   await playing.ready
   // The first screen painted: the page shows the frame from then.
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))

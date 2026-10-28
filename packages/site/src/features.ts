@@ -68,8 +68,12 @@ export const FEATURES: readonly Feature[] = [
  */
 export type DemoId = FeatureId | 'hero'
 
-/** Every demo, with how long it plays, as `record.ts` records them. */
-export const DEMOS: readonly { id: DemoId; seconds: number }[] = [{ id: 'hero', seconds: 30 }, ...FEATURES]
+/**
+ * Every demo, with how long it plays, as `record.ts` records them, and
+ * whether its play starts over once those seconds have run: the first
+ * screen's does, while the tour moves on to its next feature.
+ */
+export const DEMOS: readonly { id: DemoId; seconds: number; loops?: boolean }[] = [{ id: 'hero', seconds: 32, loops: true }, ...FEATURES]
 
 export function isDemoId(value: string): value is DemoId {
   return DEMOS.some((demo) => demo.id === value)

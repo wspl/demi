@@ -60,6 +60,53 @@ export function tellTab(closed: boolean): void {
   window.parent.postMessage({ demi: 'tab', closed }, location.origin)
 }
 
+/** A machine the stage can show beside the app: the agent's work reaching it. */
+export type ShotDevice = 'macbook' | 'windows-pc' | 'vps' | 'home-lab'
+
+/**
+ * Which app a machine close stands beside: the browser, at the desk, where
+ * the phone stood; or the phone, away from the desk, where the browser stood.
+ */
+export type ShotBeside = 'browser' | 'phone'
+
+/** A machine close: what its terminal prints, and whether its work is done. */
+export interface ShotMachine {
+  device: ShotDevice
+  lines: string[]
+  done: boolean
+}
+
+/** Data a command pipes from one machine close to the other, and what it is. */
+export interface ShotFlow {
+  from: ShotDevice
+  to: ShotDevice
+  label: string
+}
+
+/**
+ * What the stage shows besides the browser and the phone for a moment: the
+ * machines the conversation works on now, close, beside one of them, and the
+ * data flowing between them; every machine at once, around the app, for the
+ * scene's end; or nothing at all, as a demo that loops starts over.
+ */
+export type DeviceShot =
+  | { kind: 'close'; beside: ShotBeside; machines: ShotMachine[]; flow?: ShotFlow }
+  | { kind: 'all' }
+  | { kind: 'clear' }
+
+/** Tells the page what the stage shows beside the app; none for the app alone. */
+export function tellShot(shot: DeviceShot | null): void {
+  window.parent.postMessage({ demi: 'shot', shot }, location.origin)
+}
+
+/** Answers what a `shot` message shows, `undefined` for another message. */
+export function shotOf(data: unknown): DeviceShot | null | undefined {
+  const message = data as { demi?: string; shot?: DeviceShot | null } | null
+  if (message?.demi !== 'shot')
+    return undefined
+  return message.shot ?? null
+}
+
 /** Asks `frame` to play `demo`. */
 export function askToPlay(frame: Window, demo: DemoId): void {
   frame.postMessage({ demi: 'play', demo } satisfies PlayMessage, location.origin)

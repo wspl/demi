@@ -2,28 +2,20 @@
 // the script the scene plays on it. Every name, place and number in them is
 // invented.
 import type { Ref } from 'vue'
-import type { Block } from '@demicodes/protocol'
 import type { DeviceMark } from '@demicodes/web-ui/devices/mark'
 import type { SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
-import type { AgentRun, SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
-import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import type { GalleryWork } from '@demicodes/web-gallery/fixtures/work-panel'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { WorkflowChoice, WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import type { ConversationSchedule } from '@demicodes/web-ui/schedules/types'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
-import type { DemoId } from '@/features'
-import { MODEL, type Conversation, type DemoFile } from './conversation'
+import { DEMOS, type DemoId } from '@/features'
+import type { Conversation } from './conversation'
 import salePost from './assets/sale-post.webp'
 import teaser from './assets/teaser.mp4'
 import voiceover from './assets/voiceover.mp3'
-import cartShot from './assets/cart.webp'
-import receipt1 from './assets/receipt-1.webp'
-import receipt2 from './assets/receipt-2.webp'
-import receipt3 from './assets/receipt-3.webp'
 import { press, shown, shownText, until } from './dom'
-import type { CameraRect } from './message'
+import type { CameraRect, DeviceShot, ShotFlow, ShotMachine } from './message'
 import { begin, showShop } from './shop'
 import { harborShows, showHarbor } from './harbor'
 
@@ -62,6 +54,13 @@ export interface Stage {
    * long, to keep in step.
    */
   look(target: Element | string | CameraRect | null): Promise<void>
+  /**
+   * Shows `shot` beside the app, or the app alone for `null`: the desktop's
+   * frame tells the stage, which shows it for both screens.
+   */
+  shoot(shot: DeviceShot | null): void
+  /** The user types `text` into the composer, a few letters at a time over `ms`, and sends it. */
+  compose(text: string, ms: number): Promise<void>
 }
 
 export interface Scene {
@@ -92,8 +91,13 @@ export const CLOUD: HostMenuHost = { id: 'cloud', name: 'Cloud', kind: 'cloud', 
 const MAC: DeviceMark = { logo: 'apple', number: null }
 
 /** The user's Mac and their office PC, paired with their server. */
-const ALEX_MBP: HostDeviceOption = { id: 'd-mbp', name: 'alex-mbp', state: 'online', mark: MAC }
+const ALEX_MBP: HostDeviceOption = { id: 'd-mbp', name: 'MacBook', state: 'online', mark: MAC }
 const OFFICE_PC: HostDeviceOption = { id: 'd-pc', name: 'office-pc', state: 'online', mark: { logo: 'windows', number: null } }
+
+/** The first screen's machines: the user's Mac, their Windows PC at home, a VPS and a home lab server. */
+const WINDOWS_PC: HostDeviceOption = { id: 'd-win', name: 'Windows PC', state: 'online', mark: { logo: 'windows', number: null } }
+const VPS: HostDeviceOption = { id: 'd-vps', name: 'VPS', state: 'online', mark: { logo: 'ubuntu', number: null } }
+const HOME_LAB: HostDeviceOption = { id: 'd-home-lab', name: 'Home Lab', state: 'online', mark: { logo: 'debian', number: null } }
 
 /** `device` as the host menu names a Host. */
 export function hostOf(device: HostDeviceOption): HostMenuHost {
@@ -102,15 +106,29 @@ export function hostOf(device: HostDeviceOption): HostMenuHost {
 
 const SHOP_PROJECT = '/Users/alex/Projects/shop'
 
-/** The first screen's conversation, which its notifications name. */
-const HERO_TITLE = 'Fix the negative cart total'
+/** The user's own open-source app, a file-sync server they run on their VPS and their home homeLab. */
+const TIDEPOOL_PROJECT = '/Users/alex/Projects/tidepool'
+
+/** The first screen's conversation, which its notification names. */
+const HERO_TITLE = 'Release v1.4 with the Windows fix'
+/** How long the first screen's demo plays before it starts over (`features.ts`). */
+const HERO_LOOP_MS = DEMOS.find((demo) => demo.id === 'hero')!.seconds * 1000
 
 export const PROJECTS: SidebarProject[] = [
+  {
+    id: 'p-tidepool',
+    name: 'tidepool',
+    hostKind: 'device',
+    device: { kind: 'paired', name: 'MacBook', state: 'online', mark: MAC },
+    path: TIDEPOOL_PROJECT,
+    savedScope: 'conversation',
+    savedCount: 0,
+  },
   {
     id: 'p-shop',
     name: 'shop',
     hostKind: 'device',
-    device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: MAC },
+    device: { kind: 'paired', name: 'MacBook', state: 'online', mark: MAC },
     path: SHOP_PROJECT,
     savedScope: 'conversation',
     savedCount: 0,
@@ -153,69 +171,6 @@ export function sidebarRows({ state }: Conversation): SidebarConversation[] {
 const CART = `Your usual order is in the cart: 4 items, **$77.65** with tax, arriving Thursday.
 
 I stopped at payment. The tab is open in the panel if you want to check out yourself.`
-
-const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-
-/** The receipts the first screen's user sends, as photos from a phone. */
-const RECEIPTS: DemoFile[] = [
-  { name: 'IMG_2041.webp', mediaType: 'image/webp', url: receipt1, size: 33_990, width: 480, height: 720 },
-  { name: 'IMG_2043.webp', mediaType: 'image/webp', url: receipt2, size: 25_670, width: 480, height: 720 },
-  { name: 'IMG_2047.webp', mediaType: 'image/webp', url: receipt3, size: 21_680, width: 480, height: 640 },
-]
-
-/** The cart the first screen's user photographed, with the bug in it. */
-const CART_SHOT: DemoFile = { name: 'Screenshot 2026-06-24.webp', mediaType: 'image/webp', url: cartShot, size: 11_836, width: 480, height: 738 }
-
-
-/** The first screen's first act: a bug in the user's shop, fixed on their Mac. */
-async function fixCart({ conversation: c, form, notice }: Stage): Promise<void> {
-  await c.send('A SAVE10 coupon on a small order makes the cart total negative. Can you fix it?', [CART_SHOT])
-  await c.shell({
-    description: 'Cap the discount at the subtotal',
-    script: 'demi file edit src/cart.ts src/cart.test.ts',
-    files: [{ path: 'src/cart.ts', added: 3, removed: 1 }, { path: 'src/cart.test.ts', added: 12, removed: 0 }],
-    ms: 900,
-  })
-  await c.shell({ description: 'Run the cart tests', script: 'bun test src/cart.test.ts', output: ' 24 pass\n 0 fail\n', ms: 800 })
-  await c.say(`A coupon worth more than the subtotal took the total below zero. The discount now stops at the subtotal, and all 24 cart tests pass:
-
-\`\`\`ts
-const discount = Math.min(coupon.amount, subtotal)
-return subtotal - discount + tax
-\`\`\``, 1200)
-  c.done()
-  if (form === 'phone') {
-    notice.value = { title: HERO_TITLE, text: 'Fixed: the discount stops at the subtotal. All 24 cart tests pass.' }
-    c.after(2400, () => (notice.value = null))
-  }
-}
-
-/** The first screen's second act, in the same conversation: receipts into an expense report, on the same Mac. */
-async function fileExpenses({ conversation: c, form, notice }: Stage): Promise<void> {
-  await c.send('Thanks! Can you also turn these receipts into my June expense report? The template is in Documents/Expenses.', RECEIPTS)
-  await c.shell({
-    description: 'Fill the expense template with the receipts',
-    script: 'python3 ~/Documents/Expenses/fill.py --month 2026-06 receipts.json',
-    output: 'Wrote ~/Documents/Expenses/June expenses.xlsx: 3 items, $365.10\n',
-    ms: 1400,
-  })
-  const report = c.attach({ name: 'June expenses.xlsx', mediaType: XLSX, url: '#', size: 18_342 })
-  await c.say(`Done. Your June report is in Documents/Expenses:
-
-| Receipt | Category | Amount |
-| --- | --- | --- |
-| Harbor Street Cafe | Meals | $14.60 |
-| Metro Cab Co. | Travel | $38.50 |
-| Lantern Hotel | Lodging | $312.00 |
-| **Total** | | **$365.10** |
-
-<attachment id="${report}" />`, 1400)
-  c.done()
-  if (form === 'phone') {
-    notice.value = { title: HERO_TITLE, text: 'Your June report is ready: 3 receipts, $365.10.' }
-    c.after(3200, () => (notice.value = null))
-  }
-}
 
 const BACKUP_TITLE = 'Back up the photo library'
 
@@ -290,27 +245,27 @@ export const SCENES: Record<DemoId, Scene> = {
     devices: [ALEX_MBP, OFFICE_PC],
     async play({ conversation: c, hosts, open }) {
       c.asked('Build the iOS app and run its UI tests on my Mac, then deploy the API from the cloud.', 5000)
-      c.ran({ description: 'Attach alex-mbp', script: 'demi host attach alex-mbp', ms: 500 })
+      c.ran({ description: 'Attach MacBook', script: 'demi host attach MacBook', ms: 500 })
       hosts.attached = [hostOf(ALEX_MBP)]
       c.ran({
-        description: 'Build the iOS app on alex-mbp',
-        script: 'demi host shell --host alex-mbp "xcodebuild -scheme Shop -configuration Release build"',
+        description: 'Build the iOS app on the MacBook',
+        script: 'demi host shell --host MacBook "xcodebuild -scheme Shop -configuration Release build"',
         output: '** BUILD SUCCEEDED **\n',
         ms: 2400,
       })
       // The steps show open, each naming the machine it runs on.
       press(await shownText(c, '[data-block-id] span', 'Ran 2 commands'))
-      await shownText(c, '[data-block-id] span', 'Build the iOS app on alex-mbp')
+      await shownText(c, '[data-block-id] span', 'Build the iOS app on the MacBook')
       await open(SCREEN.steps)
       await c.wait(300)
       await c.shell({
-        description: 'Run the UI tests on alex-mbp',
-        script: 'demi host shell --host alex-mbp "xcodebuild test -scheme ShopUITests -destination \'platform=iOS Simulator,name=iPhone 17\'"',
+        description: 'Run the UI tests on the MacBook',
+        script: 'demi host shell --host MacBook "xcodebuild test -scheme ShopUITests -destination \'platform=iOS Simulator,name=iPhone 17\'"',
         output: 'Executed 48 tests, with 0 failures\n',
         ms: 1100,
       })
       await c.shell({ description: 'Deploy the API from the cloud', script: 'fly deploy --app shop-api', output: 'v42 deployed successfully\n', ms: 1000 })
-      await c.say('The iOS build and all 48 UI tests passed on alex-mbp, and the API is live as v42 from the cloud.', 700)
+      await c.say('The iOS build and all 48 UI tests passed on the MacBook, and the API is live as v42 from the cloud.', 700)
       c.done()
     },
   },
@@ -340,7 +295,7 @@ export const SCENES: Record<DemoId, Scene> = {
       await c.wait(300)
       c.state.phase = 'running'
       await c.shell({ description: 'Run the checkout tests in Safari', script: 'bunx playwright test checkout --project=webkit', output: '6 passed\n', ms: 900 })
-      await c.say('All 6 checkout tests pass in Safari on alex-mbp.', 500)
+      await c.say('All 6 checkout tests pass in Safari on the MacBook.', 500)
       c.done()
     },
   },
@@ -394,16 +349,9 @@ export const SCENES: Record<DemoId, Scene> = {
   },
   hero: {
     title: HERO_TITLE,
-    cwd: SHOP_PROJECT,
-    services: [{
-      id: 't-dev',
-      title: 'Start the dev server',
-      script: 'bun run dev',
-      phase: 'running',
-      startedAt: ago(25),
-      output: '  VITE ready in 412 ms\n\n  ➜  Local:   http://localhost:5173/\n',
-      service: true,
-    }],
+    cwd: TIDEPOOL_PROJECT,
+    primary: hostOf(ALEX_MBP),
+    devices: [ALEX_MBP, WINDOWS_PC, VPS, HOME_LAB],
     schedules: [{
       id: 'sc-nightly',
       name: 'Nightly tests',
@@ -412,7 +360,7 @@ export const SCENES: Record<DemoId, Scene> = {
         timing: {
           kind: 'repeat',
           repeat: { every: 1, unit: 'days', start: null },
-          tasks: [{ id: 'sc-nightly-1', time: '02:00', days: [], day: { kind: 'date', date: 1 }, month: 1, holidays: null, prompt: 'Run the full test suite and tell me what fails.' }],
+          tasks: [{ id: 'sc-nightly-1', time: '02:00', days: [], day: { kind: 'date', date: 1 }, month: 1, holidays: null, prompt: 'Run the tests on every machine and tell me what fails.' }],
         },
       },
       timeZone: 'America/Los_Angeles',
@@ -424,32 +372,10 @@ export const SCENES: Record<DemoId, Scene> = {
       choice: { type: 'workflow', id: 'review' },
       list: {
         state: 'read',
-        workflows: [{ id: 'review', name: 'Review before merge', path: `${SHOP_PROJECT}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['reviewer'] }],
+        workflows: [{ id: 'review', name: 'Review before merge', path: `${TIDEPOOL_PROJECT}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['reviewer'] }],
       },
     },
-    async play(stage) {
-      const c = stage.conversation
-      await fixCart(stage)
-      await c.wait(1500)
-      await fileExpenses(stage)
-      await c.wait(1500)
-      await c.send('Make a square post for the summer sale on linens.')
-      await c.shell({
-        description: 'Draw the summer sale post',
-        script: 'demi image generate "Summer sale post for Harbor Goods, 20% off linens" --aspect 1:1 > summer-sale.png',
-        ms: 1400,
-      })
-      const post = c.attach({ name: 'summer-sale.png', mediaType: 'image/webp', url: salePost, size: 33_940, width: 480, height: 480 })
-      await c.say(`Here it is, in the shop’s colors:\n\n<attachment id="${post}" />`, 600)
-      c.done()
-      await c.wait(1500)
-      await c.send('How do our prices compare with Northwind, Bluebird and Lumen?')
-      await c.shell({ ...START_RESEARCHERS, ms: 700 })
-      researching(c)
-      await researchersFinish(c, [1500, 700, 600])
-      await c.say(PRICING, 1300)
-      c.done()
-    },
+    play: release,
   },
   background: {
     title: BACKUP_TITLE,
@@ -458,99 +384,151 @@ export const SCENES: Record<DemoId, Scene> = {
   },
 }
 
-const PRICING = `| Plan | Ours | Northwind | Bluebird | Lumen |
-| --- | --- | --- | --- | --- |
-| Starter | $12 | $15 | $10 | Free |
-| Team | $29 | $35 | $24 | $30 |
-| Business | $59 | $70 | $49 | $65 |
-
-We are mid-priced on every plan. Bluebird undercuts us by about 17%, but caps Team at 10 seats.`
-
-const RESEARCHERS = [
-  { company: 'Northwind', found: 'Starter $15, Team $35, Business $70, each a seat a month. Team needs at least 3 seats.' },
-  { company: 'Bluebird', found: 'Starter $10, Team $24, Business $49 a seat a month. Team stops at 10 seats.' },
-  { company: 'Lumen', found: 'Starter is free for 2 seats; Team $30 and Business $65 a seat a month.' },
-]
-
-const START_RESEARCHERS = { description: 'Start three researchers', script: 'demi agent spawn --profile researcher "Northwind pricing" "Bluebird pricing" "Lumen pricing"' }
-
-/** The researchers start, which the Agents chip counts while they work. */
-function researching(c: Conversation): void {
-  c.state.subagents = RESEARCHERS.map((each, index) => researcher(c.state.id, each, index))
-  c.state.waitingSince = Date.now()
-}
-
-/** The researchers from `first` on finish one after another, each `after` its turn's milliseconds. */
-async function researchersFinish(c: Conversation, after: readonly number[], first = 0): Promise<void> {
-  for (const [turn, ms] of after.entries()) {
-    const index = first + turn
-    await c.wait(ms)
-    const agent = c.state.subagents[index]!
-    c.state.subagents = c.state.subagents.map((each) => each.id === agent.id ? researcher(c.state.id, RESEARCHERS[index]!, index, each.startedAt) : each)
-  }
-}
-
-const RESEARCHER_MODEL: AgentRun['model'] = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Sonnet', effort: 'medium', fast: false }
-
 /**
- * A researcher the conversation `parent` started: reading its company's pricing page
- * while it works, with what it found once `startedAt` is given, when it ended.
+ * The first screen's play: one release across every machine the user has.
+ *
+ * The fix is made and tested on the Mac in the browser; then the stage cuts to
+ * each machine as the agent's work reaches it, the Windows PC for the
+ * tests, the VPS and the home lab for the rollout, from the user's own Demi
+ * server. The desktop's tab closes halfway and the phone carries on to the
+ * notification; the tab opens again on the finished conversation, and the
+ * stage ends on every machine at once.
  */
-function researcher(parent: string, { company, found }: (typeof RESEARCHERS)[number], index: number, startedAt?: string): SubagentRecord {
-  const id = `researcher-${index + 1}`
-  const ended = startedAt !== undefined
-  const began = startedAt ?? new Date().toISOString()
-  const now = new Date().toISOString()
-  const fetch: Block = {
-    type: 'tool_call',
-    id: `${id}-fetch`,
-    run: `${id}-fetch`,
-    request: `${id}-user`,
-    createdAt: began,
-    model: MODEL,
-    toolUseId: `${id}-fetch-use`,
-    toolName: 'shell',
-    input: JSON.stringify({ description: `Read ${company}’s pricing page`, script: `demi web fetch https://${company.toLowerCase()}.example.com/pricing` }),
-    status: ended ? 'completed' : 'executing',
-    output: [],
-    endedAt: ended ? now : null,
-    view: { kind: 'shell', status: ended ? 'exited' : 'running', ...(ended ? { exitCode: 0 } : {}), commandId: `${index + 30}`, runningMs: 1200, idleMs: 0, viewTruncated: false, chunks: [] },
-  }
-  const blocks: Block[] = [
-    {
-      type: 'user',
-      id: `${id}-user`,
-      request: `${id}-user`,
-      turnId: `${id}-turn`,
-      createdAt: began,
-      model: MODEL,
-      content: [{ type: 'text', text: `Read ${company}’s pricing page and list each plan’s price and limits.` }],
-      preamble: null,
-    },
-    fetch,
-    ...(ended ? [{ type: 'text', id: `${id}-found`, request: `${id}-user`, createdAt: now, model: MODEL, text: found, forkable: true } as Block] : []),
-  ]
-  return {
-    id,
-    number: index + 1,
-    onPath: true,
-    parent,
-    name: `${company} pricing`,
-    profile: 'researcher',
-    model: RESEARCHER_MODEL,
-    round: 1,
-    forkedFrom: null,
-    cwd: '/home/demi',
-    phase: ended ? 'completed' : 'running',
-    sessionPhase: ended ? 'idle' : 'running',
-    contextUsage: null,
-    startedAt: began,
-    ...(ended ? { endedAt: now } : {}),
-    failures: {},
-    pendingCalls: [],
-    waitingSince: null,
-    cost: NO_COST,
-    shownAt: null,
-    history: wholeHistory(blocks),
-  }
+async function release({ conversation: c, hosts, open, look, shoot, compose }: Stage): Promise<void> {
+  // Each shot holds about as long as the next, so none flashes by and none
+  // lingers. At the desk the work goes back and forth between the Mac and the
+  // Windows PC, twice; then the VPS, the VPS with the home lab, and the
+  // overview.
+
+  // The Mac the conversation runs on stands at the browser's corner from the
+  // start, and the camera comes close as it gets to work.
+  const mac: ShotMachine = { device: 'macbook', lines: ['~/tidepool %'], done: false }
+  const win: ShotMachine = { device: 'windows-pc', lines: [], done: false }
+  const desk = (machine: ShotMachine) => shoot({ kind: 'close', beside: 'browser', machines: [{ ...machine, lines: [...machine.lines] }] })
+  desk(mac)
+  await open(null)
+  const began = performance.now()
+  await c.wait(300)
+  await compose('Fix the Windows path bug from #212, test it on my PC, then ship v1.4 to the VPS.', 1000)
+  void look(SCREEN.steps)
+
+  // The Mac finds where the paths are joined.
+  mac.lines = ['% rg -n "join" src/paths.rs', 'src/paths.rs:42:  a + "/" + b']
+  desk(mac)
+  await c.shell({ description: 'Find where sync paths are joined', script: 'rg -n "join" src/paths.rs', output: 'src/paths.rs:42:  a + "/" + b\n', ms: 1100 })
+  await c.shell({ description: 'Attach the Windows PC and the VPS', script: 'demi host attach "Windows PC" && demi host attach VPS', ms: 300 })
+  hosts.attached = [hostOf(WINDOWS_PC), hostOf(VPS)]
+
+  // The Windows PC shows the bug.
+  win.lines = ['PS C:\\tidepool> cargo test paths', 'test paths::join ... FAILED']
+  desk(win)
+  await c.shell({
+    description: 'Reproduce the bug on the Windows PC',
+    script: 'demi host shell --host "Windows PC" "cargo test paths"',
+    output: 'test paths::join ... FAILED\n',
+    ms: 2900,
+  })
+
+  // Back on the Mac: the fix, its tests and the push.
+  mac.lines.push('% demi file edit src/paths.rs')
+  desk(mac)
+  await c.shell({
+    description: 'Join the sync paths with the platform’s separator',
+    script: 'demi file edit src/paths.rs tests/paths.rs',
+    files: [{ path: 'src/paths.rs', added: 4, removed: 2 }, { path: 'tests/paths.rs', added: 18, removed: 0 }],
+    ms: 900,
+  })
+  mac.lines.push('% cargo test', 'test result: ok. 212 passed')
+  desk(mac)
+  await c.shell({ description: 'Run the tests on the MacBook', script: 'cargo test', output: 'test result: ok. 212 passed; 0 failed\n', ms: 900 })
+  mac.lines.push('% git push', '✓ pushed to main')
+  mac.done = true
+  desk(mac)
+  await c.shell({ description: 'Push the fix', script: 'git commit -am "Fix path joins on Windows (#212)" && git push', ms: 600 })
+
+  // Back on the Windows PC: the fix passes there too.
+  win.lines.push('PS C:\\tidepool> git pull', 'PS C:\\tidepool> cargo test', 'test result: ok. 212 passed')
+  win.done = true
+  desk(win)
+  await c.shell({
+    description: 'Run the tests on the Windows PC',
+    script: 'demi host shell --host "Windows PC" "git pull && cargo test"',
+    output: 'test result: ok. 212 passed; 0 failed\n',
+    ms: 2200,
+  })
+  await c.shell({ description: 'Tag v1.4.0', script: 'git tag v1.4.0 && git push origin v1.4.0', ms: 700 })
+  await c.wait(400)
+
+  // Away from the desk: the browser goes down, the phone comes up on the
+  // left to lead, and the VPS comes up beside it.
+  const vps: ShotMachine = { device: 'vps', lines: ['$ docker compose pull'], done: false }
+  const homeLab: ShotMachine = { device: 'home-lab', lines: ['$ psql tidepool'], done: false }
+  // The VPS's data flows into the home lab the whole time both are up.
+  const data: ShotFlow = { from: 'vps', to: 'home-lab', label: 'tidepool.sql' }
+  const away = (...machines: ShotMachine[]) =>
+    shoot({ kind: 'close', beside: 'phone', machines: machines.map((each) => ({ ...each, lines: [...each.lines] })), ...(machines.length > 1 && { flow: data }) })
+  away(vps)
+  // Nothing changes on a screen while it comes or goes: the conversation
+  // goes on once the phone stands, and the browser's camera steps back out
+  // of sight.
+  await c.wait(900)
+  void look(null)
+  const deploy = c.shell({
+    description: 'Deploy v1.4.0 on the VPS',
+    script: 'demi host shell --host VPS "docker compose pull && docker compose up -d"',
+    output: 'Container tidepool-server-1  Started\n',
+    ms: 2200,
+  })
+  await c.wait(900)
+  vps.lines.push('$ docker compose up -d')
+  away(vps)
+  await compose('Put it on the Home Lab too.', 1000)
+  await deploy
+  vps.lines.push('✓ healthy · 1.4.0')
+  vps.done = true
+  away(vps)
+  await c.shell({ description: 'Attach the Home Lab', script: 'demi host attach "Home Lab"', ms: 1100 })
+  hosts.attached = [hostOf(WINDOWS_PC), hostOf(VPS), hostOf(HOME_LAB)]
+
+  // The home lab comes up beside the VPS, takes its data, and updates.
+  vps.lines.push('$ pg_dump tidepool')
+  vps.done = false
+  away(vps, homeLab)
+  await c.shell({
+    description: 'Copy the database from the VPS to the Home Lab',
+    script: 'demi host shell --host VPS "pg_dump tidepool" | demi host shell --host "Home Lab" "psql tidepool"',
+    ms: 1300,
+  })
+  vps.lines.push('✓ sent 48 MB')
+  vps.done = true
+  homeLab.lines.push('$ tidepool migrate')
+  away(vps, homeLab)
+  await c.shell({
+    description: 'Update the Home Lab',
+    script: 'demi host shell --host "Home Lab" "docker compose up -d && docker compose exec server tidepool migrate"',
+    output: 'Applied 2 migrations\n',
+    ms: 1000,
+  })
+  homeLab.lines.push('Applied 2 migrations')
+  homeLab.done = true
+  away(vps, homeLab)
+
+  await c.say(RELEASED, 600)
+  c.done()
+  // The demo rests on every machine at once, the app small on the left, and
+  // clears the stage just before the play starts over, so the browser comes
+  // back with its first screen.
+  await c.wait(300)
+  shoot({ kind: 'all' })
+  await c.wait(HERO_LOOP_MS - 600 - (performance.now() - began))
+  shoot({ kind: 'clear' })
 }
+
+const RELEASED = `v1.4.0 is out. Paths were joined with \`/\`, which broke sync folders on Windows; they now use the platform’s separator.
+
+| Machine | Done |
+| --- | --- |
+| MacBook | Fixed, 212 tests pass, tagged v1.4.0 |
+| Windows PC | 212 tests pass |
+| VPS | Deployed, healthy |
+| Home Lab | Updated, 2 migrations applied |`

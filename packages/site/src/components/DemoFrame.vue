@@ -7,7 +7,7 @@
 // (`src/demo/camera.ts`), and the frame says where it points.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { DemoId } from '@/features'
-import { askToPlay, cameraOf } from '@/demo/message'
+import { askToPlay, cameraOf, shotOf, type DeviceShot } from '@/demo/message'
 
 const props = defineProps<{
   demo: DemoId
@@ -24,6 +24,8 @@ const emit = defineEmits<{
   hidden: [hidden: boolean]
   /** The camera came close on a part of the screen, or showed all of it again, cutting there or moving. */
   focus: [close: boolean, cut: boolean]
+  /** What the stage shows beside the app (`demo/message.ts`). */
+  shot: [shot: DeviceShot | null]
 }>()
 
 const box = ref<HTMLElement | null>(null)
@@ -44,6 +46,9 @@ function hear(event: MessageEvent<unknown>): void {
   const shot = cameraOf(data)
   if (shot !== undefined)
     emit('focus', shot.rect !== null, shot.cut)
+  const device = shotOf(data)
+  if (device !== undefined)
+    emit('shot', device)
   if (data?.demi !== 'ready')
     return
   ready.value = true
