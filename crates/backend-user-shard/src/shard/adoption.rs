@@ -15,7 +15,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
-use demi_backend_remote_host::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
+use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
 use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
 use demi_runner_protocol::values::DeviceToken;
@@ -66,7 +66,7 @@ impl Shard {
             self.mark(Part::Devices);
         }
         // The jobs the backend recorded on the device, which a backend that
-        // started again takes up (`crates/backend-remote-host/src/device_jobs.rs`).
+        // started again takes up (`crates/runner-client/src/device_jobs.rs`).
         let recorded = match self.services().control.running_jobs(device.id.clone()).await {
             Ok(recorded) => recorded,
             Err(error) => {
@@ -383,7 +383,7 @@ impl Shard {
     /// Each tree's agent takes its commands up as last recorded, without waking
     /// the Cloud: they stay recorded running until its runner's next hello
     /// says they were lost, to the upgrade when the release changed
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     pub async fn take_up_stopped_cloud(self: Rc<Self>, device: DeviceId) {
         match self.services().control.running_jobs(device.clone()).await {
             Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),

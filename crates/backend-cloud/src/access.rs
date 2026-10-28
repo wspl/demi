@@ -8,7 +8,7 @@
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceRecord, ManagedMachine};
 use demi_backend_page_sync::Part;
-use demi_backend_remote_host::RemoteHost;
+use demi_runner_client::RemoteHost;
 
 use crate::CloudShard;
 use crate::machine::{CloudAdmission, CloudError};

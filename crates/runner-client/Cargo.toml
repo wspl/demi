@@ -1,8 +1,8 @@
 [package]
-name = "demi-backend-remote-host"
+name = "demi-runner-client"
 version.workspace = true
 edition.workspace = true
-license = "LicenseRef-Demi-License"
+license.workspace = true
 publish.workspace = true
 
 [lib]

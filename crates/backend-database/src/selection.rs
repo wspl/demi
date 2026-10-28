@@ -60,7 +60,7 @@
 //!   goes into the project (`ControlService::name_directory`).
 
 use demi_host_interface::HostPaths;
-use demi_backend_remote_host::host_paths;
+use demi_runner_client::host_paths;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;

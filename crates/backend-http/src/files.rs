@@ -12,7 +12,7 @@ use axum::extract::{ConnectInfo, Path, State};
 use axum::http::header::{CONTENT_LENGTH, ETAG, IF_NONE_MATCH, LAST_MODIFIED, RANGE};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use demi_backend_remote_host::{ConditionalRead, byte_stream};
+use demi_runner_client::{ConditionalRead, byte_stream};
 use demi_backend_runners::files::{
     TEXT_RANGE, TextError, TextRefusal, browse_directory, text_of, text_of_stream,
 };
@@ -651,7 +651,7 @@ pub(super) async fn changed_file(
 /// The working tree's side of a changed file as text, or why it is not
 /// text, with the Host's number before it read.
 async fn read_working_side(
-    host: &demi_backend_remote_host::RemoteHost,
+    host: &demi_runner_client::RemoteHost,
     path: &str,
 ) -> Result<(Result<String, TextRefusal>, ReadAt), HostError> {
     let opened = host.read_pipe(path, TEXT_RANGE).await?;

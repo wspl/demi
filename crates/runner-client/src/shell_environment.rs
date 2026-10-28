@@ -15,7 +15,7 @@
 //! A command outlives the environment: its keeper records it running before its
 //! job starts, a disposed environment lets its jobs run on, and the next
 //! environment of its node takes them up again
-//! (`crates/backend-remote-host/src/device_jobs.rs`).
+//! (`crates/runner-client/src/device_jobs.rs`).
 //!
 //! When a command ends, the keeper stores its whole output, and each medium
 //! of one that exited or was lost as an attachment of the conversation,
@@ -398,7 +398,7 @@ impl RemoteShellEnvironment {
 
     /// Takes up `taken`, which its call started on this environment's Host
     /// before the backend restarted or the environment that ran it let go of it
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     ///
     /// The command is followed to its end as if nothing had happened, counting
     /// its time from its start and showing the model only output it has not

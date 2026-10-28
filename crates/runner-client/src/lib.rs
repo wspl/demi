@@ -1,4 +1,5 @@
-//! The backend's end of a runner:
+//! The driving end of the runner wire, for any program that drives runners
+//! (in the product, the backend):
 //!
 //! - the connection engine ([`Link`], served by its [`LinkDriver`]): replies
 //!   routed by id, liveness, and the plumbing of the rpc calls a job's
@@ -12,10 +13,13 @@
 //!   real runner jobs, and its factory;
 //! - manifests built from a command set ([`CommandCatalog`]).
 //!
-//! It owns no HTTP route: the backend's connection tasks and pipe routes
-//! feed it, and with its `edge` feature it relays a stream pipe's WebSocket
-//! that a pipe route accepted ([`accept_stream_pipe`]). Everything but the
-//! pipe ends runs inside the user's shard.
+//! It owns no HTTP route: the driving program's connection tasks and pipe
+//! routes feed it, and with its `edge` feature it relays a stream pipe's
+//! WebSocket that a pipe route accepted ([`accept_stream_pipe`]). In the
+//! backend, everything but the pipe ends runs inside the user's shard.
+//!
+//! It depends on the wire's contracts alone, never on the backend: it is
+//! Apache-licensed, and no Apache crate depends on a Demi License one.
 //!
 //! Claim policy, the device registry, credentials and conversation state are
 //! not here.

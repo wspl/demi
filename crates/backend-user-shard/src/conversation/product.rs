@@ -27,7 +27,7 @@ use super::organize::conversation_group;
 use crate::shard::provider_commands::providers_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_plugins::ContextAsk;
-use demi_backend_remote_host::RemoteHost;
+use demi_runner_client::RemoteHost;
 use demi_agent_store::Placement;
 use demi_host_interface::{HostError, HostErrorKind};
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};

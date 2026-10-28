@@ -26,7 +26,7 @@ use demi_conversation_lane_protocol::{AgentEntry, Version};
 use demi_agent_tools::NodeContext;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::{conversation_of, root_of};
-use demi_backend_remote_host::host_paths;
+use demi_runner_client::host_paths;
 use demi_host_interface::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::ConversationId;

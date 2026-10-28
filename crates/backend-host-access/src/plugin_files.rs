@@ -26,7 +26,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
 use demi_backend_blobs::blobs::UserBlobs;
-use demi_backend_remote_host::{DirectoryFile, HostSubscriber, Link, Look, LookAt, RemoteHost, WeakLink};
+use demi_runner_client::{DirectoryFile, HostSubscriber, Link, Look, LookAt, RemoteHost, WeakLink};
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
 use demi_host_interface::{ByteRange, FileKind, Host as _, HostError, HostErrorKind, HostFs as _};

@@ -123,7 +123,7 @@ pub trait ShellEnvironment {
     fn stop_waiting(&self) -> LocalBoxFuture<'_, ()>;
 
     /// Takes up `taken`, a command that still ran when the backend last
-    /// knew it (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// knew it (`crates/runner-client/src/device_jobs.rs`).
     fn adopt(&self, taken: TakenUp);
 
     /// Lets go of every command, which runs on, as a disposed node does;

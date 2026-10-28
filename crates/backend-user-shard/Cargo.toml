@@ -36,7 +36,7 @@ demi-command-declarations = { path = "../command-declarations" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-types = { path = "../shared-types", features = ["audio", "mp4"] }
 demi-shared-gates = { path = "../shared-gates" }
-demi-backend-remote-host = { path = "../backend-remote-host" }
+demi-runner-client = { path = "../runner-client" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-provider-common = { path = "../provider-common" }
 demi-provider-claude-code = { path = "../provider-claude-code" }

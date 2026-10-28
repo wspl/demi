@@ -32,7 +32,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::Method;
-use demi_backend_remote_host::{ArtifactResolver, CommandCatalog};
+use demi_runner_client::{ArtifactResolver, CommandCatalog};
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor,
 };

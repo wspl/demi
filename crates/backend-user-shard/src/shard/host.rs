@@ -19,7 +19,7 @@ use demi_backend_page_sync::Part;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::Conversations;
 use demi_backend_host_access::plugin_files::{DirectorySets, PluginInstalls};
-use demi_backend_remote_host::Pipes;
+use demi_runner_client::Pipes;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::claims::PendingClaims;

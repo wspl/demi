@@ -51,7 +51,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
 use demi_backend_providers::llm::claude_releases::ReleaseError;
-use demi_backend_remote_host::{
+use demi_runner_client::{
     AttachedArtifact, Link, RemoteHost, ResidentCallError, ResidentRequest, WeakLink,
 };
 use demi_backend_runners::command_context::{command_context, provider_context};

@@ -1955,10 +1955,10 @@ dependencies = [
  "demi-backend-idle-watch",
  "demi-backend-page-sync",
  "demi-backend-providers",
- "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-host-interface",
  "demi-machine-manager-protocol",
+ "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-gates",
  "demi-web-api-protocol",
@@ -1978,11 +1978,11 @@ dependencies = [
  "bytes",
  "comrak",
  "demi-agent-store",
- "demi-backend-remote-host",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-interface",
+ "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-gates",
@@ -2021,12 +2021,12 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-command-declarations",
  "demi-command-protocol",
  "demi-host-interface",
  "demi-plugin-interface",
+ "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-gates",
  "demi-shared-types",
@@ -2064,7 +2064,6 @@ dependencies = [
  "demi-backend-permissions",
  "demi-backend-plugins",
  "demi-backend-providers",
- "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-backend-user-shard",
  "demi-command-protocol",
@@ -2072,6 +2071,7 @@ dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-provider-common",
+ "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-types",
@@ -2202,29 +2202,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-backend-remote-host"
-version = "0.1.65"
-dependencies = [
- "axum",
- "bytes",
- "demi-command-declarations",
- "demi-command-protocol",
- "demi-host-interface",
- "demi-runner-protocol",
- "demi-shared-gates",
- "demi-shared-types",
- "futures-util",
- "garde",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "demi-backend-runners"
 version = "0.1.65"
 dependencies = [
@@ -2234,9 +2211,9 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-database",
  "demi-backend-page-sync",
- "demi-backend-remote-host",
  "demi-command-protocol",
  "demi-host-interface",
+ "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-gates",
@@ -2282,7 +2259,6 @@ dependencies = [
  "demi-backend-permissions",
  "demi-backend-plugins",
  "demi-backend-providers",
- "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-command-declarations",
  "demi-command-package-claude-code-protocol",
@@ -2293,6 +2269,7 @@ dependencies = [
  "demi-plugin-interface",
  "demi-provider-claude-code",
  "demi-provider-common",
+ "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-gates",
@@ -3147,6 +3124,29 @@ dependencies = [
  "uuid",
  "uzers",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "demi-runner-client"
+version = "0.1.65"
+dependencies = [
+ "axum",
+ "bytes",
+ "demi-command-declarations",
+ "demi-command-protocol",
+ "demi-host-interface",
+ "demi-runner-protocol",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "futures-util",
+ "garde",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

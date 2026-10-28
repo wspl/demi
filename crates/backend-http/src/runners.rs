@@ -28,7 +28,7 @@ use axum_extra::headers::{Authorization, Range};
 use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
-use demi_backend_remote_host::{
+use demi_runner_client::{
     ChunkEnd, ChunkRefusal, DeviceChunk, DeviceSource, PipeRefusal, SourceMessage, accept_call_sink, accept_stream_pipe, offer_response,
 };
 use demi_runner_protocol::release::{

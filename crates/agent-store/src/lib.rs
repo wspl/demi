@@ -276,7 +276,7 @@ pub trait AgentTreeStore {
     /// (`crates/backend-database/src/command_outputs.rs`).
     ///
     /// The node takes them up again when it is restored
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     fn running_commands<'a>(
         &'a self,
         node: &'a NodeId,

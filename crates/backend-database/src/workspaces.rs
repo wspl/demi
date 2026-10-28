@@ -15,7 +15,7 @@
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
-use demi_backend_remote_host::host_paths;
+use demi_runner_client::host_paths;
 use demi_host_interface::HostPaths;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};

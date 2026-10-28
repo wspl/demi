@@ -197,7 +197,7 @@ impl RemoteHost {
         };
         let claimed = self.0.jobs.start(id.clone(), entry, &link);
         // A start that carries pipes never goes again: its pipes end with
-        // the call that opened them (`crates/backend-remote-host/src/device_jobs.rs`).
+        // the call that opened them (`crates/runner-client/src/device_jobs.rs`).
         let piped = job.stdin.is_some() || job.stdout.is_some();
         let start = Inbound::JobStart {
             job_id: id.clone(),
@@ -228,7 +228,7 @@ impl RemoteHost {
     }
 
     /// Takes up the job `id`, which the backend recorded running on this
-    /// Host before it restarted (`crates/backend-remote-host/src/device_jobs.rs`): its runner's hello says whether it goes on, ended or
+    /// Host before it restarted (`crates/runner-client/src/device_jobs.rs`): its runner's hello says whether it goes on, ended or
     /// was lost, now or when the runner connects.
     /// Its rpc calls act for `caller` with `context`; without a context
     /// they are refused, and they stop when `stop` is cancelled.

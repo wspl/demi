@@ -49,7 +49,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_backend_database::exposed_ports::{ExposedPortChange, ExposedPortRecord, ExposedPortRefusal};
 use demi_backend_page_sync::Part;
-use demi_backend_remote_host::HttpRequest;
+use demi_runner_client::HttpRequest;
 use demi_host_interface::HostErrorKind;
 use demi_provider_common::{DeviceAddress, DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute, Routed};
 use demi_shared_types::NotExposedPort;
@@ -317,7 +317,7 @@ impl Shard {
         &self,
         device: &DeviceId,
         body: Bytes,
-    ) -> Result<demi_runner_protocol::wire::PipeRef, demi_backend_remote_host::PipeError> {
+    ) -> Result<demi_runner_protocol::wire::PipeRef, demi_runner_client::PipeError> {
         let pipe = self.pipes().to_device(device.as_str());
         let mut writer = pipe.writer()?;
         self.tasks.spawn_local(async move {

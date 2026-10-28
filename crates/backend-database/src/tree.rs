@@ -30,7 +30,7 @@ use demi_agent_store::{
     Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, EarlierRows, Kind, NodeClose, NodeRecord, Reprofile,
     Placement, Rows, SavedVersions, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
-use demi_backend_remote_host::decode_output;
+use demi_runner_client::decode_output;
 use demi_conversation_lane_protocol::{BlockVersions, PAGE_BLOCKS, PageAt, TurnSpeed, page};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{

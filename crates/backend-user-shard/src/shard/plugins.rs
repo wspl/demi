@@ -21,7 +21,7 @@ use demi_backend_page_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
 use demi_backend_plugins::{Lost, ProductPort, ReadOn, VideoJob};
 use demi_backend_providers::vault::seal::Row;
-use demi_backend_remote_host::ResidentCallError;
+use demi_runner_client::ResidentCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, JobCaller, PortError};
 use demi_plugin_interface::{

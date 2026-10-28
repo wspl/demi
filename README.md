@@ -260,7 +260,7 @@ parts for anything:
 
 - The agent runtime.
 - The model providers.
-- The runner you install on your machines.
+- The runner you install on your machines, and the library that drives it.
 - The commands.
 - The plugins and their SDK.
 - The UI component library and its gallery.

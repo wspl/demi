@@ -15,7 +15,7 @@ use demi_web_api_protocol::devices::{DeviceKind, DeviceLogo, DeviceRoute};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use std::collections::HashMap;
 
-use demi_backend_remote_host::host_paths;
+use demi_runner_client::host_paths;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
@@ -787,7 +787,7 @@ impl ControlService {
     }
 
     /// Records that the backend's shutdown ended the connections of
-    /// `devices` (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// `devices` (`crates/runner-client/src/device_jobs.rs`).
     pub async fn set_devices_ended_by_shutdown(
         &self,
         devices: Vec<DeviceId>,

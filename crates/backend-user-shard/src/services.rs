@@ -131,7 +131,7 @@ pub struct Services {
     pub sync: SyncRegistry,
     /// The devices the backend's last shutdown disconnected, which Host
     /// operations wait for in the grace after the start
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     pub returning: Arc<Returning>,
     /// The server's updates, Settings › Updates.
     pub upgrades: Arc<crate::upgrades::Upgrades>,

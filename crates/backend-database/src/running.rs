@@ -7,7 +7,7 @@
 //!   before each job starts and deleted with its command's end.
 //!
 //! A backend that starts again reads them to take the commands up when their
-//! runners connect (`crates/backend-remote-host/src/device_jobs.rs`).
+//! runners connect (`crates/runner-client/src/device_jobs.rs`).
 
 use std::collections::{BTreeMap, BTreeSet};
 

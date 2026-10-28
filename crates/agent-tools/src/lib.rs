@@ -164,7 +164,7 @@ pub struct EnvironmentScope<'a> {
 }
 
 /// Where a node's shell environments come from. The product makes the
-/// environment of one node on one of its Hosts, such as backend-remote-host's over
+/// environment of one node on one of its Hosts, such as runner-client's over
 /// the Host's runner; the agent never knows which shell engine runs.
 pub trait ShellEnvironmentFactory<H> {
     fn create<'a>(
@@ -492,7 +492,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Takes up `running`, a command the node ran that the conversation records
     /// running and that started `ran` ago, in the node's environment for the
     /// conversation's current Host
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
         let cwd = self.cwd().await?;
         let (_, environment) = self.environment_on(Handle::None, cwd.as_deref(), true).await?;

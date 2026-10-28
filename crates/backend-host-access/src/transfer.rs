@@ -47,7 +47,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use bytes::Bytes;
-use demi_backend_remote_host::{OpenedRead, PipeReader, PipeWriter};
+use demi_runner_client::{OpenedRead, PipeReader, PipeWriter};
 use demi_host_interface::{ByteRange, FileStat, Host as _, HostError, WhenExists, WriteOptions};
 use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::ReadAt;

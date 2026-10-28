@@ -439,7 +439,7 @@ impl<H: HostResolver> Node<H> {
     /// What this changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
         // The commands the node left running go on where their Host kept them
-        // (`crates/backend-remote-host/src/device_jobs.rs`). They are taken up
+        // (`crates/runner-client/src/device_jobs.rs`). They are taken up
         // as last recorded, on a Host that admits nothing: no wait for the
         // device, no wake of its Cloud, and the runner's hello says what
         // became of each.
@@ -632,7 +632,7 @@ impl<H: HostResolver> NodeRuntime<H> {
 
     /// Takes up the commands the node ran that the conversation records
     /// running, that `which` picks and its environments do not hold
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     ///
     /// Answers whether `which` picked one, or why one stays recorded running
     /// without being taken up, as when its Host cannot be reached now; the next

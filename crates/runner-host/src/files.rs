@@ -30,7 +30,7 @@
 //! # Deadline
 //!
 //! A write's reply comes within 60 seconds of its last byte leaving the backend
-//! (`reply_after_input` in `demi_backend_remote_host`). A session file's last
+//! (`reply_after_input` in `demi_runner_client`). A session file's last
 //! bytes once stayed queued where gVisor left them and the write waited all
 //! night; the deadline turns such a stall into one failed start and a retry.
 //! The pipe itself keeps no deadline.

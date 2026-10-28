@@ -54,7 +54,7 @@ members = [
   "crates/plugin-file/command",
   "crates/plugin-file/protocol",
   "crates/shared-gates",
-  "crates/backend-remote-host",
+  "crates/runner-client",
   "crates/machine-manager",
   "crates/machine-manager-protocol",
   "crates/provider-common",

@@ -187,7 +187,7 @@ Demi 的大部分代码采用 [Apache License 2.0](LICENSE) 发布，以下部�
 
 - Agent 运行时
 - 模型提供方
-- 装在你机器上的 Runner
+- 装在你机器上的 Runner，以及驱动它的库
 - 命令
 - 插件及其 SDK
 - UI 组件库及其图库

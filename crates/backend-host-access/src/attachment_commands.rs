@@ -57,7 +57,7 @@ use demi_backend_database::conversation_attachments::{
 };
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::{StorageError, sequences};
-use demi_backend_remote_host::collect_pipe;
+use demi_runner_client::collect_pipe;
 use demi_runner_protocol::wire::FileHash;
 use demi_host_interface::{
     ByteRange, Call, GroupBuilder, Host as _, HostError, HostErrorKind, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
@@ -644,7 +644,7 @@ fn within_limit(size: u64) -> Result<(), CopyError> {
 /// The bytes of the file at `path` beside `cwd`. A file that grew past the
 /// limit since it was hashed is refused before a byte is read.
 async fn read(
-    host: &demi_backend_remote_host::RemoteHost,
+    host: &demi_runner_client::RemoteHost,
     cwd: &str,
     path: &str,
 ) -> Result<Bytes, CopyError> {

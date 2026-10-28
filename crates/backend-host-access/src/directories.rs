@@ -11,7 +11,7 @@
 //! another project has is that project.
 
 use demi_backend_database::devices::DeviceRecord;
-use demi_backend_remote_host::host_paths;
+use demi_runner_client::host_paths;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::DeviceId;
