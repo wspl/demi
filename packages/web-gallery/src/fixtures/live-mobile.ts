@@ -42,6 +42,7 @@ import type { GalleryPanel } from './panel'
 import type { GalleryPlugin } from './plugins'
 import { WORKSPACE_ROOT } from './workspace'
 
+/** How often a screen is painted and sent: a still screen needs few frames. */
 const FPS = 10
 /** How long the gallery's runner takes to restart. */
 const RESTART_MS = 6000
@@ -283,6 +284,15 @@ function beat(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * A screen shown in place of the gallery's own, for a specimen that shows
+ * an app of its own, such as a scripted demo: how it draws the upright
+ * screen in points.
+ */
+export interface GalleryScreen {
+  paint(context: CanvasRenderingContext2D, points: { width: number; height: number }): void
+}
+
 export interface GalleryMobile {
   plugin: GalleryPlugin
   /** The panel tab of a device its user closed: the device closes, as `demi mobile close` does. */
@@ -313,7 +323,7 @@ export interface GalleryMobile {
   runnerUpdates(): void
 }
 
-export function galleryMobile(panel: GalleryPanel): GalleryMobile {
+export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null = null): GalleryMobile {
   const open = new Map<string, OpenDevice>()
   let numbers = 0
   const views = new Set<MobileView>()
@@ -531,6 +541,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       () => [...open.values()],
       (shown) => power(shown, true),
       (shown, degrees) => void call('fold', { device: shown.id, to: String(degrees) }),
+      screen,
     )
     if (performance.now() < restartingUntil) {
       setTimeout(() => view.dropped('the runner is restarting'), 0)
@@ -675,6 +686,7 @@ class MobileView {
   private generation = 0
   private sequence = 0
   private readonly started = performance.now()
+
   /** The finger on the watched screen. */
   private finger: { x: number; y: number } | null = null
   /** The size the view lays the frame into; the gallery's frame is the one the view draws, whatever the size. */
@@ -686,6 +698,8 @@ class MobileView {
     private readonly wake: (device: OpenDevice) => void,
     /** Turns a hinged foldable's hinge, as the view's postures and slider do. */
     private readonly hinge: (device: OpenDevice, degrees: number) => void,
+    /** The screen drawn in place of the gallery's own, when one is given. */
+    private readonly drawn: GalleryScreen | null,
   ) {
     this.heartbeat = setInterval(() => {
       if (this.looked) {
@@ -973,6 +987,10 @@ class MobileView {
       return
     }
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
+    if (this.drawn) {
+      this.drawn.paint(context, points)
+      return
+    }
     const { width, height } = points
     const background = device.dark ? '#000000' : '#f2f2f7'
     const foreground = device.dark ? '#ffffff' : '#000000'

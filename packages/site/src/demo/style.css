@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@import "@demicodes/web-ui/styles/base.css";
+@import "@demicodes/web-ui/styles/product-appearance.css";
+
+@source "../../../web-ui/src";
+@source ".";
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/*
+ * A status dot takes the product's default accent, blue, as a running
+ * conversation's and agent's dot is in a new account; everything else keeps
+ * the demo's orange accent, which suits the site.
+ */
+[data-tone="accent"] {
+  --color-on-accent: oklch(52% 0.2 255);
+}
+
+/*
+ * The gallery's simulator stream drops and opens again a moment after the
+ * agent stops using the device, which says Reconnecting to the simulator…
+ * under the screen; no demo is about it.
+ */
+[data-work-panel] .absolute.bottom-0[role='status'] {
+  visibility: hidden;
+}

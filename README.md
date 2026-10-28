@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <strong>A self-hosted AI agent for chat, work and code.<br>
-  Use it from any browser. Let it work in the cloud and on all your computers.</strong>
+  <strong>Your agent, across all your machines.<br>
+  A web-based AI agent you host on your own server.</strong>
 </p>
 
 <p align="center">
@@ -22,9 +22,9 @@
 
 <!-- Screenshot -->
 
-Demi is a self-hosted AI agent you use from any browser. Ask it a question or
-hand it a job: research, operating websites, working with files, writing
-code, all in the same conversation.
+Demi is a web-based AI agent you host on your own server. Open it in any
+browser. Ask it a question or hand it a job: research, operating websites,
+working with files, writing code, all in the same conversation.
 
 Every conversation lives on your server, in one place for all your devices.
 Your computers only run the work: the agent works in a cloud sandbox or
@@ -101,6 +101,7 @@ Demi's features fall into four groups.
 ### Anywhere, on any machine
 
 - **Works in any browser**: Desktop, tablet or phone, with nothing to install.
+  Add it to your Home Screen, and it adapts to phones, tablets and foldables.
 - **Five languages**: English, Simplified Chinese, Traditional Chinese, Japanese
   and Korean.
 - **Always on**: Tasks keep running on the server after you close the tab.
@@ -108,7 +109,8 @@ Demi's features fall into four groups.
   finishes or needs you, even with Demi closed.
 - **One place for every conversation**: The server stores conversations
   instead of scattering them across the machines the agent worked on. Start on
-  your laptop and continue on your phone, live.
+  your laptop and continue on your phone, live. Change AI providers and keep
+  your history.
 - **QR code and passkey sign-in**: Scan a code to sign in on your phone, or use
   Touch ID, Face ID or Windows Hello.
 - **Private cloud sandbox**: Every user gets their own Linux sandbox on your
@@ -123,8 +125,7 @@ Demi's features fall into four groups.
 - **Files on every machine**: Browse the files of the sandbox and each of your
   computers, preview images, videos, audio, PDFs and Markdown, upload and
   download, and search file names and text.
-- **Port forwarding**: Reach a port of one machine from another, and let your
-  server use a model that runs on your own computer, such as Ollama.
+- **Port forwarding**: Reach a port of one machine from another.
 
 ### Agent
 
@@ -149,7 +150,10 @@ Demi's features fall into four groups.
 - **Use your subscriptions**: Sign in with Claude, ChatGPT or Grok Build
   accounts. Add several accounts per subscription, and Demi rotates between
   them as their usage limits run out.
-- **Any API**: Anthropic, OpenAI, Gemini, or any compatible endpoint.
+- **Coding plans**: Use a coding plan's key, such as Kimi, GLM or MiniMax.
+- **API keys**: Anthropic, OpenAI, Gemini, or any compatible endpoint.
+- **Local models**: Let your server use a model that runs on your own
+  computer, such as Ollama, through port forwarding.
 - **Switch models any time**: Change the model or reasoning effort, even in the
   middle of a task.
 - **Usage and cost**: See how much of each subscription's limits is used and

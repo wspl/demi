@@ -24,6 +24,7 @@ import type { HostDownload } from '@demicodes/web-ui/devices/installed'
 import type { PanelReason } from '@demicodes/plugin-browser/generated/plugin'
 import { WORKSPACE_ROOT } from './workspace'
 
+/** How often the drawn page is painted and sent: a still page needs few frames. */
 const FPS = 10
 const decoder = new TextDecoder()
 
@@ -206,6 +207,18 @@ interface GalleryDownloads {
   start(tab: string): void
 }
 
+/**
+ * A page shown in place of the gallery's own, for a specimen that shows
+ * something of its own, such as a scripted demo: the CSS size of the tabs
+ * the browser makes for it, and how it draws a tab in those pixels,
+ * `seconds` after the view began.
+ */
+export interface GalleryPage {
+  width: number
+  height: number
+  paint(context: CanvasRenderingContext2D, tab: LiveTab, seconds: number): void
+}
+
 /** One view of the gallery's conversation browser: a page it draws, and its controls. */
 class GalleryBrowserView {
   private watched: string | null = null
@@ -215,6 +228,7 @@ class GalleryBrowserView {
   private canvas = document.createElement('canvas')
   private painting: ReturnType<typeof setInterval> | null = null
   private heartbeat: ReturnType<typeof setInterval> | null = null
+
   private started = performance.now()
   private typed = 'Ship it'
   private selection: 'caret' | 'all' = 'caret'
@@ -240,6 +254,8 @@ class GalleryBrowserView {
     private readonly unread: () => boolean,
     /** The viewer asked to capture again, which the Host does for every view. */
     private readonly recaptured: () => void,
+    /** The page drawn in place of the gallery's own, when one is given. */
+    private readonly page: GalleryPage | null,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -531,6 +547,10 @@ class GalleryBrowserView {
     if (tab.url === 'about:blank') {
       return
     }
+    if (this.page) {
+      this.page.paint(context, tab, (performance.now() - this.started) / 1000)
+      return
+    }
     context.fillStyle = '#0f172a'
     context.font = '600 22px system-ui, sans-serif'
     context.fillText('Orders', 24, 48)
@@ -603,6 +623,7 @@ class GalleryBrowserView {
  *   its own list, such as an empty one for a panel whose strip starts empty.
  * - Without `capture`, the Host cannot capture its tabs, so a view shows no
  *   picture and says why.
+ * - With `page`, its tabs show that page in place of the gallery's own.
  */
 export interface GalleryBrowser {
   /** The tab list, as the plugin's conversation state last brought it. */
@@ -663,9 +684,11 @@ export interface GalleryBrowser {
  */
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
-  { capture = true, held: holding = null }: { capture?: boolean; held?: StartingPhase | null } = {},
+  { capture = true, held: holding = null, page = null }: { capture?: boolean; held?: StartingPhase | null; page?: GalleryPage | null } = {},
 ): GalleryBrowser {
   const views = new Set<GalleryBrowserView>()
+  /** The viewport of a tab the browser makes: the page's size when it has one. */
+  const viewport = (): BrowserViewport => ({ width: page?.width ?? 800, height: page?.height ?? 600, devicePixelRatio: 2, mode: 'web' })
   // The next tab's number, as the conversation gives them: never one given before.
   let next = Math.max(0, ...tabs.map((tab) => Number(tab.id.slice(1)))) + 1
 
@@ -819,6 +842,7 @@ export function galleryBrowser(
       downloads,
       () => held.value === 'connecting',
       recaptured,
+      page,
     )
     views.add(browser)
     // A Host that stopped capturing says so to a view that opens meanwhile.
@@ -919,7 +943,7 @@ export function galleryBrowser(
       title: URL.parse(url)?.host ?? url,
       url,
       createdBy: { kind: 'page', opener },
-      viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+      viewport: viewport(),
       loading: false,
       canGoBack: false,
       canGoForward: false,
@@ -942,7 +966,7 @@ export function galleryBrowser(
         title: url,
         url,
         createdBy: { kind: 'user' },
-        viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+        viewport: viewport(),
         loading: false,
         canGoBack: false,
         canGoForward: false,
@@ -1016,7 +1040,7 @@ export function galleryBrowser(
         title: URL.parse(url)?.host ?? url,
         url,
         createdBy: { kind: 'agent', number: 0 },
-        viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+        viewport: viewport(),
         loading: false,
         canGoBack: false,
         canGoForward: false,

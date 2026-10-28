@@ -28,7 +28,7 @@ import { productWould } from '../product-would'
 import { readGalleryEdit } from './blobs'
 import { galleryRequest } from './transcripts'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
-import { galleryMobile } from './live-mobile'
+import { galleryMobile, type GalleryScreen } from './live-mobile'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
 import { SLOT_ROOT, createSlotChangeSet, type createGalleryWorkspace } from './workspace'
 import { sharedHistory } from './history'
@@ -81,9 +81,11 @@ const CONVERSATION = 'gallery'
  */
 export function useGalleryWork(
   selection: string | null,
-  { files, browser = galleryBrowser(), pictures, pages }: {
+  { files, browser = galleryBrowser(), screen, pictures, pages }: {
     files: ConversationFileService
     browser?: GalleryBrowser
+    /** The screen the simulators show in place of the gallery's own. */
+    screen?: GalleryScreen
     /** Whether the web browser decodes the pictures; by default it asks the web browser, as the product does. */
     pictures?: () => Promise<boolean>
     /** The plugin pages whose kinds the panel shows; every one the product shows by default. */
@@ -103,7 +105,7 @@ export function useGalleryWork(
   const backend = new GalleryPanel()
   const plugin = galleryBrowserPlugin(browser, backend)
   // The conversation's simulators, whose plugin opens and closes devices for the panel's `mobile` tabs.
-  const mobile = galleryMobile(backend)
+  const mobile = galleryMobile(backend, screen)
   // The browser tells the plugin of every change of its tabs, as the browser package does
   // (`crates/command-protocol/src/messages.rs`).
   watch(browser.listed, () => void plugin.tabsChanged())

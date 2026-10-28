@@ -24,6 +24,7 @@
     "packages/web-ui",
     "packages/plugin-sdk",
     "packages/web-gallery",
-    "packages/web"
+    "packages/web",
+    "packages/site"
   ]
 }
