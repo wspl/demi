@@ -7,11 +7,11 @@
 #   commit, which must be in the branch's history. It refuses a version that has
 #   a release already, and creates the tag v<version> on the commit it published
 #   (the npm packages' tags name their package, so the two never collide).
-# - Nothing else starts it: an ordinary push builds (build.yml) and publishes
-#   nothing.
-# - With `prerelease`, as a deploy starts it (docs/delivery/upgrades.md), it
-#   publishes a pre-release, which no installer takes as the newest and which a
-#   later `gh release edit` publishes.
+# - canary.yml starts it for a push to main whose build and checks passed.
+#   Nothing else starts it.
+# - With `prerelease`, as a deploy and canary.yml start it
+#   (docs/delivery/upgrades.md), it publishes a pre-release, which no installer
+#   takes as the newest and which a later `gh release edit` publishes.
 #
 # The files come from the commit's build, which build.yml made when the commit
 # was pushed:

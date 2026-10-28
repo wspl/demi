@@ -1,0 +1,76 @@
+# Publishes a push to main as the next Canary, a pre-release, once both its
+# build (build.yml) and its checks (ci.yml) have succeeded. Each of the two
+# starts it when it completes, so the one that completes last publishes:
+#
+#   push ─┬─► Build ─┐
+#         └─► CI ────┴─► Canary: both succeeded for the commit, and no release
+#                        of its version or a higher one exists?
+#                          └─► release.yml with `prerelease`, waited for
+#
+# - A commit whose build or checks failed, or whose CI a newer push cancelled,
+#   is not published; the next push that passes is.
+# - No release of an older commit follows a newer one: a version that is not
+#   above every release's is skipped.
+# - Runs wait in one queue and none is cancelled, so the two completions of one
+#   commit never start two releases: the second finds the first's release.
+# - A deploy that publishes the same commit meanwhile makes this run's release
+#   refuse the version, which counts as published (docs/delivery/upgrades.md).
+name: Canary
+
+on:
+  workflow_run:
+    workflows: [Build, CI]
+    types: [completed]
+    branches: [main]
+
+# Starting release.yml is an action of the repository's actions.
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: canary
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    name: Publish the Canary
+    if: github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-26.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COMMIT: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # The version counts the commit's history (.github/actions/version).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Publish the commit when its build and checks passed
+        run: |
+          passed() {
+            gh run list --repo "$GITHUB_REPOSITORY" --workflow "$1" --commit "$COMMIT" \
+              --branch main --event push --json conclusion \
+              -q 'any(.[]; .conclusion == "success")'
+          }
+          for workflow in build.yml ci.yml; do
+            if [ "$(passed "$workflow")" != true ]; then
+              echo "$workflow has not passed for $COMMIT: nothing to publish yet"
+              exit 0
+            fi
+          done
+
+          version=0.1.$(git rev-list --count "$COMMIT")
+          newest=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+            -q '.[].tagName' | sort -V | tail -n 1)
+          if [ -n "$newest" ] && [ "$(printf '%s\nv%s\n' "$newest" "$version" | sort -V | tail -n 1)" = "$newest" ]; then
+            echo "$newest is published already, and v$version is not above it"
+            exit 0
+          fi
+
+          run=$(gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f commit="$COMMIT" -f prerelease=true)
+          gh run watch --repo "$GITHUB_REPOSITORY" --exit-status "${run##*/}" > /dev/null || true
+          gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null
+          echo "Published v$version as the next Canary"
