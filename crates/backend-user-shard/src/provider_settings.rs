@@ -1,6 +1,6 @@
 //! The changes of the provider entries in a user's scope, and the model search
 //! that fills a configured model
-//! (`crates/backend-providers/src/llm/vendors.rs`).
+//! (`crates/provider-registry/src/vendors.rs`).
 //!
 //! There is one path, with its checks and its words, for the settings page and
 //! for `demi providers` (`crates/backend-user-shard/src/shard/provider_commands.rs`).
@@ -27,8 +27,8 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::providers::MediaSwitches;
-use demi_backend_providers::llm::families::{ProviderFamily, family_name};
-use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
+use demi_provider_registry::families::{ProviderFamily, family_name};
+use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{Secret, SecretError};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
@@ -109,6 +109,8 @@ pub enum ProviderRefusal {
     DuplicateModel(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
+    #[error(transparent)]
+    Store(#[from] demi_provider_registry::store::StoreError),
 }
 
 /// The article before a kind of model: an image model, a video model, an
@@ -182,7 +184,7 @@ impl Services {
                 models,
             } => {
                 let vendor = self
-                    .assembly
+                    .provider_registry
                     .offered_vendor(&vendor_id)
                     .await
                     .map_err(|error| ProviderRefusal::CatalogUnavailable(error.to_string()))?
@@ -259,7 +261,7 @@ impl Services {
         };
         distinct_models(config.models.as_ref())?;
         let cache_ttl = self
-            .assembly
+            .provider_registry
             .families()
             .get(&family)
             .and_then(|family| family.default_cache_ttl());
@@ -421,7 +423,7 @@ impl Services {
                 video: config.video_shape,
                 audio: config.audio_shape,
             },
-            _ => self.assembly.media_shapes(&entry),
+            _ => self.provider_registry.media_shapes(&entry),
         };
         if let Some(kind) = MediaKind::ALL.into_iter().find(|kind| switch(*kind).is_some() && !shapes.makes(*kind)) {
             return Err(ProviderRefusal::MakesNo(entry.label.clone(), kind.plural()));
@@ -443,7 +445,7 @@ impl Services {
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
         if reconfigures || retimes {
-            self.assembly.invalidate(&entry.id).await?;
+            self.provider_registry.invalidate(&entry.id).await?;
         }
         Ok(updated)
     }
@@ -471,13 +473,13 @@ impl Services {
         let entry = self.scoped_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
         self.vault.delete(&entry).await?;
-        self.assembly.forget(&entry.id).await?;
+        self.provider_registry.forget(&entry.id).await?;
         self.cli_installs.forget(&entry.id);
         Ok(entry)
     }
 
     /// The catalog of every entry `user` infers with, as the product state
-    /// carries it (`crates/backend-providers/src/llm/catalog.rs`): each model
+    /// carries it (`crates/provider-registry/src/catalog.rs`): each model
     /// with the selection the backend builds from it, each entry with its
     /// health and its media models, and what the small model's Automatic
     /// resolves to. It wakes no Cloud and runs no model; `refresh` waits for
@@ -512,8 +514,8 @@ impl Services {
         let entries = self.vault.entries(owner).await?;
         let preferences = self.control.preferences(user.clone()).await?;
         let mut providers = match waits {
-            Some(refresh) => self.assembly.model_catalog(&entries, refresh).await,
-            None => self.assembly.known_model_catalog(&entries).await,
+            Some(refresh) => self.provider_registry.model_catalog(&entries, refresh).await,
+            None => self.provider_registry.known_model_catalog(&entries).await,
         };
         let mut images = self.entry_media_models(user, MediaKind::Image).await?;
         let mut videos = self.entry_media_models(user, MediaKind::Video).await?;
@@ -523,7 +525,7 @@ impl Services {
             provider.video_models = videos.remove(provider.provider_id.as_str()).unwrap_or_default();
             provider.audio_models = audio.remove(provider.provider_id.as_str()).unwrap_or_default();
         }
-        let small_model = demi_backend_providers::llm::small_model::automatic_small_model(&providers, &preferences);
+        let small_model = demi_provider_registry::small_model::automatic_small_model(&providers, &preferences);
         Ok(demi_web_api_protocol::providers::ModelCatalog { providers, small_model })
     }
 
@@ -533,7 +535,7 @@ impl Services {
         &self,
         user: &UserId,
         kind: demi_shared_types::MediaKind,
-    ) -> Result<std::collections::HashMap<String, Vec<demi_web_api_protocol::providers::EntryMediaModel>>, demi_backend_providers::llm::assembly::AssemblyError> {
+    ) -> Result<std::collections::HashMap<String, Vec<demi_web_api_protocol::providers::EntryMediaModel>>, demi_provider_registry::registry::RegistryError> {
         crate::shard::media::entry_media_models(self, user, kind).await
     }
 
@@ -553,7 +555,7 @@ impl Services {
             },
             None => None,
         };
-        self.assembly
+        self.provider_registry
             .vendors()
             .search(query, vendor.as_deref())
             .await
@@ -566,7 +568,7 @@ impl Services {
         &self,
         reference: &str,
     ) -> Result<Option<ModelMatch>, ProviderRefusal> {
-        self.assembly
+        self.provider_registry
             .vendors()
             .model(reference)
             .await
@@ -594,7 +596,7 @@ impl Services {
             EntryCredential::Subscription { .. } => None,
         };
         let wire = config.map_or(stored_wire, |config| config.wire_api);
-        let family = self.assembly.families().get(new_family.unwrap_or(&entry.family));
+        let family = self.provider_registry.families().get(new_family.unwrap_or(&entry.family));
         let presets = family.and_then(|family| family.cache_ttl_presets(wire));
         if let Some(asked) = asked {
             if let Some(ttl) = asked.as_ref().filter(|_| presets.is_none()) {
@@ -625,7 +627,7 @@ impl Services {
         wire_api: Option<WireApi>,
     ) -> Result<&Arc<dyn ProviderFamily>, ProviderRefusal> {
         let family = self
-            .assembly
+            .provider_registry
             .families()
             .get(name)
             .ok_or_else(|| ProviderRefusal::UnknownFamily(name.to_owned()))?;
@@ -680,5 +682,5 @@ pub enum CatalogError {
     #[error(transparent)]
     Storage(#[from] StorageError),
     #[error(transparent)]
-    Assembly(#[from] demi_backend_providers::llm::assembly::AssemblyError),
+    Registry(#[from] demi_provider_registry::registry::RegistryError),
 }

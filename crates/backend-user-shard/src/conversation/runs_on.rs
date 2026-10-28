@@ -28,7 +28,7 @@ pub async fn runs_on(
         tracing::warn!(event = "subagent_model.entries_read_failed", %error, "the provider entries were not read for a subagent's model");
         Vec::new()
     });
-    let catalog = services.assembly.model_catalog(&entries, false).await;
+    let catalog = services.provider_registry.model_catalog(&entries, false).await;
     selections
         .iter()
         .map(|selection| {

@@ -39,6 +39,7 @@ demi-shared-gates = { path = "../shared-gates" }
 demi-runner-client = { path = "../runner-client" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-provider-common = { path = "../provider-common" }
+demi-provider-registry = { path = "../provider-registry" }
 demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }

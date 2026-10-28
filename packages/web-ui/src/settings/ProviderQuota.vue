@@ -9,7 +9,7 @@ import type { SettingsQuotaWindow } from './types'
 
 /**
  * Displays an account's quota, each window a `QuotaWindowRow`, as the backend
- * last announced it (`crates/backend-providers/src/vault/quotas.rs`), with when
+ * last announced it (`crates/provider-registry/src/quotas.rs`), with when
  * the vendor reported it under them, as a device's page says when it measured.
  * Showing it asks the vendor nothing; the Refresh usage button beside it does.
  *

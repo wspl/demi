@@ -46,7 +46,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
+use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_backend_database::exposed_ports::{ExposedPortChange, ExposedPortRecord, ExposedPortRefusal};
 use demi_backend_page_sync::Part;
 use demi_runner_client::HttpRequest;

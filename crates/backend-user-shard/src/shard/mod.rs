@@ -733,12 +733,12 @@ impl ShardPool {
         // (`crates/backend-cloud/src/lib.rs`).
         let machine = ClaudeMachine::new(shards.clone(), shared.control.clone());
         if shared.claude_machine.set(machine.clone()).is_err() {
-            tracing::error!(event = "assembly.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
+            tracing::error!(event = "provider_registry.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
         }
-        shared.assembly.set_machine(Arc::new(machine));
+        shared.provider_registry.set_machine(Arc::new(machine));
         // A provider entry's request to one of its owner's devices goes
         // through the owner's shard (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
-        shared.assembly.set_devices(exposed_ports::DeviceRequests::new(shards.clone()));
+        shared.provider_registry.set_devices(exposed_ports::DeviceRequests::new(shards.clone()));
         Ok(Self { shards, workers })
     }
 

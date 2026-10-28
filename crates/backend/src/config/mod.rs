@@ -72,8 +72,8 @@ use url::Url;
 use demi_backend_accounts::email_change::AccountMail;
 use demi_backend_blobs::store::{S3Config, Storage};
 use demi_backend_cloud::tuning::CloudTuning;
-use demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL;
-use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_provider_registry::claude_releases::DEFAULT_RELEASES_URL;
+use demi_provider_registry::families::FamilyRegistry;
 use demi_backend_providers::vault::entries::SeededAccount;
 use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend_runners::native::NativeCatalog;
@@ -523,7 +523,7 @@ pub struct BackendConfig {
     /// downloaded.
     pub media_catalog: Arc<media_catalog::Catalog>,
     /// The Claude Code distribution whose newest release the CLI on each
-    /// Cloud follows (`crates/backend-providers/src/llm/claude_releases.rs`).
+    /// Cloud follows (`crates/provider-registry/src/claude_releases.rs`).
     pub claude_releases: Url,
     /// How long a device login waits for its user, and how long its result
     /// is kept.

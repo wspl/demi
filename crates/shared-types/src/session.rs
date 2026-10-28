@@ -51,7 +51,7 @@ pub struct ContextUsage {
     #[garde(dive)]
     pub rows: Vec<ContextRow>,
     /// The account the node's requests use under account rotation
-    /// (`crates/backend-providers/src/llm/rotation.rs`), whose windows the context card
+    /// (`crates/provider-registry/src/rotation.rs`), whose windows the context card
     /// shows; null when the entry has none or the node has not chosen one
     /// yet.
     #[serde(deserialize_with = "Option::deserialize")]

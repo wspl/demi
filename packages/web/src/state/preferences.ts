@@ -126,10 +126,10 @@ export const usePreferences = defineStore('preferences', () => {
   /**
    * Whether the user went on past the warning about several subscription
    * accounts, which then never shows again
-   * (`crates/backend-providers/src/llm/rotation.rs`); absent means no.
+   * (`crates/provider-registry/src/rotation.rs`); absent means no.
    */
   const multiAccountWarned = computed(() => product.snapshot?.preferences?.multiAccountWarned ?? false)
-  /** The small model the user chose (`crates/backend-providers/src/llm/small_model.rs`); null for Automatic. */
+  /** The small model the user chose (`crates/provider-registry/src/small_model.rs`); null for Automatic. */
   const smallModel = computed(() => product.snapshot?.preferences?.smallModel ?? null)
   /** Whether small requests stay on the conversation's provider; absent means no. */
   const smallModelSameProvider = computed(() => product.snapshot?.preferences?.smallModelSameProvider ?? false)

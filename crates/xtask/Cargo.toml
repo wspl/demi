@@ -55,8 +55,8 @@ default = ["developer"]
 # compile (`.github/workflows/build.yml`).
 developer = [
   "dep:demi-backend",
-  "dep:demi-backend-providers",
   "dep:demi-provider-common",
+  "dep:demi-provider-registry",
   "dep:log",
   "dep:resvg",
   "dep:demi-conversation-lane-protocol",
@@ -75,8 +75,8 @@ developer = [
 demi-backend = { path = "../backend", optional = true }
 # The vendors the backend offers, read from models.dev as it reads them
 # (`xtask logos`).
-demi-backend-providers = { path = "../backend-providers", optional = true }
 demi-provider-common = { path = "../provider-common", optional = true }
+demi-provider-registry = { path = "../provider-registry", optional = true }
 # Reads and draws a vendor's mark to tell whether a mask can paint it
 # (`xtask logos`).
 resvg = { version = "0.48", default-features = false, optional = true }

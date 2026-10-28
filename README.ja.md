@@ -186,7 +186,7 @@ OpenHands、Orca、T3 Code、DeepSeek Harness、opencode、Pi、herdr と Demi �
 Demi の大部分は [Apache License 2.0](LICENSE) で公開されており、どのような用途にも使えます。対象は次のとおりです:
 
 - エージェントのランタイム
-- モデルプロバイダー
+- モデルプロバイダーと、設定からそれを用意するライブラリ
 - あなたのマシンにインストールするランナーと、それを動かすライブラリ
 - コマンド
 - プラグインとその SDK

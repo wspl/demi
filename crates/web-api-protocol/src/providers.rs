@@ -13,7 +13,7 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::ids::{CredentialId, LoginId, ProviderId};
 use crate::text::{EndpointUrl, Trimmed};
 
-/// How an entry authenticates (`crates/backend-providers/src/llm/families.rs`).
+/// How an entry authenticates (`crates/provider-registry/src/families.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialKind {
@@ -855,7 +855,7 @@ pub struct ListedLogin {
 pub struct ModelCatalog {
     pub providers: Vec<CatalogProvider>,
     /// The selection Automatic resolves to for the small model
-    /// (`crates/backend-providers/src/llm/small_model.rs`), as for a conversation on the first
+    /// (`crates/provider-registry/src/small_model.rs`), as for a conversation on the first
     /// entry; null when Only the Conversation's Provider is on or no tier
     /// matches.
     #[serde(deserialize_with = "Option::deserialize")]

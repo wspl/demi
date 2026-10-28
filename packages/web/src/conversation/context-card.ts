@@ -20,7 +20,7 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
   /**
    * The subscription account an agent of the entry `providerId` runs on:
    * `account`, the one its context usage names under account rotation
-   * (`crates/backend-providers/src/llm/rotation.rs`), else the entry's active account;
+   * (`crates/provider-registry/src/rotation.rs`), else the entry's active account;
    * none on an API key.
    */
   function accountOf(providerId: string, account: string | null) {

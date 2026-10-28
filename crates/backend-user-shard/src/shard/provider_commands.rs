@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_backend_host_access::root_of;
-use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
+use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
 use demi_shared_types::{
@@ -1161,7 +1161,7 @@ async fn shown(
                 .collect()
         })
         .unwrap_or_default();
-    let media = services.assembly.provider_dto(entry).media;
+    let media = services.provider_registry.provider_dto(entry).media;
     // The media models of the entry's own list, by kind.
     let own = |kind: ModelKind| -> Vec<ConfiguredModel> {
         config

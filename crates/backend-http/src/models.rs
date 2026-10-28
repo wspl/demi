@@ -1,4 +1,4 @@
-//! The model routes (`crates/backend-providers/src/llm/catalog.rs`): the
+//! The model routes (`crates/provider-registry/src/catalog.rs`): the
 //! search of models.dev, and the user's Refresh of the catalog, which the
 //! product state carries.
 
@@ -42,7 +42,7 @@ pub(super) async fn refresh(
 ) -> Result<StatusCode, ApiError> {
     services.model_catalog(&user.id, true).await.map_err(|error| match error {
         CatalogError::Storage(error) => ApiError::from(error),
-        CatalogError::Assembly(error) => ApiError::from(error),
+        CatalogError::Registry(error) => ApiError::from(error),
     })?;
     services.sync.mark(&user.id, Part::Models);
     Ok(StatusCode::NO_CONTENT)

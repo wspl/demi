@@ -19,7 +19,7 @@
 //! ```text
 //! edge: multi-threaded runtime (axum). HTTP routes, session gate, byte paths
 //!   (pipes, transfers, user streams) and the shared services: control records,
-//!   conversation stores, blobs, vault, provider assembly, Cloud capacity,
+//!   conversation stores, blobs, vault, provider registry, Cloud capacity,
 //!   pending runner claims, login limiter, the registry of sync channels
 //!      |  shards.of(user).call(|shard, cancel| ..)   owned data in and out
 //!      |  adopt(socket)    conversation, synchronization and runner sockets

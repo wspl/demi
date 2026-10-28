@@ -11,6 +11,21 @@ use crate::{
     ThinkingConfig, ThinkingSummary, Timestamp,
 };
 
+/// An entry's cached catalog as a catalog cache keeps it: model metadata
+/// only, under the key of the configuration and account it was read for.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CatalogRecord {
+    /// The digest of the entry's configuration and active account.
+    #[garde(length(min = 1))]
+    pub key: String,
+    /// When the source last answered.
+    #[garde(skip)]
+    pub checked_at: Timestamp,
+    #[garde(dive)]
+    pub catalog: ProviderModelList,
+}
+
 /// An entry's catalog as one read of its source returned it. The backend
 /// keeps it in its catalog cache and reads it back from storage, so it
 /// refuses unknown fields.

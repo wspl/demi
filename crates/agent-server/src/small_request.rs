@@ -1,4 +1,4 @@
-//! A small request (`crates/backend-providers/src/llm/small_model.rs`): one
+//! A small request (`crates/provider-registry/src/small_model.rs`): one
 //! request with a fixed instruction as its system prompt and one user message.
 //!
 //! It serves a small job that supports a conversation rather than answers it,

@@ -457,7 +457,7 @@ export const useProduct = defineStore('product', () => {
   const catalog = computed(() => snapshot.value?.models?.providers ?? [])
   /**
    * The selection the small model's Automatic resolves to, which Settings ›
-   * Agent shows beside it (`crates/backend-providers/src/llm/small_model.rs`);
+   * Agent shows beside it (`crates/provider-registry/src/small_model.rs`);
    * null when the backend resolves none for the page, or before the state
    * is read.
    */

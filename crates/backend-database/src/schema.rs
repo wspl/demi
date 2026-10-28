@@ -1510,7 +1510,7 @@ const CONTROL_FROM_ACCOUNT_ROTATION: &str =
     "UPDATE conversations SET title = '' WHERE title_origin = 'placeholder';";
 
 /// From the control schema whose API-key entries sealed configuration format 2 to
-/// the one with account rotation (`crates/backend-providers/src/llm/rotation.rs`).
+/// the one with account rotation (`crates/provider-registry/src/rotation.rs`).
 ///
 /// - Every entry keeps its manual rotation.
 /// - Each entry's accounts keep the order they were listed in, by their ids.
@@ -3693,7 +3693,7 @@ CREATE TABLE share_attachments (
 /// From the conversation schema of transcript block format 7 and checkpoint state
 /// format 3 to block format 8, which adds the `account_switch` block, and state
 /// format 4, which keeps an agent's account
-/// (`crates/backend-providers/src/llm/rotation.rs`).
+/// (`crates/provider-registry/src/rotation.rs`).
 ///
 /// Every stored block and state is one of the new formats as it is: none switched
 /// accounts, and none has taken an account of its own yet.
@@ -4159,7 +4159,7 @@ fn control_from_0_1_21(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusql
         if !without_attachment_flags(&mut value) {
             continue;
         }
-        let record: crate::providers::CatalogRecord =
+        let record: demi_shared_types::CatalogRecord =
             json("model_catalogs", "record", &to_json(&value)).map_err(corrupt)?;
         update.execute(rusqlite::params![provider, to_json(&record)])?;
     }

@@ -101,7 +101,7 @@ pub struct ProviderFailureFacts {
     pub retry_at: Option<Timestamp>,
     /// For a usage limit of an entry without rotation that has other
     /// accounts, the account with the most room now, which the dock offers
-    /// to continue with (`crates/backend-providers/src/llm/rotation.rs`); omitted
+    /// to continue with (`crates/provider-registry/src/rotation.rs`); omitted
     /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]

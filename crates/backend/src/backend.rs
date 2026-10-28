@@ -608,7 +608,7 @@ impl Backend {
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));
         }
-        self.services.assembly.close().await;
+        self.services.provider_registry.close().await;
         // A refresh that asked its vendor stores the answer before the
         // database closes (`crates/provider-common/src/credentials/refresh.rs`).
         self.services.vault.gates().close().await;

@@ -43,9 +43,10 @@ use std::time::Duration;
 
 use demi_backend_database::usage::{UsageRow, merge_windows};
 use demi_backend_plugins::VideoJob;
-use demi_backend_providers::llm::assembly::{AssemblyError, MakerOf};
-use demi_backend_providers::llm::rotation::{Choice, USED_UP_FOR_MS};
-use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
+use demi_provider_registry::store::StoreError;
+use demi_provider_registry::registry::{RegistryError, MakerOf};
+use demi_provider_registry::rotation::{Choice, USED_UP_FOR_MS};
+use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_backend_host_access::root_of;
 use demi_host_interface::{JobCaller, PortError};
 use demi_plugin_interface::{
@@ -89,7 +90,7 @@ impl Route {
     /// The client the entry's calls go through on `client`, the shard's or
     /// the shared services'.
     fn http(&self, services: &Services, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
-        services.assembly.http_for(&self.entry, client.clone())
+        services.provider_registry.http_for(&self.entry, client.clone())
     }
 
     fn subscription(&self) -> bool {
@@ -136,12 +137,12 @@ async fn routes(
     services: &Services,
     user: &demi_web_api_protocol::ids::UserId,
     kind: MediaKind,
-) -> Result<Vec<Route>, AssemblyError> {
-    let preferences = services.control.preferences(user.clone()).await?;
-    let owner = services.vault.owner_for(user).await?;
+) -> Result<Vec<Route>, RegistryError> {
+    let preferences = services.control.preferences(user.clone()).await.map_err(StoreError::new)?;
+    let owner = services.vault.owner_for(user).await.map_err(StoreError::new)?;
     let mut routes = Vec::new();
-    for entry in services.vault.entries(owner).await? {
-        if !services.assembly.media_shapes(&entry).makes(kind) {
+    for entry in services.vault.entries(owner).await.map_err(StoreError::new)? {
+        if !services.provider_registry.media_shapes(&entry).makes(kind) {
             continue;
         }
         let Some(route) = route(services, entry, &preferences, kind).await? else {
@@ -160,14 +161,14 @@ async fn route(
     entry: ProviderEntry,
     preferences: &demi_web_api_protocol::settings::Preferences,
     kind: MediaKind,
-) -> Result<Option<Route>, AssemblyError> {
-    let provider = match services.assembly.provider_for(&entry).await {
+) -> Result<Option<Route>, RegistryError> {
+    let provider = match services.provider_registry.provider_for(&entry).await {
         Ok(provider) => provider,
         // An entry that lacks what it needs makes nothing yet.
-        Err(AssemblyError::Incomplete) => return Ok(None),
+        Err(RegistryError::Incomplete) => return Ok(None),
         Err(error) => return Err(error),
     };
-    let Some(maker) = services.assembly.maker(&entry, &provider, kind) else {
+    let Some(maker) = services.provider_registry.maker(&entry, &provider, kind) else {
         return Ok(None);
     };
     Ok(Some(Route {
@@ -192,11 +193,11 @@ async fn current(
     services: &Services,
     user: &demi_web_api_protocol::ids::UserId,
     route: &Route,
-) -> Result<Option<Route>, AssemblyError> {
-    let Some(entry) = services.vault.entry(route.entry.id.clone()).await? else {
+) -> Result<Option<Route>, RegistryError> {
+    let Some(entry) = services.vault.entry(route.entry.id.clone()).await.map_err(StoreError::new)? else {
         return Ok(None);
     };
-    let preferences = services.control.preferences(user.clone()).await?;
+    let preferences = services.control.preferences(user.clone()).await.map_err(StoreError::new)?;
     let Some(now) = self::route(services, entry, &preferences, route.kind).await? else {
         return Ok(None);
     };
@@ -221,7 +222,7 @@ fn model_of(id: &str) -> Model {
 /// How `route` stands for a call of `model` now. A key's limit is known
 /// only from a call's refusal; a subscription's accounts are judged as the
 /// entry's rotation judges them, counting none.
-async fn standing(services: &Services, route: &Route, model: &str) -> Result<Standing, AssemblyError> {
+async fn standing(services: &Services, route: &Route, model: &str) -> Result<Standing, RegistryError> {
     let entry = &route.entry;
     if route.hidden {
         return Ok(Standing::TurnedOff);
@@ -235,8 +236,8 @@ async fn standing(services: &Services, route: &Route, model: &str) -> Result<Sta
     let Some(active) = entry.active() else {
         return Ok(Standing::NotSignedIn);
     };
-    let assembly = &services.assembly;
-    let mut candidates = assembly.candidates(entry, false).await?;
+    let provider_registry = &services.provider_registry;
+    let mut candidates = provider_registry.candidates(entry, false).await?;
     if entry.rotation() == Rotation::Manual {
         candidates.retain(|candidate| &candidate.id == active);
     }
@@ -244,9 +245,9 @@ async fn standing(services: &Services, route: &Route, model: &str) -> Result<Sta
     if candidates.is_empty() {
         return Ok(Standing::NotSignedIn);
     }
-    let now = assembly.now();
+    let now = provider_registry.now();
     // A mark a call left counts as a window does, with its moment.
-    Ok(match assembly.rotation().all_used_up(&entry.id, &candidates, &model_of(model), now) {
+    Ok(match provider_registry.rotation().all_used_up(&entry.id, &candidates, &model_of(model), now) {
         Some(until) => Standing::UsedUp(until),
         None => Standing::Ready,
     })
@@ -263,10 +264,10 @@ pub async fn entry_media_models(
     services: &Services,
     user: &demi_web_api_protocol::ids::UserId,
     kind: MediaKind,
-) -> Result<std::collections::HashMap<String, Vec<EntryMediaModel>>, AssemblyError> {
+) -> Result<std::collections::HashMap<String, Vec<EntryMediaModel>>, RegistryError> {
     let routes = routes(services, user, kind).await?;
     let catalog = services.media.current();
-    let https: Vec<_> = routes.iter().map(|route| route.http(services, services.assembly.http())).collect();
+    let https: Vec<_> = routes.iter().map(|route| route.http(services, services.provider_registry.http())).collect();
     let listings =
         futures_util::future::join_all(routes.iter().zip(&https).map(|(route, http)| route.media().models(http, &catalog))).await;
     let mut entries = std::collections::HashMap::new();
@@ -1452,7 +1453,7 @@ impl Making<'_> {
                 .map_err(|failure| refused(vendor_refusal(failure, vendor, None, self.manages)));
         }
         let services = self.shard.services();
-        let assembly = &services.assembly;
+        let provider_registry = &services.provider_registry;
         let rotation = entry.rotation();
         // The accounts the call used up; taking one again means the
         // rotation has no other.
@@ -1478,7 +1479,7 @@ impl Making<'_> {
                     (active.ok_or_else(|| refused(MediaRefusal::NoProvider))?, None)
                 }
                 Rotation::InOrder | Rotation::Balanced => {
-                    let (choice, _) = assembly.take_account(entry, &self.model).await.map_err(failed)?;
+                    let (choice, _) = provider_registry.take_account(entry, &self.model).await.map_err(failed)?;
                     match choice {
                         Some(Choice::Account(running)) if tried.contains(running.account()) => {
                             return Err(used_up(last_moment, &last_trace));
@@ -1489,7 +1490,7 @@ impl Making<'_> {
                     }
                 }
             };
-            let provider = assembly
+            let provider = provider_registry
                 .for_account(entry, &account)
                 .await
                 .map_err(failed)?
@@ -1497,7 +1498,7 @@ impl Making<'_> {
             let now = services.clock.now();
             // A Manual entry whose account a call used up is not asked
             // again until it resets: Automatic goes on with the next entry.
-            if rotation == Rotation::Manual && assembly.rotation().is_used_up(&entry.id, &account, now) {
+            if rotation == Rotation::Manual && provider_registry.rotation().is_used_up(&entry.id, &account, now) {
                 return Err(used_up(provider.quota().and_then(|quota| quota.used_up_until(now)), &last_trace));
             }
             // The account is named only to whoever manages the entry: on a
@@ -1509,7 +1510,7 @@ impl Making<'_> {
             } else {
                 None
             };
-            let Some(maker) = assembly.maker(entry, &provider, self.route.kind) else {
+            let Some(maker) = provider_registry.maker(entry, &provider, self.route.kind) else {
                 return Err(refused(MediaRefusal::NoProvider));
             };
             asking.check(&self, &maker).map_err(refused)?;
@@ -1541,7 +1542,7 @@ impl Making<'_> {
             });
             // Used up as a turn's failure marks it, whatever the call does
             // next.
-            assembly.mark_used_up(&entry.id, &account, until, source);
+            provider_registry.mark_used_up(&entry.id, &account, until, source);
             if rotation == Rotation::Manual {
                 return Err(used_up(moment, &trace));
             }

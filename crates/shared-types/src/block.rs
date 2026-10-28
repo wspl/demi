@@ -40,7 +40,7 @@ pub enum Block {
     /// A failed request or an interrupted turn.
     Error(ErrorBlock),
     /// The agent's account reached its limit and the agent went on with
-    /// another (`crates/backend-providers/src/llm/rotation.rs`); the model never sees it.
+    /// another (`crates/provider-registry/src/rotation.rs`); the model never sees it.
     AccountSwitch(AccountSwitchBlock),
     /// Compaction's summary, where the kept history begins.
     CompactionBoundary(CompactionBoundaryBlock),

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_providers::llm::families::family_name;
+use demi_provider_registry::families::family_name;
 use demi_backend_providers::vault::accounts;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{CredentialId, LoginId};
@@ -38,7 +38,7 @@ pub(super) async fn list(
     let entry = scoped(&services, &user, &id).await?;
     let disclose = services.vault.configures(&user);
     Ok(Json(
-        accounts::list(&services.assembly, &entry, disclose).await?,
+        accounts::list(&services.vault, &entry, disclose).await?,
     ))
 }
 
@@ -52,7 +52,7 @@ pub(super) async fn activate(
     configures(&services, &user)?;
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
-    let active = accounts::activate(&services.assembly, &entry, activate.credential_id).await?;
+    let active = accounts::activate(&services.vault, &services.provider_registry, &entry, activate.credential_id).await?;
     Ok(Json(ActiveAccount { active }))
 }
 
@@ -66,7 +66,7 @@ pub(super) async fn reorder(
     configures(&services, &user)?;
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
-    accounts::reorder(&services.assembly, &entry, order.credential_ids).await?;
+    accounts::reorder(&services.vault, &entry, order.credential_ids).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -81,7 +81,7 @@ pub(super) async fn remove(
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
     let account = CredentialId::try_from(account).map_err(|_| ApiError::account_not_found())?;
-    let active = accounts::remove(&services.assembly, &entry, account).await?;
+    let active = accounts::remove(&services.vault, &services.provider_registry, &entry, account).await?;
     Ok(Json(RemovedAccount { active }))
 }
 

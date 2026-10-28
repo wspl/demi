@@ -556,7 +556,7 @@ pub struct Preferences {
     #[garde(skip)]
     pub show_unexpected_errors: Option<bool>,
     /// Whether the user went on past the dialog about using several
-    /// subscription accounts (`crates/backend-providers/src/llm/rotation.rs`), which then
+    /// subscription accounts (`crates/provider-registry/src/rotation.rs`), which then
     /// never shows again. Absent means no.
     #[serde(
         default,
@@ -585,7 +585,7 @@ pub struct Preferences {
     #[garde(dive)]
     pub hidden_models: Vec<HiddenModel>,
     /// The model Settings › Agent chose for small jobs, such as a
-    /// conversation's title (`crates/backend-providers/src/llm/small_model.rs`). Absent means
+    /// conversation's title (`crates/provider-registry/src/small_model.rs`). Absent means
     /// Automatic.
     #[serde(
         default,
@@ -841,7 +841,7 @@ pub struct PreferencesPatch {
     #[garde(skip)]
     pub show_unexpected_errors: Option<bool>,
     /// Whether the user went on past the dialog about using several
-    /// subscription accounts (`crates/backend-providers/src/llm/rotation.rs`), which then
+    /// subscription accounts (`crates/provider-registry/src/rotation.rs`), which then
     /// never shows again. Absent means no.
     #[serde(
         default,

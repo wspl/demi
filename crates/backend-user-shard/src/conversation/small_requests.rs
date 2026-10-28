@@ -1,5 +1,5 @@
 //! The small requests of a user's conversations
-//! (`crates/backend-providers/src/llm/small_model.rs`).
+//! (`crates/provider-registry/src/small_model.rs`).
 //!
 //! Each runs on the user's small model, resolved for the conversation from the
 //! catalogs of the user's entries and the user's preferences when it starts. It
@@ -13,7 +13,7 @@ use demi_agent_server::ProviderResolver as _;
 use demi_agent_server::small_request::{SmallRequest, SmallRequestError, run_small_request};
 use demi_backend_database::StorageError;
 use demi_backend_host_access::root_of;
-use demi_backend_providers::llm::small_model::small_model;
+use demi_provider_registry::small_model::small_model;
 use demi_shared_types::ModelSelection;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use tokio_util::sync::CancellationToken;
@@ -55,7 +55,7 @@ impl SmallRequests {
         let owner = services.vault.owner_for(&self.user).await?;
         let entries = services.vault.entries(owner).await?;
         let preferences = services.control.preferences(self.user.clone()).await?;
-        let catalog = services.assembly.model_catalog(&entries, false).await;
+        let catalog = services.provider_registry.model_catalog(&entries, false).await;
         Ok(small_model(&catalog, &preferences, conversation))
     }
 

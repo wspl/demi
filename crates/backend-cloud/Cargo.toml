@@ -14,6 +14,7 @@ bench = false
 [dependencies]
 demi-backend-idle-watch = { path = "../backend-idle-watch" }
 demi-backend-providers = { path = "../backend-providers" }
+demi-provider-registry = { path = "../provider-registry" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-database = { path = "../backend-database" }
 demi-backend-page-sync = { path = "../backend-page-sync" }

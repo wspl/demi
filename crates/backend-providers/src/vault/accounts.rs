@@ -15,13 +15,12 @@ use demi_provider_common::credentials::AccountsError;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::Accounts;
 
-use super::entries::{EntryCredential, ProviderEntry};
-use super::pool::meta;
-use crate::llm::assembly::{AssemblyError, LoginAccounts, ProviderAssembly};
+use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
+use demi_provider_registry::registry::{LoginAccounts, ProviderRegistry, RegistryError};
+use demi_provider_registry::store::StoreError;
 
-/// What an entry without an account says, in its status and when a request
-/// is refused before inference: the user adds an account to use it.
-pub const NO_ACCOUNT: &str = "This provider has no account. Add one in Settings to use it.";
+use super::entries::Vault;
+use super::pool::meta;
 
 /// Why an account operation was refused.
 #[derive(Debug, thiserror::Error)]
@@ -35,7 +34,7 @@ pub enum AccountRefusal {
     #[error("credentialIds: name every account of this provider once")]
     Order,
     #[error(transparent)]
-    Assembly(#[from] AssemblyError),
+    Registry(#[from] RegistryError),
     /// What the family keeps of the account outside its record could not
     /// be deleted, so the account stays.
     #[error("The account could not be removed: {0}")]
@@ -44,14 +43,20 @@ pub enum AccountRefusal {
 
 impl From<StorageError> for AccountRefusal {
     fn from(error: StorageError) -> Self {
-        Self::Assembly(error.into())
+        Self::Registry(StoreError::new(error).into())
+    }
+}
+
+impl From<StoreError> for AccountRefusal {
+    fn from(error: StoreError) -> Self {
+        Self::Registry(error.into())
     }
 }
 
 /// The entry's accounts and the active one; for a user who only infers,
 /// none.
 pub async fn list(
-    assembly: &ProviderAssembly,
+    vault: &Vault,
     entry: &ProviderEntry,
     disclose: bool,
 ) -> Result<Accounts, AccountRefusal> {
@@ -62,7 +67,7 @@ pub async fn list(
             active: None,
         });
     }
-    let records = assembly.vault().accounts(entry.id.clone()).await?;
+    let records = vault.accounts(entry.id.clone()).await?;
     Ok(Accounts {
         accounts: records.iter().map(|record| meta(record).info()).collect(),
         active: entry.active().cloned(),
@@ -73,40 +78,39 @@ pub async fn list(
 /// its runtime from the account's provider; a running one finishes with its
 /// own.
 pub async fn activate(
-    assembly: &ProviderAssembly,
+    vault: &Vault,
+    provider_registry: &ProviderRegistry,
     entry: &ProviderEntry,
     account: CredentialId,
 ) -> Result<CredentialId, AccountRefusal> {
     subscription(entry)?;
-    let selected = assembly
-        .vault()
+    let selected = vault
         .set_active_account(&entry.id, account.clone())
         .await?;
     if !selected {
         return Err(AccountRefusal::NotFound);
     }
-    assembly.vault().mark_changed(&entry.owner);
-    assembly.invalidate(&entry.id).await?;
+    vault.mark_changed(&entry.owner);
+    provider_registry.invalidate(&entry.id).await?;
     Ok(account)
 }
 
 /// Puts the entry's accounts in the order `accounts` names them, which In
 /// Order follows and the list shows; it names every account once.
 pub async fn reorder(
-    assembly: &ProviderAssembly,
+    vault: &Vault,
     entry: &ProviderEntry,
     accounts: Vec<CredentialId>,
 ) -> Result<(), AccountRefusal> {
     subscription(entry)?;
-    let ordered = assembly
-        .vault()
+    let ordered = vault
         .control()
         .set_credential_order(entry.id.clone(), accounts)
         .await?;
     if !ordered {
         return Err(AccountRefusal::Order);
     }
-    assembly.vault().mark_changed(&entry.owner);
+    vault.mark_changed(&entry.owner);
     Ok(())
 }
 
@@ -114,13 +118,13 @@ pub async fn reorder(
 /// and answers the account now active: the entry's first remaining one when
 /// the removed one was active, none when it was the last.
 pub async fn remove(
-    assembly: &ProviderAssembly,
+    vault: &Vault,
+    provider_registry: &ProviderRegistry,
     entry: &ProviderEntry,
     account: CredentialId,
 ) -> Result<Option<CredentialId>, AccountRefusal> {
     subscription(entry)?;
-    let stored = assembly
-        .vault()
+    let stored = vault
         .account(entry.id.clone(), account.clone())
         .await?;
     if stored.is_none() {
@@ -128,19 +132,18 @@ pub async fn remove(
     }
     // The family's own keeping of the account goes first, so a failure
     // leaves the account whole (`crates/provider-claude-code/src/account.rs`).
-    if let LoginAccounts::Machine(accounts) = assembly.login_accounts(entry).await? {
+    if let LoginAccounts::Machine(accounts) = provider_registry.login_accounts(entry).await? {
         accounts
             .forget(account.as_str())
             .await
             .map_err(AccountRefusal::Forget)?;
     }
-    let active = assembly
-        .vault()
+    let active = vault
         .remove_account(entry, account.clone())
         .await?;
-    assembly.quotas().forget_account(&entry.id, &account);
-    assembly.vault().mark_changed(&entry.owner);
-    assembly.invalidate(&entry.id).await?;
+    provider_registry.quotas().forget_account(&entry.id, &account);
+    vault.mark_changed(&entry.owner);
+    provider_registry.invalidate(&entry.id).await?;
     Ok(active)
 }
 

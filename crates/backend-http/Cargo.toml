@@ -31,6 +31,7 @@ demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-runner-client = { path = "../runner-client", features = ["edge"] }
 demi-provider-common = { path = "../provider-common" }
+demi-provider-registry = { path = "../provider-registry" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }

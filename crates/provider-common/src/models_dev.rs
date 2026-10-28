@@ -254,7 +254,7 @@ impl ModelsDevSnapshot {
 
     /// The models an agent can work with ([`ModelsDevModel::agentic`]), whose
     /// name or id holds each word of `query`, in any case and order, newest
-    /// release first (`crates/backend-providers/src/llm/vendors.rs`).
+    /// release first (`crates/provider-registry/src/vendors.rs`).
     ///
     /// A model several vendors list is one match: the listing of `vendor` when
     /// it lists the model, else the publisher's ([`Listing::publisher`]).

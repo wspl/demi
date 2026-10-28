@@ -279,14 +279,14 @@ impl Shard {
         let entries = services.vault.entries(owner).await?;
         let disclose = services.vault.configures(user);
         let providers = join_all(entries.iter().map(|entry| async move {
-            let details = match services.assembly.details(entry, disclose).await {
+            let details = match services.provider_registry.details(entry, disclose).await {
                 Ok(details) => ProviderReading::Read(Box::new(details)),
                 Err(error) => ProviderReading::Failed {
                     message: error.to_string(),
                 },
             };
             ProviderState {
-                provider: services.assembly.provider_dto(entry),
+                provider: services.provider_registry.provider_dto(entry),
                 details,
                 cli_install: services.cli_installs.state(&user.id, &entry.id),
             }

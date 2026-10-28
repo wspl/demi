@@ -58,6 +58,7 @@ members = [
   "crates/machine-manager",
   "crates/machine-manager-protocol",
   "crates/provider-common",
+  "crates/provider-registry",
   "crates/provider-anthropic-api",
   "crates/provider-claude-code",
   "crates/provider-codex",

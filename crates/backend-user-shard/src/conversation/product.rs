@@ -33,7 +33,7 @@ use demi_host_interface::{HostError, HostErrorKind};
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
 use demi_backend_database::StorageError;
-use demi_backend_providers::vault::entries::ProviderEntry;
+use demi_provider_registry::entry::ProviderEntry;
 use demi_web_api_protocol::subagents::SubagentProfile;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;

@@ -25,7 +25,7 @@ import type { IdleLifetime, SmallModelChoice } from './types'
 import type { InlineDetailText } from '../ui/inline-detail'
 
 /**
- * How the agent works for the user (`crates/backend-providers/src/llm/small_model.rs`):
+ * How the agent works for the user (`crates/provider-registry/src/small_model.rs`):
  *
  * - The small model that writes conversation titles: Automatic or one the user
  *   picks with the composer's model menu.

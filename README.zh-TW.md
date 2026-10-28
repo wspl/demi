@@ -186,7 +186,7 @@ Demi 與 OpenHands、Orca、T3 Code、DeepSeek Harness、opencode、Pi、herdr �
 Demi 的大部分程式碼以 [Apache License 2.0](LICENSE) 發布，以下部分可用於任何用途：
 
 - 智慧體執行階段
-- 模型供應商
+- 模型供應商，以及依設定建立它們的函式庫
 - 安裝在你機器上的執行器，以及驅動它的函式庫
 - 指令
 - 外掛及其 SDK

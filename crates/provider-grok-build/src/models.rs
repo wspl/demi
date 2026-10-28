@@ -1,4 +1,4 @@
-//! The Grok Build catalog (`crates/backend-providers/src/llm/catalog.rs`): `GET /v1/models` on
+//! The Grok Build catalog (`crates/provider-registry/src/catalog.rs`): `GET /v1/models` on
 //! the chat proxy with the account's session. A catalog that cannot be read
 //! is a failed refresh, and the backend keeps its last one.
 

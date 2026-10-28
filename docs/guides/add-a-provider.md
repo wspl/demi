@@ -12,7 +12,7 @@ Before you write a crate, check whether the service needs one:
   family with its own base URL (`crates/provider-common/src/endpoint.rs`).
 - A vendor that models.dev lists with a supported client package appears in the
   vendor catalog without any code
-  (`crates/backend-providers/src/llm/vendors.rs`).
+  (`crates/provider-registry/src/vendors.rs`).
 - A field that one vendor requires or refuses is a typed setting of the
   backend's vendor policy, not a crate.
 
@@ -66,7 +66,7 @@ The following table says what your provider does in each method:
 |---|---|
 | `capabilities` | Sets `process_host` only when the runtime starts a process on a Host; the backend then builds the runtime over a placement that starts the process (`crates/provider-claude-code/src/placement.rs`) |
 | `auth_status`, `runtime_state` | Says whether the credential is present and usable, and whether the provider can run. Reading either never makes an inference request |
-| `list_models` | Reads the vendor's model directory on each call and keeps no cache: the backend's catalog cache (`crates/backend-providers/src/llm/catalog_cache.rs`) is the only one |
+| `list_models` | Reads the vendor's model directory on each call and keeps no cache: the backend's catalog cache (`crates/provider-registry/src/catalog_cache.rs`) is the only one |
 | `read_failure` | Reads your vendor's own fields out of a stored failure record ([Report failures](#report-failures)) |
 | `quota` | Returns your quota when the vendor reports one ([Optional: quota](#optional-quota)) |
 | `accounts` | Returns the account operations of a subscription family ([Credentials](#credentials)) |
@@ -244,7 +244,7 @@ Add your family there. Then:
 
 - If models.dev lists vendors for your wire, add the mapping from their client
   package to your family
-  (`crates/backend-providers/src/llm/vendors.rs`).
+  (`crates/provider-registry/src/vendors.rs`).
 - The family is a value of the REST contract, so regenerate the web app's
   contracts ([Generated TypeScript](../../crates/xtask/src/contracts/mod.rs)).
   How users add your family's entries (a key, a device login or a token import)
