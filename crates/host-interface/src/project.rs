@@ -1,5 +1,5 @@
-//! The directories a project's instruction files and workflows are searched in
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`): the working
+//! The directories a project's instruction files, workflows and skills are
+//! searched in: the working
 //! directory and each directory above it up to the root of its git repository,
 //! the nearest that holds `.git`. Outside a repository, the working directory
 //! alone.
@@ -8,9 +8,7 @@
 //! Windows `C:\Users\alex\app` walks up to `C:\`, and its `.git` is
 //! `C:\Users\alex\app\.git`.
 
-use demi_host_interface::HostPaths;
-
-use crate::{HostFile, HostRead};
+use crate::{HostFile, HostPaths, HostRead};
 
 /// The reads that find the repository's root among `ancestors`, the
 /// directories [`HostPaths::ancestors`] gives: `.git` in each, in their

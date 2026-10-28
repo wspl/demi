@@ -49,7 +49,6 @@
 mod manifest;
 mod plugin;
 mod port;
-pub mod project;
 mod providers;
 mod request;
 mod web;
@@ -64,8 +63,7 @@ pub use web::{
 };
 pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
 pub use port::{
-    CallKind, DirectoryFile, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile,
-    HostRead, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
+    CallKind, DirectoryFile, DirectoryPath, HostDirectory, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
     StoredReport, StoredValue,
 };
 pub use providers::{

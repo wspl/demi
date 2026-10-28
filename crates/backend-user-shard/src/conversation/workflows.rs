@@ -38,8 +38,8 @@ use std::future::Future;
 
 use demi_backend_host_access::plugin_files::look_files;
 use demi_host_interface::{Host as _, HostError, HostPaths};
-use demi_plugin_interface::project;
-use demi_plugin_interface::{EntryKind, HostFile, HostRead};
+use demi_host_interface::project;
+use demi_host_interface::{EntryKind, HostFile, HostRead};
 use demi_shared_types::{ModelSelection, ReadAt, THINKING_OFF, UnavailableSetting, WorkflowChoice};
 use demi_web_api_protocol::conversations::{ConversationPatch, FieldResult, ModelSettings};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};

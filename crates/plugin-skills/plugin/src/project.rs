@@ -17,9 +17,8 @@
 //! agent's configuration.
 
 use demi_host_interface::HostPaths;
-use demi_plugin_interface::{
-    EntryKind, HostFile, HostRead, PluginPort, PortFailure, SubscriptionKind, WatchSubject,
-};
+use demi_plugin_interface::{PluginPort, PortFailure, SubscriptionKind, WatchSubject};
+use demi_host_interface::{EntryKind, HostFile, HostRead};
 use serde::{Deserialize, Serialize};
 
 use crate::skill::{self, SKILL_MD_MAX_BYTES};

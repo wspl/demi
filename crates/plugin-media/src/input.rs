@@ -2,9 +2,8 @@
 //! and its shape.
 
 use demi_host_interface::RpcInvocation;
-use demi_plugin_interface::{
-    HostFile, HostRead, ImageAspect, ImageInput, ImageKind, PluginError, PluginPort, PortFailure, PortRefusal,
-};
+use demi_plugin_interface::{ImageAspect, ImageInput, ImageKind, PluginError, PluginPort, PortFailure, PortRefusal};
+use demi_host_interface::{HostFile, HostRead};
 use demi_shared_types::MediaKind;
 use image::ImageFormat;
 use serde::de::DeserializeOwned;

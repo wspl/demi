@@ -15,6 +15,7 @@
 
 use std::rc::{Rc, Weak};
 
+use demi_agent_server::instructions::ProjectFile;
 use demi_backend_database::Selection;
 use demi_backend_database::conversation_index::ExecutionTarget;
 use demi_backend_host_access::access::HostAccessError;
@@ -29,7 +30,7 @@ use demi_web_api_protocol::workflows::{ConversationWorkflowList, ConversationWor
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use super::instructions::{ProjectFile, search_instructions};
+use super::instructions::search_instructions;
 use super::workflows::{ProjectWorkflows, search_conversation_workflows};
 use crate::shard::Shard;
 
