@@ -103,7 +103,12 @@ impl ToolsetSource for ShardToolsets {
                         .revision_where(|plugin| integration_commands(&capabilities, plugin))
                         .await
                         .map_err(|error| error.to_string())?;
-                    format!("integration {} {plugins}", capability_bits(&capabilities))
+                    let declared = integration_declaration(&shard, root).await;
+                    format!(
+                        "integration {} {plugins} {}",
+                        capability_bits(&capabilities),
+                        declaration_revision(declared.as_ref())
+                    )
                 }
                 None => shard.plugins().revision().await.map_err(|error| error.to_string())?,
             };
@@ -136,9 +141,25 @@ impl ToolsetSource for ShardToolsets {
                         .toolset_where(groups, |plugin| integration_commands(&capabilities, plugin))
                         .await
                         .map_err(|error| error.to_string())?;
+                    let mut commands = toolset.commands;
+                    // The commands the integration's program declared, each a
+                    // root of its own.
+                    let declared = integration_declaration(&shard, root).await;
+                    if let Some((integration, declaration)) = &declared {
+                        for tree in shard.declared_trees(integration, declaration) {
+                            if let Err(error) = commands.register(tree) {
+                                tracing::warn!(event = "integration_commands.refused", %integration, %error, "an integration's declared commands were not registered");
+                            }
+                        }
+                    }
                     Toolset {
-                        commands: Rc::new(toolset.commands),
-                        revision: Rc::from(format!("integration {} {}", capability_bits(&capabilities), toolset.revision)),
+                        commands: Rc::new(commands),
+                        revision: Rc::from(format!(
+                            "integration {} {} {}",
+                            capability_bits(&capabilities),
+                            toolset.revision,
+                            declaration_revision(declared.as_ref())
+                        )),
                     }
                 }
                 None => {
@@ -177,6 +198,36 @@ pub(crate) fn integration_allows(capabilities: &IntegrationCapabilities, plugin:
         "mobile" => capabilities.mobile,
         _ => true,
     }
+}
+
+/// The integration of the conversation `root` and the plugin it declared.
+async fn integration_declaration(
+    shard: &Shard,
+    root: Option<&NodeId>,
+) -> Option<(demi_web_api_protocol::ids::IntegrationId, demi_integration_api_protocol::Declaration)> {
+    let kept = shard
+        .services()
+        .control
+        .integration_conversation(conversation_of(root?))
+        .await
+        .ok()??;
+    let declaration = shard.declaration(&kept.integration).await?;
+    Some((kept.integration, declaration))
+}
+
+/// What a toolset's revision names of an integration's declaration: the
+/// integration, whose program alone serves its commands, and its text's hash,
+/// so a new declaration is a new toolset.
+fn declaration_revision(
+    declared: Option<&(demi_web_api_protocol::ids::IntegrationId, demi_integration_api_protocol::Declaration)>,
+) -> String {
+    use std::hash::{Hash, Hasher};
+    let Some((integration, declaration)) = declared else {
+        return String::new();
+    };
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(declaration).unwrap_or_default().hash(&mut hasher);
+    format!("{integration} {:x}", hasher.finish())
 }
 
 /// Whether an integration with `capabilities` has the commands of the plugin

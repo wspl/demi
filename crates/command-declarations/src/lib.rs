@@ -79,6 +79,7 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
+use schemars::JsonSchema;
 use serde_with::rust::unwrap_or_skip;
 
 /// The most bytes a command's body read from its standard input may hold: the
@@ -97,7 +98,7 @@ pub struct DeclarationError(String);
 
 /// A command group or a command. `B` is how a native command names what it
 /// runs: [`Binding`] in a manifest, [`NativeOperation`] in a declaration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     untagged,
     bound(
@@ -111,7 +112,7 @@ pub enum Node<B = Binding> {
 }
 
 /// A command group: a name that only selects one of its subcommands.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     deny_unknown_fields,
     bound(
@@ -145,12 +146,14 @@ pub struct Group<B = Binding> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     pub index_entry: Option<String>,
     /// What only the group's own `--help` shows after its summary, such as the
     /// format of the files its commands read
     /// (`crates/backend-user-shard/src/conversation/workflows.rs`); its
     /// parent's help lists the summary alone.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub details: Option<String>,
     /// The permission categories the group's leaves name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -166,7 +169,7 @@ pub struct Group<B = Binding> {
 /// A leaf of a `native` command names none. It runs on the Host, where it can
 /// act only on the Host and never on Demi itself, and its dispatch on the
 /// runner has no grants to check.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Category {
     /// Unique in the command set; it starts with its group's name and a
@@ -181,7 +184,7 @@ pub struct Category {
 
 /// A command: its help texts, the JSON Schema of its input object, where its
 /// input comes from on the command line, and how it runs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     try_from = "RawLeaf<B>",
     into = "RawLeaf<B>",
@@ -224,7 +227,7 @@ pub struct Leaf<B = Binding> {
 
 /// A leaf's input field that names a host the call may bring into the
 /// conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BringsHost {
     pub field: String,
@@ -234,7 +237,7 @@ pub struct BringsHost {
 /// When it does not, stdin stays with the calling process, as a `while read`
 /// loop's input or a job's `</dev/null`. An option counts as given unless its value is `false`, which
 /// `--query=false` spells.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase", deny_unknown_fields)]
 pub enum StdinRead {
     /// Read unless one of these options is given, as `file edit` reads no
@@ -254,7 +257,7 @@ impl StdinRead {
 }
 
 /// The JSON Schema of a command's `--json` output.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LeafOutput {
     #[serde(
@@ -262,6 +265,7 @@ pub struct LeafOutput {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "Schema")]
     pub json: Option<Schema>,
 }
 
@@ -358,6 +362,19 @@ impl Serialize for Schema {
     }
 }
 
+impl JsonSchema for Schema {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "CommandInputSchema".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "description": "A JSON Schema (draft 2020-12).",
+        })
+    }
+}
+
 impl<'de> Deserialize<'de> for Schema {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = BTreeMap::deserialize(deserializer)?;
@@ -375,7 +392,7 @@ pub enum LeafKind<B = Binding> {
 
 /// The command package operation a declaration names. The manifest pins it to
 /// the descriptor the backend selected for the package ([`Node::pin`]).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NativeOperation {
     pub package: String,
@@ -832,7 +849,7 @@ fn invalid(message: String) -> DeclarationError {
 
 /// A leaf as the manifest writes it: `kind` names how it runs, and a native
 /// leaf's `binding` sits beside it.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(
     rename_all = "camelCase",
     deny_unknown_fields,
@@ -846,60 +863,70 @@ struct RawLeaf<B> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     success_output: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     failure_output: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     running_hint: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "Schema")]
     input: Option<Schema>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "Vec<String>")]
     positionals: Option<Vec<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "Vec<String>")]
     positional_options: Option<Vec<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     stdin_field: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "StdinRead")]
     stdin_read: Option<StdinRead>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     rest_field: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "LeafOutput")]
     output: Option<LeafOutput>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     media: bool,
@@ -908,18 +935,21 @@ struct RawLeaf<B> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     permission: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "String")]
     permission_field: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    #[schemars(with = "BringsHost")]
     brings_host: Option<BringsHost>,
     kind: RawKind,
     #[serde(
@@ -927,11 +957,18 @@ struct RawLeaf<B> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    // A schema of the format describes the leaves a program declares,
+    // which are `rpc` leaves alone (`crates/integration-api-protocol`).
+    #[schemars(skip)]
     binding: Option<B>,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+/// How a command runs: `rpc`, as a call its declarer answers, which is the
+/// only kind a program declares; `native`, as an operation of a command
+/// package.
+#[derive(Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
+#[schemars(rename = "LeafKind")]
 enum RawKind {
     Rpc,
     Native,

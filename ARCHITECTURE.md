@@ -398,7 +398,7 @@ command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
 machine-manager-protocol -> command-protocol, runner-protocol, shared-types
 web-api-protocol -> conversation-lane-protocol, command-protocol, shared-types, runner-protocol
-integration-api-protocol -> conversation-lane-protocol, shared-types, web-api-protocol
+integration-api-protocol -> command-declarations, conversation-lane-protocol, host-interface, shared-types, web-api-protocol
 shared-gates -> none
 shared-artifacts -> none
 shared-recording-protocol -> shared-types

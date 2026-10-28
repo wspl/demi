@@ -228,5 +228,11 @@ fn context_sources(shard: &Weak<Shard>, services: &Services) -> Rc<[Rc<dyn Conte
                 plugin,
             }) as Rc<dyn ContextSource>
         });
-    [execution, instructions, side_questions].into_iter().chain(plugins).collect()
+    // An integration's plugin answers last, after Demi's own sources.
+    let integration = Rc::new(crate::integration_plugins::IntegrationContext { shard: shard.clone() }) as Rc<dyn ContextSource>;
+    [execution, instructions, side_questions]
+        .into_iter()
+        .chain(plugins)
+        .chain([integration])
+        .collect()
 }

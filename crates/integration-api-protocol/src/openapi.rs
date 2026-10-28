@@ -50,6 +50,7 @@ pub fn openapi(server: &str) -> Value {
         .into_generator();
     let error = of::<ErrorBody>(&mut generator);
     let event = of::<Event>(&mut generator);
+    let client = of::<ClientMessage>(&mut generator);
     let mut paths = Map::new();
     for route in routes() {
         let parameters: Vec<Value> = route
@@ -81,7 +82,7 @@ pub fn openapi(server: &str) -> Value {
         "info": {
             "title": "Demi integration API",
             "version": "1",
-            "description": "Programs that build on Demi make Clouds and conversations, send messages and read transcripts. Every request carries the integration's token as a bearer token. GET /socket opens a WebSocket that sends every change of the integration's conversations, one Event per text message.",
+            "description": "Programs that build on Demi make Clouds and conversations, send messages and read transcripts. Every request carries the integration's token as a bearer token. GET /socket opens a WebSocket that sends every change of the integration's conversations, one Event per text message, and serves its plugin: it takes ClientMessages.",
         },
         "servers": [{ "url": format!("{server}{PREFIX}") }],
         "security": [{ "token": [] }],
@@ -90,6 +91,7 @@ pub fn openapi(server: &str) -> Value {
             "securitySchemes": { "token": { "type": "http", "scheme": "bearer" } },
             "schemas": generator.take_definitions(true),
             "x-events": event,
+            "x-client-messages": client,
         },
     })
 }

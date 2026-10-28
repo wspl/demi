@@ -12,7 +12,9 @@ doctest = false
 bench = false
 
 [dependencies]
+demi-command-declarations = { path = "../command-declarations" }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
+demi-host-interface = { path = "../host-interface" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 garde.workspace = true

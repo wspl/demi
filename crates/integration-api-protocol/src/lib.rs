@@ -15,7 +15,9 @@
 //!
 //! A body the backend receives refuses unknown fields.
 
+use demi_command_declarations::{NativeOperation, Node};
 use demi_conversation_lane_protocol::{TranscriptPatch, Version};
+use demi_host_interface::{PortRequest, PortResponse};
 use demi_shared_types::{Block, IntegrationCapabilities, NodeId, Timestamp};
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::conversations::ConversationStatus;
@@ -238,6 +240,105 @@ pub enum Event {
         conversation: ConversationId,
         status: ConversationStatus,
     },
+    /// What a `declare` this socket sent became: the plugin it serves from
+    /// now on, or why it was refused, which changed nothing.
+    Declared {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        refused: Option<String>,
+    },
+    /// A request of the integration's plugin, to this socket, which served
+    /// the plugin when it was sent: a `reply` of the same `id` answers it.
+    Request { id: u64, request: PluginRequest },
+    /// The answer to the `port` message `port` of the request `id`.
+    Answer {
+        id: u64,
+        port: u64,
+        response: PortResponse,
+    },
+    /// The agent stopped the call of the request `id`: its reply is not read.
+    Cancel { id: u64 },
+}
+
+/// A request of an integration's plugin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum PluginRequest {
+    /// An agent ran one of the plugin's commands. The command's output,
+    /// input and wait go through `port` messages; `reply` ends it with its
+    /// exit code.
+    Command {
+        conversation: ConversationId,
+        key: Option<String>,
+        /// The number of the agent that ran it, as `Agent.number` gives it.
+        agent_number: Option<u64>,
+        /// The Cloud it ran on.
+        cloud: String,
+        /// The command's path, its root first, such as `["chatbot", "post"]`.
+        path: Vec<String>,
+        /// The command line as the agent wrote it.
+        argv: Vec<String>,
+        /// The arguments, valid against the command's input.
+        args: serde_json::Map<String, serde_json::Value>,
+        /// Whether the agent passed `--json`.
+        json: bool,
+        /// The directory it ran in.
+        cwd: String,
+        /// Whether it has a standard input to read with `read_stdin`.
+        stdin: bool,
+    },
+    /// An agent is about to ask its model: the plugin, which declared
+    /// itself a context source, may add a context block. `seen` holds the
+    /// text of its own blocks the model receives, oldest first.
+    Context {
+        conversation: ConversationId,
+        key: Option<String>,
+        agent: NodeId,
+        seen: Vec<String>,
+    },
+}
+
+/// What the socket takes from the integration's program.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum ClientMessage {
+    /// Serve the integration's plugin from now on: its command trees, each
+    /// a root of its own whose leaves are `rpc` leaves, and whether it is a
+    /// context source. The last declaration is the integration's.
+    Declare {
+        commands: Vec<Node<NativeOperation>>,
+        #[serde(default)]
+        context: bool,
+    },
+    /// The reply to the request `id`.
+    Reply { id: u64, reply: PluginReply },
+    /// A message of the call of the command request `id` to its port: its
+    /// standard output or error, a read of its input, or a wait for the
+    /// user; `port` numbers it, which its `answer` names.
+    Port {
+        id: u64,
+        port: u64,
+        request: PortRequest,
+    },
+}
+
+/// A reply to a plugin request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum PluginReply {
+    /// A command ended with `code`.
+    Exit { code: u8 },
+    /// The context block to add; none for none.
+    Context { text: Option<String> },
+    /// The request failed, as `message` says.
+    Failed { message: String },
+}
+
+/// What an integration declares, as storage keeps it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Declaration {
+    pub commands: Vec<Node<NativeOperation>>,
+    pub context: bool,
 }
 
 /// A model a conversation may run on: one of its integration's user's.

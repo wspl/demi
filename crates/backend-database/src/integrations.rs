@@ -239,6 +239,32 @@ impl ControlService {
         .await
     }
 
+    /// The plugin the integration last declared, as JSON; none before its
+    /// first declaration.
+    pub async fn integration_declaration(&self, id: IntegrationId) -> Result<Option<String>, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection
+                .query_row("SELECT declaration FROM integrations WHERE id = ?1", [id.as_str()], |row| {
+                    row.get::<_, Option<String>>(0)
+                })
+                .optional()?
+                .flatten())
+        })
+        .await
+    }
+
+    /// Keeps `declaration`, JSON, as the plugin the integration declared.
+    pub async fn declare_integration(&self, id: IntegrationId, declaration: String) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE integrations SET declaration = ?2 WHERE id = ?1",
+                params![id.as_str(), declaration],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// The integration's conversation of key `key`.
     pub async fn integration_conversation_by_key(
         &self,

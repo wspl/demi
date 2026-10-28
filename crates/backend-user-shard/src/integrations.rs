@@ -5,7 +5,7 @@
 //! An integration infers with every provider its user has, and its
 //! conversations are in a workspace of its own that no page lists.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
@@ -14,7 +14,7 @@ use demi_backend_host_access::{conversation_of, root_of};
 use demi_conversation_lane_protocol::ServerFrame;
 use demi_shared_types::NodeId;
 use futures_util::future::LocalBoxFuture;
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationRecord, ConversationStart, Creation, RecordChange};
@@ -464,12 +464,29 @@ fn api_agent(entry: AgentEntry) -> Option<api::Agent> {
 }
 
 /// The sockets of the user's integrations (`GET /v1/socket`), each of which
-/// hears every change of its integration's conversations.
+/// hears every change of its integration's conversations, and the one that
+/// serves an integration's plugin (`crate::integration_plugins`).
 #[derive(Default)]
 pub struct IntegrationEvents {
-    sockets: RefCell<HashMap<IntegrationId, Vec<mpsc::Sender<api::Event>>>>,
+    sockets: RefCell<HashMap<IntegrationId, Vec<Socket>>>,
+    next_socket: Cell<u64>,
     /// The integration of each conversation whose tree an observer hears.
     observed: RefCell<HashMap<ConversationId, IntegrationId>>,
+    /// Told whenever a socket declares, which a call that waits for one
+    /// awaits.
+    pub(crate) declared: Notify,
+    /// The plugin requests that wait for their replies, by id.
+    pub(crate) calls: RefCell<HashMap<u64, crate::integration_plugins::Call>>,
+    pub(crate) next_call: Cell<u64>,
+}
+
+/// One socket of an integration's.
+struct Socket {
+    id: u64,
+    sender: mpsc::Sender<api::Event>,
+    /// Whether it declared the integration's plugin, so its requests may go
+    /// to it.
+    serves: bool,
 }
 
 /// How many events a socket may hold that its program has not read: a
@@ -479,23 +496,93 @@ pub struct IntegrationEvents {
 const SOCKET_BACKLOG: usize = 4096;
 
 impl IntegrationEvents {
-    /// A socket of `integration`'s from now on, until its receiver goes.
-    pub fn subscribe(&self, integration: IntegrationId) -> mpsc::Receiver<api::Event> {
+    /// A socket of `integration`'s from now on, by its number, until its
+    /// receiver goes.
+    pub fn subscribe(&self, integration: IntegrationId) -> (u64, mpsc::Receiver<api::Event>) {
         let (sender, receiver) = mpsc::channel(SOCKET_BACKLOG);
-        self.sockets.borrow_mut().entry(integration).or_default().push(sender);
-        receiver
+        let id = self.next_socket.get() + 1;
+        self.next_socket.set(id);
+        self.sockets.borrow_mut().entry(integration).or_default().push(Socket {
+            id,
+            sender,
+            serves: false,
+        });
+        (id, receiver)
     }
 
     /// Tells every socket of `integration`'s; a socket whose receiver went,
     /// or that fell behind, is dropped.
     fn publish(&self, integration: &IntegrationId, event: api::Event) {
         let mut sockets = self.sockets.borrow_mut();
-        let Some(senders) = sockets.get_mut(integration) else {
+        let Some(list) = sockets.get_mut(integration) else {
             return;
         };
-        senders.retain(|sender| sender.try_send(event.clone()).is_ok());
-        if senders.is_empty() {
+        list.retain(|socket| socket.sender.try_send(event.clone()).is_ok());
+        if list.is_empty() {
             sockets.remove(integration);
+        }
+    }
+
+    /// Tells the socket `socket` of `integration`'s alone; false when it is
+    /// gone or fell behind, which drops it.
+    pub(crate) fn send_to(&self, integration: &IntegrationId, socket: u64, event: api::Event) -> bool {
+        let mut sockets = self.sockets.borrow_mut();
+        let Some(list) = sockets.get_mut(integration) else {
+            return false;
+        };
+        let Some(index) = list.iter().position(|candidate| candidate.id == socket) else {
+            return false;
+        };
+        if list[index].sender.try_send(event).is_ok() {
+            return true;
+        }
+        list.remove(index);
+        false
+    }
+
+    /// Marks the socket `socket` of `integration`'s as the plugin's server,
+    /// moved last, where [`Self::server`] looks first.
+    pub(crate) fn serve(&self, integration: &IntegrationId, socket: u64) {
+        if let Some(list) = self.sockets.borrow_mut().get_mut(integration)
+            && let Some(index) = list.iter().position(|candidate| candidate.id == socket)
+        {
+            let mut declared = list.remove(index);
+            declared.serves = true;
+            list.push(declared);
+        }
+        self.declared.notify_waiters();
+    }
+
+    /// A socket of `integration`'s that serves its plugin, the one that
+    /// declared last.
+    pub(crate) fn server(&self, integration: &IntegrationId) -> Option<u64> {
+        self.sockets
+            .borrow()
+            .get(integration)?
+            .iter()
+            .rev()
+            .find(|socket| socket.serves && !socket.sender.is_closed())
+            .map(|socket| socket.id)
+    }
+
+    /// The socket `socket` of `integration`'s went: its requests fail.
+    pub(crate) fn closed(&self, integration: &IntegrationId, socket: u64) {
+        if let Some(list) = self.sockets.borrow_mut().get_mut(integration) {
+            list.retain(|candidate| candidate.id != socket);
+        }
+        let ended: Vec<u64> = self
+            .calls
+            .borrow()
+            .iter()
+            .filter(|(_, call)| call.integration == *integration && call.socket == socket)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in ended {
+            if let Some(call) = self.calls.borrow_mut().remove(&id) {
+                let _ = call.reply.send(api::PluginReply::Failed {
+                    message: "the integration's program went away".to_owned(),
+                });
+            }
         }
     }
 
@@ -643,9 +730,14 @@ impl Shard {
         self.integration_events.observed.borrow().get(conversation).cloned()
     }
 
+    /// The socket `socket` of the integration `integration`'s went.
+    pub fn integration_socket_closed(&self, integration: &IntegrationId, socket: u64) {
+        self.integration_events.closed(integration, socket);
+    }
+
     /// A socket of the integration `integration`'s from now on, until its
     /// receiver goes.
-    pub fn subscribe_integration(&self, integration: IntegrationId) -> mpsc::Receiver<api::Event> {
+    pub fn subscribe_integration(&self, integration: IntegrationId) -> (u64, mpsc::Receiver<api::Event>) {
         self.integration_events.subscribe(integration)
     }
 

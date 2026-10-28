@@ -2562,7 +2562,9 @@ dependencies = [
 name = "demi-integration-api-protocol"
 version = "0.1.65"
 dependencies = [
+ "demi-command-declarations",
  "demi-conversation-lane-protocol",
+ "demi-host-interface",
  "demi-shared-types",
  "demi-web-api-protocol",
  "garde",

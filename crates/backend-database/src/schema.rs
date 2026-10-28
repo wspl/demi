@@ -145,6 +145,7 @@ impl ReadBlob for NoBlobs {
 /// - The development form in which a user held one Cloud, before the user's
 ///   record named their own.
 /// - The development form before integrations.
+/// - The development form before an integration declared a plugin.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -361,6 +362,10 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.65-dev.no-integrations.sql"),
             migration: Migration::Sql(CONTROL_FROM_NO_INTEGRATIONS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.65-dev.undeclared-integrations.sql"),
+            migration: Migration::Sql(CONTROL_FROM_UNDECLARED_INTEGRATIONS),
+        },
     ],
 };
 
@@ -502,6 +507,10 @@ UPDATE users SET cloud_device_id =
   (SELECT id FROM devices WHERE devices.user_id = users.id AND kind = 'managed' AND machine = 'cloud');
 DROP INDEX devices_one_machine;
 CREATE UNIQUE INDEX devices_one_claude_code ON devices (user_id) WHERE machine = 'claude_code';";
+
+/// From the form before an integration declared a plugin: none has
+/// declared one.
+const CONTROL_FROM_UNDECLARED_INTEGRATIONS: &str = "ALTER TABLE integrations ADD COLUMN declaration TEXT;";
 
 /// From the form before integrations: their tables.
 const CONTROL_FROM_NO_INTEGRATIONS: &str = r"
@@ -6024,7 +6033,10 @@ CREATE TABLE integrations (
   token_hash   TEXT NOT NULL UNIQUE,
   -- What its agents may do, IntegrationCapabilities as JSON.
   capabilities TEXT NOT NULL,
-  created_at   INTEGER NOT NULL
+  created_at   INTEGER NOT NULL,
+  -- The plugin its program last declared, Declaration as JSON; none before
+  -- its first declaration.
+  declaration  TEXT
 ) STRICT;
 CREATE INDEX integrations_by_user ON integrations (user_id);
 CREATE TABLE integration_conversations (
