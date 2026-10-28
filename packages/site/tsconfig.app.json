@@ -1,0 +1,60 @@
+{
+  "extends": [
+    "../../tsconfig.json",
+    "@vue/tsconfig/tsconfig.dom.json"
+  ],
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "vite/client",
+      "bun"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@demicodes/web-ui/*": [
+        "../web-ui/src/*"
+      ],
+      "@demicodes/web-gallery/*": [
+        "../web-gallery/src/*"
+      ],
+      "@demicodes/plugin-browser/*": [
+        "../../crates/plugin-browser/page/src/*"
+      ],
+      "@demicodes/plugin-mobile/*": [
+        "../../crates/plugin-mobile/page/src/*"
+      ],
+      "@demicodes/plugin-changes/*": [
+        "../../crates/plugin-changes/page/src/*"
+      ],
+      "@demicodes/plugin-file-browser/*": [
+        "../../crates/plugin-file-browser/page/src/*"
+      ],
+      "@demicodes/plugin-skills/*": [
+        "../../crates/plugin-skills/page/src/*"
+      ],
+      "@demicodes/plugin-web/*": [
+        "../../crates/plugin-web/page/src/*"
+      ],
+      "@demicodes/*": [
+        "../*/src/index.ts",
+        "../../crates/*/page/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "record"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

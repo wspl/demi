@@ -17,6 +17,7 @@
     "crates/plugin-web/page",
     "packages/web-gallery",
     "packages/web",
+    "packages/site",
     "packages/browse"
   ],
   "scripts": {
@@ -26,7 +27,7 @@
     "check:registry": "bun run scripts/check-public-registry.ts",
     "contracts": "bun scripts/xtask.ts contracts",
     "typecheck": "bun run contracts && tsgo --noEmit && tsgo --noEmit -p packages/browse",
-    "typecheck:web": "bun run contracts && bun run --parallel --no-exit-on-error --filter @demicodes/protocol --filter @demicodes/conversation-client --filter @demicodes/web-ui --filter '@demicodes/plugin-*' --filter @demicodes/web-gallery --filter @demicodes/web typecheck",
+    "typecheck:web": "bun run contracts && bun run --parallel --no-exit-on-error --filter @demicodes/protocol --filter @demicodes/conversation-client --filter @demicodes/web-ui --filter '@demicodes/plugin-*' --filter @demicodes/web-gallery --filter @demicodes/web --filter @demicodes/site typecheck",
     "build": "bun run contracts && bun --filter '*' build",
     "changeset": "changeset",
     "changeset:version": "changeset version",

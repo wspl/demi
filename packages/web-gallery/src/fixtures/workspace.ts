@@ -775,6 +775,11 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
   return set
 }
 
+/** The workspace's working tree with only the changes of `paths`, for a specimen that shows a few. */
+export function createChangeSetOf(paths: readonly string[], latencyMs = 200) {
+  return createGalleryChangeSet(latencyMs, {}, { root: WORKSPACE_ROOT, changed: changedFiles.filter((change) => paths.includes(change.path)) })
+}
+
 /** The working tree of the other checkout a child works in: the cookie file the child renamed. */
 export function createSlotChangeSet(latencyMs: number) {
   const cookie = changedFiles.find((change) => change.path === 'src/auth/cookie.ts')
