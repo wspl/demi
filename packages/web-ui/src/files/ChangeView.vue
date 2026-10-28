@@ -87,7 +87,7 @@ const props = defineProps<{
   changes: ChangeSources
   /** A link opened the commit shown, and the list's branch is still to be placed for it (`placed`). */
   place?: boolean
-  /** The workspace the paths are relative to. */
+  /** The root the paths are relative to. */
   root: string
   /** What the tree's caption says in place of the root directory's name. */
   rootName?: string
@@ -100,7 +100,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** Open the selected file itself, by its path relative to the workspace. */
+  /** Open the selected file itself, by its path relative to the root. */
   open: [path: string]
   back: []
   forward: []
@@ -274,7 +274,7 @@ function chooseEdit(id: string, close: () => void): void {
 const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.value?.path ?? ''))
 /**
  * The file the view shows, named over it as a diff's file header names it on
- * GitHub: its folder from the workspace, its name, and where a renamed file came
+ * GitHub: its folder from the root, its name, and where a renamed file came
  * from. In Conversation, that is the name the shown diff starts under, when a
  * later call renamed the file.
  */
@@ -304,7 +304,7 @@ const emptyText = computed(() => {
 })
 /** What a commit the repository lacks says in place of its files. */
 const noCommitText = computed(() => t('changes.noCommit', { id: shortCommit(commit.value ?? ''), root: props.rootName ?? props.root }))
-/** The sidebar's files in either mode, as one tree shows them; a request's paths from the workspace. */
+/** The sidebar's files in either mode, as one tree shows them; a request's paths from the root. */
 const treeFiles = computed<ChangeTreeFile[]>(() => {
   if (showsCommit.value) {
     return (commitDetails.value?.files ?? []).map((file) => ({

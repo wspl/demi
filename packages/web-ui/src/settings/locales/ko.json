@@ -186,7 +186,8 @@
       "sidebar": "사이드바 전환",
       "settings": "설정 열기",
       "searchFiles": "파일에서 검색",
-      "findHere": "찾기"
+      "findHere": "찾기",
+      "workspace": "워크스페이스 {number}(으)로 전환"
     }
   },
   "notifications": {
@@ -307,7 +308,7 @@
   },
   "sections": {
     "agent": "에이전트",
-    "workspace": "워크스페이스",
+    "devicesAndData": "기기 및 데이터",
     "system": "시스템",
     "general": {
       "keywords": "모양,외관",

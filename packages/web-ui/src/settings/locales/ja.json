@@ -186,7 +186,8 @@
       "sidebar": "サイドバーを切り替える",
       "settings": "設定を開く",
       "searchFiles": "ファイルを検索",
-      "findHere": "検索"
+      "findHere": "検索",
+      "workspace": "ワークスペース {number} に切り替える"
     }
   },
   "notifications": {
@@ -307,7 +308,7 @@
   },
   "sections": {
     "agent": "エージェント",
-    "workspace": "ワークスペース",
+    "devicesAndData": "デバイスとデータ",
     "system": "システム",
     "general": {
       "keywords": "外観,見た目",

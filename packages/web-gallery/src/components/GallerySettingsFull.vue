@@ -42,6 +42,7 @@ import GalleryUpdates from './GalleryUpdates.vue'
 import GalleryPortForwards from './GalleryPortForwards.vue'
 import { slow } from '../fixtures/slow'
 import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
+import GalleryWorkspaces from './GalleryWorkspaces.vue'
 
 /** One page of the full mock, chosen by the dialog's tab. All state lives in the fixture; timers stand in for the server. */
 const props = defineProps<{
@@ -353,6 +354,8 @@ function resetShortcuts() {
   />
 
   <GalleryCredentials v-else-if="tab === 'credentials'" :state="s.credentials" />
+
+  <GalleryWorkspaces v-else-if="tab === 'workspaces'" />
 
   <GalleryUsers v-else-if="tab === 'users'" :state="s.users" />
 

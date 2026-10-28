@@ -1,10 +1,10 @@
 //! Where a conversation runs, as the control store keeps it: the Cloud's
-//! directory of a conversation, a Host's home, or a workspace.
+//! directory of a conversation, a Host's home, or a project.
 //!
 //! One rule turns a destination, a directory on a Host or a project, into one of
 //! them. Every move, a conversation's creation, a restore whose project was
 //! deleted and the upgrade's leftovers go through [`select`], in the transaction
-//! that writes the selection, which makes the directory's workspace when the user
+//! that writes the selection, which makes the directory's project when the user
 //! has none.
 //!
 //! # Directories
@@ -30,10 +30,10 @@
 //!   so a node's next inference names the directory its shells really start in and
 //!   never hands on a path that does not exist on its Host.
 //!
-//! # Workspaces
+//! # Projects
 //!
-//! A workspace is a `(user, device, path)` record, one per device and
-//! directory, named by the directory. It groups conversations and owns no
+//! A project is a `(workspace, device, path)` record, one per workspace,
+//! device and directory, named by the directory. It groups conversations and owns no
 //! sandbox: it restricts no filesystem access. A selection of a deleted one's
 //! directory, or of a worktree it lists, brings it back.
 //!
@@ -48,7 +48,8 @@
 //!
 //! - The project's Host reports the worktrees of each project's repository
 //!   (`crates/runner-host/src/worktrees.rs`), before any message that could
-//!   follow a change of them, and each project keeps them as last reported, so
+//!   follow a change of them, and its directory keeps them as last reported,
+//!   for each workspace's project of it, so
 //!   a move selects by them in its own transaction, with the Host away.
 //! - A directory selects, in order: the project of that directory; the
 //!   project that lists it as a worktree, with the worktree; a project made for
@@ -64,13 +65,13 @@ use demi_runner_client::host_paths;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProjectId, UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
 use super::conversation_index::ExecutionTarget;
 use super::devices::{DeviceRecord, cloud_device_in, device_in, managed_device_in};
-use super::workspaces::{WorkspaceRecord, new_workspace_id, workspace_at};
+use super::projects::{ProjectRecord, new_project_id, project_at};
 
 /// The Cloud's home directory, before its runner reports one.
 pub const CLOUD_HOME: &str = "/home/demi";
@@ -84,12 +85,12 @@ pub enum Selection {
     Cloud { path: Option<String> },
     /// A Host's home: a paired device's or the Cloud's.
     Home { device_id: DeviceId },
-    /// A project, with the device and directory its workspace names, kept
+    /// A project, with the device and directory its project names, kept
     /// so a conversation whose project was deleted is restored to its
     /// directory, and the linked worktree of the project's repository it
     /// works in, if it does (§ Worktrees).
-    Workspace {
-        workspace_id: WorkspaceId,
+    Project {
+        project_id: ProjectId,
         device_id: DeviceId,
         path: String,
         worktree: Option<Worktree>,
@@ -115,25 +116,25 @@ impl Selection {
     /// project's worktree's in place of the project's.
     pub fn worktree(&self) -> Option<&Worktree> {
         match self {
-            Self::Workspace { worktree, .. } => worktree.as_ref(),
+            Self::Project { worktree, .. } => worktree.as_ref(),
             _ => None,
         }
     }
 
     /// The selection as the web app reads a conversation's target, from
-    /// `resolved`, what it resolves to: a project by its workspace, the
+    /// `resolved`, what it resolves to: a project by its project, the
     /// Cloud's directory of a conversation as it was asked for, and a home
     /// or a directory as the Host and directory it is.
     pub fn shown(&self, resolved: &ExecutionTarget) -> ConversationTarget {
         match (self, resolved) {
             (Self::Cloud { path }, _) => ConversationTarget::Cloud { path: path.clone() },
-            (Self::Workspace { workspace_id, .. }, _) => ConversationTarget::Workspace {
-                workspace_id: workspace_id.clone(),
+            (Self::Project { project_id, .. }, _) => ConversationTarget::Project {
+                project_id: project_id.clone(),
             },
             (_, ExecutionTarget::Cloud { path, .. }) => ConversationTarget::Cloud {
                 path: Some(path.clone()),
             },
-            (_, ExecutionTarget::Device { device_id, path } | ExecutionTarget::Workspace { device_id, path, .. }) => {
+            (_, ExecutionTarget::Device { device_id, path } | ExecutionTarget::Project { device_id, path, .. }) => {
                 ConversationTarget::Device {
                     device_id: device_id.clone(),
                     path: path.clone(),
@@ -146,6 +147,8 @@ impl Selection {
 /// Why a destination selects nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unselectable {
+    /// The user has no project of the id in the conversation's workspace.
+    ProjectNotFound,
     /// The user has no workspace of the id.
     WorkspaceNotFound,
     /// The user paired no device of the id.
@@ -155,12 +158,12 @@ pub enum Unselectable {
     HomeUnknown,
 }
 
-/// A destination's selection, and the workspace selecting it made, if it
+/// A destination's selection, and the project selecting it made, if it
 /// did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selected {
     pub selection: Selection,
-    pub made: Option<WorkspaceRecord>,
+    pub made: Option<ProjectRecord>,
 }
 
 impl Selected {
@@ -172,14 +175,16 @@ impl Selected {
     }
 }
 
-/// The selection `to` names for `owner`'s conversation `conversation`, by its
-/// directory: the Cloud's directory of a conversation, the Host's home, or else
-/// the workspace of that device and directory, made now when the user has none.
+/// The selection `to` names for `owner`'s conversation `conversation` in
+/// `workspace`, by its directory: the Cloud's directory of a conversation, the
+/// Host's home, or else the workspace's project of that device and directory,
+/// made now when it has none.
 ///
 /// A Cloud directory makes the user's Cloud device when it was never made.
 pub(crate) fn select(
     connection: &Connection,
     owner: &UserId,
+    workspace: &WorkspaceId,
     conversation: &ConversationId,
     to: &ConversationTarget,
     now: Timestamp,
@@ -188,26 +193,28 @@ pub(crate) fn select(
         ConversationTarget::Cloud { path: None } => Ok(Selected::kept(Selection::Cloud { path: None })),
         ConversationTarget::Cloud { path: Some(path) } => {
             let cloud = cloud_device_in(connection, owner, now)?;
-            select_directory(connection, conversation, &cloud, path, now)
+            select_directory(connection, workspace, conversation, &cloud, path, now)
         }
         ConversationTarget::Device { device_id, path } => {
             match device_in(connection, device_id)? {
                 Some(device) if device.user == *owner && device.kind == DeviceKind::User => {
-                    select_directory(connection, conversation, &device, path, now)
+                    select_directory(connection, workspace, conversation, &device, path, now)
                 }
                 _ => Ok(Err(Unselectable::DeviceNotFound)),
             }
         }
-        ConversationTarget::Workspace { workspace_id } => {
-            let workspace = super::workspaces::workspace_in(connection, workspace_id)?;
-            Ok(match workspace {
-                Some(workspace) if workspace.user == *owner && !workspace.deleted => Selected::kept(Selection::Workspace {
-                    workspace_id: workspace.id,
-                    device_id: workspace.device,
-                    path: workspace.path,
-                    worktree: None,
-                }),
-                _ => Err(Unselectable::WorkspaceNotFound),
+        ConversationTarget::Project { project_id } => {
+            let project = super::projects::project_in(connection, project_id)?;
+            Ok(match project {
+                Some(project) if project.user == *owner && project.workspace == *workspace && !project.deleted => {
+                    Selected::kept(Selection::Project {
+                        project_id: project.id,
+                        device_id: project.device,
+                        path: project.path,
+                        worktree: None,
+                    })
+                }
+                _ => Err(Unselectable::ProjectNotFound),
             })
         }
     }
@@ -217,6 +224,7 @@ pub(crate) fn select(
 /// rule for a directory.
 pub(crate) fn select_directory(
     connection: &Connection,
+    workspace: &WorkspaceId,
     conversation: &ConversationId,
     device: &DeviceRecord,
     path: &str,
@@ -245,42 +253,44 @@ pub(crate) fn select_directory(
             device_id: device.id.clone(),
         }));
     }
-    if workspace_at(connection, &device.user, &device.id, &path)?.is_none()
-        && let Some(selection) = worktree_at(connection, device, &path)?
+    if project_at(connection, workspace, &device.id, &path)?.is_none()
+        && let Some(selection) = worktree_at(connection, workspace, device, &path)?
     {
         let made = match &selection {
-            Selection::Workspace { workspace_id, .. } if super::workspaces::revive(connection, workspace_id)? => {
-                super::workspaces::workspace_in(connection, workspace_id)?
+            Selection::Project { project_id, .. } if super::projects::revive(connection, project_id)? => {
+                super::projects::project_in(connection, project_id)?
             }
             _ => None,
         };
         return Ok(Ok(Selected { selection, made }));
     }
-    Ok(Ok(project_of(connection, device, &path, now)?))
+    Ok(Ok(project_of(connection, workspace, device, &path, now)?))
 }
 
-/// The selection of the linked worktree at `path` on `device`, in the project
-/// that lists it (§ Worktrees); none when no project of the device's user
-/// does.
+/// The selection of the linked worktree at `path` on `device`, in the
+/// workspace's project of the repository that lists it (§ Worktrees); none
+/// when no project of the workspace's does.
 pub(crate) fn worktree_at(
     connection: &Connection,
+    workspace: &WorkspaceId,
     device: &DeviceRecord,
     path: &str,
 ) -> Result<Option<Selection>, StorageError> {
     Ok(connection
         .prepare_cached(
-            "SELECT workspace.id, workspace.path, worktree.name, worktree.path
-             FROM workspace_worktrees worktree JOIN workspaces workspace ON workspace.id = worktree.workspace_id
-             WHERE workspace.user_id = ?1 AND workspace.device_id = ?2 AND worktree.path = ?3
-             ORDER BY workspace.id LIMIT 1",
+            "SELECT project.id, project.path, worktree.name, worktree.worktree_path
+             FROM directory_worktrees worktree
+               JOIN projects project ON project.device_id = worktree.device_id AND project.path = worktree.path
+             WHERE project.workspace_id = ?1 AND worktree.device_id = ?2 AND worktree.worktree_path = ?3
+             ORDER BY project.id LIMIT 1",
         )?
-        .query_row(params![device.user.as_str(), device.id.as_str(), path], |row| {
+        .query_row(params![workspace.as_str(), device.id.as_str(), path], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
         })
         .optional()?
-        .map(|(workspace, project, name, path)| -> Result<Selection, StorageError> {
-            Ok(Selection::Workspace {
-                workspace_id: super::columns::decode("workspace_worktrees", "workspace_id", WorkspaceId::try_from(workspace))?,
+        .map(|(id, project, name, path)| -> Result<Selection, StorageError> {
+            Ok(Selection::Project {
+                project_id: super::columns::decode("projects", "id", ProjectId::try_from(id))?,
                 device_id: device.id.clone(),
                 path: project,
                 worktree: Some(Worktree { name, path }),
@@ -289,44 +299,45 @@ pub(crate) fn worktree_at(
         .transpose()?)
 }
 
-/// The workspace of `path` on `device`, made now when its user has none, and
-/// brought back when the user deleted it.
+/// The workspace's project of `path` on `device`, made now when it has none,
+/// and brought back when the user deleted it.
 ///
 /// A restore of a conversation whose project was deleted selects it alone, since a
 /// project's directory is never a home.
 pub(crate) fn project_of(
     connection: &Connection,
+    workspace: &WorkspaceId,
     device: &DeviceRecord,
     path: &str,
     now: Timestamp,
 ) -> Result<Selected, StorageError> {
     let paths = host_paths(device.platform);
     let path = directory(paths, path);
-    if let Some(workspace) = workspace_at(connection, &device.user, &device.id, &path)? {
-        let made = if super::workspaces::revive(connection, &workspace.id)? {
-            super::workspaces::workspace_in(connection, &workspace.id)?
+    if let Some(project) = project_at(connection, workspace, &device.id, &path)? {
+        let made = if super::projects::revive(connection, &project.id)? {
+            super::projects::project_in(connection, &project.id)?
         } else {
             None
         };
         return Ok(Selected {
-            selection: Selection::Workspace {
-                workspace_id: workspace.id,
-                device_id: workspace.device,
-                path: workspace.path,
+            selection: Selection::Project {
+                project_id: project.id,
+                device_id: project.device,
+                path: project.path,
                 worktree: None,
             },
             made,
         });
     }
-    let workspace = super::workspaces::insert_workspace(connection, new_workspace_id(), &device.user, &device.id, &path, now)?;
+    let project = super::projects::insert_project(connection, new_project_id(), &device.user, workspace, &device.id, &path, now)?;
     Ok(Selected {
-        selection: Selection::Workspace {
-            workspace_id: workspace.id.clone(),
-            device_id: workspace.device.clone(),
-            path: workspace.path.clone(),
+        selection: Selection::Project {
+            project_id: project.id.clone(),
+            device_id: project.device.clone(),
+            path: project.path.clone(),
             worktree: None,
         },
-        made: Some(workspace),
+        made: Some(project),
     })
 }
 
@@ -384,13 +395,13 @@ pub(crate) fn execution_target(
                 },
             }
         }
-        Selection::Workspace {
-            workspace_id,
+        Selection::Project {
+            project_id,
             device_id,
             path,
             worktree,
-        } => ExecutionTarget::Workspace {
-            workspace_id: workspace_id.clone(),
+        } => ExecutionTarget::Project {
+            project_id: project_id.clone(),
             device_id: device_id.clone(),
             path: worktree.as_ref().map_or(path, |worktree| &worktree.path).clone(),
         },

@@ -61,7 +61,10 @@ pub enum Part {
     ConversationOrder,
     Preferences,
     User,
+    /// The user's workspaces; before the projects and conversations, which
+    /// name them.
     Workspaces,
+    Projects,
     Devices,
     Providers,
     /// The user's sign-ins; after the entries, so that a completed login's

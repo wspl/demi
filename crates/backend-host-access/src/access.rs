@@ -71,7 +71,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_backend_database::devices::DeviceRecord;
 use demi_agent_tools::duration;
-use demi_backend_database::workspaces::TypedDirectory;
+use demi_backend_database::projects::TypedDirectory;
 use demi_runner_client::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_host_interface::{HostError, HostErrorKind, HostFs};
@@ -924,7 +924,7 @@ impl dyn HostShard + '_ {
             (
                 None,
                 ExecutionTarget::Device { device_id, .. }
-                | ExecutionTarget::Workspace { device_id, .. },
+                | ExecutionTarget::Project { device_id, .. },
             ) => control.device(device_id.clone()).await?,
         };
         let device = found
@@ -935,8 +935,8 @@ impl dyn HostShard + '_ {
             None => {
                 let typed = match &target {
                     ExecutionTarget::Cloud { path, .. } => Some(TypedDirectory::Cloud(path.clone())),
-                    ExecutionTarget::Workspace { workspace_id, .. } => {
-                        Some(TypedDirectory::Workspace(workspace_id.clone()))
+                    ExecutionTarget::Project { project_id, .. } => {
+                        Some(TypedDirectory::Project(project_id.clone()))
                     }
                     ExecutionTarget::Device { .. } => None,
                 };

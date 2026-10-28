@@ -3,7 +3,7 @@
 //! conversation shows, which its draft row keeps.
 //!
 //! - A conversation shows its project's list while the project keeps its
-//!   messages per project (`workspaces.saved_scope`), and its own otherwise.
+//!   messages per project (`projects.saved_scope`), and its own otherwise.
 //!   Every route names the conversation, and the list is resolved from it in
 //!   the transaction that reads or changes it.
 //! - Every change of a list raises the revision of each conversation that
@@ -20,8 +20,8 @@
 
 use demi_shared_types::{Timestamp, TurnId};
 use demi_web_api_protocol::drafts::{DraftWritten, Revisions};
-use demi_web_api_protocol::ids::{AttachmentId, ConversationId, SavedMessageId, UserId, WorkspaceId};
-use demi_web_api_protocol::workspaces::SavedScope;
+use demi_web_api_protocol::ids::{AttachmentId, ConversationId, SavedMessageId, UserId, ProjectId};
+use demi_web_api_protocol::projects::SavedScope;
 use demi_web_api_protocol::saved::{
     FromDraftAnswer, ListedSavedMessage, SAVED_MAX, SAVED_OPENING_CHARS, SavedAnswer, SavedListing, SavedMessage,
 };
@@ -63,7 +63,7 @@ pub(crate) enum SavedList {
     /// The conversation's own.
     Conversation(ConversationId),
     /// Its project's, which every conversation of the project shows.
-    Project(WorkspaceId),
+    Project(ProjectId),
 }
 
 impl SavedList {
@@ -71,7 +71,7 @@ impl SavedList {
     fn column(&self) -> &'static str {
         match self {
             Self::Conversation(_) => "conversation_id",
-            Self::Project(_) => "workspace_id",
+            Self::Project(_) => "project_id",
         }
     }
 
@@ -182,7 +182,7 @@ impl ControlService {
     pub async fn switch_saved_scope(
         &self,
         user: UserId,
-        project: WorkspaceId,
+        project: ProjectId,
         scope: SavedScope,
         to: Option<ConversationId>,
     ) -> Result<ScopeSwitch, StorageError> {
@@ -190,7 +190,7 @@ impl ControlService {
             let transaction = connection.transaction()?;
             let current: Option<String> = transaction
                 .query_row(
-                    "SELECT saved_scope FROM workspaces WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
+                    "SELECT saved_scope FROM projects WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
                     params![project.as_str(), user.as_str()],
                     |row| row.get(0),
                 )
@@ -204,14 +204,14 @@ impl ControlService {
             match scope {
                 SavedScope::Project => {
                     transaction.execute(
-                        "UPDATE saved_messages SET workspace_id = ?1, conversation_id = NULL
-                         WHERE conversation_id IN (SELECT id FROM conversations WHERE target_workspace_id = ?1)",
+                        "UPDATE saved_messages SET project_id = ?1, conversation_id = NULL
+                         WHERE conversation_id IN (SELECT id FROM conversations WHERE target_project_id = ?1)",
                         [project.as_str()],
                     )?;
                 }
                 SavedScope::Conversation => {
                     let kept: i64 = transaction.query_row(
-                        "SELECT count(*) FROM saved_messages WHERE workspace_id = ?1",
+                        "SELECT count(*) FROM saved_messages WHERE project_id = ?1",
                         [project.as_str()],
                         |row| row.get(0),
                     )?;
@@ -222,7 +222,7 @@ impl ControlService {
                         let inside = transaction
                             .query_row(
                                 "SELECT id FROM conversations
-                                 WHERE id = ?1 AND user_id = ?2 AND target_workspace_id = ?3 AND archived = 0",
+                                 WHERE id = ?1 AND user_id = ?2 AND target_project_id = ?3 AND archived = 0",
                                 params![to.as_str(), user.as_str(), project.as_str()],
                                 |row| row.get::<_, String>(0),
                             )
@@ -231,14 +231,14 @@ impl ControlService {
                             return Ok(ScopeSwitch::DestinationInvalid);
                         };
                         transaction.execute(
-                            "UPDATE saved_messages SET conversation_id = ?2, workspace_id = NULL WHERE workspace_id = ?1",
+                            "UPDATE saved_messages SET conversation_id = ?2, project_id = NULL WHERE project_id = ?1",
                             params![project.as_str(), inside],
                         )?;
                     }
                 }
             }
             transaction.execute(
-                "UPDATE workspaces SET saved_scope = ?2 WHERE id = ?1",
+                "UPDATE projects SET saved_scope = ?2 WHERE id = ?1",
                 params![project.as_str(), scope_column(scope)],
             )?;
             let changed = sharers(&transaction, &SavedList::Project(project.clone()))?;
@@ -505,7 +505,7 @@ fn staged(
 ) -> Result<Result<Staged, SavedRefusal>, StorageError> {
     let kept_by: Option<(Option<String>, Option<String>)> = connection
         .query_row(
-            "SELECT conversation_id, workspace_id FROM saved_messages WHERE id = ?1
+            "SELECT conversation_id, project_id FROM saved_messages WHERE id = ?1
              UNION ALL SELECT conversation_id, NULL FROM saved_sends WHERE id = ?1",
             [id.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -663,14 +663,14 @@ fn raise_list(connection: &Connection, list: &SavedList, now: Timestamp) -> Resu
 pub(crate) fn list_of(connection: &Connection, conversation: &ConversationId) -> Result<SavedList, StorageError> {
     let project: Option<String> = connection
         .prepare_cached(
-            "SELECT workspace.id FROM conversations conversation
-             JOIN workspaces workspace ON workspace.id = conversation.target_workspace_id
-             WHERE conversation.id = ?1 AND workspace.saved_scope = 'project'",
+            "SELECT project.id FROM conversations conversation
+             JOIN projects project ON project.id = conversation.target_project_id
+             WHERE conversation.id = ?1 AND project.saved_scope = 'project'",
         )?
         .query_row([conversation.as_str()], |row| row.get(0))
         .optional()?;
     Ok(match project {
-        Some(project) => SavedList::Project(decode("workspaces", "id", WorkspaceId::try_from(project))?),
+        Some(project) => SavedList::Project(decode("projects", "id", ProjectId::try_from(project))?),
         None => SavedList::Conversation(conversation.clone()),
     })
 }
@@ -684,24 +684,24 @@ fn sharers(connection: &Connection, list: &SavedList) -> Result<Vec<Conversation
 }
 
 /// The conversations of the project `project`, archived ones included.
-fn members(connection: &Connection, project: &WorkspaceId) -> Result<Vec<ConversationId>, StorageError> {
+fn members(connection: &Connection, project: &ProjectId) -> Result<Vec<ConversationId>, StorageError> {
     connection
-        .prepare_cached("SELECT id FROM conversations WHERE target_workspace_id = ?1")?
+        .prepare_cached("SELECT id FROM conversations WHERE target_project_id = ?1")?
         .query_map([project.as_str()], |row| row.get::<_, String>(0))?
         .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
         .collect()
 }
 
 /// Whether the project `project` keeps its saved messages per project.
-fn shared(connection: &Connection, project: &WorkspaceId) -> Result<bool, StorageError> {
+fn shared(connection: &Connection, project: &ProjectId) -> Result<bool, StorageError> {
     Ok(connection
-        .prepare_cached("SELECT 1 FROM workspaces WHERE id = ?1 AND saved_scope = 'project'")?
+        .prepare_cached("SELECT 1 FROM projects WHERE id = ?1 AND saved_scope = 'project'")?
         .query_row([project.as_str()], |_| Ok(()))
         .optional()?
         .is_some())
 }
 
-/// `scope` as `workspaces.saved_scope` stores it.
+/// `scope` as `projects.saved_scope` stores it.
 pub(crate) fn scope_column(scope: SavedScope) -> &'static str {
     match scope {
         SavedScope::Conversation => "conversation",
@@ -716,8 +716,8 @@ pub(crate) fn scope_column(scope: SavedScope) -> &'static str {
 pub(crate) fn moved(
     connection: &Connection,
     conversation: &ConversationId,
-    from: Option<&WorkspaceId>,
-    to: Option<&WorkspaceId>,
+    from: Option<&ProjectId>,
+    to: Option<&ProjectId>,
     now: Timestamp,
 ) -> Result<(), StorageError> {
     if from == to {
@@ -733,7 +733,7 @@ pub(crate) fn moved(
     };
     if let Some(into) = into {
         let joined = connection.execute(
-            "UPDATE saved_messages SET workspace_id = ?2, conversation_id = NULL WHERE conversation_id = ?1",
+            "UPDATE saved_messages SET project_id = ?2, conversation_id = NULL WHERE conversation_id = ?1",
             params![conversation.as_str(), into.as_str()],
         )?;
         if joined > 0 {
@@ -758,26 +758,26 @@ pub(crate) fn moved(
 /// conversations whose list changed, whose pages read it again.
 pub(crate) fn project_ends(
     connection: &Connection,
-    from: &WorkspaceId,
-    into: Option<&WorkspaceId>,
+    from: &ProjectId,
+    into: Option<&ProjectId>,
     now: Timestamp,
 ) -> Result<Vec<ConversationId>, StorageError> {
     let mut changed = members(connection, from)?;
     match into {
         Some(into) if shared(connection, into)? => {
             connection.execute(
-                "UPDATE saved_messages SET workspace_id = ?2, conversation_id = NULL
-                 WHERE workspace_id = ?1
-                    OR conversation_id IN (SELECT id FROM conversations WHERE target_workspace_id = ?1)",
+                "UPDATE saved_messages SET project_id = ?2, conversation_id = NULL
+                 WHERE project_id = ?1
+                    OR conversation_id IN (SELECT id FROM conversations WHERE target_project_id = ?1)",
                 params![from.as_str(), into.as_str()],
             )?;
             changed.extend(raise_list(connection, &SavedList::Project(into.clone()), now)?);
         }
         _ => {
-            let last_of = |project: &WorkspaceId| -> Result<Option<String>, StorageError> {
+            let last_of = |project: &ProjectId| -> Result<Option<String>, StorageError> {
                 Ok(connection
                     .query_row(
-                        "SELECT id FROM conversations WHERE target_workspace_id = ?1
+                        "SELECT id FROM conversations WHERE target_project_id = ?1
                          ORDER BY updated_at DESC, id LIMIT 1",
                         [project.as_str()],
                         |row| row.get(0),
@@ -794,7 +794,7 @@ pub(crate) fn project_ends(
             match (taker, into) {
                 (Some(taker), _) => {
                     connection.execute(
-                        "UPDATE saved_messages SET conversation_id = ?2, workspace_id = NULL WHERE workspace_id = ?1",
+                        "UPDATE saved_messages SET conversation_id = ?2, project_id = NULL WHERE project_id = ?1",
                         params![from.as_str(), taker],
                     )?;
                     let taker = decode("conversations", "id", ConversationId::try_from(taker.as_str()))?;
@@ -803,7 +803,7 @@ pub(crate) fn project_ends(
                 }
                 (None, Some(into)) => {
                     connection.execute(
-                        "UPDATE saved_messages SET workspace_id = ?2 WHERE workspace_id = ?1",
+                        "UPDATE saved_messages SET project_id = ?2 WHERE project_id = ?1",
                         params![from.as_str(), into.as_str()],
                     )?;
                 }

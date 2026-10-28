@@ -13,7 +13,7 @@ import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import { useContextCard } from './context-card'
-import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
+import ProjectInfo from '../targets/ProjectInfo.vue'
 import { executionFor, primaryHostOf } from '../targets/execution'
 import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
@@ -114,7 +114,7 @@ provideHistoryReading((node) => {
 /** The schedules that wake the conversation, which the chip above the composer lists. */
 const schedules = computed(() => conversation.value?.metadata.shown.value?.schedules ?? [])
 /** The header's place, which carries out a move the offline primary Host's card asks for. */
-const place = useTemplateRef<InstanceType<typeof WorkspaceInfo>>('place')
+const place = useTemplateRef<InstanceType<typeof ProjectInfo>>('place')
 /** Where the conversation runs now, live over the account's device states: Resume runs there. */
 const primaryHost = keptComputed(() =>
   conversation.value ? primaryHostOf(executionFor(conversation.value)) : null,
@@ -286,7 +286,7 @@ const files = computed<ConversationFiles | undefined>(() => {
   if (!current) {
     return undefined
   }
-  const contents = conversationFiles(current.id).workspace?.source.contents
+  const contents = conversationFiles(current.id).tree?.source.contents
   const device = executionFor(current).deviceId
   return {
     home: resources.deviceById(device)?.home ?? null,
@@ -468,8 +468,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @pause-schedule="(schedule, paused) => store.pauseSchedule(conversation!.id, schedule, paused)"
     @delete-schedule="(schedule) => store.deleteSchedule(conversation!.id, schedule)"
   >
-    <template #workspace
-      ><WorkspaceInfo ref="place" :project="project" :conversation="conversation"
+    <template #place
+      ><ProjectInfo ref="place" :project="project" :conversation="conversation"
     /></template>
     <template #composer
       ><ConversationComposer

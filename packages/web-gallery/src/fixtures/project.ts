@@ -16,11 +16,11 @@ import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import { WatchChannel } from '@demicodes/web-ui/files/watch-channel'
 
 /**
- * The demo workspace behind the work panel: the project the login-test
+ * The demo project behind the work panel: the project the login-test
  * conversation edits, with the files its tabs and changed-file pills name.
  * Nothing here reads a real disk.
  */
-export const WORKSPACE_ROOT = '/Users/alex/Projects/shop'
+export const PROJECT_ROOT = '/Users/alex/Projects/shop'
 
 /**
  * Another checkout of the project, where a child of the conversation works
@@ -271,7 +271,7 @@ function badgeSvg(label: string, value: string, color: string): string {
 const packageJson = `{
   "name": "demi",
   "private": true,
-  "workspaces": ["packages/*"],
+  "projects": ["packages/*"],
   "scripts": {
     "dev": "bun run --filter '*' dev",
     "typecheck": "tsgo --noEmit"
@@ -718,7 +718,7 @@ export interface GalleryChangeListing {
   truncated?: boolean
   /** The last listing failed with these words; the files are the last good list. */
   failure?: string
-  /** The workspace is not a git repository: no files at all. */
+  /** The project is not a git repository: no files at all. */
   unavailable?: 'no-repository'
 }
 
@@ -741,7 +741,7 @@ export async function gallerySides(path: string): Promise<ChangeSides> {
  * for. A failure follows a first list that read, as a refresh that failed
  * would.
  */
-export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}, tree: { root: string; changed: WorkingTreeChange[] } = { root: WORKSPACE_ROOT, changed: changedFiles }) {
+export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}, tree: { root: string; changed: WorkingTreeChange[] } = { root: PROJECT_ROOT, changed: changedFiles }) {
   const files = new HostFiles()
   // A simulated Host's watch answers the change set's subscriptions, and
   // each read carries its number, so what was read stays current.
@@ -775,9 +775,9 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
   return set
 }
 
-/** The workspace's working tree with only the changes of `paths`, for a specimen that shows a few. */
+/** The project's working tree with only the changes of `paths`, for a specimen that shows a few. */
 export function createChangeSetOf(paths: readonly string[], latencyMs = 200) {
-  return createGalleryChangeSet(latencyMs, {}, { root: WORKSPACE_ROOT, changed: changedFiles.filter((change) => paths.includes(change.path)) })
+  return createGalleryChangeSet(latencyMs, {}, { root: PROJECT_ROOT, changed: changedFiles.filter((change) => paths.includes(change.path)) })
 }
 
 /** The working tree of the other checkout a child works in: the cookie file the child renamed. */
@@ -787,17 +787,17 @@ export function createSlotChangeSet(latencyMs: number) {
 }
 
 /**
- * The demo workspace, read with `latencyMs` each, under a simulated watch:
+ * The demo project, read with `latencyMs` each, under a simulated watch:
  * `live` confirms what is read and reports each simulated change;
  * `unavailable` is a Host that cannot watch.
  */
-export function createGalleryWorkspace(latencyMs = 200, watch: 'live' | 'unavailable' = 'live'): {
+export function createGalleryProject(latencyMs = 200, watch: 'live' | 'unavailable' = 'live'): {
   source: MemoryFileSource
   root: string
   changes: ChangeSetSource
 } {
   const root = tree()
-  // The workspace sits under the home directory the laptop fixtures use.
+  // The project sits under the home directory the laptop fixtures use.
   const home = dir({ Projects: dir({ shop: root, 'shop-slots': dir({ 2: slotTree() }) }) })
   const source = createMemoryFileSource({
     platform: 'macos',
@@ -809,5 +809,5 @@ export function createGalleryWorkspace(latencyMs = 200, watch: 'live' | 'unavail
     watch,
   })
   const changes = createGalleryChangeSet(latencyMs)
-  return { source, root: WORKSPACE_ROOT, changes }
+  return { source, root: PROJECT_ROOT, changes }
 }

@@ -9,7 +9,7 @@ import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { heldTranscript } from '@demicodes/web-ui/transport/protocol'
 import { askAnswer, askFailure, askHistory, askMessage, askScript, askStep, askStopped, type AskScript } from '../fixtures/asks'
 import { COMMENTED_REPLY_ID, REPLY_PICTURE, REPLY_PICTURE_SOURCE, commentedConversation } from '../fixtures/comments'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
@@ -39,7 +39,7 @@ const props = defineProps<{
   seed: 'asking' | 'working' | 'stopped' | 'stopped-empty' | 'answered' | 'follow-up' | 'folded' | 'failed' | 'picture' | 'live'
 }>()
 
-const flow = useTurnFlow({ id: `asks-${props.seed}`, title: 'Slow uploads', cwd: WORKSPACE_ROOT, blocks: commentedConversation() })
+const flow = useTurnFlow({ id: `asks-${props.seed}`, title: 'Slow uploads', cwd: PROJECT_ROOT, blocks: commentedConversation() })
 const session = flow.state
 const messageFiles = useMessageFiles()
 const root = ref<HTMLElement>()

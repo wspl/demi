@@ -22,11 +22,11 @@ const emit = defineEmits<{ update: [data: FileData, how?: TabUpdate] }>()
 
 const page = usePage()
 const files = page.files(props.conversation)
-const workspace = computed(() => files.workspace)
-usePaneReady(() => workspace.value !== null)
+const tree = computed(() => files.tree)
+usePaneReady(() => tree.value !== null)
 
 /** The directory the view was opened for, whose tree it shows: the conversation's unless a child's link opened it. */
-const root = computed(() => props.data.root ?? workspace.value?.root ?? '/')
+const root = computed(() => props.data.root ?? tree.value?.root ?? '/')
 
 /** A file picked in the tree, a link in a document or one Search in Files found, at its line, in the directory the view was opened for. */
 function open(path: string, line?: number): void {
@@ -35,7 +35,7 @@ function open(path: string, line?: number): void {
 
 /** A directory the tree's caption chose among the conversation's agents'. */
 function switchDirectory(directory: string): void {
-  emit('update', showDirectory(props.data, directory, workspace.value?.root ?? null))
+  emit('update', showDirectory(props.data, directory, tree.value?.root ?? null))
 }
 
 /** A folder the crumb row went to; the view lets go of one as another file opens, which says so itself. */
@@ -72,15 +72,15 @@ watch([() => props.data.search, view], ([search, shown]) => {
 
 <template>
   <FileView
-    v-if="workspace"
+    v-if="tree"
     ref="view"
     v-model:tree="treeLayout.open.value"
     v-model:tree-width="treeLayout.width.value"
     :mode="data.view ?? fileView"
     :folder="data.folder ?? null"
-    :source="workspace.source"
+    :source="tree.source"
     :root="root"
-    :root-name="data.root === undefined ? workspace.name : undefined"
+    :root-name="data.root === undefined ? tree.name : undefined"
     :directories="files.directories"
     :path="data.path ? shownPath(root, data.path) : null"
     :line="data.line ?? null"

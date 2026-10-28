@@ -112,7 +112,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       onCleanup(() => moving?.())
     }, { immediate: true })
   })
-  // The workspace and the working tree's place, from plain values and the
+  // The tree and the working tree's place, from plain values and the
   // source the device's files keep: a product state that leaves the Host
   // and the directory as they are, as each frame of a turn does, keeps them
   // as they are, so the views that show them have nothing to render, and the
@@ -128,12 +128,12 @@ export function conversationFiles(conversationId: string): ConversationFileServi
         })
       : null
   })
-  // The Cloud's own session directory has no name worth showing; it is the workspace.
-  const name = computed(() => execution.value?.directory === null ? shared('common.workspace') : undefined)
-  const workspace = computed(() => source.value && root.value
+  // The Cloud's own session directory has no name worth showing, so it shows as the conversation's folder.
+  const name = computed(() => execution.value?.directory === null ? shared('common.conversationFolder') : undefined)
+  const tree = computed(() => source.value && root.value
     ? { source: source.value, root: root.value, name: name.value }
     : null)
-  // The main agent's directory, which carries the Cloud's workspace name, and each running subagent's.
+  // The main agent's directory, which carries the Cloud's folder name, and each running subagent's.
   const directories = computed(() => {
     const own = root.value
     if (!own)
@@ -187,8 +187,8 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   }
 
   const service: ConversationFileService = {
-    get workspace() {
-      return workspace.value
+    get tree() {
+      return tree.value
     },
     get root() {
       return root.value

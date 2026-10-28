@@ -101,7 +101,7 @@ use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
-use demi_backend_database::workspaces::DirectoryNamed;
+use demi_backend_database::projects::DirectoryNamed;
 use demi_runner_client::Pipes;
 use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::devices::Devices;

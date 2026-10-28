@@ -567,8 +567,8 @@ impl Shard {
 
     /// Revokes a device, which nothing refuses.
     ///
-    /// Its row goes with its attachments and its workspaces, whose conversations
-    /// stay outside any workspace, and its runner hears that it was revoked and
+    /// Its row goes with its attachments and its projects, whose conversations
+    /// stay outside any project, and its runner hears that it was revoked and
     /// removes itself. The user's revocation and the runner's own request both
     /// come here.
     pub async fn revoke_device(self: &Rc<Self>, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
@@ -578,16 +578,16 @@ impl Shard {
             .delete_device(device.clone())
             .await?;
         self.mark(Part::Devices);
-        if !removal.workspaces.is_empty() {
-            self.mark(Part::Workspaces);
+        if !removal.projects.is_empty() {
+            self.mark(Part::Projects);
         }
         for conversation in &removal.conversations {
             self.mark(Part::Conversation(conversation.clone()));
         }
         let projects = removal
-            .workspaces
+            .projects
             .iter()
-            .map(|workspace| workspace.name.clone())
+            .map(|project| project.name.clone())
             .collect();
         self.devices().revoke(&device, projects);
         // The commands recorded on it that the backend no longer holds, as

@@ -11,6 +11,7 @@ import {
   Info,
   KeyRound,
   Keyboard,
+  LayoutGrid,
   Monitor,
   Network,
   ScrollText,
@@ -18,6 +19,7 @@ import {
   Sparkles,
   Users
 } from '@lucide/vue'
+import { t as workspaceText } from '../workspaces/locales/text'
 import { inDevelopment } from '../ui/disabled'
 import { t as uiText } from '../locales/text'
 import { t as cloudText } from '../cloud/locales/text'
@@ -68,6 +70,12 @@ export function settingsSections(): SettingsNavGroup[] {
           ],
         },
         {
+          id: 'workspaces',
+          label: workspaceText('title'),
+          icon: LayoutGrid,
+          keywords: words(workspaceText('keywords')),
+        },
+        {
           id: 'notifications',
           label: t('notifications.title'),
           icon: Bell,
@@ -80,6 +88,17 @@ export function settingsSections(): SettingsNavGroup[] {
             { label: t('notifications.when.needsPermission'), keywords: words(t('sections.notifications.permissionKeywords')) },
             { label: t('notifications.when.agentNotifies'), keywords: words(t('sections.notifications.agentKeywords')) },
             { label: t('notifications.homeScreen.row'), keywords: words(t('sections.notifications.homeScreenKeywords')) },
+          ],
+        },
+        {
+          id: 'keyboard',
+          label: t('keyboard.title'),
+          icon: Keyboard,
+          keyboard: true,
+          keywords: words(t('sections.keyboard.keywords')),
+          settings: [
+            ...appShortcuts().map((shortcut) => ({ label: shortcutAction(shortcut.id) })),
+            { label: t('keyboard.resetAll') },
           ],
         },
       ],
@@ -142,7 +161,7 @@ export function settingsSections(): SettingsNavGroup[] {
       ],
     },
     {
-      id: 'workspace',
+      id: 'devicesAndData',
       items: [
         {
           id: 'devices',
@@ -165,17 +184,6 @@ export function settingsSections(): SettingsNavGroup[] {
           label: t('archived.title'),
           icon: Archive,
           keywords: words(t('sections.archived.keywords')),
-        },
-        {
-          id: 'keyboard',
-          label: t('keyboard.title'),
-          icon: Keyboard,
-          keyboard: true,
-          keywords: words(t('sections.keyboard.keywords')),
-          settings: [
-            ...appShortcuts().map((shortcut) => ({ label: shortcutAction(shortcut.id) })),
-            { label: t('keyboard.resetAll') },
-          ],
         },
         {
           id: 'data',

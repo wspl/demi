@@ -39,6 +39,8 @@ export type PendingSend = SavedDraft['pendingSends'][number] & { way: SendWay }
 
 /** The sidebar's `device` is derived from `target` and the devices for the row (`App.vue`), never kept. */
 export interface Conversation extends Omit<SidebarConversation, 'device'> {
+  /** The workspace it is in. */
+  workspaceId: string
   persistence: 'draft' | 'pending' | 'synced'
   target: ConversationTarget
   revision: number
@@ -206,6 +208,8 @@ export interface Device extends DeviceReport {
 
 export type Project = SidebarProject & {
   deviceId: string
+  /** The workspace it is in. */
+  workspaceId: string
 }
 
 /**

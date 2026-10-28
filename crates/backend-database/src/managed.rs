@@ -220,10 +220,10 @@ impl ControlService {
         self.call(move |connection, _| {
             let cloud = cloud.as_ref().map(DeviceId::as_str);
             let mut statement = connection.prepare_cached(
-                "SELECT c.id, c.target_kind, c.target_device_id, w.device_id AS workspace_device, c.model,
+                "SELECT c.id, c.target_kind, c.target_device_id, w.device_id AS project_device, c.model,
                         EXISTS (SELECT 1 FROM conversation_hosts h
                                 WHERE h.conversation_id = c.id AND h.device_id = ?2) AS attached
-                 FROM conversations c LEFT JOIN workspaces w ON w.id = c.target_workspace_id
+                 FROM conversations c LEFT JOIN projects w ON w.id = c.target_project_id
                  WHERE c.user_id = ?1 AND c.archived = 0
                  ORDER BY c.id",
             )?;
@@ -232,8 +232,8 @@ impl ControlService {
             while let Some(row) = rows.next()? {
                 let kind: String = row.get("target_kind")?;
                 let device: Option<String> = row.get("target_device_id")?;
-                let workspace_device: Option<String> = row.get("workspace_device")?;
-                let target_device = device.or(workspace_device);
+                let project_device: Option<String> = row.get("project_device")?;
+                let target_device = device.or(project_device);
                 let on_cloud = kind == "cloud" || (cloud.is_some() && target_device.as_deref() == cloud);
                 let provider = row
                     .get::<_, Option<String>>("model")?

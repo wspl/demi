@@ -186,7 +186,8 @@
       "sidebar": "Toggle sidebar",
       "settings": "Open settings",
       "searchFiles": "Search in files",
-      "findHere": "Find"
+      "findHere": "Find",
+      "workspace": "Switch to Workspace {number}"
     }
   },
   "notifications": {
@@ -307,7 +308,7 @@
   },
   "sections": {
     "agent": "Agent",
-    "workspace": "Workspace",
+    "devicesAndData": "Devices & Data",
     "system": "System",
     "general": {
       "keywords": "appearance,look",

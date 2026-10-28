@@ -25,7 +25,7 @@
     "title": "New Project",
     "selectFolder": "Select Folder",
     "loading": "Loading devices…",
-    "cloudDescription": "A managed workspace, ready at once.",
+    "cloudDescription": "A managed environment, ready at once.",
     "device": "Device",
     "deviceDescription": "A directory on one of your devices.",
     "chooseDevice": "Choose a device",

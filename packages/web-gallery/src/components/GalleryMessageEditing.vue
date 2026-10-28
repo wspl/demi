@@ -21,7 +21,7 @@ import type { Block, MessageComment, UserContentBlock } from '@demicodes/protoco
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import { demoImageUrl, demoModel } from '../fixtures/blocks'
 import { galleryUploads } from '../fixtures/upload-sweep'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 
 /**
  * The stand-in backend's rows, in the order they were written, each naming
@@ -48,7 +48,7 @@ function currentPath(): Row[] {
 
 // The specimen keeps its path as `blocks`; its history holds it as one window.
 const session = reactive<ChatSessionState & { blocks: HeldBlock[] }>({
-  id: 'editing-example', cwd: WORKSPACE_ROOT, title: 'Edit and resend', blocks: [],
+  id: 'editing-example', cwd: PROJECT_ROOT, title: 'Edit and resend', blocks: [],
   get history() {
     return wholeHistory(this.blocks)
   },

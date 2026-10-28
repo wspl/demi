@@ -1,73 +1,112 @@
-//! Workspaces: a directory on one of the user's devices, which conversations
-//! can target and the page calls a project, named by the directory. A
-//! workspace is a pointer: deleting it touches no file.
+//! Workspaces: the parts of a user's account, each with conversations and
+//! projects of its own, which the sidebar shows one at a time. Everything in
+//! Settings is the account's, the same in every workspace.
 
-use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp, WorkflowChoice};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::conversations::ModelSettings;
-use crate::files::AbsolutePath;
-use crate::ids::{ConversationId, DeviceId, WorkspaceId};
+use crate::ids::{ConversationId, ProjectId, WorkspaceId};
 use crate::text::Trimmed;
 
+/// The icon of a workspace's tile, one of the ones the page draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceIcon {
+    User,
+    Briefcase,
+    House,
+    Code,
+    Rocket,
+    Flask,
+    Book,
+    Palette,
+    GraduationCap,
+    Heart,
+    Star,
+    Globe,
+    Building,
+    Sparkles,
+    Music,
+    Camera,
+    Leaf,
+    Dumbbell,
+    Plane,
+    Gamepad,
+    Coffee,
+    Wallet,
+    Lightbulb,
+    Users,
+}
+
+impl WorkspaceIcon {
+    /// Every icon, in the order the picker shows them and new workspaces
+    /// take them.
+    pub const ALL: [Self; 24] = [
+        Self::User,
+        Self::Briefcase,
+        Self::House,
+        Self::Code,
+        Self::Rocket,
+        Self::Flask,
+        Self::Book,
+        Self::Palette,
+        Self::GraduationCap,
+        Self::Heart,
+        Self::Star,
+        Self::Globe,
+        Self::Building,
+        Self::Sparkles,
+        Self::Music,
+        Self::Camera,
+        Self::Leaf,
+        Self::Dumbbell,
+        Self::Plane,
+        Self::Gamepad,
+        Self::Coffee,
+        Self::Wallet,
+        Self::Lightbulb,
+        Self::Users,
+    ];
+}
+
+/// The color of a workspace's tile, one of the ones the page paints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceColor {
+    Blue,
+    Purple,
+    Green,
+    Amber,
+    Red,
+    Pink,
+    Teal,
+    Slate,
+}
+
+impl WorkspaceColor {
+    /// Every color, in the order the picker shows them and new workspaces
+    /// take them.
+    pub const ALL: [Self; 8] =
+        [Self::Blue, Self::Purple, Self::Green, Self::Amber, Self::Red, Self::Pink, Self::Teal, Self::Slate];
+}
 
 /// A workspace as the page lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceDto {
     pub id: WorkspaceId,
-    pub device_id: DeviceId,
-    /// The directory on the device, absolute as the device names it.
-    pub path: String,
-    /// The directory's last component, or the directory when it is a root.
-    pub name: String,
-    pub created_at: Timestamp,
-    /// The model settings the project's next conversation starts with, as
-    /// last chosen in it; absent before the first choice.
+    /// Its name; absent while it keeps the one an account starts with,
+    /// which the page says in its language.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "ModelSettings")]
-    pub last_model: Option<ModelSettings>,
-    /// The Workflow menu choice the project's next conversation starts
-    /// with; absent before the first choice.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "WorkflowChoice")]
-    pub last_workflow: Option<WorkflowChoice>,
-    /// How its conversations keep their messages saved for later.
-    pub saved_scope: SavedScope,
-    /// How many messages the project's own list keeps; 0 while it keeps
-    /// them per conversation.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub saved_count: u64,
+    #[schemars(with = "String")]
+    pub name: Option<String>,
+    pub icon: WorkspaceIcon,
+    pub color: WorkspaceColor,
 }
 
-/// How a project's conversations keep their messages saved for later.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SavedScope {
-    /// Each conversation keeps a list of its own.
-    Conversation,
-    /// The project keeps one list, which all its conversations show.
-    Project,
-}
-
-/// `PUT /workspaces/:id/saved-scope`: the way the project's conversations
-/// keep their saved messages from now on. To per conversation, `to` names
-/// the conversation of the project, not archived, that takes the project's
-/// list, which a list with messages needs.
-#[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SavedScopeSwitch {
-    #[garde(skip)]
-    pub scope: SavedScope,
-    #[serde(default)]
-    #[garde(skip)]
-    pub to: Option<ConversationId>,
-}
-
-/// `GET /workspaces`: the user's workspaces, in their sidebar order.
+/// `GET /workspaces`: the user's workspaces, in their order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Workspaces {
     pub workspaces: Vec<WorkspaceDto>,
@@ -79,42 +118,55 @@ pub struct WorkspaceAnswer {
     pub workspace: WorkspaceDto,
 }
 
-/// `POST /workspaces`: a directory on one of the user's devices, or a new
-/// project directory on the user's Cloud, which can wake it.
+/// `POST /workspaces`: a new workspace, last in the order, with the next
+/// icon and color. Its name is the page's default for it, in the page's
+/// language, which the user changes afterwards.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(
-    tag = "kind",
-    rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub enum CreateWorkspace {
-    Device {
-        #[garde(skip)]
-        device_id: DeviceId,
-        /// An `AbsolutePath` is valid once it is decoded.
-        #[garde(skip)]
-        path: AbsolutePath,
-    },
-    /// The directory `~/projects/<name>` on the Cloud, which the creation
-    /// makes.
-    Cloud {
-        #[garde(length(chars, min = 1))]
-        name: Trimmed,
-    },
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateWorkspace {
+    #[garde(length(chars, min = 1))]
+    pub name: Trimmed,
 }
 
-/// `PATCH /workspaces/:id`: the model settings or workflow last chosen in
-/// the project; each field replaces its value.
+/// `PATCH /workspaces/:id`: each field replaces its value.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChangeWorkspace {
     #[serde(default, with = "unwrap_or_skip")]
-    #[schemars(with = "ModelSettings")]
-    #[garde(dive)]
-    pub last_model: Option<ModelSettings>,
+    #[schemars(with = "Trimmed")]
+    #[garde(length(chars, min = 1))]
+    pub name: Option<Trimmed>,
     #[serde(default, with = "unwrap_or_skip")]
-    #[schemars(with = "WorkflowChoice")]
-    #[garde(dive)]
-    pub last_workflow: Option<WorkflowChoice>,
+    #[schemars(with = "WorkspaceIcon")]
+    #[garde(skip)]
+    pub icon: Option<WorkspaceIcon>,
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "WorkspaceColor")]
+    #[garde(skip)]
+    pub color: Option<WorkspaceColor>,
+}
+
+/// `PUT /workspaces/order`: every workspace of the user's, in its new
+/// order.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceOrder {
+    #[garde(length(min = 1))]
+    pub ids: Vec<WorkspaceId>,
+}
+
+/// `POST /workspaces/:id/moves`: conversations and projects of the user's
+/// other workspaces, which move into this one. A conversation in a project
+/// joins this workspace's project of the same directory, made when there is
+/// none; a project joins this workspace's of its directory, merging into it,
+/// or moves whole when there is none.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceMove {
+    #[serde(default)]
+    #[garde(skip)]
+    pub conversations: Vec<ConversationId>,
+    #[serde(default)]
+    #[garde(skip)]
+    pub projects: Vec<ProjectId>,
 }

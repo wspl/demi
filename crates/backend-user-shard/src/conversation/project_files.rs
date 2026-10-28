@@ -178,14 +178,14 @@ impl Shard {
         let record = host.owned_conversation(id).await?;
         let target = host.resolve_target(&record).await?;
         let project_directory = match &record.target {
-            Selection::Workspace { path, worktree: Some(_), .. } => Some(path.clone()),
+            Selection::Project { path, worktree: Some(_), .. } => Some(path.clone()),
             _ => None,
         };
         Ok(KeptAt {
             device: target.device().cloned(),
             directory: target.path().to_owned(),
             project_directory,
-            in_project: matches!(target, ExecutionTarget::Workspace { .. }),
+            in_project: matches!(target, ExecutionTarget::Project { .. }),
             loaded: self.agent().tree(&demi_backend_host_access::root_of(id)).is_some(),
         })
     }

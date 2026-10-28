@@ -463,6 +463,7 @@ fn part_name(part: &Part) -> (&'static str, Option<&ConversationId>, Option<&str
         Part::Instance => ("instance", None, None),
         Part::User => ("user", None, None),
         Part::Workspaces => ("workspaces", None, None),
+        Part::Projects => ("projects", None, None),
         Part::Devices => ("devices", None, None),
         Part::Providers => ("providers", None, None),
         Part::Logins => ("logins", None, None),

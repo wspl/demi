@@ -14,7 +14,7 @@ defineProps<{
   path: string
   /** The Host's home, which `~` writes. */
   home?: string | null
-  /** The name that stands for the directory's own, where it has one, such as the Cloud's Workspace. */
+  /** The name that stands for the directory's own, where it has one, such as the Cloud's conversation folder. */
   name?: string
   selected: boolean
   disabled?: boolean

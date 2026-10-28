@@ -7,6 +7,7 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { errorCode, reportError } from '@demicodes/web-ui/infra/errors'
 import { t as sidebarText } from '@demicodes/web-ui/sidebar/locales/text'
 import { t as authText } from './auth/locales/text'
+import { t } from './state/locales/text'
 import { reloadFor, reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -44,6 +45,7 @@ import WorkPane from './conversation/WorkPane.vue'
 import ChatPage from './conversation/ChatPage.vue'
 import { useConversations } from './conversation/store'
 import { useConversationNavigation } from './conversation/navigation'
+import { useWorkspaces } from './state/workspaces'
 import { useWorkPanel } from './conversation/work'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
@@ -106,8 +108,9 @@ const passkeyOffer = usePasskeyOffer()
  * A row that says what it said stays the same object, so a change of one conversation,
  * such as its status as it starts or ends, draws its row alone again.
  */
+const workspaces = useWorkspaces()
 const sidebarConversations = keptComputed(() =>
-  conversations.listed.map(
+  conversations.listed.filter((conversation) => conversation.workspaceId === workspaces.current).map(
     (conversation): { [Field in keyof Required<SidebarConversation>]: SidebarConversation[Field] } => ({
       id: conversation.id,
       title: conversation.title,
@@ -155,10 +158,10 @@ const searchIn = computed<MessageSource | null>(() => {
 const handoffOpen = ref(false)
 const sessions = useSessions()
 const handoffHost = computed(() => sessions.handoffHost(() => pageRoute.value.fullPath))
-/** The conversations the backend has, the most recently active first. */
+/** The conversations of the tab's workspace the backend has, the most recently active first. */
 const activeConversations = computed<SearchRow[]>(() =>
   conversations.items
-    .filter((conversation) => conversation.persistence === 'synced')
+    .filter((conversation) => conversation.persistence === 'synced' && conversation.workspaceId === workspaces.current)
     .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .map((conversation) => ({
       conversationId: conversation.id,
@@ -229,6 +232,69 @@ watch(
 )
 const activeId = computed(() =>
   typeof pageRoute.value.params.id === 'string' ? pageRoute.value.params.id : null,
+)
+// The tab's workspace is the shown conversation's; this browser remembers the
+// one it shows last, and the conversation it showed last in each.
+watch(activeId, (id) => { workspaces.shownConversation = id }, { immediate: true })
+watch(
+  () => conversations.items.find((item) => item.id === activeId.value),
+  (shown) => {
+    if (shown) {
+      workspaces.showed(shown)
+    }
+  },
+)
+watch(() => workspaces.current, (id) => {
+  if (id) {
+    workspaces.chose(id)
+  }
+})
+/** The projects of the tab's workspace, which the sidebar lists. */
+const workspaceProjects = computed(() => resources.projects.filter((project) => project.workspaceId === workspaces.current))
+/** Shows the workspace `id` in this tab: the conversation it last showed there, or a new one. */
+function switchWorkspace(id: string): void {
+  if (id === workspaces.current) {
+    return
+  }
+  workspaces.chose(id)
+  const landing = workspaces.landing(id)
+  if (landing) {
+    open(landing)
+  } else {
+    create(null, id)
+  }
+}
+/** New Workspace: makes one, shows it, and opens its settings with its name ready to type over. */
+async function createWorkspace(): Promise<void> {
+  try {
+    const id = await workspaces.create()
+    // Settings open over the page the switch shows, once the router shows it.
+    const shown = new Promise<void>((resolve) => {
+      const stop = router.afterEach(() => {
+        stop()
+        resolve()
+      })
+    })
+    switchWorkspace(id)
+    await shown
+    workspaces.selected = id
+    workspaces.naming = id
+    settingsAddress.open('workspaces')
+  } catch (error) {
+    reportError(t('failures.createWorkspace'), error, { site: 'failures.createWorkspace', userVisible: true })
+  }
+}
+/** Move To: the conversations or projects go to the workspace `id`. */
+async function moveToWorkspace(id: string, moved: string[], projects: string[]): Promise<void> {
+  try {
+    await workspaces.move(id, moved, projects)
+  } catch (error) {
+    reportError(t('failures.moveToWorkspace'), error, { site: 'failures.moveToWorkspace', userVisible: true })
+  }
+}
+/** The keys that switch to the workspace at each place of the list. */
+const workspaceShortcuts = computed(() =>
+  workspaces.list.slice(0, 9).map((_, index) => resources.keys.find((binding) => binding.id === `workspace${index + 1}`)?.keys),
 )
 /** The conversation Find searches in: the one shown, once the backend holds it and so its messages. */
 const findable = computed(() => {
@@ -322,7 +388,7 @@ function reorder(request: SidebarReorder) {
       .catch((error) => {
         // A move naming a project another page deleted meanwhile has
         // nothing to say; the channel brings the order there is.
-        if (errorCode(error) !== 'workspace_not_found') {
+        if (errorCode(error) !== 'project_not_found') {
           reportError(sidebarText('refused.reorderProjects'), error, { site: 'refused.reorderProjects', userVisible: true })
         }
       })
@@ -338,7 +404,7 @@ async function removeProject(id: string) {
     await resources.removeProject(id)
   } catch (error) {
     // A project another page deleted meanwhile is deleted: that is done.
-    if (errorCode(error) !== 'workspace_not_found') {
+    if (errorCode(error) !== 'project_not_found') {
       reportError(sidebarText('refused.deleteProject'), error, { site: 'refused.deleteProject', userVisible: true })
     }
   }
@@ -386,6 +452,17 @@ const actions: Record<string, () => void> = {
       resources.sidebarCollapsed = !resources.sidebarCollapsed
   },
   settings: () => void settingsAddress.open(),
+  ...Object.fromEntries(
+    Array.from({ length: 9 }, (_, index) => [
+      `workspace${index + 1}`,
+      () => {
+        const workspace = workspaces.list[index]
+        if (workspace) {
+          switchWorkspace(workspace.id)
+        }
+      },
+    ]),
+  ),
   // The shown conversation's Files, with Search in Files over it.
   searchFiles,
   // Another view of the work panel keeps the keys, for the browser to find in the page.
@@ -437,7 +514,7 @@ useAppShortcuts(
           v-model:collapsed-projects="folded"
           v-model:folded-groups="foldedGroups"
           :account="account"
-          :projects="resources.projects"
+          :projects="workspaceProjects"
           :conversations="sidebarConversations"
           :active-id="activeId"
           :list-status="product.partLoad('conversations')"
@@ -446,6 +523,13 @@ useAppShortcuts(
           :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"
           :settings-shortcut="resources.keys.find((binding) => binding.id === 'settings')?.keys"
           :update="sidebarUpdate"
+          :workspaces="workspaces.list"
+          :workspace-id="workspaces.current"
+          :workspace-attention="workspaces.attention"
+          :workspace-shortcuts="workspaceShortcuts"
+          @switch-workspace="switchWorkspace"
+          @create-workspace="createWorkspace"
+          @move-to-workspace="moveToWorkspace"
           @search="openSearch(null)"
           @retry-list="conversations.reloadList"
           @reorder="reorder"
@@ -496,7 +580,7 @@ useAppShortcuts(
           :is-open="searchOpen"
           :overlay-store="appOverlayStore"
           :recent="recentConversations"
-          :search="searchConversations"
+          :search="(query, signal) => searchConversations(query, signal, workspaces.current)"
           :search-in="searchIn"
           @close="searchOpen = false"
           @open="openSearchResult"

@@ -19,7 +19,7 @@ function isFile(root: MemoryDirectory, path: string): boolean {
 /**
  * Which file a card of an attachment opens in place of its copy, as the
  * product answers: the one it was uploaded from while the gallery's Host is
- * online, as `online` says, and the workspace has the file.
+ * online, as `online` says, and the project has the file.
  */
 export function galleryAttachmentOrigin(
   source: MemoryFileSource,
@@ -33,12 +33,12 @@ export function galleryAttachmentOrigin(
  * Where a gallery transcript's messages find the files they name, as a
  * conversation's do:
  *
- * - Images at the workspace's paths load from `source`.
+ * - Images at the project's paths load from `source`.
  * - Attachments load from the gallery's blobs.
  * - A file a click opens goes to `open`, and a commit a link names to
  *   `openCommit`.
  * - The Host's answer about a reply's inline code paths is the gallery's: the
- *   files of its demo workspace, answered at once.
+ *   files of its demo project, answered at once.
  * - A file link's Show in Files goes to `showInFiles`, which outside a panel
  *   says what the product would do.
  * - A commit link's Copy Commit Hash reads the gallery's one repository.
@@ -72,9 +72,9 @@ export function galleryConversationFiles(
 }
 
 /**
- * A reply that names the workspace's files: links, one at a line, links
+ * A reply that names the project's files: links, one at a line, links
  * whose text is code beside plain code, and paths written as code, of which
- * the workspace has some and not others.
+ * the project has some and not others.
  */
 export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth/cookie.ts), and [session.ts](src/auth/session.ts#L5) reads it under the new name. The setup steps the [README](README.md#L42) lists still hold; from the home it is [~/Projects/shop/README.md](~/Projects/shop/README.md). The fix went in as [Fix the cart total when a coupon empties it](commit:${LINKED_COMMIT}), and the vendored parser's as [Bump the parser](commit:vendor/parser@${LINKED_COMMIT}), a commit of the repository in that folder.
 
@@ -82,10 +82,10 @@ export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth
 
 A link's text written as code reads as the link's words: the page after the fix is [\`page-full.png\`](assets/page-full.png), the change [\`${LINKED_COMMIT}\`](commit:${LINKED_COMMIT}), the spec [\`RFC 6265\`](https://httpwg.org/specs/rfc6265.html), beside the plain code \`readSessionCookie\`.
 
-Written as code, \`src/auth/cookie.ts\` and \`tests/login/auth.test.ts\` open, and \`README.md:42\` opens at its line; \`src/auth/token.ts\` is not in the workspace and stays code, and a bare name such as \`cookie\` is never asked about.`
+Written as code, \`src/auth/cookie.ts\` and \`tests/login/auth.test.ts\` open, and \`README.md:42\` opens at its line; \`src/auth/token.ts\` is not in the project and stays code, and a bare name such as \`cookie\` is never asked about.`
 
 /**
- * The files of `namedFilesMarkdown`'s inline code the workspace at `root`
+ * The files of `namedFilesMarkdown`'s inline code the project at `root`
  * has, as the backend keeps them with the reply once it ended.
  */
 export function namedCodeFiles(root: string): CodeFile[] {

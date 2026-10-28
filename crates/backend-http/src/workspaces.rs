@@ -1,139 +1,46 @@
-//! Workspaces: the user's directories on their devices, each named by its
-//! directory.
-//!
-//! They are created and deleted as pointers that never touch a file, but a
-//! new Cloud project's directory, which its creation makes. Deleting one
-//! archives its conversations and keeps it, marked deleted, to come back.
+//! Workspaces: the parts of the user's account, each with conversations and
+//! projects of its own. Creating, renaming, reordering and moving into one
+//! touch no file; deleting one deletes its conversations.
 
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::saved::ScopeSwitch;
-use demi_backend_database::workspaces::{WorkspaceChange, WorkspaceCreation, new_workspace_id};
+use demi_backend_database::workspaces::{MoveRefusal, WorkspaceChange};
 use demi_backend_page_sync::Part;
+use demi_backend_user_shard::services::Services;
+use demi_backend_user_shard::shard::workspaces::WorkspaceRefusal;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::WorkspaceId;
 use demi_web_api_protocol::workspaces::{
-    ChangeWorkspace, CreateWorkspace, SavedScopeSwitch, WorkspaceAnswer, Workspaces,
+    ChangeWorkspace, CreateWorkspace, WorkspaceAnswer, WorkspaceMove, WorkspaceOrder, Workspaces,
 };
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use demi_backend_user_shard::conversation::CloudProject;
-use demi_backend_user_shard::services::Services;
+use super::projects::workspace_not_found;
 
 pub(super) async fn list(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<Workspaces>, ApiError> {
     let workspaces = services.control.workspaces(user.id).await?;
-    Ok(Json(Workspaces {
-        workspaces: workspaces
-            .into_iter()
-            .map(|workspace| workspace.dto())
-            .collect(),
-    }))
+    Ok(Json(Workspaces { workspaces: workspaces.into_iter().map(|workspace| workspace.dto()).collect() }))
 }
 
-/// A directory on one of the user's devices, or a new project on the
-/// user's Cloud.
 pub(super) async fn create(
-    State(state): State<AppState>,
+    State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     JsonBody(request): JsonBody<CreateWorkspace>,
 ) -> Result<(StatusCode, Json<WorkspaceAnswer>), ApiError> {
-    let workspace = match request {
-        CreateWorkspace::Device { device_id, path } => {
-            // The directory as its Host names it, so two spellings of one
-            // directory are one project (`crates/backend-database/src/selection.rs`).
-            let resolving = device_id.clone();
-            let path = state
-                .shards
-                .of(&user.id)
-                .call(move |shard, _| async move {
-                    shard.host_shard().device_directory(&resolving, path.as_str()).await
-                })
-                .await?
-                .map_err(super::hosts::refused)?;
-            match state
-            .services
-            .control
-            .create_workspace(new_workspace_id(), user.id.clone(), device_id, path)
-            .await?
-        {
-            WorkspaceCreation::Created(workspace) => workspace,
-            WorkspaceCreation::Exists(workspace) => {
-                return Err(ApiError::new(
-                    StatusCode::CONFLICT,
-                    ErrorCode::WorkspaceExists,
-                    format!("The project {} has this directory", workspace.name),
-                )
-                .with_workspace(workspace.dto()));
-            }
-            WorkspaceCreation::Home => {
-                return Err(ApiError::new(
-                    StatusCode::CONFLICT,
-                    ErrorCode::WorkspaceIsHome,
-                    "Your home folder holds the conversations outside projects. Choose a folder in it.",
-                ));
-            }
-            WorkspaceCreation::DeviceNotFound => {
-                return Err(ApiError::new(
-                    StatusCode::NOT_FOUND,
-                    ErrorCode::DeviceNotFound,
-                    "No such device",
-                ));
-            }
-        }
-        }
-        CreateWorkspace::Cloud { name } => {
-            let name = name.into_string();
-            let shown = name.clone();
-            match state
-                .shards
-                .of(&user.id)
-                .call(move |shard, _| async move { shard.create_cloud_workspace(name).await })
-                .await??
-            {
-                CloudProject::Made(workspace) => workspace,
-                CloudProject::NameTaken => {
-                    return Err(ApiError::new(
-                        StatusCode::CONFLICT,
-                        ErrorCode::WorkspaceNameTaken,
-                        format!("The name “{shown}” is already taken. Choose a different name."),
-                    )
-                    .with_param("name", shown));
-                }
-                CloudProject::NameInvalid => {
-                    return Err(ApiError::new(
-                        StatusCode::UNPROCESSABLE_ENTITY,
-                        ErrorCode::WorkspaceNameInvalid,
-                        "A project’s name can’t contain “/” or “\\”, or be “.” or “..”.",
-                    ));
-                }
-            }
-        }
-    };
-    // Through the shard, which also tells the Host's runner the new
-    // project's directory, whose worktrees it reports.
-    state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move { shard.mark(Part::Workspaces) })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(WorkspaceAnswer {
-            workspace: workspace.dto(),
-        }),
-    ))
+    let workspace = services.control.create_workspace(user.id.clone(), request.name.into_string()).await?;
+    services.sync.mark(&user.id, Part::Workspaces);
+    Ok((StatusCode::CREATED, Json(WorkspaceAnswer { workspace: workspace.dto() })))
 }
 
-/// What the project's next conversation starts with.
 pub(super) async fn change(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
@@ -142,64 +49,37 @@ pub(super) async fn change(
 ) -> Result<Json<WorkspaceAnswer>, ApiError> {
     let id = workspace_id(id)?;
     let change = WorkspaceChange {
-        last_model: change.last_model,
-        last_workflow: change.last_workflow,
+        name: change.name.map(|name| name.into_string()),
+        icon: change.icon,
+        color: change.color,
     };
     let workspace = services
         .control
         .change_workspace(user.id.clone(), id, change)
         .await?
-        .ok_or_else(not_found)?;
+        .ok_or_else(workspace_not_found)?;
     services.sync.mark(&user.id, Part::Workspaces);
-    Ok(Json(WorkspaceAnswer {
-        workspace: workspace.dto(),
-    }))
+    Ok(Json(WorkspaceAnswer { workspace: workspace.dto() }))
 }
 
-/// Switches how the project's conversations keep their saved messages,
-/// moving them in the same step; every page that shows one of the
-/// conversations whose list changed receives its new list.
-pub(super) async fn switch_saved_scope(
+pub(super) async fn order(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    JsonBody(switch): JsonBody<SavedScopeSwitch>,
-) -> Result<Json<WorkspaceAnswer>, ApiError> {
-    let id = workspace_id(id)?;
-    let switched = services
-        .control
-        .switch_saved_scope(user.id.clone(), id.clone(), switch.scope, switch.to)
-        .await?;
-    let changed = match switched {
-        ScopeSwitch::Switched(changed) => changed,
-        ScopeSwitch::Missing => return Err(not_found()),
-        ScopeSwitch::DestinationNeeded => {
-            return Err(ApiError::new(
-                StatusCode::CONFLICT,
-                ErrorCode::SavedDestinationNeeded,
-                "The project has saved messages: name the conversation that takes them",
-            ));
-        }
-        ScopeSwitch::DestinationInvalid => {
-            return Err(ApiError::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                ErrorCode::SavedDestinationInvalid,
-                "That conversation is not one of the project's that is not archived",
-            ));
-        }
-    };
-    for conversation in changed {
-        services.sync.mark(&user.id, Part::Metadata(conversation));
+    JsonBody(order): JsonBody<WorkspaceOrder>,
+) -> Result<StatusCode, ApiError> {
+    if !services.control.order_workspaces(user.id.clone(), order.ids).await? {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::InvalidOrder,
+            "The order does not name each of your workspaces once",
+        ));
     }
     services.sync.mark(&user.id, Part::Workspaces);
-    let workspace = services.control.workspace(id).await?.ok_or_else(not_found)?;
-    Ok(Json(WorkspaceAnswer {
-        workspace: workspace.dto(),
-    }))
+    Ok(StatusCode::NO_CONTENT)
 }
 
-/// Archives the project's conversations and deletes it, as one transition
-/// the user's shard makes.
+/// Deletes the workspace and its conversations, as one step the user's
+/// shard takes.
 pub(super) async fn delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -209,20 +89,51 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.delete_project(&id).await })
+        .call(move |shard, _| async move { shard.delete_workspace(&id).await })
         .await?
-        .map_err(super::hosts::refused)?;
+        .map_err(|refusal| match refusal {
+            WorkspaceRefusal::NotFound => workspace_not_found(),
+            WorkspaceRefusal::Last => {
+                ApiError::new(StatusCode::CONFLICT, ErrorCode::LastWorkspace, "Your last workspace stays")
+            }
+            WorkspaceRefusal::Changed => ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::WorkspaceChanged,
+                "A conversation came into the workspace meanwhile; try again",
+            ),
+            WorkspaceRefusal::Storage(error) => error.into(),
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Moves conversations and projects of the user's other workspaces into
+/// this one.
+pub(super) async fn moves(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(request): JsonBody<WorkspaceMove>,
+) -> Result<StatusCode, ApiError> {
+    let id = workspace_id(id)?;
+    state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move {
+            shard.move_to_workspace(&id, request.conversations, request.projects).await
+        })
+        .await??
+        .map_err(|refusal| match refusal {
+            MoveRefusal::WorkspaceNotFound => workspace_not_found(),
+            MoveRefusal::ConversationNotFound => {
+                ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound, "No such conversation")
+            }
+            MoveRefusal::ProjectNotFound => {
+                ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ProjectNotFound, "No such project")
+            }
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 fn workspace_id(id: String) -> Result<WorkspaceId, ApiError> {
-    WorkspaceId::try_from(id).map_err(|_| not_found())
-}
-
-fn not_found() -> ApiError {
-    ApiError::new(
-        StatusCode::NOT_FOUND,
-        ErrorCode::WorkspaceNotFound,
-        "No such workspace",
-    )
+    WorkspaceId::try_from(id).map_err(|_| workspace_not_found())
 }

@@ -68,7 +68,7 @@ impl Shard {
             .create_conversation_selecting(self.user().clone(), id, start)
             .await?;
         if made.is_some() {
-            self.mark(Part::Workspaces);
+            self.mark(Part::Projects);
         }
         match created {
             Creation::Created(record) => {
@@ -106,6 +106,7 @@ impl Shard {
             None => None,
         };
         Ok(ConversationStart {
+            workspace: request.workspace_id,
             title: request.title.map(|title| title.into_string()),
             pinned: request.pinned.unwrap_or(false),
             target,

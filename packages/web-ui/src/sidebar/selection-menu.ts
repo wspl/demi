@@ -1,9 +1,12 @@
 import { h } from 'vue'
-import { Archive, ArrowRight, ChevronsDownUp, ChevronsUpDown, Copy, ListChecks, NotebookPen, Pin, PinOff, SquarePen, TextCursorInput, Trash2 } from '@lucide/vue'
+import { Archive, ArrowRight, ChevronsDownUp, ChevronsUpDown, Copy, FolderInput, ListChecks, NotebookPen, Pin, PinOff, SquarePen, TextCursorInput, Trash2 } from '@lucide/vue'
 import type { ContextMenuEntry, ContextMenuGroup } from '../ui/context-menu'
 import { namedKeyCap, shortcutFor } from '../ui/shortcut'
 import { t } from './locales/text'
 import SavedScopeMenu from './SavedScopeMenu.vue'
+import WorkspaceMoveMenu from '../workspaces/WorkspaceMoveMenu.vue'
+import { t as workspaceText } from '../workspaces/locales/text'
+import type { WorkspaceView } from '../workspaces/workspaces'
 import type { SavedScope, SidebarConversation } from './types'
 
 /** The keys that pin or unpin the selected conversations in the list (`useSidebarList`), which the menu shows. */
@@ -20,6 +23,25 @@ export interface SelectionActions {
   archive: (ids: string[]) => void
   /** Delete…: the host asks before anything goes. */
   delete: (ids: string[]) => void
+  /** Move To: the workspaces, and what a choice of one does; absent, the menu has no Move To. */
+  moveTo?: WorkspaceMove
+}
+
+/** Move To's workspaces and its choice, for conversations or a project. */
+export interface WorkspaceMove {
+  workspaces: readonly WorkspaceView[]
+  /** The workspace the targets are in. */
+  currentId: string | null
+  run: (workspaceId: string) => void
+}
+
+/** Move To, with the workspaces in its submenu. */
+function moveToEntry(move: WorkspaceMove): ContextMenuEntry {
+  return {
+    icon: FolderInput,
+    label: workspaceText('moveTo'),
+    submenu: () => h(WorkspaceMoveMenu, { workspaces: move.workspaces, currentId: move.currentId, onChoose: move.run }),
+  }
 }
 
 /**
@@ -29,8 +51,8 @@ export interface SelectionActions {
  *
  * - One row gets open, rename and copy ID.
  * - Any count gets pin, archive and delete, which asks first.
- * - A conversation enters or leaves a project only through where it runs, so
- *   there is no Move To.
+ * - A conversation enters or leaves a project only through where it runs;
+ *   Move To moves it to another workspace.
  *
  * `shown`: the one target is the conversation shown, which Open would not change.
  */
@@ -63,6 +85,9 @@ export function selectionEntries(
     },
     { icon: Archive, label: count > 1 ? t('selection.archiveMany', { count }) : t('selection.archive'), run: () => actions.archive(ids) },
   )
+  if (actions.moveTo) {
+    first.push(moveToEntry(actions.moveTo))
+  }
   return [
     first,
     [{ icon: Trash2, label: count > 1 ? t('selection.deleteMany', { count }) : t('selection.delete'), danger: true, run: () => actions.delete(ids) }],
@@ -79,6 +104,8 @@ export function projectEntries(
     /** A choice of Saved Messages' submenu, which differs from the project's way. */
     savedScope: (scope: SavedScope) => void
     delete: () => void
+    /** Move To; absent, the menu has none. */
+    moveTo?: WorkspaceMove
   },
 ): ContextMenuGroup[] {
   return [
@@ -96,6 +123,7 @@ export function projectEntries(
           onChoose: actions.savedScope,
         }),
       },
+      ...(actions.moveTo ? [moveToEntry(actions.moveTo)] : []),
     ],
     // Asks before the project is deleted (`ProjectDeleteDialog`).
     [{ icon: Trash2, label: t('projectMenu.delete'), danger: true, run: actions.delete }],

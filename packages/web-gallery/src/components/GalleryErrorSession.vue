@@ -18,7 +18,7 @@ import {
   stoppedCompactTranscript,
 } from '../fixtures/compaction'
 import { productWould } from '../product-would'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { demoDeviceStart } from '../fixtures/device-installation'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
@@ -147,7 +147,7 @@ function state(
 ): ChatSessionState {
   return reactive<ChatSessionState>({
     id: `error-${id}`,
-    cwd: WORKSPACE_ROOT,
+    cwd: PROJECT_ROOT,
     title: 'Build a minesweeper game',
     history: wholeHistory(blocks),
     shownAt: null,
@@ -399,9 +399,9 @@ const cases: SessionCase[] = [
                 @rename="item.session.title = $event"
                 @save-scroll="(id, value) => (savedScrolls[id] = value)"
               >
-                <template #workspace
+                <template #place
                   ><span class="text-chrome text-fg-muted"
-                    >Local workspace</span
+                    >Local project</span
                   ></template
                 >
                 <template v-if="item.composer !== 'none'" #composer>

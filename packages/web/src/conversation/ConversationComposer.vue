@@ -233,7 +233,7 @@ const offlineHost = keptComputed<OfflineHost | null>(() => {
         start,
         primaryHost: primaryHostOf(primary),
         devices: hostDeviceOptions(resources.devices),
-        chooseDirectory: props.conversation.target.kind === 'workspace',
+        chooseDirectory: props.conversation.target.kind === 'project',
         locked: moveLock(props.conversation, store.pendingChanges),
       }
     : null

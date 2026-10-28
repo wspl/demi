@@ -9,7 +9,7 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{DeviceId, WorkspaceId};
+use crate::ids::{DeviceId, ProjectId};
 use crate::text::Trimmed;
 
 /// How a device came to be: `user` for one its user paired, `managed` for
@@ -202,11 +202,11 @@ pub struct DeviceAnswer {
     pub device: DeviceDto,
 }
 
-/// `{ removed }`: the answer of a revocation, the ids of the workspaces
+/// `{ removed }`: the answer of a revocation, the ids of the projects
 /// that went with the device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RevokedDevice {
-    pub removed: Vec<WorkspaceId>,
+    pub removed: Vec<ProjectId>,
 }
 
 /// Which of the page's two peers with a device a signaling message is about

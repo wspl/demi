@@ -20,7 +20,7 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { useTurnFlow } from '../turn-flow'
 import { useAgentContext } from '../agent-context'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -43,10 +43,110 @@ import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
 import { galleryHandoff } from '../fixtures/handoff'
 import { slow } from '../fixtures/slow'
 import { demoAccount, demoConversations, demoProjects, savedScopeSwitched, emailOnlyAccount, longEmailAccount } from '../sidebar/sidebar-data'
+import { createGalleryWorkspace, galleryWorkspaces } from '../fixtures/workspaces'
 
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
 const activeId = ref<string | null>('c-login')
+
+// The live specimen's workspaces, which Settings › Workspaces shares: every
+// conversation and project is in Personal but a few in Work, and the lists
+// show the current one's, as a tab of the product does.
+const workspaceId = ref('personal')
+const workspaceOf = ref<Record<string, string>>({
+  'c-shift': 'work',
+  'c-wording': 'work',
+  'p-dotfiles': 'work',
+})
+const inWorkspace = (id: string): string => workspaceOf.value[id] ?? 'personal'
+const shownConversations = computed(() =>
+  conversations.value.filter((conversation) =>
+    inWorkspace(conversation.projectId ?? conversation.id) === workspaceId.value,
+  ),
+)
+const shownProjects = computed(() => projects.value.filter((project) => inWorkspace(project.id) === workspaceId.value))
+/** The workspaces with a conversation that waits for the user, as their rows' dots say. */
+const workspaceAttention = computed(() =>
+  galleryWorkspaces.list
+    .filter((workspace) =>
+      conversations.value.some((conversation) =>
+        inWorkspace(conversation.projectId ?? conversation.id) === workspace.id && (conversation.needsYou || conversation.unread),
+      ),
+    )
+    .map((workspace) => workspace.id),
+)
+const workspaceShortcuts = appShortcuts()
+  .filter((shortcut) => shortcut.id.startsWith('workspace'))
+  .map((shortcut) => shortcut.keys)
+
+/** The switcher's choice: the workspace's first conversation shows, or a new one. */
+function switchWorkspace(id: string): void {
+  workspaceId.value = id
+  const first = shownConversations.value[0]
+  if (first) {
+    show(first.id)
+  } else {
+    create(null)
+  }
+}
+
+/** New Workspace: made and shown, then its settings with its name ready to type over. */
+function createWorkspace(): void {
+  switchWorkspace(createGalleryWorkspace())
+  openSettings('workspaces')
+}
+
+/**
+ * Move To, as the backend moves: a project goes whole, merging into the other workspace's project
+ * of its folder when that one has one; a conversation in a project joins the other workspace's
+ * project of its folder, made when there is none, and its project keeps the others.
+ */
+function moveToWorkspace(id: string, moved: string[], movedProjects: string[]): void {
+  const next = { ...workspaceOf.value }
+  /** The project of `project`'s folder in the workspace, made now when it has none. */
+  const projectThere = (project: string): string => {
+    const source = projects.value.find((candidate) => candidate.id === project)!
+    const there = projects.value.find(
+      (candidate) => candidate.path === source.path && candidate.id !== project && (next[candidate.id] ?? 'personal') === id,
+    )
+    if (there) {
+      return there.id
+    }
+    const made = `p-moved-${nextId++}`
+    projects.value = [...projects.value, { ...source, id: made }]
+    next[made] = id
+    return made
+  }
+  for (const project of movedProjects) {
+    const source = projects.value.find((candidate) => candidate.id === project)!
+    const there = projects.value.find(
+      (candidate) => candidate.path === source.path && candidate.id !== project && (next[candidate.id] ?? 'personal') === id,
+    )
+    if (there) {
+      conversations.value = conversations.value.map((conversation) =>
+        conversation.projectId === project ? { ...conversation, projectId: there.id } : conversation,
+      )
+      projects.value = projects.value.filter((candidate) => candidate.id !== project)
+    } else {
+      next[project] = id
+    }
+  }
+  for (const conversationId of moved) {
+    const conversation = conversations.value.find((candidate) => candidate.id === conversationId)
+    if (!conversation) {
+      continue
+    }
+    if (conversation.projectId) {
+      const into = projectThere(conversation.projectId)
+      conversations.value = conversations.value.map((candidate) =>
+        candidate.id === conversationId ? { ...candidate, projectId: into } : candidate,
+      )
+    } else {
+      next[conversationId] = id
+    }
+  }
+  workspaceOf.value = next
+}
 const collapsedProjects = ref<string[]>(['p-dotfiles'])
 /** The groups folded under their label, which the product keeps per browser. */
 const foldedGroups = ref<SidebarGroup[]>([])
@@ -114,7 +214,7 @@ function wouldHandOffToPhone(): void {
 const anatomy: [string, string][] = [
   [
     'Top',
-    'The app name, then the entries: New, then one entry for each plugin whose settings section asks for one (Skills), in the order the backend registers plugins and only while the user has the plugin on, then Archived. Every entry but New opens the settings dialog on its section. The Conversations heading carries the same New as the entry.'
+    'The app name, then the workspace switcher: the shown workspace’s tile and name, with a dot while another workspace has a conversation that waits for the user; its menu lists the workspaces with the keys that switch to each, then New Workspace, which makes one, shows it and opens Settings › Workspaces with its name selected, and Workspace Settings…. The lists below are the shown workspace’s, and a row’s or a project’s menu moves it to another with Move To. Then the entries: New, then one entry for each plugin whose settings section asks for one (Skills), in the order the backend registers plugins and only while the user has the plugin on, then Archived. Every entry but New opens the settings dialog on its section. The Conversations heading carries the same New as the entry.'
   ],
   [
     'Conversations',
@@ -186,7 +286,10 @@ function keepDraft(): void {
  */
 function create(projectId: string | null): void {
   const empty = conversations.value.find(
-    (conversation) => emptyDrafts.has(conversation.id) && conversation.projectId === projectId,
+    (conversation) =>
+      emptyDrafts.has(conversation.id) &&
+      conversation.projectId === projectId &&
+      inWorkspace(conversation.projectId ?? conversation.id) === workspaceId.value,
   )
   if (empty) {
     show(empty.id)
@@ -194,6 +297,7 @@ function create(projectId: string | null): void {
   }
   const id = `c-draft-${nextId++}`
   emptyDrafts.add(id)
+  workspaceOf.value = { ...workspaceOf.value, [id]: workspaceId.value }
   conversations.value = [
     { id, title: null, updatedAt: new Date().toISOString(), status: 'idle', projectId, pinned: false, unread: false },
     ...conversations.value,
@@ -216,6 +320,7 @@ function addProject(): void {
       savedCount: 0,
     }
   ]
+  workspaceOf.value = { ...workspaceOf.value, [id]: workspaceId.value }
   create(id)
 }
 
@@ -531,7 +636,7 @@ function pinHover(ids: string[], pinned: boolean): void {
 
 // The open conversation is the product's ChatSession over the gallery's scripted runtime, so the header
 // the sidebar's top row stands beside is the product's own; its title follows the row that is open.
-const sessionFlow = useTurnFlow({ id: 'gallery-sidebar-frame', cwd: WORKSPACE_ROOT, blocks: transcriptDemoBlocks() })
+const sessionFlow = useTurnFlow({ id: 'gallery-sidebar-frame', cwd: PROJECT_ROOT, blocks: transcriptDemoBlocks() })
 const session = sessionFlow.state
 const messageFiles = useMessageFiles()
 const agentContext = useAgentContext()
@@ -625,14 +730,21 @@ onBeforeUnmount(() => {
             v-model:collapsed-projects="collapsedProjects"
             v-model:folded-groups="foldedGroups"
             :account="demoAccount"
-            :projects="projects"
-            :conversations="conversations"
+            :projects="shownProjects"
+            :conversations="shownConversations"
             :active-id="activeId"
             :section-entries="sectionEntries"
             :new-shortcut="newShortcut"
             :search-shortcut="searchShortcut"
             :settings-shortcut="settingsShortcut"
             :update="{ state: 'available', version: '0.1.5500' }"
+            :workspaces="galleryWorkspaces.list"
+            :workspace-id="workspaceId"
+            :workspace-attention="workspaceAttention"
+            :workspace-shortcuts="workspaceShortcuts"
+            @switch-workspace="switchWorkspace"
+            @create-workspace="createWorkspace"
+            @move-to-workspace="moveToWorkspace"
             @search="productWould('Open the Search Window')"
             @reorder="reorder"
             @select="select"

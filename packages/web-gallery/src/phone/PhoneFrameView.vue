@@ -34,7 +34,7 @@ import { createSettingsState } from '../fixtures/settings'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
-import { createGalleryWorkspace } from '../fixtures/workspace'
+import { createGalleryProject } from '../fixtures/project'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { productWould } from '../product-would'
 import { demoAccount, demoConversations, demoProjects, savedScopeSwitched } from '../sidebar/sidebar-data'
@@ -80,16 +80,16 @@ onBeforeUnmount(() => {
   root.style.removeProperty('--safe-bottom')
 })
 
-const workspace = createGalleryWorkspace()
-const work = useGalleryWork('change', { files: galleryFiles(workspace), browser: galleryBrowser([]) })
+const project = createGalleryProject()
+const work = useGalleryWork('change', { files: galleryFiles(project), browser: galleryBrowser([]) })
 // The panel opens only where the scene shows it.
 work.open.value = false
-const COOKIE = `${workspace.root}/src/auth/cookie.ts`
+const COOKIE = `${project.root}/src/auth/cookie.ts`
 
 const flow = useTurnFlow({
   id: 'gallery-phone',
   title: 'Fix the failing login test',
-  cwd: workspace.root,
+  cwd: project.root,
   blocks: transcriptDemoBlocks(),
   subagents: reactive(gallerySubagents()),
   terminals: reactive(galleryTerminals()),
@@ -105,7 +105,7 @@ const commandOf = useCallTerminals(() => session.terminals)
 provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 
 /** A file a message names opens in the panel, full screen, as the product opens it. */
-const files = galleryConversationFiles(workspace.source, ({ path, line }) => {
+const files = galleryConversationFiles(project.source, ({ path, line }) => {
   work.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
 }, ({ commit, root }) => {
   work.openIn({ intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
@@ -337,7 +337,7 @@ onMounted(async () => {
         @interrupt-pending-steer="flow.interruptPendingSteer"
         v-bind="agentContext.session"
       >
-        <template #workspace>
+        <template #place>
           <GalleryHostMenu :devices="devices" :primary-id="primaryId" has-messages />
         </template>
         <template #composer>

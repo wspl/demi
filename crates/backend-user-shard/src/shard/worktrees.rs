@@ -35,8 +35,8 @@ impl Shard {
     /// The user's projects changed: every connected runner whose projects'
     /// directories differ from what it was told hears them.
     pub(crate) async fn projects_changed(&self) {
-        let workspaces = match self.services().control.workspaces(self.user().clone()).await {
-            Ok(workspaces) => workspaces,
+        let projects = match self.services().control.projects(self.user().clone()).await {
+            Ok(projects) => projects,
             Err(error) => {
                 // The runners keep the directories they were told last,
                 // until the next change or connection tells them again.
@@ -45,8 +45,8 @@ impl Shard {
             }
         };
         let mut directories: HashMap<DeviceId, BTreeSet<String>> = HashMap::new();
-        for workspace in workspaces {
-            directories.entry(workspace.device).or_default().insert(workspace.path);
+        for project in projects {
+            directories.entry(project.device).or_default().insert(project.path);
         }
         let mut told = self.worktrees.told.borrow_mut();
         told.retain(|device, _| self.devices().connected(device));
@@ -97,7 +97,7 @@ impl Shard {
                 }
             };
             if stored.projects {
-                shard.mark(Part::Workspaces);
+                shard.mark(Part::Projects);
             }
             for conversation in &stored.saved {
                 shard.mark(Part::Metadata(conversation.clone()));

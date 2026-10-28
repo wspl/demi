@@ -1262,8 +1262,8 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             <div class="w-80">
               <Toast
                 v-if="pinNeutralToast"
-                title="Not in This Workspace"
-                message="The tree shows /Users/alex/.demi/acceptance-workspace only."
+                title="Not in This Project"
+                message="The tree shows /Users/alex/.demi/acceptance-project only."
                 tone="neutral"
                 @dismiss="pinNeutralToast = false"
               />

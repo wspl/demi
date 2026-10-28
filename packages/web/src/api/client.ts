@@ -51,8 +51,8 @@ export class ApiError extends Error {
   readonly loginId: string | null
   /** The values the page's text for `code` is filled with. */
   readonly params: NonNullable<ErrorBody['params']>
-  /** With `workspace_exists`, the id of the project the directory already is. */
-  readonly workspaceId: string | null
+  /** With `project_exists`, the id of the project the directory already is. */
+  readonly projectId: string | null
 
   constructor(
     status: number,
@@ -66,7 +66,7 @@ export class ApiError extends Error {
     requestId: string | null = headers.get(REQUEST_ID_HEADER),
     loginId: string | null = null,
     params: NonNullable<ErrorBody['params']> = {},
-    workspaceId: string | null = null,
+    projectId: string | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -80,7 +80,7 @@ export class ApiError extends Error {
     this.requestId = requestId
     this.loginId = loginId
     this.params = params
-    this.workspaceId = workspaceId
+    this.projectId = projectId
   }
 }
 
@@ -438,7 +438,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     parsed.success ? parsed.data.requestId : headers.get(REQUEST_ID_HEADER),
     parsed.success ? parsed.data.loginId ?? null : null,
     parsed.success ? parsed.data.params ?? {} : {},
-    parsed.success ? parsed.data.workspace?.id ?? null : null,
+    parsed.success ? parsed.data.project?.id ?? null : null,
   )
 }
 

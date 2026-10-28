@@ -109,7 +109,7 @@
     "noAccess": "无访问权限",
     "unavailable": "不可用",
     "withReason": "{heading}：{reason}",
-    "couldNotList": "无法列出工作空间。",
+    "couldNotList": "无法列出文件夹。",
     "couldNotReadDrop": "无法读取拖放的内容"
   },
   "uploads": {
@@ -163,8 +163,8 @@
     "readFailedDetail": "无法读取该文件。",
     "missing": "此文件不存在。",
     "readAgainFailed": "读取失败。",
-    "notInWorkspaceTitle": "不在此工作空间",
-    "notInWorkspace": "文件树仅显示 {name}。",
+    "notInFolderTitle": "不在此文件夹",
+    "notInFolder": "文件树仅显示 {name}。",
     "imageFailed": "无法显示此图像。",
     "videoFailed": "无法显示此视频。"
   },

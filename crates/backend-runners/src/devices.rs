@@ -1149,7 +1149,7 @@ impl DeviceRecorder {
         match self.control.settle_first_home(device.clone(), first.home, resolved).await {
             Ok(settled) => {
                 if settled.projects_changed {
-                    self.marks.mark(Part::Workspaces);
+                    self.marks.mark(Part::Projects);
                 }
                 for conversation in settled.moved {
                     self.marks.mark(Part::Conversation(conversation));

@@ -22,7 +22,8 @@ use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, Ty
 use demi_shared_types::output::{self, Cell, Table};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, SenderConversation, Timestamp};
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_backend_database::workspaces::WorkspaceRecord;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, WorkspaceId};
 use demi_web_api_protocol::search::{RESULTS_MAX, SearchText};
 use demi_backend_database::Selection;
 use demi_web_api_protocol::text::Trimmed;
@@ -49,9 +50,9 @@ const ENTRY: &str = "Renames the conversation, lists projects and the user's con
 
 const RENAME_SUMMARY: &str = "Rename this conversation, as its title in the user's sidebar.";
 
-const PROJECTS_SUMMARY: &str = "List the user's projects: id, Host, directory and name.";
+const PROJECTS_SUMMARY: &str = "List the user's projects of every workspace: id, workspace, Host, directory and name.";
 
-const LIST_SUMMARY: &str = "List the user's conversations that are not archived, newest change first, twenty to a page: id, title, project and the time of the last change. With words, only those the app's Search finds with them in the title or the messages, fifty at most, which stderr says when more match. A conversation's id goes to history --conversation to read it, and to `send` to message it; stderr names the next page.";
+const LIST_SUMMARY: &str = "List the user's conversations that are not archived, newest change first, twenty to a page, of every workspace: id, title, workspace, project and the time of the last change. With words, only those the app's Search finds with them in the title or the messages, fifty at most, which stderr says when more match. A conversation's id goes to history --conversation to read it, and to `send` to message it; stderr names the next page.";
 
 const SEND_SUMMARY: &str = "Send a message to the main agent of another conversation of the user that is not archived, by its id from list. A busy recipient takes it into its running turn; an idle one wakes. Returns once it is accepted, without waiting for an answer: the recipient answers, if it does, by sending to this conversation.";
 
@@ -241,6 +242,8 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
 struct ListedProject {
     id: String,
     name: String,
+    /// The name of the workspace it is in.
+    workspace: String,
     /// The name of the Host it is on.
     host: String,
     /// Its directory on that Host.
@@ -248,19 +251,21 @@ struct ListedProject {
 }
 
 async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let workspaces = shard
+    let kept = shard
         .services()
         .control
-        .workspaces(shard.user().clone())
+        .projects(shard.user().clone())
         .await
         .map_err(failed)?;
+    let workspaces = shard.services().control.workspaces(shard.user().clone()).await.map_err(failed)?;
     let mut projects = Vec::new();
-    for workspace in &workspaces {
+    for project in &kept {
         projects.push(ListedProject {
-            id: workspace.id.to_string(),
-            name: workspace.name.clone(),
-            host: shard.host_name(&workspace.device).await,
-            directory: workspace.path.clone(),
+            id: project.id.to_string(),
+            name: project.name.clone(),
+            workspace: workspace_name(&workspaces, &project.workspace),
+            host: shard.host_name(&project.device).await,
+            directory: project.path.clone(),
         });
     }
     if call.invocation.json {
@@ -268,10 +273,11 @@ async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result
         port.stdout(text + "\n").await?;
         return Ok(0);
     }
-    let mut table = Table::new(["id", "host", "directory", "name"]);
+    let mut table = Table::new(["id", "workspace", "host", "directory", "name"]);
     for project in &projects {
         table.row([
             project.id.as_str(),
+            project.workspace.as_str(),
             project.host.as_str(),
             project.directory.as_str(),
             project.name.as_str(),
@@ -299,6 +305,8 @@ struct ListedConversation {
     id: ConversationId,
     /// Null while it has none.
     title: Option<String>,
+    /// The name of the workspace it is in.
+    workspace: String,
     /// The name of its project; null when it runs in none.
     project: Option<String>,
     /// When it last changed.
@@ -319,7 +327,7 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     } else {
         let query = SearchText::try_from(words).map_err(|error| refused(error))?;
         let mut records = Vec::new();
-        let results = search(services, shard.user(), &query).await.map_err(failed)?;
+        let results = search(services, shard.user(), &query, None).await.map_err(failed)?;
         capped = results.len() >= RESULTS_MAX;
         for found in results {
             if let Some(record) = services.control.conversation(found.conversation_id).await.map_err(failed)?
@@ -336,12 +344,13 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     if page > pages {
         return Err(failed(format!("the list has {pages} pages")));
     }
+    let projects = services.control.projects(shard.user().clone()).await.map_err(failed)?;
     let workspaces = services.control.workspaces(shard.user().clone()).await.map_err(failed)?;
     let project = |selection: &Selection| match selection {
-        Selection::Workspace { workspace_id, .. } => workspaces
+        Selection::Project { project_id, .. } => projects
             .iter()
-            .find(|workspace| workspace.id == *workspace_id)
-            .map(|workspace| workspace.name.clone()),
+            .find(|project| project.id == *project_id)
+            .map(|project| project.name.clone()),
         _ => None,
     };
     let listed: Vec<ListedConversation> = records
@@ -351,6 +360,7 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
         .map(|record| ListedConversation {
             id: record.id.clone(),
             title: record.title.clone(),
+            workspace: workspace_name(&workspaces, &record.workspace),
             project: project(&record.target),
             changed_at: record.updated_at,
         })
@@ -378,17 +388,26 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
         port.stdout(text + "\n").await?;
         return Ok(0);
     }
-    let mut table = Table::new(["id", "title", "project", "changed"]);
+    let mut table = Table::new(["id", "title", "workspace", "project", "changed"]);
     for conversation in &listed {
         table.row::<Cell>([
             conversation.id.as_str().into(),
             conversation.title.as_deref().into(),
+            conversation.workspace.as_str().into(),
             conversation.project.as_deref().into(),
             conversation.changed_at.into(),
         ]);
     }
     port.stdout(table.render()).await?;
     Ok(0)
+}
+
+/// The name of the workspace `id` of `workspaces`, as Demi's commands say it.
+fn workspace_name(workspaces: &[WorkspaceRecord], id: &WorkspaceId) -> String {
+    workspaces
+        .iter()
+        .find(|workspace| workspace.id == *id)
+        .map_or_else(|| id.to_string(), |workspace| workspace.shown_name().to_owned())
 }
 
 impl Shard {

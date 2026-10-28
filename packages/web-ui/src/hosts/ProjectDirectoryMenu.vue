@@ -28,7 +28,7 @@ export interface DirectoryBrowserHost extends FileBrowserHost {
 const props = defineProps<{
   overlayStore: OverlayStore
   path: string | null
-  workspaceName?: string | null
+  projectName?: string | null
   selectedProjectId?: string
   deviceId: string | null
   locked: boolean
@@ -53,7 +53,7 @@ const props = defineProps<{
 const emit = defineEmits<{ selectProject: [id: string] }>()
 const directoryOpen = ref(false)
 const directoryName = computed(
-  () => props.workspaceName ?? props.path?.split('/').filter(Boolean).at(-1) ?? '/',
+  () => props.projectName ?? props.path?.split('/').filter(Boolean).at(-1) ?? '/',
 )
 // The directory gives up its name before the host does: its tooltip already says the whole path.
 const directoryLabel = ref<HTMLElement | null>(null)

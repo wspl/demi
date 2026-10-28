@@ -1,7 +1,7 @@
 //! The edge's error answer: an HTTP status with a JSON `ErrorBody`, and the
 //! mapping of each domain error to it.
 
-use demi_web_api_protocol::workspaces::WorkspaceDto;
+use demi_web_api_protocol::projects::ProjectDto;
 use axum::Json;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -53,8 +53,8 @@ pub(crate) struct ApiError {
     /// The starter's own login that holds the entry a login start was
     /// refused for.
     login_id: Option<LoginId>,
-    /// The workspace a `workspace_exists` answer names.
-    workspace: Option<WorkspaceDto>,
+    /// The project a `project_exists` answer names.
+    project: Option<ProjectDto>,
     /// The `Retry-After` the answer carries, in whole seconds.
     retry_after: Option<u64>,
     /// The ETag of the file a refused read is an answer of, such as one
@@ -84,7 +84,7 @@ impl ApiError {
             reason: None,
             credential_id: None,
             login_id: None,
-            workspace: None,
+            project: None,
             retry_after: None,
             etag: None,
             read_at: None,
@@ -123,9 +123,9 @@ impl ApiError {
         self
     }
 
-    /// The error as the answer that names the user's workspace `workspace`.
-    pub(crate) fn with_workspace(mut self, workspace: WorkspaceDto) -> Self {
-        self.workspace = Some(workspace);
+    /// The error as the answer that names the user's project `project`.
+    pub(crate) fn with_project(mut self, project: ProjectDto) -> Self {
+        self.project = Some(project);
         self
     }
 
@@ -358,7 +358,7 @@ impl ApiError {
             reason: self.reason,
             credential_id: self.credential_id,
             login_id: self.login_id,
-            workspace: self.workspace,
+            project: self.project,
             request_id: request_id::current_or_new(),
         };
         (self.status, body)
@@ -374,7 +374,7 @@ impl IntoResponse for ApiError {
             reason: self.reason,
             credential_id: self.credential_id,
             login_id: self.login_id,
-            workspace: self.workspace,
+            project: self.project,
             request_id: request_id::current_or_new(),
         };
         let mut response = (self.status, Json(body)).into_response();

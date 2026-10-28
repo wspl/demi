@@ -45,10 +45,10 @@ pub struct ErrorBody {
     /// holds the entry, which the page opens rather than a second one.
     #[serde(default, rename = "loginId", skip_serializing_if = "Option::is_none")]
     pub login_id: Option<LoginId>,
-    /// With `workspace_exists`, the user's workspace of the device and
+    /// With `project_exists`, the user's project of the device and
     /// directory, which the page opens rather than a second one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace: Option<crate::workspaces::WorkspaceDto>,
+    pub project: Option<crate::projects::ProjectDto>,
     /// The request the answer is of, as its `X-Request-Id` names it.
     #[serde(rename = "requestId")]
     pub request_id: RequestId,
@@ -332,19 +332,26 @@ pub enum ErrorCode {
     /// holds the conversation: an archive or a target change waits for
     /// nothing and is refused.
     TurnInFlight,
+    /// The caller owns no project of that id.
+    ProjectNotFound,
     /// The caller owns no workspace of that id.
     WorkspaceNotFound,
-    /// The user has a workspace of that device and directory already, which
-    /// the answer carries as `workspace`.
-    WorkspaceExists,
+    /// The workspace is the user's last, which stays.
+    LastWorkspace,
+    /// A conversation came into the workspace while its deletion deleted its
+    /// conversations; the workspace stays.
+    WorkspaceChanged,
+    /// The user has a project of that device and directory already, which
+    /// the answer carries as `project`.
+    ProjectExists,
     /// The directory is the device's home, which holds the conversations
     /// outside projects and is never a project.
-    WorkspaceIsHome,
+    ProjectIsHome,
     /// A new Cloud project's name is a folder's in `~/projects` already.
-    WorkspaceNameTaken,
+    ProjectNameTaken,
     /// A new Cloud project's name cannot name a folder: it holds a `/`, or
     /// is `.` or `..`.
-    WorkspaceNameInvalid,
+    ProjectNameInvalid,
     /// A project switched to keep its saved messages per conversation has
     /// messages, and the switch named no conversation to take them.
     SavedDestinationNeeded,

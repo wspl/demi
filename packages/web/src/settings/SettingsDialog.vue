@@ -42,6 +42,8 @@ import { usePreferences } from '../state/preferences'
 import { useNotifications } from '../state/notifications'
 import { useConversations } from '../conversation/store'
 import DevicesPanel from './DevicesPanel.vue'
+import WorkspacesPanel from './WorkspacesPanel.vue'
+import { useWorkspaces } from '../state/workspaces'
 import PortForwardsPanel from './PortForwardsPanel.vue'
 import { useSettingsAddress } from './address'
 import { CODE_CORRECTIONS, EMAIL_CORRECTIONS, PASSWORD_CORRECTIONS } from './corrections'
@@ -369,9 +371,11 @@ onUnmounted(() => {
   passwordRequest?.abort()
 })
 
+const workspaces = useWorkspaces()
+/** The archived conversations of the workspace the tab shows. */
 const archived = computed(() =>
   conversations.items
-    .filter((conversation) => conversation.archived)
+    .filter((conversation) => conversation.archived && conversation.workspaceId === workspaces.current)
     .map((conversation) => ({
       id: conversation.id,
       title: conversation.title,
@@ -463,6 +467,7 @@ function resetShortcuts(): void {
       :home-screen-icon="notifications.homeScreen ? homeScreenIcon : undefined"
       :overlay-store="appOverlayStore"
     />
+    <WorkspacesPanel v-else-if="section === 'workspaces'" />
     <AgentPanel v-else-if="section === 'agent'" />
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />

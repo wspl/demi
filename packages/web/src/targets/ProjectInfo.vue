@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed, ref } from 'vue'
-import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
+import ProjectDirectoryMenu from '@demicodes/web-ui/hosts/ProjectDirectoryMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
 import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import { homePath } from '@demicodes/web-ui/files/paths'
@@ -29,12 +29,16 @@ const props = defineProps<{
 }>()
 const resources = useResources()
 const conversations = useConversations()
-const directory = ref<InstanceType<typeof WorkspaceDirectoryMenu>>()
+const directory = ref<InstanceType<typeof ProjectDirectoryMenu>>()
 const execution = keptComputed(() => executionFor(props.conversation))
 const locked = computed(() => moveLock(props.conversation, conversations.pendingChanges))
+/** The projects of the conversation's workspace, which its moves choose among. */
+const workspaceProjects = computed(() =>
+  resources.projects.filter((project) => project.workspaceId === props.conversation.workspaceId),
+)
 /** The projects on the Host the conversation runs on, which the directory menu lists. */
 const hostProjects = keptComputed(() =>
-  resources.projects
+  workspaceProjects.value
     .filter((project) => project.deviceId === execution.value.deviceId)
     .map((project) => ({
       id: project.id,
@@ -48,7 +52,7 @@ const hosts = keptComputed(() =>
     return {
       ...host,
       source: fileSourceFor(device),
-      places: placesFor(device, resources.projects),
+      places: placesFor(device, workspaceProjects.value),
     }
   }),
 )
@@ -61,8 +65,8 @@ function place(target: ConversationTarget): { host: string; directory: string | 
     // Without a directory the Cloud runs it in one of its own, which the backend names.
     return { host: hostLabel('cloud', null), directory: target.path ?? null }
   }
-  const project = target.kind === 'workspace'
-    ? resources.projects.find((item) => item.id === target.workspaceId)
+  const project = target.kind === 'project'
+    ? resources.projects.find((item) => item.id === target.projectId)
     : undefined
   const deviceId = target.kind === 'device' ? target.deviceId : project?.deviceId ?? null
   const path = target.kind === 'device' ? target.path : project?.path ?? null
@@ -77,8 +81,8 @@ function sameTarget(a: ConversationTarget, b: ConversationTarget): boolean {
       return b.kind === 'cloud' && a.path === b.path
     case 'device':
       return b.kind === 'device' && a.deviceId === b.deviceId && a.path === b.path
-    case 'workspace':
-      return b.kind === 'workspace' && a.workspaceId === b.workspaceId
+    case 'project':
+      return b.kind === 'project' && a.projectId === b.projectId
   }
 }
 
@@ -92,7 +96,7 @@ function move(target: ConversationTarget): Promise<boolean> {
   }
   // Where it runs already is no move; its project, while it works in a
   // worktree of it, is the move back to the project's directory.
-  if (sameTarget(target, props.conversation.target) && !(target.kind === 'workspace' && props.conversation.worktree)) {
+  if (sameTarget(target, props.conversation.target) && !(target.kind === 'project' && props.conversation.worktree)) {
     return Promise.resolve(true)
   }
   if (props.conversation.persistence !== 'synced') {
@@ -127,7 +131,7 @@ function choose(host: HostChoice) {
     return
   }
   const home = resources.deviceById(host.id)?.home
-  if (props.conversation.target.kind === 'workspace' || !home) {
+  if (props.conversation.target.kind === 'project' || !home) {
     directory.value?.browse(host.id)
     return
   }
@@ -135,17 +139,17 @@ function choose(host: HostChoice) {
 }
 
 function selectProject(id: string) {
-  void move({ kind: 'workspace', workspaceId: id })
+  void move({ kind: 'project', projectId: id })
 }
 
 /** A directory chosen in the picker: the project whose directory it is, or the directory itself. */
 function selectFolder(deviceId: string, path: string): Promise<boolean> {
-  const project = resources.projects.find(
+  const project = workspaceProjects.value.find(
     (project) => project.deviceId === deviceId && project.path === path,
   )
   return move(
     project
-      ? { kind: 'workspace', workspaceId: project.id }
+      ? { kind: 'project', projectId: project.id }
       : { kind: 'device', deviceId, path },
   )
 }
@@ -153,11 +157,11 @@ function selectFolder(deviceId: string, path: string): Promise<boolean> {
 defineExpose({ choose })
 </script>
 <template>
-  <WorkspaceDirectoryMenu
+  <ProjectDirectoryMenu
     ref="directory"
     :overlay-store="appOverlayStore"
     :path="execution.directory"
-    :workspace-name="execution.workspaceName"
+    :project-name="execution.projectName"
     :selected-project-id="project?.id"
     :device-id="execution.deviceId"
     :locked="locked !== undefined"
@@ -173,7 +177,7 @@ defineExpose({ choose })
       :locked="locked"
       @choose="choose"
     />
-  </WorkspaceDirectoryMenu>
+  </ProjectDirectoryMenu>
   <MoveConversationDialog
     :is-open="moveQuestion.open.value"
     :overlay-store="appOverlayStore"

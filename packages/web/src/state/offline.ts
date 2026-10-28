@@ -108,6 +108,7 @@ export const COPIED_PARTS = [
   'user',
   'conversations',
   'workspaces',
+  'projects',
   'devices',
   'plugins',
   'preferences',

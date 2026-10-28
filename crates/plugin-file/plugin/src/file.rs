@@ -45,7 +45,7 @@ EOF";
 pub(crate) fn file_group() -> GroupBuilder {
     GroupBuilder::new(
         "file",
-        "Edit and patch workspace files, and view images, videos and PDFs.",
+        "Edit and patch files, and view images, videos and PDFs.",
     )
     .index_entry(ENTRY)
     .leaf(

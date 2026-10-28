@@ -44,13 +44,16 @@ import SidebarRow from './SidebarRow.vue'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 import ProjectDeleteDialog from './ProjectDeleteDialog.vue'
 import SavedScopeDialog from './SavedScopeDialog.vue'
+import WorkspaceSwitcher from '../workspaces/WorkspaceSwitcher.vue'
+import type { WorkspaceView } from '../workspaces/workspaces'
 
 /**
  * The sidebar has three regions:
  *
- * - Top: the app and its entries: New, Search, then the entries the host gives, such
- *   as a plugin's settings section, then Archived. Each but New and Search opens its
- *   settings section.
+ * - Top: the app, the workspace switcher, and the entries: New, Search, then the
+ *   entries the host gives, such as a plugin's settings section, then Archived.
+ *   Each but New and Search opens its settings section. The lists below are the
+ *   shown workspace's.
  * - Middle: plain conversations, then each project that holds one as a collapsible
  *   group of its conversations, with one selection across all of them. The Conversations and
  *   Projects groups each fold under their label.
@@ -87,6 +90,14 @@ const props = defineProps<{
   onSignOut?: Action
   /** The server's update an administrator sees at the foot; none hides it. */
   update?: SidebarUpdate | null
+  /** The account's workspaces, which the switcher lists; none hides the switcher. */
+  workspaces?: readonly WorkspaceView[]
+  /** The workspace the lists are of. */
+  workspaceId?: string | null
+  /** The workspaces with a conversation that waits for the user. */
+  workspaceAttention?: readonly string[]
+  /** The keys that switch to the workspace at each place of the list. */
+  workspaceShortcuts?: readonly (string | undefined)[]
 }>()
 
 const emit = defineEmits<{
@@ -106,7 +117,25 @@ const emit = defineEmits<{
   /** The phone mark at the foot: hand off to a phone by a QR code. */
   handOffToPhone: []
   retryList: []
+  /** The switcher's choice of another workspace. */
+  switchWorkspace: [id: string]
+  /** The switcher's New Workspace. */
+  createWorkspace: []
+  /** Move To: conversations or projects into the workspace `workspaceId`. */
+  moveToWorkspace: [workspaceId: string, conversations: string[], projects: string[]]
 }>()
+
+/** Move To for the menus, while there is another workspace to move to. */
+function workspaceMove(conversations: string[], projects: string[]) {
+  const workspaces = props.workspaces ?? []
+  return workspaces.length > 1
+    ? {
+        workspaces,
+        currentId: props.workspaceId ?? null,
+        run: (workspaceId: string) => emit('moveToWorkspace', workspaceId, conversations, projects),
+      }
+    : undefined
+}
 
 /** On a phone the list's rows are a finger's height (`ui/phone.ts`). */
 const phone = usePhone()
@@ -345,6 +374,7 @@ function rowMenu(id: string): ContextMenuDeclaration {
       pin: (ids, pinned) => emit('pin', ids, pinned),
       archive: (ids) => emit('archive', ids),
       delete: (ids) => askDelete(ids),
+      moveTo: workspaceMove(menuTargets.value.map((target) => target.id), []),
     }),
     closed: () => {
       menuTargets.value = []
@@ -368,6 +398,7 @@ function projectMenu(project: SidebarProject): ContextMenuDeclaration {
       selectAll: () => selectProjectConversations(project),
       savedScope: (scope) => chooseSavedScope(project, scope),
       delete: () => askDeleteProject(project),
+      moveTo: workspaceMove([], [project.id]),
     }),
   }
 }
@@ -612,6 +643,17 @@ function selectProjectConversations(project: SidebarProject): void {
         class="min-w-0 flex-1 truncate pl-2.5 text-chrome font-medium leading-5 text-fg-emphasis phone:pl-3 phone:text-[17px] phone:font-semibold phone:leading-normal"
       >demi</span>
       <SidebarToggle placement="sidebar" />
+    </div>
+    <div v-if="workspaces?.length" class="shrink-0 px-2 pb-1.5">
+      <WorkspaceSwitcher
+        :workspaces="workspaces"
+        :current-id="workspaceId ?? null"
+        :attention="workspaceAttention ?? []"
+        :shortcuts="workspaceShortcuts"
+        @switch="emit('switchWorkspace', $event)"
+        @create="emit('createWorkspace')"
+        @open-settings="emit('openSettings', 'workspaces')"
+      />
     </div>
 
     <!-- Every block of the sidebar keeps 8px from both edges, so a row's background

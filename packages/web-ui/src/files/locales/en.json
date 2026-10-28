@@ -109,7 +109,7 @@
     "noAccess": "No access",
     "unavailable": "Unavailable",
     "withReason": "{heading}: {reason}",
-    "couldNotList": "Couldn’t list the workspace.",
+    "couldNotList": "Couldn’t list the folder.",
     "couldNotReadDrop": "Could Not Read What Was Dropped"
   },
   "uploads": {
@@ -163,8 +163,8 @@
     "readFailedDetail": "Couldn’t read the file.",
     "missing": "This file doesn’t exist.",
     "readAgainFailed": "The read failed.",
-    "notInWorkspaceTitle": "Not in This Workspace",
-    "notInWorkspace": "The tree shows {name} only.",
+    "notInFolderTitle": "Not in This Folder",
+    "notInFolder": "The tree shows {name} only.",
     "imageFailed": "Couldn’t show this image.",
     "videoFailed": "Couldn’t show this video."
   },

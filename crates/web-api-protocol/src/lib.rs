@@ -56,6 +56,7 @@ pub mod text;
 pub mod usage;
 pub mod users;
 pub mod workflows;
+pub mod projects;
 pub mod workspaces;
 
 /// The largest message a page sends on any of its lanes: a conversation's,

@@ -47,7 +47,7 @@ const attachedHosts = computed<HostMenuHost[]>(() =>
     :pending="store.pendingChanges.includes(conversation.id)"
     :devices="devices"
     :attached-hosts="attachedHosts"
-    :choose-directory="conversation.target.kind === 'workspace'"
+    :choose-directory="conversation.target.kind === 'project'"
     :locked="locked"
     @choose="emit('choose', $event)"
     @detach="store.detachHost(conversation, $event)"

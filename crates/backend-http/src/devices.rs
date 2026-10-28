@@ -105,7 +105,7 @@ pub(super) async fn change(
     Ok(Json(DeviceAnswer { device }))
 }
 
-/// Revokes a paired device, which nothing refuses; its workspaces go with
+/// Revokes a paired device, which nothing refuses; its projects go with
 /// it.
 pub(super) async fn revoke(
     State(state): State<AppState>,
@@ -119,9 +119,9 @@ pub(super) async fn revoke(
         .call(move |shard, _| async move { shard.revoke_device(device.id).await })
         .await??;
     let removed = removal
-        .workspaces
+        .projects
         .into_iter()
-        .map(|workspace| workspace.id)
+        .map(|project| project.id)
         .collect();
     Ok(Json(RevokedDevice { removed }))
 }

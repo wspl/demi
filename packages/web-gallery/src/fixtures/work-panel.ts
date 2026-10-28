@@ -30,31 +30,31 @@ import { galleryRequest } from './transcripts'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
 import { galleryMobile, type GalleryScreen } from './live-mobile'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
-import { SLOT_ROOT, createSlotChangeSet, type createGalleryWorkspace } from './workspace'
+import { SLOT_ROOT, createSlotChangeSet, type createGalleryProject } from './project'
 import { sharedHistory } from './history'
 import { galleryHistory } from './browser-history'
 import { browserPlugin, galleryPageHost } from './plugins'
 
 /**
- * The gallery workspace as the work panel's kinds read a conversation's files.
- * `directories` lists the directories its agents work in, the workspace's alone
+ * The gallery project as the work panel's kinds read a conversation's files.
+ * `directories` lists the directories its agents work in, the project's alone
  * by default; the repository's checkout in the other checkout's folder is on
  * the branch `slotBranch` names.
  */
 export function galleryFiles(
-  workspace: ReturnType<typeof createGalleryWorkspace>,
+  project: ReturnType<typeof createGalleryProject>,
   { directories, slotBranch }: { directories?: () => readonly string[]; slotBranch?: () => string | null } = {},
 ): ConversationFileService {
   const slotHistory = sharedHistory.sourceOn(slotBranch ?? (() => 'main'))
   // The other checkout's working tree, made once a view shows it.
   let slot: ChangeSetSource | null = null
   return {
-    workspace: { source: workspace.source, root: workspace.root },
-    root: workspace.root,
+    tree: { source: project.source, root: project.root },
+    root: project.root,
     get directories() {
-      return (directories?.() ?? [workspace.root]).map((path) => ({ path }))
+      return (directories?.() ?? [project.root]).map((path) => ({ path }))
     },
-    changes: (directory) => directory === undefined || directory === workspace.root ? workspace.changes : (slot ??= createSlotChangeSet(200)),
+    changes: (directory) => directory === undefined || directory === project.root ? project.changes : (slot ??= createSlotChangeSet(200)),
     // One repository stands behind every working tree of the gallery.
     history: (directory) => directory !== undefined && (directory === SLOT_ROOT || directory.startsWith(`${SLOT_ROOT}/`)) ? slotHistory : sharedHistory.source,
     edit: readGalleryEdit,

@@ -127,7 +127,7 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
       return project
     }
     const worktree = {
-      project: executionFor(shown).workspaceName ?? '',
+      project: executionFor(shown).projectName ?? '',
       name: shown.worktree,
       list: listOf(kept.worktree),
     }

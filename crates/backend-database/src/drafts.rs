@@ -219,7 +219,7 @@ pub(crate) fn draft_blobs(
         "SELECT s.document FROM saved_messages s JOIN conversations c ON c.id = s.conversation_id
          WHERE c.user_id = ?1
          UNION ALL
-         SELECT s.document FROM saved_messages s JOIN workspaces w ON w.id = s.workspace_id
+         SELECT s.document FROM saved_messages s JOIN projects w ON w.id = s.project_id
          WHERE w.user_id = ?1",
     )?;
     let mut rows = statement.query([owner.as_str()])?;

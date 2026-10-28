@@ -5,7 +5,7 @@ import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { wokenConversationBlocks } from '../fixtures/schedules'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { productWould } from '../product-would'
 import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
@@ -28,7 +28,7 @@ const emit = defineEmits<{
   deleteSchedule: [id: string]
 }>()
 
-const flow = useTurnFlow({ id: props.id, title: props.title, cwd: WORKSPACE_ROOT, blocks: wokenConversationBlocks(props.id, props.schedules[0]!) })
+const flow = useTurnFlow({ id: props.id, title: props.title, cwd: PROJECT_ROOT, blocks: wokenConversationBlocks(props.id, props.schedules[0]!) })
 const session = flow.state
 const messageFiles = useMessageFiles()
 </script>
@@ -46,7 +46,7 @@ const messageFiles = useMessageFiles()
     @save-scroll="(_id, state) => (session.scroll = state)"
     @retry="flow.resume()"
   >
-    <template #workspace>
+    <template #place>
       <HostMenu
         :primary-host="host"
         :conversation-id="id"

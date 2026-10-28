@@ -172,7 +172,7 @@ pub enum AgentMessageEvent {
         #[garde(length(min = 1))]
         reason: String,
         /// Why, as the code of the refusal the page words it from, such as
-        /// `workspace_not_found`; none for a failure no refusal names.
+        /// `project_not_found`; none for a failure no refusal names.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
         code: Option<String>,

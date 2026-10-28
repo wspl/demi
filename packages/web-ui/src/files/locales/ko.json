@@ -109,7 +109,7 @@
     "noAccess": "액세스 권한 없음",
     "unavailable": "사용할 수 없음",
     "withReason": "{heading}: {reason}",
-    "couldNotList": "워크스페이스를 나열할 수 없습니다.",
+    "couldNotList": "폴더를 나열할 수 없습니다.",
     "couldNotReadDrop": "끌어다 놓은 항목을 읽을 수 없습니다"
   },
   "uploads": {
@@ -163,8 +163,8 @@
     "readFailedDetail": "파일을 읽을 수 없습니다.",
     "missing": "이 파일이 없습니다.",
     "readAgainFailed": "읽기에 실패했습니다.",
-    "notInWorkspaceTitle": "이 워크스페이스에 없음",
-    "notInWorkspace": "트리에는 {name}만 표시됩니다.",
+    "notInFolderTitle": "이 폴더에 없음",
+    "notInFolder": "트리에는 {name}만 표시됩니다.",
     "imageFailed": "이 이미지를 표시할 수 없습니다.",
     "videoFailed": "이 동영상을 표시할 수 없습니다."
   },

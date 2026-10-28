@@ -19,7 +19,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::Part;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
 
 use crate::shard::{Shard, Shards};
 
@@ -58,12 +58,23 @@ impl Shard {
     /// records go leaves the conversation as it was; one after leaves the
     /// deletion pending, and the next start finishes it.
     pub async fn delete_conversation(&self, id: &ConversationId) -> Result<bool, StorageError> {
+        self.delete_conversation_in(id, None).await
+    }
+
+    /// [`Self::delete_conversation`], of a conversation still in `workspace`
+    /// when it names one: one moved out meanwhile is not deleted, and answers
+    /// false.
+    pub async fn delete_conversation_in(
+        &self,
+        id: &ConversationId,
+        workspace: Option<&WorkspaceId>,
+    ) -> Result<bool, StorageError> {
         let services = self.services();
         let Some(record) = services
             .control
             .conversation(id.clone())
             .await?
-            .filter(|record| record.owner == *self.user())
+            .filter(|record| record.owner == *self.user() && workspace.is_none_or(|workspace| record.workspace == *workspace))
         else {
             return Ok(false);
         };
@@ -103,7 +114,7 @@ impl Shard {
         // Step 1: from this commit on, no request finds the conversation.
         let Some(id) = services
             .control
-            .delete_conversation(self.user().clone(), record.id)
+            .delete_conversation(self.user().clone(), record.id, workspace.cloned())
             .await?
         else {
             return Ok(false);

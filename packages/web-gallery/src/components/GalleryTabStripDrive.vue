@@ -8,7 +8,7 @@ import { changesPage } from '@demicodes/plugin-changes'
 import { fileBrowserPage } from '@demicodes/plugin-file-browser'
 import { galleryBrowser } from '../fixtures/live-browser'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
-import { createGalleryWorkspace } from '../fixtures/workspace'
+import { createGalleryProject } from '../fixtures/project'
 
 /**
  * The work panel's tab strip in a frame of the given width, with every motion
@@ -35,11 +35,11 @@ const TITLES = [
   'Design review', 'Error dashboard', 'Release notes', 'Issue tracker',
 ]
 
-const workspace = createGalleryWorkspace()
+const project = createGalleryProject()
 // Changes and Files pinned before the pages, as the product's panel has them; the
 // pages are the conversation browser's, which has none open before Reset opens them.
 const work = useGalleryWork(null, {
-  files: galleryFiles(workspace),
+  files: galleryFiles(project),
   browser: galleryBrowser([]),
   pages: [changesPage, fileBrowserPage, browserPage()],
 })

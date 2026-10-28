@@ -25,7 +25,7 @@
 //! it. The shard reserves the idle tree; host access holds the rest and runs the
 //! transition's steps (`demi_backend_host_access::transition`).
 
-use demi_backend_database::workspaces::WorkspaceDeletion;
+use demi_backend_database::projects::ProjectDeletion;
 use demi_backend_database::{Selection, StorageError};
 use demi_backend_database::conversation_index::{
     ConversationChange, ConversationRecord, RecordChange, SettingsChange,
@@ -38,7 +38,7 @@ use demi_web_api_protocol::conversations::{
     ConversationPatch, ConversationTarget, ConversationUpdate, FieldResult, PatchField,
 };
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, WorkspaceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProjectId};
 use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -182,19 +182,19 @@ impl Shard {
             }
             ConversationChange::Record(RecordChange::Archived(false)) => {
                 // A conversation whose project was deleted while it was
-                // archived brings it back (`crates/backend-database/src/workspaces.rs`).
+                // archived brings it back (`crates/backend-database/src/projects.rs`).
                 let remakes = match &record.target {
-                    Selection::Workspace { workspace_id, .. } => self
+                    Selection::Project { project_id, .. } => self
                         .services()
                         .control
-                        .workspace(workspace_id.clone())
+                        .project(project_id.clone())
                         .await?
-                        .is_none_or(|workspace| workspace.deleted),
+                        .is_none_or(|project| project.deleted),
                     _ => false,
                 };
                 let restored = host.commit(&record.id, RecordChange::Archived(false)).await;
                 if restored.is_ok() && remakes {
-                    self.mark(Part::Workspaces);
+                    self.mark(Part::Projects);
                 }
                 if restored.is_ok() {
                     // Its schedules wake it again, counting from now.
@@ -238,7 +238,7 @@ impl Shard {
         let from_host = named(self.host_shard().resolve_target(record).await.ok().as_ref().and_then(|from| from.device()));
         let asked = match &to {
             ConversationTarget::Device { device_id, .. } => device_id.to_string(),
-            ConversationTarget::Workspace { workspace_id } => format!("project {workspace_id}"),
+            ConversationTarget::Project { project_id } => format!("project {project_id}"),
             ConversationTarget::Cloud { .. } => "cloud".to_owned(),
         };
         let mut steps = MoveSteps::default();
@@ -325,7 +325,7 @@ impl Shard {
         // A move may make or bring back a project, and changes the count of
         // a project's saved messages it joins with its own; the pages of the
         // conversations that share the list it shows now read it again.
-        self.mark(Part::Workspaces);
+        self.mark(Part::Projects);
         if let Ok(sharers) = self.services().control.saved_sharers(record.id.clone()).await {
             for sharer in sharers.conversations {
                 self.mark(Part::Metadata(sharer));
@@ -389,23 +389,23 @@ impl Shard {
 
     /// Deletes the user's project `id` as one transition: every conversation in it
     /// is held as its archive holds it, released on its Hosts, and archived in the
-    /// transaction that deletes the workspace.
+    /// transaction that deletes the project.
     ///
     /// A conversation of it whose work runs refuses the deletion, as it refuses
     /// its archive, and nothing changes; so does one that moved in or was created
     /// meanwhile.
-    pub async fn delete_project(&self, id: &WorkspaceId) -> Result<(), ChangeRefusal> {
+    pub async fn delete_project(&self, id: &ProjectId) -> Result<(), ChangeRefusal> {
         let control = &self.services().control;
         let host = self.host_shard();
         let owned = control
-            .workspace(id.clone())
+            .project(id.clone())
             .await?
-            .is_some_and(|workspace| workspace.user == *self.user());
+            .is_some_and(|project| project.user == *self.user());
         if !owned {
-            return Err(ChangeRefusal::WorkspaceNotFound);
+            return Err(ChangeRefusal::ProjectNotFound);
         }
         let conversations = control
-            .workspace_conversations(self.user().clone(), id.clone())
+            .project_conversations(self.user().clone(), id.clone())
             .await?;
         let mut records = Vec::new();
         let mut released = Vec::new();
@@ -423,13 +423,13 @@ impl Shard {
             released.push((record.id.clone(), host.release_devices(record).await?));
         }
         let deleted = control
-            .delete_workspace(self.user().clone(), id.clone(), conversations.clone())
+            .delete_project(self.user().clone(), id.clone(), conversations.clone())
             .await?;
         drop(holds);
         match deleted {
-            WorkspaceDeletion::Deleted => {}
-            WorkspaceDeletion::Missing => return Err(ChangeRefusal::WorkspaceNotFound),
-            WorkspaceDeletion::Changed => return Err(ChangeRefusal::TurnInFlight),
+            ProjectDeletion::Deleted => {}
+            ProjectDeletion::Missing => return Err(ChangeRefusal::ProjectNotFound),
+            ProjectDeletion::Changed => return Err(ChangeRefusal::TurnInFlight),
         }
         for (conversation, devices) in &released {
             self.archived(conversation);
@@ -438,7 +438,7 @@ impl Shard {
             host.tell_release(conversation, devices, true);
         }
         self.mark(Part::ConversationOrder);
-        self.mark(Part::Workspaces);
+        self.mark(Part::Projects);
         Ok(())
     }
 

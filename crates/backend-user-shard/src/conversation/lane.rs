@@ -854,7 +854,7 @@ impl Shard {
                         self.mark(Part::Metadata(sharer));
                     }
                     if sharers.project {
-                        self.mark(Part::Workspaces);
+                        self.mark(Part::Projects);
                     }
                 }
                 Err(_) => self.mark(Part::Metadata(conversation.clone())),

@@ -14,7 +14,7 @@ import { slotSubagent } from '../fixtures/subagents'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import { galleryBrowser } from '../fixtures/live-browser'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
-import { createGalleryWorkspace } from '../fixtures/workspace'
+import { createGalleryProject } from '../fixtures/project'
 import GalleryWorkPanel from './GalleryWorkPanel.vue'
 
 /**
@@ -26,7 +26,7 @@ import GalleryWorkPanel from './GalleryWorkPanel.vue'
  * `/Users/alex/Projects/shop`.
  */
 const agentContext = useAgentContext()
-const workspace = createGalleryWorkspace()
+const project = createGalleryProject()
 /**
  * The branch checked out in the child's folder: Check Out Another Branch steps
  * through two branches and a detached HEAD, as the child's commands would.
@@ -37,15 +37,15 @@ function checkOutNext(): void {
   slotBranch.value = BRANCHES[(BRANCHES.indexOf(slotBranch.value) + 1) % BRANCHES.length]!
 }
 const agents = reactive([slotSubagent()])
-const files = galleryFiles(workspace, {
-  directories: () => agentDirectories(workspace.root, agents),
+const files = galleryFiles(project, {
+  directories: () => agentDirectories(project.root, agents),
   slotBranch: () => slotBranch.value,
 })
 const work = useGalleryWork('file', { files, browser: galleryBrowser([]) })
 useGalleryTranscripts(() => ({ blocks: [], subagents: [{ id: SLOT_NODE, blocks: slotBlocks() }] }))
 provideEditSelection(() => work.selectEdit)
 // A link in the child's messages opens the panel for the directory the child wrote it in.
-const conversationFiles = galleryConversationFiles(workspace.source, ({ path, line, root }) => {
+const conversationFiles = galleryConversationFiles(project.source, ({ path, line, root }) => {
   work.openIn({ intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
 }, ({ commit, root }) => {
   work.openIn({ intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
@@ -56,7 +56,7 @@ const conversationFiles = galleryConversationFiles(workspace.source, ({ path, li
 }, (root) => files.history(root), ({ root, branch }) => {
   work.openIn({ intent: 'branch', payload: { root, branch } })
 })
-provideMessageFiles(() => ({ ...conversationFiles, cwd: workspace.root }))
+provideMessageFiles(() => ({ ...conversationFiles, cwd: project.root }))
 
 const open = ref(true)
 const activeId = ref<string | null>(agents[0]!.id)

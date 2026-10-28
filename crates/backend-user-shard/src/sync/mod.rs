@@ -34,7 +34,7 @@ impl Shard {
     /// projects also tells each runner the directories of its Host's
     /// projects, whose worktrees it reports.
     pub fn mark(&self, part: Part) {
-        let projects = part == Part::Workspaces;
+        let projects = part == Part::Projects;
         self.services().sync.mark(self.user(), part);
         if projects {
             let shard = self.this();

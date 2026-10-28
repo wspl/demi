@@ -66,7 +66,7 @@ pub struct CliSite {
     pub run_dir: String,
     /// The CLI's configuration directory: the account's directory, where
     /// its sign-in is, or a sign-in's new directory; private to the
-    /// machine's user, outside every workspace.
+    /// machine's user, outside every project.
     pub config_dir: String,
     /// The name of the process's own directory under the configuration
     /// directory's `projects`, which holds its session and goes with it

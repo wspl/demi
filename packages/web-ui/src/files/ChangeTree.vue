@@ -31,7 +31,7 @@ import { t } from './locales/text'
  * - A deleted file's name is struck through, and a renamed one's tooltip names
  *   where it came from.
  *
- * The caption row names the workspace and, at its end, holds the control that
+ * The caption row names the tree's root and, at its end, holds the control that
  * lists the changes again when the host offers one; it turns while a list is on
  * its way. A list cut short says so under its last row.
  *
@@ -40,7 +40,7 @@ import { t } from './locales/text'
  */
 const props = defineProps<{
   files: readonly ChangeTreeFile[]
-  /** The workspace, named at the top. */
+  /** The tree's root, named at the top. */
   root: string
   /** What heads the tree in place of the root directory's name. */
   rootName?: string

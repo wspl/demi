@@ -71,10 +71,10 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  *
  * - A right-click offers what the source can do there: a file's path copies and
  *   the file downloads (`fileMenu`), and a directory, or the empty space for the
- *   workspace itself, takes files uploaded into it.
+ *   root itself, takes files uploaded into it.
  * - Files and folders dragged in from the desktop upload where they drop: into
  *   the directory under the pointer, the directory of a file under it, or the
- *   workspace over the empty space. That place lights while the drag is over it,
+ *   root over the empty space. That place lights while the drag is over it,
  *   and a closed directory the drag rests on opens.
  * - Names the directory already has wait on a question: Replace or Skip, and
  *   Merge once a folder meets a folder.
@@ -376,7 +376,7 @@ usePaneReady(() => listed(normalizePath(props.root)) && !awaitingRow.value)
 const rootFailure = computed(() => {
   const entry = rootListing.value?.showing?.entry
   const shown = failureShown(entry)
-  // The workspace's own directory missing is the Host's refusal, in its words.
+  // The root's own directory missing is the Host's refusal, in its words.
   return shown && entry?.answer === 'gone' && entry.goneReason ? { ...shown, message: entry.goneReason } : shown
 })
 const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))

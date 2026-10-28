@@ -490,7 +490,7 @@ const titleSheetOpen = ref(false)
  */
 const tabsIcon = computed(() => tabCountIcon(props.panelTabs))
 /** Where the title sheet shows the conversation's place, while it is open. */
-const workspaceTarget = ref<HTMLElement | null>(null)
+const placeTarget = ref<HTMLElement | null>(null)
 /** The primary Host's state on the title, while it is not ready to run. */
 const hostNotReady = computed(() => {
   const host = props.primaryHost
@@ -858,9 +858,9 @@ watch(
           Where the conversation runs, as the desktop's header shows it beside
           the title.
         -->
-        <div v-if="$slots.workspace" class="px-4 pb-3 pt-1">
+        <div v-if="$slots.place" class="px-4 pb-3 pt-1">
           <p class="pb-1 text-detail text-fg-subtle">{{ t('session.runsOn') }}</p>
-          <div ref="workspaceTarget" />
+          <div ref="placeTarget" />
         </div>
       </Sheet>
       <!--
@@ -869,8 +869,8 @@ watch(
         through it. The sheet shows it while open.
       -->
       <div class="hidden">
-        <Teleport :to="workspaceTarget ?? 'body'" :disabled="workspaceTarget === null">
-          <slot name="workspace" />
+        <Teleport :to="placeTarget ?? 'body'" :disabled="placeTarget === null">
+          <slot name="place" />
         </Teleport>
       </div>
       <RenameDialog
@@ -929,7 +929,7 @@ watch(
         class="col-span-2 row-start-2 flex min-w-0 items-center gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1"
       >
         <div class="min-w-0 flex-1">
-          <slot name="workspace" />
+          <slot name="place" />
         </div>
         <Dropdown v-if="share || searchable" :overlay-store="appOverlayStore">
           <template #trigger="{ isOpen }">

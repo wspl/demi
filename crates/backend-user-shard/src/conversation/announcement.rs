@@ -250,14 +250,14 @@ impl Shard {
             None => device.to_string(),
         };
         Ok(match target {
-            ExecutionTarget::Workspace {
-                workspace_id, path, ..
+            ExecutionTarget::Project {
+                project_id, path, ..
             } => {
-                let workspace = control
-                    .workspace(workspace_id.clone())
+                let project = control
+                    .project(project_id.clone())
                     .await?
-                    .map_or_else(|| workspace_id.to_string(), |workspace| workspace.name);
-                format!("workspace \"{workspace}\" — directory {path} on device {name}")
+                    .map_or_else(|| project_id.to_string(), |project| project.name);
+                format!("project \"{project}\" — directory {path} on device {name}")
             }
             ExecutionTarget::Cloud { .. } | ExecutionTarget::Device { .. } => {
                 format!("the machine {name} (host {device})")
@@ -356,10 +356,10 @@ fn switch_lines(
         ));
     }
     if let (
-        ExecutionTarget::Workspace {
+        ExecutionTarget::Project {
             device_id: before, ..
         },
-        ExecutionTarget::Workspace {
+        ExecutionTarget::Project {
             device_id: after, ..
         },
     ) = (&switch.from, &switch.to)

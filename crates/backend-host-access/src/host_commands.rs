@@ -807,12 +807,12 @@ async fn current(
                 .map_err(|error| RpcError::Failed(error.to_string()))?
                 .map_or_else(|| device.to_string(), |device| device.name);
             let project = match &target {
-                ExecutionTarget::Workspace { workspace_id, .. } => Some(
+                ExecutionTarget::Project { project_id, .. } => Some(
                     control
-                        .workspace(workspace_id.clone())
+                        .project(project_id.clone())
                         .await
                         .map_err(|error| RpcError::Failed(error.to_string()))?
-                        .map_or_else(|| workspace_id.to_string(), |workspace| workspace.name),
+                        .map_or_else(|| project_id.to_string(), |project| project.name),
                 ),
                 ExecutionTarget::Cloud { .. } | ExecutionTarget::Device { .. } => None,
             };

@@ -65,7 +65,7 @@ function galleryViews(): Record<string, readonly GalleryViewOption[]> {
       { value: 'account', label: t('views.dialogs.account') },
       { value: 'providers', label: t('views.dialogs.providers') },
       { value: 'devices', label: t('views.dialogs.devices') },
-      { value: 'workspace', label: t('views.dialogs.workspace') },
+      { value: 'project', label: t('views.dialogs.project') },
       { value: 'cloud', label: t('views.dialogs.cloud') },
       { value: 'skills', label: t('views.dialogs.skills') },
       { value: 'search', label: t('views.dialogs.search') },

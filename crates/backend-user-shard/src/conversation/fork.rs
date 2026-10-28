@@ -284,7 +284,7 @@ impl Shard {
     /// with the project its directory made, if it `made` one.
     fn published(&self, record: &ConversationRecord, made: bool) {
         if made {
-            self.mark(Part::Workspaces);
+            self.mark(Part::Projects);
         }
         self.mark(Part::Conversation(record.id.clone()));
         self.mark(Part::ConversationOrder);

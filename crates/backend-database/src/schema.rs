@@ -16,7 +16,7 @@
 
 use std::{collections::HashMap, path::Path};
 
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use sha2::{Digest, Sha256};
 
 use demi_agent_store::CheckpointState;
@@ -140,7 +140,8 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.5586's, before a turn call missed the cache only when it read less
 ///   of it than its agent's previous call.
 /// - 0.1.5614's, before the server kept whether its users share the
-///   master's providers.
+///   master's providers, projects said project and an account held
+///   workspaces.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -343,7 +344,7 @@ pub(crate) const CONTROL: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/control-0.1.5614.sql"),
-            migration: Migration::Sql(CONTROL_FROM_0_1_5614),
+            migration: Migration::Code(control_from_0_1_5614),
         },
     ],
 };
@@ -696,13 +697,12 @@ fn control_from_0_1_5586(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rus
     super::usage::judge_misses(transaction).map_err(storage)
 }
 
-/// From 0.1.5614's control schema to the current one: the server settings
-/// keep the instance mode, which a server that never chose one has as
-/// isolated, and an upgrade channel no one chose is null in a row that holds
-/// a mode.
+/// The server settings' part of [`control_from_0_1_5614`]: they keep the
+/// instance mode, which a server that never chose one has as isolated, and an
+/// upgrade channel no one chose is null in a row that holds a mode.
 ///
 /// The table is rebuilt, since SQLite cannot make a column nullable in place.
-const CONTROL_FROM_0_1_5614: &str = "
+const CONTROL_SERVER_SETTINGS_FROM_0_1_5614: &str = "
 CREATE TABLE server_settings_next (
   id              INTEGER PRIMARY KEY CHECK (id = 1),
   upgrade_channel TEXT CHECK (upgrade_channel IN ('beta', 'canary')),
@@ -713,6 +713,139 @@ INSERT INTO server_settings_next (id, upgrade_channel)
 DROP TABLE server_settings;
 ALTER TABLE server_settings_next RENAME TO server_settings;
 ";
+
+/// From 0.1.5614's control schema to the current one: the server settings'
+/// part ([`CONTROL_SERVER_SETTINGS_FROM_0_1_5614`]), then a project's tables,
+/// columns, indexes and values say project where they said workspace, and an
+/// account holds workspaces.
+///
+/// - The tables and columns are renamed, which keeps their rows, and their
+///   indexes made again under the new names.
+/// - Each user gets one workspace, with the name an account starts with, and
+///   every conversation and project of theirs is in it.
+/// - A repository's worktrees are kept by the device and directory of their
+///   project, since one directory may now be a project in several
+///   workspaces.
+/// - A table's text then becomes the current schema's, comments included: a
+///   change of the text alone, which the new CHECK of `target_kind`, the new
+///   columns' constraints and the conversations' key of their project need,
+///   as SQLite's procedure for a change of constraints gives it
+///   (lang_altertable.html § 7). The values the new CHECK, the stored
+///   switches and the Forks' targets name are rewritten next. The integrity
+///   check, which tests CHECK and NOT NULL constraints, and the foreign key
+///   check prove none is left.
+fn control_from_0_1_5614(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch(CONTROL_SERVER_SETTINGS_FROM_0_1_5614)?;
+    transaction.execute_batch(
+        "
+ALTER TABLE workspaces RENAME TO projects;
+ALTER TABLE saved_messages RENAME COLUMN workspace_id TO project_id;
+ALTER TABLE conversations RENAME COLUMN target_workspace_id TO target_project_id;
+DROP INDEX workspaces_order;
+DROP INDEX workspaces_directory;
+DROP INDEX conversations_workspace;
+DROP INDEX saved_messages_of_workspace;
+",
+    )?;
+    for table in ["workspaces", "directory_worktrees"] {
+        transaction.execute_batch(&format!("{};", current_table(CONTROL_V1, table)))?;
+    }
+    transaction.execute_batch(
+        "
+CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
+CREATE INDEX directory_worktrees_path ON directory_worktrees (device_id, worktree_path);
+INSERT INTO workspaces (id, user_id, name, icon, color, sort_order, created_at)
+  SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4'
+           || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', 1 + abs(random()) % 4, 1)
+           || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))),
+         id, NULL, 'user', 'blue', 0, CAST(unixepoch('subsec') * 1000 AS INTEGER)
+  FROM users;
+ALTER TABLE projects ADD COLUMN workspace_id TEXT;
+UPDATE projects SET workspace_id = (SELECT id FROM workspaces WHERE workspaces.user_id = projects.user_id);
+ALTER TABLE conversations ADD COLUMN workspace_id TEXT;
+UPDATE conversations SET workspace_id = (SELECT id FROM workspaces WHERE workspaces.user_id = conversations.user_id);
+-- A release before projects were kept when deleted removed a project and
+-- left its archived conversations naming it. Such a conversation names the
+-- project of its directory in its workspace where there is one, or else that
+-- project again, deleted, which its restore brings back; without its device
+-- it runs in its directory on the device, as one whose device went does.
+UPDATE conversations SET target_project_id = (
+    SELECT p.id FROM projects p
+    WHERE p.workspace_id = conversations.workspace_id AND p.device_id = conversations.target_device_id
+      AND p.path = conversations.target_path)
+  WHERE target_project_id IS NOT NULL AND target_project_id NOT IN (SELECT id FROM projects)
+    AND EXISTS (SELECT 1 FROM projects p
+      WHERE p.workspace_id = conversations.workspace_id AND p.device_id = conversations.target_device_id
+        AND p.path = conversations.target_path);
+INSERT INTO projects (id, user_id, workspace_id, device_id, path, sort_order, created_at, deleted_at)
+  SELECT target_project_id, user_id, workspace_id, target_device_id, target_path, 0,
+         min(created_at), CAST(unixepoch('subsec') * 1000 AS INTEGER)
+  FROM conversations
+  WHERE target_project_id IS NOT NULL AND target_project_id NOT IN (SELECT id FROM projects)
+    AND target_device_id IN (SELECT id FROM devices)
+  GROUP BY target_project_id;
+UPDATE conversations SET target_kind = 'device', target_project_id = NULL,
+    target_worktree_name = NULL, target_worktree_path = NULL
+  WHERE target_project_id IS NOT NULL AND target_project_id NOT IN (SELECT id FROM projects);
+INSERT INTO directory_worktrees (device_id, path, name, worktree_path)
+  SELECT p.device_id, p.path, w.name, w.path FROM workspace_worktrees w JOIN projects p ON p.id = w.workspace_id
+  WHERE true ON CONFLICT DO NOTHING;
+DROP TABLE workspace_worktrees;
+CREATE INDEX projects_order ON projects (user_id, sort_order);
+CREATE UNIQUE INDEX projects_directory ON projects (workspace_id, device_id, path);
+CREATE UNIQUE INDEX projects_of_workspace ON projects (id, workspace_id);
+CREATE INDEX conversations_project ON conversations (target_project_id);
+CREATE INDEX conversations_of_workspace ON conversations (workspace_id);
+CREATE INDEX saved_messages_of_project ON saved_messages (project_id, saved_at);
+",
+    )?;
+    let version: i64 = transaction.pragma_query_value(None, "schema_version", |row| row.get(0))?;
+    transaction.pragma_update(None, "writable_schema", true)?;
+    for table in ["projects", "conversations", "saved_messages"] {
+        transaction.execute(
+            "UPDATE sqlite_schema SET sql = ?1 WHERE type = 'table' AND name = ?2",
+            [current_table(CONTROL_V1, table), table],
+        )?;
+    }
+    transaction.pragma_update(None, "schema_version", version + 1)?;
+    transaction.pragma_update(None, "writable_schema", false)?;
+    transaction.execute_batch(
+        "
+UPDATE conversations SET target_kind = 'project' WHERE target_kind = 'workspace';
+UPDATE conversations SET last_switch = json_set(json_remove(last_switch, '$.from.workspaceId'),
+    '$.from.kind', 'project', '$.from.projectId', json_extract(last_switch, '$.from.workspaceId'))
+  WHERE json_extract(last_switch, '$.from.kind') = 'workspace';
+UPDATE conversations SET last_switch = json_set(json_remove(last_switch, '$.to.workspaceId'),
+    '$.to.kind', 'project', '$.to.projectId', json_extract(last_switch, '$.to.workspaceId'))
+  WHERE json_extract(last_switch, '$.to.kind') = 'workspace';
+UPDATE conversation_fork_operations SET metadata = json_set(json_remove(metadata, '$.target.workspaceId'),
+    '$.target.kind', 'project', '$.target.projectId', json_extract(metadata, '$.target.workspaceId'))
+  WHERE json_extract(metadata, '$.target.kind') = 'workspace';
+",
+    )?;
+    let orphans: i64 = transaction.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| row.get(0))?;
+    if orphans != 0 {
+        return Err(corrupt_text(&format!("{orphans} rows name a workspace or project they are not in")));
+    }
+    let problems: Vec<String> = transaction
+        .prepare("PRAGMA integrity_check")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    if problems != ["ok"] {
+        return Err(corrupt_text(&format!("the projects and workspaces fail their check: {problems:?}")));
+    }
+    Ok(())
+}
+
+/// The text SQLite keeps of `table` in the schema `sql`: from its `CREATE
+/// TABLE` to the end of its `) STRICT`.
+fn current_table<'a>(sql: &'a str, table: &str) -> &'a str {
+    let start = sql
+        .find(&format!("CREATE TABLE {table} ("))
+        .expect("the schema makes the table");
+    let end = start + sql[start..].find(") STRICT;").expect("the table ends") + ") STRICT".len();
+    &sql[start..end]
+}
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
 /// the Mac's set, since all of them are written in its notation; the PC's set
@@ -1367,10 +1500,7 @@ DELETE FROM permission_requests WHERE kind = 'permission'
         let id = demi_web_api_protocol::ids::ConversationId::try_from(id.as_str()).map_err(corrupt)?;
         let owner = demi_web_api_protocol::ids::UserId::try_from(owner).map_err(corrupt)?;
         let cloud = crate::devices::cloud_device_before_0_1_25_in(transaction, &owner, now).map_err(storage)?;
-        let selected = crate::selection::select_directory(transaction, &id, &cloud, &path, now)
-            .map_err(storage)?
-            .map_err(|reason| corrupt_text(&format!("a Cloud directory is unselectable: {reason:?}")))?;
-        crate::devices::set_selection(transaction, &id, &selected.selection).map_err(storage)?;
+        select_cloud_directory_of_0_1_22(transaction, &id, &owner, &cloud.id, &path, now)?;
     }
     let problems: Vec<String> = transaction
         .prepare("PRAGMA integrity_check")?
@@ -1379,6 +1509,71 @@ DELETE FROM permission_requests WHERE kind = 'permission'
     if problems != ["ok"] {
         return Err(corrupt_text(&format!("the conversations' targets fail their check: {problems:?}")));
     }
+    Ok(())
+}
+
+/// The selection of the Cloud directory `path` for `owner`'s conversation
+/// `id`, as the rule of 0.1.22 made it and its columns kept it, the Cloud's
+/// home being `/home/demi` until its runner reported one: the conversation's
+/// directory of its own or another session's, the home, or else the user's
+/// workspace of the directory, made when there was none.
+fn select_cloud_directory_of_0_1_22(
+    transaction: &Transaction<'_>,
+    id: &demi_web_api_protocol::ids::ConversationId,
+    owner: &demi_web_api_protocol::ids::UserId,
+    cloud: &demi_web_api_protocol::ids::DeviceId,
+    path: &str,
+    now: Timestamp,
+) -> rusqlite::Result<()> {
+    let home = crate::selection::CLOUD_HOME;
+    let path = match path.trim_end_matches('/') {
+        "" => "/",
+        trimmed => trimmed,
+    };
+    let sessions = format!("{home}/sessions");
+    if path.rsplit_once('/').map(|(parent, _)| parent) == Some(sessions.as_str()) {
+        let own = format!("{sessions}/{}", id.as_str());
+        transaction.execute(
+            "UPDATE conversations SET target_kind = 'cloud', target_device_id = NULL, target_path = ?2,
+               target_workspace_id = NULL WHERE id = ?1",
+            params![id.as_str(), (path != own).then_some(path)],
+        )?;
+        return Ok(());
+    }
+    if path == home {
+        transaction.execute(
+            "UPDATE conversations SET target_kind = 'home', target_device_id = ?2, target_path = NULL,
+               target_workspace_id = NULL WHERE id = ?1",
+            params![id.as_str(), cloud.as_str()],
+        )?;
+        return Ok(());
+    }
+    let existing: Option<String> = transaction
+        .query_row(
+            "SELECT id FROM workspaces WHERE user_id = ?1 AND device_id = ?2 AND path = ?3",
+            params![owner.as_str(), cloud.as_str(), path],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let workspace = match existing {
+        Some(workspace) => workspace,
+        None => {
+            let workspace = uuid::Uuid::new_v4().to_string();
+            let name = path.rsplit('/').find(|part| !part.is_empty()).unwrap_or(path);
+            transaction.execute(
+                "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5,
+                   (SELECT COALESCE(MIN(sort_order), 1) - 1 FROM workspaces WHERE user_id = ?2), ?6)",
+                params![workspace, owner.as_str(), cloud.as_str(), path, name, now.as_millisecond()],
+            )?;
+            workspace
+        }
+    };
+    transaction.execute(
+        "UPDATE conversations SET target_kind = 'workspace', target_device_id = ?2, target_path = ?3,
+           target_workspace_id = ?4 WHERE id = ?1",
+        params![id.as_str(), cloud.as_str(), path, workspace],
+    )?;
     Ok(())
 }
 
@@ -1411,7 +1606,7 @@ ALTER TABLE workspaces ADD COLUMN last_workflow_id TEXT
     for (id, text) in records {
         let earlier: fork_format_2::ForkMetadata =
             json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
-        let metadata = crate::forks::ForkMetadata {
+        let metadata = fork_format_3::ForkMetadata {
             title: earlier.title,
             target: earlier.target,
             model: earlier.model,
@@ -1430,7 +1625,6 @@ ALTER TABLE workspaces ADD COLUMN last_workflow_id TEXT
 /// stored it.
 mod fork_format_2 {
     use demi_shared_types::{ModelSelection, Timestamp};
-    use demi_web_api_protocol::conversations::ConversationTarget;
     use serde::{Deserialize, Serialize};
 
     use crate::conversation_index::AttachedHostRecord;
@@ -1441,8 +1635,10 @@ mod fork_format_2 {
         #[serde(deserialize_with = "Option::deserialize")]
         #[garde(length(min = 1))]
         pub title: Option<String>,
-        #[garde(dive)]
-        pub target: ConversationTarget,
+        /// The target as the release that stored it wrote it, which a later
+        /// migration rewrites (`control_from_0_1_5614`).
+        #[garde(skip)]
+        pub target: serde_json::Value,
         #[serde(deserialize_with = "Option::deserialize")]
         #[garde(dive)]
         pub model: Option<ModelSelection>,
@@ -1451,6 +1647,27 @@ mod fork_format_2 {
         #[garde(dive)]
         pub attached_hosts: Vec<AttachedHostRecord>,
         #[garde(skip)]
+        pub context_version: u64,
+    }
+}
+
+/// Fork metadata format 3, with the destination's workflow, as the control
+/// schema from [`control_from_0_1_22_dev_20261015t105826z`] stored it.
+mod fork_format_3 {
+    use demi_shared_types::{ModelSelection, Timestamp, WorkflowChoice};
+    use serde::Serialize;
+
+    use crate::conversation_index::AttachedHostRecord;
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub(super) struct ForkMetadata {
+        pub title: Option<String>,
+        pub target: serde_json::Value,
+        pub model: Option<ModelSelection>,
+        pub workflow: WorkflowChoice,
+        pub created_at: Timestamp,
+        pub attached_hosts: Vec<AttachedHostRecord>,
         pub context_version: u64,
     }
 }
@@ -1683,7 +1900,6 @@ UPDATE conversations SET last_switch_revision = 0 WHERE last_switch IS NOT NULL;
 /// schema before [`control_from_saved_edits`] stored it.
 mod fork_format_1 {
     use demi_shared_types::{ModelSelection, Timestamp};
-    use demi_web_api_protocol::conversations::ConversationTarget;
     use demi_web_api_protocol::ids::DeviceId;
     use serde::Deserialize;
 
@@ -1692,8 +1908,9 @@ mod fork_format_1 {
     pub(super) struct ForkMetadata {
         #[garde(length(min = 1))]
         pub title: String,
-        #[garde(dive)]
-        pub target: ConversationTarget,
+        /// The target as the release that stored it wrote it.
+        #[garde(skip)]
+        pub target: serde_json::Value,
         #[serde(deserialize_with = "Option::deserialize")]
         #[garde(dive)]
         pub model: Option<ModelSelection>,
@@ -4899,7 +5116,7 @@ CREATE TABLE subagent_profiles (
   UNIQUE (user_id, name)
 ) STRICT;
 
--- Devices and workspaces. The token hash is absent until the backend issues
+-- Devices and projects. The token hash is absent until the backend issues
 -- a token; one managed device per user.
 CREATE TABLE devices (
   id           TEXT PRIMARY KEY,
@@ -4949,10 +5166,26 @@ CREATE TABLE devices (
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_machine ON devices (user_id, machine) WHERE kind = 'managed';
 
--- A project: a directory on a device, named by its last component. A
--- deleted one keeps its row, with what it kept, until its directory is a
--- project again.
+-- A workspace: a part of the user's account with conversations and
+-- projects of its own, which the sidebar shows one at a time. Its name is
+-- null while it keeps the one an account starts with, which each page says
+-- in its language. Its tile is `icon` of the workspace icons on `color` of
+-- the workspace colors, and the user orders them. A user has at least one.
 CREATE TABLE workspaces (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  name       TEXT CHECK (name <> ''),
+  icon       TEXT NOT NULL,
+  color      TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+) STRICT;
+CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
+
+-- A project: a directory on a device in one of the user's workspaces,
+-- named by its last component. A deleted one keeps its row, with what it
+-- kept, until its directory is a project of its workspace again.
+CREATE TABLE projects (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users (id),
   device_id  TEXT NOT NULL REFERENCES devices (id),
@@ -4972,21 +5205,26 @@ CREATE TABLE workspaces (
   -- the conversation's own, or the project's, which all of them share.
   saved_scope TEXT NOT NULL DEFAULT 'conversation' CHECK (saved_scope IN ('conversation', 'project')),
   -- When the user deleted it; null for a project in the sidebar.
-  deleted_at INTEGER
+  deleted_at INTEGER,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id)
 ) STRICT;
-CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
-CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path);
+CREATE INDEX projects_order ON projects (user_id, sort_order);
+CREATE UNIQUE INDEX projects_directory ON projects (workspace_id, device_id, path);
+-- The key a conversation names its project and workspace by together.
+CREATE UNIQUE INDEX projects_of_workspace ON projects (id, workspace_id);
 
--- The linked worktrees of each project's repository, by git's name and their
--- directory, as the project's Host last reported them
--- (`crates/backend-database/src/selection.rs` § Worktrees).
-CREATE TABLE workspace_worktrees (
-  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
-  name         TEXT NOT NULL,
-  path         TEXT NOT NULL,
-  PRIMARY KEY (workspace_id, name)
+-- The linked worktrees of the repository at a directory of a device, by
+-- git's name and their directory, as the device's Host last reported them
+-- for a project there; every project of the directory, in any workspace,
+-- reads them (`crates/backend-database/src/selection.rs` § Worktrees).
+CREATE TABLE directory_worktrees (
+  device_id     TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  path          TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  worktree_path TEXT NOT NULL,
+  PRIMARY KEY (device_id, path, name)
 ) STRICT;
-CREATE INDEX workspace_worktrees_path ON workspace_worktrees (path);
+CREATE INDEX directory_worktrees_path ON directory_worktrees (device_id, worktree_path);
 
 -- Each user's port forwards (port-forwarding.md): a name unique among the
 -- user's, the Listen On device and its port there, the Connect To device,
@@ -5186,7 +5424,7 @@ CREATE INDEX schedule_calls_by_delivery ON schedule_calls (schedule_id, delivery
 -- The conversation index. The web app chooses a conversation's id and its
 -- case is kept, but no two ids differ only in case: each names a database
 -- file, and a file system may ignore case. The target is Cloud (optionally a
--- directory on it), a device directory or a workspace, checked per kind. The
+-- directory on it), a device directory or a project, checked per kind. The
 -- target columns are not foreign keys: a conversation that targets a device
 -- directly does not block revoking that device.
 CREATE TABLE conversations (
@@ -5203,14 +5441,14 @@ CREATE TABLE conversations (
   read_revision       INTEGER NOT NULL,
   -- target: where it runs (sessions-and-targets.md § Resolve a target): the
   -- Cloud's directory of a conversation, its own without a path; a Host's
-  -- home, by its device; a workspace, with the device and directory it
+  -- home, by its device; a project, with the device and directory it
   -- names; or a device's directory as a release before projects by
   -- directory kept it, until that device's runner first reports its home,
   -- and of a conversation whose device was revoked.
-  target_kind         TEXT NOT NULL CHECK (target_kind IN ('cloud', 'home', 'workspace', 'device')),
+  target_kind         TEXT NOT NULL CHECK (target_kind IN ('cloud', 'home', 'project', 'device')),
   target_device_id    TEXT,
   target_path         TEXT,
-  target_workspace_id TEXT,
+  target_project_id   TEXT,
   -- last_switch: the latest target switch, TargetSwitch as JSON; with
   -- last_switch_revision, the execution-context revision it made, both null
   -- before the first. A CHECK would tie them, but SQLite tests one an added
@@ -5236,7 +5474,7 @@ CREATE TABLE conversations (
   target_worktree_name TEXT,
   target_worktree_path TEXT
     CHECK ((target_worktree_name IS NULL) = (target_worktree_path IS NULL)
-      AND (target_worktree_path IS NULL OR target_kind = 'workspace')),
+      AND (target_worktree_path IS NULL OR target_kind = 'project')),
   -- Whether its workflow is the worktree's file rather than the project's.
   workflow_worktree INTEGER NOT NULL DEFAULT 0
     CHECK (workflow_worktree IN (0, 1) AND (workflow_worktree = 0 OR workflow_kind = 'workflow')),
@@ -5244,19 +5482,24 @@ CREATE TABLE conversations (
   -- found that no browser takes them: shown, dismissed for good, or null
   -- (`crates/backend-database/src/push.rs` § The notifications card).
   notifications_card TEXT CHECK (notifications_card IN ('shown', 'dismissed')),
+  -- The workspace it is in: its project's, when it is in one.
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   CHECK (
     (target_kind = 'cloud'
-      AND target_device_id IS NULL AND target_workspace_id IS NULL)
+      AND target_device_id IS NULL AND target_project_id IS NULL)
     OR (target_kind = 'home'
-      AND target_device_id IS NOT NULL AND target_path IS NULL AND target_workspace_id IS NULL)
+      AND target_device_id IS NOT NULL AND target_path IS NULL AND target_project_id IS NULL)
     OR (target_kind = 'device'
-      AND target_device_id IS NOT NULL AND target_path IS NOT NULL AND target_workspace_id IS NULL)
-    OR (target_kind = 'workspace'
-      AND target_workspace_id IS NOT NULL AND target_device_id IS NOT NULL AND target_path IS NOT NULL)
-  )
+      AND target_device_id IS NOT NULL AND target_path IS NOT NULL AND target_project_id IS NULL)
+    OR (target_kind = 'project'
+      AND target_project_id IS NOT NULL AND target_device_id IS NOT NULL AND target_path IS NOT NULL)
+  ),
+  -- A project's move to another workspace takes its conversations along.
+  FOREIGN KEY (target_project_id, workspace_id) REFERENCES projects (id, workspace_id) ON UPDATE CASCADE
 ) STRICT;
 CREATE INDEX conversations_sidebar ON conversations (user_id, archived, pinned, sort_order);
-CREATE INDEX conversations_workspace ON conversations (target_workspace_id);
+CREATE INDEX conversations_project ON conversations (target_project_id);
+CREATE INDEX conversations_of_workspace ON conversations (workspace_id);
 
 -- Each job of a command that runs, with its device, whose runner's hello
 -- names the job, and its conversation, whose tree takes the command up
@@ -5326,13 +5569,13 @@ CREATE TABLE conversation_drafts (
 CREATE TABLE saved_messages (
   id              TEXT PRIMARY KEY,
   conversation_id TEXT COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  workspace_id    TEXT REFERENCES workspaces (id) ON DELETE CASCADE,
+  project_id      TEXT REFERENCES projects (id) ON DELETE CASCADE,
   saved_at        INTEGER NOT NULL,
   document        TEXT NOT NULL,
-  CHECK ((conversation_id IS NULL) != (workspace_id IS NULL))
+  CHECK ((conversation_id IS NULL) != (project_id IS NULL))
 ) STRICT;
 CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
-CREATE INDEX saved_messages_of_workspace ON saved_messages (workspace_id, saved_at);
+CREATE INDEX saved_messages_of_project ON saved_messages (project_id, saved_at);
 
 -- A message saved for later that a send took, with the turn the send became,
 -- kept a day so the same send, or a save of it, sent again is known.
