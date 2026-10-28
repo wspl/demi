@@ -15,6 +15,8 @@
     "updateTimeZoneLanguage": "无法更新时区和语言",
     "readSync": "无法读取同步通道的消息",
     "keepOffline": "无法保存离线副本",
-    "readOffline": "无法读取离线副本"
+    "readOffline": "无法读取离线副本",
+    "createWorkspace": "无法创建工作空间",
+    "moveToWorkspace": "无法移到该工作空间"
   }
 }

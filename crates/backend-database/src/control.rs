@@ -142,6 +142,7 @@ impl ControlService {
                     now.as_millisecond()
                 ],
             )?;
+            super::workspaces::insert_first(&transaction, &id, now)?;
             transaction.commit()?;
             Ok(Some(UserDto {
                 id,
@@ -218,7 +219,8 @@ impl ControlService {
     ) -> Result<Option<UserDto>, StorageError> {
         let id = UserId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, now| {
-            let created = connection.execute(
+            let transaction = connection.transaction()?;
+            let created = transaction.execute(
                 "INSERT INTO users (id, email, nickname, password_hash, role, created_at, disabled, chooses_password)
                  VALUES (?1, ?2, '', ?3, ?4, ?5, 0, 1) ON CONFLICT (email) DO NOTHING",
                 params![
@@ -229,6 +231,10 @@ impl ControlService {
                     now.as_millisecond()
                 ],
             )?;
+            if created > 0 {
+                super::workspaces::insert_first(&transaction, &id, now)?;
+            }
+            transaction.commit()?;
             Ok((created > 0).then(|| UserDto {
                 id,
                 email,

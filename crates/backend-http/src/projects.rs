@@ -47,7 +47,7 @@ pub(super) async fn create(
     JsonBody(request): JsonBody<CreateProject>,
 ) -> Result<(StatusCode, Json<ProjectAnswer>), ApiError> {
     let project = match request {
-        CreateProject::Device { device_id, path } => {
+        CreateProject::Device { workspace_id, device_id, path } => {
             // The directory as its Host names it, so two spellings of one
             // directory are one project (`crates/backend-database/src/selection.rs`).
             let resolving = device_id.clone();
@@ -62,7 +62,7 @@ pub(super) async fn create(
             match state
             .services
             .control
-            .create_project(new_project_id(), user.id.clone(), device_id, path)
+            .create_project(new_project_id(), user.id.clone(), workspace_id, device_id, path)
             .await?
         {
             ProjectCreation::Created(project) => project,
@@ -88,15 +88,16 @@ pub(super) async fn create(
                     "No such device",
                 ));
             }
+            ProjectCreation::WorkspaceNotFound => return Err(workspace_not_found()),
         }
         }
-        CreateProject::Cloud { name } => {
+        CreateProject::Cloud { workspace_id, name } => {
             let name = name.into_string();
             let shown = name.clone();
             match state
                 .shards
                 .of(&user.id)
-                .call(move |shard, _| async move { shard.create_cloud_project(name).await })
+                .call(move |shard, _| async move { shard.create_cloud_project(workspace_id, name).await })
                 .await??
             {
                 CloudProject::Made(project) => project,
@@ -115,6 +116,7 @@ pub(super) async fn create(
                         "A project’s name can’t contain “/” or “\\”, or be “.” or “..”.",
                     ));
                 }
+                CloudProject::WorkspaceNotFound => return Err(workspace_not_found()),
             }
         }
     };
@@ -225,4 +227,9 @@ fn not_found() -> ApiError {
         ErrorCode::ProjectNotFound,
         "No such project",
     )
+}
+
+/// The refusal of a workspace the user does not have.
+pub(super) fn workspace_not_found() -> ApiError {
+    ApiError::new(StatusCode::NOT_FOUND, ErrorCode::WorkspaceNotFound, "No such workspace")
 }

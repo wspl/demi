@@ -121,7 +121,7 @@ pub fn web() -> Vec<Root> {
         panel,
         passkeys,
         permissions,
-        plugins, providers, push, saved, schedules, search, server_upgrade, sessions, settings, shares, side_questions, sidebar, state, subagents, usage, users, workflows, projects,
+        plugins, providers, push, saved, schedules, search, server_upgrade, sessions, settings, shares, side_questions, sidebar, state, subagents, usage, users, workflows, projects, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -274,6 +274,12 @@ pub fn web() -> Vec<Root> {
         sends::<projects::ChangeProject>(),
         sends::<projects::SavedScopeSwitch>(),
         receives::<projects::ProjectAnswer>(),
+        receives::<workspaces::Workspaces>(),
+        sends::<workspaces::CreateWorkspace>(),
+        sends::<workspaces::ChangeWorkspace>(),
+        sends::<workspaces::WorkspaceOrder>(),
+        sends::<workspaces::WorkspaceMove>(),
+        receives::<workspaces::WorkspaceAnswer>(),
         sends::<sidebar::SidebarReorder>(),
         sends::<panel::PanelChanges>(),
         receives::<panel::PanelAnswer>(),

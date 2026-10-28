@@ -92,6 +92,7 @@ mod update;
 mod usage;
 mod users;
 mod projects;
+mod workspaces;
 
 use std::io;
 use std::net::SocketAddr;
@@ -599,6 +600,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(projects::change).delete(projects::delete),
         )
         .route("/projects/{id}/saved-scope", put(projects::switch_saved_scope))
+        .route("/workspaces", get(workspaces::list).post(workspaces::create))
+        .route("/workspaces/order", put(workspaces::order))
+        .route("/workspaces/{id}", patch(workspaces::change).delete(workspaces::delete))
+        .route("/workspaces/{id}/moves", post(workspaces::moves))
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
         .route("/devices", get(devices::list))

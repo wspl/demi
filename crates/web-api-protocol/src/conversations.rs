@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
 use crate::error::ErrorCode;
-use crate::ids::{ConversationId, DeviceId, ProviderId, ProjectId};
+use crate::ids::{ConversationId, DeviceId, ProjectId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
 use crate::drafts::ConversationDraft;
 use crate::hosts::ConversationHosts;
@@ -72,6 +72,10 @@ pub enum ConversationTarget {
 pub struct CreateConversation {
     #[garde(skip)]
     pub id: ConversationId,
+    /// The workspace it is in, which its target's project, if it names one,
+    /// is in too.
+    #[garde(skip)]
+    pub workspace_id: WorkspaceId,
     /// Its title, as a rename gives it.
     #[serde(
         default,
@@ -182,6 +186,8 @@ pub struct CreatedConversation {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSummary {
     pub id: ConversationId,
+    /// The workspace it is in.
+    pub workspace_id: WorkspaceId,
     /// Its title; null while it is the placeholder, which holds no words
     /// and which the page shows as New conversation in the reader's
     /// language.

@@ -20,10 +20,13 @@ pub const RESULTS_MAX: usize = 50;
 /// length of its own.
 pub const LINE_MAX: usize = 160;
 
-/// `?q=`: what the user typed.
+/// `?q=`: what the user typed; with `&workspace=`, of that workspace's
+/// conversations alone.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchQuery {
     pub q: SearchText,
+    #[serde(default)]
+    pub workspace: Option<crate::ids::WorkspaceId>,
 }
 
 /// A query as the backend reads it: trimmed, with at least one

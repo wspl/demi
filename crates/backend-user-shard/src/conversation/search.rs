@@ -46,6 +46,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::search::{HistoryQuery, IndexedConversation, SearchKind, TranscriptChange, match_line, title_ranges};
 use demi_backend_database::tree;
+use demi_web_api_protocol::ids::WorkspaceId;
 use demi_backend_page_sync::{Part, Registration};
 use demi_shared_gates::KeyedSerialGate;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
@@ -390,6 +391,7 @@ pub async fn search(
     services: &Services,
     user: &UserId,
     query: &SearchText,
+    workspace: Option<&WorkspaceId>,
 ) -> Result<Vec<SearchResult>, StorageError> {
     let words = query.words();
     // The index holds each conversation under its record's spelling.
@@ -397,6 +399,7 @@ pub async fn search(
     for archived in [false, true] {
         records.extend(services.control.conversations(user.clone(), archived).await?);
     }
+    records.retain(|record| workspace.is_none_or(|workspace| record.workspace == *workspace));
     records.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then_with(|| a.id.cmp(&b.id)));
     let ranked = records.iter().map(|record| record.id.clone()).collect();
     let mut records: HashMap<ConversationId, ConversationRecord> =

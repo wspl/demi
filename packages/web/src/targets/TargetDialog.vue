@@ -10,6 +10,7 @@ import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { fileSourceFor, placesFor } from '../devices/files'
+import { useWorkspaces } from '../state/workspaces'
 
 const resources = useResources()
 const product = useProduct()
@@ -25,6 +26,7 @@ function close() {
 }
 
 /** Create: the dialog's button works until the project is made; done, the dialog closes if it is still open. */
+const workspaces = useWorkspaces()
 async function create(draft: ProjectDraft): Promise<void> {
   message.value = null
   try {
@@ -32,10 +34,12 @@ async function create(draft: ProjectDraft): Promise<void> {
       draft.kind === 'cloud'
         ? {
             kind: 'cloud',
+            workspaceId: workspaces.current ?? '',
             name: draft.name,
           }
         : {
             kind: 'device',
+            workspaceId: workspaces.current ?? '',
             deviceId: draft.deviceId,
             path: draft.path,
           },

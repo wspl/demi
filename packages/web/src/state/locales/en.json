@@ -15,6 +15,8 @@
     "updateTimeZoneLanguage": "Could Not Update Time Zone and Language",
     "readSync": "Could Not Read a Message of the Synchronization Channel",
     "keepOffline": "Could Not Keep a Copy for Offline Use",
-    "readOffline": "Could Not Read the Copy for Offline Use"
+    "readOffline": "Could Not Read the Copy for Offline Use",
+    "createWorkspace": "Could Not Create the Workspace",
+    "moveToWorkspace": "Could Not Move to the Workspace"
   }
 }

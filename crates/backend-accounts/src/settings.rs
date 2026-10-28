@@ -92,6 +92,15 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
                 (change.search, &mut saved.search),
                 (change.search_files, &mut saved.search_files),
                 (change.find, &mut saved.find),
+                (change.workspace1, &mut saved.workspace1),
+                (change.workspace2, &mut saved.workspace2),
+                (change.workspace3, &mut saved.workspace3),
+                (change.workspace4, &mut saved.workspace4),
+                (change.workspace5, &mut saved.workspace5),
+                (change.workspace6, &mut saved.workspace6),
+                (change.workspace7, &mut saved.workspace7),
+                (change.workspace8, &mut saved.workspace8),
+                (change.workspace9, &mut saved.workspace9),
             ] {
                 if let Some(keys) = change {
                     *override_ = keys;

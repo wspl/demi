@@ -11,6 +11,7 @@ import {
   Info,
   KeyRound,
   Keyboard,
+  LayoutGrid,
   Monitor,
   Network,
   ScrollText,
@@ -18,6 +19,7 @@ import {
   Sparkles,
   Users
 } from '@lucide/vue'
+import { t as workspaceText } from '../workspaces/locales/text'
 import { inDevelopment } from '../ui/disabled'
 import { t as uiText } from '../locales/text'
 import { t as cloudText } from '../cloud/locales/text'
@@ -66,6 +68,12 @@ export function settingsSections(): SettingsNavGroup[] {
             { label: t('account.session.signOut'), keywords: words(t('sections.account.signOutKeywords')) },
             { label: t('account.danger.delete') },
           ],
+        },
+        {
+          id: 'workspaces',
+          label: workspaceText('title'),
+          icon: LayoutGrid,
+          keywords: words(workspaceText('keywords')),
         },
         {
           id: 'notifications',

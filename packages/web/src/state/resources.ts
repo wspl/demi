@@ -165,6 +165,7 @@ export const useResources = defineStore('resources', () => {
       )
       const checkout = {
         id: project.id,
+        workspaceId: project.workspaceId,
         name: project.name,
         deviceId: project.deviceId,
         path: project.path,

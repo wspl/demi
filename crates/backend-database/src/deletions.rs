@@ -38,7 +38,7 @@
 //!   blob namespace, `blobs/<userId>/`, which nothing else removes. A Cloud's
 //!   disks stay the machine manager's.
 
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, UserId, WorkspaceId};
 use rusqlite::params;
 
 use super::StorageError;
@@ -60,18 +60,20 @@ impl ControlService {
     /// deletion as pending, in one transaction.
     ///
     /// Answers the id as the record spelled it, which names its database; none
-    /// when the owner has no such conversation. The usage the conversation incurred
-    /// stays in the ledger: it is the owner's account of what they used.
+    /// when the owner has no such conversation, or none in `workspace` when it
+    /// names one. The usage the conversation incurred stays in the ledger: it is
+    /// the owner's account of what they used.
     pub async fn delete_conversation(
         &self,
         owner: UserId,
         id: ConversationId,
+        workspace: Option<WorkspaceId>,
     ) -> Result<Option<ConversationId>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let Some(record) =
-                conversation_by_id(&transaction, &id)?.filter(|record| record.owner == owner)
-            else {
+            let Some(record) = conversation_by_id(&transaction, &id)?.filter(|record| {
+                record.owner == owner && workspace.as_ref().is_none_or(|workspace| record.workspace == *workspace)
+            }) else {
                 return Ok(None);
             };
             let id = record.id;

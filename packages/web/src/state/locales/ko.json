@@ -15,6 +15,8 @@
     "updateTimeZoneLanguage": "시간대 및 언어를 업데이트할 수 없습니다",
     "readSync": "동기화 채널의 메시지를 읽을 수 없습니다",
     "keepOffline": "오프라인용 사본을 저장할 수 없음",
-    "readOffline": "오프라인용 사본을 읽을 수 없음"
+    "readOffline": "오프라인용 사본을 읽을 수 없음",
+    "createWorkspace": "워크스페이스를 만들 수 없음",
+    "moveToWorkspace": "워크스페이스로 이동할 수 없음"
   }
 }

@@ -18,7 +18,7 @@ use demi_web_api_protocol::conversations::ModelSettings;
 use demi_runner_client::host_paths;
 use demi_host_interface::HostPaths;
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, ProjectId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProjectId, UserId, WorkspaceId};
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::projects::{SavedScope, ProjectDto};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -30,7 +30,7 @@ use super::conversation_index::archive_in;
 use super::devices::device_in;
 use super::selection::{CLOUD_HOME, directory};
 
-const PROJECT_COLUMNS: &str = "id, user_id, device_id, path, created_at, last_model, last_workflow_kind,
+const PROJECT_COLUMNS: &str = "id, user_id, workspace_id, device_id, path, created_at, last_model, last_workflow_kind,
     last_workflow_id, saved_scope, deleted_at,
     (SELECT platform FROM devices WHERE devices.id = projects.device_id) AS platform,
     (SELECT count(*) FROM saved_messages WHERE saved_messages.project_id = projects.id) AS saved_count";
@@ -45,6 +45,8 @@ pub fn new_project_id() -> ProjectId {
 pub struct ProjectRecord {
     pub id: ProjectId,
     pub user: UserId,
+    /// The workspace it is in.
+    pub workspace: WorkspaceId,
     pub device: DeviceId,
     pub path: String,
     /// The directory's last component, or the directory when it is a root.
@@ -77,6 +79,7 @@ impl ProjectRecord {
     pub fn dto(self) -> ProjectDto {
         ProjectDto {
             id: self.id,
+            workspace_id: self.workspace,
             device_id: self.device,
             path: self.path,
             name: self.name,
@@ -121,6 +124,8 @@ pub enum ProjectCreation {
     Exists(ProjectRecord),
     /// The device is not the user's.
     DeviceNotFound,
+    /// The workspace is not the user's.
+    WorkspaceNotFound,
     /// The directory is the device's home, which holds the conversations
     /// outside projects.
     Home,
@@ -135,14 +140,14 @@ impl ControlService {
             .await
     }
 
-    /// The user's project of `path` on `device`, deleted or not.
+    /// The workspace's project of `path` on `device`, deleted or not.
     pub async fn project_at(
         &self,
-        user: UserId,
+        workspace: WorkspaceId,
         device: DeviceId,
         path: String,
     ) -> Result<Option<ProjectRecord>, StorageError> {
-        self.call(move |connection, _| project_at(connection, &user, &device, &path))
+        self.call(move |connection, _| project_at(connection, &workspace, &device, &path))
             .await
     }
 
@@ -163,22 +168,27 @@ impl ControlService {
         .await
     }
 
-    /// The new project `id` at `path` on the user's `device`, after the user's
-    /// others.
+    /// The new project `id` at `path` on the user's `device` in the user's
+    /// `workspace`, before the user's others.
     ///
-    /// It is made unless the device is not the user's, the directory is its home,
-    /// or the user has a project of it already, which it answers; a deleted one
-    /// comes back instead. The checks and the write are one transaction, so a
-    /// revocation cannot slip between them.
+    /// It is made unless the workspace or the device is not the user's, the
+    /// directory is the device's home, or the workspace has a project of it
+    /// already, which it answers; a deleted one comes back instead. The checks
+    /// and the write are one transaction, so a revocation cannot slip between
+    /// them.
     pub async fn create_project(
         &self,
         id: ProjectId,
         user: UserId,
+        workspace: WorkspaceId,
         device: DeviceId,
         path: String,
     ) -> Result<ProjectCreation, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
+            if !super::workspaces::owns(&transaction, &user, &workspace)? {
+                return Ok(ProjectCreation::WorkspaceNotFound);
+            }
             let Some(record) = device_in(&transaction, &device)?.filter(|record| record.user == user) else {
                 return Ok(ProjectCreation::DeviceNotFound);
             };
@@ -191,7 +201,7 @@ impl ControlService {
             if home.is_some_and(|home| directory(paths, home) == path) {
                 return Ok(ProjectCreation::Home);
             }
-            if let Some(existing) = project_at(&transaction, &user, &device, &path)? {
+            if let Some(existing) = project_at(&transaction, &workspace, &device, &path)? {
                 if !existing.deleted {
                     return Ok(ProjectCreation::Exists(existing));
                 }
@@ -200,7 +210,7 @@ impl ControlService {
                 transaction.commit()?;
                 return Ok(ProjectCreation::Created(revived));
             }
-            let project = insert_project(&transaction, id, &user, &device, &path, now)?;
+            let project = insert_project(&transaction, id, &user, &workspace, &device, &path, now)?;
             transaction.commit()?;
             Ok(ProjectCreation::Created(project))
         })
@@ -382,7 +392,7 @@ impl ControlService {
                         .query_map([id.as_str()], |row| row.get::<_, String>(0))?
                         .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
                         .collect::<Result<_, _>>()?;
-                    match project_at(&transaction, &project.user, &project.device, &canonical)? {
+                    match project_at(&transaction, &project.workspace, &project.device, &canonical)? {
                         Some(other) if other.id != project.id => {
                             // A project the user deleted comes back with the directory.
                             revive(&transaction, &other.id)?;
@@ -416,7 +426,7 @@ impl ControlService {
                     // of its own (`crates/backend-database/src/selection.rs` § Worktrees).
                     if let Some(device) = device_in(&transaction, &project.device)?
                         && let Some(super::Selection::Project { project_id, worktree: Some(worktree), .. }) =
-                            super::selection::worktree_at(&transaction, &device, &canonical)?
+                            super::selection::worktree_at(&transaction, &project.workspace, &device, &canonical)?
                     {
                         let folded = fold_into_worktree(&transaction, &device, &project_id, &worktree, now)?;
                         let (moved, saved) = folded.unwrap_or_default();
@@ -452,11 +462,12 @@ pub struct WorktreesStored {
 }
 
 impl ControlService {
-    /// Keeps `worktrees` as the linked worktrees of the project of
-    /// `directory` on `device`, as its runner reported them, in place of what
-    /// it kept; a directory that is no project's keeps nothing. A worktree
-    /// whose directory is a project of its own takes that project's
-    /// conversations into this one, with the worktree, and deletes it
+    /// Keeps `worktrees` as the linked worktrees of the repository at
+    /// `directory` on `device`, as its runner reported them for a project
+    /// there, in place of what it kept; a directory that is no project's in
+    /// the sidebar keeps nothing. In each workspace, a worktree whose directory is a
+    /// project of its own takes that project's conversations into the
+    /// workspace's project of `directory`, with the worktree, and deletes it
     /// (`crates/backend-database/src/selection.rs` § Worktrees).
     pub async fn store_worktrees(
         &self,
@@ -469,25 +480,37 @@ impl ControlService {
             let Some(device) = device_in(&transaction, &device)? else {
                 return Ok(WorktreesStored::default());
             };
-            let Some(project) = project_at(&transaction, &device.user, &device.id, &directory)? else {
+            let projects: Vec<ProjectId> = transaction
+                .prepare_cached(
+                    "SELECT id FROM projects WHERE device_id = ?1 AND path = ?2 AND deleted_at IS NULL ORDER BY id",
+                )?
+                .query_map(params![device.id.as_str(), directory], |row| row.get::<_, String>(0))?
+                .map(|id| decode("projects", "id", ProjectId::try_from(id?)))
+                .collect::<Result<_, _>>()?;
+            if projects.is_empty() {
                 return Ok(WorktreesStored::default());
-            };
-            transaction.execute("DELETE FROM project_worktrees WHERE project_id = ?1", [project.id.as_str()])?;
+            }
+            transaction.execute(
+                "DELETE FROM directory_worktrees WHERE device_id = ?1 AND path = ?2",
+                params![device.id.as_str(), directory],
+            )?;
             let mut stored = WorktreesStored::default();
             for worktree in &worktrees {
                 // A repository names each worktree once; a report that named
                 // one twice keeps the first.
                 transaction.execute(
-                    "INSERT INTO project_worktrees (project_id, name, path) VALUES (?1, ?2, ?3)
-                     ON CONFLICT (project_id, name) DO NOTHING",
-                    params![project.id.as_str(), worktree.name, worktree.path],
+                    "INSERT INTO directory_worktrees (device_id, path, name, worktree_path) VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT (device_id, path, name) DO NOTHING",
+                    params![device.id.as_str(), directory, worktree.name, worktree.path],
                 )?;
             }
-            for worktree in &worktrees {
-                if let Some((moved, saved)) = fold_into_worktree(&transaction, &device, &project.id, worktree, now)? {
-                    stored.projects = true;
-                    stored.conversations.extend(moved);
-                    stored.saved.extend(saved);
+            for project in &projects {
+                for worktree in &worktrees {
+                    if let Some((moved, saved)) = fold_into_worktree(&transaction, &device, project, worktree, now)? {
+                        stored.projects = true;
+                        stored.conversations.extend(moved);
+                        stored.saved.extend(saved);
+                    }
                 }
             }
             transaction.commit()?;
@@ -498,7 +521,8 @@ impl ControlService {
 }
 
 /// Takes the conversations of the project of `worktree`'s directory on
-/// `device`, if one is, into the project `into`, working in `worktree`, and
+/// `device` in the workspace of the project `into`, if one is, into `into`,
+/// working in `worktree`, and
 /// deletes that project; answers the conversations it took and those whose
 /// list of saved messages changed, none when no project was deleted.
 fn fold_into_worktree(
@@ -508,10 +532,10 @@ fn fold_into_worktree(
     worktree: &super::Worktree,
     now: Timestamp,
 ) -> Result<Option<(Vec<ConversationId>, Vec<ConversationId>)>, StorageError> {
-    let Some(own) = project_at(connection, &device.user, &device.id, &worktree.path)? else {
+    let Some(project) = project_by_id(connection, into)? else {
         return Ok(None);
     };
-    let Some(project) = project_by_id(connection, into)? else {
+    let Some(own) = project_at(connection, &project.workspace, &device.id, &worktree.path)? else {
         return Ok(None);
     };
     if own.id == project.id {
@@ -562,36 +586,37 @@ pub(crate) fn project_in(
     project_by_id(connection, id)
 }
 
-/// The user's project of `path` on `device`, deleted or not, of which
+/// The workspace's project of `path` on `device`, deleted or not, of which
 /// there is one at most.
 pub(crate) fn project_at(
     connection: &Connection,
-    user: &UserId,
+    workspace: &WorkspaceId,
     device: &DeviceId,
     path: &str,
 ) -> Result<Option<ProjectRecord>, StorageError> {
     let mut statement = connection.prepare_cached(&format!(
-        "SELECT {PROJECT_COLUMNS} FROM projects WHERE user_id = ?1 AND device_id = ?2 AND path = ?3"
+        "SELECT {PROJECT_COLUMNS} FROM projects WHERE workspace_id = ?1 AND device_id = ?2 AND path = ?3"
     ))?;
-    let mut rows = statement.query(params![user.as_str(), device.as_str(), path])?;
+    let mut rows = statement.query(params![workspace.as_str(), device.as_str(), path])?;
     rows.next()?.map(project_row).transpose()
 }
 
-/// Inserts the project `id` at `path` on `device`, before the user's
-/// others: a new project is listed first.
+/// Inserts the project `id` at `path` on `device` in `workspace`, before
+/// the user's others: a new project is listed first.
 pub(crate) fn insert_project(
     connection: &Connection,
     id: ProjectId,
     user: &UserId,
+    workspace: &WorkspaceId,
     device: &DeviceId,
     path: &str,
     now: Timestamp,
 ) -> Result<ProjectRecord, StorageError> {
     connection.execute(
-        "INSERT INTO projects (id, user_id, device_id, path, sort_order, created_at)
-         VALUES (?1, ?2, ?3, ?4,
-           (SELECT COALESCE(MIN(sort_order), 1) - 1 FROM projects WHERE user_id = ?2), ?5)",
-        params![id.as_str(), user.as_str(), device.as_str(), path, now.as_millisecond()],
+        "INSERT INTO projects (id, user_id, workspace_id, device_id, path, sort_order, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5,
+           (SELECT COALESCE(MIN(sort_order), 1) - 1 FROM projects WHERE user_id = ?2), ?6)",
+        params![id.as_str(), user.as_str(), workspace.as_str(), device.as_str(), path, now.as_millisecond()],
     )?;
     Ok(project_by_id(connection, &id)?.expect("the project was just inserted"))
 }
@@ -632,6 +657,7 @@ fn project_row(row: &Row<'_>) -> Result<ProjectRecord, StorageError> {
             "user_id",
             UserId::try_from(row.get::<_, String>("user_id")?),
         )?,
+        workspace: decode(TABLE, "workspace_id", WorkspaceId::try_from(row.get::<_, String>("workspace_id")?))?,
         device: decode(
             TABLE,
             "device_id",

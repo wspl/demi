@@ -104,6 +104,7 @@ import { isEmptyMessage, joinMessageContent, storedMessageContent } from '@demic
 import { startingChoices, startingWorkflow, type RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
 import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
+import { useWorkspaces } from '../state/workspaces'
 import { useResources } from '../state/resources'
 import { known, useProduct, type ProductChange } from '../state/product'
 import type { PageState } from '../state/lists'
@@ -362,6 +363,7 @@ export const useConversations = defineStore('conversations', () => {
     record: Pick<
       ConversationSummary,
       | 'id'
+      | 'workspaceId'
       | 'title'
       | 'pinned'
       | 'archived'
@@ -378,6 +380,7 @@ export const useConversations = defineStore('conversations', () => {
   ) {
     return {
       id: record.id,
+      workspaceId: record.workspaceId,
       title: record.title,
       pinned: record.pinned,
       archived: record.archived,
@@ -653,6 +656,7 @@ export const useConversations = defineStore('conversations', () => {
               phase: conversation.persistence,
               conversation: {
                 id: conversation.id,
+                workspaceId: conversation.workspaceId,
                 title: conversation.title,
                 pinned: conversation.pinned,
                 archived: conversation.archived,
@@ -813,6 +817,7 @@ export const useConversations = defineStore('conversations', () => {
         }
         const conversation = newConversation({
           ...draft.local.conversation,
+          workspaceId: draft.local.conversation.workspaceId ?? useWorkspaces().current ?? '',
           // A draft is created where the page chose, never in a worktree.
           worktree: null,
           scheduled: false,
@@ -2581,16 +2586,18 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Opens a new conversation in the project `projectId`, or outside
-   * projects, with the choices last made there; an empty one already open there
-   * takes them again.
+   * projects in the workspace `workspaceId`, the tab's when none, with the
+   * choices last made there; an empty one already open there takes them again.
    */
-  function create(projectId: string | null = null): string {
+  function create(projectId: string | null = null, workspaceId?: string): string {
+    const project = product.snapshot?.projects?.find((candidate) => candidate.id === projectId) ?? null
+    const workspace = project?.workspaceId ?? workspaceId ?? useWorkspaces().current ?? ''
     const starting = startingChoices(
-      product.snapshot?.projects?.find((project) => project.id === projectId) ?? null,
+      project,
       { lastModel: preferences.lastModel, lastWorkflow: preferences.lastWorkflow },
     )
     const empty = items.value.find(
-      (item) => isEmptyDraft(item) && !item.archived && item.projectId === projectId,
+      (item) => isEmptyDraft(item) && !item.archived && item.projectId === projectId && item.workspaceId === workspace,
     )
     if (empty) {
       empty.model = initialModelSettings(starting.model)
@@ -2601,6 +2608,7 @@ export const useConversations = defineStore('conversations', () => {
     const now = new Date().toISOString()
     const conversation = newConversation({
       id: crypto.randomUUID(),
+      workspaceId: workspace,
       title: null,
       worktree: null,
       pinned: false,
@@ -2665,6 +2673,7 @@ export const useConversations = defineStore('conversations', () => {
     const settings = listed ? offeredSettings(shown, listed.model) : null
     const request: CreateConversation = {
       id: conversation.id,
+      workspaceId: conversation.workspaceId,
       // The placeholder goes as no title, which holds no words.
       ...(conversation.title === null ? {} : { title: conversation.title }),
       pinned: conversation.pinned,

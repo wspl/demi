@@ -2,9 +2,10 @@ import type { FoundMessages, SearchRow } from '@demicodes/web-ui/search/search'
 import { apiRequest, readResponse } from './client'
 import { messageResultsSchema, searchResultsSchema } from './generated/web-api'
 
-/** The caller's conversations that match `query`. */
-export async function searchConversations(query: string, signal: AbortSignal): Promise<SearchRow[]> {
-  const response = await apiRequest(`/search?${new URLSearchParams({ q: query })}`, { signal })
+/** The caller's conversations that match `query`: of the workspace `workspace`, or of every one without it. */
+export async function searchConversations(query: string, signal: AbortSignal, workspace?: string | null): Promise<SearchRow[]> {
+  const params = new URLSearchParams({ q: query, ...(workspace ? { workspace } : {}) })
+  const response = await apiRequest(`/search?${params}`, { signal })
   return (await readResponse(response, searchResultsSchema)).results
 }
 

@@ -615,16 +615,18 @@ impl ControlService {
                 ..record
             };
             let mut settled = HomeSettled::default();
-            // The oldest project of each directory is the one kept.
+            // The oldest project of each directory in a workspace is the one kept.
             let projects = transaction
-                .prepare("SELECT id, path FROM projects WHERE device_id = ?1 ORDER BY created_at, id")?
-                .query_map([device.id.as_str()], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .prepare("SELECT id, path, workspace_id FROM projects WHERE device_id = ?1 ORDER BY created_at, id")?
+                .query_map([device.id.as_str()], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
-            let mut kept: Vec<(String, String, String)> = Vec::new();
-            for (id, path) in projects {
+            let mut kept: Vec<(String, String, String, String)> = Vec::new();
+            for (id, path, workspace) in projects {
                 let real = canonical(&path);
-                match kept.iter().find(|(_, _, directory)| *directory == real) {
-                    Some((survivor, _, directory)) => {
+                match kept.iter().find(|(_, _, directory, other)| *directory == real && *other == workspace) {
+                    Some((survivor, _, directory, _)) => {
                         // A project in use brings back the one the user deleted of its directory.
                         let live: bool = transaction.query_row(
                             "SELECT deleted_at IS NULL FROM projects WHERE id = ?1",
@@ -651,17 +653,17 @@ impl ControlService {
                         transaction.execute("DELETE FROM projects WHERE id = ?1", [&id])?;
                         settled.projects_changed = true;
                     }
-                    None => kept.push((id, path, real)),
+                    None => kept.push((id, path, real, workspace)),
                 }
             }
             // A directory a project kept in another spelling is renamed in
             // two steps, so no two rows hold one directory meanwhile.
-            for (id, path, real) in &kept {
+            for (id, path, real, _) in &kept {
                 if path != real {
                     transaction.execute("UPDATE projects SET path = ?2 WHERE id = ?1", params![id, format!("moving:{id}")])?;
                 }
             }
-            for (id, path, real) in &kept {
+            for (id, path, real, _) in &kept {
                 let conversations = project_conversations(&transaction, id)?;
                 if *real == home_directory {
                     settled.saved.extend(super::saved::project_ends(
@@ -695,7 +697,14 @@ impl ControlService {
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             for (id, path) in left {
                 let id = decode("conversations", "id", ConversationId::try_from(id.as_str()))?;
-                let selected = select_directory(&transaction, &id, &device, &canonical(&path), now)?.map_err(|reason| {
+                let workspace = super::conversation_index::conversation_workspace(&transaction, &id)?.ok_or_else(|| {
+                    StorageError::Corrupt {
+                        table: "conversations",
+                        column: "id",
+                        reason: "a conversation just listed is missing".into(),
+                    }
+                })?;
+                let selected = select_directory(&transaction, &workspace, &id, &device, &canonical(&path), now)?.map_err(|reason| {
                     StorageError::Corrupt {
                         table: "devices",
                         column: "home",

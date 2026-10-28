@@ -108,6 +108,8 @@ pub enum ChangeRefusal {
     Runtime(String),
     #[error("No such project")]
     ProjectNotFound,
+    #[error("No such workspace")]
+    WorkspaceNotFound,
     /// The destination names a device the user did not pair.
     #[error("No such device")]
     DeviceNotFound,
@@ -151,6 +153,7 @@ impl ChangeRefusal {
             Self::SettingUnavailable(_) => (ErrorCode::SettingUnavailable, 409),
             Self::ModelNotSelected => (ErrorCode::ModelNotSelected, 409),
             Self::ProjectNotFound => (ErrorCode::ProjectNotFound, 404),
+            Self::WorkspaceNotFound => (ErrorCode::WorkspaceNotFound, 404),
             Self::DeviceNotFound => (ErrorCode::DeviceNotFound, 404),
             Self::DeviceHomeUnknown => (ErrorCode::DeviceHomeUnknown, 409),
             Self::DeviceOffline(_) => (ErrorCode::DeviceOffline, 409),
@@ -167,6 +170,7 @@ impl From<Unselectable> for ChangeRefusal {
     fn from(reason: Unselectable) -> Self {
         match reason {
             Unselectable::ProjectNotFound => Self::ProjectNotFound,
+            Unselectable::WorkspaceNotFound => Self::WorkspaceNotFound,
             Unselectable::DeviceNotFound => Self::DeviceNotFound,
             Unselectable::HomeUnknown => Self::DeviceHomeUnknown,
         }

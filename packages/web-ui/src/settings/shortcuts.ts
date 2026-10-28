@@ -15,6 +15,10 @@ import type { SettingsKeyBinding } from './types'
  * - Find is ⌘F, and finds where the user is, as VS Code's finds in the part that
  *   has the focus: Search in files in Files, the conversations' search elsewhere.
  *   A text with a find of its own, as a file's, finds there first.
+ * - Workspace 1 to 9 are ⌃1 to ⌃9, as Arc's spaces are, and Ctrl+Shift+1 to
+ *   Ctrl+Shift+9 on a PC: ⌘1 to ⌘9 and Ctrl+1 to Ctrl+9 are the browser's tabs,
+ *   which a page never takes, Alt+1 to Alt+9 are its tabs on Linux, and a PC
+ *   has no ⌃ apart from Ctrl.
  * - The sidebar is ⌘\, as in Notion, whose editor keeps ⌘B for bold and ⇧⌘S for
  *   strikethrough as the composer does: the focused composer takes its keys first, so
  *   a sidebar shortcut on either would never run while it has the focus.
@@ -27,6 +31,15 @@ const APP_SHORTCUTS = {
     { id: 'settings', keys: '⌘,' },
     { id: 'searchFiles', keys: '⇧⌘F' },
     { id: 'find', keys: '⌘F' },
+    { id: 'workspace1', keys: '⌃1' },
+    { id: 'workspace2', keys: '⌃2' },
+    { id: 'workspace3', keys: '⌃3' },
+    { id: 'workspace4', keys: '⌃4' },
+    { id: 'workspace5', keys: '⌃5' },
+    { id: 'workspace6', keys: '⌃6' },
+    { id: 'workspace7', keys: '⌃7' },
+    { id: 'workspace8', keys: '⌃8' },
+    { id: 'workspace9', keys: '⌃9' },
   ],
   pc: [
     { id: 'new', keys: 'Ctrl+Shift+O' },
@@ -35,6 +48,15 @@ const APP_SHORTCUTS = {
     { id: 'settings', keys: 'Ctrl+,' },
     { id: 'searchFiles', keys: 'Ctrl+Shift+F' },
     { id: 'find', keys: 'Ctrl+F' },
+    { id: 'workspace1', keys: 'Ctrl+Shift+1' },
+    { id: 'workspace2', keys: 'Ctrl+Shift+2' },
+    { id: 'workspace3', keys: 'Ctrl+Shift+3' },
+    { id: 'workspace4', keys: 'Ctrl+Shift+4' },
+    { id: 'workspace5', keys: 'Ctrl+Shift+5' },
+    { id: 'workspace6', keys: 'Ctrl+Shift+6' },
+    { id: 'workspace7', keys: 'Ctrl+Shift+7' },
+    { id: 'workspace8', keys: 'Ctrl+Shift+8' },
+    { id: 'workspace9', keys: 'Ctrl+Shift+9' },
   ],
 } as const
 
@@ -62,7 +84,7 @@ export function shortcutAction(id: string): SentenceText {
       // Its text is findHere: vue-i18n's key paths leave out a key named find.
       return t('keyboard.actions.findHere')
     default:
-      return id
+      return id.startsWith('workspace') ? t('keyboard.actions.workspace', { number: id.slice('workspace'.length) }) : id
   }
 }
 

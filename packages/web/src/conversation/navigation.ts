@@ -3,27 +3,28 @@ import { useRouter, type RouteLocationRaw } from 'vue-router'
 import type { CreateProject } from '../api/generated/web-api'
 import { useResources } from '../state/resources'
 import { useConversations } from './store'
+import { useWorkspaces } from '../state/workspaces'
 
 /**
  * What a history entry that showed a new conversation keeps, the project
- * the conversation was started in: a new conversation has no record before
+ * and the workspace the conversation was started in: a new conversation has no record before
  * its first send, so a reload of the entry, which finds nothing at its
  * address, opens a new conversation again. The web browser keeps it with the
  * entry across a reload.
  */
 const newConversationEntrySchema = z.object({
-  newConversation: z.object({ projectId: z.string().nullable() }),
+  newConversation: z.object({ projectId: z.string().nullable(), workspaceId: z.string().optional() }),
 })
 
-/** The project of the new conversation the history entry shown was made for; undefined for any other entry. */
-function newConversationEntry(state: unknown): { projectId: string | null } | undefined {
+/** The project and workspace of the new conversation the history entry shown was made for; undefined for any other entry. */
+function newConversationEntry(state: unknown): { projectId: string | null; workspaceId?: string } | undefined {
   const entry = newConversationEntrySchema.safeParse(state)
   return entry.success ? entry.data.newConversation : undefined
 }
 
 /** The address of the new conversation `id`, with the mark its history entry keeps. */
-function newConversationAt(id: string, projectId: string | null): RouteLocationRaw {
-  return { path: `/chat/${id}`, state: { newConversation: { projectId } } }
+function newConversationAt(id: string, projectId: string | null, workspaceId: string): RouteLocationRaw {
+  return { path: `/chat/${id}`, state: { newConversation: { projectId, workspaceId } } }
 }
 
 /**
@@ -35,6 +36,7 @@ export function useConversationNavigation() {
   const router = useRouter()
   const resources = useResources()
   const conversations = useConversations()
+  const workspaces = useWorkspaces()
 
   /**
    * Shows the conversation; on a narrow layout the sidebar gives way to it.
@@ -46,7 +48,7 @@ export function useConversationNavigation() {
     const conversation = conversations.items.find((item) => item.id === id)
     void router.push(
       conversation && conversation.persistence !== 'synced'
-        ? newConversationAt(id, conversation.projectId)
+        ? newConversationAt(id, conversation.projectId, conversation.workspaceId)
         : `/chat/${id}`,
     )
   }
@@ -66,14 +68,19 @@ export function useConversationNavigation() {
    * the first send makes a conversation. New on the empty draft already
    * shown gives it back with the focus in its composer. Answers its id.
    */
-  function create(projectId: string | null): string {
-    const id = conversations.create(projectId)
+  function create(projectId: string | null, workspaceId?: string): string {
+    const id = conversations.create(projectId, workspaceId)
     if (router.currentRoute.value.params.id === id) {
       conversations.composerFocusRequests += 1
     }
     resources.sidebarOpen = false
-    void router.push(newConversationAt(id, projectId))
+    void router.push(newConversationAt(id, projectId, workspaceOf(id)))
     return id
+  }
+
+  /** The workspace the new conversation `id` was started in. */
+  function workspaceOf(id: string): string {
+    return conversations.items.find((item) => item.id === id)?.workspaceId ?? ''
   }
 
   /**
@@ -81,8 +88,9 @@ export function useConversationNavigation() {
    * the address shown, as the chat's own address and a conversation
    * deleted while it shows do.
    */
-  function replaceWithNew(projectId: string | null = null): void {
-    void router.replace(newConversationAt(conversations.create(projectId), projectId))
+  function replaceWithNew(projectId: string | null = null, workspaceId?: string): void {
+    const id = conversations.create(projectId, workspaceId)
+    void router.replace(newConversationAt(id, projectId, workspaceOf(id)))
   }
 
   /**
@@ -97,7 +105,9 @@ export function useConversationNavigation() {
       return false
     }
     const { projectId } = entry
-    replaceWithNew(resources.projects.some((project) => project.id === projectId) ? projectId : null)
+    const workspaceId = workspaces.list.some((workspace) => workspace.id === entry.workspaceId) ? entry.workspaceId : undefined
+    const project = resources.projects.find((candidate) => candidate.id === projectId)
+    replaceWithNew(project && (!workspaceId || project.workspaceId === workspaceId) ? project.id : null, workspaceId)
     return true
   }
 

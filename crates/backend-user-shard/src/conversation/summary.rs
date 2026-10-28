@@ -80,6 +80,7 @@ impl Shard {
             target: record.target.shown(&resolved),
             worktree: record.target.worktree().map(|worktree| worktree.name.clone()),
             id: record.id,
+            workspace_id: record.workspace,
             title: record.title,
             archived: record.archived,
             pinned: record.pinned,

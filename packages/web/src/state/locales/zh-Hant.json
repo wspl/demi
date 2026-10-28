@@ -15,6 +15,8 @@
     "updateTimeZoneLanguage": "無法更新時區和語言",
     "readSync": "無法讀取同步通道的訊息",
     "keepOffline": "無法儲存離線副本",
-    "readOffline": "無法讀取離線副本"
+    "readOffline": "無法讀取離線副本",
+    "createWorkspace": "無法建立工作空間",
+    "moveToWorkspace": "無法移到該工作空間"
   }
 }

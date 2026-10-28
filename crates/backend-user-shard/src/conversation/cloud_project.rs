@@ -5,6 +5,7 @@
 //! (`crates/backend-host-access/src/lib.rs`), which wakes a stopped Cloud.
 
 use demi_backend_database::projects::{ProjectCreation, ProjectRecord, new_project_id};
+use demi_web_api_protocol::ids::WorkspaceId;
 use demi_host_interface::{Host as _, HostErrorKind, HostFs, MkdirOptions};
 
 use crate::shard::Shard;
@@ -19,17 +20,24 @@ pub enum CloudProject {
     NameTaken,
     /// The name cannot name a folder.
     NameInvalid,
+    /// The workspace is not the user's.
+    WorkspaceNotFound,
 }
 
 impl Shard {
     /// Makes `~/projects/<name>` on the user's Cloud, then the project over
-    /// it. Every project of the user is a directory on the same Cloud.
+    /// it in the user's `workspace`. Every project of the user is a directory
+    /// on the same Cloud.
     ///
     /// A project the user deleted of that directory comes back, its folder
     /// with what it holds; any other folder of the name, made by a project
     /// or not, refuses the name, as a file manager refuses a second folder
     /// of one name.
-    pub async fn create_cloud_project(&self, name: String) -> Result<CloudProject, HostAccessError> {
+    pub async fn create_cloud_project(
+        &self,
+        workspace: WorkspaceId,
+        name: String,
+    ) -> Result<CloudProject, HostAccessError> {
         if name.contains(['/', '\\', '\0']) || name == "." || name == ".." {
             return Ok(CloudProject::NameInvalid);
         }
@@ -39,7 +47,7 @@ impl Shard {
         let path = paths.join(&projects, &name);
         let control = &self.services().control;
         let kept = control
-            .project_at(self.user().clone(), access.device.id.clone(), path.clone())
+            .project_at(workspace.clone(), access.device.id.clone(), path.clone())
             .await?;
         match kept {
             Some(kept) if !kept.deleted => return Ok(CloudProject::NameTaken),
@@ -55,11 +63,12 @@ impl Shard {
             }
         }
         match control
-            .create_project(new_project_id(), self.user().clone(), access.device.id.clone(), path)
+            .create_project(new_project_id(), self.user().clone(), workspace, access.device.id.clone(), path)
             .await?
         {
             ProjectCreation::Created(project) => Ok(CloudProject::Made(project)),
             ProjectCreation::Exists(_) => Ok(CloudProject::NameTaken),
+            ProjectCreation::WorkspaceNotFound => Ok(CloudProject::WorkspaceNotFound),
             ProjectCreation::DeviceNotFound | ProjectCreation::Home => Err(Refusal::DeviceGone.into()),
         }
     }

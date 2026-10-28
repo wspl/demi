@@ -10,7 +10,7 @@ use serde_with::rust::unwrap_or_skip;
 
 use crate::conversations::ModelSettings;
 use crate::files::AbsolutePath;
-use crate::ids::{ConversationId, DeviceId, ProjectId};
+use crate::ids::{ConversationId, DeviceId, ProjectId, WorkspaceId};
 use crate::text::Trimmed;
 
 
@@ -19,6 +19,8 @@ use crate::text::Trimmed;
 #[serde(rename_all = "camelCase")]
 pub struct ProjectDto {
     pub id: ProjectId,
+    /// The workspace it is in.
+    pub workspace_id: WorkspaceId,
     pub device_id: DeviceId,
     /// The directory on the device, absolute as the device names it.
     pub path: String,
@@ -90,6 +92,9 @@ pub struct ProjectAnswer {
 )]
 pub enum CreateProject {
     Device {
+        /// The workspace the project is in.
+        #[garde(skip)]
+        workspace_id: WorkspaceId,
         #[garde(skip)]
         device_id: DeviceId,
         /// An `AbsolutePath` is valid once it is decoded.
@@ -99,9 +104,21 @@ pub enum CreateProject {
     /// The directory `~/projects/<name>` on the Cloud, which the creation
     /// makes.
     Cloud {
+        /// The workspace the project is in.
+        #[garde(skip)]
+        workspace_id: WorkspaceId,
         #[garde(length(chars, min = 1))]
         name: Trimmed,
     },
+}
+
+impl CreateProject {
+    /// The workspace the project is in.
+    pub fn workspace(&self) -> &WorkspaceId {
+        match self {
+            Self::Device { workspace_id, .. } | Self::Cloud { workspace_id, .. } => workspace_id,
+        }
+    }
 }
 
 /// `PATCH /projects/:id`: the model settings or workflow last chosen in

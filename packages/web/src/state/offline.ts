@@ -107,6 +107,7 @@ const database = new IndexedDatabase('demi-offline', 3, (request) => {
 export const COPIED_PARTS = [
   'user',
   'conversations',
+  'workspaces',
   'projects',
   'devices',
   'plugins',

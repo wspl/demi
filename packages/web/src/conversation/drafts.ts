@@ -96,6 +96,9 @@ export const draftSchema = z.object({
         target: true,
         createdAt: true,
         updatedAt: true,
+      }).extend({
+        /** The workspace it was started in; absent in a draft a page kept before workspaces, which the page's own then takes. */
+        workspaceId: z.string().optional(),
       }),
     })
     .nullable(),

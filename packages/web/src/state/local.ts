@@ -31,6 +31,10 @@ const localStateSchema = z.object({
    * id.
    */
   workPanelShown: z.record(z.string(), z.record(z.string(), z.number().int().min(1))).optional(),
+  /** The workspace this browser last switched to, which a page that shows no conversation opens. */
+  lastWorkspace: z.string().optional(),
+  /** The conversation this browser last showed in each workspace, which a switch to it shows again, keyed by workspace id. */
+  workspaceConversations: z.record(z.string(), z.string()).optional(),
 })
 export type LocalState = z.infer<typeof localStateSchema>
 

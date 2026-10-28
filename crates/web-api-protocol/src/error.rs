@@ -334,6 +334,13 @@ pub enum ErrorCode {
     TurnInFlight,
     /// The caller owns no project of that id.
     ProjectNotFound,
+    /// The caller owns no workspace of that id.
+    WorkspaceNotFound,
+    /// The workspace is the user's last, which stays.
+    LastWorkspace,
+    /// A conversation came into the workspace while its deletion deleted its
+    /// conversations; the workspace stays.
+    WorkspaceChanged,
     /// The user has a project of that device and directory already, which
     /// the answer carries as `project`.
     ProjectExists,

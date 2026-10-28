@@ -53,6 +53,11 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
+    /// A workspace's id, which the backend assigns.
+    WorkspaceId
+);
+
+demi_shared_types::id!(
     /// A subagent profile's id, which the backend assigns and the profile's
     /// name can change under.
     ProfileId

@@ -106,6 +106,7 @@ impl Shard {
             None => None,
         };
         Ok(ConversationStart {
+            workspace: request.workspace_id,
             title: request.title.map(|title| title.into_string()),
             pinned: request.pinned.unwrap_or(false),
             target,

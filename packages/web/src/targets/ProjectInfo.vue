@@ -32,9 +32,13 @@ const conversations = useConversations()
 const directory = ref<InstanceType<typeof ProjectDirectoryMenu>>()
 const execution = keptComputed(() => executionFor(props.conversation))
 const locked = computed(() => moveLock(props.conversation, conversations.pendingChanges))
+/** The projects of the conversation's workspace, which its moves choose among. */
+const workspaceProjects = computed(() =>
+  resources.projects.filter((project) => project.workspaceId === props.conversation.workspaceId),
+)
 /** The projects on the Host the conversation runs on, which the directory menu lists. */
 const hostProjects = keptComputed(() =>
-  resources.projects
+  workspaceProjects.value
     .filter((project) => project.deviceId === execution.value.deviceId)
     .map((project) => ({
       id: project.id,
@@ -48,7 +52,7 @@ const hosts = keptComputed(() =>
     return {
       ...host,
       source: fileSourceFor(device),
-      places: placesFor(device, resources.projects),
+      places: placesFor(device, workspaceProjects.value),
     }
   }),
 )
@@ -140,7 +144,7 @@ function selectProject(id: string) {
 
 /** A directory chosen in the picker: the project whose directory it is, or the directory itself. */
 function selectFolder(deviceId: string, path: string): Promise<boolean> {
-  const project = resources.projects.find(
+  const project = workspaceProjects.value.find(
     (project) => project.deviceId === deviceId && project.path === path,
   )
   return move(

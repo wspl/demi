@@ -23,6 +23,7 @@ use crate::settings::{InstanceMode, Preferences};
 use crate::subagents::SubagentSettings;
 use crate::users::ListedUser;
 use crate::projects::ProjectDto;
+use crate::workspaces::WorkspaceDto;
 
 /// The product state `GET /state` answers: the signed-in user, the instance
 /// mode, the user's preferences, the provider entries the user infers with and
@@ -45,6 +46,8 @@ pub struct ProductState {
     /// lists them, so the model a conversation names is known before it
     /// opens.
     pub models: ModelCatalog,
+    /// The user's workspaces, in their order.
+    pub workspaces: Vec<WorkspaceDto>,
     pub projects: Vec<ProjectDto>,
     pub devices: Vec<DeviceDto>,
     /// The URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`).
@@ -196,6 +199,10 @@ pub enum SyncEvent {
     /// it is chosen; the product state follows then.
     User {
         user: UserDto,
+    },
+    /// The user's workspaces, in the user's order.
+    Workspaces {
+        workspaces: Vec<WorkspaceDto>,
     },
     /// The user's projects, in the user's order.
     Projects {

@@ -170,10 +170,21 @@ impl ControlService {
                 })?;
             let metadata = &operation.metadata;
             let published = conversation_by_id(&transaction, &operation.id)?.is_some();
+            // The destination is in the workspace of the project it starts in,
+            // or else its source's, or the owner's first when the source is gone.
+            let project = match &metadata.target {
+                ConversationTarget::Project { project_id } => super::projects::project_in(&transaction, project_id)?,
+                _ => None,
+            };
+            let workspace = match (project, super::conversation_index::conversation_workspace(&transaction, &operation.source)?) {
+                (Some(project), _) => project.workspace,
+                (None, Some(workspace)) => workspace,
+                (None, None) => super::workspaces::first(&transaction, &operation.owner)?,
+            };
             let Selected { selection, made } = if published {
                 Selected { selection: Selection::Cloud { path: None }, made: None }
             } else {
-                select(&transaction, &operation.owner, &operation.id, &metadata.target, now)?
+                select(&transaction, &operation.owner, &workspace, &operation.id, &metadata.target, now)?
                     .unwrap_or(Selected { selection: Selection::Cloud { path: None }, made: None })
             };
             let inserted = insert_conversation(
@@ -181,6 +192,7 @@ impl ControlService {
                 &NewConversation {
                     id: &operation.id,
                     owner: &operation.owner,
+                    workspace: &workspace,
                     title: metadata.title.as_deref(),
                     pinned: false,
                     target: &selection,

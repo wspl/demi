@@ -186,7 +186,8 @@
       "sidebar": "切换侧边栏",
       "settings": "打开设置",
       "searchFiles": "在文件中搜索",
-      "findHere": "查找"
+      "findHere": "查找",
+      "workspace": "切换到工作空间 {number}"
     }
   },
   "notifications": {

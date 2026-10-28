@@ -30,6 +30,7 @@ mod policy;
 pub mod port_forwards;
 pub mod subagents;
 mod worktrees;
+pub mod workspaces;
 
 pub(crate) use self::lane::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader};
 
@@ -46,7 +47,7 @@ use demi_plugin_host::UserPlugins;
 use demi_runner_client::{ARRIVAL, Pipes};
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::router::CommandRouter;
-use demi_shared_gates::KeyedSerialGate;
+use demi_shared_gates::{KeyedSerialGate, SerialGate};
 use demi_web_api_protocol::ids::UserId;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
@@ -127,6 +128,9 @@ pub struct Shard {
     sync_channels: TaskTracker,
     /// Fork requests, one at a time per destination id in lowercase.
     forks: KeyedSerialGate<String>,
+    /// Workspace deletions, one at a time, so two cannot each find another
+    /// workspace left and delete the last's conversations.
+    workspace_deletions: SerialGate,
     /// The user's Cloud machine.
     cloud: Cloud,
     /// Each conversation's idle watch.
@@ -236,6 +240,7 @@ impl Shard {
             tree_openers: TaskTracker::new(),
             sync_channels: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
+            workspace_deletions: SerialGate::new(),
             cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
             blob_collection: BlobCollection::default(),
@@ -366,6 +371,10 @@ impl Shard {
 
     pub fn forks(&self) -> &KeyedSerialGate<String> {
         &self.forks
+    }
+
+    pub(crate) fn workspace_deletions(&self) -> &SerialGate {
+        &self.workspace_deletions
     }
 
     /// Ends the user's work in order.

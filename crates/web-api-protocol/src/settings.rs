@@ -169,7 +169,87 @@ pub struct Shortcuts {
     )]
     #[schemars(with = "String")]
     #[garde(skip)]
-    pub find: Option<String>,
+    pub find: Option<String>,    /// Switching to the workspace at place 1 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace1: Option<String>,
+    /// Switching to the workspace at place 2 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace2: Option<String>,
+    /// Switching to the workspace at place 3 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace3: Option<String>,
+    /// Switching to the workspace at place 4 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace4: Option<String>,
+    /// Switching to the workspace at place 5 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace5: Option<String>,
+    /// Switching to the workspace at place 6 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace6: Option<String>,
+    /// Switching to the workspace at place 7 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace7: Option<String>,
+    /// Switching to the workspace at place 8 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace8: Option<String>,
+    /// Switching to the workspace at place 9 of the user's order.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub workspace9: Option<String>,
 }
 
 /// A change to one set's shortcut overrides: a key sequence sets one, `null`
@@ -224,7 +304,78 @@ pub struct ShortcutsPatch {
     )]
     #[schemars(with = "Option<String>")]
     #[garde(skip)]
-    pub find: Option<Option<String>>,
+    pub find: Option<Option<String>>,    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace1: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace2: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace3: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace4: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace5: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace6: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace7: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace8: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workspace9: Option<Option<String>>,
 }
 
 /// The two sets of keyboard shortcuts: a page uses the Mac's on macOS and the

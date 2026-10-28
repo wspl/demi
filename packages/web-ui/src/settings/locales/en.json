@@ -186,7 +186,8 @@
       "sidebar": "Toggle sidebar",
       "settings": "Open settings",
       "searchFiles": "Search in files",
-      "findHere": "Find"
+      "findHere": "Find",
+      "workspace": "Switch to Workspace {number}"
     }
   },
   "notifications": {
