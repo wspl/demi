@@ -439,7 +439,7 @@ commits in its history, `0.1.4213` for a commit with 4,213 commits behind it.
 The same commit always has the same version, and a later commit a higher one.
 Nothing is committed to deploy, and versions skip numbers between releases.
 
-Every push to `feat/demi-next` builds everything a release publishes, for every
+Every push to `main` builds everything a release publishes, for every
 target, and publishes nothing (`.github/workflows/build.yml`). A deploy asks
 for the build of the newest pushed commit to be published as a pre-release, and
 waits for that. The commit and its version are worked out first, so every later
@@ -447,11 +447,11 @@ step names them, and a version that has a release already, because that commit
 was deployed before, is not published again:
 
 ```sh
-git fetch origin feat/demi-next
+git fetch origin main
 commit=$(git rev-parse FETCH_HEAD)
 version=0.1.$(git rev-list --count "$commit")
 if ! gh release view "v$version" > /dev/null 2>&1; then
-  run=$(gh workflow run release.yml --ref feat/demi-next -f commit="$commit" -f prerelease=true)
+  run=$(gh workflow run release.yml --ref main -f commit="$commit" -f prerelease=true)
   gh run watch --exit-status "${run##*/}"
   gh release view "v$version" > /dev/null
 fi
