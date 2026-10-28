@@ -1,6 +1,8 @@
 # Builds the website, packages/site, and publishes it to demi.sh after each
-# push to main. Only the newest push matters, so a newer one cancels a build
-# that has not finished.
+# push to main. A run that started finishes; of the pushes that arrive while it
+# runs, only the newest waits, so the newest push is always published. A build
+# takes longer than main often goes between pushes, so cancelling a running one
+# for a newer push would publish nothing in a busy hour.
 #
 # The build needs the packages the site imports as built files: utils,
 # conversation-client and protocol, which the Rust contracts generate; and
@@ -18,7 +20,7 @@ on:
 
 concurrency:
   group: site
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
