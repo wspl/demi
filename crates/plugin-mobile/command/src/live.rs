@@ -339,7 +339,10 @@ impl DeviceInput {
             (crate::driver::DriverError::NoFocusedField(_), Some(text)) => {
                 self.notices.notice(NO_FOCUSED_FIELD, text).await
             }
-            (error, _) => self.notices.notice(INPUT_FAILED, &error.to_string()).await,
+            (error, _) => {
+                tracing::warn!(event = "live_input.failed", %error, "a viewer's input did not reach the device");
+                self.notices.notice(INPUT_FAILED, &error.to_string()).await
+            }
         }
     }
 }
