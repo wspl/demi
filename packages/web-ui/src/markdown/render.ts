@@ -9,6 +9,7 @@ import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
 import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
+import { SYSTEM_PICTURE_MENUS } from '../ui/system-picture-menu'
 import { escapeHtml } from './html'
 import { imagePlaceholderHtml } from './image-placeholder'
 import { pictureKey } from './picture-key'
@@ -216,11 +217,15 @@ function attachmentFile(attachment: MessageAttachment): CopiedStoredFile {
  * it shows (`KEEPS_WINDOWS`).
  */
 function attachmentLink(id: string, attachment: MessageAttachment, attributes = ''): string {
-  const url = escapeHtml(attachment.url)
+  // Where the system has a picture menu of its own, a link's long press shows
+  // the link's menu instead: there the tile has no address, and is a link to
+  // the viewer for assistive technology and the keyboard. Not a button, whose
+  // long press a phone gives the page (`styles/base.css`).
+  const opens = SYSTEM_PICTURE_MENUS ? 'role="link" tabindex="0"' : `href="${escapeHtml(attachment.url)}"`
   const name = escapeHtml(attachment.name)
   const file = ` ${ATTACHMENT_FILE_ATTRIBUTE}="${escapeHtml(JSON.stringify(attachmentFile(attachment)))}"`
   const kind = attachment.mediaType.startsWith('video/') ? 'video' : 'image'
-  return `<a href="${url}" data-attachment-${kind}="${name}" ${ATTACHMENT_ID_ATTRIBUTE}="${escapeHtml(id)}"${file} ${KEEPS_WINDOWS}${attributes}>`
+  return `<a ${opens} data-attachment-${kind}="${name}" ${ATTACHMENT_ID_ATTRIBUTE}="${escapeHtml(id)}"${file} ${KEEPS_WINDOWS}${attributes}>`
 }
 
 /**

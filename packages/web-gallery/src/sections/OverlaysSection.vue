@@ -200,6 +200,7 @@ const pinUnexpectedLongToast = ref(true)
 const pinNeutralToast = ref(true)
 const pinCopiedToast = ref(true)
 const pinUndoToast = ref(true)
+const pinReadyToast = ref(true)
 /** Undo closes the pinned toast, as an action does, and the product restores the conversation. */
 function undoPinnedArchive(): void {
   pinUndoToast.value = false
@@ -1188,7 +1189,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="Toasts stand in the top-right corner, below the bar atop the page, the newest nearest the corner, as macOS places its notifications: they never cover the composer or the actions at the bottom of a pane. The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, an error the page found itself with the ID of its line in the log, a fact, Copied, Undo, and live host."
+        note="Toasts stand in the top-right corner, below the bar atop the page, the newest nearest the corner, as macOS places its notifications: they never cover the composer or the actions at the bottom of a pane. The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, an error the page found itself with the ID of its line in the log, a fact, Copied, Undo, a file ready to save, and live host. On an iPhone's or an iPad's Home Screen, where a download covers the app, a download hands the file to the share sheet; one that took longer than the press allows waits in Ready to Save, whose Save… opens the sheet."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">
@@ -1306,6 +1307,26 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 size="md"
                 variant="ghost"
                 @click="pinUndoToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="ready to save, on an iPhone's Home Screen">
+            <div class="w-80">
+              <Toast
+                v-if="pinReadyToast"
+                title="Ready to Save"
+                message="sign-in.png"
+                tone="neutral"
+                one-line
+                action="Save…"
+                @act="pinReadyToast = false; productWould('Open the Share Sheet with sign-in.png')"
+                @dismiss="pinReadyToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                variant="ghost"
+                @click="pinReadyToast = true"
               >Show</Button>
             </div>
           </GallerySpecimen>

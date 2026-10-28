@@ -2467,6 +2467,13 @@ html[data-theme="light"] .file-pill {
   outline-offset: -1px;
 }
 
+/* Where the system has a menu of its own for a picture, as on an iPhone, a
+   message's picture keeps it (`markdown/render.ts`), whatever around it takes
+   the long press for the page. */
+.markdown-body :where(.media-lone, .media-run) img {
+  -webkit-touch-callout: default;
+}
+
 /* An attachment's tile whose medium did not load keeps its box, and shows in
    its place what a tool's picture that did not load shows (`RowPicture`): the
    theme's faint edge and Lucide's ImageOff at its middle, never the browser's
