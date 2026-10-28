@@ -441,11 +441,11 @@ final class DeviceSession: @unchecked Sendable {
         settle(try? configuration.activeDisplay().uniqueID)
       }
     }
-    let faces = lock.withLock { () -> [(String, FramebufferAttachment)] in
+    let attachments = lock.withLock { () -> [(String, FramebufferAttachment)] in
       followingTurns = following
-      return self.faces.map { ($0.key, $0.value.attachment) }
+      return faces.map { ($0.key, $0.value.attachment) }
     }
-    for (id, attachment) in faces { watch(id, attachment) }
+    for (id, attachment) in attachments { watch(id, attachment) }
   }
 
   /// Follows the face of display `id`: each new picture is drawn, encoded
