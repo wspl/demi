@@ -2,7 +2,8 @@
 # push to main. Only the newest push matters, so a newer one cancels a build
 # that has not finished.
 #
-# The build needs the protocol package, which the Rust contracts generate, and
+# The build needs the packages the site imports as built files: utils,
+# conversation-client and protocol, which the Rust contracts generate; and
 # Chromium, which records the demos and photographs the share image. The root
 # `bun run build`, which the release build runs, leaves the site out.
 #
@@ -35,8 +36,7 @@ jobs:
         with:
           key: site
       - run: bun install --frozen-lockfile
-      - run: bun run build
-        working-directory: packages/protocol
+      - run: bun --filter @demicodes/utils --filter @demicodes/protocol --filter @demicodes/conversation-client build
       - run: bunx playwright install --with-deps chromium
         working-directory: packages/site
       - run: bun run build
