@@ -3,7 +3,7 @@
 //! `@demicodes/protocol`, so the page's field takes what the backend does.
 
 /// The least context, in tokens, until the user sets another.
-pub const IDLE_COMPACTION_CONTEXT: u64 = 200_000;
+pub const IDLE_COMPACTION_CONTEXT: u64 = 300_000;
 
 /// The least the setting takes: below it, writing the context to the cache
 /// again costs little next to the detail a summary loses.
