@@ -1,4 +1,5 @@
-# Builds everything a release publishes, and publishes nothing.
+# Builds everything a release publishes, and publishes nothing: canary.yml
+# publishes a push's build once its checks have passed too.
 #
 # Starting it:
 #

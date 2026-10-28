@@ -172,7 +172,7 @@ A server upgrades from any release in the history to any later one directly.
 `demi-server upgrade` takes the release to move to in one of four ways:
 
 - With `--beta`, it moves to the newest release Demi published.
-- With `--canary`, it moves to the newest release, a deploy's pre-releases
+- With `--canary`, it moves to the newest release, the Canary pre-releases
   included.
 - With a version, as in `demi-server upgrade 0.2.0`, it moves to that one.
 - With none of them, it moves to the newest release of the server's update
@@ -357,7 +357,8 @@ without a shell on the machine. The page shows the release the server runs
 and the newest release of its channel:
 
 - **Beta** offers the releases Demi publishes, which GitHub marks *latest*.
-- **Canary** offers every release, a deploy's pre-releases included.
+- **Canary** offers every release, including the pre-release that each push
+  to `main` publishes once it passes its checks.
 
 The backend looks for the newest release when it starts, every hour and on
 **Check Now**. While a newer one exists, the sidebar shows a green update icon
@@ -428,8 +429,8 @@ or on a developer's machine, Settings has no Updates.
 ## A development build on a server
 
 For example, a batch of work is merged and the user wants to try it on their
-own server before anything is published. The server moves to the next
-version, built on GitHub from the branch, as an upgrade moves it to a
+own server before it reaches Beta. The server moves to the next version,
+built on GitHub from the branch, as an upgrade moves it to a
 published release. Pages reload into the new web app, the user's paired
 devices replace their runners, and Clouds wake with the new programs, exactly
 as after an upgrade. Nothing is compiled on the developer's machine.
@@ -440,11 +441,13 @@ The same commit always has the same version, and a later commit a higher one.
 Nothing is committed to deploy, and versions skip numbers between releases.
 
 Every push to `main` builds everything a release publishes, for every
-target, and publishes nothing (`.github/workflows/build.yml`). A deploy asks
-for the build of the newest pushed commit to be published as a pre-release, and
-waits for that. The commit and its version are worked out first, so every later
-step names them, and a version that has a release already, because that commit
-was deployed before, is not published again:
+target (`.github/workflows/build.yml`). Once that build and the push's checks
+(`ci.yml`) have passed, `canary.yml` publishes it as a pre-release, the next
+Canary. A deploy needs the pre-release of the newest pushed commit: it usually
+finds it published already, and otherwise asks for it and waits. The commit
+and its version are worked out first, so every later step names them, and a
+version that has a release already, as a Canary or from an earlier deploy, is
+not published again:
 
 ```sh
 git fetch origin main
@@ -452,14 +455,16 @@ commit=$(git rev-parse FETCH_HEAD)
 version=0.1.$(git rev-list --count "$commit")
 if ! gh release view "v$version" > /dev/null 2>&1; then
   run=$(gh workflow run release.yml --ref main -f commit="$commit" -f prerelease=true)
-  gh run watch --exit-status "${run##*/}"
+  gh run watch --exit-status "${run##*/}" || true
   gh release view "v$version" > /dev/null
 fi
 ```
 
 `gh workflow run` prints the URL of the run it started, which `gh run watch`
-takes by its number. Each command that fails stops the deploy: no server is
-touched until the pre-release exists.
+takes by its number. A release that `canary.yml` started for the same commit
+meanwhile makes this one refuse the version, so the deploy checks for the
+pre-release rather than for the run's success. Each other command that fails
+stops the deploy: no server is touched until the pre-release exists.
 
 The release finds that commit's build and publishes its files as a GitHub
 pre-release, `v$version` (`.github/workflows/release.yml`):
@@ -511,10 +516,13 @@ the database copies, the switch and the return on failure are an upgrade's.
   - When a server keeps data of a deployed version, its schema enters the
     history as any release's does, named by its version, with a tested
     migration, so the next deploy and the next release carry the data on.
-  - A schema enters once per deploy, not once per change. The first change to
-    a schema after a deploy adds the deployed schema with its migration, and
-    every later change before the next deploy extends that migration. So two
-    deploys apart there is one step, whatever changed between them.
+  - A schema enters once per release, a Canary included, not once per
+    change. The first change to a schema after a release adds the released
+    schema with its migration, in the same work package, and every later
+    change before the next release extends that migration. A Canary follows
+    nearly every push, so a change to a schema adds a step in most cases;
+    `git show "v$version":<path>` reads the newest release's schema to tell
+    whether its starting point shipped.
 
 ## Rollback
 

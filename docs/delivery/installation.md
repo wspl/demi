@@ -33,7 +33,8 @@ The command installs a channel, as Settings › Updates names them
 - Without a parameter, or with `--beta`, it installs Beta, the newest
   release Demi publishes, GitHub's latest release. While Demi has published
   none, it says so and installs nothing.
-- `--canary` installs the newest build, a deploy's pre-releases included
+- `--canary` installs Canary, the newest release, including the pre-release
+  that each push to `main` publishes once it passes its checks
   ([A development build on a server](upgrades.md#a-development-build-on-a-server)).
 - `--version <version>` installs that release.
 
