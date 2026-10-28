@@ -1,6 +1,7 @@
 <script setup lang="ts" generic="R extends Row">
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/vue-virtual'
 import { useTypeSelect } from '../composables/useTypeSelect'
 import { activeRow } from '../ui/active-row'
 import DropOutline from '../ui/DropOutline.vue'
@@ -12,9 +13,9 @@ import { usePhone } from '../ui/phone'
 import {
   TREE_ROW_PX,
   TREE_ROW_PHONE_PX,
+  indexTree,
   revealTreeRow,
   stickyTreeRows,
-  treeBlock,
   treeKeyEffect,
   type TreeDropTarget,
   type TreeRow as Row
@@ -26,6 +27,14 @@ import { vContextMenu, type ContextMenuValue } from '../ui/context-menu'
  * A tree of rows laid out by its host: a caption, then the rows, on the editor's
  * surface. A click on a row asks the host to activate it (fold a directory, open
  * a file).
+ *
+ * Only the rows in view are drawn, with a few around them, so a directory of
+ * any size unfolds and scrolls at once. Every row is one pitch tall, so where a
+ * row sits is its index times the pitch: the pinned stack, a drop's block and
+ * bringing a row into view are reckoned from the rows, never measured from the
+ * page. The row the keyboard is on and the row whose menu is open stay drawn,
+ * as the tree's active descendant and the menu's anchor. Each row tells its
+ * level and its place among its siblings, since the page holds only some.
  *
  * Pinning:
  *
@@ -101,23 +110,29 @@ defineSlots<{
 const phone = usePhone()
 const rowPx = computed(() => (phone.value ? TREE_ROW_PHONE_PX : TREE_ROW_PX))
 const stackTopPx = computed(() => 4 + rowPx.value + 1)
+const pitchPx = computed(() => rowPx.value + 1)
 const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
-const rowEls = new Map<string, HTMLElement>()
-// The row each element stands for, pinned copies too, to tell where an event happened.
+// The row each element stands for, listed or pinned, to tell where an event happened.
 const pathOfEl = new WeakMap<Node, string>()
+const treeIndex = computed(() => indexTree(props.rows))
+/** The index of the row at `path`, or -1 when no row is. */
+function indexOf(path: string | null | undefined): number {
+  return path == null ? -1 : (treeIndex.value.indexOf.get(path) ?? -1)
+}
+/** Where row `at` starts in the scrolled content. */
+function rowTop(at: number): number {
+  return stackTopPx.value + at * pitchPx.value
+}
 const stickyPaths = ref<string[]>([])
 const stickyOffset = ref(0)
 const scrolled = ref(false)
 // The selected row loses its fill once any of it is under the stack: a sliver
 // of highlight at the stack's edge would read as a line.
 const selectedUnderStack = ref(false)
-const stickyRows = computed(() => {
-  const byPath = new Map(props.rows.map((row) => [row.path, row]))
-  return stickyPaths.value.flatMap((path) => {
-    const row = byPath.get(path)
-    return row ? [row] : []
-  })
-})
+const stickyRows = computed(() => stickyPaths.value.flatMap((path) => {
+  const row = props.rows[indexOf(path)]
+  return row ? [row] : []
+}))
 
 /** A template ref's element: the element itself, or a component's root. */
 function elementOf(el: unknown): HTMLElement | null {
@@ -130,16 +145,6 @@ function elementOf(el: unknown): HTMLElement | null {
 
 function bindRow(path: string, el: unknown): void {
   const element = elementOf(el)
-  if (element) {
-    rowEls.set(path, element)
-    pathOfEl.set(element, path)
-  } else {
-    rowEls.delete(path)
-  }
-}
-
-function bindPinned(path: string, el: unknown): void {
-  const element = elementOf(el)
   if (element)
     pathOfEl.set(element, path)
 }
@@ -149,7 +154,7 @@ function rowAt(target: EventTarget | null): R | null {
   for (let node = target instanceof Node ? target : null; node; node = node.parentNode) {
     const path = pathOfEl.get(node)
     if (path !== undefined)
-      return props.rows.find((row) => row.path === path) ?? null
+      return props.rows[indexOf(path)] ?? null
   }
   return null
 }
@@ -160,37 +165,32 @@ function updateSticky(): void {
     return
   }
   scrolled.value = viewport.scrollTop > 0
-  const stack = stickyTreeRows(
-    props.rows,
-    (path) => rowEls.get(path)?.offsetTop,
-    viewport.scrollTop,
-    stackTopPx.value,
-    rowPx.value,
-  )
+  const stack = stickyTreeRows(props.rows, treeIndex.value, viewport.scrollTop, stackTopPx.value, rowPx.value)
   stickyPaths.value = stack.paths
   stickyOffset.value = stack.offset
-  const stackBottom = viewport.scrollTop + stackTopPx.value + stack.paths.length * (rowPx.value + 1) + stack.offset
-  const selectedTop = props.selected === null ? undefined : rowEls.get(props.selected)?.offsetTop
-  selectedUnderStack.value = selectedTop !== undefined && selectedTop < stackBottom
+  const stackBottom = viewport.scrollTop + stackTopPx.value + stack.paths.length * pitchPx.value + stack.offset
+  const selected = indexOf(props.selected)
+  selectedUnderStack.value = selected >= 0 && rowTop(selected) < stackBottom
 }
 
 // A drop into a row lights the row and the rows it holds: one box over the
 // listed ones, placed from their positions like the stack, and each pinned copy.
-const dropBlock = computed(() =>
-  props.dropTarget?.kind === 'row' ? treeBlock(props.rows, props.dropTarget.path) : null)
-const dropPaths = computed(() => {
-  const block = dropBlock.value
-  return new Set(block ? props.rows.slice(block.first, block.last + 1).map((row) => row.path) : [])
+const dropBlock = computed(() => {
+  const first = props.dropTarget?.kind === 'row' ? indexOf(props.dropTarget.path) : -1
+  return first < 0 ? null : { first, last: treeIndex.value.end[first]! }
 })
+/** Whether row `at` is in the block a drop would go into. */
+function inDrop(at: number): boolean {
+  const block = dropBlock.value
+  return block !== null && at >= block.first && at <= block.last
+}
 const dropBox = ref<{ top: number; height: number } | null>(null)
 
 function measureDrop(): void {
   const viewport = scrollArea.value?.el
   const block = dropBlock.value
-  const first = block ? rowEls.get(props.rows[block.first]!.path) : undefined
-  const last = block ? rowEls.get(props.rows[block.last]!.path) : undefined
-  dropBox.value = viewport && first && last
-    ? { top: first.offsetTop - viewport.scrollTop, height: last.offsetTop + last.offsetHeight - first.offsetTop }
+  dropBox.value = viewport && block
+    ? { top: rowTop(block.first) - viewport.scrollTop, height: (block.last - block.first) * pitchPx.value + rowPx.value }
     : null
 }
 
@@ -203,9 +203,9 @@ function layout(): void {
 /** Scrolls a row to the top of the view, under the caption, for a host that sets up a scrolled state. */
 function scrollToRow(path: string): void {
   const viewport = scrollArea.value?.el
-  const el = rowEls.get(path)
-  if (viewport && el) {
-    viewport.scrollTop = el.offsetTop - stackTopPx.value
+  const at = indexOf(path)
+  if (viewport && at >= 0) {
+    viewport.scrollTop = rowTop(at) - stackTopPx.value
   }
 }
 
@@ -219,10 +219,10 @@ let revealWhenShown: string | null = null
  */
 function revealRow(path: string): void {
   const viewport = scrollArea.value?.el
-  const el = rowEls.get(path)
-  const row = props.rows.find((entry) => entry.path === path)
+  const at = indexOf(path)
+  const row = props.rows[at]
   revealWhenShown = null
-  if (!viewport || !el || !row) {
+  if (!viewport || !row) {
     return
   }
   // A hidden tree has no height to bring the row into: it does once shown.
@@ -230,7 +230,7 @@ function revealRow(path: string): void {
     revealWhenShown = path
     return
   }
-  const top = revealTreeRow(viewport, { depth: row.depth, top: el.offsetTop }, stackTopPx.value, rowPx.value)
+  const top = revealTreeRow(viewport, { depth: row.depth, top: rowTop(at) }, stackTopPx.value, rowPx.value)
   if (top !== null) {
     viewport.scrollTop = top
   }
@@ -253,7 +253,46 @@ const treeId = useId()
 const focused = ref(false)
 const cursor = ref<string | null>(null)
 const cursorPath = computed(() => activeRow(props.rows.map((row) => row.path), cursor.value, props.selected))
-const cursorIndex = computed(() => props.rows.findIndex((row) => row.path === cursorPath.value))
+const cursorIndex = computed(() => indexOf(cursorPath.value))
+
+// The rows drawn: those in view and a few around them, and the two that must stay
+// drawn. The kept rows are read here, not in the extractor, so a move of either
+// gives the virtualizer a new extractor and it draws again.
+const virtualizer = useVirtualizer(computed(() => {
+  const kept = [cursorIndex.value, indexOf(props.menuRow)].filter((at) => at >= 0)
+  return {
+    count: props.rows.length,
+    getScrollElement: () => scrollArea.value?.el ?? null,
+    estimateSize: () => pitchPx.value,
+    scrollMargin: stackTopPx.value,
+    getItemKey: (at: number) => props.rows[at]?.path ?? at,
+    overscan: 10,
+    rangeExtractor: (range: Range) => [...new Set([...defaultRangeExtractor(range), ...kept])].sort((a, b) => a - b),
+  }
+}))
+// A phone's rows are taller: every row moves.
+watch(rowPx, () => virtualizer.value.measure())
+/**
+ * The drawn rows in the page's flow, each after the room of the rows skipped
+ * before it, and the room of those after the last. In the flow, not placed one
+ * by one, the browser keeps the rows in view where they are when rows come or go
+ * above them, as it does for any page (scroll anchoring): the room is held by
+ * siblings of the rows, whose changes it follows, never by a height of the list.
+ */
+const drawnRows = computed(() => {
+  const pitch = pitchPx.value
+  let next = 0
+  const drawn = virtualizer.value.getVirtualItems().flatMap((item) => {
+    const row = props.rows[item.index]
+    if (!row)
+      return []
+    const before = (item.index - next) * pitch
+    next = item.index + 1
+    return [{ row, at: item.index, before }]
+  })
+  const after = props.rows.length - next
+  return { drawn, after: after > 0 ? after * pitch - 1 : 0 }
+})
 
 function moveCursor(path: string): void {
   cursor.value = path
@@ -295,7 +334,7 @@ function onKeydown(event: KeyboardEvent): void {
     moveCursor(effect.path)
     return
   }
-  const row = props.rows.find((entry) => entry.path === effect.path)
+  const row = props.rows[indexOf(effect.path)]
   if (row)
     activateRow(row)
 }
@@ -358,7 +397,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
           :style="{ height: `${index === stickyRows.length - 1 ? Math.max(0, rowPx + stickyOffset) : rowPx}px` }"
         >
           <TreeRow
-            :ref="(el) => bindPinned(row.path, el)"
+            :ref="(el) => bindRow(row.path, el)"
             :style="index === stickyRows.length - 1 ? { transform: `translateY(${stickyOffset}px)` } : undefined"
             :row="row"
             :selected="row.path === selected"
@@ -371,7 +410,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
             <template #name><slot name="name" :row="row" :highlight="undefined" /></template>
             <template #trailing><slot name="trailing" :row="row" /></template>
           </TreeRow>
-          <div v-if="dropPaths.has(row.path)" class="pointer-events-none absolute inset-0 bg-drop-target" />
+          <div v-if="inDrop(indexOf(row.path))" class="pointer-events-none absolute inset-0 bg-drop-target" />
         </div>
       </div>
       <!-- Only scrolled rows need a fall-off below the stack that covers them. -->
@@ -390,24 +429,33 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
       @focus="focused = true"
       @blur="focused = false"
     >
-      <TreeRow
-        v-for="(row, index) in rows"
-        :id="`${treeId}-${index}`"
-        :key="row.path"
-        :ref="(el) => bindRow(row.path, el)"
-        :row="row"
-        :selected="row.path === selected && !selectedUnderStack"
-        :menu-open="row.path === menuRow"
-        :cursor="focused && index === cursorIndex"
-        :highlight="highlightOf(row)"
-        :tooltip="tooltip?.(row)"
-        @activate="activateRow(row)"
-        v-context-menu="rowMenu?.(row)"
-      >
-        <template #mark><slot name="mark" :row="row" /></template>
-        <template #name><slot name="name" :row="row" :highlight="highlightOf(row)" /></template>
-        <template #trailing><slot name="trailing" :row="row" /></template>
-      </TreeRow>
+      <!-- The rows, one pitch each: the drawn ones, and the room of the others. -->
+      <div v-if="rows.length > 0" class="flex shrink-0 flex-col">
+        <template v-for="{ row, at, before } in drawnRows.drawn" :key="row.path">
+          <div v-if="before > 0" class="shrink-0" :style="{ height: `${before}px` }" aria-hidden="true" />
+          <TreeRow
+            :id="`${treeId}-${at}`"
+            :ref="(el) => bindRow(row.path, el)"
+            :class="at < rows.length - 1 ? 'mb-px' : ''"
+            :aria-level="row.depth + 1"
+            :aria-posinset="treeIndex.position[at]"
+            :aria-setsize="treeIndex.siblings[at]"
+            :row="row"
+            :selected="row.path === selected && !selectedUnderStack"
+            :menu-open="row.path === menuRow"
+            :cursor="focused && at === cursorIndex"
+            :highlight="highlightOf(row)"
+            :tooltip="tooltip?.(row)"
+            @activate="activateRow(row)"
+            v-context-menu="rowMenu?.(row)"
+          >
+            <template #mark><slot name="mark" :row="row" /></template>
+            <template #name><slot name="name" :row="row" :highlight="highlightOf(row)" /></template>
+            <template #trailing><slot name="trailing" :row="row" /></template>
+          </TreeRow>
+        </template>
+        <div v-if="drawnRows.after > 0" class="shrink-0" :style="{ height: `${drawnRows.after}px` }" aria-hidden="true" />
+      </div>
       <slot v-if="rows.length === 0" name="empty" />
       <slot v-else name="after" />
     </div>
