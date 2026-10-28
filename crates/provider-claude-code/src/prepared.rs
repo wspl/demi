@@ -31,7 +31,7 @@ use tokio::task::JoinHandle;
 
 use crate::Shared;
 use crate::idle::{self, Closing, Idle, Seat};
-use crate::live::{LiveCli, ProcessKey};
+use crate::live::{LiveCli, ProcessKey, Written};
 use crate::placement::Placement;
 use crate::timing::Took;
 
@@ -54,15 +54,14 @@ pub(crate) struct Prepared {
 }
 
 impl Prepared {
-    /// Starts preparing a process for `request`, whose history ends with an
-    /// answer, through `placement`.
+    /// Starts preparing a process for `request` through `placement`, when its
+    /// session ends with an answer.
     pub(crate) fn start(
         shared: &Arc<Shared>,
         placement: &Rc<dyn Placement>,
         request: InferenceRequest,
     ) -> Self {
         let (commands, received) = oneshot::channel();
-        let seat = placement.idle().seat(&shared.id, shared.auth.account().ok(), Idle::Prepared);
         let key = ProcessKey::of(&request);
         let system_prompt = request.system_prompt.clone();
         let items = request.items.clone();
@@ -71,7 +70,6 @@ impl Prepared {
             placement.clone(),
             request,
             received,
-            seat,
         ));
         Self {
             key,
@@ -121,24 +119,53 @@ impl Prepared {
     }
 }
 
-/// The task of a prepared process: it starts the process as a request would,
-/// then answers what the CLI asks while it waits, until a request takes it or
-/// it is closed.
+/// The task of a prepared process: it writes the session, and when that ends
+/// with an answer, starts the process as a request would, then answers what
+/// the CLI asks while it waits, until a request takes it or it is closed.
 ///
-/// Its seat counts it idle from the preparation's start. Closing a process
-/// still starting gives its start up, which closes what it started.
+/// A session that ends with input prepares nothing: the CLI would answer that
+/// input at once, and the next request's own input after it. Its seat counts
+/// the process idle from its start. Closing a process still starting gives its
+/// start up, which closes what it started.
 async fn wait(
     shared: Arc<Shared>,
     placement: Rc<dyn Placement>,
     request: InferenceRequest,
     mut commands: oneshot::Receiver<Command>,
-    seat: Seat,
 ) {
     let session = request.session_id.clone();
+    let written = tokio::select! {
+        written = Written::of(&shared, &request) => written,
+        // A request that asks for the process meanwhile starts its own.
+        _ = &mut commands => return,
+    };
+    let written = match written {
+        Ok(written) if written.file.answered => written,
+        Ok(_) => {
+            tracing::debug!(
+                event = "claude_code_prepared.unanswered",
+                provider = %shared.id,
+                node = session,
+                "no Claude Code process is prepared for a history that ends with input"
+            );
+            return;
+        }
+        Err(failure) => {
+            tracing::warn!(
+                event = "claude_code_prepared.start_failed",
+                provider = %shared.id,
+                node = session,
+                error = failure.message,
+                "a Claude Code process prepared ahead did not start"
+            );
+            return;
+        }
+    };
+    let seat = placement.idle().seat(&shared.id, shared.auth.account().ok(), Idle::Prepared);
     let closing = seat.closing();
     tokio::pin!(closing);
     let started = async {
-        let mut live = LiveCli::start(&shared, &*placement, &request, Took::Prepared).await?;
+        let mut live = LiveCli::start(&shared, &*placement, &request, written, Took::Prepared).await?;
         live.prepare(&request).await?;
         Ok::<_, demi_provider_common::ProviderFailure>(live)
     };

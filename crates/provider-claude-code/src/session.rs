@@ -67,6 +67,17 @@ pub(crate) struct SessionFile {
     timestamp: String,
     /// Every line after the `environment` entry.
     pub(crate) history: Vec<u8>,
+    /// Whether the history ends with the model's answer, so a process
+    /// resuming it waits for input.
+    ///
+    /// The CLI answers at once a session that ends with input
+    /// (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN`), or with a call that has no
+    /// result. As it loads a session, it drops an assistant message of
+    /// reasoning or blank text alone (Claude Code 2.1.296), so only text
+    /// after the last input is an answer. Reasoning no entry stands for, such
+    /// as a thought a stop cut short, is left out of the file. An empty
+    /// history ends with none.
+    pub(crate) answered: bool,
 }
 
 impl SessionFile {
@@ -84,7 +95,13 @@ impl SessionFile {
         let environment = Uuid::new_v4();
         let mut history = Vec::new();
         let mut parent = environment.to_string();
+        let mut answered = false;
         for mut entry in entries(items, blocks, &id) {
+            if is_user_message(&entry) || is_result(&entry) {
+                answered = false;
+            } else if let Some(answer) = answer_of(&entry) {
+                answered = answer;
+            }
             if let Value::Object(fields) = &mut entry {
                 fields.insert("parentUuid".into(), Value::String(parent));
                 fields.insert("sessionId".into(), Value::String(id.to_string()));
@@ -105,6 +122,7 @@ impl SessionFile {
             environment,
             timestamp,
             history,
+            answered,
         }
     }
 
@@ -385,6 +403,19 @@ fn extend_recorded(entries: &mut [Value], items: &[InferenceItem]) {
         if blocks.len() > written.len() && blocks.starts_with(written) {
             written.extend_from_slice(&blocks[written.len()..]);
         }
+    }
+}
+
+/// What an `assistant` entry makes of the session's end: an answer for text
+/// that is not blank, none for a tool call, which awaits its result; reasoning
+/// and blank text change nothing, since the CLI drops a message of them
+/// alone.
+fn answer_of(entry: &Value) -> Option<bool> {
+    let block = &entry["message"]["content"][0];
+    match assistant_kind(entry)? {
+        "text" => block["text"].as_str().is_some_and(|text| !text.trim().is_empty()).then_some(true),
+        "tool_use" => Some(false),
+        _ => None,
     }
 }
 

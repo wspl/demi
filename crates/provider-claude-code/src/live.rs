@@ -313,6 +313,34 @@ pub(crate) struct LiveCli {
     first_call_unseen: bool,
 }
 
+/// The session file a new process resumes, and how long writing it took.
+pub(crate) struct Written {
+    pub(crate) file: SessionFile,
+    took: std::time::Duration,
+}
+
+impl Written {
+    /// Writes the session of `request`'s blocks, off the shard.
+    pub(crate) async fn of(
+        shared: &Shared,
+        request: &InferenceRequest,
+    ) -> Result<Self, ProviderFailure> {
+        let building = tokio::time::Instant::now();
+        let session = request.session_id.clone();
+        let items = request.items.clone();
+        let blocks = request.blocks.clone();
+        let timestamp = shared.clock.now().to_jiff().to_string();
+        let file = encode_body(FAMILY, move || {
+            SessionFile::new(&session, &items, &blocks, timestamp)
+        })
+        .await?;
+        Ok(Self {
+            file,
+            took: building.elapsed(),
+        })
+    }
+}
+
 impl LiveCli {
     /// Starts a new process for `request` through `placement`, in the account's
     /// directory, which the CLI reads its sign-in from; an account the vendor
@@ -326,6 +354,7 @@ impl LiveCli {
         shared: &Arc<Shared>,
         placement: &dyn Placement,
         request: &InferenceRequest,
+        written: Written,
         took: Took,
     ) -> Result<Self, ProviderFailure> {
         let began = std::time::Instant::now();
@@ -334,18 +363,7 @@ impl LiveCli {
             .work()
             .await
             .map_err(|failure| failure.failure())?;
-        let building = tokio::time::Instant::now();
-        let file = {
-            let session = request.session_id.clone();
-            let items = request.items.clone();
-            let blocks = request.blocks.clone();
-            let timestamp = shared.clock.now().to_jiff().to_string();
-            encode_body(FAMILY, move || {
-                SessionFile::new(&session, &items, &blocks, timestamp)
-            })
-            .await?
-        };
-        let session_build = building.elapsed();
+        let Written { file, took: session_build } = written;
         // The account whose probe the start may run.
         let probed = match &account.work {
             CliWork::Account { account, .. } => Some(account.clone()),
