@@ -8,17 +8,20 @@ import { ExternalLink } from '@demicodes/plugin-sdk'
 import { InlineError } from '@demicodes/plugin-sdk'
 import { TextInput } from '@demicodes/plugin-sdk'
 import { SettingsRow } from '@demicodes/plugin-sdk'
-import type { AddSourceAnswer, SettingsSkillDraft } from './types'
+import FetcherMenu from './FetcherMenu.vue'
+import type { AddSourceAnswer, SettingsSkillDevice, SettingsSkillDraft } from './types'
 
 /**
- * Adding a skill source: a git repository. Every SKILL.md in it becomes a
- * skill the page can turn on. The dialog stays open until the source is
- * added; an origin the plugin refuses is said under the field, which keeps
- * what was typed.
+ * Adding a skill source: a git repository, and what fetches it, the server
+ * or one of the user's devices. Every SKILL.md in it becomes a skill the
+ * page can turn on. The dialog stays open until the source is added; an
+ * origin the plugin refuses is said under the field, which keeps what was
+ * typed.
  */
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
+  devices: readonly SettingsSkillDevice[]
   addSource: (draft: SettingsSkillDraft) => Promise<AddSourceAnswer>
 }>()
 
@@ -27,17 +30,20 @@ const emit = defineEmits<{
 }>()
 
 const origin = ref('')
+/** The device that fetches the source; null for the server. */
+const fetcher = ref<string | null>(null)
 const refusal = ref<string | null>(null)
 
 watch(() => props.isOpen, (open) => {
   if (!open)
     return
   origin.value = ''
+  fetcher.value = null
   refusal.value = null
 })
 
-// A changed origin is a new attempt: the refusal of the last one no longer applies.
-watch(origin, () => {
+// A changed origin or fetcher is a new attempt: the refusal of the last one no longer applies.
+watch([origin, fetcher], () => {
   refusal.value = null
 })
 
@@ -46,7 +52,7 @@ const canAdd = computed(() => origin.value.trim().length > 0)
 async function submit() {
   if (!canAdd.value)
     return
-  const answer = await props.addSource({ origin: origin.value.trim() })
+  const answer = await props.addSource({ origin: origin.value.trim(), fetcher: fetcher.value })
   if (answer.kind === 'added') {
     emit('close')
   } else if (answer.kind === 'refused') {
@@ -80,6 +86,14 @@ async function submit() {
             placeholder="owner/repository"
             :aria-label="t('addSource.repository')"
             literal
+          />
+        </SettingsRow>
+        <SettingsRow :label="t('fetcher.label')" :description="t('fetcher.hint')">
+          <FetcherMenu
+            :overlay-store="overlayStore"
+            :devices="devices"
+            :fetcher="fetcher"
+            @choose="(chosen) => (fetcher = chosen)"
           />
         </SettingsRow>
       </div>

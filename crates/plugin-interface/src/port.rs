@@ -10,7 +10,7 @@ use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostFile, HostRead, PortError, PortRequest, PortResponse, PortTransport, RpcPort};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::WorkspaceId;
+use demi_web_api_protocol::ids::{DeviceId, WorkspaceId};
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
 use crate::{
@@ -102,6 +102,27 @@ pub enum PortMessage {
     PanelTabs,
     /// The user's workspaces, and the one the request's conversation is in.
     Workspaces,
+    /// The user's paired devices, each with whether its runner is connected.
+    Devices,
+    /// The commit `url`'s default branch points to, as the user's paired
+    /// device `device` reads it with its own `git`
+    /// (`crates/backend-host-access/src/device_git.rs`).
+    DeviceGitHead {
+        device: DeviceId,
+        url: String,
+    },
+    /// The newest commit of `url`'s default branch as the user's paired
+    /// device `device` clones it with its own `git`: every file's path, and
+    /// the bytes of those of each directory a file named `marker` marks.
+    /// The repository's objects may hold at most `repository_max` bytes, and
+    /// those files at most `files_max`.
+    DeviceGitFetch {
+        device: DeviceId,
+        url: String,
+        marker: String,
+        repository_max: u64,
+        files_max: u64,
+    },
     /// Creates a tab of one of the plugin's panel kinds.
     CreatePanelTab {
         tab: CreatePanelTab,
@@ -247,6 +268,15 @@ pub enum PortAnswer {
     Workspaces {
         workspaces: Workspaces,
     },
+    Devices {
+        devices: Vec<DeviceName>,
+    },
+    GitHead {
+        commit: String,
+    },
+    GitTree {
+        tree: GitTree,
+    },
     /// The panel's revision once a change is in it.
     PanelRevision {
         revision: u64,
@@ -306,6 +336,9 @@ impl PortAnswer {
             Self::Report { .. } => "report",
             Self::Panel { .. } => "panel",
             Self::Workspaces { .. } => "workspaces",
+            Self::Devices { .. } => "devices",
+            Self::GitHead { .. } => "git_head",
+            Self::GitTree { .. } => "git_tree",
             Self::PanelRevision { .. } => "panel_revision",
             Self::Secret { .. } => "secret",
             Self::Response { .. } => "response",
@@ -363,6 +396,66 @@ pub struct Workspaces {
     /// None for a request of no conversation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current: Option<WorkspaceId>,
+}
+
+/// A paired device of the user's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeviceName {
+    pub id: DeviceId,
+    pub name: String,
+    /// Its runner is connected.
+    pub online: bool,
+}
+
+/// A commit's tree as a device's `git` read it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitTree {
+    pub commit: String,
+    /// Every file of the tree.
+    pub entries: Vec<GitEntry>,
+    /// The bytes of the files that were asked for, by path.
+    pub files: Vec<GitFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitEntry {
+    /// In the repository, with `/` between its parts.
+    pub path: String,
+    pub executable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitFile {
+    pub path: String,
+    pub bytes: B64Bytes,
+}
+
+/// Why a device's `git` answered nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum GitRefusal {
+    /// The device is not one of the user's paired devices.
+    #[error("the device is not paired")]
+    NotFound,
+    /// Its runner is not connected.
+    #[error("the device is offline")]
+    Offline,
+    #[error("the repository is larger than {limit} bytes")]
+    RepositoryTooLarge { limit: u64 },
+    #[error("the files are larger than {limit} bytes")]
+    FilesTooLarge { limit: u64 },
+    /// `git` or the device failed, in their words.
+    #[error("{message}")]
+    Failed { message: String },
 }
 
 /// A workspace and its name as Demi's commands say it.
@@ -525,6 +618,9 @@ pub enum PortRefusal {
     /// No image, video or audio was made.
     #[error("{refusal}")]
     Media { refusal: MediaRefusal },
+    /// A device's `git` answered nothing.
+    #[error("{refusal}")]
+    Git { refusal: GitRefusal },
 }
 
 /// Why a typed port operation did not answer.
@@ -728,6 +824,39 @@ impl PluginPort {
         match self.ask(message).await? {
             PortAnswer::Kept { primary } => Ok(primary),
             answer => Err(unexpected("write_report", &answer)),
+        }
+    }
+
+    /// The user's paired devices.
+    pub async fn devices(&self) -> Result<Vec<DeviceName>, PortFailure> {
+        match self.ask(PortMessage::Devices).await? {
+            PortAnswer::Devices { devices } => Ok(devices),
+            answer => Err(unexpected("devices", &answer)),
+        }
+    }
+
+    /// The commit `url`'s default branch points to, as `device` reads it.
+    pub async fn device_git_head(&self, device: DeviceId, url: String) -> Result<String, PortFailure> {
+        match self.ask(PortMessage::DeviceGitHead { device, url }).await? {
+            PortAnswer::GitHead { commit } => Ok(commit),
+            answer => Err(unexpected("device_git_head", &answer)),
+        }
+    }
+
+    /// The newest commit of `url`'s default branch as `device` clones it
+    /// ([`PortMessage::DeviceGitFetch`]).
+    pub async fn device_git_fetch(
+        &self,
+        device: DeviceId,
+        url: String,
+        marker: String,
+        repository_max: u64,
+        files_max: u64,
+    ) -> Result<GitTree, PortFailure> {
+        let message = PortMessage::DeviceGitFetch { device, url, marker, repository_max, files_max };
+        match self.ask(message).await? {
+            PortAnswer::GitTree { tree } => Ok(tree),
+            answer => Err(unexpected("device_git_fetch", &answer)),
         }
     }
 

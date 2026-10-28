@@ -18,6 +18,17 @@
     "update": "更新",
     "remove": "移除"
   },
+  "fetcher": {
+    "label": "拉取方式",
+    "hint": "设备会用自己的 Git、密钥和网络拉取，SSH 地址需要这样拉取。",
+    "server": "服务器",
+    "via": "通过 {name}",
+    "waiting": "等待 {name}",
+    "offline": "{name} 已离线。",
+    "removed": "已移除的设备",
+    "removedLabel": "设备已移除",
+    "removedDetail": "拉取它的设备已不再配对。请选择另一台设备来拉取。"
+  },
   "skill": {
     "warning": "警告",
     "nameTaken": "名称已被占用",
@@ -36,7 +47,7 @@
     "title": "添加来源",
     "hint": "一个 Git 存储库。其中每个 SKILL.md 都是一项技能。",
     "repository": "存储库",
-    "repositoryHint": "owner/repository 或 Git URL。",
+    "repositoryHint": "所有者/存储库、Git URL 或 SSH 地址。",
     "browse": "浏览 skills.sh",
     "cancel": "取消"
   },
@@ -45,7 +56,8 @@
     "update": "无法更新来源",
     "remove": "无法移除来源",
     "switchSkill": "无法切换技能",
-    "switchSkills": "无法切换技能"
+    "switchSkills": "无法切换技能",
+    "setFetcher": "无法更改拉取方式"
   },
   "permissions": {
     "skills_manage": {
@@ -69,9 +81,12 @@
     }
   },
   "refusals": {
-    "invalid_origin": "请输入“所有者/存储库”或 Git URL。",
+    "invalid_origin": "请输入“所有者/存储库”、Git URL 或 SSH 地址。",
     "source_exists": "已添加 {origin}。",
     "source_exists_in": "已在“{place}”中添加 {origin}。",
-    "workspace_not_found": "此工作空间已不存在。"
+    "workspace_not_found": "此工作空间已不存在。",
+    "ssh_needs_device": "SSH 地址需要由你的设备拉取。",
+    "fetcher_offline": "{name} 已离线。",
+    "fetcher_not_found": "这台设备已不再配对。"
   }
 }

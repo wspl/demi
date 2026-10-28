@@ -42,7 +42,7 @@ struct ListArgs {}
 
 /// The input of `demi skills add`.
 #[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 struct AddArgs {
     /// owner/repo for GitHub, or an https URL of a git repository
     repository: String,
@@ -50,6 +50,8 @@ struct AddArgs {
     skill: Option<Vec<String>>,
     /// Add the source to this conversation's workspace instead of Global
     workspace: Option<bool>,
+    /// The paired device, by name, that fetches the source with its own git, keys and network; the server without one
+    fetch_with: Option<String>,
 }
 
 /// The input of `demi skills enable` and `disable`.
@@ -79,17 +81,17 @@ pub(crate) fn commands() -> CommandPlugin {
             LeafBuilder::rpc("list", "The skill sources of Global and of this conversation's workspace with their skills, whether each is on, and whether an update is available.")
                 .input::<ListArgs>()
                 .json_output::<Vec<SourceState>>()
-                .success_output("a table of the skills of those sources: name, source, place (Global or the workspace's name), commit, whether it is on, the source whose skill of that name is on and its place, and description; on stderr, a source that is updating, failed or has an update; with --json, the sources with their skills, each with its workspace's id or none for Global")
+                .success_output("a table of the skills of those sources: name, source, place (Global or the workspace's name), what fetches it (server or a device's name), commit, whether it is on, the source whose skill of that name is on and its place, and description; on stderr, a source that is updating, failed, has an update, or waits for its offline device; with --json, the sources with their skills, each with its workspace's id or none for Global and its fetching device's id or none for the server")
                 .bind(PortHandled),
         )
         .leaf(
-            LeafBuilder::rpc("add", "Add a skill source to Global, or with --workspace to this conversation's workspace, and wait for its first fetch; its skills start on, or only those --skill names.")
+            LeafBuilder::rpc("add", "Add a skill source to Global, or with --workspace to this conversation's workspace, and wait for its first fetch; its skills start on, or only those --skill names. The server fetches it, or with --fetch-with a paired device with its own git, keys and network, which an SSH address needs.")
                 .input::<AddArgs>()
                 .positionals(["repository"])
                 .describe("skill", "A skill of the source to turn on; the others stay off")
                 .permission(MANAGE)
                 .success_output("the commit pinned and the skills turned on and left off")
-                .failure_output(format!("a repository that is not owner/repo or an https URL, one added already in any place, naming the place, a failed fetch (the source stays, showing its failure), or a --skill the commit lacks or whose name a skill that is on has (the source stays, its skills as a new source's start); {REFUSED_OUTPUT}"))
+                .failure_output(format!("a repository that is not owner/repo, an https URL or an SSH address, one added already in any place, naming the place, an SSH address without --fetch-with, a --fetch-with device that is not paired or is offline, a failed fetch (the source stays, showing its failure), or a --skill the commit lacks or whose name a skill that is on has (the source stays, its skills as a new source's start); {REFUSED_OUTPUT}"))
                 .bind(PortHandled),
         )
         .leaf(
@@ -98,7 +100,7 @@ pub(crate) fn commands() -> CommandPlugin {
                 .positionals(["repository"])
                 .permission(MANAGE)
                 .success_output("the commit pinned and the skills turned on or off, or that nothing changed")
-                .failure_output(format!("a repository neither Global nor this conversation's workspace has, or a failed fetch; {REFUSED_OUTPUT}"))
+                .failure_output(format!("a repository neither Global nor this conversation's workspace has, a source whose device is offline or no longer paired, or a failed fetch; {REFUSED_OUTPUT}"))
                 .bind(PortHandled),
         )
         .leaf(
@@ -203,6 +205,20 @@ async fn list(
     let (_, places) = state.sources(port).await?;
     let mut listed = state.state(port).await?;
     listed.sources.retain(|source| places.offered(source.workspace.as_ref()));
+    let devices = if listed.sources.iter().any(|source| source.fetcher.is_some()) {
+        port.devices().await?
+    } else {
+        Vec::new()
+    };
+    let fetcher = |source: &SourceState| -> String {
+        match &source.fetcher {
+            None => "server".to_owned(),
+            Some(id) => devices
+                .iter()
+                .find(|device| device.id == *id)
+                .map_or_else(|| "a device no longer paired".to_owned(), |device| device.name.clone()),
+        }
+    };
     // What a source's row cannot say: that it is being fetched, failed or
     // has an update, told on stderr.
     let command = invocation.path.join(" ");
@@ -220,6 +236,13 @@ async fn list(
         if source.skills.is_empty() {
             notes.push("no skills".to_owned());
         }
+        if let Some(id) = &source.fetcher {
+            match devices.iter().find(|device| device.id == *id) {
+                Some(device) if !device.online => notes.push(format!("waiting for {}, which is offline", device.name)),
+                Some(_) => {}
+                None => notes.push("its device is no longer paired; choose another in Settings › Skills".to_owned()),
+            }
+        }
         for note in notes {
             port.rpc().stderr(warning(&command, &format!("{}: {note}", source.origin))).await?;
         }
@@ -229,7 +252,7 @@ async fn list(
         text.push('\n');
         return Ok(Ok(text));
     }
-    let mut table = Table::new(["name", "source", "place", "commit", "enabled", "taken by", "description"]);
+    let mut table = Table::new(["name", "source", "place", "fetched by", "commit", "enabled", "taken by", "description"]);
     for source in &listed.sources {
         for skill in &source.skills {
             let taken_by = skill
@@ -240,6 +263,7 @@ async fn list(
                 skill.name.as_str().into(),
                 source.origin.as_str().into(),
                 places.name(source.workspace.as_ref()).into(),
+                fetcher(source).into(),
                 source.commit.as_deref().map(short).into(),
                 skill.enabled.into(),
                 taken_by.as_deref().into(),
@@ -260,7 +284,18 @@ async fn add(state: &Rc<State>, args: AddArgs, port: &PluginPort) -> Result<Prin
     } else {
         None
     };
-    let id = state.add_source(port, &args.repository, workspace).await?;
+    let fetcher = match &args.fetch_with {
+        None => None,
+        Some(name) => {
+            let devices = port.devices().await?;
+            let Some(device) = devices.iter().find(|device| device.name.eq_ignore_ascii_case(name.trim())) else {
+                let names: Vec<&str> = devices.iter().map(|device| device.name.as_str()).collect();
+                return Ok(Err(format!("no paired device is named \"{name}\"; the paired devices are {}", names.join(", "))));
+            };
+            Some(device.id.clone())
+        }
+    };
+    let id = state.add_source(port, &args.repository, workspace, fetcher).await?;
     let fetched = state.wait_fetch(port, &id).await?;
     if let Some(refused) = fetch_refusal(fetched) {
         return Ok(Err(refused));
@@ -303,6 +338,7 @@ async fn update(
 ) -> Result<Printed, PluginError> {
     let id = source_id(state, port, &args.repository).await?;
     let (before, _) = sources::read_one(port, &id).await?;
+    state.ready_to_fetch(port, &id).await?;
     let fetched = state.wait_fetch(port, &id).await?;
     if let Some(refused) = fetch_refusal(fetched) {
         return Ok(Err(refused));
@@ -367,7 +403,8 @@ fn fetch_refusal(fetched: Fetched) -> Option<String> {
         Fetched::Pinned => None,
         Fetched::Failed(message) => Some(format!("the fetch failed: {message}")),
         Fetched::Removed => Some("the source was removed while it was fetched".into()),
-        Fetched::Stopped => Some("the backend stopped during the fetch".into()),
+        Fetched::Stopped => Some("the fetch was cut off: the backend stopped, or the device that fetches the source went offline".into()),
+        Fetched::Superseded => Some("another fetcher took the source over during the fetch".into()),
     }
 }
 

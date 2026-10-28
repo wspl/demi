@@ -18,6 +18,17 @@
     "update": "업데이트",
     "remove": "제거"
   },
+  "fetcher": {
+    "label": "가져오기 방법",
+    "hint": "기기는 자체 Git, 키, 네트워크로 가져옵니다. SSH 주소에는 이 방법이 필요합니다.",
+    "server": "서버",
+    "via": "{name} 경유",
+    "waiting": "{name} 대기 중",
+    "offline": "{name}이(가) 오프라인입니다.",
+    "removed": "제거된 기기",
+    "removedLabel": "기기 제거됨",
+    "removedDetail": "가져오던 기기가 더 이상 페어링되어 있지 않습니다. 가져올 다른 기기를 선택하십시오."
+  },
   "skill": {
     "warning": "경고",
     "nameTaken": "이름이 사용 중",
@@ -36,7 +47,7 @@
     "title": "소스 추가",
     "hint": "Git 리포지토리입니다. 리포지토리의 SKILL.md마다 스킬이 하나씩 추가됩니다.",
     "repository": "리포지토리",
-    "repositoryHint": "owner/repository 또는 Git URL입니다.",
+    "repositoryHint": "owner/repository, Git URL 또는 SSH 주소.",
     "browse": "skills.sh 둘러보기",
     "cancel": "취소"
   },
@@ -45,7 +56,8 @@
     "update": "소스를 업데이트할 수 없습니다",
     "remove": "소스를 제거할 수 없습니다",
     "switchSkill": "스킬을 켜거나 끌 수 없습니다",
-    "switchSkills": "스킬을 켜거나 끌 수 없습니다"
+    "switchSkills": "스킬을 켜거나 끌 수 없습니다",
+    "setFetcher": "가져오기 방법을 변경할 수 없음"
   },
   "permissions": {
     "skills_manage": {
@@ -69,9 +81,12 @@
     }
   },
   "refusals": {
-    "invalid_origin": "owner/repository 또는 Git URL을 입력하십시오.",
+    "invalid_origin": "owner/repository, Git URL 또는 SSH 주소를 입력하십시오.",
     "source_exists": "이미 추가된 소스입니다: {origin}",
     "source_exists_in": "“{place}”에 이미 추가된 소스입니다: {origin}",
-    "workspace_not_found": "이 워크스페이스는 더 이상 없습니다."
+    "workspace_not_found": "이 워크스페이스는 더 이상 없습니다.",
+    "ssh_needs_device": "SSH 주소는 기기에서 가져와야 합니다.",
+    "fetcher_offline": "{name}이(가) 오프라인입니다.",
+    "fetcher_not_found": "이 기기는 더 이상 페어링되어 있지 않습니다."
   }
 }

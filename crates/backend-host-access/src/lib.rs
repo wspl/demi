@@ -78,6 +78,7 @@
 
 pub mod access;
 pub mod attachment_commands;
+pub mod device_git;
 pub mod directories;
 pub mod expose_commands;
 pub mod file_watch;
