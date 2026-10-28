@@ -68,21 +68,6 @@ export function listLines(
   return lines
 }
 
-/**
- * The conversation whose yellow dot a group's label carries: while the group is folded, the
- * first of its conversations the fold hides that waits for the user, so a request never hides
- * in a fold. The open conversation stays under the label with its own dot, so it lends none.
- */
-export function labelWaiting(
-  folded: boolean,
-  conversations: readonly SidebarConversation[],
-  openId: string | null,
-): SidebarConversation | null {
-  if (!folded)
-    return null
-  return conversations.find((conversation) => conversation.needsYou && conversation.id !== openId) ?? null
-}
-
 export function entryIndex(entries: readonly ListEntry[], id: string | null): number {
   return id === null ? -1 : entries.findIndex((entry) => entry.id === id)
 }

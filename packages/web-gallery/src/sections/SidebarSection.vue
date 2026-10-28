@@ -222,7 +222,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Projects',
-    'Every directory a conversation runs in but a home, in manual order: moving a conversation to a directory makes its project, and moving it to the home takes it out; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s mark, its system’s logo with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. A folded project keeps the open conversation under its header, as Slack’s folded sections keep the channel shown, so its place still shows; the fold stays as the user left it. A project shows only while it holds a conversation, the open one included: one whose last conversation is archived or deleted leaves the list (scratch here holds none), and Add project on its folder brings it back with a new conversation.'
+    'Every directory a conversation runs in but a home, in manual order: moving a conversation to a directory makes its project, and moving it to the home takes it out; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s mark, its system’s logo with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds, and while a conversation its fold hides has news its row carries that dot after its name, as a folded group’s label does; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. A folded project keeps the open conversation under its header, as Slack’s folded sections keep the channel shown, so its place still shows; the fold stays as the user left it. A project shows only while it holds a conversation, the open one included: one whose last conversation is archived or deleted leaves the list (scratch here holds none), and Add project on its folder brings it back with a new conversation.'
   ],
   [
     'Row',
@@ -543,12 +543,15 @@ function statusRows(): SidebarConversation[] {
   ]
 }
 /**
- * The folded specimen's rows: no conversation in a project waits yet, so the
- * label's dot comes only from Ask for Permission in a Project.
+ * The folded specimen's rows: in the projects only dotfiles' finished
+ * conversation is new, so the folded label starts green, and a request comes
+ * only from Ask for Permission in a Project.
  */
 function foldRows(): SidebarConversation[] {
   return demoConversations().map((conversation) => (
-    conversation.projectId === null ? conversation : { ...conversation, needsYou: false }
+    conversation.projectId === null || conversation.projectId === 'p-dotfiles'
+      ? conversation
+      : { ...conversation, needsYou: false, unread: false }
   ))
 }
 /** The project conversation Ask for Permission in a Project makes wait, which is not the open one. */
@@ -823,7 +826,7 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Folded Groups"
-      note="Conversations and Projects each fold under their label, as Finder’s sidebar sections do. Click a label, or the chevron after it, which shows while the pointer is over the label and always on a phone: it points down while the group is open and right while it is folded. A folded group shows its label alone, but keeps the open conversation under it, in Projects with its project’s row above it so its place still shows, and while a conversation the fold hides waits for the user, the label carries the yellow dot, between the label and the chevron; the open conversation shows its own dot. Here Projects starts folded with Cookie helper refactor open; Ask for Permission in a Project makes Resize the product photos for the shop wait until Answer the Request or until it is opened and read, which settles its dot. The product keeps the folded groups per browser, across reloads. Reset gives the specimen its rows and folds again."
+      note="Conversations and Projects each fold under their label, as Finder’s sidebar sections do. Click a label, or the chevron after it, which shows while the pointer is over the label and always on a phone: it points down while the group is open and right while it is folded. A folded group shows its label alone, but keeps the open conversation under it, in Projects with its project’s row above it so its place still shows, and while a conversation the fold hides has news, the label carries the dot of the most urgent, red for a failure, then yellow for a request, then green for a finished turn not read yet, between the label and the chevron, so whatever the tab’s title counts has a dot to find; the open conversation shows its own dot. A folded project's row carries the same dot after its name, as dotfiles does once Projects is unfolded. Here Projects starts folded with Cookie helper refactor open, its label green for dotfiles’ finished conversation; Ask for Permission in a Project makes Resize the product photos for the shop wait, and the label turns yellow, until Answer the Request or until it is opened and read, which settles its dot. The product keeps the folded groups per browser, across reloads. Reset gives the specimen its rows and folds again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="projects folded · live">

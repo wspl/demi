@@ -13,17 +13,19 @@ import type { SidebarConversation } from './types'
  * - The chevron, in the label's faint color, shows while the pointer is over the
  *   label or the keyboard is on the button, and always on a phone, which has no
  *   hover.
- * - While the group is folded, a conversation the fold hides that waits for the
- *   user puts its dot between the label and the chevron, so the chevron, hidden
- *   at rest, leaves no gap.
+ * - While the group is folded, the most urgent news of the conversations the
+ *   fold hides, a failure, a request or a finished turn not read yet, puts its
+ *   dot between the label and the chevron, so the chevron, hidden at rest,
+ *   leaves no gap. A folded label keeps the dot's room while nothing is new, so
+ *   news that comes or goes moves nothing.
  * - The `action` slot holds the group's button at the label's end, such as New
  *   conversation, which shows on hover.
  */
 defineProps<{
   label: string
   folded: boolean
-  /** The conversation whose dot the label carries; none while nothing in the folded group waits. */
-  waiting: Pick<SidebarConversation, 'status' | 'needsYou' | 'unread'> | null
+  /** The conversation whose dot the label carries; none while the group is open or nothing it hides is new. */
+  news: Pick<SidebarConversation, 'status' | 'needsYou' | 'unread'> | null
 }>()
 
 const emit = defineEmits<{
@@ -45,8 +47,10 @@ const emit = defineEmits<{
       <!-- The dot and the chevron sit on the middle of the label's capitals. -->
       <span class="flex min-w-0 items-baseline gap-1">
         <span class="truncate">{{ label }}</span>
-        <CapCentered v-if="waiting">
-          <ConversationDot :conversation="waiting" />
+        <CapCentered v-if="folded">
+          <span class="flex size-3.5 shrink-0 phone:size-4">
+            <ConversationDot v-if="news" :conversation="news" />
+          </span>
         </CapCentered>
         <CapCentered
           class="opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/heading:opacity-100 group-focus-visible/fold:opacity-100 phone:opacity-100"
