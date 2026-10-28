@@ -1,0 +1,48 @@
+# Builds the website, packages/site, and publishes it to demi.sh after each
+# push to main. Only the newest push matters, so a newer one cancels a build
+# that has not finished.
+#
+# The build needs the protocol package, which the Rust contracts generate, and
+# Chromium, which records the demos and photographs the share image. The root
+# `bun run build`, which the release build runs, leaves the site out.
+#
+# Cloudflare's account and an API token that may edit its Workers are the
+# repository's secrets CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.
+name: Site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: site
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: site
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+        working-directory: packages/protocol
+      - run: bunx playwright install --with-deps chromium
+        working-directory: packages/site
+      - run: bun run build
+        working-directory: packages/site
+      - run: bun run deploy
+        working-directory: packages/site
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -1,0 +1,11 @@
+// The site on Cloudflare: a Worker that only serves `dist/`, at demi.sh.
+// `bun run deploy` publishes the last build; .github/workflows/site.yml builds
+// and publishes after each push to main.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "demi-site",
+  "compatibility_date": "2026-10-28",
+  "assets": { "directory": "./dist" },
+  "routes": [{ "pattern": "demi.sh", "custom_domain": true }],
+  "workers_dev": false
+}
