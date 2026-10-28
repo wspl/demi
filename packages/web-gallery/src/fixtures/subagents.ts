@@ -1,6 +1,7 @@
 import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
 import type { AgentMessage, Block, JobModel } from '@demicodes/protocol'
 import type { AgentRun, SubagentRecord } from '@demicodes/web-ui/agent/subagents'
+import type { HostName } from '@demicodes/web-ui/agent/host-names'
 import { demoModel, inRequests, inRun, screenshotTool, shellView, thinkingText, withEnd } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './catalog'
@@ -91,9 +92,9 @@ const HAIKU: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model:
 function runsOn(
   profile: string | null,
   model: JobModel,
-  more: Partial<Pick<AgentRun, 'round' | 'forkedFrom' | 'cwd'>> = {},
-): Pick<AgentRun, 'profile' | 'model' | 'round' | 'forkedFrom' | 'cwd'> {
-  return { profile, model, round: 1, forkedFrom: null, cwd: PROJECT_ROOT, ...more }
+  more: Partial<Pick<AgentRun, 'round' | 'forkedFrom' | 'cwd' | 'device'>> = {},
+): Pick<AgentRun, 'profile' | 'model' | 'round' | 'forkedFrom' | 'cwd' | 'device'> {
+  return { profile, model, round: 1, forkedFrom: null, cwd: PROJECT_ROOT, device: null, ...more }
 }
 
 /** What Check the logout path tells its parent while it works. */
@@ -192,6 +193,41 @@ export const suitePathsUpdate: AgentMessage = {
   content: SUITE_PATHS_UPDATE,
   event: { type: 'message' },
   origin: 'ag-suite-send',
+}
+
+/** The device of a laptop a child works on after its conversation moved to the Cloud. */
+export const LAPTOP_DEVICE = 'dev-laptop'
+
+/** What the gallery calls each Host a child works on: the laptop by its name. */
+export function galleryHostName(device: string): HostName {
+  return device === LAPTOP_DEVICE ? { name: 'alex-laptop', kind: 'device' } : { name: device, kind: 'device' }
+}
+
+/**
+ * A child that kept running its test suite on the laptop its conversation
+ * left for the Cloud: its bar names the laptop, and its folder only explains.
+ */
+export function elsewhereSubagent(): SubagentRecord {
+  return {
+    id: 'ag-laptop',
+    number: 9,
+    onPath: true,
+    parent: 'gallery-work',
+    name: 'Run the test suite',
+    ...runsOn('research', SONNET, { cwd: '/Users/alex/src/shop', device: LAPTOP_DEVICE }),
+    phase: 'running',
+    sessionPhase: 'running',
+    contextUsage: usageAt(0.21),
+    startedAt: ago(240_000),
+    failures: {},
+    pendingCalls: [],
+    waitingSince: null,
+    cost: NO_COST,
+    shownAt: null,
+    history: wholeHistory([
+      user('ag-laptop-user', ago(240_000), 'Run the shop test suite and report the failures.'),
+    ]),
+  }
 }
 
 /** The child the `work` turn hears from, still at work: its search, and the call that sent its update. */

@@ -29,7 +29,7 @@ use demi_backend_host_access::{conversation_of, root_of};
 use demi_runner_client::host_paths;
 use demi_host_interface::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
 use crate::shard::Shard;
 
@@ -163,13 +163,12 @@ impl Shard {
         Ok((device, name))
     }
 
-    /// The working directory of `node` on the primary Host: a child's own,
-    /// and for the root the conversation's, its target's directory
-    /// (`crates/agent-server/src/node/mod.rs`).
-    pub(crate) async fn node_directory(&self, node: NodeContext<'_>) -> Result<String, HostAccessError> {
-        match node.cwd {
-            Some(cwd) => Ok(cwd.to_owned()),
-            None => Ok(self.placement(&conversation_of(node.root)).await?.directory),
+    /// Where `node` works: a child's own placement, and for the root the
+    /// conversation's, its target's (`crates/agent-server/src/node/mod.rs`).
+    pub(crate) async fn node_placement(&self, node: NodeContext<'_>) -> Result<Placement, HostAccessError> {
+        match node.placement {
+            Some(placement) => Ok(placement.clone()),
+            None => self.placement(&conversation_of(node.root)).await,
         }
     }
 
@@ -199,6 +198,13 @@ impl Shard {
     /// How the primary Host of the conversation `id` writes its paths: in
     /// the form of the system its runner reported, which the device keeps;
     /// a Cloud's is Linux's.
+    /// How the Host of `device` writes its paths, in the form of the system
+    /// its runner reported; POSIX for a device not known.
+    pub(crate) async fn device_paths(&self, device: &DeviceId) -> Result<HostPaths, StorageError> {
+        let record = self.services().control.device(device.clone()).await?;
+        Ok(record.map_or(HostPaths::Posix, |record| host_paths(record.platform)))
+    }
+
     pub(crate) async fn host_paths(&self, id: &ConversationId) -> Result<HostPaths, StorageError> {
         let Some(record) = self.services().control.conversation(id.clone()).await? else {
             return Ok(HostPaths::Posix);

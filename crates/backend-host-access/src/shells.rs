@@ -2,12 +2,13 @@
 //! (`crates/backend-host-access/src/access.rs`,
 //! `crates/host-interface/src/rpc.rs`).
 //!
-//! A node's Host is the conversation's current primary Host, which the host
-//! access admits and lets go at once. A node's environment on it is
+//! A node's Host is the conversation's current primary Host for the root, and
+//! its own for a subagent (`crates/agent-server/src/node/mod.rs`), which the
+//! host access admits and lets go at once. A node's environment on it is
 //! runner-client's:
 //!
 //! - Each of its jobs runs inside the conversation's host access and is refused
-//!   once the conversation's Host is another.
+//!   once the conversation no longer reaches that Host.
 //! - Each job's command context names the conversation and the node.
 //! - While the environment lives, the node's commands answer its jobs' rpc
 //!   calls.
@@ -50,9 +51,9 @@ use crate::attachment_commands::{Numbering, Unnumbered, commit};
 use crate::{HostShard, conversation_of};
 
 impl dyn HostShard + '_ {
-    /// A node's Host: the conversation's current primary Host. The host access
-    /// admits it and lets it go at once; its later operations take only a
-    /// Cloud's per-operation admission.
+    /// The root's Host: the conversation's current primary Host. The host
+    /// access admits it and lets it go at once; its later operations take
+    /// only a Cloud's per-operation admission.
     pub async fn conversation_host(
         &self,
         id: &ConversationId,
@@ -62,6 +63,21 @@ impl dyn HostShard + '_ {
                 host.host.clone()
             })
             .await?;
+        Ok(Rc::new(host))
+    }
+
+    /// A subagent's own Host on `device`, which the conversation reaches as
+    /// its primary Host, an attached one, or the Host a live subagent works
+    /// on (`crates/backend-host-access/src/access.rs`), and whose shells start
+    /// where the device's do, whichever it is. The host access admits it and
+    /// lets it go at once, as [`Self::conversation_host`].
+    pub async fn agent_host(&self, id: &ConversationId, device: &DeviceId) -> Result<Rc<RemoteHost>, HostError> {
+        let cancel = CancellationToken::new();
+        let admitted = self
+            .admit_host(id, Some(device), Waits::request(&cancel).for_agent())
+            .await?;
+        let host = admitted.host.host.clone();
+        drop(admitted);
         Ok(Rc::new(host))
     }
 
@@ -80,6 +96,21 @@ impl dyn HostShard + '_ {
                 "the conversation's Cloud was never made",
             ));
         };
+        self.adopting_on(id, device.clone(), target.path().to_owned()).await
+    }
+
+    /// A subagent's own Host on `device` for taking up the commands it ran
+    /// there, which admits nothing, as [`Self::adopting_host`]: its shells
+    /// start where the device's do, as [`Self::agent_host`]'s.
+    pub async fn adopting_agent_host(&self, id: &ConversationId, device: &DeviceId) -> Result<Rc<RemoteHost>, HostError> {
+        self.owned_conversation(id).await?;
+        let home = self.devices().home(device).unwrap_or_default();
+        self.adopting_on(id, device.clone(), home).await
+    }
+
+    /// The Host on `device` whose shells start in `path`, for taking up the
+    /// commands of the conversation `id` there, which admits nothing.
+    async fn adopting_on(&self, id: &ConversationId, device: DeviceId, path: String) -> Result<Rc<RemoteHost>, HostError> {
         let device_record = self
             .control()
             .device(device.clone())
@@ -98,12 +129,7 @@ impl dyn HostShard + '_ {
                 demi_runner_client::Admission::Free
             }
         };
-        Ok(Rc::new(self.devices().adopting_host(
-            device,
-            id,
-            target.path().to_owned(),
-            admission,
-        )))
+        Ok(Rc::new(self.devices().adopting_host(&device, id, path, admission)))
     }
 
     /// Runs `job`, a shell job of the conversation's agent started on `host`,
@@ -131,6 +157,7 @@ impl dyn HostShard + '_ {
                     "the job's Host is no conversation's",
                 )
             })?;
+        let follows = wait.follows;
         let admitted = self
             .admit_host(id, Some(&device), Waits::job(cancel, wait))
             .await?;
@@ -146,7 +173,7 @@ impl dyn HostShard + '_ {
         let _held = self
             .conversations()
             .slot(id)
-            .hold_job(device.clone(), Some(admitted), withdrawal.clone());
+            .hold_job(device.clone(), follows, Some(admitted), withdrawal.clone());
         // A detach that committed since the admission, or does while the job
         // installs its directories, ends it here, before it starts.
         self.reaches(id, &device, &withdrawal).await?;
@@ -164,13 +191,14 @@ impl dyn HostShard + '_ {
         &self,
         id: &ConversationId,
         host: &HostKey,
+        follows: bool,
         withdrawal: Rc<Withdrawal>,
     ) -> Option<Box<dyn std::any::Any>> {
         let device = device_of(host).and_then(|device| DeviceId::try_from(device).ok())?;
         let held = self
             .conversations()
             .slot(id)
-            .hold_job(device.clone(), None, withdrawal.clone());
+            .hold_job(device.clone(), follows, None, withdrawal.clone());
         // A failure to say is no reason to stop it: the withdrawal holds
         // the reason when it was made.
         let _ = self.reaches(id, &device, &withdrawal).await;
@@ -285,6 +313,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             options.access = Some(Rc::new(JobAccess {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),
+                follows: scope.agent == 0,
             }));
             let device = device_of(&host.key())
                 .and_then(|device| DeviceId::try_from(device).ok())
@@ -326,6 +355,9 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
 struct JobAccess {
     shard: Weak<dyn HostShard>,
     conversation: ConversationId,
+    /// Whether the node works where the conversation does: the root or a
+    /// side question, agent 0, and not a subagent.
+    follows: bool,
 }
 
 impl HostAccess for JobAccess {
@@ -336,7 +368,7 @@ impl HostAccess for JobAccess {
     ) -> LocalBoxFuture<'a, Option<Box<dyn std::any::Any>>> {
         Box::pin(async move {
             let shard = self.shard.upgrade()?;
-            shard.hold_adopted(&self.conversation, host, withdrawal).await
+            shard.hold_adopted(&self.conversation, host, self.follows, withdrawal).await
         })
     }
 
@@ -354,7 +386,10 @@ impl HostAccess for JobAccess {
                 .upgrade()
                 .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
             let shown = Shown(waiting);
-            let wait = DeviceWait { shown: &shown };
+            let wait = DeviceWait {
+                shown: &shown,
+                follows: self.follows,
+            };
             shard.run_job(&self.conversation, host, &cancel, wait, withdrawal, job).await
         })
     }

@@ -411,12 +411,14 @@ impl SubagentSource for SubagentSettings {
 pub struct NodeContext<'a> {
     /// The node whose request or tool call it is.
     pub node: &'a NodeId,
-    /// The conversation's root node. Every node of a tree runs on the
-    /// conversation's execution target, which belongs to the root.
+    /// The conversation's root node, which works on the conversation's
+    /// execution target.
     pub root: &'a NodeId,
-    /// A child's working directory now (`crates/agent-server/src/node/mod.rs`);
-    /// none for the root, whose directory is the conversation's.
-    pub cwd: Option<&'a str>,
+    /// The placement the question is about, a Host and a directory there: a
+    /// child's own now (`crates/agent-server/src/node/mod.rs`), or one its
+    /// caller read; none for where the conversation works now, as for the
+    /// root.
+    pub placement: Option<&'a Placement>,
 }
 
 /// Where a conversation's nodes run. Its futures run on the user's shard, so
@@ -431,8 +433,9 @@ pub trait HostResolver: 'static {
     /// (`ServerDeps::shells`) makes a node's environment on it.
     type Host: Host;
 
-    /// The Host a node's shell tools reach now: the conversation's current
-    /// execution target (`crates/backend-host-access/src/access.rs`).
+    /// The Host a node's shell tools reach now: a child's own placement's, and
+    /// the conversation's current execution target for the root
+    /// (`crates/backend-host-access/src/access.rs`).
     ///
     /// Two answers for the same target have equal keys, so a node keeps one
     /// shell environment per target it used. By default there is none, and a
@@ -449,6 +452,12 @@ pub trait HostResolver: 'static {
     /// reachable or waking it. By default the Host itself.
     async fn adopted_host(&self, context: NodeContext<'_>) -> Result<Rc<Self::Host>, HostError> {
         self.host(context).await
+    }
+
+    /// The name of the Host whose device is `device`, as the user's pages
+    /// name it; none when it is not known, and by default.
+    async fn host_name(&self, _device: &str) -> Option<String> {
+        None
     }
 
     /// Where the conversation works now: its primary Host's device and its

@@ -30,14 +30,14 @@
 //! is its own, closed with its session; a model switch changes the root's
 //! selection only.
 //!
-//! A node's working directory is on the primary Host:
+//! A node works in a place, a Host and a working directory there:
 //!
-//! - The root's is the conversation's.
-//! - A child's starts as its parent's (or `--cwd`) and changes only by its own
-//!   `demi agent cwd`.
-//! - When the conversation moves or its primary Host changes, every child's
-//!   directory becomes the conversation's new one, since an absolute path of
-//!   the old Host names nothing on the new one.
+//! - The root's is the conversation's, and a move of the conversation moves
+//!   it.
+//! - A child's is its parent's when it is spawned, or the directory `--cwd`
+//!   names on its parent's Host, and changes only by its own `demi agent
+//!   cwd`, on the same Host. A move of the conversation leaves it, so work
+//!   a child started goes on where it started.
 //! - A child's instructions are read from its own directory; its skills are the
 //!   conversation's.
 
@@ -57,12 +57,12 @@ use demi_agent_session::{
     ToolInvocation,
 };
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, ChildDirectory, NodeRecord, Placement, RunningCommand, StoreError,
+    AgentTreeStore, Checkpoint, NodeRecord, Placement, RunningCommand, StoreError,
     StoredCommand, StoredOutput,
     media::store_result,
 };
 use demi_agent_tools::{
-    CallError, ContextSource, Directory, EndOf, Environments, HostResolver, ModelIdentity, NodeContext,
+    CallError, ContextSource, EndOf, Environments, HostResolver, ModelIdentity, NodeContext, OwnPlacement,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
     fill_output, interrupted_look, progress_report, report_media, runs_together, stored_running_commands,
     system_prompt, whole_status,
@@ -116,8 +116,8 @@ impl<H: HostResolver> Node<H> {
         &self.runtime.node
     }
 
-    /// The node's record as it is now: a child's working directory changes
-    /// with `demi agent cwd`.
+    /// The node's record as it is now: a child's place changes with `demi
+    /// agent cwd`.
     pub fn record(&self) -> NodeRecord {
         self.runtime.record.borrow().clone()
     }
@@ -132,50 +132,62 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// Where the conversation works now.
-    pub(crate) async fn placement(&self) -> Result<Placement, HostError> {
-        self.runtime.placement().await
+    pub(crate) async fn conversation_placement(&self) -> Result<Placement, HostError> {
+        self.runtime.conversation_placement().await
     }
 
-    /// The node's working directory while the conversation works at `now`.
-    ///
-    /// A child's own while the conversation is where it was when that was set,
-    /// the conversation's otherwise, and always the conversation's for the
-    /// root.
-    pub(crate) fn directory_at(&self, now: &Placement) -> String {
-        self.runtime.directory_at(now)
+    /// The name of the Host whose device is `device`, as the pages name it;
+    /// none when it is not known.
+    pub(crate) async fn host_name(&self, device: &str) -> Option<String> {
+        self.runtime.hosts.host_name(device).await
     }
 
-    /// `dir` read against the node's working directory while the conversation
-    /// works at `now`, when that names a directory on the primary Host, which
-    /// the host access reaches.
+    /// The node's place while the conversation works at `conversation`: a
+    /// child's own, the conversation's for the root.
+    pub(crate) fn placement_at(&self, conversation: &Placement) -> Placement {
+        self.runtime.placement_at(conversation)
+    }
+
+    /// The node's working directory while the conversation works at
+    /// `conversation`.
+    pub(crate) fn directory_at(&self, conversation: &Placement) -> String {
+        self.placement_at(conversation).directory
+    }
+
+    /// The place `dir`, read against the node's working directory while the
+    /// conversation works at `conversation`, names on the node's Host, when
+    /// that is a directory the host access reaches.
     ///
-    /// Otherwise the error says why it does not.
-    pub(crate) async fn existing_directory(&self, dir: &str, now: &Placement) -> Result<String, String> {
-        let base = self.directory_at(now);
+    /// Otherwise the error says why it is not.
+    pub(crate) async fn existing_directory(&self, dir: &str, conversation: &Placement) -> Result<Placement, String> {
+        let base = self.placement_at(conversation);
+        // On the Host of the placement read, not wherever the conversation
+        // works by now, which is where the answer says the directory is.
         let host = self
             .runtime
             .hosts
             .host(self.runtime.context_in(Some(&base)))
             .await
             .map_err(|error| error.to_string())?;
-        let path = host.identity().paths.resolve(&base, dir);
+        let path = host.identity().paths.resolve(&base.directory, dir);
         match host.fs().stat(&path).await {
-            Ok(stat) if stat.kind == FileKind::Directory => Ok(path),
+            Ok(stat) if stat.kind == FileKind::Directory => Ok(Placement {
+                device: base.device,
+                directory: path,
+            }),
             Ok(_) => Err(format!("{path}: not a directory")),
             Err(error) if error.code() == Some("ENOENT") => {
-                Err(format!("{path}: no such directory on the primary Host"))
+                Err(format!("{path}: no such directory on this agent's Host"))
             }
             Err(error) => Err(format!("{path}: {error}")),
         }
     }
 
-    /// Moves the child to `cwd`, a directory on the primary Host, set while
-    /// the conversation works at `under`, from its next `shell` call on:
-    /// recorded, then the node's.
-    pub(crate) async fn set_cwd(&self, cwd: String, under: Placement) -> Result<(), StoreError> {
-        let own = ChildDirectory { cwd, under };
-        self.runtime.store.set_cwd(&self.runtime.node, &own).await?;
-        self.runtime.record.borrow_mut().cwd = Some(own);
+    /// Moves the child to `placement`, a directory on its own Host, from its
+    /// next `shell` call on: recorded, then the node's.
+    pub(crate) async fn set_placement(&self, placement: Placement) -> Result<(), StoreError> {
+        self.runtime.store.set_placement(&self.runtime.node, &placement).await?;
+        self.runtime.record.borrow_mut().placement = Some(placement);
         Ok(())
     }
 
@@ -384,7 +396,7 @@ impl<H: HostResolver> Node<H> {
             environments: &environments,
             node: &closed.id,
             root: &runtime.root,
-            directory: &closed.cwd,
+            placement: &closed.placement,
             agent: closed.number,
             commands: &runtime.commands,
             feed: &feed,
@@ -520,7 +532,7 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     /// Where the window in use for a model comes from.
     providers: Rc<dyn ProviderResolver>,
     /// The node's record, the one live copy: `demi agent cwd` changes a
-    /// child's working directory in it.
+    /// child's place in it.
     record: RefCell<NodeRecord>,
     hosts: Rc<H>,
     /// The instructions of its system prompt.
@@ -554,30 +566,34 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     clock: Arc<dyn Clock>,
 }
 
-/// The child's directory as its record holds it now.
-impl<H: HostResolver> Directory for NodeRuntime<H> {
-    fn own(&self) -> Option<ChildDirectory> {
-        self.record.borrow().cwd.clone()
+/// The child's placement as its record holds it now.
+impl<H: HostResolver> OwnPlacement for NodeRuntime<H> {
+    fn own_placement(&self) -> Option<Placement> {
+        self.record.borrow().placement.clone()
     }
 }
 
-/// What a child's `working_directory` block tells it.
-fn working_directory_text(cwd: &str) -> String {
+/// What a child's `working_directory` block tells it: its directory, and
+/// `host`, the name of its Host, when that is not the conversation's.
+fn working_directory_text(cwd: &str, host: Option<&str>) -> String {
+    let on = host.map(|host| format!(" on {host}")).unwrap_or_default();
     format!(
-        "Your working directory is {cwd}: your shell calls start there on the primary Host, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."
+        "Your working directory is {cwd}{on}: your shell calls start there, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."
     )
 }
 
 /// The `working_directory` block a child's next request needs, given the
 /// context blocks it receives, `seen`.
 ///
-/// It is one naming `cwd`, the child's directory, unless the newest it receives
-/// names it already. A child has one before its first request, after each
-/// change and after each compaction; the root, whose directory is the
-/// conversation's that the execution context names, none.
-fn working_directory(cwd: Option<String>, seen: &[SeenContext<'_>]) -> Option<NewContext> {
+/// It is one naming `cwd`, the child's directory, and `host`, the name of its
+/// Host when that is not the conversation's, unless the newest it receives
+/// says so already. A child has one before its first request, after each
+/// change, after each move of the conversation that changes whether its Host
+/// is the conversation's, and after each compaction; the root, whose place
+/// the execution context names, none.
+fn working_directory(cwd: Option<String>, host: Option<&str>, seen: &[SeenContext<'_>]) -> Option<NewContext> {
     let cwd = cwd?;
-    let text = working_directory_text(&cwd);
+    let text = working_directory_text(&cwd, host);
     let newest = seen
         .iter()
         .rev()
@@ -593,30 +609,20 @@ fn working_directory(cwd: Option<String>, seen: &[SeenContext<'_>]) -> Option<Ne
 
 impl<H: HostResolver> NodeRuntime<H> {
     /// Where the conversation works now, read through its resolver.
-    async fn placement(&self) -> Result<Placement, HostError> {
+    async fn conversation_placement(&self) -> Result<Placement, HostError> {
         self.hosts.placement(self.context_in(None)).await
     }
 
-    /// The node's working directory while the conversation works at `now`.
-    fn directory_at(&self, now: &Placement) -> String {
-        match &self.record.borrow().cwd {
-            Some(own) => own.effective(now).to_owned(),
-            None => now.directory.clone(),
-        }
-    }
-
-    /// A child's working directory now; none for the root, and none, with
-    /// the failure logged, when where the conversation works cannot be read.
-    async fn child_directory(&self) -> Option<String> {
-        self.record.borrow().cwd.as_ref()?;
-        self.directory_now().await
+    /// The node's place while the conversation works at `conversation`.
+    fn placement_at(&self, conversation: &Placement) -> Placement {
+        self.record.borrow().placement.clone().unwrap_or_else(|| conversation.clone())
     }
 
     /// The node's working directory now; none, with the failure logged, when
     /// where the conversation works cannot be read.
     async fn directory_now(&self) -> Option<String> {
-        match self.placement().await {
-            Ok(now) => Some(self.directory_at(&now)),
+        match self.conversation_placement().await {
+            Ok(now) => Some(self.placement_at(&now).directory),
             Err(error) => {
                 tracing::warn!(
                     event = "node_directory.read_failed",
@@ -628,6 +634,32 @@ impl<H: HostResolver> NodeRuntime<H> {
                 None
             }
         }
+    }
+
+    /// The name of a child's Host when it is not the conversation's; none
+    /// for the root, for a child on the conversation's Host, and, with the
+    /// failure logged, when where the conversation works cannot be read.
+    async fn host_elsewhere(&self) -> Option<String> {
+        let placement = self.record.borrow().placement.clone()?;
+        let device = placement.device?;
+        let now = self.conversation_placement().await;
+        let now = match now {
+            Ok(now) => now,
+            Err(error) => {
+                tracing::warn!(
+                    event = "node_directory.read_failed",
+                    conversation = %self.root,
+                    node = %self.node,
+                    %error,
+                    "where the conversation works could not be read"
+                );
+                return None;
+            }
+        };
+        if now.device.as_deref() == Some(device.as_str()) {
+            return None;
+        }
+        Some(self.hosts.host_name(&device).await.unwrap_or(device))
     }
 
     /// Takes up the commands the node ran that the conversation records
@@ -658,14 +690,14 @@ impl<H: HostResolver> NodeRuntime<H> {
         left.map_or(Ok(!picked.is_empty()), Err)
     }
 
-    /// The node as its context sources and resolver see it, with `cwd`,
-    /// its own directory as the caller read it: a change made meanwhile
-    /// shows at the next read.
-    fn context_in<'a>(&'a self, cwd: Option<&'a str>) -> NodeContext<'a> {
+    /// The node as its context sources and resolver see it, with
+    /// `placement`, a child's own as the caller read it: a change made
+    /// meanwhile shows at the next read.
+    fn context_in<'a>(&'a self, placement: Option<&'a Placement>) -> NodeContext<'a> {
         NodeContext {
             node: &self.node,
             root: &self.root,
-            cwd,
+            placement,
         }
     }
 
@@ -677,7 +709,7 @@ impl<H: HostResolver> NodeRuntime<H> {
             environments: &self.environments,
             node: &self.node,
             root: &self.root,
-            directory: self,
+            placement: self,
             agent: self.agent,
             commands: &self.commands,
             feed: &self.feed,
@@ -855,8 +887,9 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         turn: &'a TurnId,
     ) -> LocalBoxFuture<'a, Vec<NewContext>> {
         Box::pin(async move {
-            let cwd = self.child_directory().await;
-            let node = self.context_in(cwd.as_deref());
+            let placement = self.record.borrow().placement.clone();
+            let host = self.host_elsewhere().await;
+            let node = self.context_in(placement.as_ref());
             let asked = self.context.iter().map(|source| async move {
                 let name = source.name();
                 let own: Vec<&str> = seen
@@ -887,7 +920,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     ),
                 }
             }
-            news.extend(working_directory(cwd, seen));
+            news.extend(working_directory(placement.map(|placement| placement.directory), host.as_deref(), seen));
             news
         })
     }

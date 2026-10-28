@@ -18,6 +18,8 @@ import { executionFor, primaryHostOf } from '../targets/execution'
 import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
+import { hostKindOf, hostLabel } from '../state/hosts'
+import { provideHostNames } from '@demicodes/web-ui/agent/host-names'
 import type { CredentialKinds } from '@demicodes/web-ui/agent/credential-kinds'
 import { useExposedPortSettings } from '../settings/exposed-ports'
 import { useProviderSettings } from '../settings/providers'
@@ -107,6 +109,13 @@ provideCostWatch((window) => {
 })
 // The transcripts of the open conversation show a loading row at an edge only
 // while a page is being read for it.
+// A subagent on another Host than the conversation's names it as the
+// account's devices do.
+provideHostNames(() => (device) => {
+  const record = resources.deviceById(device)
+  const kind = hostKindOf(record)
+  return { name: hostLabel(kind, record), kind }
+})
 provideHistoryReading((node) => {
   const current = conversation.value
   return current ? store.history.reading(current, node) : { before: false, after: false }

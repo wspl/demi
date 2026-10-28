@@ -295,6 +295,7 @@ function closeTab(id: string): void {
         :conversation="props.conversation"
         :node="active.id"
         :cwd="active.cwd"
+        :elsewhere="active.device !== null"
         :blocks="shown?.blocks ?? []"
         :at-start="shownEdges?.atStart ?? true"
         :at-end="shownEdges?.atEnd ?? true"

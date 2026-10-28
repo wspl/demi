@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput, StoredSubagent, Switched};
 use demi_agent_store::{
-    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, EarlierRows, Kind, NodeClose, NodeRecord, Reprofile,
+    Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, EarlierRows, Kind, NodeClose, NodeRecord, Reprofile,
     Placement, Rows, SavedVersions, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_runner_client::decode_output;
@@ -314,8 +314,8 @@ fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &Che
     transaction.execute(
         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
            can_spawn, closed_phase, closed_at, failure, delivered, state,
-           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit, started_by, model)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+           output_revision, forked_from, placement_device, placement_directory, context_limit, started_by, model)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             record.id.as_str(),
             number,
@@ -332,9 +332,8 @@ fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &Che
             record.delivered,
             to_json(&initial.state),
             record.forked_from.map(integer),
-            record.cwd.as_ref().map(|own| &own.cwd),
-            record.cwd.as_ref().and_then(|own| own.under.device.as_ref()),
-            record.cwd.as_ref().map(|own| &own.under.directory),
+            record.placement.as_ref().and_then(|own| own.device.as_ref()),
+            record.placement.as_ref().map(|own| &own.directory),
             record.context_limit,
             record.started_by.as_ref().map(BlockId::as_str),
             record.model.as_ref().map(to_json),
@@ -587,20 +586,20 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
-    fn set_cwd<'a>(
+    fn set_placement<'a>(
         &'a self,
         id: &'a NodeId,
-        cwd: &'a ChildDirectory,
+        placement: &'a Placement,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
-        let cwd = cwd.clone();
+        let placement = placement.clone();
         Box::pin(async move {
             let changed = self
                 .db
                 .call(move |connection| {
                     Ok(connection.execute(
-                        "UPDATE nodes SET cwd = ?2, cwd_device = ?3, cwd_under = ?4 WHERE id = ?1 AND parent_id IS NOT NULL",
-                        params![node.as_str(), cwd.cwd, cwd.under.device, cwd.under.directory],
+                        "UPDATE nodes SET placement_device = ?2, placement_directory = ?3 WHERE id = ?1 AND parent_id IS NOT NULL",
+                        params![node.as_str(), placement.device, placement.directory],
                     )?)
                 })
                 .await
@@ -1479,7 +1478,7 @@ fn node_state(
 /// The columns of a node's record, from [`NODES`].
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
-     closed_phase, closed_at, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
+     closed_phase, closed_at, failure, delivered, forked_from, placement_device, placement_directory,
      context_limit, model, started_by, side_questions.block_id AS side_block, start_offset, end_offset, quote, picture,
      question, asked_at";
 
@@ -1628,20 +1627,17 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             })
         }
     };
-    // A child works in a directory of its own; the root in the
-    // conversation's, which no row holds.
-    let device: Option<String> = row.get("cwd_device")?;
-    let cwd = match (row.get::<_, Option<String>>("cwd")?, row.get::<_, Option<String>>("cwd_under")?) {
-        (Some(cwd), Some(directory)) => Some(ChildDirectory {
-            cwd,
-            under: Placement { device, directory },
-        }),
-        (None, None) if device.is_none() => None,
-        _ => {
+    // A child works at a placement of its own; the root where the
+    // conversation does, which no row holds.
+    let device: Option<String> = row.get("placement_device")?;
+    let placement = match row.get::<_, Option<String>>("placement_directory")? {
+        Some(directory) => Some(Placement { device, directory }),
+        None if device.is_none() => None,
+        None => {
             return Err(StorageError::Corrupt {
                 table: TABLE,
-                column: "cwd",
-                reason: "a working directory without where the conversation worked".into(),
+                column: "placement_directory",
+                reason: "a placement's device without its directory".into(),
             });
         }
     };
@@ -1658,12 +1654,12 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             reason: "a child has a model, and the root and a side question none".into(),
         });
     }
-    // A side question works in the conversation's directory, as the root.
-    if cwd.is_some() != (parent.is_some() && side.is_none()) {
+    // A side question works where the conversation does, as the root.
+    if placement.is_some() != (parent.is_some() && side.is_none()) {
         return Err(StorageError::Corrupt {
             table: TABLE,
-            column: "cwd",
-            reason: "a child has a working directory, and the root and a side question none".into(),
+            column: "placement_directory",
+            reason: "a child has a placement, and the root and a side question none".into(),
         });
     }
     Ok(NodeRecord {
@@ -1693,7 +1689,7 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             .get::<_, Option<String>>("started_by")?
             .map(|block| decode(TABLE, "started_by", BlockId::try_from(block)))
             .transpose()?,
-        cwd,
+        placement,
         side,
     })
 }

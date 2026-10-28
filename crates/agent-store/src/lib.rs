@@ -235,12 +235,12 @@ pub trait AgentTreeStore {
         reprofile: Option<Reprofile>,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
-    /// Changes the child `id`'s working directory to `cwd`, as `demi agent
-    /// cwd` asks (`crates/agent-server/src/node/mod.rs`).
-    fn set_cwd<'a>(
+    /// Changes the child `id`'s placement to `placement`, as `demi agent cwd` asks
+    /// (`crates/agent-server/src/node/mod.rs`).
+    fn set_placement<'a>(
         &'a self,
         id: &'a NodeId,
-        cwd: &'a ChildDirectory,
+        placement: &'a Placement,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// Marks the completion of the node's round `round` delivered, when it
@@ -437,10 +437,11 @@ pub struct NodeRecord {
     /// None for the root, for a child started by no call, and for a child
     /// stored before versions existed, which is on every path.
     pub started_by: Option<BlockId>,
-    /// A child's own working directory and where the conversation worked
-    /// when it was set (`crates/agent-server/src/node/mod.rs`); none for the
-    /// root, whose directory is always the conversation's.
-    pub cwd: Option<ChildDirectory>,
+    /// A child's own placement, its Host's device and its working directory
+    /// there, which its spawn and `demi agent cwd` set and a move of the
+    /// conversation leaves (`crates/agent-server/src/node/mod.rs`); none for
+    /// the root, which works where the conversation does.
+    pub placement: Option<Placement>,
     /// What a side question's node asks about; none for every agent.
     ///
     /// Its parent is the root, it works in the conversation's directory as the
@@ -484,45 +485,23 @@ pub struct SideOf {
     pub asked_at: Timestamp,
 }
 
-/// Where a conversation works: its primary Host's device, none for a Cloud
-/// not made yet, and its directory there.
+/// Where a conversation or an agent works: a Host's device, none for the
+/// user's Cloud not made yet, and a directory there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Placement {
     pub device: Option<String>,
     pub directory: String,
 }
 
-/// A child's own working directory, and the conversation's placement it was
-/// set under (`crates/agent-server/src/node/mod.rs`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChildDirectory {
-    pub cwd: String,
-    pub under: Placement,
-}
-
-impl ChildDirectory {
-    /// Where the child works while the conversation works at `now`.
-    ///
-    /// It is its own directory while the conversation is where it was when the
-    /// directory was set, and the conversation's directory once it moved, which
-    /// no write to the child follows.
-    pub fn effective<'a>(&'a self, now: &'a Placement) -> &'a str {
-        if self.under == *now {
-            &self.cwd
-        } else {
-            &now.directory
-        }
-    }
-}
-
 impl NodeRecord {
     /// A child as the conversation's agents describe it
     /// (`crates/agent-server/src/server/tree.rs`).
     ///
-    /// It runs on `model` while it is live, else as it closed, working where
-    /// the conversation's placement `now` puts it; with `now` unknown, in its
-    /// own directory. The root, which no node spawned, has none.
-    pub fn child(&self, model: JobModel, now: Option<&Placement>, on_path: bool) -> Option<Subagent> {
+    /// It runs on `model` while it is live, else as it closed, at its own
+    /// placement, whose Host it names when that is not the Host of `conversation`,
+    /// where the conversation works; with `conversation` unknown, it names
+    /// none. The root, which no node spawned, has none.
+    pub fn child(&self, model: JobModel, conversation: Option<&Placement>, on_path: bool) -> Option<Subagent> {
         let parent = self.parent.clone()?;
         Some(Subagent {
             number: self.number,
@@ -538,12 +517,28 @@ impl NodeRecord {
                 .map_or(JobPhase::Running, |close| close.phase.job_phase()),
             started_at: self.started_at,
             ended_at: self.closed.as_ref().map(|close| close.at),
-            cwd: {
-                let own = self.cwd.as_ref().expect("a child's record names its directory");
-                now.map_or(own.cwd.as_str(), |now| own.effective(now)).to_owned()
-            },
+            cwd: self.own_placement().directory.clone(),
+            device: self.elsewhere(conversation).map(str::to_owned),
             on_path,
         })
+    }
+
+    /// A child's own placement.
+    ///
+    /// # Panics
+    ///
+    /// For the root and a side question, which have none.
+    pub fn own_placement(&self) -> &Placement {
+        self.placement.as_ref().expect("a child's record names its placement")
+    }
+
+    /// The device of a child's Host when it is not the Host of
+    /// `conversation`, where the conversation works; none when it is, for
+    /// `conversation` unknown, and for a node that has no place of its own.
+    pub fn elsewhere(&self, conversation: Option<&Placement>) -> Option<&str> {
+        let own = self.placement.as_ref()?.device.as_deref()?;
+        let conversation = conversation?;
+        (conversation.device.as_deref() != Some(own)).then_some(own)
     }
 
     /// The record of a conversation's root, whose id is the conversation's:
@@ -565,7 +560,7 @@ impl NodeRecord {
             delivered: false,
             forked_from: None,
             started_by: None,
-            cwd: None,
+            placement: None,
             side: None,
         }
     }

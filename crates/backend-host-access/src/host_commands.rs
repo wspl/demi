@@ -451,7 +451,8 @@ struct ListedHost {
     id: String,
     /// `online` or `offline`.
     status: &'static str,
-    /// `primary` or `attached`.
+    /// `primary`, `attached`, or `subagent` for a Host only a subagent works
+    /// on.
     role: &'static str,
     /// Where a shell there starts; null when it is not known yet.
     directory: Option<String>,
@@ -461,6 +462,7 @@ fn role_word(role: HostRole) -> &'static str {
     match role {
         HostRole::Primary => "primary",
         HostRole::Attached => "attached",
+        HostRole::Agent => "subagent",
     }
 }
 
@@ -723,6 +725,12 @@ async fn detach(
     if host.role == HostRole::Primary {
         return Err(RpcError::Failed(format!(
             "{}: this conversation's primary host, which cannot be detached",
+            host.name
+        )));
+    }
+    if host.role == HostRole::Agent {
+        return Err(RpcError::Failed(format!(
+            "{}: not attached to this conversation; a subagent works there",
             host.name
         )));
     }
@@ -997,7 +1005,7 @@ async fn run_on_host(
             let _held = shard
                 .conversations()
                 .slot(conversation)
-                .hold_job(target.device.clone(), None, withdrawal.clone());
+                .hold_job(target.device.clone(), true, None, withdrawal.clone());
             // A detach of the Host that committed since the admission, or
             // that comes while the directories install, ends the call here,
             // before the job starts.

@@ -46,22 +46,27 @@
 //! 4. advance the execution-context revision; each agent's next request names
 //!    the new Host and directory
 //! 5. once the conversation's commands on the device it left ended, tell it to
-//!    release there, unless the conversation is back on it
+//!    release there, unless the conversation is back on it or a live subagent
+//!    works there
 //! ```
 //!
 //! Commands already running finish where they started and report as usual;
-//! every command started after the commit runs on the new target. Concurrent
+//! every command the root starts after the commit runs on the new target. A
+//! subagent stays where it works (`crates/agent-server/src/node/mod.rs`): its
+//! commands run on there, and a move away from its offline device fails none
+//! of its waiting commands. Concurrent
 //! moves cannot both replace the same expected selection: the loser is refused
 //! as conflicting, so work is never dispatched against an ambiguous target.
 //!
 //! Turn admission uses the tree's lifecycle boundary, not the root's displayed
 //! phase, which would miss a running child.
 //!
-//! A move away from an offline device fails the commands that wait for it,
-//! which were never sent, and the agents go on on the new Host. The commands
-//! still running there let go of the conversation's file gate, which nothing
-//! would release while the device is away; their runner keeps them until it is
-//! back.
+//! A move away from an offline device fails the root's commands that wait for
+//! it, which were never sent, and the root goes on on the new Host. The root's
+//! commands still running there let go of the conversation's file gate, which
+//! nothing would release while the device is away; their runner keeps them
+//! until it is back. A subagent's commands there wait and hold on, as the
+//! subagent stays.
 //!
 //! The device a move leaves stays attached, its commands starting in the
 //! conversation's directory there, and the incoming device leaves the
@@ -338,8 +343,8 @@ impl dyn HostShard + '_ {
     /// The release of `device`, which a move of the conversation `id` left
     /// (§ step 5): sent once the conversation's commands there ended, so the
     /// residents they use end after them, and not sent when the conversation is
-    /// back on it or where it runs cannot be known. A release that fails is
-    /// logged and fails nothing.
+    /// back on it, a live subagent works there, or where it runs cannot be
+    /// known. A release that fails is logged and fails nothing.
     pub async fn release_departed(&self, id: &ConversationId, device: &DeviceId) {
         self.conversations().slot(id).jobs_ended_on(device).await;
         let primary = match self.control().conversation(id.clone()).await {
@@ -361,7 +366,11 @@ impl dyn HostShard + '_ {
                 return;
             }
         };
-        if primary.as_ref() != Some(device) {
+        let subagent_there = self
+            .agent_placements(id)
+            .iter()
+            .any(|placement| placement.device.as_deref() == Some(device.as_str()));
+        if primary.as_ref() != Some(device) && !subagent_there {
             self.tell_release(id, std::slice::from_ref(device), false);
         }
     }

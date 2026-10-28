@@ -111,6 +111,7 @@ use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
 use demi_backend_database::conversation_index::ConversationChange;
 use demi_web_api_protocol::conversations::ConversationTarget;
+use demi_agent_store::Placement;
 use demi_shared_types::{Clock, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use tokio_util::sync::CancellationToken;
@@ -154,6 +155,10 @@ pub trait HostShard {
     fn cloud_shard(&self) -> &(dyn CloudShard + 'static);
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn HostShard>;
+    /// The placements of the conversation's live subagents, each a Host and
+    /// a directory there; none while its tree is not open
+    /// (`crates/agent-server/src/node/mod.rs`).
+    fn agent_placements(&self, conversation: &ConversationId) -> Vec<Placement>;
     /// Starts the conversation's idle watch unless one runs, as each Host
     /// admission does (`crates/backend-user-shard/src/lifecycle/mod.rs`).
     fn track_idle(&self, conversation: &ConversationId);

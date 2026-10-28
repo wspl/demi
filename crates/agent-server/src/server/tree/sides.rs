@@ -211,7 +211,7 @@ impl<H: HostResolver> Tree<H> {
                 delivered: false,
                 forked_from: None,
                 started_by: None,
-                cwd: None,
+                placement: None,
                 side: Some(SideOf { asked_at: now, ..of }),
             };
             let origin = Origin::Forked { record, seed };

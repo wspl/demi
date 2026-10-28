@@ -26,10 +26,15 @@ export interface AgentRun {
   startedAt: string
   endedAt?: string
   /**
-   * Where its `shell` calls start now, on the primary Host
+   * Where its `shell` calls start now, on its own Host
    * (`crates/agent-server/src/node/mod.rs`).
    */
   cwd: string
+  /**
+   * The device of its Host when that is not the conversation's, which a move
+   * of the conversation left it on; null on the conversation's Host.
+   */
+  device: string | null
 }
 
 export interface SubagentRecord extends AgentRun {
@@ -130,6 +135,7 @@ export function subagentEntryFields(entry: AgentEntry, child: Subagent, received
     startedAt: child.startedAt,
     endedAt: child.endedAt ?? undefined,
     cwd: child.cwd,
+    device: child.device,
     sessionPhase: entry.phase,
     pendingCalls: entry.pendingCalls,
     waitingSince: entry.waitedMs === null ? null : receivedAt - entry.waitedMs,

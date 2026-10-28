@@ -108,8 +108,8 @@ impl ContextSource for Instructions {
                 .instructions(shard.user().clone())
                 .await
                 .map_err(|error| format!("the personal instructions cannot be read: {error}"))?;
-            let cwd = shard
-                .node_directory(node)
+            let placement = shard
+                .node_placement(node)
                 .await
                 .map_err(|error| format!("the working directory cannot be read: {error}"))?;
             let conversation = conversation_of(node.root);
@@ -130,7 +130,7 @@ impl ContextSource for Instructions {
                     None => None,
                 }
             };
-            let (files, workflow) = futures_util::join!(shard.kept_instructions(&conversation, &cwd), workflow);
+            let (files, workflow) = futures_util::join!(shard.kept_instructions(&conversation, &placement), workflow);
             let answer = match render(&personal, &files, workflow.as_ref()) {
                 Some(answer) => answer,
                 None if seen.last().is_some_and(|newest| *newest != NONE_LEFT) => {
@@ -154,7 +154,7 @@ pub(crate) async fn search_instructions(
     cancel: &CancellationToken,
 ) -> Result<Found<Rc<[ProjectFile]>>, ReadFilesError> {
     let paths = shard
-        .host_paths(conversation)
+        .device_paths(device)
         .await
         .map_err(|error| ReadFilesError::Access(error.into()))?;
     let host = shard.host_shard();

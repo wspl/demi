@@ -30,6 +30,7 @@ use demi_backend_database::{Selection, StorageError};
 use demi_backend_database::conversation_index::{
     ConversationChange, ConversationRecord, RecordChange, SettingsChange,
 };
+use demi_backend_host_access::access::Leaving;
 use demi_backend_host_access::root_of;
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_backend_page_sync::Part;
@@ -310,7 +311,7 @@ impl Shard {
         // the conversation (`crates/backend-host-access/src/transition.rs`).
         let leaving = self.leaving_offline(record).await?;
         if let Some(device) = &leaving {
-            slot.leave_jobs_on(device);
+            slot.leave_jobs_on(device, Leaving::Following);
         }
         let step = Instant::now();
         let transfers = slot.transfers.close().await;

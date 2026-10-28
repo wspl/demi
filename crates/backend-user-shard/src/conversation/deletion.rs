@@ -17,6 +17,7 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
+use demi_backend_host_access::access::Leaving;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
@@ -89,7 +90,7 @@ impl Shard {
         // record of.
         for device in &devices {
             if !self.devices().connected(device) {
-                slot.leave_jobs_on(device);
+                slot.leave_jobs_on(device, Leaving::Every);
             }
         }
         // The work stops first: the tree takes no action, the root's stops as

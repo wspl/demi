@@ -46,7 +46,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
-use crate::access::{Attention, ConversationHost, HostAccessError, Waits};
+use crate::access::{Attention, ConversationHost, HostAccessError, Refusal, Waits};
 use crate::lease::Lease;
 use crate::transfer::OpenTransfer;
 
@@ -308,6 +308,30 @@ impl dyn HostShard + '_ {
         if access.device != *device {
             return Ok(None);
         }
+        let waits = Waits::until_ended(cancel, &access.open.ended);
+        waits.wait(operation(&access.host)).await.map(Some)
+    }
+
+    /// Runs `operation`, a look at the Host of `device` that an agent wrote
+    /// a reply on, while the conversation reaches it: its primary Host, an
+    /// attached one or one a live subagent works on. A subagent's reply may
+    /// complete as the subagent ends, while the device stays attached after
+    /// a move. None when the conversation reaches no Host of `device`, so
+    /// the look never reads the same path on another device.
+    ///
+    /// It is admitted as [`look_at_host`](Self::look_at_host) is: a stopped
+    /// Cloud is refused rather than woken.
+    pub async fn look_at_reachable_host<T>(
+        &self,
+        id: &ConversationId,
+        device: &DeviceId,
+        cancel: &CancellationToken,
+        operation: impl AsyncFnOnce(&ConversationHost) -> T,
+    ) -> Result<Option<T>, HostAccessError> {
+        let access = match self.admit_stream(id, Some(device), Attention::Looks, cancel).await {
+            Err(HostAccessError::Refused(Refusal::NotAttached)) => return Ok(None),
+            access => access?,
+        };
         let waits = Waits::until_ended(cancel, &access.open.ended);
         waits.wait(operation(&access.host)).await.map(Some)
     }

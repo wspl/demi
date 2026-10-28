@@ -411,7 +411,7 @@ async fn on_host<T>(
     match purpose {
         Purpose::Upload => Ok(shard.with_host(conversation, Some(device), &cancel, operation).await?),
         Purpose::Picture => shard
-            .look_at_host_on(conversation, device, &cancel, operation)
+            .look_at_reachable_host(conversation, device, &cancel, operation)
             .await?
             .ok_or_else(|| {
                 CopyError::HostUnavailable("the conversation no longer works on the Host the reply was written on".to_owned())

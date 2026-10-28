@@ -42,7 +42,8 @@ import { useOpenRuns } from './open-runs'
 import { followedBlockId } from './work-groups'
 import { storedRequests } from '../files/request-changes'
 import { blockDirectories, blockMessageFiles } from './working-directory'
-import { useMessageFiles } from '../markdown/message-files'
+import { provideMessageFiles, useMessageFiles } from '../markdown/message-files'
+import type { MessageFiles } from '../markdown/types'
 import { useMediaAddress } from './media-source'
 import { transcriptPictures } from './transcript-pictures'
 import { useMediaViewer } from '../files/media-viewer'
@@ -73,6 +74,11 @@ const props = withDefaults(defineProps<{
    * absent for the conversation's own agent.
    */
   cwd?: string
+  /**
+   * The subagent works on another Host than the conversation's, whose files
+   * the conversation's panels do not show: its rows offer no file to open.
+   */
+  elsewhere?: boolean
   blocks: HeldBlock[]
   /**
    * What the agent does now, as its record holds it: the calls its model
@@ -362,7 +368,17 @@ const requests = computed(() => storedRequests(props.blocks))
 // Where a subagent wrote each block, from the working directory blocks of its
 // transcript.
 const directories = computed(() => props.cwd === undefined ? null : blockDirectories(props.blocks, props.cwd))
-const conversationFiles = useMessageFiles()
+const shownFiles = useMessageFiles()
+// A subagent on another Host than the conversation's names files the
+// conversation's panels do not show: its rows keep the conversation's
+// attachments, such as the copies of its pictures, and open no Host file.
+const conversationFiles = (): MessageFiles | undefined => {
+  const files = shownFiles()
+  if (!props.elsewhere || !files)
+    return files
+  return { cwd: files.cwd, attachment: files.attachment, openAttachment: files.openAttachment }
+}
+provideMessageFiles(conversationFiles)
 const mediaAddress = useMediaAddress()
 // The pictures the media viewer steps through, read only while one is open.
 const pictures = computed(() => transcriptPictures(renderBlocks.value, {

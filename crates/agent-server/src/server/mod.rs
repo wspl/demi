@@ -655,10 +655,10 @@ impl<H: HostResolver> AgentServer<H> {
     /// The conversation `root` works elsewhere now, after a move or a switch of
     /// its Host.
     ///
-    /// Its live children's pages hear where each works, the conversation's new
-    /// directory, which no write to the children records
-    /// (`crates/agent-server/src/node/mod.rs`). Each child's next request
-    /// learns it from its `working_directory` block.
+    /// Its children stay where they work (`crates/agent-server/src/node/mod.rs`);
+    /// the pages hear which of them now work on another Host than the
+    /// conversation's, and each such child's next request learns it from its
+    /// `working_directory` block.
     pub async fn placement_changed(&self, root: &NodeId) {
         if let Some(tree) = self.tree(root) {
             tree.placement_changed().await;

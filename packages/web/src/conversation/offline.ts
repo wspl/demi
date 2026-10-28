@@ -339,6 +339,7 @@ function subagentEntry(agent: SubagentRecord): AgentEntry {
       startedAt: agent.startedAt,
       endedAt: agent.endedAt ?? null,
       cwd: agent.cwd,
+      device: agent.device,
       onPath: agent.onPath,
     },
     phase: agent.sessionPhase,

@@ -70,6 +70,21 @@ const COPIED: [&str; 10] = [
     "attachments",
 ];
 
+/// The column of the new `table` that a legacy column `column` is copied
+/// into: the same name, or the one a later form renamed it to; none for a
+/// column the new table dropped.
+///
+/// A child's directory, which a move of the conversation overrode, is its
+/// placement: it keeps the Host and the directory it was last given.
+fn new_column(table: &str, column: &str) -> Option<String> {
+    match (table, column) {
+        ("nodes", "cwd") => Some("placement_directory".to_owned()),
+        ("nodes", "cwd_device") => Some("placement_device".to_owned()),
+        ("nodes", "cwd_under") => None,
+        _ => Some(column.to_owned()),
+    }
+}
+
 /// The file a conversion writes before it renames it over `path`.
 pub(crate) fn converting(path: &FilePath) -> PathBuf {
     let mut name = path.as_os_str().to_owned();
@@ -156,8 +171,15 @@ fn convert(path: &FilePath, form: LegacyForm, progress: &(dyn Fn(f64) + Sync)) -
         for table in COPIED {
             // By the legacy table's columns: a column the new one added
             // since takes its default.
-            let columns = legacy_columns(&transaction, table)?.join(", ");
-            transaction.execute(&format!("INSERT INTO main.{table} ({columns}) SELECT {columns} FROM legacy.{table}"), [])?;
+            let (into, from): (Vec<String>, Vec<String>) = legacy_columns(&transaction, table)?
+                .into_iter()
+                .filter_map(|column| {
+                    let into = new_column(table, &column)?;
+                    Some((into, column))
+                })
+                .unzip();
+            let (into, from) = (into.join(", "), from.join(", "));
+            transaction.execute(&format!("INSERT INTO main.{table} ({into}) SELECT {from} FROM legacy.{table}"), [])?;
         }
         if form == LegacyForm::AutomationNames {
             schema::name_schedules(&transaction, "nodes", "state")?;

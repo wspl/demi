@@ -7,13 +7,14 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
+use demi_agent_store::Placement;
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationChange;
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::projects::DirectoryNamed;
-use demi_backend_host_access::root_of;
+use demi_backend_host_access::{conversation_of, root_of};
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::HostShard;
@@ -27,7 +28,7 @@ use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::conversations::ConversationTarget;
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::task::TaskTracker;
 
@@ -92,6 +93,16 @@ impl HostShard for Shard {
 
     fn this(&self) -> Rc<dyn HostShard> {
         Shard::this(self)
+    }
+
+    fn agent_placements(&self, conversation: &ConversationId) -> Vec<Placement> {
+        let Some(tree) = self.agent.tree(&root_of(conversation)) else {
+            return Vec::new();
+        };
+        tree.nodes()
+            .into_iter()
+            .filter_map(|node| node.record().placement)
+            .collect()
     }
 
     fn track_idle(&self, conversation: &ConversationId) {
@@ -192,5 +203,27 @@ impl Shard {
     /// operations it is.
     pub fn host_shard(&self) -> &(dyn HostShard + 'static) {
         self
+    }
+}
+
+impl Shard {
+    /// The conversations with a live subagent that works on `device`
+    /// (`crates/agent-server/src/node/mod.rs`): a runner's welcome names them
+    /// among those the device holds, though their records may name another.
+    pub(crate) fn conversations_with_agents_on(&self, device: &DeviceId) -> Vec<ConversationId> {
+        self.agent
+            .live_roots()
+            .into_iter()
+            .filter(|root| {
+                self.agent.tree(root).is_some_and(|tree| {
+                    tree.nodes().iter().any(|node| {
+                        node.record()
+                            .placement
+                            .is_some_and(|placement| placement.device.as_deref() == Some(device.as_str()))
+                    })
+                })
+            })
+            .map(|root| conversation_of(&root))
+            .collect()
     }
 }

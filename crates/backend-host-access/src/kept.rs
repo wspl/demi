@@ -93,10 +93,11 @@ impl From<ReadFilesError> for SearchError {
 pub type Search<K, T> =
     Box<dyn Fn(ConversationId, DeviceId, K) -> LocalBoxFuture<'static, Result<Found<T>, SearchError>>>;
 
-/// A holder of subscriptions on the conversation's primary Host, with that
-/// Host's device.
+/// A holder of subscriptions on the Host of the device, the conversation's
+/// primary one or one a live subagent works on, with that Host's device; or
+/// [`SearchError::Moved`] once the conversation works on neither.
 pub type Subscribe =
-    Box<dyn Fn(ConversationId) -> LocalBoxFuture<'static, Result<(DeviceId, HostSubscriber), SearchError>>>;
+    Box<dyn Fn(ConversationId, DeviceId) -> LocalBoxFuture<'static, Result<(DeviceId, HostSubscriber), SearchError>>>;
 
 /// A kept fact a page shows: each value a search finds is stored, and a
 /// stored value that changed is announced.
@@ -353,12 +354,12 @@ where
             return;
         };
         if subscriber.is_none() {
-            let Some(subscribing) = inner.upgrade().map(|inner| (inner.subscribe)(conversation.clone())) else {
+            let Some(subscribing) = inner.upgrade().map(|inner| (inner.subscribe)(conversation.clone(), device.clone())) else {
                 return;
             };
             match subscribing.await {
                 Ok((on, holder)) if on == device => subscriber = Some(holder),
-                Ok(_) => {
+                Ok(_) | Err(SearchError::Moved) => {
                     // It works on another Host now; another user is searched for.
                     state.users.borrow_mut().remove(&conversation);
                     if state.users.borrow().is_empty()
@@ -372,7 +373,6 @@ where
                 Err(SearchError::NotRunning) => {
                     state.refused.replace(None);
                 }
-                Err(SearchError::Moved) => {}
                 // Nothing is searched until the Host comes online again:
                 // while nothing is held, a caller answers the refusal.
                 Err(SearchError::Access(error)) => {

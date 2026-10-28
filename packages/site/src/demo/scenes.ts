@@ -541,6 +541,7 @@ function researcher(parent: string, { company, found }: (typeof RESEARCHERS)[num
     round: 1,
     forkedFrom: null,
     cwd: '/home/demi',
+    device: null,
     phase: ended ? 'completed' : 'running',
     sessionPhase: ended ? 'idle' : 'running',
     contextUsage: null,

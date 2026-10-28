@@ -2376,23 +2376,39 @@ pub(crate) const LEGACY_CONVERSATION: Schema = Schema {
 /// rows and the contents they name, its paths, commands, attachments and
 /// shares.
 ///
-/// No release has shipped it yet. Its history holds the form development
+/// No release has shipped it yet. Its history holds the forms development
 /// databases keep of it: the one each content was kept once in, before a
-/// command's row kept its media. A database of [`LEGACY_CONVERSATION`], whose
+/// command's row kept its media, and the one whose child's directory a move
+/// of the conversation overrode. A database of [`LEGACY_CONVERSATION`], whose
 /// rows held whole blocks, is not migrated into it but converted into a new
 /// file (`convert.rs`).
 pub(crate) const CONVERSATION: Schema = Schema {
     initial: "PRAGMA auto_vacuum = INCREMENTAL;",
     sql: CONVERSATION_V2,
-    history: &[Shipped {
-        sql: include_str!("schema/conversation-0.1.65-dev.contents-once.sql"),
-        migration: Migration::Sql(CONVERSATION_FROM_CONTENTS_ONCE),
-    }],
+    history: &[
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.65-dev.contents-once.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_CONTENTS_ONCE),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.65-dev.directories-follow-moves.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_DIRECTORIES_FOLLOWING_MOVES),
+        },
+    ],
 };
 
 /// From the form each content was kept once in, before a command's row kept
 /// what its result told of its media.
 const CONVERSATION_FROM_CONTENTS_ONCE: &str = "ALTER TABLE command_outputs ADD COLUMN media TEXT;";
+
+/// From the form a child's directory was kept in with where the conversation
+/// worked when it was set, which a move of the conversation overrode, before
+/// a child's placement was its own: a child keeps the Host and the directory
+/// it was last given.
+const CONVERSATION_FROM_DIRECTORIES_FOLLOWING_MOVES: &str = "
+ALTER TABLE nodes RENAME COLUMN cwd_device TO placement_device;
+ALTER TABLE nodes RENAME COLUMN cwd TO placement_directory;
+ALTER TABLE nodes DROP COLUMN cwd_under;";
 
 /// 0.1.65's conversation schema, which 0.1.64 shipped too.
 const CONVERSATION_0_1_65: &str = include_str!("schema/conversation-0.1.65.sql");
@@ -6266,16 +6282,13 @@ CREATE TABLE nodes (
   -- The number of the agent the node was forked from; null for one that
   -- was not forked.
   forked_from      INTEGER CHECK (forked_from >= 1),
-  -- A child's own working directory on the primary Host, and where the
-  -- conversation worked when it was set: the primary Host's device, null
-  -- for a Cloud not made yet, and the conversation's directory then. The
-  -- child works there while the conversation still does, and in the
-  -- conversation's directory otherwise. All null for the root, which works
-  -- in the conversation's. Their reader refuses a row that sets some of
-  -- them only, since a migration adds no table CHECK.
-  cwd              TEXT CHECK (cwd <> ''),
-  cwd_device       TEXT,
-  cwd_under        TEXT CHECK (cwd_under <> ''),
+  -- A child's own placement, which a move of the conversation leaves: its
+  -- Host's device, null for the user's Cloud not made yet, and its working
+  -- directory there. Both null for the root and a side question, which work
+  -- where the conversation does. Their reader refuses a child without a
+  -- directory, since a migration adds no table CHECK.
+  placement_device    TEXT,
+  placement_directory TEXT CHECK (placement_directory <> ''),
   -- The Context its profile chose, in tokens, which its sessions use in
   -- place of the user's limit; null for the user's limit.
   context_limit    INTEGER CHECK (context_limit >= 1),
