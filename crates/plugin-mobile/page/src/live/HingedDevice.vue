@@ -197,9 +197,8 @@ onMounted(() => {
       if (!body) {
         return
       }
-      if (scene.value === drawing) {
-        drawing.useBody(body)
-      } else {
+      // A view that went meanwhile leaves the body unused.
+      if (scene.value !== drawing || !(await drawing.useBody(body))) {
         body.dispose()
       }
     })().catch((error: unknown) => {

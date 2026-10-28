@@ -142,14 +142,21 @@ export class FoldScene {
   private readonly own = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>()
   private readonly raycaster = new THREE.Raycaster()
   private body: Body
+  private disposed = false
   private size: Size = { width: 1, height: 1 }
   private degrees = 180
   private yaw = 0
   /** Quarter turns clockwise the device is held from upright. */
   private quarters = 0
   private shown: LitDisplay = 'inner'
-  /** The hinge's angle the skinned meshes' bounds were last taken at. */
-  private boundsAt: number | null = null
+  /**
+   * The body's meshes as they stand at the hinge's angle `degrees`, which
+   * the pointer's rays test, each with the mesh it stands for. A skinned
+   * mesh's copy holds its vertices posed: three.js moves every vertex by its
+   * bones at each ray otherwise, some 20 ms of Apple's body at every move of
+   * the pointer, which held the page's frames back.
+   */
+  private posed: { degrees: number; meshes: Map<THREE.Mesh, THREE.Mesh> } | null = null
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -173,14 +180,24 @@ export class FoldScene {
     this.wear(this.body)
   }
 
-  /** Draws the device as `body` from now on, as Apple's once it loaded. */
-  useBody(body: Body): void {
+  /**
+   * Draws the device as `body` from now on, as Apple's once it loaded, once
+   * its shaders are compiled: compiled at its first draw, they held that
+   * frame back for a quarter of a second. Answers whether the scene took it,
+   * which a scene disposed of meanwhile does not.
+   */
+  async useBody(body: Body): Promise<boolean> {
+    await this.renderer.compileAsync(body.object, this.camera, this.scene)
+    if (this.disposed) {
+      return false
+    }
     this.scene.remove(this.body.object)
     this.body.dispose()
     this.own.clear()
-    this.boundsAt = null
+    this.posed = null
     this.body = body
     this.wear(body)
+    return true
   }
 
   private wear(body: Body): void {
@@ -318,17 +335,10 @@ export class FoldScene {
   displayPoint(x: number, y: number): DisplayPoint | null {
     const pointer = new THREE.Vector2((x / this.size.width) * 2 - 1, -(y / this.size.height) * 2 + 1)
     this.raycaster.setFromCamera(pointer, this.camera)
-    // A skinned mesh moves with its bones: its bounds are its pose's, taken once per angle.
-    if (this.boundsAt !== this.degrees) {
-      this.boundsAt = this.degrees
-      this.body.object.traverse((each) => {
-        if (each instanceof THREE.SkinnedMesh) {
-          each.computeBoundingSphere()
-        }
-      })
-    }
-    const hit = this.raycaster.intersectObject(this.body.object, true)[0]
-    if (!hit?.uv || !(hit.object instanceof THREE.Mesh) || !this.body.displays[this.shown].includes(hit.object)) {
+    const meshes = this.posedMeshes()
+    const hit = this.raycaster.intersectObjects([...meshes.keys()], false)[0]
+    const mesh = hit && meshes.get(hit.object as THREE.Mesh)
+    if (!hit?.uv || !mesh || !this.body.displays[this.shown].includes(mesh)) {
       return null
     }
     // The display's point, turned as the picture is onto it.
@@ -338,7 +348,20 @@ export class FoldScene {
     return { x: at.x, y: 1 - at.y }
   }
 
+  /** The body's meshes posed at the hinge's angle now, taken again once it moved. */
+  private posedMeshes(): Map<THREE.Mesh, THREE.Mesh> {
+    if (this.posed?.degrees !== this.degrees) {
+      this.posed = { degrees: this.degrees, meshes: posedCopies(this.body.object) }
+    }
+    // A display wears its picture or its dark finish, whose side a ray respects.
+    for (const [copy, mesh] of this.posed.meshes) {
+      copy.material = mesh.material
+    }
+    return this.posed.meshes
+  }
+
   dispose(): void {
+    this.disposed = true
     this.body.dispose()
     this.renderer.dispose()
     for (const face of Object.values(this.faces)) {
@@ -347,4 +370,45 @@ export class FoldScene {
     }
     this.dark.dispose()
   }
+}
+
+/**
+ * Each mesh of `object`, with what a ray tests for it: a skinned mesh's
+ * plain copy, its vertices where its bones hold them now, in the same place
+ * in the world; any other mesh itself.
+ */
+function posedCopies(object: THREE.Object3D): Map<THREE.Mesh, THREE.Mesh> {
+  object.updateMatrixWorld(true)
+  const meshes = new Map<THREE.Mesh, THREE.Mesh>()
+  const vertex = new THREE.Vector3()
+  object.traverse((each) => {
+    if (!(each instanceof THREE.Mesh)) {
+      return
+    }
+    if (!(each instanceof THREE.SkinnedMesh)) {
+      meshes.set(each, each)
+      return
+    }
+    const source = each.geometry
+    const count = source.getAttribute('position').count
+    const positions = new Float32Array(count * 3)
+    for (let index = 0; index < count; index++) {
+      each.getVertexPosition(index, vertex).toArray(positions, index * 3)
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geometry.setIndex(source.index)
+    const uv = source.getAttribute('uv')
+    if (uv) {
+      geometry.setAttribute('uv', uv)
+    }
+    for (const group of source.groups) {
+      geometry.addGroup(group.start, group.count, group.materialIndex)
+    }
+    const copy = new THREE.Mesh(geometry, each.material)
+    copy.matrixAutoUpdate = false
+    copy.matrixWorld.copy(each.matrixWorld)
+    meshes.set(copy, each)
+  })
+  return meshes
 }
