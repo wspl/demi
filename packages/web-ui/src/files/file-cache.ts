@@ -29,7 +29,7 @@
  *   longest ago leaving first.
  *
  * The cache follows the Host's own file system as VS Code, JetBrains IDEs and
- * Zed follow a remote workspace. The Host says when a subscription's subject
+ * Zed follow a remote folder. The Host says when a subscription's subject
  * changed and pushes no content, so a change says only that the answer kept may
  * be out of date, and an answer read is the Host's whole truth. Nothing is read
  * on a timer.

@@ -1,7 +1,7 @@
 import type { ReplyPicture } from '@demicodes/protocol'
 import type { AttachmentLookup, AttachmentOrigin } from '@demicodes/web-ui/markdown/types'
 import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from './blobs'
-import { WORKSPACE_ROOT } from './workspace'
+import { PROJECT_ROOT } from './project'
 
 /** The id of the Host the gallery's conversation runs on, which its agent's uploads record. */
 export const GALLERY_HOST = 'host-1'
@@ -10,32 +10,32 @@ export const GALLERY_HOST = 'host-1'
  * The attachments the gallery's conversation holds, as `demi attachment
  * upload` numbered them (`crates/backend-host-access/src/attachment_commands.rs`), over the
  * gallery's blobs, each with its file's size. The guide, the build, the demo
- * and the chart were uploaded from the workspace's files, the chart from a
+ * and the chart were uploaded from the project's files, the chart from a
  * version its file has changed since, which its viewer does not show: it shows
- * its copy; the release notes from a file the workspace no longer has; the
+ * its copy; the release notes from a file the project no longer has; the
  * others before uploads recorded their file. a14 and a15 are the copies the
- * backend made of the workspace's pictures that a reply shows
+ * backend made of the project's pictures that a reply shows
  * (`hostPictureCopies`).
  */
 const attachments: Record<string, { name: string; mediaType: string; size: number; blob: string; source?: AttachmentOrigin }> = {
   a1: { name: 'login.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot },
   a2: { name: 'checkout.webm', mediaType: 'video/webm', size: 23336, blob: galleryBlobs.recording },
-  a3: { name: 'guide.pdf', mediaType: 'application/pdf', size: 734, blob: galleryBlobs.guide, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/docs/guide.pdf` } },
+  a3: { name: 'guide.pdf', mediaType: 'application/pdf', size: 734, blob: galleryBlobs.guide, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/docs/guide.pdf` } },
   a4: { name: 'dashboard-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage },
   a5: { name: 'timeline.png', mediaType: 'image/png', size: 5883, blob: galleryBlobs.timeline },
-  a6: { name: 'chart.png', mediaType: 'image/png', size: 16078, blob: galleryBlobs.chart, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/photo.png` } },
-  a7: { name: 'demo.mp4', mediaType: 'video/mp4', size: 31814, blob: galleryBlobs.unsizedRecording, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/demo.mp4` } },
+  a6: { name: 'chart.png', mediaType: 'image/png', size: 16078, blob: galleryBlobs.chart, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/photo.png` } },
+  a7: { name: 'demo.mp4', mediaType: 'video/mp4', size: 31814, blob: galleryBlobs.unsizedRecording, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/demo.mp4` } },
   a8: { name: 'settings-light.png', mediaType: 'image/png', size: 1745, blob: galleryBlobs.whiteScreen },
   a10: { name: 'settings-dark.png', mediaType: 'image/png', size: 1753, blob: galleryBlobs.darkScreen },
   a11: { name: 'welcome.mp3', mediaType: 'audio/mpeg', size: 16423, blob: galleryBlobs.voiceOver },
-  a12: { name: 'release-notes.md', mediaType: 'text/markdown', size: 496, blob: galleryBlobs.releaseNotes, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/release-notes.md` } },
-  a14: { name: 'photo.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/photo.png` } },
-  a15: { name: 'page-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/page-full.png` } },
-  a13: { name: 'app.zip', mediaType: 'application/zip', size: 140, blob: galleryBlobs.archive, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/dist/app.zip` } },
+  a12: { name: 'release-notes.md', mediaType: 'text/markdown', size: 496, blob: galleryBlobs.releaseNotes, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/release-notes.md` } },
+  a14: { name: 'photo.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/photo.png` } },
+  a15: { name: 'page-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/page-full.png` } },
+  a13: { name: 'app.zip', mediaType: 'application/zip', size: 140, blob: galleryBlobs.archive, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/dist/app.zip` } },
 }
 
 /**
- * What a gallery reply keeps of the workspace's pictures it shows, as the
+ * What a gallery reply keeps of the project's pictures it shows, as the
  * backend settled each once the reply ended: the copies of the test pattern
  * and the whole login page.
  */
@@ -45,11 +45,11 @@ export const hostPictureCopies: ReplyPicture[] = [
 ]
 
 /**
- * A reply that shows pictures of the workspace: both copied, one still being
+ * A reply that shows pictures of the project: both copied, one still being
  * copied, five the backend could not copy, each for a cause it can give, and
  * one of a reply written before copies were kept.
  */
-export const hostPicturesMarkdown = `The sign-in page works again. The test pattern and the whole page, from the workspace:
+export const hostPicturesMarkdown = `The sign-in page works again. The test pattern and the whole page, from the project:
 
 ![The test pattern](assets/photo.png)
 ![The whole page](assets/page-full.png)

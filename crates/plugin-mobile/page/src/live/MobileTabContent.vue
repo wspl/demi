@@ -66,7 +66,7 @@ const hinge = computed(() => device.fold?.kind === 'hinge' && drawsWebgl() ? dev
 /** Where the page reads the device's 3D body: the file on the Host, through its files. */
 const bodyUrl = computed(() => {
   const body = hinge.value?.body
-  return body ? files(props.conversation).workspace?.source.contents?.url(body) ?? null : null
+  return body ? files(props.conversation).tree?.source.contents?.url(body) ?? null : null
 })
 
 /** The file a control left on the Host goes to the user's computer, as a download does. */
@@ -74,7 +74,7 @@ function save(path: string | null): void {
   if (!path) {
     return
   }
-  const contents = files(props.conversation).workspace?.source.contents
+  const contents = files(props.conversation).tree?.source.contents
   if (!contents) {
     errors.report(t('failures.save'), new Error(t('failures.hostFilesUnreachable')))
     return

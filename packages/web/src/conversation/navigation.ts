@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { useRouter, type RouteLocationRaw } from 'vue-router'
-import type { CreateWorkspace } from '../api/generated/web-api'
+import type { CreateProject } from '../api/generated/web-api'
 import { useResources } from '../state/resources'
 import { useConversations } from './store'
 
@@ -113,7 +113,7 @@ export function useConversationNavigation() {
    * Creates the project and opens a new conversation in it, as the project's
    * own New Conversation does.
    */
-  async function createProject(draft: CreateWorkspace): Promise<void> {
+  async function createProject(draft: CreateProject): Promise<void> {
     create(await resources.createProject(draft))
   }
 

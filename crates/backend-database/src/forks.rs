@@ -17,7 +17,7 @@ use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
 use super::selection::{Selected, Selection, select};
-use super::workspaces::WorkspaceRecord;
+use super::projects::ProjectRecord;
 use super::conversation_index::{
     AttachedHostRecord, ConversationRecord, NewConversation, conversation_by_id,
     insert_attached_host, insert_conversation,
@@ -151,7 +151,7 @@ impl ControlService {
     /// - An attached host whose device is gone since is left out, as its
     ///   revocation left the source.
     /// - Its directory is selected as a move's is
-    ///   (`crates/backend-database/src/selection.rs`), and the workspace that
+    ///   (`crates/backend-database/src/selection.rs`), and the project that
     ///   makes, if any, is answered with it.
     /// - A directory that selects nothing any more, its device revoked or its
     ///   project deleted since the Fork began, starts it on the Cloud in its own
@@ -159,7 +159,7 @@ impl ControlService {
     pub async fn publish_fork(
         &self,
         id: ConversationId,
-    ) -> Result<(ConversationRecord, Option<WorkspaceRecord>), StorageError> {
+    ) -> Result<(ConversationRecord, Option<ProjectRecord>), StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let operation =

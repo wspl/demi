@@ -139,7 +139,7 @@ export interface SettingsNavItem {
 }
 
 /** The groups the rail captions; each is worded in the page's language. */
-export type SettingsGroupId = 'agent' | 'workspace' | 'system'
+export type SettingsGroupId = 'agent' | 'devicesAndData' | 'system'
 
 /** Sections grouped under a small caption, the way a long rail is read. */
 export interface SettingsNavGroup {

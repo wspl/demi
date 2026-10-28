@@ -307,7 +307,7 @@
   },
   "sections": {
     "agent": "Agent",
-    "workspace": "Workspace",
+    "devicesAndData": "Devices & Data",
     "system": "System",
     "general": {
       "keywords": "appearance,look",

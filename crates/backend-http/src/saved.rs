@@ -188,6 +188,6 @@ async fn mark_sharers(services: &Services, user: &UserId, conversation: Conversa
         services.sync.mark(user, Part::Metadata(sharer));
     }
     if sharers.project {
-        services.sync.mark(user, Part::Workspaces);
+        services.sync.mark(user, Part::Projects);
     }
 }

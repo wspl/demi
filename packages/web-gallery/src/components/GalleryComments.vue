@@ -7,7 +7,7 @@ import { anchorOfText, pictureAnchor, picturesOf } from '@demicodes/web-ui/agent
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { COMMENTED_REPLY_ID, REPLY_PICTURE, REPLY_PICTURE_SOURCE, TWO_COMMENTS, commentedConversation } from '../fixtures/comments'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { useTurnFlow, type SentMessage } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
@@ -34,7 +34,7 @@ const props = defineProps<{
   seed: 'waiting' | 'sent' | 'picture-waiting' | 'picture-sent'
 }>()
 
-const flow = useTurnFlow({ id: `comments-${props.seed}`, title: 'Slow uploads', cwd: WORKSPACE_ROOT, blocks: commentedConversation() })
+const flow = useTurnFlow({ id: `comments-${props.seed}`, title: 'Slow uploads', cwd: PROJECT_ROOT, blocks: commentedConversation() })
 const session = flow.state
 const messageFiles = useMessageFiles()
 const waiting = ref<MessageComment[]>([])

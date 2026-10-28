@@ -124,7 +124,7 @@ const choiceOptions = [
   {
     value: 'cloud',
     label: 'Cloud',
-    description: 'A managed workspace, ready at once.',
+    description: 'A managed environment, ready at once.',
     icon: Cloud
   },
   {

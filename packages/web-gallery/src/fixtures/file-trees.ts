@@ -7,7 +7,7 @@ import { createMemoryFileSource, dir, file, link, memoryFileReads, textFile, typ
 import { baseName } from '@demicodes/utils'
 
 /**
- * Workspaces for the file tree specimens: one with every kind of row, and
+ * Projects for the file tree specimens: one with every kind of row, and
  * sources that never answer, refuse, or fail, so each state can be seen at
  * rest. Nothing here reads a real disk.
  */
@@ -45,7 +45,7 @@ function rowsTree(): MemoryDirectory {
   })
 }
 
-// A workspace named as a project is, since its name heads every tree.
+// A project named as a project is, since its name heads every tree.
 export const TREE_ROOT = '/demi'
 export const TREE_SELECTED = `${TREE_ROOT}/src/auth/providers/oauth/github/client.ts`
 
@@ -59,7 +59,7 @@ function wrap(root: MemoryDirectory, latencyMs = 0, uploadRate?: number): FileBr
   })
 }
 
-/** The rows workspace, answering at once. */
+/** The rows project, answering at once. */
 export function rowsSource(): FileBrowserSource {
   return wrap(rowsTree())
 }
@@ -81,7 +81,7 @@ export function screenshotsSource(): FileBrowserSource {
   }))
 }
 
-/** The rows workspace, where listing `slowPath` never finishes. */
+/** The rows project, where listing `slowPath` never finishes. */
 export function stuckSource(slowPath: string): FileBrowserSource {
   const reads = memoryFileReads({ platform: 'macos', home: TREE_ROOT, root: dir({ demi: rowsTree() }) })
   return keptSource({
@@ -90,7 +90,7 @@ export function stuckSource(slowPath: string): FileBrowserSource {
   }, { files: new HostFiles() })
 }
 
-/** The rows workspace with `src/auth` refusing and `tests` failing. */
+/** The rows project with `src/auth` refusing and `tests` failing. */
 export function failingSource(): FileBrowserSource {
   const root = rowsTree()
   const src = root.children['src'] as MemoryDirectory
@@ -102,7 +102,7 @@ export function failingSource(): FileBrowserSource {
 const MiB = 1024 * 1024
 
 /**
- * The rows workspace taking uploads at a pace slow enough to watch, with
+ * The rows project taking uploads at a pace slow enough to watch, with
  * `src/auth` refusing them the way a directory without write access would.
  */
 export function uploadSource(): FileBrowserSource {
@@ -134,7 +134,7 @@ export function sizedFolder(name: string, directories: string[], files: [path: s
   }
 }
 
-/** A workspace that cannot be listed at all. */
+/** A project that cannot be listed at all. */
 export function offlineSource(): FileBrowserSource {
   const inner = wrap(rowsTree())
   return {
@@ -145,7 +145,7 @@ export function offlineSource(): FileBrowserSource {
   }
 }
 
-/** Where the link specimens' workspace points, by its links. */
+/** Where the link specimens' project points, by its links. */
 export const LINKS = {
   folder: `${TREE_ROOT}/vendor`,
   file: `${TREE_ROOT}/config.json`,
@@ -158,8 +158,8 @@ export const LINKS = {
 } as const
 
 /**
- * A workspace with a symbolic link of each kind: `vendor` to a folder beside
- * it, which holds `project`, a link back to the workspace; `config.json` to a
+ * A project with a symbolic link of each kind: `vendor` to a folder beside
+ * it, which holds `project`, a link back to the project; `config.json` to a
  * file in the home's `.config`; `old.log` to a file that is gone; and
  * `current`, a link to itself, whose target cannot be read for the loop.
  */
@@ -227,12 +227,12 @@ function searchTree(): MemoryDirectory {
   })
 }
 
-/** The search workspace, answering as a Host does. */
+/** The search project, answering as a Host does. */
 export function searchSource(): FileBrowserSource {
   return wrap(searchTree(), 150)
 }
 
-/** The search workspace on a Host whose search reaches its limit: it stops after what it found, and says so. */
+/** The search project on a Host whose search reaches its limit: it stops after what it found, and says so. */
 export function limitedSearchSource(): FileBrowserSource {
   const source = wrap(searchTree())
   const search = source.search!
@@ -245,7 +245,7 @@ export function limitedSearchSource(): FileBrowserSource {
   }
 }
 
-/** The search workspace on a Host whose search never ends, until more typing or closing the field stops it. */
+/** The search project on a Host whose search never ends, until more typing or closing the field stops it. */
 export function searchingSource(): FileBrowserSource {
   return {
     ...wrap(searchTree()),

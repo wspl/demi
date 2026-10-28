@@ -307,7 +307,7 @@
   },
   "sections": {
     "agent": "エージェント",
-    "workspace": "ワークスペース",
+    "devicesAndData": "デバイスとデータ",
     "system": "システム",
     "general": {
       "keywords": "外観,見た目",

@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { demoModel, transcriptDemoBlocks } from '../fixtures/blocks'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { productWould } from '../product-would'
 import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
@@ -14,7 +14,7 @@ import GalleryComposer from './GalleryComposer.vue'
  * what the session did since joins it. Switch Back reads it again; Lose the
  * Connection drops its lane for four seconds.
  */
-const flow = useTurnFlow({ id: 'gallery-catching-up', title: 'Login test', cwd: WORKSPACE_ROOT, blocks: transcriptDemoBlocks() })
+const flow = useTurnFlow({ id: 'gallery-catching-up', title: 'Login test', cwd: PROJECT_ROOT, blocks: transcriptDemoBlocks() })
 const session = flow.state
 const catchingUp = ref(false)
 /** How long the read again takes: past the spinner's half-second wait. */

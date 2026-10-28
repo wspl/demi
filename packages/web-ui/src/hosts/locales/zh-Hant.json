@@ -25,7 +25,7 @@
     "title": "新增專案",
     "selectFolder": "選取資料夾",
     "loading": "正在載入裝置…",
-    "cloudDescription": "代管的工作區，立即可用。",
+    "cloudDescription": "代管的環境，立即可用。",
     "device": "裝置",
     "deviceDescription": "你其中一台裝置上的目錄。",
     "chooseDevice": "選擇裝置",

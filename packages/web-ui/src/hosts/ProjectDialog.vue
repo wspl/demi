@@ -29,15 +29,15 @@ import {
   openingChoice,
   useDeviceProjectAction,
   usePairedSelection,
-  type WorkspaceDevice,
-  type WorkspaceDraft,
-  type WorkspaceHostChoice,
-} from './workspace'
+  type ProjectDevice,
+  type ProjectDraft,
+  type ProjectHostChoice,
+} from './project'
 
 /**
  * A new project for a conversation to work in.
  *
- * The form branches on where it lives. On the Cloud the workspace is managed and
+ * The form branches on where it lives. On the Cloud the project is managed and
  * only needs a name. On a device it is a directory there, and takes the
  * directory's name. The folder browser is a page of the same dialog, opened by
  * Browse…
@@ -52,16 +52,16 @@ const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   load?: 'loading' | 'ready' | 'failed'
-  devices: WorkspaceDevice[]
+  devices: ProjectDevice[]
   /** The user's last choice, which the form opens on; absent the first time. */
-  lastHost?: WorkspaceHostChoice
+  lastHost?: ProjectHostChoice
   /** What went wrong with the last Create, shown under the form. */
   message?: ShownError | null
   /** The file browser's tree for a device. */
   sourceFor: (deviceId: string) => FileBrowserSource
   placesFor?: (deviceId: string) => FileBrowserPlaceGroup[]
   /** Creates the project; the button works, and the form waits, until it settles. */
-  onCreate?: Action<[draft: WorkspaceDraft]>
+  onCreate?: Action<[draft: ProjectDraft]>
 }>()
 
 /** Creating a project (`operations.ts`): the form opened again while it works shows it working. */
@@ -72,7 +72,7 @@ const emit = defineEmits<{
   retry: []
   close: []
   /** The user chose a kind or a device: the choice the next opening starts on. */
-  choose: [choice: WorkspaceHostChoice]
+  choose: [choice: ProjectHostChoice]
   /**
    * The Add Device button beside the device menu: the host starts pairing and
    * hands `onPaired` the device it pairs, which the menu then selects.

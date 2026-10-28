@@ -103,7 +103,7 @@ export function signInRequest(): CredentialRequestView {
     kind: 'credential',
     id: 'cr-linear',
     name: 'Linear sign-in for alex',
-    reason: 'To file the issues you listed in the Linear workspace',
+    reason: 'To file the issues you listed in the Linear project',
     fields: [
       { name: 'user', label: 'User name', kind: 'visible' },
       { name: 'password', label: 'Password', kind: 'secret' },

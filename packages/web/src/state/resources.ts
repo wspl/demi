@@ -7,10 +7,10 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
 import { t } from './locales/text'
 import {
-  workspaceAnswerSchema,
-  type ChangeWorkspace,
+  projectAnswerSchema,
+  type ChangeProject,
   type ConversationTarget,
-  type CreateWorkspace,
+  type CreateProject,
   type DeviceDto,
   type SavedScopeSwitch,
   type SidebarReorder,
@@ -159,22 +159,22 @@ export const useResources = defineStore('resources', () => {
   // A project that says what it said stays the same object, so its header is
   // not drawn again at each change of the state (`keepSame`).
   const projects = keptComputed((): Project[] =>
-    (product.snapshot?.workspaces ?? []).map((workspace): Project => {
+    (product.snapshot?.projects ?? []).map((project): Project => {
       const device = product.snapshot?.devices?.find(
-        (candidate) => candidate.id === workspace.deviceId,
+        (candidate) => candidate.id === project.deviceId,
       )
       const checkout = {
-        id: workspace.id,
-        name: workspace.name,
-        deviceId: workspace.deviceId,
-        path: workspace.path,
-        savedScope: workspace.savedScope,
-        savedCount: workspace.savedCount,
+        id: project.id,
+        name: project.name,
+        deviceId: project.deviceId,
+        path: project.path,
+        savedScope: project.savedScope,
+        savedCount: project.savedCount,
       }
       if (hostKindOf(device) === 'cloud') {
         return { ...checkout, hostKind: 'cloud' }
       }
-      return { ...checkout, hostKind: 'device', device: sidebarDevice(workspace.deviceId) }
+      return { ...checkout, hostKind: 'device', device: sidebarDevice(project.deviceId) }
     }),
   )
   const hidden = { provider: preferences.hidesProvider, model: preferences.hidesModel }
@@ -276,23 +276,23 @@ export const useResources = defineStore('resources', () => {
    * follows the earlier moves, and a failure, thrown, puts it back.
    */
   function reorderProject(id: string, beforeId: string | null): Promise<void> {
-    const change = product.change('workspaces', (state) => {
-      const workspaces = known(state.workspaces, 'workspaces')
-      const moved = workspaces.find((workspace) => workspace.id === id)
-      const before = workspaces.find((workspace) => workspace.id === beforeId) ?? null
+    const change = product.change('projects', (state) => {
+      const projects = known(state.projects, 'projects')
+      const moved = projects.find((project) => project.id === id)
+      const before = projects.find((project) => project.id === beforeId) ?? null
       return moved && (beforeId === null || before)
-        ? { ...state, workspaces: moveBefore(workspaces, moved, before) }
+        ? { ...state, projects: moveBefore(projects, moved, before) }
         : state
     })
     const { signal } = controller
     return moves
-      .run('workspace_order', async () => {
+      .run('project_order', async () => {
         change.send()
         await apiRequest('/sidebar/reorder', {
           method: 'POST',
           signal,
           ...jsonBody({
-            kind: 'workspace',
+            kind: 'project',
             id,
             beforeId,
           } satisfies SidebarReorder),
@@ -310,25 +310,25 @@ export const useResources = defineStore('resources', () => {
    * already a project answers that project, which the caller opens instead
    * of making a second.
    */
-  async function createProject(draft: CreateWorkspace): Promise<string> {
+  async function createProject(draft: CreateProject): Promise<string> {
     const current = controller
     let id: string
     try {
-      const response = await apiRequest('/workspaces', {
+      const response = await apiRequest('/projects', {
         method: 'POST',
         signal: controller.signal,
         ...jsonBody(draft),
       })
-      id = (await readResponse(response, workspaceAnswerSchema)).workspace.id
+      id = (await readResponse(response, projectAnswerSchema)).project.id
     } catch (error) {
-      if (!(error instanceof ApiError && error.code === 'workspace_exists' && error.workspaceId)) {
+      if (!(error instanceof ApiError && error.code === 'project_exists' && error.projectId)) {
         throw error
       }
-      id = error.workspaceId
+      id = error.projectId
     }
     // The caller opens the project, which the channel brings moments after
     // it was made.
-    await product.until((state) => state.workspaces?.some((item) => item.id === id) ?? false, current.signal)
+    await product.until((state) => state.projects?.some((item) => item.id === id) ?? false, current.signal)
     return id
   }
 
@@ -339,23 +339,23 @@ export const useResources = defineStore('resources', () => {
    * other pages.
    */
   function rememberInProject(id: string, choice: RememberedChoices): void {
-    const change = product.change('workspaces', (state) => ({
+    const change = product.change('projects', (state) => ({
       ...state,
-      workspaces: known(state.workspaces, 'workspaces').map((workspace) => workspace.id === id ? { ...workspace, ...choice } : workspace),
+      projects: known(state.projects, 'projects').map((project) => project.id === id ? { ...project, ...choice } : project),
     }))
     const { signal } = controller
     void choices
       .run(id, async () => {
         change.send()
-        const response = await apiRequest(`/workspaces/${encodeURIComponent(id)}`, {
+        const response = await apiRequest(`/projects/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           signal,
-          ...jsonBody(choice satisfies ChangeWorkspace),
+          ...jsonBody(choice satisfies ChangeProject),
         })
-        const { workspace } = await readResponse(response, workspaceAnswerSchema)
+        const { project } = await readResponse(response, projectAnswerSchema)
         change.land((read) => ({
-          type: 'workspaces',
-          workspaces: known(read.workspaces, 'workspaces').map((candidate) => candidate.id === workspace.id ? workspace : candidate),
+          type: 'projects',
+          projects: known(read.projects, 'projects').map((candidate) => candidate.id === project.id ? project : candidate),
         }))
       })
       .catch((error) => {
@@ -373,19 +373,19 @@ export const useResources = defineStore('resources', () => {
    */
   async function switchSavedScope(id: string, scope: SavedScope, to: string | null): Promise<void> {
     const current = controller
-    await apiRequest(`/workspaces/${encodeURIComponent(id)}/saved-scope`, {
+    await apiRequest(`/projects/${encodeURIComponent(id)}/saved-scope`, {
       method: 'PUT',
       signal: current.signal,
       ...jsonBody({ scope, ...(to ? { to } : {}) } satisfies SavedScopeSwitch),
     })
     await product.until(
-      (state) => state.workspaces?.some((item) => item.id === id && item.savedScope === scope) ?? true,
+      (state) => state.projects?.some((item) => item.id === id && item.savedScope === scope) ?? true,
       current.signal,
     )
   }
 
   async function removeProject(id: string): Promise<void> {
-    await apiRequest(`/workspaces/${encodeURIComponent(id)}`, {
+    await apiRequest(`/projects/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       signal: controller.signal,
     })

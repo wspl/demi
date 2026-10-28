@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
 use crate::error::ErrorCode;
-use crate::ids::{ConversationId, DeviceId, ProviderId, WorkspaceId};
+use crate::ids::{ConversationId, DeviceId, ProviderId, ProjectId};
 use crate::query::StrictBool;
 use crate::drafts::ConversationDraft;
 use crate::hosts::ConversationHosts;
@@ -25,7 +25,7 @@ use crate::workflows::ConversationWorkflowList;
 use crate::text::Trimmed;
 
 /// Where a conversation's work runs (`crates/backend-database/src/selection.rs`): the user's Cloud, a directory on a paired device, or a
-/// workspace. A new conversation runs on the Cloud, in its session
+/// project. A new conversation runs on the Cloud, in its session
 /// directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
@@ -53,9 +53,9 @@ pub enum ConversationTarget {
         #[garde(length(min = 1))]
         path: String,
     },
-    Workspace {
+    Project {
         #[garde(skip)]
-        workspace_id: WorkspaceId,
+        project_id: ProjectId,
     },
 }
 

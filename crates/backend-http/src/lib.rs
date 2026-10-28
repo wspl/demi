@@ -9,7 +9,7 @@
 //! # Ownership
 //!
 //! The edge checks ownership before it hands a request to a shard: it resolves
-//! the caller from the cookie, loads the conversation, device, workspace or
+//! the caller from the cookie, loads the conversation, device, project or
 //! provider entry the path names, and answers 404 when it belongs to someone
 //! else. A request therefore reaches only its owner's shard, which checks a
 //! conversation's owner again whenever it loads the record.
@@ -91,7 +91,7 @@ mod server_upgrade;
 mod update;
 mod usage;
 mod users;
-mod workspaces;
+mod projects;
 
 use std::io;
 use std::net::SocketAddr;
@@ -591,14 +591,14 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/reload", post(plugins::reload))
         .route("/sidebar/reorder", post(sidebar::reorder))
         .route(
-            "/workspaces",
-            get(workspaces::list).post(workspaces::create),
+            "/projects",
+            get(projects::list).post(projects::create),
         )
         .route(
-            "/workspaces/{id}",
-            patch(workspaces::change).delete(workspaces::delete),
+            "/projects/{id}",
+            patch(projects::change).delete(projects::delete),
         )
-        .route("/workspaces/{id}/saved-scope", put(workspaces::switch_saved_scope))
+        .route("/projects/{id}/saved-scope", put(projects::switch_saved_scope))
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
         .route("/devices", get(devices::list))

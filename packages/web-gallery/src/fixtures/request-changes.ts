@@ -3,7 +3,7 @@ import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { binaryFile, demoModel, inRequests, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withEnd, withLists } from './blocks'
 import { editCopies } from './blobs'
 import { ago } from './time'
-import { SLOT_ROOT, WORKSPACE_ROOT } from './workspace'
+import { SLOT_ROOT, PROJECT_ROOT } from './project'
 
 /**
  * Requests whose calls changed files (`crates/agent-store/src/changes.rs`), for the specimens of the file pills and of the Change
@@ -36,12 +36,12 @@ const CHECK = 'import re, sys\n\npage = open(\'src/page.ts\').read()\nsys.exit(0
 
 /**
  * A file a call changed, one segment per step between `versions`: of the
- * gallery workspace, or anywhere when `path` is absolute, in which case it
+ * gallery project, or anywhere when `path` is absolute, in which case it
  * is outside the agent's directory, as the backend marks it.
  */
 function file(path: string, kind: EditedFile['kind'], versions: readonly string[], counts: { added: number; removed: number }): EditedFile {
   return {
-    path: path.startsWith('/') ? path : `${WORKSPACE_ROOT}/${path}`,
+    path: path.startsWith('/') ? path : `${PROJECT_ROOT}/${path}`,
     kind,
     ...counts,
     ...(path.startsWith('/') ? { outside: true } : {}),
@@ -91,7 +91,7 @@ function ownFiles(block: ToolCallBlock): EditedFile[] {
 
 /** A file a call removed, or renamed from `from`, as its view lists it. */
 function moved(path: string, kind: 'deleted' | 'renamed', from?: string): EditedFile {
-  return { path: `${WORKSPACE_ROOT}/${path}`, kind, ...(from ? { from: `${WORKSPACE_ROOT}/${from}` } : {}), added: 0, removed: 0, edits: [] }
+  return { path: `${PROJECT_ROOT}/${path}`, kind, ...(from ? { from: `${PROJECT_ROOT}/${from}` } : {}), added: 0, removed: 0, edits: [] }
 }
 
 /** A file listed removed or renamed without an edit. */
@@ -136,8 +136,8 @@ export function signInRequestBlocks(prefix: string): Block[] {
  */
 export function uncopiedRequestBlocks(): Block[] {
   const logo = shell('uncopied-logo', 390_000, 'cp new-logo.png assets/logo.png', 'Replace the logo', [
-    binaryFile({ path: `${WORKSPACE_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
-    uncopiedFile({ path: `${WORKSPACE_ROOT}/README.md`, kind: 'modified', added: 1, removed: 1 }),
+    binaryFile({ path: `${PROJECT_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
+    uncopiedFile({ path: `${PROJECT_ROOT}/README.md`, kind: 'modified', added: 1, removed: 1 }),
   ])
   const readme = shell('uncopied-readme', 380_000, 'demi file edit README.md', 'Say when the logo changed', [
     file('README.md', 'modified', README, { added: 1, removed: 1 }),
@@ -170,7 +170,7 @@ export function movedRequestBlocks(): Block[] {
   ])
   const place = shell('moved-place', 240_000, 'mv /tmp/page.ts.new src/page.ts', 'Put the new page in place', [
     file('src/page.ts', 'modified', PAGE, { added: 6, removed: 1 }),
-  ], [{ kind: 'renamed', from: '/tmp/page.ts.new', to: `${WORKSPACE_ROOT}/src/page.ts` }])
+  ], [{ kind: 'renamed', from: '/tmp/page.ts.new', to: `${PROJECT_ROOT}/src/page.ts` }])
   // src/page.ts with both edits: the one made in /tmp, and its move over the old page.
   const [newPage] = listedFiles(place)
   const scratch = listedFile('cmd-moved-write', ownFiles(write)[0]!)
@@ -187,7 +187,7 @@ export function movedRequestBlocks(): Block[] {
         file('notes.tmp', 'added', ['', NOTES], { added: 2, removed: 0 }),
       ]),
       withLists(shell('moved-clean', 220_000, 'rm notes.tmp', 'Remove the scratch notes', [moved('notes.tmp', 'deleted')], [
-        { kind: 'removed', path: `${WORKSPACE_ROOT}/notes.tmp` },
+        { kind: 'removed', path: `${PROJECT_ROOT}/notes.tmp` },
       ]), [page]),
     ),
     text('moved-reply', 210_000, 'The page has the new layout, and the scratch notes are gone.'),
@@ -216,9 +216,9 @@ export function cleanupRequestBlocks(): Block[] {
     moved('docs/old-guide.md', 'deleted'),
     moved('docs/install.md', 'renamed', 'docs/setup.md'),
   ], [
-    { kind: 'removed', path: `${WORKSPACE_ROOT}/docs/draft.md` },
-    { kind: 'removed', path: `${WORKSPACE_ROOT}/docs/old-guide.md` },
-    { kind: 'renamed', from: `${WORKSPACE_ROOT}/docs/setup.md`, to: `${WORKSPACE_ROOT}/docs/install.md` },
+    { kind: 'removed', path: `${PROJECT_ROOT}/docs/draft.md` },
+    { kind: 'removed', path: `${PROJECT_ROOT}/docs/old-guide.md` },
+    { kind: 'renamed', from: `${PROJECT_ROOT}/docs/setup.md`, to: `${PROJECT_ROOT}/docs/install.md` },
   ])
   const [, readme] = listedFiles(draft)
   const [notes, guide, install] = ownFiles(tidy).map(listedMove)

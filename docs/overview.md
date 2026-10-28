@@ -162,7 +162,7 @@ The following table defines the terms this page uses:
 | Term | Meaning |
 | --- | --- |
 | Conversation | Backend-owned transcript, agent state, and product settings. |
-| Execution target | The conversation's selection of Cloud, a device directory, or a workspace. |
+| Execution target | The conversation's selection of Cloud, a device directory, or a project. |
 | Device | A registered execution device, either user-paired or managed. |
 | Host | The filesystem and process abstraction used to execute on a device. |
 | Host access | The one way the backend reaches a conversation's Host: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate (`crates/backend-host-access/src/access.rs`). |

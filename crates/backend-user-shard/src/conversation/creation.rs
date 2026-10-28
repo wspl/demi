@@ -68,7 +68,7 @@ impl Shard {
             .create_conversation_selecting(self.user().clone(), id, start)
             .await?;
         if made.is_some() {
-            self.mark(Part::Workspaces);
+            self.mark(Part::Projects);
         }
         match created {
             Creation::Created(record) => {

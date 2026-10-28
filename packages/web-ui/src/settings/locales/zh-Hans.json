@@ -307,7 +307,7 @@
   },
   "sections": {
     "agent": "智能体",
-    "workspace": "工作空间",
+    "devicesAndData": "设备与数据",
     "system": "系统",
     "general": {
       "keywords": "外观,样式",

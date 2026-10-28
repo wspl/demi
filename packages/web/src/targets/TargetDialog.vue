@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { ref } from 'vue'
-import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import type { WorkspaceDraft } from '@demicodes/web-ui/hosts/workspace'
+import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
+import type { ProjectDraft } from '@demicodes/web-ui/hosts/project'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useResources } from '../state/resources'
 import { useConversationNavigation } from '../conversation/navigation'
@@ -25,7 +25,7 @@ function close() {
 }
 
 /** Create: the dialog's button works until the project is made; done, the dialog closes if it is still open. */
-async function create(draft: WorkspaceDraft): Promise<void> {
+async function create(draft: ProjectDraft): Promise<void> {
   message.value = null
   try {
     await navigation.createProject(
@@ -50,7 +50,7 @@ async function create(draft: WorkspaceDraft): Promise<void> {
 </script>
 
 <template>
-  <WorkspaceDialog
+  <ProjectDialog
     :is-open="resources.targetOpen"
     :overlay-store="appOverlayStore"
     :load="product.partLoad('devices')"

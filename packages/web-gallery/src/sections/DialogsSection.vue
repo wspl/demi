@@ -32,8 +32,8 @@ import ConfirmDialog from '@demicodes/web-ui/ui/ConfirmDialog.vue'
 import ConversationDeleteDialog from '@demicodes/web-ui/sidebar/ConversationDeleteDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallCommands } from '@demicodes/web-ui/devices/installation'
-import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import type { WorkspaceDevice, WorkspaceDraft, WorkspaceHostChoice } from '@demicodes/web-ui/hosts/workspace'
+import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
+import type { ProjectDevice, ProjectDraft, ProjectHostChoice } from '@demicodes/web-ui/hosts/project'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import CloudResetDialog from '@demicodes/web-ui/cloud/CloudResetDialog.vue'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -323,7 +323,7 @@ const pairingPhases: { variant: string; phase: PairingPhase; installCommands?: D
 /** Each pairing specimen's phase: Next and Back move it, as the product's do; Open puts it back. */
 const pairingShown = ref(pairingPhases.map((item) => item.phase))
 const hosts = createGalleryFileHosts()
-const devices: WorkspaceDevice[] = shownAmong([
+const devices: ProjectDevice[] = shownAmong([
   { id: hosts[0]!.id, name: hosts[0]!.label, state: 'online', mark: hosts[0]!.mark ?? null },
   { id: 'build-01', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
 ])
@@ -332,7 +332,7 @@ const devices: WorkspaceDevice[] = shownAmong([
  * Recent folders stand for its projects, and a folder that is one already
  * opens that project rather than making a second.
  */
-function newProjectTitle(draft: WorkspaceDraft): HeadlineText {
+function newProjectTitle(draft: ProjectDraft): HeadlineText {
   if (draft.kind === 'cloud') {
     return `Create the Cloud Project ${draft.name} and Open a New Conversation in It`
   }
@@ -351,8 +351,8 @@ function placesFor(deviceId: string) {
 }
 const projectForms: {
   variant: string
-  devices: WorkspaceDevice[]
-  lastHost?: WorkspaceHostChoice
+  devices: ProjectDevice[]
+  lastHost?: ProjectHostChoice
   load: 'loading' | 'ready'
 }[] = [
   { variant: 'first time: Cloud', devices, load: 'ready' },
@@ -696,7 +696,7 @@ const resetPhases: {
       </GallerySection>
     </template>
 
-    <template v-if="view === 'workspace'">
+    <template v-if="view === 'project'">
       <GallerySection
         title="Delete Conversations"
         note="Delete in a conversation’s sidebar menu, a selection’s menu or an archived row asks first: the title names the one conversation or counts several, the body says that their messages and files go and that this cannot be undone, and that the files they changed in their projects stay. Delete is a danger button, red with no fill, and Cancel after it, last, the safe answer and the default."
@@ -746,7 +746,7 @@ const resetPhases: {
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
-              <WorkspaceDialog
+              <ProjectDialog
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 :devices="form.devices"

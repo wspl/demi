@@ -25,7 +25,7 @@
     "title": "新建项目",
     "selectFolder": "选择文件夹",
     "loading": "正在加载设备…",
-    "cloudDescription": "托管的工作空间，立即可用。",
+    "cloudDescription": "托管的环境，立即可用。",
     "device": "设备",
     "deviceDescription": "你的某台设备上的目录。",
     "chooseDevice": "选择设备",

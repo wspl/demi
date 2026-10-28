@@ -248,19 +248,19 @@ struct ListedProject {
 }
 
 async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let workspaces = shard
+    let kept = shard
         .services()
         .control
-        .workspaces(shard.user().clone())
+        .projects(shard.user().clone())
         .await
         .map_err(failed)?;
     let mut projects = Vec::new();
-    for workspace in &workspaces {
+    for project in &kept {
         projects.push(ListedProject {
-            id: workspace.id.to_string(),
-            name: workspace.name.clone(),
-            host: shard.host_name(&workspace.device).await,
-            directory: workspace.path.clone(),
+            id: project.id.to_string(),
+            name: project.name.clone(),
+            host: shard.host_name(&project.device).await,
+            directory: project.path.clone(),
         });
     }
     if call.invocation.json {
@@ -336,12 +336,12 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     if page > pages {
         return Err(failed(format!("the list has {pages} pages")));
     }
-    let workspaces = services.control.workspaces(shard.user().clone()).await.map_err(failed)?;
+    let projects = services.control.projects(shard.user().clone()).await.map_err(failed)?;
     let project = |selection: &Selection| match selection {
-        Selection::Workspace { workspace_id, .. } => workspaces
+        Selection::Project { project_id, .. } => projects
             .iter()
-            .find(|workspace| workspace.id == *workspace_id)
-            .map(|workspace| workspace.name.clone()),
+            .find(|project| project.id == *project_id)
+            .map(|project| project.name.clone()),
         _ => None,
     };
     let listed: Vec<ListedConversation> = records

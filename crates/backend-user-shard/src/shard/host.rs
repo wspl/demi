@@ -12,7 +12,7 @@ use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationChange;
 use demi_backend_database::conversations::ConversationDb;
-use demi_backend_database::workspaces::DirectoryNamed;
+use demi_backend_database::projects::DirectoryNamed;
 use demi_backend_host_access::root_of;
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_backend_page_sync::Part;
@@ -125,7 +125,7 @@ impl HostShard for Shard {
 
     fn directory_named(&self, conversation: &ConversationId, named: DirectoryNamed) {
         if named.projects {
-            self.mark(Part::Workspaces);
+            self.mark(Part::Projects);
         }
         for sharer in &named.saved {
             self.mark(Part::Metadata(sharer.clone()));

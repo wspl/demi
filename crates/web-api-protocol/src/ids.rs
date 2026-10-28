@@ -48,8 +48,8 @@ demi_shared_types::id!(
 pub use demi_shared_types::DeviceId;
 
 demi_shared_types::id!(
-    /// A workspace's id, which the backend assigns.
-    WorkspaceId
+    /// A project's id, which the backend assigns.
+    ProjectId
 );
 
 demi_shared_types::id!(

@@ -14,7 +14,7 @@ import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
  * drags to another width, so the cut can be watched following the wrapping.
  */
 const props = defineProps<{
-  /** The gallery workspace: the images the messages name, and the panel a click opens them in. */
+  /** The gallery project: the images the messages name, and the panel a click opens them in. */
   files: ConversationFiles
   cwd: string
 }>()

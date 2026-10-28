@@ -126,7 +126,7 @@ export interface PluginCallOptions {
  */
 export interface ConversationFileService {
   /** The Host's file tree and file contents, while the conversation's Host is known. */
-  readonly workspace: { source: FileBrowserSource; root: string; name?: string } | null
+  readonly tree: { source: FileBrowserSource; root: string; name?: string } | null
   /** Where the conversation's work runs, which a retained edit's paths are relative to. */
   readonly root: string | null
   /**

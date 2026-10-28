@@ -82,6 +82,17 @@ export function settingsSections(): SettingsNavGroup[] {
             { label: t('notifications.homeScreen.row'), keywords: words(t('sections.notifications.homeScreenKeywords')) },
           ],
         },
+        {
+          id: 'keyboard',
+          label: t('keyboard.title'),
+          icon: Keyboard,
+          keyboard: true,
+          keywords: words(t('sections.keyboard.keywords')),
+          settings: [
+            ...appShortcuts().map((shortcut) => ({ label: shortcutAction(shortcut.id) })),
+            { label: t('keyboard.resetAll') },
+          ],
+        },
       ],
     },
     {
@@ -142,7 +153,7 @@ export function settingsSections(): SettingsNavGroup[] {
       ],
     },
     {
-      id: 'workspace',
+      id: 'devicesAndData',
       items: [
         {
           id: 'devices',
@@ -165,17 +176,6 @@ export function settingsSections(): SettingsNavGroup[] {
           label: t('archived.title'),
           icon: Archive,
           keywords: words(t('sections.archived.keywords')),
-        },
-        {
-          id: 'keyboard',
-          label: t('keyboard.title'),
-          icon: Keyboard,
-          keyboard: true,
-          keywords: words(t('sections.keyboard.keywords')),
-          settings: [
-            ...appShortcuts().map((shortcut) => ({ label: shortcutAction(shortcut.id) })),
-            { label: t('keyboard.resetAll') },
-          ],
         },
         {
           id: 'data',

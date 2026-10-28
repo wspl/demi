@@ -29,12 +29,12 @@ pub(super) async fn reorder(
             Part::ConversationOrder,
             (ErrorCode::ConversationNotFound, "No such conversation"),
         ),
-        SidebarReorder::Workspace { id, before_id } => (
+        SidebarReorder::Project { id, before_id } => (
             control
-                .reorder_workspaces(user.id.clone(), id, before_id)
+                .reorder_projects(user.id.clone(), id, before_id)
                 .await?,
-            Part::Workspaces,
-            (ErrorCode::WorkspaceNotFound, "No such workspace"),
+            Part::Projects,
+            (ErrorCode::ProjectNotFound, "No such project"),
         ),
     };
     match reorder {

@@ -9,14 +9,14 @@ import { cloudDeviceIn, deviceMarkOf, hostKindOf, hostLabel } from '../state/hos
 export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>) {
   const snapshot = useProduct().snapshot
   const target = conversation.target
-  const workspace =
-    target.kind === 'workspace'
-      ? snapshot?.workspaces?.find((workspace) => workspace.id === target.workspaceId)
+  const project =
+    target.kind === 'project'
+      ? snapshot?.projects?.find((project) => project.id === target.projectId)
       : null
   const deviceId =
     target.kind === 'device'
       ? target.deviceId
-      : (workspace?.deviceId
+      : (project?.deviceId
         ?? cloudDeviceIn(snapshot?.devices)?.id
         ?? null)
   const device = snapshot?.devices?.find((device) => device.id === deviceId)
@@ -28,8 +28,8 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
     /** Where the work runs: the backend's resolved directory, for every kind of target. */
     path: conversation.cwd,
     /** The directory the reader chose; null while the Cloud runs in its own session directory. */
-    directory: target.kind === 'device' ? target.path : (workspace?.path ?? null),
-    workspaceName: workspace?.name ?? null,
+    directory: target.kind === 'device' ? target.path : (project?.path ?? null),
+    projectName: project?.name ?? null,
     /** Whether the Host's runner serves it: a paired device's, or a running Cloud's. */
     state: device?.state ?? ('offline' as const),
     /** How much of its next runner the device has downloaded, while that download moves. */

@@ -15,8 +15,8 @@ import ProviderLoginDialog, {
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
-import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import type { WorkspaceHostChoice } from '@demicodes/web-ui/hosts/workspace'
+import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
+import type { ProjectHostChoice } from '@demicodes/web-ui/hosts/project'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { createGalleryFileHosts } from '../fixtures/files'
@@ -66,7 +66,7 @@ const pairing: PairingPhase = {
 const pairingShown = ref<PairingPhase>(pairing)
 const hosts = createGalleryFileHosts()
 /** The failed project form's remembered choice: Device on the laptop the Create was for. */
-const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: 'preview-device' })
+const failedProjectHost = ref<ProjectHostChoice>({ kind: 'device', deviceId: 'preview-device' })
 </script>
 
 <template>
@@ -157,7 +157,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
         </GallerySpecimen>
         <GallerySpecimen wide variant="Project creation · device unavailable">
           <GalleryDialogFrame v-slot="{ open, close }">
-            <WorkspaceDialog
+            <ProjectDialog
               :is-open="open"
               :overlay-store="appOverlayStore"
               :devices="shownAmong([

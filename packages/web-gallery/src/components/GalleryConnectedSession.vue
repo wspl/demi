@@ -5,7 +5,7 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
+import ProjectDirectoryMenu from '@demicodes/web-ui/hosts/ProjectDirectoryMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
 import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import { homePath } from '@demicodes/web-ui/files/paths'
@@ -16,7 +16,7 @@ import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
 import { createGalleryFileHosts } from '../fixtures/files'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import GalleryComposer from './GalleryComposer.vue'
 import { productWould } from '../product-would'
 import { useLiveGalleryCommand } from '../live-command'
@@ -38,7 +38,7 @@ const props = withDefaults(
 const flow = useTurnFlow({
   id: 'shared-product-session',
   title: 'Shared session',
-  cwd: WORKSPACE_ROOT,
+  cwd: PROJECT_ROOT,
   blocks: transcriptDemoBlocks(),
   subagents: props.showActivity ? gallerySubagents() : [],
   terminals: props.showActivity ? galleryTerminals() : [],
@@ -61,7 +61,7 @@ const devices: HostDeviceOption[] = hosts.map((host) => ({
  * Hosts report them: a move to one stays in its project.
  */
 const worktrees = [
-  { deviceId: hosts[0]!.id, project: WORKSPACE_ROOT, name: '2', path: '/Users/alex/Projects/shop-worktrees/2' },
+  { deviceId: hosts[0]!.id, project: PROJECT_ROOT, name: '2', path: '/Users/alex/Projects/shop-worktrees/2' },
 ]
 const folder = ref<{ deviceId: string; path: string; worktree: { name: string; path: string } | null }>(
   props.inWorktree
@@ -104,7 +104,7 @@ function settle(deviceId: string, path: string): void {
     projectDirectories.value = [...projectDirectories.value, { deviceId, path }]
   }
 }
-const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
+const projectName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
 const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
@@ -198,11 +198,11 @@ function detach(id: string): void {
         @interrupt-pending-steer="flow.interruptPendingSteer"
         v-bind="agentContext.session"
       >
-        <template #workspace>
-          <WorkspaceDirectoryMenu
+        <template #place>
+          <ProjectDirectoryMenu
             :overlay-store="appOverlayStore"
             :path="folder.path"
-            :workspace-name="workspaceName"
+            :project-name="projectName"
             :device-id="folder.deviceId"
             :locked="locked !== undefined"
             browse-enabled
@@ -223,7 +223,7 @@ function detach(id: string): void {
               @detach="detach"
               @connect="productWould('Add Device')"
             />
-          </WorkspaceDirectoryMenu>
+          </ProjectDirectoryMenu>
         </template>
         <template #composer
           ><GalleryComposer

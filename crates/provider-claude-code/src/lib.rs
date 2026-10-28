@@ -15,7 +15,7 @@
 //!
 //! The CLI is Demi's own verified copy, never a `claude` found on `PATH`, and
 //! is started with no tools of its own and no device configuration, so it is a
-//! channel to the vendor and nothing else. It does not touch the workspace,
+//! channel to the vendor and nothing else. It does not touch the project,
 //! which is why where it runs is a choice and not a consequence of where the
 //! conversation's files are. The model's tools run where the conversation's
 //! tools run, the CLI handing each call back to the agent.

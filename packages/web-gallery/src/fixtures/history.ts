@@ -81,7 +81,7 @@ function fixed<T>(read: () => { value: T | undefined; answer: KeptAnswer }): Sho
 }
 
 /**
- * The gallery workspace's repository holds:
+ * The gallery project's repository holds:
  *
  * - `main`, checked out, with 64 commits, so the list loads a second page as it scrolls.
  * - `feat/cart`, three commits on top of main's tenth.

@@ -87,7 +87,7 @@ import { storedRequests, type RequestChangeSource, type RequestEditRef, type Req
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
-import { createGalleryChangeSet, createGalleryWorkspace, gallerySides, QUOTED_CODE, SLOT_ROOT } from '../fixtures/workspace'
+import { createGalleryChangeSet, createGalleryProject, gallerySides, QUOTED_CODE, SLOT_ROOT } from '../fixtures/project'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { galleryAttachmentOrigin, galleryConversationFiles, namedCodeFiles, namedFilesMarkdown } from '../fixtures/message-files'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
@@ -599,7 +599,7 @@ function openFrameResult(row: SearchRow): void {
   frameReveal.value = row.match ? { node: null, blockId: row.match.blockId } : null
 }
 /**
- * One specimen's work panel over the gallery workspace, as the product's work
+ * One specimen's work panel over the gallery project, as the product's work
  * store holds one: the plugins' kinds, with the `browser` kind over the
  * gallery's own conversation browser or the one the specimen supplies, and
  * the File view on `path` when one is given. A specimen can also say whether
@@ -615,19 +615,19 @@ function useWorkTabs(
 ) {
   const work = useGalleryWork(selection, { files, browser, pictures })
   if (path) {
-    work.openIn({ intent: 'file', payload: { path: `${workspace.root}/${path}` } })
+    work.openIn({ intent: 'file', payload: { path: `${project.root}/${path}` } })
     work.select(selection)
   }
   return work
 }
-const workspace = createGalleryWorkspace()
-const files = galleryFiles(workspace)
-/** The same workspace on a Host that cannot watch its files. */
-const unwatchedWorkspace = createGalleryWorkspace(200, 'unavailable')
-/** The same workspace once more, for a refresh that fails. */
-const failingWorkspace = createGalleryWorkspace()
+const project = createGalleryProject()
+const files = galleryFiles(project)
+/** The same project on a Host that cannot watch its files. */
+const unwatchedProject = createGalleryProject(200, 'unavailable')
+/** The same project once more, for a refresh that fails. */
+const failingProject = createGalleryProject()
 const COOKIE = 'src/auth/cookie.ts'
-const cookiePath = `${workspace.root}/${COOKIE}`
+const cookiePath = `${project.root}/${COOKIE}`
 let outsideEdits = 0
 
 /**
@@ -637,17 +637,17 @@ let outsideEdits = 0
  */
 async function editCookieOutside(): Promise<void> {
   showInFileView(cookiePath)
-  const text = await workspace.source.read(cookiePath)
+  const text = await project.source.read(cookiePath)
   outsideEdits += 1
-  workspace.source.change(cookiePath, `${text}\n// Edited outside Demi (${outsideEdits})\n`)
+  project.source.change(cookiePath, `${text}\n// Edited outside Demi (${outsideEdits})\n`)
   productWould('The Host Reported cookie.ts Changed')
 }
 
 /** Simulates the Host failing the next read of cookie.ts, and a report that has it read again. */
 async function failCookieRefresh(): Promise<void> {
-  const text = await failingWorkspace.source.read(cookiePath)
-  failingWorkspace.source.failNext(cookiePath, { kind: 'other', message: 'The Host did not answer in time.' })
-  failingWorkspace.source.change(cookiePath, text)
+  const text = await failingProject.source.read(cookiePath)
+  failingProject.source.failNext(cookiePath, { kind: 'other', message: 'The Host did not answer in time.' })
+  failingProject.source.change(cookiePath, text)
   productWould('The Host Reported cookie.ts Changed; Reading It Again Failed')
 }
 const fileViewTree = ref(true)
@@ -655,7 +655,7 @@ const changeViewTree = ref(true)
 const changeViewCommitsHeight = ref(COMMITS_HEIGHT.default)
 const fileViewMode = ref<'preview' | 'source'>('preview')
 const changeViewPresentation = ref<'diff' | 'preview'>('diff')
-/** One of each kind the File view previews, by workspace path. */
+/** One of each kind the File view previews, by project path. */
 const previewFiles = [
   'README.md', 'report/index.html', 'assets/logo.svg', 'assets/photo.png', 'assets/demo.mp4',
   'assets/tone.m4a', 'docs/guide.pdf', 'dist/app.zip', 'src/auth/cookie.ts', 'server.log',
@@ -718,7 +718,7 @@ function useChangeTab(
     placed: (branch: string | null) => hold(placeBranch(tab.value, branch)),
   }
 }
-const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
+const fileViewPath = ref(`${project.root}/src/auth/cookie.ts`)
 const fileViewBack = ref<string[]>([])
 const fileViewForward = ref<string[]>([])
 function showInFileView(path: string) {
@@ -754,7 +754,7 @@ const quotedReply = [
   QUOTED_CODE.bash.text.trimEnd(),
   '```',
 ].join('\n')
-const quotedFiles = [QUOTED_CODE.rust.path, QUOTED_CODE.bash.path].map((path) => `${workspace.root}/${path}`)
+const quotedFiles = [QUOTED_CODE.rust.path, QUOTED_CODE.bash.path].map((path) => `${project.root}/${path}`)
 const quotedPath = ref(quotedFiles[0]!)
 const quotedTree = ref(false)
 /** The narrow File view that has shown no file yet: a pick in its tree opens one, and Back returns to none. */
@@ -775,9 +775,9 @@ function agentOpens(show: boolean) {
  * only while it is.
  */
 const hostOnline = ref(true)
-/** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
+/** The session's messages reach the gallery project: images from its fixtures, files opened in the frame's panel. */
 const sessionFiles = {
-  ...galleryConversationFiles(workspace.source, ({ path, line }) => {
+  ...galleryConversationFiles(project.source, ({ path, line }) => {
     // From the session page, which shows no panel, a click opens the frame's.
     panelWork.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
     view.value = 'panel'
@@ -791,7 +791,7 @@ const sessionFiles = {
     panelWork.openIn({ intent: 'attachment', payload: { id, name, size, url } })
     view.value = 'panel'
   }),
-  attachmentOrigin: galleryAttachmentOrigin(workspace.source, () => hostOnline.value),
+  attachmentOrigin: galleryAttachmentOrigin(project.source, () => hostOnline.value),
 }
 // The session's pictures and videos open in the Media tab of the frame's panel, as a conversation's do.
 provideMediaViewer({
@@ -815,15 +815,15 @@ const editWork = useWorkTabs('change')
 // kind, which lists its tabs as it is made.
 provideEditSelection(() => editWork.selectEdit)
 const gitHistory = sharedHistory.source
-const changeUncommitted = useChangeTab('commits', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null, history: gitHistory })
+const changeUncommitted = useChangeTab('commits', 'src/auth/cookie.ts', { uncommitted: project.changes, conversation: null, history: gitHistory })
 /** Commits on another branch than the one checked out, its newest commit picked. */
-const changeOtherBranch = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showItem(showBranch(data, 'feat/cart'), sharedHistory.ids.cart))
+const changeOtherBranch = useChangeTab('commits', null, { uncommitted: project.changes, conversation: null, history: gitHistory }, null, (data) => showItem(showBranch(data, 'feat/cart'), sharedHistory.ids.cart))
 /** A commit of the branch checked out picked in the list. */
-const changeCommit = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showItem(data, sharedHistory.ids.latest()))
+const changeCommit = useChangeTab('commits', null, { uncommitted: project.changes, conversation: null, history: gitHistory }, null, (data) => showItem(data, sharedHistory.ids.latest()))
 /** A link to a commit that no branch holds, as a rebase leaves one. */
-const changeNoBranch = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showCommit(data, { commit: sharedHistory.ids.orphan.slice(0, 7) }))
+const changeNoBranch = useChangeTab('commits', null, { uncommitted: project.changes, conversation: null, history: gitHistory }, null, (data) => showCommit(data, { commit: sharedHistory.ids.orphan.slice(0, 7) }))
 /** A link to a commit the repository does not have. */
-const changeMissingCommit = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showCommit(data, { commit: 'deadbee' }))
+const changeMissingCommit = useChangeTab('commits', null, { uncommitted: project.changes, conversation: null, history: gitHistory }, null, (data) => showCommit(data, { commit: 'deadbee' }))
 /** Makes a commit on the branch checked out, as a terminal would; every Commits specimen's list follows. */
 function commitInTerminal(): void {
   sharedHistory.commit('Tidy the cart styles')
@@ -833,17 +833,17 @@ function commitInTerminal(): void {
 const signInChanges = storedRequests(signInRequestBlocks('change-view')).requests[0]!
 const signInLogin = signInChanges.files[0]!
 const changeRequest = useChangeTab('conversation', null, {
-  uncommitted: workspace.changes,
+  uncommitted: project.changes,
   conversation: { files: signInChanges.files, read: readGalleryEdit },
 }, { node: null, request: signInChanges.id, file: signInLogin.path, edit: null })
 const changeRequestEdit = useChangeTab('conversation', null, {
-  uncommitted: workspace.changes,
+  uncommitted: project.changes,
   conversation: { files: signInChanges.files, read: readGalleryEdit },
 }, { node: null, request: signInChanges.id, file: signInLogin.path, edit: signInLogin.edits[2]! })
-/** A request that changed the README once, whose two sides are the workspace's Markdown. */
+/** A request that changed the README once, whose two sides are the project's Markdown. */
 const readmeChange = editedFile({ path: 'README.md', kind: 'modified', added: 0, removed: 1 })
 const changeDocument = useChangeTab('conversation', null, {
-  uncommitted: workspace.changes,
+  uncommitted: project.changes,
   conversation: {
     files: [{
       path: readmeChange.path,
@@ -859,7 +859,7 @@ const changeDocument = useChangeTab('conversation', null, {
  * kept, beside the readme it edited: the removed file is picked.
  */
 const changeRemoved = useChangeTab('conversation', null, {
-  uncommitted: workspace.changes,
+  uncommitted: project.changes,
   conversation: {
     files: [
       {
@@ -879,7 +879,7 @@ const changeRemoved = useChangeTab('conversation', null, {
  * file, whatever its name says it is.
  */
 const changeBinary = useChangeTab('conversation', null, {
-  uncommitted: workspace.changes,
+  uncommitted: project.changes,
   conversation: {
     files: [
       {
@@ -894,7 +894,7 @@ const changeBinary = useChangeTab('conversation', null, {
     read: () => gallerySides('README.md'),
   },
 }, { node: null, request: 'gallery-hero', file: 'assets/hero.png', edit: null })
-const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
+const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: project.changes })
 const changeNoRepository = useChangeTab('commits', null, {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { unavailable: 'no-repository' }),
@@ -1032,8 +1032,8 @@ const unstartedWork = useGalleryWork(null, { files, pages: [] })
 const directoryKnown = ref(false)
 const unknownFiles: ConversationFileService = {
   ...files,
-  get workspace() {
-    return directoryKnown.value ? files.workspace : null
+  get tree() {
+    return directoryKnown.value ? files.tree : null
   },
   get root() {
     return directoryKnown.value ? files.root : null
@@ -1044,7 +1044,7 @@ const firstViewWork = useGalleryWork('file', { files: unknownFiles })
 const sessionFlow = useTurnFlow({
   id: 'gallery-session',
   title: 'Login test',
-  cwd: workspace.root,
+  cwd: project.root,
   blocks: [
     ...transcriptDemoBlocks(),
     { type: 'text', id: 'assistant-media', createdAt: new Date(Date.now() - 500).toISOString(), model: demoModel, text: frameMediaMarkdown },
@@ -2313,36 +2313,36 @@ onBeforeUnmount(() => {
           <Switch v-model="hostOnline" label="Host online" />
         </GallerySpecimen>
         <GallerySpecimen variant="a lone image" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="loneImageMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="loneImageMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="images with a white and a dark background" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="edgedImagesMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="edgedImagesMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="a run of two" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="twoMediaMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="twoMediaMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="a run of five, wrapping" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="fiveMediaMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="fiveMediaMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="a voice-over, played where it is" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="audioAttachmentMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="audioAttachmentMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="files as cards, the tag in a sentence, a missing number, a recording of unknown size" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="attachmentMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="attachmentMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="after a list item’s words" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="listAttachmentMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="listAttachmentMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="pictures of the Host a reply shows: copied, being copied, not copied with why, and written before copies were kept" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="hostPicturesMarkdown" :pictures="hostPicturesKept" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="hostPicturesMarkdown" :pictures="hostPicturesKept" />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection
         title="Files in a Message"
-        note="Every link in a message wears an icon, so each reads as the kind of thing it opens. A file of the Host a reply names is a link with the file's icon before its name, the icon the file tree shows, and 0.2em of space on each side, outside its underline, as an agent's link has; a commit link, [text](commit:3f2a9c1), or [text](commit:vendor/parser@3f2a9c1) for a commit of the repository in that folder, read as a relative link's path is, shows the commit icon the branch menu uses for a detached head before its text, spaced the same way, and a click opens the commit in the Change view of the frame's panel; a web page's link shows the link icon, spaced the same way, and opens in a new tab; a link whose text is an image, as a badge's is, wears none. A click on a file opens it in the File view of the frame's panel, and a #L42 after the path opens it at line 42, scrolled there and marked for a moment as a search result is. A link's color says where it leads: a web page's link is in the accent color, as a link on a page is, while a file's and a commit's read as part of the sentence, in the prose's color over a faint underline, as an agent's does, told apart by their icons, the commit icon in orange as Git's own mark; fixed colors for each kind would meet the accent the user picks (Settings › Appearance), an orange accent making the web's links read as commits. A link is one color: code in its text drops code's look and reads as the link's words, in the link's color, while code outside a link keeps its own; a Markdown document's links wear no icon and keep code's monospace and fill in the link's color (Markdown, Edge Cases, Shown As Document). Inline code that reads as a path, one with a slash or a name with an extension and an optional :line, opens too when the Host has the file, as a link of words with the file's icon: the page asks the Host once for the reply's paths together, after the reply is complete. Here the gallery answers for the Host from its demo workspace, so src/auth/token.ts, which it lacks, stays code; a bare name such as cookie is never asked about."
+        note="Every link in a message wears an icon, so each reads as the kind of thing it opens. A file of the Host a reply names is a link with the file's icon before its name, the icon the file tree shows, and 0.2em of space on each side, outside its underline, as an agent's link has; a commit link, [text](commit:3f2a9c1), or [text](commit:vendor/parser@3f2a9c1) for a commit of the repository in that folder, read as a relative link's path is, shows the commit icon the branch menu uses for a detached head before its text, spaced the same way, and a click opens the commit in the Change view of the frame's panel; a web page's link shows the link icon, spaced the same way, and opens in a new tab; a link whose text is an image, as a badge's is, wears none. A click on a file opens it in the File view of the frame's panel, and a #L42 after the path opens it at line 42, scrolled there and marked for a moment as a search result is. A link's color says where it leads: a web page's link is in the accent color, as a link on a page is, while a file's and a commit's read as part of the sentence, in the prose's color over a faint underline, as an agent's does, told apart by their icons, the commit icon in orange as Git's own mark; fixed colors for each kind would meet the accent the user picks (Settings › Appearance), an orange accent making the web's links read as commits. A link is one color: code in its text drops code's look and reads as the link's words, in the link's color, while code outside a link keeps its own; a Markdown document's links wear no icon and keep code's monospace and fill in the link's color (Markdown, Edge Cases, Shown As Document). Inline code that reads as a path, one with a slash or a name with an extension and an optional :line, opens too when the Host has the file, as a link of words with the file's icon: the page asks the Host once for the reply's paths together, after the reply is complete. Here the gallery answers for the Host from its demo project, so src/auth/token.ts, which it lacks, stays code; a bare name such as cookie is never asked about."
       >
         <GallerySpecimen variant="links, a line, code in links, code paths the Host has and lacks" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="namedFilesMarkdown" :code-files="namedCodeFiles(workspace.root)" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="namedFilesMarkdown" :code-files="namedCodeFiles(project.root)" />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection
@@ -2840,7 +2840,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'lengths'">
-      <GalleryUserMessageLengths :files="sessionFiles" :cwd="workspace.root" />
+      <GalleryUserMessageLengths :files="sessionFiles" :cwd="project.root" />
     </template>
 
     <template v-if="view === 'changes'">
@@ -4133,16 +4133,16 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="File View"
-        note="A file of the Host: its whole path as crumbs from the Host’s root, the root and the home wearing their glyphs, the file itself under its bar, and the workspace tree beside it following the file, as Visual Studio Code’s Explorer follows the file being edited: whenever the view shows a file, by a button here, the tree, the crumbs, Back or Forward, the tree unfolds the folders above it together, their listings read as one request, selects its row and scrolls it into view if it is not, the other folders staying as they are; packages/agent/src/providers/anthropic.ts is four folders down. A file outside the workspace, as Open a File Outside the Workspace opens one of another checkout, leaves no row selected. A hidden tree stays hidden and shows the file once its control shows it. The file’s bar, over the file and not the tree, says what the file is: the language’s full name as the editor knows it, or Plain Text, with its lines and size; an image’s kind, pixel size, zoom and size, the zoom following the picture; a video’s pixel size and size; another file’s kind and size. On its right are Preview and Source for Markdown, SVG and HTML, Copy, which puts the whole text on the clipboard, Markdown’s source and not its rendering, and turns to a check and “Copied” for a moment, and Download for every file. Text opens read-only in the code editor, colored by its language, with folding; a click puts a blinking caret in it, which the arrows move and Shift extends a selection from. Mod-f in the text opens a find bar below it: the query with its match count, “Match case”, “Match whole word” and “Use regular expression”, and “Previous match” and “Next match”, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows a question mark while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image opens fitted to the pane without being enlarged, over a checkerboard where it is transparent, and zooms and moves as in the media viewer, by the same component: the wheel or a pinch zooms about the pointer up to 800%, a drag moves it while it is larger than the pane, and a click without a drag toggles the fitted and the actual size about the clicked spot; its bar says its pixel size, its zoom and its file size. Video and audio play in the browser’s own player and PDF in its own viewer, its bar saying its pixel size, for video, and its file size. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its centered logo at its tag’s height in the lockup for the theme Demi shows, its badges on one line, its alerts titled Note and Warning, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. An HTML file opens as the page it describes, on white whatever the theme, in a frame sandboxed from Demi: its scripts run, so report/index.html draws its chart and Add a Quarter draws another bar, and each new version of the file loads the page again. In the product it loads the stylesheets, scripts and images beside it on the Host; here it shows from its own text. Markdown, SVG and HTML switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in its bar. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the absolute path; a relative path starts from the workspace and ~ names the home, so ~/Projects/shop/README.md opens the README; the field completes from its folders and files as it is typed, a completed file opening at once: Enter opens a file, or goes to a folder as Finder’s Go to Folder does, unfolding it in the tree with the folders above it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. A click on a row gives the tree the keyboard: the arrows, Home, End and Enter move through it and act, and typing a name moves to the first row shown that starts with it, opening nothing. A right-click in the tree downloads a file, or uploads into a folder, or into the workspace from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, its bar’s controls moving to the tree’s side, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture’s latency, so the text and each directory show their loading state the first time; the fixture’s Host watches its files, as the product’s does, so a file or folder shown again shows at once, scrolled where it was, and asks nothing. Edit cookie.ts Outside Demi writes the file as another program would: the Host reports it, and the text is read again and replaced in place, without a loading state, the scroll and folds staying. A read again that fails keeps the text and says so quietly over it, in the page’s own words, with Retry, and the view reads it again by itself once the Host is back and its watch live again. A file that is not text keeps its card while it is read again. A file that is not there says it does not exist, its bar naming the file alone with nothing to do with it, with Retry, which shows the read on its way and then the same answer while the file is still not there. An image a document names that does not load shows its alt text in a dashed box, as the README’s missing one does, and tries again when the document is read again. server.log is over the text route’s 8 MiB: it opens as its first 8 MiB, with a line saying how much of how much shows and Download; its bar says its whole size and offers no Copy, since the page holds only the start. A file the Host cannot watch has the view say that it shows it as last read, with Refresh, and it is checked each time it shows."
+        note="A file of the Host: its whole path as crumbs from the Host’s root, the root and the home wearing their glyphs, the file itself under its bar, and the project tree beside it following the file, as Visual Studio Code’s Explorer follows the file being edited: whenever the view shows a file, by a button here, the tree, the crumbs, Back or Forward, the tree unfolds the folders above it together, their listings read as one request, selects its row and scrolls it into view if it is not, the other folders staying as they are; packages/agent/src/providers/anthropic.ts is four folders down. A file outside the project, as Open a File Outside the Project opens one of another checkout, leaves no row selected. A hidden tree stays hidden and shows the file once its control shows it. The file’s bar, over the file and not the tree, says what the file is: the language’s full name as the editor knows it, or Plain Text, with its lines and size; an image’s kind, pixel size, zoom and size, the zoom following the picture; a video’s pixel size and size; another file’s kind and size. On its right are Preview and Source for Markdown, SVG and HTML, Copy, which puts the whole text on the clipboard, Markdown’s source and not its rendering, and turns to a check and “Copied” for a moment, and Download for every file. Text opens read-only in the code editor, colored by its language, with folding; a click puts a blinking caret in it, which the arrows move and Shift extends a selection from. Mod-f in the text opens a find bar below it: the query with its match count, “Match case”, “Match whole word” and “Use regular expression”, and “Previous match” and “Next match”, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows a question mark while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image opens fitted to the pane without being enlarged, over a checkerboard where it is transparent, and zooms and moves as in the media viewer, by the same component: the wheel or a pinch zooms about the pointer up to 800%, a drag moves it while it is larger than the pane, and a click without a drag toggles the fitted and the actual size about the clicked spot; its bar says its pixel size, its zoom and its file size. Video and audio play in the browser’s own player and PDF in its own viewer, its bar saying its pixel size, for video, and its file size. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its centered logo at its tag’s height in the lockup for the theme Demi shows, its badges on one line, its alerts titled Note and Warning, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. An HTML file opens as the page it describes, on white whatever the theme, in a frame sandboxed from Demi: its scripts run, so report/index.html draws its chart and Add a Quarter draws another bar, and each new version of the file loads the page again. In the product it loads the stylesheets, scripts and images beside it on the Host; here it shows from its own text. Markdown, SVG and HTML switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in its bar. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the absolute path; a relative path starts from the project and ~ names the home, so ~/Projects/shop/README.md opens the README; the field completes from its folders and files as it is typed, a completed file opening at once: Enter opens a file, or goes to a folder as Finder’s Go to Folder does, unfolding it in the tree with the folders above it and selecting it until another file opens; a folder outside the project says the tree shows the project only. A click on a row gives the tree the keyboard: the arrows, Home, End and Enter move through it and act, and typing a name moves to the first row shown that starts with it, opening nothing. A right-click in the tree downloads a file, or uploads into a folder, or into the project from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, its bar’s controls moving to the tree’s side, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture’s latency, so the text and each directory show their loading state the first time; the fixture’s Host watches its files, as the product’s does, so a file or folder shown again shows at once, scrolled where it was, and asks nothing. Edit cookie.ts Outside Demi writes the file as another program would: the Host reports it, and the text is read again and replaced in place, without a loading state, the scroll and folds staying. A read again that fails keeps the text and says so quietly over it, in the page’s own words, with Retry, and the view reads it again by itself once the Host is back and its watch live again. A file that is not text keeps its card while it is read again. A file that is not there says it does not exist, its bar naming the file alone with nothing to do with it, with Retry, which shows the read on its way and then the same answer while the file is still not there. An image a document names that does not load shows its alt text in a dashed box, as the README’s missing one does, and tries again when the document is read again. server.log is over the text route’s 8 MiB: it opens as its first 8 MiB, with a line saying how much of how much shows and Download; its bar says its whole size and offers no Copy, since the page holds only the start. A file the Host cannot watch has the view say that it shows it as last read, with Refresh, and it is checked each time it shows."
       >
         <div class="flex flex-wrap gap-1">
-          <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${workspace.root}/${file}`)">{{ file }}</Button>
-          <Button size="sm" @click="showInFileView(`${SLOT_ROOT}/README.md`)">Open a File Outside the Workspace</Button>
+          <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${project.root}/${file}`)">{{ file }}</Button>
+          <Button size="sm" @click="showInFileView(`${SLOT_ROOT}/README.md`)">Open a File Outside the Project</Button>
           <Button size="sm" variant="ghost" @click="editCookieOutside">Edit cookie.ts Outside Demi</Button>
         </div>
         <GallerySpecimen
           v-for="specimen in [
-            { variant: 'workspace file · live', narrow: false },
+            { variant: 'project file · live', narrow: false },
             { variant: 'narrow · the tree hides, its control shows it over the file', narrow: true },
           ]"
           :key="specimen.variant"
@@ -4158,8 +4158,8 @@ onBeforeUnmount(() => {
               class="w-full"
               v-model:tree="fileViewTree"
               v-model:mode="fileViewMode"
-              :source="workspace.source"
-              :root="workspace.root"
+              :source="project.source"
+              :root="project.root"
               :path="fileViewPath"
               :can-back="fileViewBack.length > 0"
               :can-forward="fileViewForward.length > 0"
@@ -4174,8 +4174,8 @@ onBeforeUnmount(() => {
             <FileView
               class="w-full"
               v-model:tree="unchosenTree"
-              :source="workspace.source"
-              :root="workspace.root"
+              :source="project.source"
+              :root="project.root"
               :path="unchosenPath"
               :can-back="unchosenPath !== null"
               @open="unchosenPath = $event"
@@ -4192,8 +4192,8 @@ onBeforeUnmount(() => {
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <FileView
                 class="w-full"
-                :source="failingWorkspace.source"
-                :root="failingWorkspace.root"
+                :source="failingProject.source"
+                :root="failingProject.root"
                 :path="cookiePath"
                 @open="productWould('Open the File in This View')"
                 @back="productWould('Show the File Before')"
@@ -4206,9 +4206,9 @@ onBeforeUnmount(() => {
           <div class="gallery-frame flex h-[24rem] overflow-hidden">
             <FileView
               class="w-full"
-              :source="workspace.source"
-              :root="workspace.root"
-              :path="`${workspace.root}/TODO.md`"
+              :source="project.source"
+              :root="project.root"
+              :path="`${project.root}/TODO.md`"
               @open="productWould('Open the File in This View')"
               @back="productWould('Show the File Before')"
               @forward="productWould('Show the File After')"
@@ -4219,8 +4219,8 @@ onBeforeUnmount(() => {
           <div class="gallery-frame flex h-[24rem] overflow-hidden">
             <FileView
               class="w-full"
-              :source="unwatchedWorkspace.source"
-              :root="unwatchedWorkspace.root"
+              :source="unwatchedProject.source"
+              :root="unwatchedProject.root"
               :path="cookiePath"
               @open="productWould('Open the File in This View')"
               @back="productWould('Show the File Before')"
@@ -4235,7 +4235,7 @@ onBeforeUnmount(() => {
         note="Code shows in one set of colors wherever it shows: the File view’s source, the Change view’s diff, a code block in a message or a document, and a shell call’s script in its row and its terminal. One highlighter reads it, the code editor’s, in One Dark Pro or One Light by the page’s mode, so the Rust and the Bash the reply quotes are the same colors as in their files beside it; switch the gallery’s mode to compare both. A fence language the highlighter does not know shows as plain text in the theme’s text color. A click in the File view’s source or the Change view’s diff puts a blinking caret there, in the theme’s caret color; the arrows move it, Shift extends the selection from it and Mod-f finds from it, and without the focus no caret shows."
       >
         <div class="flex flex-wrap gap-1">
-          <Button v-for="file in quotedFiles" :key="file" size="sm" @click="quotedPath = file">{{ file.slice(workspace.root.length + 1) }}</Button>
+          <Button v-for="file in quotedFiles" :key="file" size="sm" @click="quotedPath = file">{{ file.slice(project.root.length + 1) }}</Button>
         </div>
         <GallerySpecimen variant="a reply’s code beside its file · the same colors" wide>
           <div class="grid h-[40rem] grid-cols-2 gap-4">
@@ -4246,8 +4246,8 @@ onBeforeUnmount(() => {
               <FileView
                 class="w-full"
                 v-model:tree="quotedTree"
-                :source="workspace.source"
-                :root="workspace.root"
+                :source="project.source"
+                :root="project.root"
                 :path="quotedPath"
                 @open="quotedPath = $event"
                 @back="productWould('Show the File Before')"
@@ -4259,7 +4259,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Change View"
-        note="Diffs from one of two sources, the switch in the header picks. A click in a diff puts a blinking caret there, in the theme’s caret color: the arrows move it, Shift extends the selection from it, and Mod-f opens the find bar, which finds from it. A changed image, video, audio file or PDF shows its two versions side by side instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree” for the uncommitted changes, or “Before” and “After” for a commit and in Conversation. Commits shows the repository as VS Code’s Source Control and its commit list do together: the sidebar is two panes with a divider the user drags, kept as the sidebar’s width is; above, the selected item’s files as one tree, below, the commit list. The list shows one branch’s history, newest first, following first parents, each commit its summary, author and age, its whole message, author, time and id in its tooltip; more load as it scrolls to its end (main holds 64). While the list shows the branch checked out it starts with Uncommitted Changes and its count of files; another branch’s list starts with its newest commit. The branch menu left of the toolbar’s buttons names the branch the list shows and lists the local branches, most recently committed first, the checked-out one marked Checked Out; choosing one only changes the list. Selecting an item shows its files above and opens the first; a commit shows its changes against its first parent, each file marked A, M, D or R. Commit in a Terminal makes a commit on main, and every list showing main shows it at once, as the product’s watch of the repository does. A link to a commit, commit:3f2a9c1 in a message, opens Commits on it, its list on the branch shown when that has it, else the one checked out, else the most recent one that has it; a commit no branch holds shows alone, the list saying “This commit is on no branch.”; one the repository lacks says “No commit deadbee in ~/shop.” Uncommitted Changes is the working tree against the last commit: each file ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. Conversation shows one request: the files it changed within its agent’s working directory, each ending its row with All Changes’ line counts when they were kept; a removed file is struck through and a renamed one’s tooltip names where it came from. A file shows All Changes, from before the request’s first edit to after its last, when both were kept, and otherwise opens at its first edit with contents; a file edited more than once steps through its edits, Edit 2 / 3, each named by its call’s title. A file without contents has no diff; a picture or other binary file says Demi keeps only the text of a conversation’s changes, with Open File; and a request an edit removed says it is no longer in the conversation. Back and Forward walk what the view has shown, items and files alike. The header also opens the selected file itself. Either sidebar has a toggle, and in a narrow view it hides and shows over the diff the way the File view’s tree does; the files’ caption lists the uncommitted changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the workspace, its name, where a renamed file came from, and the line counts of the diff under it; a request’s files list no counts of their own. A request’s button opens Conversation on its first file’s All Changes, a file pill on its file at that call’s first edit; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. A workspace outside a Git repository shows no sidebar or toggle in Commits, only “Not a Git repository”, with no Retry, a commit a link opens there as well. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file; the commit list moves its selection with the arrows."
+        note="Diffs from one of two sources, the switch in the header picks. A click in a diff puts a blinking caret there, in the theme’s caret color: the arrows move it, Shift extends the selection from it, and Mod-f opens the find bar, which finds from it. A changed image, video, audio file or PDF shows its two versions side by side instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree” for the uncommitted changes, or “Before” and “After” for a commit and in Conversation. Commits shows the repository as VS Code’s Source Control and its commit list do together: the sidebar is two panes with a divider the user drags, kept as the sidebar’s width is; above, the selected item’s files as one tree, below, the commit list. The list shows one branch’s history, newest first, following first parents, each commit its summary, author and age, its whole message, author, time and id in its tooltip; more load as it scrolls to its end (main holds 64). While the list shows the branch checked out it starts with Uncommitted Changes and its count of files; another branch’s list starts with its newest commit. The branch menu left of the toolbar’s buttons names the branch the list shows and lists the local branches, most recently committed first, the checked-out one marked Checked Out; choosing one only changes the list. Selecting an item shows its files above and opens the first; a commit shows its changes against its first parent, each file marked A, M, D or R. Commit in a Terminal makes a commit on main, and every list showing main shows it at once, as the product’s watch of the repository does. A link to a commit, commit:3f2a9c1 in a message, opens Commits on it, its list on the branch shown when that has it, else the one checked out, else the most recent one that has it; a commit no branch holds shows alone, the list saying “This commit is on no branch.”; one the repository lacks says “No commit deadbee in ~/shop.” Uncommitted Changes is the working tree against the last commit: each file ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. Conversation shows one request: the files it changed within its agent’s working directory, each ending its row with All Changes’ line counts when they were kept; a removed file is struck through and a renamed one’s tooltip names where it came from. A file shows All Changes, from before the request’s first edit to after its last, when both were kept, and otherwise opens at its first edit with contents; a file edited more than once steps through its edits, Edit 2 / 3, each named by its call’s title. A file without contents has no diff; a picture or other binary file says Demi keeps only the text of a conversation’s changes, with Open File; and a request an edit removed says it is no longer in the conversation. Back and Forward walk what the view has shown, items and files alike. The header also opens the selected file itself. Either sidebar has a toggle, and in a narrow view it hides and shows over the diff the way the File view’s tree does; the files’ caption lists the uncommitted changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the project, its name, where a renamed file came from, and the line counts of the diff under it; a request’s files list no counts of their own. A request’s button opens Conversation on its first file’s All Changes, a file pill on its file at that call’s first edit; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. A project outside a Git repository shows no sidebar or toggle in Commits, only “Not a Git repository”, with no Retry, a commit a link opens there as well. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the project in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file; the commit list moves its selection with the arrows."
       >
         <div class="flex flex-wrap gap-1">
           <Button size="sm" variant="ghost" @click="commitInTerminal">Commit in a Terminal</Button>
@@ -4272,7 +4272,7 @@ onBeforeUnmount(() => {
             { variant: 'commits · a link to a commit on no branch', work: changeNoBranch, rootName: undefined, narrow: false },
             { variant: 'commits · a link to a commit the repository lacks', work: changeMissingCommit, rootName: '~/shop', narrow: false },
             { variant: 'commits · narrow, the tree hides, its control shows it over the diff', work: changeUncommitted, rootName: undefined, narrow: true },
-            { variant: 'commits · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace', narrow: false },
+            { variant: 'commits · not a repository, named Project', work: changeNoRepository, rootName: 'Project', narrow: false },
             { variant: 'commits · a commit link opened outside a repository', work: changeNoRepositoryCommit, rootName: undefined, narrow: false },
             { variant: 'commits · listing failed, cut short', work: changeStale, rootName: undefined, narrow: false },
             { variant: 'conversation · a request, All Changes of its first file', work: changeRequest, rootName: undefined, narrow: false },
@@ -4295,7 +4295,7 @@ onBeforeUnmount(() => {
               class="w-full"
               v-model:tree="changeViewTree"
               v-model:presentation="changeViewPresentation"
-              :contents="workspace.source.contents"
+              :contents="project.source.contents"
               :mode="specimen.work.tab.value.mode"
               :selected="specimen.work.selected.value"
               :commit="specimen.work.tab.value.commit"
@@ -4304,7 +4304,7 @@ onBeforeUnmount(() => {
               v-model:commits-height="changeViewCommitsHeight"
               :edit="specimen.work.edit.value"
               :changes="specimen.work.changes.value"
-              :root="workspace.root"
+              :root="project.root"
               :root-name="specimen.rootName"
               :can-back="specimen.work.canBack.value"
               :can-forward="specimen.work.canForward.value"

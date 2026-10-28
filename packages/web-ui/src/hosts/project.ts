@@ -6,7 +6,7 @@ import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
 
 /** What the working-environment dialog shows and asks for. Hosts map their own projects and devices onto these. */
-export interface WorkspaceProject {
+export interface ProjectProject {
   id: string
   name: string
   /** Where it lives, as the row's value: a device name or `Cloud`. */
@@ -14,7 +14,7 @@ export interface WorkspaceProject {
   path: string
 }
 
-export interface WorkspaceDevice {
+export interface ProjectDevice {
   id: string
   name: string
   state: DeviceState
@@ -23,10 +23,10 @@ export interface WorkspaceDevice {
 }
 
 /**
- * A new project as the form hands it back: on the Cloud only a name, the workspace being
+ * A new project as the form hands it back: on the Cloud only a name, the project being
  * managed; on a device a directory on it, the project taking the directory's name.
  */
-export type WorkspaceDraft =
+export type ProjectDraft =
   | {
     kind: 'cloud';
     name: string
@@ -41,7 +41,7 @@ export type WorkspaceDraft =
  * Where New Project starts: the kind the user last chose and the device last
  * chosen in its device menu, kept while the Cloud is chosen.
  */
-export interface WorkspaceHostChoice {
+export interface ProjectHostChoice {
   kind: 'cloud' | 'device'
   deviceId?: string
 }
@@ -52,9 +52,9 @@ export interface WorkspaceHostChoice {
  * device.
  */
 export function openingChoice(
-  remembered: WorkspaceHostChoice | undefined,
-  devices: readonly WorkspaceDevice[],
-): WorkspaceHostChoice {
+  remembered: ProjectHostChoice | undefined,
+  devices: readonly ProjectDevice[],
+): ProjectHostChoice {
   const kind = remembered?.kind ?? 'cloud'
   const deviceId = remembered?.deviceId
   if (deviceId && devices.some((device) => device.id === deviceId)) {
@@ -71,7 +71,7 @@ export function openingChoice(
  * ends with the component.
  */
 export function usePairedSelection(
-  devices: () => readonly WorkspaceDevice[],
+  devices: () => readonly ProjectDevice[],
   select: (id: string) => void,
 ): (device: PairingDevice) => void {
   const awaited = ref<string | null>(null)

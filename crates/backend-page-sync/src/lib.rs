@@ -61,7 +61,7 @@ pub enum Part {
     ConversationOrder,
     Preferences,
     User,
-    Workspaces,
+    Projects,
     Devices,
     Providers,
     /// The user's sign-ins; after the entries, so that a completed login's

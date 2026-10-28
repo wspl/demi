@@ -270,7 +270,7 @@ function downloadDetail(download: LiveDownload): string {
 
 /** Save: the file goes from the Host to the user's computer through the file route, as Download does in Files. */
 function save(download: LiveDownload): void {
-  const contents = files(props.conversation).workspace?.source.contents
+  const contents = files(props.conversation).tree?.source.contents
   if (!contents) {
     errors.report(t('failures.saveDownload'), new Error(t('failures.hostFilesUnreachable')))
     return

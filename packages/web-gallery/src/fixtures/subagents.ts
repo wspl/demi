@@ -6,7 +6,7 @@ import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './catalog'
 import { ago } from './time'
 import { SLOT_NODE, slotBlocks } from './request-changes'
-import { SLOT_ROOT, WORKSPACE_ROOT } from './workspace'
+import { SLOT_ROOT, PROJECT_ROOT } from './project'
 
 function user(id: string, createdAt: string, text: string): Block {
   return {
@@ -93,7 +93,7 @@ function runsOn(
   model: JobModel,
   more: Partial<Pick<AgentRun, 'round' | 'forkedFrom' | 'cwd'>> = {},
 ): Pick<AgentRun, 'profile' | 'model' | 'round' | 'forkedFrom' | 'cwd'> {
-  return { profile, model, round: 1, forkedFrom: null, cwd: WORKSPACE_ROOT, ...more }
+  return { profile, model, round: 1, forkedFrom: null, cwd: PROJECT_ROOT, ...more }
 }
 
 /** What Check the logout path tells its parent while it works. */

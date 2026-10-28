@@ -684,7 +684,7 @@ export function screenshotRunBlocks(): Block[] {
 /**
  * A transcript with the pictures the media viewer steps through, in the
  * order they stand: the user's attached screenshot, three screenshots a
- * call viewed, and a reply's two images of the workspace and an attachment.
+ * call viewed, and a reply's two images of the project and an attachment.
  */
 export function viewerTranscriptBlocks(): Block[] {
   const shots = { ...screenshotsTool, id: 'viewer-shots', toolUseId: 'viewer-shots', createdAt: iso(585_000) }
@@ -709,7 +709,7 @@ export function viewerTranscriptBlocks(): Block[] {
     ...inRun(shots),
     {
       type: 'text', id: 'viewer-answer', createdAt: iso(580_000), model: demoModel,
-      text: 'The tabs differ only in the button. The test pattern and the whole page, from the workspace:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n<attachment id=\"a5\" />',
+      text: 'The tabs differ only in the button. The test pattern and the whole page, from the project:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n<attachment id=\"a5\" />',
       pictures: hostPictureCopies,
     },
   ])
@@ -1215,7 +1215,7 @@ export function commandEndBlocks(): ToolCallBlock[] {
   })
   return [
     run('end-short', '31', 'Run the first short sleep', { status: 'exited', exitCode: 0 }),
-    run('end-long', '32', 'Run the whole test suite and collect coverage for every package in the workspace', { status: 'running' }),
+    run('end-long', '32', 'Run the whole test suite and collect coverage for every package in the project', { status: 'running' }),
     run('end-failed', '33', 'Run the login test', { status: 'exited', exitCode: 1 }),
     run('end-stopped', '34', 'Start the dev server', { status: 'aborted' }),
     run('end-lost', '37', 'Run the deploy', { status: 'lost', lostReason: 'Demi was upgraded and the Host\'s runner replaced itself' }),

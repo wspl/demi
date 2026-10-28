@@ -22,7 +22,7 @@ import { CONTROL, META } from '@demicodes/web-ui/live/input'
 import { BrowserTabsError, type BrowserTabList, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import type { HostDownload } from '@demicodes/web-ui/devices/installed'
 import type { PanelReason } from '@demicodes/plugin-browser/generated/plugin'
-import { WORKSPACE_ROOT } from './workspace'
+import { PROJECT_ROOT } from './project'
 
 /** How often the drawn page is painted and sent: a still page needs few frames. */
 const FPS = 10
@@ -73,12 +73,12 @@ const INVOICE = { x: 184, y: 98, width: 200, height: 18, url: 'https://example.t
 
 /** The titles the drawn pages give themselves once loaded, as a page's `<title>` does; another keeps its host. */
 const PAGE_TITLES: ReadonlyMap<string, string> = new Map([[INVOICE.url, 'Invoice 4711 — Example']])
-/** The drawn page's link that downloads a file, which the gallery's workspace holds where the Host would save it. */
+/** The drawn page's link that downloads a file, which the gallery's project holds where the Host would save it. */
 const DOWNLOAD = { x: 184, y: 118, width: 140, height: 18, url: 'https://example.test/guide.pdf' }
 const DOWNLOADED: Pick<LiveDownload, 'name' | 'total' | 'path'> = {
   name: 'guide.pdf',
   total: 734,
-  path: `${WORKSPACE_ROOT}/docs/guide.pdf`,
+  path: `${PROJECT_ROOT}/docs/guide.pdf`,
 }
 /** How long the drawn page's download takes, so its progress shows in the bubble. */
 const DOWNLOAD_MS = 1500

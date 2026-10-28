@@ -18,7 +18,7 @@
 
 use demi_shared_types::{ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::{ConversationTarget, ModelChoice};
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, ProjectId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +27,7 @@ use super::columns::{decode, instant, json, to_json, workflow_choice, workflow_c
 use super::control::ControlService;
 use super::devices::CLOUD_NAME;
 use super::selection::{Selected, Selection, Unselectable, Worktree, execution_target, select};
-use super::workspaces::WorkspaceRecord;
+use super::projects::ProjectRecord;
 
 /// A conversation as the index holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,8 +125,8 @@ pub enum ExecutionTarget {
         device_id: DeviceId,
         path: String,
     },
-    Workspace {
-        workspace_id: WorkspaceId,
+    Project {
+        project_id: ProjectId,
         device_id: DeviceId,
         path: String,
     },
@@ -136,13 +136,13 @@ impl ExecutionTarget {
     pub fn device(&self) -> Option<&DeviceId> {
         match self {
             Self::Cloud { device_id, .. } => device_id.as_ref(),
-            Self::Device { device_id, .. } | Self::Workspace { device_id, .. } => Some(device_id),
+            Self::Device { device_id, .. } | Self::Project { device_id, .. } => Some(device_id),
         }
     }
 
     pub fn path(&self) -> &str {
         match self {
-            Self::Cloud { path, .. } | Self::Device { path, .. } | Self::Workspace { path, .. } => {
+            Self::Cloud { path, .. } | Self::Device { path, .. } | Self::Project { path, .. } => {
                 path
             }
         }
@@ -235,14 +235,14 @@ pub enum Creation {
 const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, title_origin, archived, pinned, read_revision, target_kind, target_device_id,
-     target_path, target_workspace_id, target_worktree_name, target_worktree_path, context_version, model, workflow_kind,
+     target_path, target_project_id, target_worktree_name, target_worktree_path, context_version, model, workflow_kind,
      workflow_id, workflow_worktree, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT saved_revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS saved_revision,
      (SELECT count(*) FROM saved_messages
       WHERE conversation_id = conversations.id
-         OR workspace_id = (SELECT id FROM workspaces
-                            WHERE id = conversations.target_workspace_id AND saved_scope = 'project')) AS saved,
+         OR project_id = (SELECT id FROM projects
+                            WHERE id = conversations.target_project_id AND saved_scope = 'project')) AS saved,
      COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL AND NOT read) AS unread_permission_requests,
@@ -253,7 +253,7 @@ pub struct TargetColumns {
     pub kind: &'static str,
     pub device: Option<String>,
     pub path: Option<String>,
-    pub workspace: Option<String>,
+    pub project: Option<String>,
     pub worktree_name: Option<String>,
     pub worktree_path: Option<String>,
 }
@@ -265,7 +265,7 @@ impl TargetColumns {
                 kind: "cloud",
                 device: None,
                 path: path.clone(),
-                workspace: None,
+                project: None,
                 worktree_name: None,
                 worktree_path: None,
             },
@@ -273,20 +273,20 @@ impl TargetColumns {
                 kind: "home",
                 device: Some(device_id.as_str().to_owned()),
                 path: None,
-                workspace: None,
+                project: None,
                 worktree_name: None,
                 worktree_path: None,
             },
-            Selection::Workspace {
-                workspace_id,
+            Selection::Project {
+                project_id,
                 device_id,
                 path,
                 worktree,
             } => Self {
-                kind: "workspace",
+                kind: "project",
                 device: Some(device_id.as_str().to_owned()),
                 path: Some(path.clone()),
-                workspace: Some(workspace_id.as_str().to_owned()),
+                project: Some(project_id.as_str().to_owned()),
                 worktree_name: worktree.as_ref().map(|worktree| worktree.name.clone()),
                 worktree_path: worktree.as_ref().map(|worktree| worktree.path.clone()),
             },
@@ -294,7 +294,7 @@ impl TargetColumns {
                 kind: "device",
                 device: Some(device_id.as_str().to_owned()),
                 path: Some(path.clone()),
-                workspace: None,
+                project: None,
                 worktree_name: None,
                 worktree_path: None,
             },
@@ -320,13 +320,13 @@ impl ControlService {
     }
 
     /// [`create_conversation`](Self::create_conversation), with the
-    /// workspace its directory's selection made, if it did.
+    /// project its directory's selection made, if it did.
     pub async fn create_conversation_selecting(
         &self,
         owner: UserId,
         id: ConversationId,
         start: ConversationStart,
-    ) -> Result<(Creation, Option<WorkspaceRecord>), StorageError> {
+    ) -> Result<(Creation, Option<ProjectRecord>), StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             // A Fork's destination, and a conversation whose deletion is
@@ -355,7 +355,7 @@ impl ControlService {
             // directory's workflows, so in a linked worktree its choice is
             // the worktree's file.
             let workflow = match (&selection, &start.workflow) {
-                (Selection::Workspace { worktree: Some(_), .. }, WorkflowChoice::Workflow { id, worktree: false }) => {
+                (Selection::Project { worktree: Some(_), .. }, WorkflowChoice::Workflow { id, worktree: false }) => {
                     WorkflowChoice::Workflow { id: id.clone(), worktree: true }
                 }
                 (_, workflow) => workflow.clone(),
@@ -616,7 +616,7 @@ impl ControlService {
     }
 
     /// The selection `to` names for `owner`'s conversation `id`, as a move
-    /// there would make it, without making anything: a workspace it would
+    /// there would make it, without making anything: a project it would
     /// make is not one the conversation's selection can equal.
     pub async fn selection_for(
         &self,
@@ -750,7 +750,7 @@ pub fn insert_conversation(
     let (workflow_kind, workflow_id, workflow_worktree) = workflow_columns(new.workflow);
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
-           read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
+           read_revision, target_kind, target_device_id, target_path, target_project_id, context_version,
            model, created_at, updated_at, workflow_kind, workflow_id, target_worktree_name, target_worktree_path,
            workflow_worktree)
          VALUES (?1, ?2, ?3, ?4, 0, ?11,
@@ -765,7 +765,7 @@ pub fn insert_conversation(
             target.kind,
             target.device,
             target.path,
-            target.workspace,
+            target.project,
             new.model.map(to_json),
             new.at.as_millisecond(),
             new.pinned,
@@ -916,15 +916,15 @@ fn target_row(row: &Row<'_>) -> Result<Selection, StorageError> {
             device_id: device()?,
             path: path_of(path)?,
         },
-        "workspace" => {
-            let workspace: Option<String> = row.get("target_workspace_id")?;
+        "project" => {
+            let project: Option<String> = row.get("target_project_id")?;
             let name: Option<String> = row.get("target_worktree_name")?;
             let worktree: Option<String> = row.get("target_worktree_path")?;
-            Selection::Workspace {
-                workspace_id: decode(
+            Selection::Project {
+                project_id: decode(
                     TABLE,
-                    "target_workspace_id",
-                    WorkspaceId::try_from(workspace.unwrap_or_default()),
+                    "target_project_id",
+                    ProjectId::try_from(project.unwrap_or_default()),
                 )?,
                 device_id: device()?,
                 path: path_of(path)?,
@@ -1016,12 +1016,12 @@ pub struct SwitchEnds {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SwitchWrite {
     /// The switch is made: where it went from and to, the execution-context
-    /// revision it made, and the workspace its destination's selection
+    /// revision it made, and the project its destination's selection
     /// made, if it did.
     Switched {
         switch: TargetSwitch,
         revision: u64,
-        made: Option<WorkspaceRecord>,
+        made: Option<ProjectRecord>,
     },
     /// The destination selects what the conversation has: nothing changed.
     Unchanged,
@@ -1034,7 +1034,7 @@ impl ControlService {
     /// The target switch's write, against `expected`, the selection the switch
     /// started from, and `from`, what it resolved to.
     ///
-    /// It selects `to`'s directory, which makes its workspace when the user has
+    /// It selects `to`'s directory, which makes its project when the user has
     /// none (`crates/backend-database/src/selection.rs`), all in one transaction,
     /// so of two switches from one selection exactly one wins.
     ///
@@ -1074,24 +1074,24 @@ impl ControlService {
             // `IS` compares NULL as equal to NULL, which `=` does not.
             let revision: Option<i64> = transaction.query_row(
                 "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
-                   target_workspace_id = ?5, target_worktree_name = ?12, target_worktree_path = ?13,
+                   target_project_id = ?5, target_worktree_name = ?12, target_worktree_path = ?13,
                    last_switch = ?6, last_switch_revision = context_version + 1,
                    context_version = context_version + 1, updated_at = ?7
                  WHERE id = ?1 AND archived = 0 AND target_kind = ?8 AND target_device_id IS ?9
-                   AND target_path IS ?10 AND target_workspace_id IS ?11 AND target_worktree_path IS ?14
+                   AND target_path IS ?10 AND target_project_id IS ?11 AND target_worktree_path IS ?14
                  RETURNING context_version",
                 params![
                     id.as_str(),
                     target.kind,
                     target.device,
                     target.path,
-                    target.workspace,
+                    target.project,
                     to_json(&switch),
                     now.as_millisecond(),
                     before.kind,
                     before.device,
                     before.path,
-                    before.workspace,
+                    before.project,
                     target.worktree_name,
                     target.worktree_path,
                     before.worktree_path
@@ -1102,14 +1102,14 @@ impl ControlService {
                 return Ok(SwitchWrite::Conflict);
             };
             let revision = decode("conversations", "context_version", u64::try_from(revision))?;
-            let workspace = |columns: &TargetColumns| {
+            let project = |columns: &TargetColumns| {
                 columns
-                    .workspace
+                    .project
                     .as_ref()
-                    .map(|id| decode("conversations", "target_workspace_id", WorkspaceId::try_from(id.as_str())))
+                    .map(|id| decode("conversations", "target_project_id", ProjectId::try_from(id.as_str())))
                     .transpose()
             };
-            super::saved::moved(&transaction, &id, workspace(&before)?.as_ref(), workspace(&target)?.as_ref(), now)?;
+            super::saved::moved(&transaction, &id, project(&before)?.as_ref(), project(&target)?.as_ref(), now)?;
             if let Some(arriving) = &ends.arriving {
                 let removed = transaction.execute(
                     "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
@@ -1155,9 +1155,9 @@ pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result
 }
 
 /// Restores the conversation `id`. One whose project was deleted while it
-/// was archived brings it back (`crates/backend-database/src/workspaces.rs`);
+/// was archived brings it back (`crates/backend-database/src/projects.rs`);
 /// one whose project is gone moves back to its directory, into that
-/// directory's workspace, made again (`crates/backend-database/src/selection.rs`);
+/// directory's project, made again (`crates/backend-database/src/selection.rs`);
 /// one whose device was revoked meanwhile keeps its directory there.
 ///
 /// Its schedules count from now in the same step, as a schedule turned on
@@ -1175,14 +1175,14 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
     let Some(record) = conversation_by_id(connection, id)? else {
         return Ok(());
     };
-    let Selection::Workspace { workspace_id, device_id, path, worktree } = &record.target else {
+    let Selection::Project { project_id, device_id, path, worktree } = &record.target else {
         return Ok(());
     };
     // A worktree's conversation goes back to the worktree, which, its
     // project gone, is a project as any directory is.
     let path = worktree.as_ref().map_or(path, |worktree| &worktree.path);
-    if super::workspaces::workspace_in(connection, workspace_id)?.is_some() {
-        super::workspaces::revive(connection, workspace_id)?;
+    if super::projects::project_in(connection, project_id)?.is_some() {
+        super::projects::revive(connection, project_id)?;
         return Ok(());
     }
     let Some(device) = super::devices::device_in(connection, device_id)? else {
@@ -1191,7 +1191,7 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
     let selected = super::selection::project_of(connection, &device, path, now)?;
     super::devices::set_selection(connection, id, &selected.selection)?;
     let to = match &selected.selection {
-        Selection::Workspace { workspace_id, .. } => Some(workspace_id),
+        Selection::Project { project_id, .. } => Some(project_id),
         _ => None,
     };
     super::saved::moved(connection, id, None, to, now)

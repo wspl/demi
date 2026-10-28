@@ -24,7 +24,7 @@ export interface DocumentPlace {
    */
   path: string
   /**
-   * The workspace root: a target starting with `/` resolves against it, as
+   * The project root: a target starting with `/` resolves against it, as
    * GitHub resolves one against the repository root.
    */
   root: string

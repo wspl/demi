@@ -12,7 +12,7 @@ import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
  *
  * - `success`: the action did what was asked (Copied).
  * - `neutral`: a fact about the request, which neither worked nor failed (a
- *   folder outside the workspace).
+ *   folder outside the project).
  * - `danger`: it failed.
  *
  * A toast may offer one action, such as Reload, which closes it.

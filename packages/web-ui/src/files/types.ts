@@ -220,11 +220,11 @@ export interface FileUploadOptions {
 /** A directory a view can show among several, by its absolute path. */
 export interface FileDirectory {
   path: string
-  /** What stands for its own name, such as the Cloud's Workspace. */
+  /** What stands for its own name, such as the Cloud's conversation folder. */
   name?: string
 }
 
-/** A shortcut in the sidebar: a home, a recent workspace, a pinned directory. */
+/** A shortcut in the sidebar: a home, a recent project, a pinned directory. */
 export interface FileBrowserPlace {
   path: string
   /** Defaults to the last segment of the path. */

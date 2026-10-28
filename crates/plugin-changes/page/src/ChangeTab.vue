@@ -36,7 +36,7 @@ const page = usePage()
 const files = page.files(props.conversation)
 // What the view lists is the working tree of the conversation's directory: the pane
 // reads until the conversation's opening brings it.
-usePaneReady(() => files.workspace !== null)
+usePaneReady(() => files.tree !== null)
 files.showChanges(() => viewDirectory(props.data))
 const intents = page.intents
 
@@ -47,7 +47,7 @@ const opens = computed(() => intents.canOpen('file'))
 const selected = computed(() => changePath(props.data, props.data.mode, changes.value.uncommitted.files))
 // The view shows the directory it was opened for: the one its agent worked in, the conversation's without one.
 const viewRoot = computed(() => viewDirectory(props.data))
-const root = computed(() => viewRoot.value ?? files.workspace?.root ?? files.root ?? '/')
+const root = computed(() => viewRoot.value ?? files.tree?.root ?? files.root ?? '/')
 
 // The first listed file, shown while the user has picked none, stays shown:
 // a file the agent or a build changes later may list before it.
@@ -84,8 +84,8 @@ function open(path: string): void {
     :changes="changes"
     :edit="data.request?.edit ?? null"
     :root="root"
-    :root-name="viewRoot === undefined ? files.workspace?.name : undefined"
-    :contents="files.workspace?.source.contents"
+    :root-name="viewRoot === undefined ? files.tree?.name : undefined"
+    :contents="files.tree?.source.contents"
     :can-back="page.panel.canGo(conversation, 'back')"
     :can-forward="page.panel.canGo(conversation, 'forward')"
     :opens="opens"

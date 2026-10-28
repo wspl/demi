@@ -7,12 +7,12 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserAddressBar from '@demicodes/web-ui/files/FileBrowserAddressBar.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
-import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
+import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '@demicodes/web-ui/devices/pairing'
 import { baseName, delay } from '@demicodes/utils'
 import { demoInstallCommands } from '../fixtures/device-installation'
-import type { WorkspaceDevice, WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
+import type { ProjectDevice, ProjectDraft, ProjectHostChoice, ProjectProject } from '@demicodes/web-ui/hosts/project'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -28,7 +28,7 @@ import { productWould } from '../product-would'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryRemoteFileHosts, GALLERY_FILE_HOST_MARKS, laptopTree } from '../fixtures/files'
-import { createGalleryWorkspace } from '../fixtures/workspace'
+import { createGalleryProject } from '../fixtures/project'
 import { useGalleryView } from '../gallery-views'
 
 const anatomy: [string, string][] = [
@@ -85,7 +85,7 @@ const pairedHosts = hosts.filter((host) => !host.canWake)
 const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
-const workspaceDevices = ref<WorkspaceDevice[]>(
+const projectDevices = ref<ProjectDevice[]>(
   pairedHosts.map(({ id, label, state }) => ({
     id,
     name: label,
@@ -94,34 +94,34 @@ const workspaceDevices = ref<WorkspaceDevice[]>(
   })),
 )
 /** The list as the dialog shows it: a Mac paired beside alex-mbp gives both their numbers. */
-const shownWorkspaceDevices = computed(() => shownAmong(workspaceDevices.value))
+const shownProjectDevices = computed(() => shownAmong(projectDevices.value))
 /**
  * Add Device pairs as the product does, with any code: the claim answers with a
  * new online device, and the list shows it a moment later, as the page's
  * synchronization brings it; the menu then selects it.
  */
-const workspacePairing = useDevicePairing(claimWorkspaceDevice)
+const projectPairing = useDevicePairing(claimProjectDevice)
 /** Ends the list's late update when the section goes away. */
-const workspaceSync = new AbortController()
-onBeforeUnmount(() => workspaceSync.abort())
-async function claimWorkspaceDevice(_code: string, signal?: AbortSignal): Promise<PairingResult> {
+const projectSync = new AbortController()
+onBeforeUnmount(() => projectSync.abort())
+async function claimProjectDevice(_code: string, signal?: AbortSignal): Promise<PairingResult> {
   await delay(900, signal)
   signal?.throwIfAborted()
   // A Mac, which takes the next Apple number, as the backend gives it.
-  const apple = workspaceDevices.value.filter((device) => device.mark?.logo === 'apple')
-  const device: WorkspaceDevice = {
+  const apple = projectDevices.value.filter((device) => device.mark?.logo === 'apple')
+  const device: ProjectDevice = {
     id: `device-${Date.now()}`,
-    name: `host-${workspaceDevices.value.length + 1}`,
+    name: `host-${projectDevices.value.length + 1}`,
     state: 'online',
     mark: { logo: 'apple', number: Math.max(0, ...apple.map((device) => device.mark?.number ?? 0)) + 1 },
   }
-  void delay(600, workspaceSync.signal).then(() => {
-    if (!workspaceSync.signal.aborted)
-      workspaceDevices.value.push(device)
+  void delay(600, projectSync.signal).then(() => {
+    if (!projectSync.signal.aborted)
+      projectDevices.value.push(device)
   })
   return { ok: true, device: { id: device.id, name: device.name } }
 }
-const workspaceProjects = ref<WorkspaceProject[]>([
+const knownProjects = ref<ProjectProject[]>([
   {
     id: 'demi',
     name: 'demi',
@@ -135,17 +135,17 @@ const workspaceProjects = ref<WorkspaceProject[]>([
     path: '/srv/renderfarm'
   },
 ])
-const workspaceMessage = ref<ShownError | null>(null)
+const projectMessage = ref<ShownError | null>(null)
 /** The kind and device chosen last, which the product keeps as a preference. */
-const workspaceLastHost = ref<WorkspaceHostChoice>()
-const workspaceKey = ref(0)
+const projectLastHost = ref<ProjectHostChoice>()
+const projectKey = ref(0)
 const cloudSource = createMemoryFileSource(
   {
     platform: 'linux',
     home: '/home/demi',
     root: dir({
       home: dir({
-        demi: dir({ workspace: dir({}), scratch: dir({}) })
+        demi: dir({ project: dir({}), scratch: dir({}) })
       })
     })
   }
@@ -160,20 +160,20 @@ const placesFor = (id: string): FileBrowserPlaceGroup[] => (id === 'cloud' ? [
     places: [{ path: '/home/demi', label: 'Home' }]
   }
 ] : (hosts.find((host) => host.id === id) ?? hosts[0]!).places)
-function createWorkspace(draft: WorkspaceDraft) {
+function createProject(draft: ProjectDraft) {
   const name = draft.kind === 'cloud'
     ? draft.name
-    : baseName(draft.path) || 'Workspace'
-  if (workspaceProjects.value.some((project) => project.name === name)) {
-    workspaceMessage.value = correction(`A project called ${name} already exists.`)
+    : baseName(draft.path) || 'Project'
+  if (knownProjects.value.some((project) => project.name === name)) {
+    projectMessage.value = correction(`A project called ${name} already exists.`)
     return
   }
-  workspaceMessage.value = null
+  projectMessage.value = null
   const host = draft.kind === 'cloud'
     ? 'Cloud'
-    : workspaceDevices.value.find((device) => device.id === draft.deviceId)?.name ??
+    : projectDevices.value.find((device) => device.id === draft.deviceId)?.name ??
     draft.deviceId
-  workspaceProjects.value.push(
+  knownProjects.value.push(
     {
       id: `p-${Date.now()}`,
       name,
@@ -181,11 +181,11 @@ function createWorkspace(draft: WorkspaceDraft) {
       path: draft.kind === 'cloud' ? `/home/demi/${name}` : draft.path
     }
   )
-  workspaceKey.value += 1
+  projectKey.value += 1
   productWould(`Open a New Conversation in ${name}`)
 }
 
-// Select folder: the workspace picker's use, opening on the laptop's projects.
+// Select folder: the project picker's use, opening on the laptop's projects.
 const folderHostId = ref('mac')
 const folderHost = computed(() => hosts.find((host) => host.id === folderHostId.value)!)
 const folderChosen = ref<string | null>(null)
@@ -194,9 +194,9 @@ const folderKey = ref(0)
 // Open file: the composer's remote attachment, opening inside a project.
 const fileHostId = ref('mac')
 const fileHost = computed(() => hosts.find((host) => host.id === fileHostId.value)!)
-// The address bar at shrinking widths: a file deep in the workspace, its whole path from the Host's root, as the File view shows it.
-const addressWorkspace = createGalleryWorkspace()
-const addressPath = `${addressWorkspace.root}/packages/web-ui/src/files/FileBrowserAddressBar.vue`
+// The address bar at shrinking widths: a file deep in the project, its whole path from the Host's root, as the File view shows it.
+const addressProject = createGalleryProject()
+const addressPath = `${addressProject.root}/packages/web-ui/src/files/FileBrowserAddressBar.vue`
 const addressWidths = [
   { variant: 'every name', width: '56rem' },
   { variant: 'names go from the left', width: '44rem' },
@@ -343,7 +343,7 @@ function numbered(name: string, ext: string, count: number, size: number): [stri
 }
 
 /**
- * A workspace with an upload in each state, at sizes real ones have: files
+ * A project with an upload in each state, at sizes real ones have: files
  * and a folder landed, a file refused by `src/auth`, a folder merged into
  * `src` whose files there were refused too, a folder of screenshots on its
  * way and two large files waiting behind it.
@@ -397,8 +397,8 @@ function dropPhotos(): void {
   ])
 }
 
-/** Two names the workspace has, a folder and a file, and one it has not: the question with Merge. */
-function dropOnWorkspace(): void {
+/** Two names the project has, a folder and a file, and one it has not: the question with Merge. */
+function dropOnProject(): void {
   void uploadTree.value?.upload(TREE_ROOT, [
     sizedFolder('src', ['http'], [['index.ts', 950], ['http/cors.ts', 1_830]]),
     { kind: 'file', file: sizedFile('README.md', 3_072) },
@@ -521,7 +521,7 @@ onMounted(() => {
     <template v-if="view === 'tree'">
       <GallerySection
         title="Rows"
-        note="The workspace tree: open and closed directories, files, the selected file, deep nesting, long names truncated. Directories come before files and each sorts as VS Code’s explorer does, so hidden entries lead, drawn faded. Click a directory to fold it, a file to select it; the control at the caption’s end lists the open directories again. A click on a row or Tab gives the tree the keyboard: ↑ and ↓ move a ring between the rows, Home and End jump, → unfolds a folder, ← folds it or goes up to the folder a row is in, and Enter acts as a click. Typing a name moves the ring to the first row shown that starts with it, the letters floating at the top right, and opens nothing."
+        note="The project tree: open and closed directories, files, the selected file, deep nesting, long names truncated. Directories come before files and each sorts as VS Code’s explorer does, so hidden entries lead, drawn faded. Click a directory to fold it, a file to select it; the control at the caption’s end lists the open directories again. A click on a row or Tab gives the tree the keyboard: ↑ and ↓ move a ring between the rows, Home and End jump, → unfolds a folder, ← folds it or goes up to the folder a row is in, and Enter acts as a click. Typing a name moves the ring to the first row shown that starts with it, the letters floating at the top right, and opens nothing."
       >
         <GallerySpecimen variant="rows · live">
           <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">
@@ -588,7 +588,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Symbolic Links"
-        note="A symbolic link shows as Visual Studio Code’s Explorer shows one: as what it points at, with a small arrow at the end of its row in the secondary text color, whose tooltip names the target as written. A link to a folder unfolds as a folder with the target’s entries, at any depth: vendor holds project, a link back to the workspace, which unfolds again, a level at a time. A link to a file opens the target’s contents under the link’s own path. A link whose target is gone shows as a file, its tooltip saying the target does not exist, and opening it says so where the file would be, from its folder’s listing, whatever the read of the file, asked for at the same time, answers; one whose target is there but cannot be reached, here a link to itself, says why, in the system’s words. What a row says of its target is as of its folder’s listing: Put gone.log Back creates the target as another program would, and the row and the sentence stay until the link is opened again, from the tree or by its path, or Retry is used, each of which lists its folder again and shows the file. The attachment picker and a device’s folder dialog read a link again the same way when it is opened. Click the rows to fold, unfold and open."
+        note="A symbolic link shows as Visual Studio Code’s Explorer shows one: as what it points at, with a small arrow at the end of its row in the secondary text color, whose tooltip names the target as written. A link to a folder unfolds as a folder with the target’s entries, at any depth: vendor holds project, a link back to the project, which unfolds again, a level at a time. A link to a file opens the target’s contents under the link’s own path. A link whose target is gone shows as a file, its tooltip saying the target does not exist, and opening it says so where the file would be, from its folder’s listing, whatever the read of the file, asked for at the same time, answers; one whose target is there but cannot be reached, here a link to itself, says why, in the system’s words. What a row says of its target is as of its folder’s listing: Put gone.log Back creates the target as another program would, and the row and the sentence stay until the link is opened again, from the tree or by its path, or Retry is used, each of which lists its folder again and shows the file. The attachment picker and a device’s folder dialog read a link again the same way when it is opened. Click the rows to fold, unfold and open."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="link to a folder · unfolds at any depth">
@@ -644,10 +644,10 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Loading and Failures"
-        note="A workspace still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row’s end. A directory that could not be listed wears a red dot on its icon, the reason as tooltip. A workspace that cannot be listed says so."
+        note="A project still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row’s end. A directory that could not be listed wears a red dot on its icon, the reason as tooltip. A project that cannot be listed says so."
       >
         <div class="flex flex-wrap gap-6">
-          <GallerySpecimen variant="workspace listing">
+          <GallerySpecimen variant="project listing">
             <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
               <FileTree :source="treeStuckRoot" :root="TREE_ROOT" :selected="null" />
             </div>
@@ -662,7 +662,7 @@ onMounted(() => {
               <FileTree :source="treeFailing" :root="TREE_ROOT" :selected="`${TREE_ROOT}/src/auth/cookie.ts`" />
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="workspace unavailable">
+          <GallerySpecimen variant="project unavailable">
             <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
               <FileTree :source="treeOffline" :root="TREE_ROOT" :selected="null" />
             </div>
@@ -671,7 +671,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Pinned Path"
-        note="The workspace name always heads the tree. Its lower fade is absent at scroll position zero and appears only when rows scroll underneath the pinned stack. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. A click on a pinned directory folds it as a click on its row would, and its row then rests where the pinned copy was. Scroll each tree to move through the states."
+        note="The project name always heads the tree. Its lower fade is absent at scroll position zero and appears only when rows scroll underneath the pinned stack. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. A click on a pinned directory folds it as a click on its row would, and its row then rests where the pinned copy was. Scroll each tree to move through the states."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="at the top">
@@ -703,10 +703,10 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Drag and Drop"
-        note="Files and folders dragged in from the desktop upload where they drop, and that place lights under a dashed line while the drag is over it: a folder with the rows it holds, the folder a file sits in, or the whole workspace over the empty space and over a file at the top. A folder whose row has scrolled under the pinned path lights there too. A drag resting on a closed folder opens it after a moment, to drop deeper. Only a host that takes uploads takes drops. These trees hold each state still and take no drops; the workspace under Upload and Download takes real ones."
+        note="Files and folders dragged in from the desktop upload where they drop, and that place lights under a dashed line while the drag is over it: a folder with the rows it holds, the folder a file sits in, or the whole project over the empty space and over a file at the top. A folder whose row has scrolled under the pinned path lights there too. A drag resting on a closed folder opens it after a moment, to drop deeper. Only a host that takes uploads takes drops. These trees hold each state still and take no drops; the project under Upload and Download takes real ones."
       >
         <div class="flex flex-wrap gap-6">
-          <GallerySpecimen variant="over the empty space: the workspace">
+          <GallerySpecimen variant="over the empty space: the project">
             <div class="gallery-frame h-[20rem] w-[220px] overflow-hidden bg-surface-editor">
               <FileTree :source="rowsSource()" :root="TREE_ROOT" :selected="null" :dropping="TREE_ROOT" />
             </div>
@@ -741,7 +741,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Upload and Download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, up to four writes on their way at once and the rest waiting, a folder as one row whose files go several at a time. Each row is its name and one line of facts, one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; “Completed” once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name’s shows where it goes, and a folder’s failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A file that lands, and a folder its files make, show in the tree from the upload’s answer, without the folder being listed again; a folder writes its files, which make its folders, and makes only its empty folders itself. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the project itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, up to four writes on their way at once and the rest waiting, a folder as one row whose files go several at a time. Each row is its name and one line of facts, one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; “Completed” once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name’s shows where it goes, and a folder’s failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A file that lands, and a folder its files make, show in the tree from the upload’s answer, without the folder being listed again; a folder writes its files, which make its folders, and makes only its empty folders itself. The first specimen is a project seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
       >
         <div class="flex flex-wrap items-start gap-6">
           <GallerySpecimen variant="uploads · every state, live">
@@ -758,7 +758,7 @@ onMounted(() => {
               <div class="flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" @click="resetPinnedUploads">Reset</Button>
                 <Button size="sm" variant="ghost" @click="dropPhotos">Drop photos/ on docs/</Button>
-                <Button size="sm" variant="ghost" @click="dropOnWorkspace">Drop src/ + 2 Files on the Workspace</Button>
+                <Button size="sm" variant="ghost" @click="dropOnProject">Drop src/ + 2 Files on the Project</Button>
               </div>
             </div>
           </GallerySpecimen>
@@ -792,7 +792,7 @@ onMounted(() => {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Select Folder"
-        note="Creating or moving a workspace: the dialog opens at the device’s projects, with the recent workspaces as places. Choose another device in the address bar; the offline device is listed but cannot be chosen."
+        note="Creating or moving a project: the dialog opens at the device’s projects, with the recent projects as places. Choose another device in the address bar; the offline device is listed but cannot be chosen."
       >
         <GalleryDialogFrame v-slot="{ open, close }">
           <FileBrowserDialog
@@ -853,7 +853,7 @@ onMounted(() => {
 
       <GallerySection
         title="Open File"
-        note="The composer’s remote attachment: opens inside the conversation’s workspace. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
+        note="The composer’s remote attachment: opens inside the conversation’s project. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
       >
         <GalleryDialogFrame v-slot="{ open, close }">
           <FileBrowserDialog
@@ -881,34 +881,34 @@ onMounted(() => {
         note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one and a directory; Add Device after the menu pairs a simulated device with any code, and the menu selects it once the list shows it, a moment after pairing succeeds; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. The directory completes from the device’s folders as it is typed, as the address bar does, offering folders only; Enter on no highlighted row still creates. A name already in the list is refused under the form."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
-          <WorkspaceDialog
-            :key="workspaceKey"
+          <ProjectDialog
+            :key="projectKey"
             :is-open="open"
             :overlay-store="appOverlayStore"
-            :devices="shownWorkspaceDevices"
-            :last-host="workspaceLastHost"
-            :message="workspaceMessage"
+            :devices="shownProjectDevices"
+            :last-host="projectLastHost"
+            :message="projectMessage"
             :source-for="sourceFor"
             :places-for="placesFor"
-            @create="createWorkspace"
-            @choose="workspaceLastHost = $event"
-            @connect-device="workspacePairing.open"
+            @create="createProject"
+            @choose="projectLastHost = $event"
+            @connect-device="projectPairing.open"
             @close="close"
           />
           <DevicePairingDialog
-            :is-open="workspacePairing.isOpen.value"
+            :is-open="projectPairing.isOpen.value"
             stack
             :overlay-store="appOverlayStore"
             :install-commands="demoInstallCommands"
-            :phase="workspacePairing.phase.value"
-            @close="workspacePairing.close"
-            @next="workspacePairing.phase.value = { kind: 'code' }"
-            @back="workspacePairing.phase.value = { kind: 'setup' }"
-            @submit="workspacePairing.submit"
+            :phase="projectPairing.phase.value"
+            @close="projectPairing.close"
+            @next="projectPairing.phase.value = { kind: 'code' }"
+            @back="projectPairing.phase.value = { kind: 'setup' }"
+            @submit="projectPairing.submit"
           />
         </GalleryDialogFrame>
         <p class="select-none text-[12px] text-fg-subtle">
-        Projects: <span class="select-text text-fg-muted">{{ workspaceProjects.map((project) => project.name).join(', ') }}</span>
+        Projects: <span class="select-text text-fg-muted">{{ knownProjects.map((project) => project.name).join(', ') }}</span>
         </p>
       </GallerySection>
     </template>
@@ -938,7 +938,7 @@ onMounted(() => {
 
       <GallerySection
         title="Address Bar"
-        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the widest name still shown is cut short with an ellipsis rather than leave the bar half empty, the file’s crumb keeps its name longest. When even the glyphs do not fit, the middle folders go behind one ellipsis item, as in Finder’s path bar, so the first and the last crumbs stay whole and no crumb is ever cut at an edge; then the file’s name is cut short, and in the narrowest bar only the ellipsis and the file remain. The ellipsis lists the folders it stands for, and one picked opens the entries beside it, as its crumb would. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the workspace and ~ naming the home."
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the widest name still shown is cut short with an ellipsis rather than leave the bar half empty, the file’s crumb keeps its name longest. When even the glyphs do not fit, the middle folders go behind one ellipsis item, as in Finder’s path bar, so the first and the last crumbs stay whole and no crumb is ever cut at an edge; then the file’s name is cut short, and in the narrowest bar only the ellipsis and the file remain. The ellipsis lists the folders it stands for, and one picked opens the entries beside it, as its crumb would. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the project and ~ naming the home."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
           <div class="flex" :style="{ width: entry.width }">
@@ -946,8 +946,8 @@ onMounted(() => {
               class="min-w-0 flex-1"
               mode="browse"
               :path="addressPath"
-              :base="addressWorkspace.root"
-              :source="addressWorkspace.source"
+              :base="addressProject.root"
+              :source="addressProject.source"
               leaf="file"
               @navigate="productWould(`Show ${$event}`)"
               @open="productWould(`Open ${$event}`)"
@@ -960,8 +960,8 @@ onMounted(() => {
               class="min-w-0 flex-1"
               mode="browse"
               :path="addressPath"
-              :base="addressWorkspace.root"
-              :source="addressWorkspace.source"
+              :base="addressProject.root"
+              :source="addressProject.source"
               leaf="file"
               @navigate="productWould(`Show ${$event}`)"
               @open="productWould(`Open ${$event}`)"

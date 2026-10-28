@@ -72,7 +72,7 @@ impl Shard {
         let preferences = services.control.preferences(self.user().clone()).await?;
         let providers = self.provider_states(&user).await?;
         let models = services.known_model_catalog(self.user()).await?;
-        let workspaces = services.control.workspaces(self.user().clone()).await?;
+        let projects = services.control.projects(self.user().clone()).await?;
         let devices = self.device_list().await?;
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
@@ -102,9 +102,9 @@ impl Shard {
             preferences,
             providers,
             models,
-            workspaces: workspaces
+            projects: projects
                 .into_iter()
-                .map(|workspace| workspace.dto())
+                .map(|project| project.dto())
                 .collect(),
             devices,
             public_url: public_url.as_str().to_owned(),
@@ -165,12 +165,12 @@ impl Shard {
                 };
                 SyncEvent::User { user: account.user }
             }
-            Part::Workspaces => SyncEvent::Workspaces {
-                workspaces: control
-                    .workspaces(self.user().clone())
+            Part::Projects => SyncEvent::Projects {
+                projects: control
+                    .projects(self.user().clone())
                     .await?
                     .into_iter()
-                    .map(|workspace| workspace.dto())
+                    .map(|project| project.dto())
                     .collect(),
             },
             Part::Devices => SyncEvent::Devices {

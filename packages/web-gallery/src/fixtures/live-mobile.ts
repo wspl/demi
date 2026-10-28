@@ -40,7 +40,7 @@ import { shallowRef } from 'vue'
 import { productWould } from '../product-would'
 import type { GalleryPanel } from './panel'
 import type { GalleryPlugin } from './plugins'
-import { WORKSPACE_ROOT } from './workspace'
+import { PROJECT_ROOT } from './project'
 
 /** How often a screen is painted and sent: a still screen needs few frames. */
 const FPS = 10
@@ -472,8 +472,8 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
         const { device: id } = onDeviceSchema.parse(params)
         device(id)
         await beat(300)
-        // The Host writes the picture into the conversation's scratch directory; the gallery's workspace holds one.
-        return { path: `${WORKSPACE_ROOT}/assets/photo.png` }
+        // The Host writes the picture into the conversation's scratch directory; the gallery's project holds one.
+        return { path: `${PROJECT_ROOT}/assets/photo.png` }
       }
       case 'record': {
         const { device: id, action } = recordDeviceSchema.parse(params)
@@ -505,7 +505,7 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
   function stoppedRecording(shown: OpenDevice): object {
     return {
       recording: { id: 'r1', target: shown.id, running: false, ended: 'stopped', durationMs: 4200, frames: 37, missed: 0 },
-      path: `${WORKSPACE_ROOT}/assets/demo.mp4`,
+      path: `${PROJECT_ROOT}/assets/demo.mp4`,
     }
   }
 

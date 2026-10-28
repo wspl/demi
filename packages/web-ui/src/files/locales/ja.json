@@ -109,7 +109,7 @@
     "noAccess": "アクセス権なし",
     "unavailable": "利用できません",
     "withReason": "{heading}: {reason}",
-    "couldNotList": "ワークスペースを一覧表示できませんでした。",
+    "couldNotList": "フォルダを一覧表示できませんでした。",
     "couldNotReadDrop": "ドロップした項目を読み取れませんでした"
   },
   "uploads": {
@@ -163,8 +163,8 @@
     "readFailedDetail": "ファイルを読み取れませんでした。",
     "missing": "このファイルは存在しません。",
     "readAgainFailed": "読み取りに失敗しました。",
-    "notInWorkspaceTitle": "このワークスペースにありません",
-    "notInWorkspace": "ツリーには {name} のみが表示されます。",
+    "notInFolderTitle": "このフォルダにありません",
+    "notInFolder": "ツリーには {name} のみが表示されます。",
     "imageFailed": "この画像を表示できませんでした。",
     "videoFailed": "この動画を表示できませんでした。"
   },

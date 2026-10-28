@@ -20,7 +20,7 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { useTurnFlow } from '../turn-flow'
 import { useAgentContext } from '../agent-context'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -531,7 +531,7 @@ function pinHover(ids: string[], pinned: boolean): void {
 
 // The open conversation is the product's ChatSession over the gallery's scripted runtime, so the header
 // the sidebar's top row stands beside is the product's own; its title follows the row that is open.
-const sessionFlow = useTurnFlow({ id: 'gallery-sidebar-frame', cwd: WORKSPACE_ROOT, blocks: transcriptDemoBlocks() })
+const sessionFlow = useTurnFlow({ id: 'gallery-sidebar-frame', cwd: PROJECT_ROOT, blocks: transcriptDemoBlocks() })
 const session = sessionFlow.state
 const messageFiles = useMessageFiles()
 const agentContext = useAgentContext()

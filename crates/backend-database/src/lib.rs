@@ -151,7 +151,7 @@ pub mod tree;
 pub mod update;
 pub mod usage;
 pub mod web_sessions;
-pub mod workspaces;
+pub mod projects;
 
 /// Why a storage operation failed.
 #[derive(Debug, thiserror::Error)]

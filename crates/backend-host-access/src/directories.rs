@@ -68,13 +68,13 @@ impl dyn HostShard + '_ {
                 let path = typed_directory(&device, &path)?;
                 Ok(ConversationTarget::Device { device_id, path })
             }
-            ConversationTarget::Workspace { workspace_id } => {
+            ConversationTarget::Project { project_id } => {
                 self.control()
-                    .workspace(workspace_id.clone())
+                    .project(project_id.clone())
                     .await?
-                    .filter(|workspace| workspace.user == *self.user())
-                    .ok_or(ChangeRefusal::WorkspaceNotFound)?;
-                Ok(ConversationTarget::Workspace { workspace_id })
+                    .filter(|project| project.user == *self.user())
+                    .ok_or(ChangeRefusal::ProjectNotFound)?;
+                Ok(ConversationTarget::Project { project_id })
             }
             ConversationTarget::Cloud { path: Some(path) } => {
                 let device = self.cloud_shard().cloud_device().await?;

@@ -29,7 +29,7 @@ import type { FileBrowserSource } from './types'
  * In both modes, a click anywhere on the bar but a crumb turns it into a text
  * field with the absolute path, the way the Windows address bar edits, and Enter
  * asks the host to go where it says. A relative path starts from `base`, as a
- * File view's starts from its workspace, and `~` names the source's home.
+ * File view's starts from its root, and `~` names the source's home.
  *
  * While it is a field it completes the path from the source's listings
  * (`PathInput`). A completed directory keeps the field open on its entries, and

@@ -18,7 +18,7 @@ import type { FileBrowserSource, FileDirectory } from './types'
 /**
  * One file of a Host, read through its source: the whole path as crumbs from the
  * Host's root, the file itself under its bar (`FileContent`), and beside it the
- * workspace tree with the file selected.
+ * file tree with the file selected.
  *
  * The tree docks, hides and shows over the file as its frame (`TreeFrame`)
  * decides. The host keeps whether it is open, its width, and the Preview or
@@ -33,7 +33,7 @@ import type { FileBrowserSource, FileDirectory } from './types'
  * Back and Forward before the crumbs ask the host to go back or forward, as a
  * web browser's do; the host says when it can.
  * A path typed into the crumb row opens that file, or finds that folder in the
- * tree and selects it there; a relative one starts from the workspace.
+ * tree and selects it there; a relative one starts from the root.
  *
  * Files dropped on the tree, or uploaded from its menu, list under it until
  * cleared (`FileTree`).
@@ -45,7 +45,7 @@ import type { FileBrowserSource, FileDirectory } from './types'
 
 const props = defineProps<{
   source: FileBrowserSource
-  /** The workspace: the tree's root, and where a relative path typed into the crumb row starts. */
+  /** The tree's root, and where a relative path typed into the crumb row starts. */
   root: string
   /** What the tree's caption says in place of the root directory's name. */
   rootName?: string
@@ -196,7 +196,7 @@ async function go(target: string): Promise<void> {
   }
   const root = normalizePath(props.root)
   if (target !== root && !target.startsWith(`${root}/`)) {
-    showToast({ title: t('view.notInWorkspaceTitle'), message: t('view.notInWorkspace', { name: props.rootName ?? root }), tone: 'neutral' })
+    showToast({ title: t('view.notInFolderTitle'), message: t('view.notInFolder', { name: props.rootName ?? root }), tone: 'neutral' })
     return
   }
   located.value = target

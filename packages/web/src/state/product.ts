@@ -144,8 +144,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'instance', mode: known(state.mode, part) }
     case 'user':
       return { type: 'user', user: known(state.user, part) }
-    case 'workspaces':
-      return { type: 'workspaces', workspaces: known(state.workspaces, part) }
+    case 'projects':
+      return { type: 'projects', projects: known(state.projects, part) }
     case 'devices':
       return { type: 'devices', devices: known(state.devices, part) }
     case 'plugins':
@@ -203,8 +203,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       // A user's channel never carries the server's updates: an account made
       // a user drops what it held as an administrator.
       return { ...state, user: event.user, serverUpgrade: event.user.role === 'user' ? null : state.serverUpgrade }
-    case 'workspaces':
-      return { ...state, workspaces: event.workspaces }
+    case 'projects':
+      return { ...state, projects: event.projects }
     case 'devices':
       return { ...state, devices: event.devices }
     case 'plugins':

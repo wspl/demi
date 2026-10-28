@@ -6,7 +6,7 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import MarkdownDocument from '@demicodes/web-ui/files/MarkdownDocument.vue'
 import AxisPicker from './AxisPicker.vue'
 import { demoModel } from '../fixtures/blocks'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { LONG_TEXT, LONG_TEXT_LANGUAGES, LONG_TEXT_NAMES } from '../fixtures/long-text'
 import { alignedMarkdown, dollarMarkdown, overlongMarkdown, previewMarkdown, scriptsMarkdown } from '../fixtures/previews'
 
@@ -43,7 +43,7 @@ const text = computed(() => (language.value === 'edge' ? EDGE_CASES : LONG_TEXT[
 
 const createdAt = new Date(Date.now() - 120_000).toISOString()
 const conversation = computed<ChatSessionState>(() => ({
-  id: `long-text-${language.value}`, cwd: WORKSPACE_ROOT, title: 'Sync Stall', phase: 'idle',
+  id: `long-text-${language.value}`, cwd: PROJECT_ROOT, title: 'Sync Stall', phase: 'idle',
   load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], starting: null, pendingCalls: [],
   waitingSince: null, requestOutputs: {}, turnSpeed: null,
   scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
@@ -55,8 +55,8 @@ const conversation = computed<ChatSessionState>(() => ({
 }))
 
 const place = {
-  path: `${WORKSPACE_ROOT}/notes/sync-stall.md`,
-  root: WORKSPACE_ROOT,
+  path: `${PROJECT_ROOT}/notes/sync-stall.md`,
+  root: PROJECT_ROOT,
 }
 </script>
 

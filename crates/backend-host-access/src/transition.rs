@@ -71,7 +71,7 @@
 use demi_backend_database::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
 };
-use demi_backend_database::workspaces::WorkspaceRecord;
+use demi_backend_database::projects::ProjectRecord;
 use demi_backend_database::{Selection, StorageError, Unselectable};
 use demi_shared_gates::Reservation;
 use demi_web_api_protocol::conversations::ConversationTarget;
@@ -106,8 +106,8 @@ pub enum ChangeRefusal {
     /// The live tree could not get a runtime for the new model.
     #[error("The model cannot run: {0}")]
     Runtime(String),
-    #[error("No such workspace")]
-    WorkspaceNotFound,
+    #[error("No such project")]
+    ProjectNotFound,
     /// The destination names a device the user did not pair.
     #[error("No such device")]
     DeviceNotFound,
@@ -150,7 +150,7 @@ impl ChangeRefusal {
             Self::ModelNotFound => (ErrorCode::ModelNotFound, 404),
             Self::SettingUnavailable(_) => (ErrorCode::SettingUnavailable, 409),
             Self::ModelNotSelected => (ErrorCode::ModelNotSelected, 409),
-            Self::WorkspaceNotFound => (ErrorCode::WorkspaceNotFound, 404),
+            Self::ProjectNotFound => (ErrorCode::ProjectNotFound, 404),
             Self::DeviceNotFound => (ErrorCode::DeviceNotFound, 404),
             Self::DeviceHomeUnknown => (ErrorCode::DeviceHomeUnknown, 409),
             Self::DeviceOffline(_) => (ErrorCode::DeviceOffline, 409),
@@ -166,7 +166,7 @@ impl ChangeRefusal {
 impl From<Unselectable> for ChangeRefusal {
     fn from(reason: Unselectable) -> Self {
         match reason {
-            Unselectable::WorkspaceNotFound => Self::WorkspaceNotFound,
+            Unselectable::ProjectNotFound => Self::ProjectNotFound,
             Unselectable::DeviceNotFound => Self::DeviceNotFound,
             Unselectable::HomeUnknown => Self::DeviceHomeUnknown,
         }
@@ -180,12 +180,12 @@ pub fn detached_reason(host: &str) -> String {
 }
 
 /// A target switch made: where it went from and to, the execution-context
-/// revision it made, and the workspace its destination made, if it did.
+/// revision it made, and the project its destination made, if it did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Switched {
     pub switch: TargetSwitch,
     pub revision: u64,
-    pub made: Option<WorkspaceRecord>,
+    pub made: Option<ProjectRecord>,
 }
 
 /// A conversation held for a transition. Its fields drop in order: the file
@@ -279,12 +279,12 @@ impl dyn HostShard + '_ {
                 .await?
                 .map(|device| device.id),
             ConversationTarget::Device { device_id, .. } => Some(device_id.clone()),
-            ConversationTarget::Workspace { workspace_id } => Some(
+            ConversationTarget::Project { project_id } => Some(
                 control
-                    .workspace(workspace_id.clone())
+                    .project(project_id.clone())
                     .await?
-                    .filter(|workspace| workspace.user == *owner)
-                    .ok_or(ChangeRefusal::WorkspaceNotFound)?
+                    .filter(|project| project.user == *owner)
+                    .ok_or(ChangeRefusal::ProjectNotFound)?
                     .device,
             ),
         })

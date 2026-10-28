@@ -22,11 +22,11 @@ use crate::sessions::SessionDto;
 use crate::settings::{InstanceMode, Preferences};
 use crate::subagents::SubagentSettings;
 use crate::users::ListedUser;
-use crate::workspaces::WorkspaceDto;
+use crate::projects::ProjectDto;
 
 /// The product state `GET /state` answers: the signed-in user, the instance
 /// mode, the user's preferences, the provider entries the user infers with and
-/// the catalog of their models, the user's workspaces in their order, the
+/// the catalog of their models, the user's projects in their order, the
 /// user's devices, the paired ones and the Cloud, the backend's public URL, the
 /// summaries of the user's conversations, the active ones first, then the
 /// archived, the Cloud's status, the backend's plugins with whether the user has
@@ -45,7 +45,7 @@ pub struct ProductState {
     /// lists them, so the model a conversation names is known before it
     /// opens.
     pub models: ModelCatalog,
-    pub workspaces: Vec<WorkspaceDto>,
+    pub projects: Vec<ProjectDto>,
     pub devices: Vec<DeviceDto>,
     /// The URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`).
     pub public_url: String,
@@ -197,9 +197,9 @@ pub enum SyncEvent {
     User {
         user: UserDto,
     },
-    /// The user's workspaces, in the user's order.
-    Workspaces {
-        workspaces: Vec<WorkspaceDto>,
+    /// The user's projects, in the user's order.
+    Projects {
+        projects: Vec<ProjectDto>,
     },
     /// The paired devices and the Cloud's.
     Devices {

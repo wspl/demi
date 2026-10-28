@@ -384,7 +384,7 @@ export const useConversations = defineStore('conversations', () => {
       scheduled: record.scheduled,
       target: record.target,
       projectId:
-        record.target.kind === 'workspace' ? record.target.workspaceId : null,
+        record.target.kind === 'project' ? record.target.projectId : null,
       worktree: record.worktree ?? undefined,
       revision: record.revision,
       readRevision: record.readRevision,
@@ -2379,8 +2379,8 @@ export const useConversations = defineStore('conversations', () => {
       ) {
         Object.assign(conversation, fields)
         conversation.projectId =
-          conversation.target.kind === 'workspace'
-            ? conversation.target.workspaceId
+          conversation.target.kind === 'project'
+            ? conversation.target.projectId
             : null
       }
     }
@@ -2586,7 +2586,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   function create(projectId: string | null = null): string {
     const starting = startingChoices(
-      product.snapshot?.workspaces?.find((workspace) => workspace.id === projectId) ?? null,
+      product.snapshot?.projects?.find((project) => project.id === projectId) ?? null,
       { lastModel: preferences.lastModel, lastWorkflow: preferences.lastWorkflow },
     )
     const empty = items.value.find(
@@ -2607,7 +2607,7 @@ export const useConversations = defineStore('conversations', () => {
       archived: false,
       scheduled: false,
       target: projectId
-        ? { kind: 'workspace', workspaceId: projectId }
+        ? { kind: 'project', projectId: projectId }
         : { kind: 'cloud' },
       revision: 0,
       readRevision: 0,
@@ -3108,7 +3108,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Saves an explicit choice made in `conversation` where it belongs: on its
-   * project's workspace, which its project's next conversation starts with, or in the
+   * project, which its next conversation starts with, or in the
    * preferences for one outside projects.
    */
   function remember(conversation: Conversation, choice: RememberedChoices): void {

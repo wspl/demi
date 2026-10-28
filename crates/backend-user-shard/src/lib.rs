@@ -11,7 +11,7 @@
 //! conversation permissions and the plugin host need of it (`CloudShard`,
 //! `HostShard`, `PermissionShard`, `ProductPort`).
 //!
-//! A user's conversations, devices, workspaces and attachments belong to that
+//! A user's conversations, devices, projects and attachments belong to that
 //! user alone in both instance modes. An administrator's role gives no access to
 //! another user's conversations or files. Account administration and the shared
 //! instance's usage report are the only records the role reaches.

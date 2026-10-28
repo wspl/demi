@@ -6,11 +6,11 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::ids::{ConversationId, WorkspaceId};
+use crate::ids::{ConversationId, ProjectId};
 
 /// `POST /sidebar/reorder`: the row `id` moves before `beforeId`, or to the
 /// end of its partition when that is null. A conversation moves within its
-/// project and pin partition; a workspace among the user's workspaces.
+/// project and pin partition; a project among the user's projects.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(
     tag = "kind",
@@ -27,12 +27,12 @@ pub enum SidebarReorder {
         #[garde(skip)]
         before_id: Option<ConversationId>,
     },
-    Workspace {
+    Project {
         #[garde(skip)]
-        id: WorkspaceId,
+        id: ProjectId,
         #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<WorkspaceId>")]
+        #[schemars(with = "Nullable<ProjectId>")]
         #[garde(skip)]
-        before_id: Option<WorkspaceId>,
+        before_id: Option<ProjectId>,
     },
 }

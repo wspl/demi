@@ -57,7 +57,7 @@
 //! Every call starts a job of its own in its node's working directory, and
 //! nothing of an earlier command carries over. A carried directory made `cd
 //! ./browse` fail inside `browse`, and models began every script with `cd
-//! <workspace>` because the context block's directory stopped being true after
+//! <directory>` because the context block's directory stopped being true after
 //! the first `cd`.
 //!
 //! Consecutive `shell` calls are one step and start together, each result

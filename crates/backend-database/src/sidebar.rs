@@ -3,7 +3,7 @@
 //!
 //! Activity never reorders a row.
 
-use demi_web_api_protocol::ids::{ConversationId, UserId, WorkspaceId};
+use demi_web_api_protocol::ids::{ConversationId, UserId, ProjectId};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
@@ -23,7 +23,7 @@ pub enum Reorder {
 impl ControlService {
     /// Moves the user's conversation `moved` before `before`, or to the end, within
     /// its partition: the conversations that are not archived, pinned as it is, and
-    /// in the same workspace or in none.
+    /// in the same project or in none.
     ///
     /// Nothing is written when either is not the user's, or not in that partition,
     /// an archived one included.
@@ -41,21 +41,21 @@ impl ControlService {
             }
             let partition = transaction
                 .query_row(
-                    "SELECT archived, pinned, target_workspace_id FROM conversations WHERE id = ?1 AND user_id = ?2",
+                    "SELECT archived, pinned, target_project_id FROM conversations WHERE id = ?1 AND user_id = ?2",
                     params![moved.as_str(), user.as_str()],
                     |row| Ok((row.get::<_, bool>(0)?, row.get::<_, bool>(1)?, row.get::<_, Option<String>>(2)?)),
                 )
                 .optional()?;
-            let Some((false, pinned, workspace)) = partition else {
+            let Some((false, pinned, project)) = partition else {
                 return Ok(Reorder::OutOfPartition);
             };
             let peers = {
                 let mut statement = transaction.prepare_cached(
                     "SELECT id FROM conversations
-                     WHERE user_id = ?1 AND archived = 0 AND pinned = ?2 AND target_workspace_id IS ?3
+                     WHERE user_id = ?1 AND archived = 0 AND pinned = ?2 AND target_project_id IS ?3
                      ORDER BY sort_order, id",
                 )?;
-                let rows = statement.query_map(params![user.as_str(), pinned, workspace], |row| row.get::<_, String>(0))?;
+                let rows = statement.query_map(params![user.as_str(), pinned, project], |row| row.get::<_, String>(0))?;
                 rows.collect::<Result<Vec<String>, _>>()?
             };
             if !write_order(&transaction, "conversations", peers, moved.as_str(), before)? {
@@ -67,27 +67,27 @@ impl ControlService {
         .await
     }
 
-    /// Moves the user's workspace `moved` before `before`, or to the end;
-    /// `Missing` when either is not one of the user's workspaces in the
+    /// Moves the user's project `moved` before `before`, or to the end;
+    /// `Missing` when either is not one of the user's projects in the
     /// sidebar.
-    pub async fn reorder_workspaces(
+    pub async fn reorder_projects(
         &self,
         user: UserId,
-        moved: WorkspaceId,
-        before: Option<WorkspaceId>,
+        moved: ProjectId,
+        before: Option<ProjectId>,
     ) -> Result<Reorder, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             let peers = {
                 let mut statement = transaction.prepare_cached(
-                    "SELECT id FROM workspaces WHERE user_id = ?1 AND deleted_at IS NULL ORDER BY sort_order, id",
+                    "SELECT id FROM projects WHERE user_id = ?1 AND deleted_at IS NULL ORDER BY sort_order, id",
                 )?;
                 let rows = statement.query_map([user.as_str()], |row| row.get::<_, String>(0))?;
                 rows.collect::<Result<Vec<String>, _>>()?
             };
-            let before = before.as_ref().map(WorkspaceId::as_str);
-            // The user's workspaces are one partition: a row not in it is not the user's.
-            if !write_order(&transaction, "workspaces", peers, moved.as_str(), before)? {
+            let before = before.as_ref().map(ProjectId::as_str);
+            // The user's projects are one partition: a row not in it is not the user's.
+            if !write_order(&transaction, "projects", peers, moved.as_str(), before)? {
                 return Ok(Reorder::Missing);
             }
             transaction.commit()?;

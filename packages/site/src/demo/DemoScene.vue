@@ -11,7 +11,7 @@ import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import SelectionFieldHost from '@demicodes/web-ui/agent/comments/SelectionFieldHost.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
+import ProjectDirectoryMenu from '@demicodes/web-ui/hosts/ProjectDirectoryMenu.vue'
 import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import { homePath } from '@demicodes/web-ui/files/paths'
@@ -21,7 +21,7 @@ import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import GalleryWorkPanel from '@demicodes/web-gallery/components/GalleryWorkPanel.vue'
 import { galleryBrowser } from '@demicodes/web-gallery/fixtures/live-browser'
 import { galleryFiles, useGalleryWork } from '@demicodes/web-gallery/fixtures/work-panel'
-import { createChangeSetOf, createGalleryWorkspace } from '@demicodes/web-gallery/fixtures/workspace'
+import { createChangeSetOf, createGalleryProject } from '@demicodes/web-gallery/fixtures/project'
 import type { DemoId } from '@/features'
 import { Conversation, MODEL_SETTINGS, MODELS, PROVIDERS, Stopped } from './conversation'
 import PhoneNotice from './PhoneNotice.vue'
@@ -42,8 +42,8 @@ const scene = SCENES[props.demo]
 const conversation = new Conversation(`demo-${props.run}`, scene.title, scene.cwd)
 conversation.state.terminals = [...(scene.services ?? [])]
 // The working tree has no changes: no scene shows them.
-const workspace = { ...createGalleryWorkspace(), changes: createChangeSetOf([]) }
-const work = useGalleryWork(null, { files: galleryFiles(workspace), browser: galleryBrowser([], { page: SHOP }), screen: HARBOR })
+const project = { ...createGalleryProject(), changes: createChangeSetOf([]) }
+const work = useGalleryWork(null, { files: galleryFiles(project), browser: galleryBrowser([], { page: SHOP }), screen: HARBOR })
 work.open.value = false
 const notice = ref<Notice | null>(null)
 const closed = ref(false)
@@ -51,7 +51,7 @@ watch(closed, tellTab)
 const hosts = reactive<DemoHosts>({ primary: scene.primary ?? CLOUD, attached: [] })
 const devices = scene.devices ?? []
 /** Where the conversation's work starts on the Host it runs on, which the header's directory names. */
-const workspaceName = () => conversation.state.cwd.split('/').filter(Boolean).at(-1) ?? null
+const projectName = () => conversation.state.cwd.split('/').filter(Boolean).at(-1) ?? null
 const moveQuestion = useMoveQuestion()
 
 /** A device's home, where a move there starts the conversation's work. */
@@ -69,7 +69,7 @@ function choose(choice: HostChoice): void {
   if (!device)
     return
   const home = homeOf(device.name)
-  const path = `${home}/Projects/${workspaceName() ?? ''}`
+  const path = `${home}/Projects/${projectName() ?? ''}`
   void moveQuestion.ask(
     { host: device.name, directory: homePath(path, home), from: hosts.primary.name, fromCloud: hosts.primary.kind === 'cloud' },
     async () => {
@@ -166,11 +166,11 @@ onBeforeUnmount(() => {
         @open-aside="work.open.value = true"
         @show-subagent="() => {}"
       >
-        <template #workspace>
-          <WorkspaceDirectoryMenu
+        <template #place>
+          <ProjectDirectoryMenu
             :overlay-store="appOverlayStore"
             :path="conversation.state.cwd"
-            :workspace-name="workspaceName()"
+            :project-name="projectName()"
             :device-id="hosts.primary.kind === 'device' ? hosts.primary.id : null"
             :locked="false"
             :browse-enabled="false"
@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
               :devices="[...devices]"
               @choose="choose"
             />
-          </WorkspaceDirectoryMenu>
+          </ProjectDirectoryMenu>
         </template>
         <template #composer>
           <SessionComposer

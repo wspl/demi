@@ -31,7 +31,7 @@ export interface WorkingTreeChange extends ChangeFile {
   status: string
 }
 
-/** The workspace's uncommitted files and their current differences from HEAD. */
+/** The working tree's uncommitted files and their current differences from HEAD. */
 export interface ChangeSetSource {
   files: readonly WorkingTreeChange[]
   /** The list stopped at the host's limit; there are more changed files than it holds. */
@@ -65,7 +65,7 @@ export interface ChangeSetSource {
   showSides(path: string, from?: string): Showing<ChangeSides>
   /**
    * Each file as the last commit has it, by the path relative to the
-   * workspace, for previews and Download; absent when the source serves no
+   * tree, for previews and Download; absent when the source serves no
    * bytes.
    */
   committed?: FileContents
@@ -112,7 +112,7 @@ export interface ChangeSources {
   conversation: RequestChangeSource | null
 }
 
-/** The working-tree placeholder when no workspace is available: it lists nothing, so no side is shown. */
+/** The working-tree placeholder when no tree is available: it lists nothing, so no side is shown. */
 export const emptyChangeSet: ChangeSetSource = {
   files: [],
   showSides: () => ({
@@ -145,7 +145,7 @@ export interface ChangeTreeFile {
 
 /**
  * A request's files as the change tree shows them: each by its path from
- * `root`, the workspace, in the spelling of the root's Host, so a Windows
+ * `root`, the tree's root, in the spelling of the root's Host, so a Windows
  * file `C:\Users\u\shop\src\cart.ts` under `C:\Users\u\shop` is in `src`.
  */
 export function requestTreeFiles(root: string, files: readonly RequestFile[]): ChangeTreeFile[] {

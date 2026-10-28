@@ -26,25 +26,25 @@ const failures: {
   {
     kind: 'offline',
     label: 'Device offline',
-    home: '/workspace',
+    home: '/project',
     message: 'The selected device is offline. Reconnect it to browse files.',
   },
   {
     kind: 'permission',
     label: 'Permission denied',
-    home: '/workspace/private',
-    message: 'This account cannot read /workspace/private.',
+    home: '/project/private',
+    message: 'This account cannot read /project/private.',
   },
   {
     kind: 'not-found',
     label: 'Directory removed',
-    home: '/workspace/deleted',
-    message: 'The directory /workspace/deleted no longer exists.',
+    home: '/project/deleted',
+    message: 'The directory /project/deleted no longer exists.',
   },
   {
     kind: 'other',
     label: 'Unexpected read failure',
-    home: '/workspace',
+    home: '/project',
     message:
       'The directory service returned an incomplete response. Request preview-files-27 could not be completed.',
   },
@@ -61,7 +61,7 @@ function failingSource(failure: (typeof failures)[number]): FileBrowserSource {
 }
 const readOnlySource: FileBrowserSource = keptSource({
   platform: 'linux',
-  home: '/workspace',
+  home: '/project',
   async list() {
     const entries = [
       { name: 'src', isDirectory: true },
@@ -72,7 +72,7 @@ const readOnlySource: FileBrowserSource = keptSource({
   async createDirectory() {
     throw new FileBrowserError(
       'permission',
-      'Could not create the folder: this workspace is read-only.',
+      'Could not create the folder: this project is read-only.',
     )
   },
 }, { files: new HostFiles() })

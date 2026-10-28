@@ -19,7 +19,7 @@
 //!   after the gap.
 //! - One that the change back repeats fires the first time.
 //!
-//! No crate the workspace uses reads cron expressions over `jiff`'s time zones,
+//! No crate the project uses reads cron expressions over `jiff`'s time zones,
 //! so the five fields are read here.
 
 use demi_web_api_protocol::schedules::{FirstOrLast, MonthDay, Repeat, RepeatUnit, Timing, Task, WeekOfMonth, Weekday};

@@ -38,7 +38,7 @@ export function placesFor(
     groups.push({ label: t('places.quickAccess'), places: [{ path: device.home, label: t('places.home') }] })
   }
   if (places.length) {
-    groups.push({ label: t('places.workspaces'), places })
+    groups.push({ label: t('places.projects'), places })
   }
   return groups
 }

@@ -8,7 +8,7 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import { shortTranscriptBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
 import { runningRunCommand } from '../fixtures/terminals'
-import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { PROJECT_ROOT } from '../fixtures/project'
 import { productWould } from '../product-would'
 import GalleryComposer from './GalleryComposer.vue'
 
@@ -20,7 +20,7 @@ import GalleryComposer from './GalleryComposer.vue'
  */
 const session = reactive<ChatSessionState>({
   id: 'opening-steps',
-  cwd: WORKSPACE_ROOT,
+  cwd: PROJECT_ROOT,
   title: 'Fix the login test',
   history: EMPTY_TRANSCRIPT,
   shownAt: null,
@@ -118,7 +118,7 @@ const step = computed(() => {
         @refresh-limits="productWould('Read the Usage Limits Again')"
         @open-instruction="productWould('Open the Instructions')"
       >
-        <template #workspace><span class="text-chrome text-fg-muted">Local workspace</span></template>
+        <template #place><span class="text-chrome text-fg-muted">Local project</span></template>
         <template #composer>
           <GalleryComposer
             :running="session.phase === 'running'"

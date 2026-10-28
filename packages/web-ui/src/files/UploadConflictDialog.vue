@@ -23,7 +23,7 @@ const props = defineProps<{
   overlayStore: OverlayStore
   /** The names the directory has, with what each is on both sides. */
   clashes: readonly UploadClash[]
-  /** The directory, as it reads from the workspace. */
+  /** The directory, as it reads from the root. */
   directory: string
   /** How many of what else is going the directory does not have yet. */
   others: { files: number; folders: number }

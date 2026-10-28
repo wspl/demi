@@ -322,7 +322,7 @@ function reorder(request: SidebarReorder) {
       .catch((error) => {
         // A move naming a project another page deleted meanwhile has
         // nothing to say; the channel brings the order there is.
-        if (errorCode(error) !== 'workspace_not_found') {
+        if (errorCode(error) !== 'project_not_found') {
           reportError(sidebarText('refused.reorderProjects'), error, { site: 'refused.reorderProjects', userVisible: true })
         }
       })
@@ -338,7 +338,7 @@ async function removeProject(id: string) {
     await resources.removeProject(id)
   } catch (error) {
     // A project another page deleted meanwhile is deleted: that is done.
-    if (errorCode(error) !== 'workspace_not_found') {
+    if (errorCode(error) !== 'project_not_found') {
       reportError(sidebarText('refused.deleteProject'), error, { site: 'refused.deleteProject', userVisible: true })
     }
   }
