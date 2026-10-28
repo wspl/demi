@@ -203,13 +203,26 @@ impl Upgrades {
         self.sync.mark_everyone(&Part::ServerUpgrade);
     }
 
-    /// Changes the channel and looks for the newest of it.
+    /// Changes the channel and looks for the newest of it, unless a check
+    /// that ended since did.
     pub async fn set_channel(&self, channel: UpgradeChannel) -> Result<(), StorageError> {
         self.control.set_upgrade_channel(channel).await?;
-        self.locked().channel = channel;
+        let switched = {
+            let mut state = self.locked();
+            state.channel = channel;
+            Instant::now()
+        };
         self.due_changed.notify_one();
         self.changed();
-        self.check().await;
+        if !self.offered() {
+            return Ok(());
+        }
+        // A periodic check that took the lock first looked at the new
+        // channel already.
+        let _one = self.checking.lock().await;
+        if self.locked().checked.is_none_or(|checked| checked < switched) {
+            self.check_held().await;
+        }
         Ok(())
     }
 
@@ -222,18 +235,23 @@ impl Upgrades {
         self.check_held().await;
     }
 
-    /// When the periodic check is due: at once before the first check, and
-    /// then the channel's cadence after the last one ended.
-    fn due(&self) -> Instant {
+    /// When the periodic check is due: none before the first check, which is
+    /// due at once, and then the channel's cadence after the last one ended.
+    fn due(&self) -> Option<Instant> {
         let state = self.locked();
-        state.checked.map_or_else(Instant::now, |checked| checked + check_every(state.channel))
+        state.checked.map(|checked| checked + check_every(state.channel))
+    }
+
+    /// Whether the periodic check is due now.
+    fn is_due(&self) -> bool {
+        self.due().is_none_or(|due| Instant::now() >= due)
     }
 
     /// Checks when the periodic check is due, as one check does; nothing when
     /// another check, such as a change of channel's, ended meanwhile.
     async fn check_if_due(&self) {
         let _one = self.checking.lock().await;
-        if Instant::now() >= self.due() {
+        if self.is_due() {
             self.check_held().await;
         }
     }
@@ -271,11 +289,12 @@ impl Upgrades {
         };
         let prepare = {
             let mut state = self.locked();
-            state.checked = Some(Instant::now());
-            // A change of channel meanwhile checks again.
+            // A change of channel meanwhile checks again: this check looked
+            // at the channel before.
             if state.channel != channel {
                 None
             } else {
+                state.checked = Some(Instant::now());
                 let newer = match &check {
                     UpgradeCheck::Checked { newer, .. } => newer.clone(),
                     _ => None,
@@ -491,11 +510,10 @@ async fn checks(upgrades: Weak<Upgrades>, due_changed: Arc<tokio::sync::Notify>)
         let Some(held) = upgrades.upgrade() else {
             return;
         };
-        if Instant::now() >= held.due() {
+        let Some(due) = held.due().filter(|due| Instant::now() < *due) else {
             held.check_if_due().await;
             continue;
-        }
-        let due = held.due();
+        };
         drop(held);
         tokio::select! {
             () = tokio::time::sleep_until(due.into()) => {}
