@@ -2,7 +2,7 @@ import { computed, effectScope, shallowRef, watch, watchEffect } from 'vue'
 import { errorFields } from '../infra/errors'
 import { pageLog } from '../infra/log'
 import { followAppearance, pageTopColor } from '../theme/themeColor'
-import { conversationDotTone } from './conversation-dot'
+import { conversationDotTone, NEWS_TONES, type NewsTone } from './conversation-dot'
 import { t } from './locales/text'
 import type { SidebarConversation } from './types'
 
@@ -21,12 +21,8 @@ import type { SidebarConversation } from './types'
 /** The product's name, as the tab says it. */
 const PRODUCT_NAME = 'demi'
 
-/** The dots that say something is new, the most urgent first. */
-const NEWS = ['danger', 'attention', 'success'] as const
-type News = (typeof NEWS)[number]
-
 /** How many conversations wear each dot that says something is new. */
-type TabNews = Readonly<Record<News, number>>
+type TabNews = Readonly<Record<NewsTone, number>>
 
 /** The page's title without news: a conversation's title and the product's name, or the name alone. */
 export function pageTitle(title: string | null): string {
@@ -39,7 +35,7 @@ export function pageTitle(title: string | null): string {
  * short count reads at a glance where a list does not.
  */
 function tabTitle(news: TabNews, title: string | null): string {
-  const present = NEWS.filter((kind) => news[kind] > 0)
+  const present = NEWS_TONES.filter((kind) => news[kind] > 0)
   const total = present.reduce((sum, kind) => sum + news[kind], 0)
   if (total === 0)
     return pageTitle(title)
@@ -71,7 +67,7 @@ function dottedIcon(svg: string, fill: string, ring: string): string {
 }
 
 /** The theme's dot colors, the sidebar's tokens, and the tab strip's background, which the page's top color is. */
-function readColors(): Readonly<Record<News | 'ring', string>> {
+function readColors(): Readonly<Record<NewsTone | 'ring', string>> {
   const style = getComputedStyle(document.documentElement)
   const token = (name: string) => style.getPropertyValue(name).trim()
   return {
@@ -168,7 +164,7 @@ export function followTabAttention(source: TabAttentionSource): () => void {
     watchEffect(() => {
       document.title = tabTitle(news.value, source.openTitle())
     })
-    const urgent = computed(() => NEWS.find((kind) => news.value[kind] > 0) ?? null)
+    const urgent = computed(() => NEWS_TONES.find((kind) => news.value[kind] > 0) ?? null)
     watch(
       [() => (urgent.value ? colors.value[urgent.value] : null), () => colors.value.ring],
       ([fill, ring]) => showDot(fill, ring),

@@ -292,10 +292,11 @@ export function demoConversations(): SidebarConversation[] {
       id: 'c-zsh',
       title: 'zsh prompt shows the worktree branch',
       updatedAt: ago(12 * DAY),
-      status: 'idle',
+      // Finished and not read in a project the specimens fold: the folded row carries its dot.
+      status: 'done',
       projectId: 'p-dotfiles',
       pinned: false,
-      unread: false
+      unread: true
     },
     // The other projects, one conversation each, so the list shows them.
     {

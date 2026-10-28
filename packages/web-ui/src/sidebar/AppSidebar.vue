@@ -31,7 +31,8 @@ import type {
 import { plainConversations, projectGroups } from './group-conversations'
 import { useSidebarDrag } from './useSidebarDrag'
 import { reorderPeers } from './reorder'
-import { labelWaiting, listLines, type SidebarGroup } from './list-model'
+import { listLines, type SidebarGroup } from './list-model'
+import { mostUrgentNews } from './conversation-dot'
 import { useSidebarList } from './useSidebarList'
 import SidebarAccountRow from './SidebarAccount.vue'
 import SidebarGroupLabel from './SidebarGroupLabel.vue'
@@ -180,6 +181,13 @@ const byId = keptComputed(
   )
 )
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
+/** The dot each folded project's row carries for the conversations its fold hides. */
+const foldedProjectNews = computed(() => new Map(groups.value.flatMap((group) => {
+  if (!isFolded(group.project.id))
+    return []
+  const news = mostUrgentNews(group.items, props.activeId)
+  return news ? [[group.project.id, news] as const] : []
+})))
 /** The projects whose row names its host, since a project of the same name runs on another. */
 const qualifiers = keptComputed(() => projectQualifiers(shownProjects.value))
 /** Each group's label, in list order, with the dot it carries while folded. */
@@ -194,7 +202,7 @@ const groupLabels = computed(() => {
       group,
       text,
       folded,
-      waiting: labelWaiting(folded, conversations, props.activeId),
+      news: folded ? mostUrgentNews(conversations, props.activeId) : null,
     }
   }
   return {
@@ -764,7 +772,7 @@ function selectProjectConversations(project: SidebarProject): void {
               v-if="entry.kind === 'heading'"
               :label="entry.text"
               :folded="entry.folded"
-              :waiting="entry.waiting"
+              :news="entry.news"
               @toggle="toggleGroup(entry.group)"
             >
               <template #action>
@@ -805,6 +813,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :project="projectById.get(entry.id)!"
                 :qualifier="qualifiers.get(entry.id)"
                 :collapsed="isFolded(entry.id)"
+                :news="foldedProjectNews.get(entry.id) ?? null"
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
                 :menu="projectMenu"
                 @toggle="list.onProjectClick"
