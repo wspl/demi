@@ -109,12 +109,20 @@ impl HostShard for Shard {
         Shard::track_idle(self, conversation);
     }
 
-    fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>> {
+    fn directory_sets<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, Result<DirectorySets, String>> {
         Box::pin(async move {
-            self.plugins
+            let sets = self
+                .plugins
                 .directories()
                 .await
-                .map_err(|error| format!("the plugins' Host directories cannot be read: {error}"))
+                .map_err(|error| format!("the plugins' Host directories cannot be read: {error}"))?;
+            let Some(capabilities) = self.cloud_capabilities(device).await? else {
+                return Ok(sets);
+            };
+            Ok(sets
+                .into_iter()
+                .filter(|(plugin, _)| crate::conversation::product::integration_allows(&capabilities, plugin.as_str()))
+                .collect())
         })
     }
 

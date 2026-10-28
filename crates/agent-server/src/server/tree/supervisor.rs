@@ -785,7 +785,7 @@ impl<H: HostResolver> Tree<H> {
             providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),
             instructions,
-            guide: deps.guide.clone(),
+            guide: self.root.guide(),
             preamble: Some(preamble),
             context: deps.context.clone(),
             inherited,

@@ -444,29 +444,48 @@ impl Shard {
         }
     }
 
-    /// Admits the first message of a conversation just created, as the
-    /// lane would: a connection of its own opens the conversation's session
-    /// and hands it the `send` frame through the admission every `send`
-    /// takes, then goes. The page opens its lane afterwards, and that
-    /// opening carries the reply so far
-    /// (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
-    ///
-    /// A message already taken under its id is taken again without a second
-    /// turn, as the session does for a repeated `send`.
+    /// Admits the conversation's first message, `message`, through a
+    /// connection of its own (§ A conversation's first message).
     pub(crate) async fn admit_first_message(
         self: &Rc<Self>,
         conversation: &ConversationId,
         message: SendMessage,
     ) -> FirstMessageAnswer {
+        match self.admit_frame(conversation, ClientFrame::Send(message)).await {
+            Ok(()) => FirstMessageAnswer::Taken,
+            Err(refusal) => FirstMessageAnswer::Refused { refusal },
+        }
+    }
+
+    /// Hands the conversation `frame`, a `send`, a `steer` or a stop,
+    /// through a connection of its own that opens the conversation first, as
+    /// a page's lane would: the frame is handled as a page's is. Answers
+    /// once the session took it, or why it was refused.
+    pub(crate) async fn admit_frame(self: &Rc<Self>, conversation: &ConversationId, frame: ClientFrame) -> Result<(), Refusal> {
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(self),
             conversation: conversation.clone(),
         });
         let (connection, mut frames) = self.agent().connect(root_of(conversation), resolver);
-        let message_id = message.message_id.clone();
-        let steps = [ClientFrame::Open { draft: None, follows: Vec::new() }, ClientFrame::Send(message)];
-        for frame in steps {
-            let sending = matches!(frame, ClientFrame::Send(_));
+        // Which answer of the session's says it took the frame; none for a
+        // frame the session takes without one, which then took it unless it
+        // was refused.
+        let taken: Option<Box<dyn Fn(&ServerFrame) -> bool>> = match &frame {
+            ClientFrame::Send(message) => {
+                let id = message.message_id.clone();
+                Some(Box::new(move |reply| matches!(reply, ServerFrame::SendResult { message_id, .. } if *message_id == id)))
+            }
+            ClientFrame::Steer { steer_id, .. } => {
+                let id = steer_id.clone();
+                Some(Box::new(move |reply| {
+                    matches!(reply, ServerFrame::SteerResult { steer_id, outcome: SteerOutcome::Accepted { .. } } if *steer_id == id)
+                }))
+            }
+            ClientFrame::AbortSubagents {} => None,
+            _ => Some(Box::new(|reply| matches!(reply, ServerFrame::AbortResult { .. }))),
+        };
+        let steps = [ClientFrame::Open { draft: None, follows: Vec::new() }, frame];
+        for (index, frame) in steps.into_iter().enumerate() {
             let replies = match self.handle_frame(conversation, &connection, frame).await {
                 Handled::Replies(replies) | Handled::Opened { replies } | Handled::OpenRefused { replies } => replies,
                 Handled::Following { .. } | Handled::NotJson => Vec::new(),
@@ -479,21 +498,21 @@ impl Shard {
             }
             for reply in answered {
                 match reply {
-                    ServerFrame::Rejected { refusal, .. } => return FirstMessageAnswer::Refused { refusal },
+                    ServerFrame::Rejected { refusal, .. }
+                    | ServerFrame::SteerResult { outcome: SteerOutcome::Rejected { refusal }, .. } => return Err(refusal),
                     ServerFrame::Error { message, code, .. } => {
                         let code = code.unwrap_or_else(|| ErrorCode::SendFailed.to_string());
-                        return FirstMessageAnswer::Refused { refusal: Refusal::new(code, message) };
+                        return Err(Refusal::new(code, message));
                     }
-                    ServerFrame::SendResult { message_id: taken, .. } if sending && taken == message_id => {
-                        return FirstMessageAnswer::Taken;
-                    }
+                    reply if index == 1 && taken.as_ref().is_some_and(|taken| taken(&reply)) => return Ok(()),
                     _ => {}
                 }
             }
+            if index == 1 && taken.is_none() {
+                return Ok(());
+            }
         }
-        FirstMessageAnswer::Refused {
-            refusal: Refusal::new(ErrorCode::SendFailed, "The session did not answer the message"),
-        }
+        Err(Refusal::new(ErrorCode::SendFailed, "The session did not answer the message"))
     }
 
     /// Whether the backend would deliver the user's Resume of the

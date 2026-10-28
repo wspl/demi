@@ -617,6 +617,9 @@ impl Shard {
         for device in devices {
             self.devices().disconnect(&device.id, reason);
         }
+        // The integrations' sockets end too; their tokens open nothing while
+        // the account is disabled.
+        self.integration_events.close_all();
         Ok(())
     }
 

@@ -144,6 +144,7 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.5658's, before a plugin's Host directory could be one workspace's.
 /// - The development form in which a user held one Cloud, before the user's
 ///   record named their own.
+/// - The development form before integrations.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -356,6 +357,10 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.65-dev.one-cloud.sql"),
             migration: Migration::Sql(CONTROL_FROM_ONE_CLOUD),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.65-dev.no-integrations.sql"),
+            migration: Migration::Sql(CONTROL_FROM_NO_INTEGRATIONS),
+        },
     ],
 };
 
@@ -497,6 +502,42 @@ UPDATE users SET cloud_device_id =
   (SELECT id FROM devices WHERE devices.user_id = users.id AND kind = 'managed' AND machine = 'cloud');
 DROP INDEX devices_one_machine;
 CREATE UNIQUE INDEX devices_one_claude_code ON devices (user_id) WHERE machine = 'claude_code';";
+
+/// From the form before integrations: their tables.
+const CONTROL_FROM_NO_INTEGRATIONS: &str = r"
+CREATE TABLE integrations (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  -- The workspace its conversations are in, which no page lists.
+  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces (id),
+  name         TEXT NOT NULL CHECK (name <> ''),
+  -- The SHA-256 of its token, which authenticates its requests.
+  token_hash   TEXT NOT NULL UNIQUE,
+  -- What its agents may do, IntegrationCapabilities as JSON.
+  capabilities TEXT NOT NULL,
+  created_at   INTEGER NOT NULL
+) STRICT;
+CREATE INDEX integrations_by_user ON integrations (user_id);
+CREATE TABLE integration_conversations (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  integration_id  TEXT NOT NULL REFERENCES integrations (id),
+  -- The string the integration finds it by, unique within the integration;
+  -- none for one it keeps no key of.
+  external_key    TEXT,
+  -- The workflow it was created with, YAML in the format of a project's
+  -- workflow file; none for no subagent profiles.
+  workflow        TEXT
+) STRICT;
+CREATE UNIQUE INDEX integration_conversations_by_key
+  ON integration_conversations (integration_id, external_key) WHERE external_key IS NOT NULL;
+CREATE TABLE integration_clouds (
+  device_id      TEXT PRIMARY KEY REFERENCES devices (id) ON DELETE CASCADE,
+  integration_id TEXT NOT NULL REFERENCES integrations (id),
+  external_key   TEXT
+) STRICT;
+CREATE UNIQUE INDEX integration_clouds_by_key
+  ON integration_clouds (integration_id, external_key) WHERE external_key IS NOT NULL;
+";
 
 /// The tables of the schedules, as the current schema makes them.
 const CONTROL_SCHEDULES_FROM_0_1_65: &str = "
@@ -5972,6 +6013,39 @@ CREATE TABLE server_settings (
   -- Whether every user uses the master's providers, which the master chooses in Settings › Users.
   instance_mode   TEXT NOT NULL DEFAULT 'isolated' CHECK (instance_mode IN ('shared', 'isolated'))
 ) STRICT;
+
+CREATE TABLE integrations (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  -- The workspace its conversations are in, which no page lists.
+  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces (id),
+  name         TEXT NOT NULL CHECK (name <> ''),
+  -- The SHA-256 of its token, which authenticates its requests.
+  token_hash   TEXT NOT NULL UNIQUE,
+  -- What its agents may do, IntegrationCapabilities as JSON.
+  capabilities TEXT NOT NULL,
+  created_at   INTEGER NOT NULL
+) STRICT;
+CREATE INDEX integrations_by_user ON integrations (user_id);
+CREATE TABLE integration_conversations (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  integration_id  TEXT NOT NULL REFERENCES integrations (id),
+  -- The string the integration finds it by, unique within the integration;
+  -- none for one it keeps no key of.
+  external_key    TEXT,
+  -- The workflow it was created with, YAML in the format of a project's
+  -- workflow file; none for no subagent profiles.
+  workflow        TEXT
+) STRICT;
+CREATE UNIQUE INDEX integration_conversations_by_key
+  ON integration_conversations (integration_id, external_key) WHERE external_key IS NOT NULL;
+CREATE TABLE integration_clouds (
+  device_id      TEXT PRIMARY KEY REFERENCES devices (id) ON DELETE CASCADE,
+  integration_id TEXT NOT NULL REFERENCES integrations (id),
+  external_key   TEXT
+) STRICT;
+CREATE UNIQUE INDEX integration_clouds_by_key
+  ON integration_clouds (integration_id, external_key) WHERE external_key IS NOT NULL;
 ";
 
 /// One agent tree: the root node's id is the conversation's, and its

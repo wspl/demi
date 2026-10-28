@@ -15,6 +15,12 @@
     "removeFailed": "無法移除轉送",
     "retryFailed": "無法再試一次"
   },
+  "integrations": {
+    "loadFailed": "無法載入整合",
+    "addFailed": "無法加入整合",
+    "saveFailed": "無法更改整合",
+    "replaceFailed": "無法替換權杖"
+  },
   "exposedPorts": {
     "exposeFailed": "無法公開連接埠",
     "saveFailed": "無法更改已公開的連接埠",

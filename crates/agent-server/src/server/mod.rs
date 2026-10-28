@@ -185,8 +185,9 @@ pub struct ServerDeps<H: HostResolver> {
     /// profile's replace.
     pub instructions: Rc<str>,
     /// The harness guide every node's system prompt carries after its
-    /// identity, which no profile replaces.
-    pub guide: Rc<str>,
+    /// identity, which no profile replaces, by the conversation
+    /// ([`GuideSource`]).
+    pub guides: Rc<dyn GuideSource>,
     /// Where a node's shell tools run.
     pub hosts: Rc<H>,
     /// What the model must learn before each request, in this order.
@@ -213,6 +214,51 @@ pub struct ServerDeps<H: HostResolver> {
     /// Which paths a complete text's code spans name are files on the
     /// conversation's Host (`crates/agent-server/src/node/reply_files.rs`).
     pub reply_files: Rc<dyn crate::node::ReplyFiles>,
+    /// What hears every frame of a tree as it opens
+    /// ([`TreeObservers`]).
+    pub observers: Rc<dyn TreeObservers>,
+}
+
+/// Where the harness guide of a conversation's nodes comes from: the
+/// product's, which may differ by conversation, as an integration's agents
+/// read the runtime's rules without the web app's display conventions. A
+/// tree reads it once as it opens; its children and side questions carry the
+/// root's.
+pub trait GuideSource {
+    fn guide<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Rc<str>>;
+}
+
+/// One guide for every conversation.
+impl GuideSource for Rc<str> {
+    fn guide<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, Rc<str>> {
+        let guide = self.clone();
+        Box::pin(async move { guide })
+    }
+}
+
+/// A frame of a tree as an observer hears it.
+pub type Observer = Rc<dyn Fn(&demi_conversation_lane_protocol::ServerFrame)>;
+
+/// What hears every frame a tree emits, beside the connections attached to
+/// it: the product's own watch of a conversation, such as an integration's
+/// stream of its conversations' changes.
+///
+/// An observer follows every agent and node of the tree, and is no
+/// attachment, so it keeps no idle tree open; it hears the frames of one
+/// opening of the tree, the next asks again.
+pub trait TreeObservers {
+    /// The observer of the tree of the conversation `root`, asked as the tree
+    /// opens; none for a tree no one observes.
+    fn observer<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Option<Observer>>;
+}
+
+/// No tree is observed.
+pub struct NoObservers;
+
+impl TreeObservers for NoObservers {
+    fn observer<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, Option<Observer>> {
+        Box::pin(async { None })
+    }
 }
 
 /// What the product keeps of a conversation's agents: what each has cost and
@@ -283,7 +329,7 @@ impl<H: HostResolver> AgentServer<H> {
     /// `demi shell` groups grafted, whose declarations, such as their
     /// permission categories, the product reads beside its own.
     pub async fn node_commands(self: &Rc<Self>) -> Result<Rc<CommandSet>, String> {
-        let toolset = self.toolset().await?;
+        let toolset = self.toolset(None).await?;
         self.runtime_commands(&toolset.commands, true)
             .map_err(|error| error.to_string())
     }
@@ -293,24 +339,25 @@ impl<H: HostResolver> AgentServer<H> {
     /// commands change, and its system prompt keeps the commands it opened
     /// with.
     pub async fn adopt_toolset(self: &Rc<Self>) -> Result<(), String> {
-        let toolset = self.toolset().await?;
-        let trees: Vec<_> = self.trees.borrow().values().cloned().collect();
-        for tree in trees {
+        let trees: Vec<_> = self.trees.borrow().iter().map(|(root, tree)| (root.clone(), tree.clone())).collect();
+        for (root, tree) in trees {
+            let toolset = self.toolset(Some(&root)).await?;
             tree.adopt_commands(self, &toolset.commands)
                 .map_err(|error| error.to_string())?;
         }
         Ok(())
     }
 
-    /// The product's toolset now: the one a node holds of the product's
-    /// current revision, else the product's, composed once and kept while
-    /// a node holds it. Trees that opened with another keep theirs.
-    async fn toolset(&self) -> Result<Toolset, String> {
-        let revision = self.deps.toolsets.revision().await?;
+    /// The product's toolset now for the conversation `root`, or for its
+    /// user with none: the one a node holds of the product's current
+    /// revision, else the product's, composed once and kept while a node
+    /// holds it. Trees that opened with another keep theirs.
+    pub(crate) async fn toolset(&self, root: Option<&NodeId>) -> Result<Toolset, String> {
+        let revision = self.deps.toolsets.revision(root).await?;
         if let Some(held) = self.command_sets.toolset(&revision) {
             return Ok(held);
         }
-        let composed = self.deps.toolsets.current().await?;
+        let composed = self.deps.toolsets.current(root).await?;
         Ok(self.command_sets.hold_toolset(composed))
     }
 

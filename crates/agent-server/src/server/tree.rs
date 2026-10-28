@@ -180,6 +180,9 @@ pub(crate) struct FrameSink {
     /// follows a transcript it holds at an older version
     /// ([`following::RecentPatches`]).
     recent: RefCell<HashMap<NodeId, following::RecentPatches>>,
+    /// What hears every frame it emits, which no connection is
+    /// (`crate::server::TreeObservers`).
+    observer: RefCell<Option<super::Observer>>,
 }
 
 #[derive(Clone)]
@@ -196,6 +199,7 @@ impl FrameSink {
             attachments: watch::Sender::new(Vec::new()),
             attached: watch::Sender::new(false),
             step: RefCell::default(),
+            observer: RefCell::default(),
             depth: Cell::new(0),
             recent: RefCell::default(),
         }
@@ -279,7 +283,16 @@ impl FrameSink {
 
     /// Sends `frame` to the attached connections `to` picks, as a step of its
     /// own, or as part of the step being delivered.
+    /// Sets what hears every frame the sink emits.
+    pub(crate) fn observe(&self, observer: Option<super::Observer>) {
+        self.observer.replace(observer);
+    }
+
     fn emit_where(&self, to: impl Fn(&Attachment) -> bool, frame: ServerFrame) {
+        let observer = self.observer.borrow().clone();
+        if let Some(observer) = observer {
+            observer(&frame);
+        }
         if self.depth.get() > 0 {
             let mut step = self.step.borrow_mut();
             for attachment in self.attachments.borrow().iter().filter(|attachment| to(attachment)) {
@@ -444,7 +457,7 @@ impl<H: HostResolver> Tree<H> {
         root: &NodeId,
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
-        let toolset = server.toolset().await.map_err(OpenError::Toolset)?;
+        let toolset = server.toolset(Some(root)).await.map_err(OpenError::Toolset)?;
         let inherited = toolset.commands.clone();
         let commands = server.runtime_commands(&inherited, true)?;
         let store = (deps.stores)(root);
@@ -474,6 +487,7 @@ impl<H: HostResolver> Tree<H> {
         });
         let runtime = deps.providers.runtime(root, &model).await?;
         let sink = Rc::new(FrameSink::new());
+        sink.observe(deps.observers.observer(root).await);
         let live = LiveOutput::new(sink.clone(), root.clone());
         let agents = Agents::new(deps.ids.next_id(), sink.clone());
         let assembled = node::assemble(NodeSpec {
@@ -488,7 +502,7 @@ impl<H: HostResolver> Tree<H> {
                 identity: deps.instructions.clone(),
                 added: None,
             },
-            guide: deps.guide.clone(),
+            guide: deps.guides.guide(root).await,
             preamble: None,
             context: deps.context.clone(),
             inherited,

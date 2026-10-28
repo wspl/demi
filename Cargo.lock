@@ -1999,6 +1999,7 @@ dependencies = [
  "jiff",
  "openssl",
  "password-hash",
+ "rand 0.9.5",
  "rusqlite",
  "serde",
  "serde_json",
@@ -2071,6 +2072,7 @@ dependencies = [
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-integration-api-protocol",
  "demi-plugin-host",
  "demi-plugin-interface",
  "demi-provider-common",
@@ -2231,6 +2233,7 @@ dependencies = [
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-integration-api-protocol",
  "demi-machine-manager-protocol",
  "demi-plugin-host",
  "demi-plugin-interface",
@@ -2553,6 +2556,20 @@ dependencies = [
  "tokio",
  "tokio-util",
  "typed-path",
+]
+
+[[package]]
+name = "demi-integration-api-protocol"
+version = "0.1.65"
+dependencies = [
+ "demi-conversation-lane-protocol",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "garde",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_with",
 ]
 
 [[package]]

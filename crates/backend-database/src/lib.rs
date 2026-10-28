@@ -116,6 +116,7 @@ pub mod exposed_ports;
 pub mod host_workflows;
 pub mod forks;
 pub mod instructions;
+pub mod integrations;
 pub mod idle_compactions;
 pub mod interrupted_turns;
 pub mod managed;

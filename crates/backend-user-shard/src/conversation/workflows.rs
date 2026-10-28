@@ -26,6 +26,7 @@
 //!   and spawns fail with that reason until the user picks another, rather than
 //!   quietly spawning with other settings.
 
+use crate::integrations::INTEGRATION_WORKFLOW;
 use demi_agent_tools::{
     ChosenWorkflow, ConversationProfiles, EFFORT_OFF, ListedWorkflow, WORKFLOW_EXTENSION,
     WORKFLOW_FILE_MAX_BYTES, WORKFLOWS_DIRECTORY, Workflow, WorkflowChild, WorkflowListing,
@@ -537,6 +538,21 @@ impl Shard {
         &self,
         id: &ConversationId,
     ) -> Result<ConversationProfiles, String> {
+        // An integration's conversation spawns by the workflow it was made
+        // with, while its integration has subagents on.
+        if let Some((inline, subagents)) = self.integration_workflow(id).await? {
+            return match inline.filter(|_| subagents) {
+                None => Ok(ConversationProfiles::Off),
+                Some(text) => match parse_workflow(&text) {
+                    Ok(workflow) => self.workflow_profiles(INTEGRATION_WORKFLOW.to_owned(), false, &workflow, INTEGRATION_WORKFLOW).await,
+                    Err(error) => Ok(ConversationProfiles::Unavailable {
+                        id: INTEGRATION_WORKFLOW.to_owned(),
+                        worktree: false,
+                        reason: error.reason().to_owned(),
+                    }),
+                },
+            };
+        }
         let (chosen, worktree) = match self.workflow_choice(id).await? {
             WorkflowChoice::Default => return Ok(ConversationProfiles::Settings),
             WorkflowChoice::None => return Ok(ConversationProfiles::Off),
@@ -548,15 +564,27 @@ impl Shard {
         }
         let file = found.get(&chosen).expect("an available workflow is listed");
         let workflow = file.read.as_ref().ok().expect("an available workflow reads");
+        self.workflow_profiles(chosen, worktree, workflow, &file.path).await
+    }
+
+    /// The profiles of `workflow`, the workflow `chosen`, read from `path`,
+    /// as a conversation's spawns use them.
+    async fn workflow_profiles(
+        &self,
+        chosen: String,
+        worktree: bool,
+        workflow: &Workflow,
+        path: &str,
+    ) -> Result<ConversationProfiles, String> {
         let scope = self.scope().await.map_err(|error| error.to_string())?;
         let mut profiles = Vec::with_capacity(workflow.profiles.len());
         for profile in &workflow.profiles {
             let (model, context_limit) = match &profile.model {
                 None => (None, None),
                 Some(model) => {
-                    let chosen = self.workflow_selection(&scope, profile, model, &file.path).await;
+                    let chosen = self.workflow_selection(&scope, profile, model, path).await;
                     match chosen.and_then(|selection| {
-                        let tokens = workflow_context(profile, &selection, &file.path)?;
+                        let tokens = workflow_context(profile, &selection, path)?;
                         Ok((selection, tokens))
                     }) {
                         Ok((selection, tokens)) => (Some(Ok(selection)), tokens),

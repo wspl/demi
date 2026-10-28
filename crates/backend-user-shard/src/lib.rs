@@ -105,6 +105,7 @@
 
 pub mod schedules;
 pub mod conversation;
+pub mod integrations;
 pub mod lifecycle;
 pub mod provider_settings;
 pub mod services;

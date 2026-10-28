@@ -17,7 +17,7 @@ use demi_agent_tools::{
     runs_on as job_model,
 };
 use demi_conversation_lane_protocol::{CacheChart, JobModel};
-use demi_shared_types::{ModelSelection, NodeId, PictureFailure, WorkflowChoice};
+use demi_shared_types::{IntegrationCapabilities, ModelSelection, NodeId, PictureFailure, SKILLS_SOURCE, WorkflowChoice};
 
 use super::runs_on::runs_on;
 use demi_backend_host_access::attachment_commands::attachment_group;
@@ -28,6 +28,7 @@ use crate::shard::provider_commands::providers_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_plugin_host::ContextAsk;
 use demi_runner_client::RemoteHost;
+use demi_agent_server::GuideSource;
 use demi_agent_store::Placement;
 use demi_web_api_protocol::ids::DeviceId;
 use demi_host_interface::{HostError, HostErrorKind};
@@ -48,9 +49,36 @@ use crate::shard::notify_commands::notify_group;
 /// prompt, which a subagent profile's replace.
 pub(crate) const INSTRUCTIONS: &str = "You are Demi, an agent that works for the user on their computers: a Demi Cloud machine or the devices they paired. You write and run software, research, operate websites, and work with files and data, across turns.";
 
-/// The harness guide every node's system prompt carries after its identity,
-/// a profile's node too.
-pub(crate) const HARNESS_GUIDE: &str = "Guidelines:\n- Commands run on the conversation's primary Host, in its working directory; a context block names both. The directory stays between turns, and the work panel shows it.\n- To wait for a command or a subagent, end your turn: its end or its message wakes you.\n- The user reads only your replies, rendered as Markdown. Be concise.\n- Deliver a file as an attachment: `demi attachment upload`, then `<attachment id=\"a3\" />` on its own line; a medium a tool result showed you has its `attachment_id` already.\n- Link what the user can open: a Host file `[runner.md](docs/runner.md#L438)`, a subagent `[File icons](agent:4)`, a commit `[Fix the cart total](commit:3f2a9c1)`, or `commit:src/v8@86229da` in another repository.";
+/// The rules of the runtime every agent reads, in its harness guide: where
+/// its commands run and how it waits.
+const RUNTIME_RULES: &str = "- Commands run on the conversation's primary Host, in its working directory; a context block names both. The directory stays between turns, and the work panel shows it.\n- To wait for a command or a subagent, end your turn: its end or its message wakes you.";
+
+/// What the web app shows of a reply, which an agent of the user's own
+/// conversation reads after the rules: an integration shows replies in its
+/// own way, and says so in its workflow's instructions.
+const DISPLAY_CONVENTIONS: &str = "- The user reads only your replies, rendered as Markdown. Be concise.\n- Deliver a file as an attachment: `demi attachment upload`, then `<attachment id=\"a3\" />` on its own line; a medium a tool result showed you has its `attachment_id` already.\n- Link what the user can open: a Host file `[runner.md](docs/runner.md#L438)`, a subagent `[File icons](agent:4)`, a commit `[Fix the cart total](commit:3f2a9c1)`, or `commit:src/v8@86229da` in another repository.";
+
+/// The harness guide of a conversation's agents: the runtime's rules, and for
+/// the user's own conversation the web app's display conventions.
+pub(crate) struct ShardGuides {
+    pub(crate) shard: Weak<Shard>,
+}
+
+impl GuideSource for ShardGuides {
+    fn guide<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Rc<str>> {
+        Box::pin(async move {
+            let integration = match self.shard.upgrade() {
+                Some(shard) => shard.integration_capabilities(Some(root)).await.ok().flatten().is_some(),
+                None => false,
+            };
+            Rc::from(if integration {
+                format!("Guidelines:\n{RUNTIME_RULES}")
+            } else {
+                format!("Guidelines:\n{RUNTIME_RULES}\n{DISPLAY_CONVENTIONS}")
+            })
+        })
+    }
+}
 
 /// What a conversation's tree opens with: the commands of the plugins the
 /// user has on, with the product's `demi host`, `demi attachment`, `demi
@@ -62,47 +90,118 @@ pub(crate) struct ShardToolsets {
 }
 
 impl ToolsetSource for ShardToolsets {
-    fn revision(&self) -> LocalBoxFuture<'_, Result<Rc<str>, String>> {
+    fn revision<'a>(&'a self, root: Option<&'a NodeId>) -> LocalBoxFuture<'a, Result<Rc<str>, String>> {
         Box::pin(async move {
             let shard = self
                 .shard
                 .upgrade()
                 .ok_or_else(|| "the backend is shutting down".to_owned())?;
-            let revision = shard
-                .plugins()
-                .revision()
-                .await
-                .map_err(|error| error.to_string())?;
+            let revision = match shard.integration_capabilities(root).await? {
+                Some(capabilities) => {
+                    let plugins = shard
+                        .plugins()
+                        .revision_where(|plugin| integration_commands(&capabilities, plugin))
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    format!("integration {} {plugins}", capability_bits(&capabilities))
+                }
+                None => shard.plugins().revision().await.map_err(|error| error.to_string())?,
+            };
             Ok(Rc::from(revision))
         })
     }
 
-    fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>> {
+    fn current<'a>(&'a self, root: Option<&'a NodeId>) -> LocalBoxFuture<'a, Result<Toolset, String>> {
         Box::pin(async move {
             let shard = self
                 .shard
                 .upgrade()
                 .ok_or_else(|| "the backend is shutting down".to_owned())?;
             let hosts: Weak<dyn HostShard> = self.shard.clone();
-            let toolset = shard
-                .plugins()
-                .toolset(vec![
-                    host_group(hosts.clone()),
-                    attachment_group(hosts),
-                    conversation_group(self.shard.clone()),
-                    credentials_group(self.shard.clone()),
-                    schedule_group(self.shard.clone()),
-                    providers_group(self.shard.clone()),
-                    notify_group(self.shard.clone()),
-                ])
-                .await
-                .map_err(|error| error.to_string())?;
-            Ok(Toolset {
-                commands: Rc::new(toolset.commands),
-                revision: Rc::from(toolset.revision),
-            })
+            let toolset = match shard.integration_capabilities(root).await? {
+                // An integration's agents have no Hosts of their own to name,
+                // no credentials, notifications, other conversations or the
+                // user's providers to manage, and the groups and plugins of
+                // their capabilities alone.
+                Some(capabilities) => {
+                    let mut groups = Vec::new();
+                    if capabilities.attachments {
+                        groups.push(attachment_group(hosts));
+                    }
+                    if capabilities.schedules {
+                        groups.push(schedule_group(self.shard.clone()));
+                    }
+                    let toolset = shard
+                        .plugins()
+                        .toolset_where(groups, |plugin| integration_commands(&capabilities, plugin))
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    Toolset {
+                        commands: Rc::new(toolset.commands),
+                        revision: Rc::from(format!("integration {} {}", capability_bits(&capabilities), toolset.revision)),
+                    }
+                }
+                None => {
+                    let toolset = shard
+                        .plugins()
+                        .toolset(vec![
+                            host_group(hosts.clone()),
+                            attachment_group(hosts),
+                            conversation_group(self.shard.clone()),
+                            credentials_group(self.shard.clone()),
+                            schedule_group(self.shard.clone()),
+                            providers_group(self.shard.clone()),
+                            notify_group(self.shard.clone()),
+                        ])
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    Toolset {
+                        commands: Rc::new(toolset.commands),
+                        revision: Rc::from(toolset.revision),
+                    }
+                }
+            };
+            Ok(toolset)
         })
     }
+}
+
+/// Whether an integration with `capabilities` has the plugin `plugin`: the
+/// file plugins always, the others as their capability says.
+pub(crate) fn integration_allows(capabilities: &IntegrationCapabilities, plugin: &str) -> bool {
+    match plugin {
+        plugin if plugin == SKILLS_SOURCE => capabilities.skills,
+        "browser" => capabilities.browser,
+        "web" => capabilities.web,
+        "image" | "video" | "audio" => capabilities.media,
+        "mobile" => capabilities.mobile,
+        _ => true,
+    }
+}
+
+/// Whether an integration with `capabilities` has the commands of the plugin
+/// `plugin`: as [`integration_allows`] says, and never the skills plugin's,
+/// which manage the user's own skill sources; its skills reach the
+/// integration's agents as context.
+fn integration_commands(capabilities: &IntegrationCapabilities, plugin: &str) -> bool {
+    plugin != SKILLS_SOURCE && integration_allows(capabilities, plugin)
+}
+
+/// The capabilities as a revision names them, one digit each in their order.
+fn capability_bits(capabilities: &IntegrationCapabilities) -> String {
+    [
+        capabilities.subagents,
+        capabilities.browser,
+        capabilities.web,
+        capabilities.skills,
+        capabilities.media,
+        capabilities.mobile,
+        capabilities.schedules,
+        capabilities.attachments,
+    ]
+    .iter()
+    .map(|on| if *on { '1' } else { '0' })
+    .collect()
 }
 
 /// The user's subagent settings as the control store holds them now, and
@@ -198,6 +297,15 @@ impl SubagentSource for ShardSubagents {
         })
     }
 
+    fn reaches_user_profiles<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, bool> {
+        Box::pin(async move {
+            match self.shard() {
+                Ok(shard) => shard.integration_capabilities(Some(root)).await.is_ok_and(|capabilities| capabilities.is_none()),
+                Err(_) => false,
+            }
+        })
+    }
+
     fn workflows<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Result<WorkflowListing, String>> {
         Box::pin(async move { self.shard()?.workflow_listing(&conversation_of(root)).await })
     }
@@ -208,9 +316,13 @@ impl SubagentSource for ShardSubagents {
         choice: WorkflowChoice,
     ) -> LocalBoxFuture<'a, Result<(WorkflowChoice, Option<String>), String>> {
         Box::pin(async move {
-            self.shard()?
-                .choose_workflow(&conversation_of(root), choice)
-                .await
+            let shard = self.shard()?;
+            // An integration's conversation spawns by the workflow it was
+            // made with.
+            if shard.integration_capabilities(Some(root)).await?.is_some() {
+                return Err("this conversation's workflow is the one its integration made it with".to_owned());
+            }
+            shard.choose_workflow(&conversation_of(root), choice).await
         })
     }
 
@@ -377,6 +489,13 @@ impl ContextSource for PluginContext {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);
             };
+            // An integration's agents hear the plugins its capabilities
+            // allow.
+            if let Some(capabilities) = shard.integration_capabilities(Some(node.root)).await?
+                && !integration_allows(&capabilities, self.plugin.as_str())
+            {
+                return Ok(None);
+            }
             let conversation = conversation_of(node.root);
             let paths = shard
                 .host_paths(&conversation)

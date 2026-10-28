@@ -50,7 +50,9 @@ fn not_found() -> ApiError {
 }
 
 /// The caller's conversation the path names; one of another user answers
-/// like a missing one, so a request only ever reaches its owner's shard.
+/// like a missing one, so a request only ever reaches its owner's shard. An
+/// integration's conversation answers like a missing one too: only its
+/// integration reaches it (`crates/backend-http/src/integration_edge.rs`).
 pub(super) async fn owned(
     services: &Services,
     user: &UserId,
@@ -63,6 +65,9 @@ pub(super) async fn owned(
         .await?
         .filter(|record| record.owner == *user)
         .ok_or_else(not_found)?;
+    if services.control.integration_conversation(record.id.clone()).await?.is_some() {
+        return Err(not_found());
+    }
     tracing::Span::current().record("conversation_id", tracing::field::display(&record.id));
     Ok(record)
 }

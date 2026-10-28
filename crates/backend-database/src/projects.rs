@@ -186,7 +186,7 @@ impl ControlService {
     ) -> Result<ProjectCreation, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            if !super::workspaces::owns(&transaction, &user, &workspace)? {
+            if !super::workspaces::owns_shown(&transaction, &user, &workspace)? {
                 return Ok(ProjectCreation::WorkspaceNotFound);
             }
             let Some(record) = device_in(&transaction, &device)?.filter(|record| record.user == user) else {

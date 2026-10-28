@@ -113,7 +113,7 @@ use demi_backend_database::conversation_index::ConversationChange;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_agent_store::Placement;
 use demi_shared_types::{Clock, NodeId};
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -162,9 +162,10 @@ pub trait HostShard {
     /// Starts the conversation's idle watch unless one runs, as each Host
     /// admission does (`crates/backend-user-shard/src/lifecycle/mod.rs`).
     fn track_idle(&self, conversation: &ConversationId);
-    /// The Host directories of the user's plugins, which each job installs
-    /// before it starts.
-    fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>>;
+    /// The Host directories of the user's plugins that the Host of `device`
+    /// holds, which each job installs before it starts: an integration's
+    /// Cloud holds those of the plugins its capabilities allow.
+    fn directory_sets<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, Result<DirectorySets, String>>;
     /// What the shard remembers of its Hosts' directories.
     fn plugin_installs(&self) -> &PluginInstalls;
     /// Applies `change` to the conversation through the shard's one entry

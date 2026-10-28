@@ -169,6 +169,9 @@ pub struct Shard {
     /// The turns its conversations' trees work on, and the agents' own
     /// notifications, for the user's push notifications.
     pub(crate) notifications: Notifications,
+    /// The sockets of the user's integrations, which hear their
+    /// conversations' changes.
+    pub(crate) integration_events: crate::integrations::IntegrationEvents,
 }
 
 impl Shard {
@@ -257,6 +260,7 @@ impl Shard {
             retry_resumes: RetryResumes::default(),
             idle_compactions: IdleCompactions::default(),
             notifications: Notifications::default(),
+            integration_events: crate::integrations::IntegrationEvents::default(),
         }
     }
 

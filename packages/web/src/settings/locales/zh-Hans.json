@@ -15,6 +15,12 @@
     "removeFailed": "无法移除转发",
     "retryFailed": "无法重试"
   },
+  "integrations": {
+    "loadFailed": "无法载入集成",
+    "addFailed": "无法添加集成",
+    "saveFailed": "无法更改集成",
+    "replaceFailed": "无法替换令牌"
+  },
   "exposedPorts": {
     "exposeFailed": "无法公开端口",
     "saveFailed": "无法更改已公开的端口",

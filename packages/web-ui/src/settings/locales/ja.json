@@ -171,6 +171,46 @@
       "removeBody": "待ち受けを停止し、開いている接続は終了します。"
     }
   },
+  "integrations": {
+    "title": "インテグレーション",
+    "description": "API を通じて Demi の上に製品を構築するプログラム。それぞれに専用のトークン、Cloud、会話があり、会話はサイドバーに表示されません。",
+    "yours": "あなたのインテグレーション",
+    "add": "インテグレーションを追加",
+    "loading": "インテグレーションを読み込み中…",
+    "none": "インテグレーションはありません",
+    "clouds": "Cloud なし | Cloud 1 台 | Cloud {count} 台",
+    "conversations": "会話なし | 会話 1 件 | 会話 {count} 件",
+    "page": {
+      "name": "名前",
+      "nameProblem": "名前を入力してください。",
+      "token": "トークン",
+      "tokenDescription": "リクエストはこれを Bearer トークンとして送ります。",
+      "tokenNew": "このトークンを今すぐコピーしてください。もう一度表示することはできません。",
+      "tokenHidden": "非表示",
+      "replace": "トークンを置き換える…",
+      "replaceTitle": "このインテグレーションのトークンを置き換えますか？",
+      "replaceBody": "現在のトークンを使ったリクエストはすぐに使えなくなります。",
+      "replaceConfirm": "トークンを置き換える",
+      "capabilities": "機能",
+      "capabilitiesDescription": "エージェントにできること。認証情報、通知、Host、ほかの会話は使えません。",
+      "subagents": "サブエージェント",
+      "subagentsDescription": "エージェントがサブエージェントを起動します。",
+      "browser": "ブラウザ",
+      "browserDescription": "各 Cloud のブラウザ。",
+      "web": "Web 検索",
+      "webDescription": "Web を検索してページを読みます。",
+      "skills": "スキル",
+      "skillsDescription": "オンにしているスキル。",
+      "media": "画像、ビデオ、オーディオ",
+      "mediaDescription": "あなたのモデルでメディアを作成します。",
+      "mobile": "シミュレータとエミュレータ",
+      "mobileDescription": "iOS シミュレータと Android エミュレータ。",
+      "schedules": "スケジュール",
+      "schedulesDescription": "指定した時刻や変化があったときに会話を再開します。",
+      "attachments": "添付ファイル",
+      "attachmentsDescription": "返信にファイルを添付します。"
+    }
+  },
   "keyboard": {
     "title": "キーボード",
     "description": "「変更」をクリックして、新しいキーを押します。",
@@ -389,6 +429,9 @@
     },
     "updates": {
       "keywords": "アップデート,更新,バージョン,リリース,canary,beta,ベータ"
+    },
+    "integrations": {
+      "keywords": "インテグレーション,API,トークン,ボット,アプリ,プログラム,cloud,integration"
     }
   },
   "changeEmail": {

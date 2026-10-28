@@ -34,6 +34,7 @@ pub mod files;
 pub mod hosts;
 pub mod ids;
 pub mod instructions;
+pub mod integrations;
 pub mod panel;
 pub mod passkeys;
 pub mod permissions;

@@ -54,6 +54,8 @@ mod html_view;
 mod hosts;
 mod install;
 mod instructions;
+mod integration_edge;
+mod integrations;
 mod listener;
 mod models;
 mod oauth;
@@ -570,6 +572,9 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/schedules/{schedule}",
             patch(schedules::change).delete(schedules::delete),
         )
+        .route("/integrations", get(integrations::list).post(integrations::create))
+        .route("/integrations/{id}", patch(integrations::patch))
+        .route("/integrations/{id}/token", post(integrations::replace_token))
         .route("/port-forwards", get(port_forwards::list).post(port_forwards::create))
         .route(
             "/port-forwards/{id}",
@@ -675,6 +680,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
     let app = Router::new()
         .merge(runners_and_downloads())
         .merge(hooks())
+        .merge(integration_edge::routes())
         .merge(web_app_routes);
     let app = match web_directory {
         Some(directory) => assets::serve(app, directory, state.services.public_url.clone()),

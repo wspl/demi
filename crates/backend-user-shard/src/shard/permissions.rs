@@ -41,6 +41,16 @@ impl PermissionShard for Shard {
         &self.permission_revisions
     }
 
+    fn allows_all<'a>(&'a self, conversation: &'a ConversationId) -> LocalBoxFuture<'a, bool> {
+        Box::pin(async move {
+            self.services()
+                .control
+                .integration_conversation(conversation.clone())
+                .await
+                .is_ok_and(|kept| kept.is_some())
+        })
+    }
+
     fn categories(&self) -> LocalBoxFuture<'_, Result<Vec<Category>, String>> {
         Box::pin(async move {
             // The agent runtime's groups declare categories of their own.

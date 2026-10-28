@@ -171,6 +171,46 @@
       "removeBody": "It stops listening, and its open connections end."
     }
   },
+  "integrations": {
+    "title": "Integrations",
+    "description": "Programs that build on Demi through its API. Each has its own token, Clouds and conversations, which no sidebar shows.",
+    "yours": "Your Integrations",
+    "add": "Add Integration",
+    "loading": "Loading integrations…",
+    "none": "No integrations",
+    "clouds": "No Clouds | 1 Cloud | {count} Clouds",
+    "conversations": "no conversations | 1 conversation | {count} conversations",
+    "page": {
+      "name": "Name",
+      "nameProblem": "Enter a name.",
+      "token": "Token",
+      "tokenDescription": "Requests send it as a bearer token.",
+      "tokenNew": "Copy this token now. You won’t see it again.",
+      "tokenHidden": "Hidden",
+      "replace": "Replace Token…",
+      "replaceTitle": "Replace this integration’s token?",
+      "replaceBody": "Requests with the current token stop working at once.",
+      "replaceConfirm": "Replace Token",
+      "capabilities": "Capabilities",
+      "capabilitiesDescription": "What its agents may do. Credentials, notifications, Hosts and other conversations are never theirs.",
+      "subagents": "Subagents",
+      "subagentsDescription": "Agents start subagents.",
+      "browser": "Browser",
+      "browserDescription": "A browser on each Cloud.",
+      "web": "Web Search",
+      "webDescription": "Search the web and read pages.",
+      "skills": "Skills",
+      "skillsDescription": "The skills you have on.",
+      "media": "Images, Video and Audio",
+      "mediaDescription": "Make media with your models.",
+      "mobile": "Simulators and Emulators",
+      "mobileDescription": "iOS simulators and Android emulators.",
+      "schedules": "Schedules",
+      "schedulesDescription": "Wake a conversation at a time or on a change.",
+      "attachments": "Attachments",
+      "attachmentsDescription": "Attach files to replies."
+    }
+  },
   "keyboard": {
     "title": "Keyboard",
     "description": "Click Change, then press the new keys.",
@@ -389,6 +429,9 @@
     },
     "updates": {
       "keywords": "update,upgrade,version,release,canary,beta"
+    },
+    "integrations": {
+      "keywords": "integration,API,token,bot,app,program,cloud"
     }
   },
   "changeEmail": {

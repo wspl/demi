@@ -171,6 +171,46 @@
       "removeBody": "수신을 멈추고 열린 연결이 종료됩니다."
     }
   },
+  "integrations": {
+    "title": "통합",
+    "description": "API를 통해 Demi 위에 제품을 만드는 프로그램입니다. 각 통합에는 자체 토큰, Cloud, 대화가 있으며 대화는 사이드바에 표시되지 않습니다.",
+    "yours": "내 통합",
+    "add": "통합 추가",
+    "loading": "통합을 불러오는 중…",
+    "none": "통합 없음",
+    "clouds": "Cloud 없음 | Cloud 1개 | Cloud {count}개",
+    "conversations": "대화 없음 | 대화 1개 | 대화 {count}개",
+    "page": {
+      "name": "이름",
+      "nameProblem": "이름을 입력하십시오.",
+      "token": "토큰",
+      "tokenDescription": "요청은 이 토큰을 Bearer 토큰으로 보냅니다.",
+      "tokenNew": "지금 이 토큰을 복사하십시오. 다시 볼 수 없습니다.",
+      "tokenHidden": "숨겨짐",
+      "replace": "토큰 교체…",
+      "replaceTitle": "이 통합의 토큰을 교체하겠습니까?",
+      "replaceBody": "현재 토큰을 사용하는 요청은 즉시 작동하지 않습니다.",
+      "replaceConfirm": "토큰 교체",
+      "capabilities": "기능",
+      "capabilitiesDescription": "에이전트가 할 수 있는 일입니다. 자격 증명, 알림, Host, 다른 대화는 사용할 수 없습니다.",
+      "subagents": "하위 에이전트",
+      "subagentsDescription": "에이전트가 하위 에이전트를 시작합니다.",
+      "browser": "브라우저",
+      "browserDescription": "각 Cloud의 브라우저입니다.",
+      "web": "웹 검색",
+      "webDescription": "웹을 검색하고 페이지를 읽습니다.",
+      "skills": "스킬",
+      "skillsDescription": "켜 둔 스킬입니다.",
+      "media": "이미지, 비디오 및 오디오",
+      "mediaDescription": "내 모델로 미디어를 만듭니다.",
+      "mobile": "시뮬레이터 및 에뮬레이터",
+      "mobileDescription": "iOS 시뮬레이터와 Android 에뮬레이터입니다.",
+      "schedules": "일정",
+      "schedulesDescription": "지정한 시간이나 변화가 있을 때 대화를 깨웁니다.",
+      "attachments": "첨부 파일",
+      "attachmentsDescription": "답장에 파일을 첨부합니다."
+    }
+  },
   "keyboard": {
     "title": "키보드",
     "description": "변경을 클릭한 다음 새 키를 누르십시오.",
@@ -389,6 +429,9 @@
     },
     "updates": {
       "keywords": "업데이트,업그레이드,버전,릴리스,canary,beta,베타"
+    },
+    "integrations": {
+      "keywords": "통합,API,토큰,봇,앱,프로그램,cloud,integration"
     }
   },
   "changeEmail": {

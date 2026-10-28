@@ -288,8 +288,8 @@ impl Shard {
     async fn index_everything(&self) -> Result<(), StorageError> {
         let services = self.services();
         let user = self.user();
-        let mut records = services.control.conversations(user.clone(), false).await?;
-        records.extend(services.control.conversations(user.clone(), true).await?);
+        let mut records = services.control.shown_conversations(user.clone(), false).await?;
+        records.extend(services.control.shown_conversations(user.clone(), true).await?);
         records.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         // The index holds each conversation under its record's spelling.
         let present: HashSet<ConversationId> =
@@ -397,7 +397,7 @@ pub async fn search(
     // The index holds each conversation under its record's spelling.
     let mut records: Vec<ConversationRecord> = Vec::new();
     for archived in [false, true] {
-        records.extend(services.control.conversations(user.clone(), archived).await?);
+        records.extend(services.control.shown_conversations(user.clone(), archived).await?);
     }
     records.retain(|record| workspace.is_none_or(|workspace| record.workspace == *workspace));
     records.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then_with(|| a.id.cmp(&b.id)));

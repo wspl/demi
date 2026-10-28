@@ -15,7 +15,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_server::instructions::{self, NONE_LEFT, ProjectFile, WorkflowText, render};
-use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext, WORKFLOW_EXTENSION};
+use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext, WORKFLOW_EXTENSION, Workflow, parse_workflow};
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::kept::Found;
 use demi_backend_host_access::plugin_files::ReadFilesError;
@@ -26,6 +26,7 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use super::project_files::KeptWorkflows;
+use crate::integrations::INTEGRATION_WORKFLOW;
 use crate::shard::Shard;
 
 /// The product's instructions source, asked after the execution context.
@@ -65,6 +66,12 @@ async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str, w
     }
     let file = file.expect("an available workflow is listed");
     let workflow = file.read.as_ref().ok().expect("an available workflow reads");
+    Some(workflow_element(workflow, file.path.clone()))
+}
+
+/// The workflow element of the root's instructions block: the workflow's
+/// own instructions, then the profiles it may spawn by, read from `path`.
+fn workflow_element(workflow: &Workflow, path: String) -> WorkflowText {
     let mut text = workflow
         .instructions
         .as_deref()
@@ -80,10 +87,36 @@ async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str, w
             text.push_str(&format!("\n- {}: {}", profile.id, profile.description));
         }
     }
-    Some(WorkflowText {
+    WorkflowText {
         name: workflow.name.clone(),
-        path: file.path.clone(),
+        path,
         text,
+    }
+}
+
+/// The instructions block of a node of an integration's conversation: its
+/// workflow's element for the root, and nothing of the Host's files or the
+/// user's own instructions, which are no integration's.
+///
+/// With `subagents` off, the main agent keeps the workflow's instructions and
+/// spawns by none of its profiles.
+fn integration_element(node: &NodeContext<'_>, workflow: Option<String>, subagents: bool) -> Option<WorkflowText> {
+    if node.node != node.root {
+        return None;
+    }
+    let text = workflow?;
+    Some(match parse_workflow(&text) {
+        Ok(mut workflow) => {
+            if !subagents {
+                workflow.profiles.clear();
+            }
+            workflow_element(&workflow, INTEGRATION_WORKFLOW.to_owned())
+        }
+        Err(error) => WorkflowText {
+            name: INTEGRATION_WORKFLOW.to_owned(),
+            path: INTEGRATION_WORKFLOW.to_owned(),
+            text: format!("You can spawn no subagents while this workflow cannot be used: {}.", error.reason()),
+        },
     })
 }
 
@@ -102,6 +135,16 @@ impl ContextSource for Instructions {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);
             };
+            let conversation = conversation_of(node.root);
+            if let Some((workflow, subagents)) = shard.integration_workflow(&conversation).await? {
+                let element = integration_element(&node, workflow, subagents);
+                let answer = match render("", &[], element.as_ref()) {
+                    Some(answer) => answer,
+                    None if seen.last().is_some_and(|newest| *newest != NONE_LEFT) => ContextAnswer::from(NONE_LEFT.to_owned()),
+                    None => return Ok(None),
+                };
+                return Ok((seen.last() != Some(&answer.text.as_str())).then_some(answer));
+            }
             let personal = shard
                 .services()
                 .control

@@ -171,6 +171,46 @@
       "removeBody": "它会停止监听，已打开的连接将结束。"
     }
   },
+  "integrations": {
+    "title": "集成",
+    "description": "通过 API 在 Demi 上构建产品的程序。每个集成有自己的令牌、Cloud 和对话，这些对话不会出现在侧边栏中。",
+    "yours": "你的集成",
+    "add": "添加集成",
+    "loading": "正在载入集成…",
+    "none": "没有集成",
+    "clouds": "没有 Cloud | 1 个 Cloud | {count} 个 Cloud",
+    "conversations": "没有对话 | 1 个对话 | {count} 个对话",
+    "page": {
+      "name": "名称",
+      "nameProblem": "请输入名称。",
+      "token": "令牌",
+      "tokenDescription": "请求以 Bearer 令牌的形式发送它。",
+      "tokenNew": "请现在拷贝此令牌，之后将无法再次查看。",
+      "tokenHidden": "已隐藏",
+      "replace": "替换令牌…",
+      "replaceTitle": "要替换此集成的令牌吗？",
+      "replaceBody": "使用当前令牌的请求将立即失效。",
+      "replaceConfirm": "替换令牌",
+      "capabilities": "能力",
+      "capabilitiesDescription": "它的 Agent 可以做什么。凭据、通知、Host 和其他对话始终不对它开放。",
+      "subagents": "子 Agent",
+      "subagentsDescription": "Agent 可以启动子 Agent。",
+      "browser": "浏览器",
+      "browserDescription": "每个 Cloud 上的浏览器。",
+      "web": "网页搜索",
+      "webDescription": "搜索网页并读取页面。",
+      "skills": "技能",
+      "skillsDescription": "你开启的技能。",
+      "media": "图像、视频和音频",
+      "mediaDescription": "用你的模型生成媒体。",
+      "mobile": "模拟器",
+      "mobileDescription": "iOS 模拟器和 Android 模拟器。",
+      "schedules": "定时任务",
+      "schedulesDescription": "在指定时间或发生变化时唤醒对话。",
+      "attachments": "附件",
+      "attachmentsDescription": "在回复中附加文件。"
+    }
+  },
   "keyboard": {
     "title": "键盘",
     "description": "点击“更改”，然后按下新的按键。",
@@ -389,6 +429,9 @@
     },
     "updates": {
       "keywords": "更新,升级,版本,发布,canary,beta"
+    },
+    "integrations": {
+      "keywords": "集成,API,令牌,机器人,应用,程序,cloud,integration"
     }
   },
   "changeEmail": {

@@ -45,6 +45,7 @@ import DevicesPanel from './DevicesPanel.vue'
 import WorkspacesPanel from './WorkspacesPanel.vue'
 import { useWorkspaces } from '../state/workspaces'
 import PortForwardsPanel from './PortForwardsPanel.vue'
+import IntegrationsPanel from './IntegrationsPanel.vue'
 import { useSettingsAddress } from './address'
 import { CODE_CORRECTIONS, EMAIL_CORRECTIONS, PASSWORD_CORRECTIONS } from './corrections'
 import { usePluginSettings } from './plugins'
@@ -472,6 +473,7 @@ function resetShortcuts(): void {
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />
     <PortForwardsPanel v-else-if="section === 'portForwards'" />
+    <IntegrationsPanel v-else-if="section === 'integrations'" />
     <UsersPanel v-else-if="section === 'users' && product.snapshot?.user?.role !== 'user'" />
     <CredentialsPanel v-else-if="section === 'credentials'" />
     <InstructionsPanel v-else-if="section === 'instructions'" />

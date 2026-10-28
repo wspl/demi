@@ -58,6 +58,12 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
+    /// An integration's id, which the backend assigns
+    /// (`crates/backend-user-shard/src/integrations.rs`).
+    IntegrationId
+);
+
+demi_shared_types::id!(
     /// A subagent profile's id, which the backend assigns and the profile's
     /// name can change under.
     ProfileId

@@ -200,7 +200,7 @@ impl dyn HostShard + '_ {
             return Ok(());
         };
         let sets = self
-            .directory_sets()
+            .directory_sets(device)
             .await
             .map_err(|error| HostError::failed(None, error))?;
         let workspace = self

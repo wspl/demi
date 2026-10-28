@@ -5,6 +5,7 @@
 //! sizes and the image, and the page shows what it last said.
 
 use demi_backend_database::StorageError;
+use demi_backend_database::devices::DeviceRecord;
 use demi_backend_database::managed::ManagedOperation;
 use demi_machine_manager_protocol::DeviceId;
 use demi_web_api_protocol::cloud::{
@@ -47,6 +48,14 @@ impl dyn CloudShard {
             volumes,
             newer_image,
         })
+    }
+}
+
+impl dyn CloudShard {
+    /// The state of the user's Cloud `device` as the shard knows it, read
+    /// without waking it.
+    pub async fn machine_state(&self, device: &DeviceRecord) -> Result<CloudState, StorageError> {
+        Ok(self.cloud_machine(device).await?.state())
     }
 }
 

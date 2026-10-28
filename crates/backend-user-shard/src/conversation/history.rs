@@ -220,9 +220,21 @@ impl Reader {
             }
             (other, agent) => {
                 let conversation = match other {
-                    // Another user's conversation is none of the caller's.
+                    // Another user's conversation, or an integration's, is
+                    // none of the caller's.
                     Some(id) => match shard.services().control.conversation(id.clone()).await.map_err(failed)? {
-                        Some(record) if record.owner == *shard.user() => record.id,
+                        Some(record)
+                            if record.owner == *shard.user()
+                                && shard
+                                    .services()
+                                    .control
+                                    .integration_conversation(record.id.clone())
+                                    .await
+                                    .map_err(failed)?
+                                    .is_none() =>
+                        {
+                            record.id
+                        }
                         _ => return Err(no_transcript()),
                     },
                     None => here,

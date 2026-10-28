@@ -15,6 +15,12 @@
     "removeFailed": "転送を削除できませんでした",
     "retryFailed": "再試行できませんでした"
   },
+  "integrations": {
+    "loadFailed": "インテグレーションを読み込めませんでした",
+    "addFailed": "インテグレーションを追加できませんでした",
+    "saveFailed": "インテグレーションを変更できませんでした",
+    "replaceFailed": "トークンを置き換えられませんでした"
+  },
   "exposedPorts": {
     "exposeFailed": "ポートを公開できませんでした",
     "saveFailed": "公開ポートを変更できませんでした",

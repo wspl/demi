@@ -182,8 +182,14 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     let target = call.args.conversation;
     let control = &shard.services().control;
     let recipient = match control.conversation(target.clone()).await.map_err(failed)? {
-        Some(record) if record.owner == *shard.user() => record,
-        // Another user's conversation is none of the caller's.
+        Some(record)
+            if record.owner == *shard.user()
+                && control.integration_conversation(record.id.clone()).await.map_err(failed)?.is_none() =>
+        {
+            record
+        }
+        // Another user's conversation, or an integration's, is none of the
+        // caller's.
         _ => return Err(failed(format!("no conversation {target} (see `demi conversation list`)"))),
     };
     if recipient.id == here {
@@ -323,7 +329,7 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     // Whether the app's Search stopped at its most: more may match.
     let mut capped = false;
     let mut records = if words.trim().is_empty() {
-        services.control.conversations(shard.user().clone(), false).await.map_err(failed)?
+        services.control.shown_conversations(shard.user().clone(), false).await.map_err(failed)?
     } else {
         let query = SearchText::try_from(words).map_err(|error| refused(error))?;
         let mut records = Vec::new();

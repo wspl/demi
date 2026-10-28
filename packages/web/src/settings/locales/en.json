@@ -15,6 +15,12 @@
     "removeFailed": "Could Not Remove the Forward",
     "retryFailed": "Could Not Try Again"
   },
+  "integrations": {
+    "loadFailed": "Could Not Load Integrations",
+    "addFailed": "Could Not Add the Integration",
+    "saveFailed": "Could Not Change the Integration",
+    "replaceFailed": "Could Not Replace the Token"
+  },
   "exposedPorts": {
     "exposeFailed": "Could Not Expose the Port",
     "saveFailed": "Could Not Change the Exposed Port",

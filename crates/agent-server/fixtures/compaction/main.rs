@@ -501,7 +501,7 @@ impl Conversation {
                 profiles: Vec::new(),
             }),
             instructions: Rc::from(SYSTEM_PROMPT),
-            guide: Rc::from(""),
+            guides: Rc::new(Rc::<str>::from("")),
             hosts: Rc::new(NoHosts),
             context: Rc::new([]),
             providers: deepseek,
@@ -516,6 +516,7 @@ impl Conversation {
             idle_compaction_due: Rc::new(|_, _| {}),
             agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
             reply_files: Rc::new(demi_agent_server::testing::NoHostFiles),
+            observers: Rc::new(demi_agent_server::NoObservers),
         });
         let client = open_client(&server, &root).await;
         Ok(Self {

@@ -42,7 +42,7 @@ impl Shard {
     ) -> Result<Vec<ConversationSummary>, StorageError> {
         let control = &self.services().control;
         let (records, mut panels) = futures_util::future::try_join(
-            control.conversations(self.user().clone(), archived),
+            control.shown_conversations(self.user().clone(), archived),
             control.panels(self.user().clone(), archived),
         )
         .await?;

@@ -929,7 +929,7 @@ pub(crate) fn cloud_device_in(connection: &Connection, user: &UserId, now: Times
 }
 
 /// Makes a Cloud device of the user's now, which boots on its first use.
-fn insert_cloud(connection: &Connection, user: &UserId, now: Timestamp) -> Result<DeviceRecord, StorageError> {
+pub(crate) fn insert_cloud(connection: &Connection, user: &UserId, now: Timestamp) -> Result<DeviceRecord, StorageError> {
     let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
     connection.execute(
         "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at, machine)

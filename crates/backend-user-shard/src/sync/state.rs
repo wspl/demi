@@ -155,7 +155,7 @@ impl Shard {
                 }
             }
             Part::ConversationOrder => SyncEvent::ConversationOrder {
-                ids: control.conversation_order(self.user().clone()).await?,
+                ids: control.shown_conversation_order(self.user().clone()).await?,
             },
             Part::Instance => SyncEvent::Instance {
                 mode: self.services().vault.mode(),

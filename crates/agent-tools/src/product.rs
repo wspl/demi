@@ -31,28 +31,30 @@ pub struct Toolset {
     pub revision: Rc<str>,
 }
 
-/// Where a tree that opens takes its toolset from: the product's current one,
-/// which may change while the server runs.
+/// Where a tree that opens takes its toolset from: the product's current one
+/// for the conversation `root`, which may change while the server runs; with
+/// no root, the product's for its user.
 ///
 /// The server composes a revision once and every node holds that one set, so it
 /// asks for the revision first and for the commands only when it holds none of
-/// that revision.
+/// that revision. Two conversations whose toolsets differ, such as an
+/// integration's and the user's own, have different revisions.
 pub trait ToolsetSource {
     /// The revision of the toolset [`current`](Self::current) would give
     /// now, read without composing it.
-    fn revision(&self) -> LocalBoxFuture<'_, Result<Rc<str>, String>>;
+    fn revision<'a>(&'a self, root: Option<&'a NodeId>) -> LocalBoxFuture<'a, Result<Rc<str>, String>>;
     /// The toolset the product gives now, composed afresh.
-    fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>>;
+    fn current<'a>(&'a self, root: Option<&'a NodeId>) -> LocalBoxFuture<'a, Result<Toolset, String>>;
 }
 
 /// A toolset that never changes.
 impl ToolsetSource for Toolset {
-    fn revision(&self) -> LocalBoxFuture<'_, Result<Rc<str>, String>> {
+    fn revision<'a>(&'a self, _root: Option<&'a NodeId>) -> LocalBoxFuture<'a, Result<Rc<str>, String>> {
         let revision = self.revision.clone();
         Box::pin(async move { Ok(revision) })
     }
 
-    fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>> {
+    fn current<'a>(&'a self, _root: Option<&'a NodeId>) -> LocalBoxFuture<'a, Result<Toolset, String>> {
         let toolset = self.clone();
         Box::pin(async move { Ok(toolset) })
     }
@@ -349,6 +351,14 @@ pub trait SubagentSource {
     /// Deletes the profile `name`, or answers why it was not.
     fn delete_profile<'a>(&'a self, _name: &'a str) -> LocalBoxFuture<'a, Result<(), String>> {
         Box::pin(async { Err(FIXED.to_owned()) })
+    }
+
+    /// Whether the agents of the conversation `root` reach the user's own
+    /// profiles: show, create, edit and delete them, and resume by them
+    /// where the conversation has none of its own. By default they do; an
+    /// integration's do not, as the user's profiles are the user's.
+    fn reaches_user_profiles<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, bool> {
+        Box::pin(async { true })
     }
 
     /// The profiles the spawns of the conversation `root` use now, from its

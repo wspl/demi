@@ -35,6 +35,7 @@ demi-provider-registry = { path = "../provider-registry" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
+demi-integration-api-protocol = { path = "../integration-api-protocol" }
 axum = { version = "0.8", features = ["ws"] }
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 bytes.workspace = true

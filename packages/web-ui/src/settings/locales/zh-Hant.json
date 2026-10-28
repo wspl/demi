@@ -171,6 +171,46 @@
       "removeBody": "它會停止監聽，開啟中的連線將結束。"
     }
   },
+  "integrations": {
+    "title": "整合",
+    "description": "透過 API 在 Demi 上打造產品的程式。每個整合有自己的權杖、Cloud 和對話，這些對話不會出現在側邊欄中。",
+    "yours": "你的整合",
+    "add": "加入整合",
+    "loading": "正在載入整合…",
+    "none": "沒有整合",
+    "clouds": "沒有 Cloud | 1 個 Cloud | {count} 個 Cloud",
+    "conversations": "沒有對話 | 1 則對話 | {count} 則對話",
+    "page": {
+      "name": "名稱",
+      "nameProblem": "請輸入名稱。",
+      "token": "權杖",
+      "tokenDescription": "請求以 Bearer 權杖的形式傳送它。",
+      "tokenNew": "請現在拷貝此權杖，之後將無法再次查看。",
+      "tokenHidden": "已隱藏",
+      "replace": "替換權杖…",
+      "replaceTitle": "要替換此整合的權杖嗎？",
+      "replaceBody": "使用目前權杖的請求將立即失效。",
+      "replaceConfirm": "替換權杖",
+      "capabilities": "能力",
+      "capabilitiesDescription": "它的智慧體可以做什麼。憑證、通知、Host 和其他對話一律不對它開放。",
+      "subagents": "子智慧體",
+      "subagentsDescription": "智慧體可以啟動子智慧體。",
+      "browser": "瀏覽器",
+      "browserDescription": "每個 Cloud 上的瀏覽器。",
+      "web": "網頁搜尋",
+      "webDescription": "搜尋網頁並讀取頁面。",
+      "skills": "技能",
+      "skillsDescription": "你開啟的技能。",
+      "media": "影像、影片和音訊",
+      "mediaDescription": "用你的模型產生媒體。",
+      "mobile": "模擬器",
+      "mobileDescription": "iOS 模擬器和 Android 模擬器。",
+      "schedules": "排程",
+      "schedulesDescription": "在指定時間或發生變化時喚醒對話。",
+      "attachments": "附件",
+      "attachmentsDescription": "在回覆中附加檔案。"
+    }
+  },
   "keyboard": {
     "title": "鍵盤",
     "description": "按一下「變更」，然後按下新的按鍵。",
@@ -389,6 +429,9 @@
     },
     "updates": {
       "keywords": "更新,升級,版本,發布,canary,beta"
+    },
+    "integrations": {
+      "keywords": "整合,API,權杖,機器人,應用程式,程式,cloud,integration"
     }
   },
   "changeEmail": {

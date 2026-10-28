@@ -24,6 +24,9 @@ use demi_conversation_lane_protocol::{PAGE_BLOCKS, STORED_EPOCH, Version, index_
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
+use demi_backend_database::conversation_index::ConversationRecord;
+use demi_web_api_protocol::ids::UserId;
+use demi_web_api_protocol::query::StrictBool;
 
 use super::AppState;
 use super::conversations::owned;
@@ -41,9 +44,39 @@ pub(super) async fn transcript(
     Path((id, node)): Path<(String, String)>,
     QueryParams(query): QueryParams<TranscriptQuery>,
 ) -> Result<Json<TranscriptPage>, ApiError> {
-    let services = &state.services;
-    let record = owned(services, &user.id, &id).await?;
     let node = NodeId::try_from(node).map_err(|_| no_node())?;
+    let record = owned(&state.services, &user.id, &id).await?;
+    read_transcript(&state, &user.id, record, node, query).await.map(Json)
+}
+
+/// The latest page of the transcript of the agent `node` of `user`'s
+/// conversation `record`, as the web app's latest read answers it: what an
+/// integration's transcript route answers too
+/// (`crates/backend-http/src/integration_edge.rs`), which checked whose the
+/// conversation is.
+pub(super) async fn latest_page(
+    state: &AppState,
+    user: &UserId,
+    record: ConversationRecord,
+    node: NodeId,
+) -> Result<TranscriptPage, ApiError> {
+    let query = TranscriptQuery {
+        latest: StrictBool(true),
+        ..TranscriptQuery::default()
+    };
+    read_transcript(state, user, record, node, query).await
+}
+
+/// A page of the transcript of the agent `node` of `user`'s conversation
+/// `record`, as `query` asks.
+async fn read_transcript(
+    state: &AppState,
+    user: &UserId,
+    record: ConversationRecord,
+    node: NodeId,
+    query: TranscriptQuery,
+) -> Result<TranscriptPage, ApiError> {
+    let services = &state.services;
     let latest = query.latest.0;
     let count = match query.blocks.map(usize::try_from) {
         None => PAGE_BLOCKS,
@@ -61,7 +94,7 @@ pub(super) async fn transcript(
         let wanted = node.clone();
         state
             .shards
-            .of(&user.id)
+            .of(user)
             .call(move |shard, _| async move {
                 shard
                     .live_transcript(&conversation, &wanted, count)
@@ -116,7 +149,7 @@ pub(super) async fn transcript(
                 let wanted = node.clone();
                 let (commands, cache_chart) = state
                     .shards
-                    .of(&user.id)
+                    .of(user)
                     .call(move |shard, _| async move {
                         let commands = shard.stopping_commands(&conversation, &wanted);
                         let chart = shard.cache_chart(&conversation, &wanted).await;
@@ -132,7 +165,7 @@ pub(super) async fn transcript(
         }
     };
     // Error blocks come whole, so their facts read as the stream's.
-    page.failures = failure_facts(&services.vault, &services.provider_registry, &user.id, &page.blocks).await;
+    page.failures = failure_facts(&services.vault, &services.provider_registry, user, &page.blocks).await;
     page.attachments = attachment_facts(&services.conversations, &record.id, reply_blocks(&page.blocks))
         .await
         .map_err(ApiError::conversation_unreadable)?;
@@ -146,7 +179,7 @@ pub(super) async fn transcript(
         revision = page.version.as_ref().map(|version| version.revision),
         "a page of a transcript was read"
     );
-    Ok(Json(page))
+    Ok(page)
 }
 
 /// The version of a transcript read from the store: an epoch no live
