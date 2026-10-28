@@ -116,8 +116,11 @@ import type { TitleText } from '../ui/ui-text'
  *
  * A subscription with several accounts offers its rotation and orders its
  * accounts by dragging. Adding its second account and choosing In Order or
- * Balanced first warn, once, that several personal subscriptions may be against
- * the vendor's terms (`crates/provider-registry/src/rotation.rs`).
+ * Balanced first warn, once, that several accounts or their rotation may
+ * violate the provider's terms, at the user's own risk
+ * (`crates/provider-registry/src/rotation.rs`).
+ *
+ * The list has no Subscriptions group while the instance offers none.
  */
 /** Each rotation's mark: the one by hand, the one down the list, the one weighed by room. */
 const ROTATION_ICONS: Record<SettingsRotation, Component> = { manual: Hand, in_order: ListOrdered, balanced: Scale }
@@ -858,6 +861,7 @@ function endpointCheck(value: string) {
       >
         <template #list>
           <div
+            v-if="subscriptions.length"
             class="select-none px-1 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
           >
             {{ t('providers.subscriptions') }}

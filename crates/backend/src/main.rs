@@ -141,7 +141,7 @@ async fn run(
             None
         }
     };
-    let served = serve(&config, settings, &release, &mut stop, started, open_files_limit).await;
+    let served = serve(settings, &release, &mut stop, started, open_files_limit).await;
     log.close().await;
     served
 }
@@ -176,7 +176,6 @@ async fn update_screen(config: &Config, settings: &BackendConfig, record: &Path,
 
 /// Starts the backend and serves until a stop signal, then shuts it down.
 async fn serve(
-    config: &Config,
     mut settings: BackendConfig,
     release: &Path,
     stop: &mut StopSignals,
@@ -202,7 +201,7 @@ async fn serve(
     tracing::info!(
         event = "backend.started",
         version = env!("CARGO_PKG_VERSION"),
-        mode = %config.mode,
+        mode = %backend.instance_mode(),
         address = %backend.local_addr(),
         data_dir = %data.display(),
         previous_exit,

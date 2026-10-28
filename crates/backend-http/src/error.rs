@@ -468,6 +468,7 @@ impl From<LoginRefusal> for ApiError {
             LoginRefusal::NoLoginFlow(_) => {
                 Self::new(StatusCode::BAD_REQUEST, ErrorCode::NoLoginFlow, message)
             }
+            LoginRefusal::NotOffered => Self::forbidden(message),
             LoginRefusal::Exists(_) => {
                 Self::new(StatusCode::CONFLICT, ErrorCode::ProviderExists, message)
             }

@@ -28,8 +28,8 @@
 //!
 //! # Defaults
 //!
-//! `DEMI_INSTANCE_MODE` and `DEMI_BACKEND_PUBLIC_URL` have no default: whoever
-//! deploys decides them, and nothing chooses for them.
+//! `DEMI_BACKEND_PUBLIC_URL` has no default: whoever deploys decides it, and
+//! nothing chooses for them.
 //!
 //! A server leaves `DEMI_RELEASE` out, so that the backend and the machine
 //! manager run the release of their own executables: the directory above the
@@ -65,7 +65,6 @@ use demi_backend_database::server_log::ServerLog;
 use demi_web_api_protocol::devices::{NotAStunUrl, StunUrl};
 use demi_shared_types::{Clock, SystemClock};
 use demi_web_api_protocol::server_upgrade::UpgradeChannel;
-use demi_web_api_protocol::settings::InstanceMode;
 use tracing_subscriber::filter::Targets;
 use url::Url;
 
@@ -146,9 +145,15 @@ pub struct Config {
         default_value = "0.0.0.0:3271"
     )]
     pub listen: SocketAddr,
-    /// `shared` or `isolated`: who configures providers
-    #[arg(long, env = "DEMI_INSTANCE_MODE", value_name = "DEMI_INSTANCE_MODE")]
-    pub mode: InstanceMode,
+    #[arg(
+        long,
+        env = "DEMI_SHARED_SUBSCRIPTIONS",
+        hide = true,
+        value_name = "DEMI_SHARED_SUBSCRIPTIONS",
+        value_parser = clap::builder::BoolishValueParser::new(),
+        default_value = "off"
+    )]
+    pub shared_subscriptions: bool,
     /// The URL browsers, runners and Cloud guests reach the backend at
     #[arg(
         long,
@@ -407,12 +412,8 @@ impl Config {
                     .map_err(|_| ConfigError::InstanceSecret)
             })
             .transpose()?;
-        let mut config = BackendConfig::new(
-            data_dir,
-            self.listen,
-            self.mode,
-            self.machines_socket.clone(),
-        );
+        let mut config = BackendConfig::new(data_dir, self.listen, self.machines_socket.clone());
+        config.shared_subscriptions = self.shared_subscriptions;
         config.instance_secret = instance_secret;
         config.master_account = self
             .dev_codex_account
@@ -485,8 +486,7 @@ pub struct BackendConfig {
     pub upgrade_channel: UpgradeChannel,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
-    /// Who configures providers.
-    pub mode: InstanceMode,
+    pub shared_subscriptions: bool,
     /// The web app build's directory, served beside the API.
     pub web_directory: Option<PathBuf>,
     /// The URL runners connect to, which the installers name; without it,
@@ -560,7 +560,6 @@ impl BackendConfig {
     pub fn new(
         data_dir: PathBuf,
         address: SocketAddr,
-        mode: InstanceMode,
         machines_socket: PathBuf,
     ) -> Self {
         Self {
@@ -572,7 +571,7 @@ impl BackendConfig {
             upgrade_request: None,
             upgrade_channel: UpgradeChannel::Beta,
             address,
-            mode,
+            shared_subscriptions: false,
             web_directory: None,
             public_url: None,
             runner_releases: None,

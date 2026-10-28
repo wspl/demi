@@ -15,12 +15,17 @@
 //! multi-user product must not lend them to a user whose entry has no account.
 //!
 //! A credential has no owner of its own: it belongs to a provider entry, and
-//! every entry belongs to a user. Instance mode only decides whose entries a
-//! user infers with. There is no ownerless entry and no second kind of
-//! credential.
+//! every entry belongs to a user. Instance mode, which the master changes at
+//! any time, only decides whose entries a user infers with: a change moves no
+//! entry, and each reader of the entries meets the new owner's from its next
+//! read. There is no ownerless entry and no second kind of credential.
 //!
-//! On a shared instance the master's accounts are used by many users on many
-//! workers at once, so:
+//! A shared instance offers no subscription entry: the vault reads none, the
+//! master's included, and refuses a sign-in. The entries stay stored for the
+//! isolated mode.
+//!
+//! On a shared instance the master's credentials are used by many users on
+//! many workers at once, so:
 //!
 //! - Refreshes rely on the versioned replace of the credential pool.
 //! - The vendor's windows describe the account and not a user. Per-user
@@ -59,7 +64,9 @@ pub struct Vault(Arc<Shared>);
 struct Shared {
     control: ControlService,
     key: VaultKey,
-    mode: InstanceMode,
+    /// The mode the control store holds, which `set_mode` writes after it.
+    mode: std::sync::RwLock<InstanceMode>,
+    shared_subscriptions: bool,
     /// The master, whose entries a shared instance's users infer with; setup
     /// creates it once and it never changes.
     master: tokio::sync::OnceCell<UserId>,
@@ -116,16 +123,19 @@ struct SealedConfig {
 
 
 impl Vault {
+    /// The vault of an instance whose control store holds `mode`.
     pub fn new(
         control: ControlService,
         key: VaultKey,
         mode: InstanceMode,
+        shared_subscriptions: bool,
         sync: SyncRegistry,
     ) -> Self {
         Self(Arc::new(Shared {
             control,
             key,
-            mode,
+            mode: std::sync::RwLock::new(mode),
+            shared_subscriptions,
             master: tokio::sync::OnceCell::new(),
             gates: RefreshGates::new(),
             sync,
@@ -216,16 +226,41 @@ impl Vault {
         &self.0.gates
     }
 
+    pub fn mode(&self) -> InstanceMode {
+        *self.0.mode.read().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Changes the mode, and has every page read the entries, the models and
+    /// the mode again.
+    pub async fn set_mode(&self, mode: InstanceMode) -> Result<(), StorageError> {
+        self.0.control.set_instance_mode(mode).await?;
+        *self.0.mode.write().unwrap_or_else(std::sync::PoisonError::into_inner) = mode;
+        for part in [Part::Instance, Part::Providers, Part::Models] {
+            self.0.sync.mark_everyone(&part);
+        }
+        Ok(())
+    }
+
+    /// Whether the instance offers subscription entries now: an isolated
+    /// one does.
+    pub fn offers_subscriptions(&self) -> bool {
+        self.mode() == InstanceMode::Isolated || self.0.shared_subscriptions
+    }
+
+    pub fn shared_subscriptions(&self) -> bool {
+        self.0.shared_subscriptions
+    }
+
     /// Whether `user` configures the entries of their scope: everyone on an
     /// isolated instance, only the master on a shared one.
     pub fn configures(&self, user: &UserDto) -> bool {
-        self.0.mode == InstanceMode::Isolated || user.role == Role::Master
+        self.mode() == InstanceMode::Isolated || user.role == Role::Master
     }
 
     /// Whose entries `user` infers with: their own on an isolated instance, the
     /// master's on a shared one.
     pub async fn owner_for(&self, user: &UserId) -> Result<UserId, StorageError> {
-        if self.0.mode == InstanceMode::Isolated {
+        if self.mode() == InstanceMode::Isolated {
             return Ok(user.clone());
         }
         let master = self
@@ -251,7 +286,7 @@ impl Vault {
     /// with the entries of `owner`: every user on a shared instance, the
     /// owner alone on an isolated one.
     pub fn mark_changed(&self, owner: &UserId) {
-        match self.0.mode {
+        match self.mode() {
             InstanceMode::Shared => self.0.sync.mark_everyone(&Part::Providers),
             InstanceMode::Isolated => self.0.sync.mark(owner, Part::Providers),
         }
@@ -261,7 +296,7 @@ impl Vault {
     /// `id`. A lookup that fails is logged: the pages then show the change
     /// with the entry's next one.
     pub async fn mark_entry_changed(&self, id: &ProviderId) {
-        if self.0.mode == InstanceMode::Shared {
+        if self.mode() == InstanceMode::Shared {
             self.0.sync.mark_everyone(&Part::Providers);
             return;
         }
@@ -289,15 +324,22 @@ impl Vault {
         Ok(entry.filter(|entry| entry.owner == owner))
     }
 
-    /// The owner's entries in the order of Settings › Providers.
+    /// The owner's entries the instance offers, in the order of Settings ›
+    /// Providers.
     pub async fn entries(&self, owner: UserId) -> Result<Vec<ProviderEntry>, StorageError> {
         let rows = self.0.control.providers(owner).await?;
-        rows.into_iter().map(|row| self.decode(row)).collect()
+        let offered = self.offers_subscriptions();
+        rows.into_iter()
+            .map(|row| self.decode(row))
+            .filter(|entry| !entry.as_ref().is_ok_and(|entry| !offered && entry.kind() == CredentialKind::Subscription))
+            .collect()
     }
 
+    /// The entry `id`, when the instance offers it.
     pub async fn entry(&self, id: ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
         let row = self.0.control.provider(id).await?;
-        row.map(|row| self.decode(row)).transpose()
+        let entry = row.map(|row| self.decode(row)).transpose()?;
+        Ok(entry.filter(|entry| self.offers_subscriptions() || entry.kind() != CredentialKind::Subscription))
     }
 
     /// Stores a new API-key entry.
@@ -486,9 +528,21 @@ impl Vault {
     }
 
     /// Puts the owner's entries in the order `ids` names them; `false`,
-    /// changing nothing, unless it names each of them once.
+    /// changing nothing, unless it names each one the instance offers once.
+    /// The entries it does not offer, which no page lists, keep their order
+    /// before the others, where the subscriptions are.
     pub async fn set_order(&self, owner: &UserId, ids: Vec<ProviderId>) -> Result<bool, StorageError> {
-        let ordered = self.0.control.set_provider_order(owner.clone(), ids).await?;
+        let mut all = Vec::new();
+        if !self.offers_subscriptions() {
+            for row in self.0.control.providers(owner.clone()).await? {
+                let entry = self.decode(row)?;
+                if entry.kind() == CredentialKind::Subscription {
+                    all.push(entry.id);
+                }
+            }
+        }
+        all.extend(ids);
+        let ordered = self.0.control.set_provider_order(owner.clone(), all).await?;
         if ordered {
             self.mark_changed(owner);
         }

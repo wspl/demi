@@ -20,12 +20,12 @@ and forwards to port 3271:
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 # no terminal: prints the guide; the agent reads it and runs
-sudo demi-server setup --canary --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
+sudo demi-server setup --canary --domain demi.example.com --listen 127.0.0.1:3271
 ```
 
 When a person runs the first command in a terminal, the command asks for the
-domain, the mode and the listening address instead, and sets the server up
-with the answers.
+domain and the listening address instead, and sets the server up with the
+answers.
 
 The command installs a channel, as Settings › Updates names them
 ([From Settings](upgrades.md#from-settings)), or a version:
@@ -65,6 +65,10 @@ It ends by printing `https://demi.example.com`, where the first visitor creates
 the master account on the setup page (`packages/web/src/auth/session.ts`).
 Until the account exists, anyone who reaches the domain can create it, so the
 operator opens the page right away.
+
+Each user sets up their own model providers until the master shares theirs
+with every user in Settings › Users, which a shared server offers as API keys
+only, without subscriptions.
 
 Installation is Linux only, on the [supported distributions](#distributions).
 `setup` refuses a machine that cannot run Cloud, because every deployment has
@@ -124,7 +128,6 @@ The following table lists the parameters:
 | Parameter | Meaning |
 | --- | --- |
 | `--domain <name>` | Required. The domain the product is reached at. The public URL is `https://<name>`. `setup` refuses an IP address (`crates/backend/src/config/mod.rs`). |
-| `--mode shared\|isolated` | Required, with no default (`crates/backend-providers/src/vault/entries.rs`). |
 | `--listen <address:port>` | Required: where the backend listens, which the proxy in front of it reaches ([HTTPS](#https)). |
 | `--storage local\|s3` | Where the object store lives (`crates/backend-blobs/src/store.rs`). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |

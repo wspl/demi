@@ -49,21 +49,15 @@ afterwards creates the master account on its setup page, so open it right
 away.
 
 Examples:
-  demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
-  demi-server setup --domain demi.example.com --mode shared --listen 0.0.0.0:80
+  demi-server setup --domain demi.example.com --listen 127.0.0.1:3271
+  demi-server setup --domain demi.example.com --listen 0.0.0.0:80
   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... demi-server setup \\
-    --domain demi.example.com --mode isolated --listen 127.0.0.1:3271 \\
+    --domain demi.example.com --listen 127.0.0.1:3271 \\
     --storage s3 --s3-bucket demi --s3-region eu-central-1
 
 A run that stops, such as before the proxy is ready, says what to do; the
 same command then continues where it stopped. A server that is set up moves
 to later releases with `demi-server upgrade`.";
-
-#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum InstanceMode {
-    Shared,
-    Isolated,
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Storage {
@@ -83,10 +77,6 @@ pub struct Options {
     /// https://<domain>. Required.
     #[arg(long, value_name = "NAME")]
     domain: Option<String>,
-    /// shared: one set of model entries serves every user; isolated: each
-    /// user brings their own. Required.
-    #[arg(long, value_enum)]
-    mode: Option<InstanceMode>,
     /// Where the backend listens, which the proxy in front of it reaches.
     /// Required.
     #[arg(long, value_name = "ADDRESS:PORT")]
@@ -145,7 +135,6 @@ fn marker(layout: &Layout) -> PathBuf {
 /// The choices that make the configuration.
 struct Choices {
     domain: String,
-    mode: InstanceMode,
     listen: SocketAddr,
 }
 
@@ -168,7 +157,6 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     let Some(choices) = choices(&mut options, asking)? else {
         let missing = [
             (options.domain.is_none(), "--domain <NAME>"),
-            (options.mode.is_none(), "--mode <shared|isolated>"),
             (options.listen.is_none(), "--listen <ADDRESS:PORT>"),
         ];
         return Ok(Outcome::Guide {
@@ -284,23 +272,15 @@ fn choices(options: &mut Options, asking: bool) -> io::Result<Option<Choices>> {
         if options.domain.is_none() {
             options.domain = Some(ask("Domain Demi is reached at over HTTPS", None)?);
         }
-        if options.mode.is_none() {
-            let mode = ask("Instance mode, shared or isolated", None)?;
-            options.mode = Some(match mode.as_str() {
-                "shared" => InstanceMode::Shared,
-                "isolated" => InstanceMode::Isolated,
-                other => return Err(io::Error::other(format!("{other} is no instance mode"))),
-            });
-        }
         if options.listen.is_none() {
             let listen = ask("Address and port the backend listens on", Some("127.0.0.1:3271"))?;
             options.listen = Some(listen.parse().map_err(io::Error::other)?);
         }
     }
-    let (Some(domain), Some(mode), Some(listen)) = (options.domain.clone(), options.mode, options.listen) else {
+    let (Some(domain), Some(listen)) = (options.domain.clone(), options.listen) else {
         return Ok(None);
     };
-    Ok(Some(Choices { domain, mode, listen }))
+    Ok(Some(Choices { domain, listen }))
 }
 
 /// Asks at the terminal, offering `default`.
@@ -329,13 +309,8 @@ fn configuration(choices: &Choices, options: &Options) -> Result<Settings, Box<d
     if !matches!(url.host(), Some(url::Host::Domain(_))) || url.port().is_some() || url.path() != "/" {
         return Err(format!("{domain} is no domain: the public URL names a domain, never an address").into());
     }
-    let mode = match choices.mode {
-        InstanceMode::Shared => "shared",
-        InstanceMode::Isolated => "isolated",
-    };
     let mut variables = vec![
         ("DEMI_BACKEND_PUBLIC_URL".into(), format!("https://{domain}")),
-        ("DEMI_INSTANCE_MODE".into(), mode.into()),
         ("DEMI_BACKEND_LISTEN".into(), choices.listen.to_string()),
         ("DEMI_BACKEND_DATA".into(), BACKEND_DATA.into()),
         ("DEMI_MANAGED_DATA".into(), options.cloud_data.display().to_string()),

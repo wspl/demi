@@ -117,6 +117,15 @@ const useUserStore = defineStore('user-settings', () => {
     }
   }
 
+  /** Shares the master's providers with every user, or stops; the channel brings the mode. */
+  async function setSharing(mode: 'shared' | 'isolated'): Promise<void> {
+    try {
+      await apiRequest('/settings/instance-mode', { method: 'PUT', ...jsonBody({ mode }) })
+    } catch (error) {
+      reportError(t('users.sharingFailed'), error, { site: 'users.sharingFailed', userVisible: true })
+    }
+  }
+
   /** The dialog's host for the account's sign-in codes; the page learns nothing of the account's browsers, so a code is never marked handed off. */
   function signInCode(id: string): HandoffHost {
     return {
@@ -131,6 +140,10 @@ const useUserStore = defineStore('user-settings', () => {
       ? {
           users: users.value,
           viewerId: session.user.id,
+          sharing:
+            session.user.role === 'master' && product.snapshot?.mode
+              ? { mode: product.snapshot.mode, subscriptions: product.snapshot.sharedSubscriptions ?? false, set: setSharing }
+              : undefined,
           add,
           newPassword,
           setRole,

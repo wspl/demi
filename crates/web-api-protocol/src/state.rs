@@ -38,6 +38,7 @@ use crate::workspaces::WorkspaceDto;
 pub struct ProductState {
     pub user: UserDto,
     pub mode: InstanceMode,
+    pub shared_subscriptions: bool,
     pub preferences: Preferences,
     pub providers: Vec<ProviderState>,
     /// The models of the entries the user infers with, as the model menu
@@ -184,6 +185,10 @@ pub enum SyncEvent {
     },
     Preferences {
         preferences: Preferences,
+    },
+    /// The master changed the instance mode.
+    Instance {
+        mode: InstanceMode,
     },
     /// The account changed: its nickname, its email or its role, or its
     /// owner chose the password. The first message of the channel of an

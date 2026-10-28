@@ -447,6 +447,25 @@
     "title": "Users",
     "description": "Everyone who can sign in to this server.",
     "accounts": "Accounts",
+    "sharing": {
+      "group": "Model Providers",
+      "label": "Providers",
+      "own": "Each User’s Own",
+      "shared": "Shared",
+      "description": "When shared, every user uses the providers you set up.",
+      "descriptionApiKeys": "When shared, every user uses the API keys you set up.",
+      "share": {
+        "title": "Share your providers with every user?",
+        "action": "Share",
+        "body": "Every user’s model menu offers your providers instead of their own. Theirs stay saved and come back if you stop sharing.",
+        "subscriptions": "Subscriptions, yours included, aren’t offered while providers are shared."
+      },
+      "stop": {
+        "title": "Stop sharing your providers?",
+        "action": "Stop Sharing",
+        "body": "Every user goes back to their own providers. Users who haven’t set any up have no models until they do."
+      }
+    },
     "add": "Add User…",
     "you": "You",
     "disabled": "Disabled",
@@ -731,7 +750,7 @@
     },
     "warning": {
       "title": "Use several accounts?",
-      "body": "Using several personal subscriptions to get past their usage limits may be against the vendor’s terms.",
+      "body": "Using more than one subscription account, or rotating between accounts, may violate the provider’s Terms of Service. You do so at your own risk.",
       "once": "Demi won’t ask again."
     },
     "connected": "{account} Connected",

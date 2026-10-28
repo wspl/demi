@@ -460,6 +460,7 @@ fn part_name(part: &Part) -> (&'static str, Option<&ConversationId>, Option<&str
         Part::Metadata(id) => ("metadata", Some(id), None),
         Part::ConversationOrder => ("conversation_order", None, None),
         Part::Preferences => ("preferences", None, None),
+        Part::Instance => ("instance", None, None),
         Part::User => ("user", None, None),
         Part::Workspaces => ("workspaces", None, None),
         Part::Devices => ("devices", None, None),

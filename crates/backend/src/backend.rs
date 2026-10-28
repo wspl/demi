@@ -425,7 +425,7 @@ impl Backend {
             .map(web_build)
             .transpose()?;
         let settings = ServiceSettings {
-            mode: config.mode,
+            shared_subscriptions: config.shared_subscriptions,
             log: config.log,
             web_build,
             runner_releases: RunnerReleases::new(config.runner_releases),
@@ -583,6 +583,11 @@ impl Backend {
     }
 
     /// The address the listener is bound to.
+    /// The instance mode the master chose, as it is now.
+    pub fn instance_mode(&self) -> demi_web_api_protocol::settings::InstanceMode {
+        self.services.vault.mode()
+    }
+
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
     }

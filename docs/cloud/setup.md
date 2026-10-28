@@ -175,7 +175,6 @@ shares with the backend.
 
 ```dotenv
 DEMI_BACKEND_PUBLIC_URL=https://demi.example.com
-DEMI_INSTANCE_MODE=isolated
 DEMI_BACKEND_LISTEN=127.0.0.1:3271
 ```
 

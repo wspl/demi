@@ -12,7 +12,7 @@ use demi_shared_types::{Clock, Timestamp};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::server_upgrade::UpgradeChannel;
-use demi_web_api_protocol::settings::Preferences;
+use demi_web_api_protocol::settings::{InstanceMode, Preferences};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::users::{CloudStorage, ListedUser};
 use jiff::SignedDuration;
@@ -401,6 +401,36 @@ impl ControlService {
             .await
     }
 
+    /// Whether every user uses the master's providers: isolated until the
+    /// master shares them.
+    pub async fn instance_mode(&self) -> Result<InstanceMode, StorageError> {
+        self.call(|connection, _| {
+            let mode: Option<String> = connection
+                .query_row("SELECT instance_mode FROM server_settings WHERE id = 1", [], |row| row.get(0))
+                .optional()?;
+            mode.map_or(Ok(InstanceMode::Isolated), |mode| {
+                mode.parse().map_err(|_| StorageError::Corrupt {
+                    table: "server_settings",
+                    column: "instance_mode",
+                    reason: format!("{mode} is no instance mode"),
+                })
+            })
+        })
+        .await
+    }
+
+    pub async fn set_instance_mode(&self, mode: InstanceMode) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "INSERT INTO server_settings (id, instance_mode) VALUES (1, ?1)
+                 ON CONFLICT (id) DO UPDATE SET instance_mode = excluded.instance_mode",
+                [mode.to_string()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn set_upgrade_channel(&self, channel: UpgradeChannel) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
@@ -683,8 +713,11 @@ pub(crate) fn later(now: Timestamp, by: SignedDuration) -> Result<Timestamp, Sto
 /// The channel an administrator chose in Settings › Updates, if one did.
 fn chosen_upgrade_channel(connection: &Connection) -> Result<Option<UpgradeChannel>, StorageError> {
     let channel: Option<String> = connection
-        .query_row("SELECT upgrade_channel FROM server_settings WHERE id = 1", [], |row| row.get(0))
-        .optional()?;
+        .query_row("SELECT upgrade_channel FROM server_settings WHERE id = 1", [], |row| {
+            row.get::<_, Option<String>>(0)
+        })
+        .optional()?
+        .flatten();
     channel
         .map(|channel| {
             channel.parse().map_err(|_| StorageError::Corrupt {
