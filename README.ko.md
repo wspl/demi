@@ -52,6 +52,12 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```
 
+Claude Code나 Codex 같은 코딩 에이전트에게 다음 프롬프트로 설치를 맡길 수도 있습니다:
+
+```text
+https://raw.githubusercontent.com/wspl/demi/main/docs/delivery/install-with-an-agent.md 을 따라 내 서버에 Demi를 설치해 줘
+```
+
 설치 프로그램이 몇 가지를 물어본 뒤 Demi를 설정합니다. 설치가 끝나면:
 
 1. 바로 도메인을 열고 관리자 계정을 만듭니다.

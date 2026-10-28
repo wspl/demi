@@ -59,6 +59,12 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```
 
+Or give a coding agent such as Claude Code or Codex this prompt:
+
+```text
+Install Demi on my server by following https://raw.githubusercontent.com/wspl/demi/main/docs/delivery/install-with-an-agent.md
+```
+
 The installer asks a few questions and sets Demi up. After it finishes:
 
 1. Open your domain right away and create the admin account.

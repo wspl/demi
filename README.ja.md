@@ -52,6 +52,12 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```
 
+Claude Code や Codex などのコーディングエージェントに、次のプロンプトでインストールを任せることもできます:
+
+```text
+https://raw.githubusercontent.com/wspl/demi/main/docs/delivery/install-with-an-agent.md に従って、私のサーバーに Demi をインストールしてください
+```
+
 インストーラーがいくつか質問し、Demi をセットアップします。インストール完了後:
 
 1. すぐにドメインを開き、管理者アカウントを作成します。
