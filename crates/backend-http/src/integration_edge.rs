@@ -370,34 +370,67 @@ async fn transcript(
 }
 
 /// `GET /v1/socket`: every change of the integration's conversations, as
-/// JSON text messages, one event each.
+/// JSON text messages, one event each; and the integration's plugin, which a
+/// `declare` makes this socket serve (`crates/backend-user-shard/src/integration_plugins.rs`).
 async fn socket(State(state): State<AppState>, headers: HeaderMap, upgrade: WebSocketUpgrade) -> Result<Response, ApiError> {
     let record = authenticated(&state, &headers).await?;
     let integration = record.id.clone();
-    let events = state
+    let (id, events) = state
         .shards
-        .of(&record.user.clone())
+        .of(&record.user)
         .call(move |shard, _| async move { shard.subscribe_integration(integration) })
         .await?;
-    Ok(upgrade.on_upgrade(move |socket| serve(socket, events)))
+    Ok(upgrade.on_upgrade(move |socket| serve(socket, state, record, id, events)))
 }
 
-async fn serve(mut socket: WebSocket, mut events: tokio::sync::mpsc::Receiver<api::Event>) {
+async fn serve(
+    mut socket: WebSocket,
+    state: AppState,
+    record: IntegrationRecord,
+    id: u64,
+    mut events: tokio::sync::mpsc::Receiver<api::Event>,
+) {
     loop {
         tokio::select! {
             event = events.recv() => {
-                let Some(event) = event else { return };
+                let Some(event) = event else { break };
                 let Ok(text) = serde_json::to_string(&event) else { continue };
                 if socket.send(Message::Text(text.into())).await.is_err() {
-                    return;
+                    break;
                 }
             }
             incoming = socket.recv() => match incoming {
-                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
+                Some(Ok(Message::Text(text))) => {
+                    let message = match serde_json::from_str::<api::ClientMessage>(text.as_str()) {
+                        Ok(message) => message,
+                        Err(error) => {
+                            let refused = api::Event::Declared { refused: Some(format!("the message is no client message: {error}")) };
+                            let Ok(text) = serde_json::to_string(&refused) else { continue };
+                            if socket.send(Message::Text(text.into())).await.is_err() {
+                                break;
+                            }
+                            continue;
+                        }
+                    };
+                    let integration = record.clone();
+                    // Handled on the shard, which answers on this socket.
+                    let _ = state
+                        .shards
+                        .of(&record.user)
+                        .call(move |shard, _| async move { shard.integration_message(&integration, id, message).await })
+                        .await;
+                }
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 Some(Ok(_)) => {}
             },
         }
     }
+    let integration = record.id.clone();
+    let _ = state
+        .shards
+        .of(&record.user)
+        .call(move |shard, _| async move { shard.integration_socket_closed(&integration, id) })
+        .await;
 }
 
 fn conversation_id(id: String) -> Result<ConversationId, ApiError> {

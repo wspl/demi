@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{Group, Leaf, Node, StdinRead, parse::placeholder};
 
 /// The line the capability index opens with, before one section a group.
-pub const INDEX_OPENER: &str = "Demi commands, run in the shell; `demi <group> --help` for details:";
+pub const INDEX_OPENER: &str = "Demi commands, run in the shell; `<command> --help` for details:";
 
 /// The model's capability index: the opener, then one section a group,
 /// sorted by the group's path.

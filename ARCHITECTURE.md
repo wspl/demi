@@ -404,7 +404,7 @@ runner-protocol -> command-protocol, command-declarations, host-paths, shared-ty
 machine-manager-protocol -> command-protocol, runner-protocol, shared-types
 supervisor-protocol -> none
 web-api-protocol -> conversation-lane-protocol, command-protocol, shared-types, runner-protocol
-integration-api-protocol -> conversation-lane-protocol, shared-types, web-api-protocol
+integration-api-protocol -> command-declarations, conversation-lane-protocol, host-interface, shared-types, web-api-protocol
 shared-gates -> none
 shared-lanes -> none
 shared-artifacts -> none

@@ -1077,7 +1077,10 @@ CREATE TABLE integrations (
   token_hash   TEXT NOT NULL UNIQUE,
   -- What its agents may do, IntegrationCapabilities as JSON.
   capabilities TEXT NOT NULL,
-  created_at   INTEGER NOT NULL
+  created_at   INTEGER NOT NULL,
+  -- The plugin its program last declared, Declaration as JSON; none before
+  -- its first declaration.
+  declaration  TEXT
 ) STRICT;
 CREATE INDEX integrations_by_user ON integrations (user_id);
 CREATE TABLE integration_conversations (

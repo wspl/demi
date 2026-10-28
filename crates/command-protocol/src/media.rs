@@ -70,7 +70,7 @@ pub fn is_binary(bytes: &[u8]) -> bool {
 /// (`crates/command-protocol/src/lib.rs`): its media type,
 /// a document's name, and the facts its header gives, which the handler
 /// read once: an image's or a video's size in pixels, a video's length.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MediumFacts {
     pub media_type: String,

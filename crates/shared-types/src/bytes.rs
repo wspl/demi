@@ -100,6 +100,10 @@ impl schemars::JsonSchema for B64Bytes {
     }
 
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({ "type": "string", "contentEncoding": "base64" })
+        schemars::json_schema!({
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "Bytes as base64 (RFC 4648, the standard alphabet with padding).",
+        })
     }
 }
