@@ -41,12 +41,23 @@ use demi_web_api_protocol::server_upgrade::{ServerUpgrade, UpgradeChannel, Upgra
 use demi_web_api_protocol::state::UpdateState;
 use semver::Version;
 
-/// How often the backend looks for a newer release by itself, which the
-/// server then gets ready: a fix a channel publishes reaches the
-/// administrators within the hour, far below GitHub's 60 unauthenticated
-/// requests an hour per address, which Canary's list of every release spends
-/// a page of 100 at a time.
-const CHECK_EVERY: Duration = Duration::from_secs(60 * 60);
+/// How often the backend looks for a newer release of `channel` by itself,
+/// which the server then gets ready.
+///
+/// - Canary publishes every push to main that passes, so a fix reaches the
+///   administrators within the hour; its list of every release spends a page
+///   of 100 at a time of GitHub's 60 unauthenticated requests an hour per
+///   address.
+/// - Beta publishes only a Canary someone promoted, which a day's wait does
+///   not hold back.
+///
+/// A start, a change of channel and Check Now look at once besides.
+fn check_every(channel: UpgradeChannel) -> Duration {
+    match channel {
+        UpgradeChannel::Canary => Duration::from_secs(60 * 60),
+        UpgradeChannel::Beta => Duration::from_secs(24 * 60 * 60),
+    }
+}
 
 /// The steps the server takes ahead of Update Now.
 const AHEAD: [UpgradeStepKind; 4] = [
@@ -95,6 +106,9 @@ pub struct Upgrades {
     state: Mutex<State>,
     /// One check at a time.
     checking: tokio::sync::Mutex<()>,
+    /// A check ended or the channel changed: the periodic checks work out
+    /// when the next is due again.
+    due_changed: Arc<tokio::sync::Notify>,
 }
 
 struct State {
@@ -107,12 +121,14 @@ struct State {
     /// Whether the run's own `demi-server` told how far it is: until it
     /// does, as while it waits for the work ahead, the run shows that work.
     told: bool,
+    /// When the last check ended; none before the first.
+    checked: Option<Instant>,
 }
 
 impl Upgrades {
     /// The updates of a server whose backend unit names `request`, on the
-    /// channel the control database keeps; it checks now and every day
-    /// after. Without `request` it offers none and checks nothing.
+    /// channel the control database keeps; it checks now and then at the
+    /// channel's cadence. Without `request` it offers none and checks nothing.
     pub async fn start(
         request: Option<PathBuf>,
         installed: UpgradeChannel,
@@ -139,11 +155,13 @@ impl Upgrades {
                 run: UpgradeRun::None,
                 heard: Instant::now(),
                 told: false,
+                checked: None,
             }),
             checking: tokio::sync::Mutex::new(()),
+            due_changed: Arc::new(tokio::sync::Notify::new()),
         });
         if upgrades.offered() {
-            tokio::spawn(checks(Arc::downgrade(&upgrades)));
+            tokio::spawn(checks(Arc::downgrade(&upgrades), upgrades.due_changed.clone()));
             tokio::spawn(watch(Arc::downgrade(&upgrades)));
         }
         Ok(upgrades)
@@ -189,6 +207,7 @@ impl Upgrades {
     pub async fn set_channel(&self, channel: UpgradeChannel) -> Result<(), StorageError> {
         self.control.set_upgrade_channel(channel).await?;
         self.locked().channel = channel;
+        self.due_changed.notify_one();
         self.changed();
         self.check().await;
         Ok(())
@@ -200,6 +219,27 @@ impl Upgrades {
             return;
         }
         let _one = self.checking.lock().await;
+        self.check_held().await;
+    }
+
+    /// When the periodic check is due: at once before the first check, and
+    /// then the channel's cadence after the last one ended.
+    fn due(&self) -> Instant {
+        let state = self.locked();
+        state.checked.map_or_else(Instant::now, |checked| checked + check_every(state.channel))
+    }
+
+    /// Checks when the periodic check is due, as one check does; nothing when
+    /// another check, such as a change of channel's, ended meanwhile.
+    async fn check_if_due(&self) {
+        let _one = self.checking.lock().await;
+        if Instant::now() >= self.due() {
+            self.check_held().await;
+        }
+    }
+
+    /// [`Self::check`], with the one check at a time held.
+    async fn check_held(&self) {
         let channel = {
             let mut state = self.locked();
             state.check = UpgradeCheck::Checking;
@@ -231,6 +271,7 @@ impl Upgrades {
         };
         let prepare = {
             let mut state = self.locked();
+            state.checked = Some(Instant::now());
             // A change of channel meanwhile checks again.
             if state.channel != channel {
                 None
@@ -244,6 +285,7 @@ impl Upgrades {
             }
         };
         self.changed();
+        self.due_changed.notify_one();
         if let (Some(newer), Some(request)) = (prepare, &self.request) {
             let prepare = request.with_file_name(PREPARE_REQUEST_NAME);
             match write_request(&prepare, &newer) {
@@ -441,15 +483,24 @@ fn write_request(request: &std::path::Path, version: &str) -> std::io::Result<()
     std::fs::rename(&staged, request)
 }
 
-/// Checks now and every day after, while the backend runs.
-async fn checks(upgrades: Weak<Upgrades>) {
+/// Checks now and then at the channel's cadence while the backend runs
+/// (`check_every`), from the end of the last check, whichever made it: a
+/// change of channel or Check Now starts the wait again.
+async fn checks(upgrades: Weak<Upgrades>, due_changed: Arc<tokio::sync::Notify>) {
     loop {
-        let Some(upgrades) = upgrades.upgrade() else {
+        let Some(held) = upgrades.upgrade() else {
             return;
         };
-        upgrades.check().await;
-        drop(upgrades);
-        tokio::time::sleep(CHECK_EVERY).await;
+        if Instant::now() >= held.due() {
+            held.check_if_due().await;
+            continue;
+        }
+        let due = held.due();
+        drop(held);
+        tokio::select! {
+            () = tokio::time::sleep_until(due.into()) => {}
+            () = due_changed.notified() => {}
+        }
     }
 }
 

@@ -360,9 +360,10 @@ and the newest release of its channel:
 - **Canary** offers every release, including the pre-release that each push
   to `main` publishes once it passes its checks.
 
-The backend looks for the newest release when it starts, every hour and on
-**Check Now**. While a newer one exists, the sidebar shows a green update icon
-to the master and administrators.
+The backend looks for the newest release when it starts, when the channel
+changes, on **Check Now**, and then every hour on Canary and every day on
+Beta. While a newer one exists, the sidebar shows a green update icon to the
+master and administrators.
 
 ### Ready ahead
 
@@ -384,8 +385,8 @@ left:
 4. It tells the backend each step, which Settings › Updates shows on the
    release's row: *Downloading in the background*, *Installing in the
    background…*, then *Ready to install*, or why it could not. The next check
-   asks again, so a backend started since hears of the release within the
-   hour, and so do the devices that were away.
+   asks again, so a backend started since hears of the release by then, and
+   so do the devices that were away.
 
 An update that starts while this runs waits for it, then finds its steps done
 and shows them as already installed.
