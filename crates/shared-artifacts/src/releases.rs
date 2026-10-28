@@ -2,8 +2,8 @@
 //! offers an administrator: the newest of a channel, and a release's assets.
 //!
 //! Every release is tagged `v<version>`. A published one is GitHub's
-//! *latest* in turn; a pre-release, which a deploy publishes, never is. Demi
-//! has no stable channel yet: what it publishes is a beta.
+//! *latest* in turn; a pre-release, a Canary, never is. Demi has no stable
+//! channel yet: what it publishes is a beta.
 
 use semver::Version;
 
@@ -18,7 +18,7 @@ const PAGE: usize = 100;
 pub enum Channel {
     /// The releases Demi publishes: GitHub's latest.
     Beta,
-    /// Every release, a deploy's pre-releases included, the newest builds
+    /// Every release, the Canary pre-releases included, the newest builds
     /// first.
     Canary,
 }

@@ -6,7 +6,7 @@
 #   curl -fsSL https://demi.sh/install.sh | sudo bash
 #
 # Without a parameter, as with `--beta`, it installs the newest release Demi
-# publishes; `--canary` installs the newest build, a deploy's pre-releases
+# publishes; `--canary` installs the newest build, the Canary pre-releases
 # included, and `--version <version>` that release.
 # The other parameters go to `demi-server setup`. At a terminal, setup asks
 # for what is missing; without one, as an agent runs it, it prints its

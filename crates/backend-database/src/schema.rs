@@ -4,8 +4,8 @@
 //!
 //! - one SQL text for each database, applied to a new database in a transaction,
 //!   whose digest is the version a database records;
-//! - the history of the schemas published releases shipped before it, each with
-//!   the migration to the next.
+//! - the history of the schemas a server may hold before it, each with the
+//!   migration to the next.
 //!
 //! The columns follow these conventions:
 //!
@@ -28,8 +28,8 @@ use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::providers::{NoSealed, ResealSealed};
 
-/// A database's schema: its SQL, whose digest names it, and the schemas
-/// that published releases shipped before it, oldest first.
+/// A database's schema: its SQL, whose digest names it, and the schemas a
+/// server may hold before it, oldest first.
 pub(crate) struct Schema {
     sql: &'static str,
     /// What a file that holds no database yet takes before its journal
@@ -39,9 +39,9 @@ pub(crate) struct Schema {
     history: &'static [Shipped],
 }
 
-/// A schema a published release shipped, or a development build a server
-/// keeps data of, and the migration from it to the schema after it in the
-/// history, or to the current one after the last.
+/// A schema a server may hold, one that `main` held before a change to it,
+/// and the migration from it to the schema after it in the history, or to the
+/// current one after the last.
 pub(crate) struct Shipped {
     sql: &'static str,
     migration: Migration,
@@ -76,9 +76,8 @@ impl ReadBlob for NoBlobs {
 
 /// The control database's schema.
 ///
-/// Its history holds the schema of each published release before the one that
-/// ships the current schema, and of each development build a server keeps data
-/// of (`upgrades.md` § A development build on a server). The history holds, in
+/// Its history holds every schema a server may hold before the current one
+/// (`upgrades.md` § A development build on a server). The history holds, in
 /// order:
 ///
 /// - 0.1.22-dev.20261011T123543Z's.

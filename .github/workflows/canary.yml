@@ -3,18 +3,23 @@
 # starts it when it completes, so the one that completes last publishes:
 #
 #   push ─┬─► Build ─┐
-#         └─► CI ────┴─► Canary: both succeeded for the commit, and no release
-#                        of its version or a higher one exists?
+#         └─► CI ────┴─► Canary: both succeeded for the commit, and its version
+#                        is above every published release's?
 #                          └─► release.yml with `prerelease`, waited for
 #
 # - A commit whose build or checks failed, or whose CI a newer push cancelled,
 #   is not published; the next push that passes is.
-# - No release of an older commit follows a newer one: a version that is not
-#   above every release's is skipped.
+# - The published versions are the repository's `v<version>` tags, which a
+#   release gets when its draft is published: a draft that still uploads its
+#   files is no release.
 # - Runs wait in one queue and none is cancelled, so the two completions of one
 #   commit never start two releases: the second finds the first's release.
 # - A deploy that publishes the same commit meanwhile makes this run's release
-#   refuse the version, which counts as published (docs/delivery/upgrades.md).
+#   refuse the version, which counts as published once it is no draft
+#   (docs/delivery/upgrades.md).
+# - A deploy that publishes a newer commit meanwhile can make an older commit's
+#   Canary come after it. Installers and servers take the highest version, so
+#   it is never offered over the newer one.
 name: Canary
 
 on:
@@ -42,7 +47,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       COMMIT: ${{ github.event.workflow_run.head_sha }}
     steps:
-      # The version counts the commit's history (.github/actions/version).
+      # The version counts the commit's history (.github/actions/version), and
+      # the published versions are the tags it fetches with it.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -62,8 +68,7 @@ jobs:
           done
 
           version=0.1.$(git rev-list --count "$COMMIT")
-          newest=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
-            -q '.[].tagName' | sort -V | tail -n 1)
+          newest=$(git tag --list 'v[0-9]*' | sort -V | tail -n 1)
           if [ -n "$newest" ] && [ "$(printf '%s\nv%s\n' "$newest" "$version" | sort -V | tail -n 1)" = "$newest" ]; then
             echo "$newest is published already, and v$version is not above it"
             exit 0
@@ -72,5 +77,6 @@ jobs:
           run=$(gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main \
             -f commit="$COMMIT" -f prerelease=true)
           gh run watch --repo "$GITHUB_REPOSITORY" --exit-status "${run##*/}" > /dev/null || true
-          gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null
+          draft=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)
+          [ "$draft" = false ]
           echo "Published v$version as the next Canary"
