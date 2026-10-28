@@ -136,7 +136,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **适合长任务**：命令在后台持续运行，结束后自动汇报，开发服务器和测试套件不会阻塞对话。
 
 > [!NOTE]
-> **规划中**：Demi 的 Agent 运行时将作为独立的 TypeScript 库提供，你可以不依赖 Demi 应用，直接基于它构建自己的 Agent。
+> **规划中**：Demi 服务器将提供 OpenAPI，你的程序可以用它的对话、Agent 和云端沙箱，满足你自己的 Agent 需求。
 
 ## 架构
 

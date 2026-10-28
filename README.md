@@ -200,8 +200,8 @@ The design has these benefits:
   conversation.
 
 > [!NOTE]
-> **Planned**: the Demi agent runtime as a standalone TypeScript library, so
-> you can build your own agents on it without the Demi app.
+> **Planned**: an OpenAPI for the Demi server, so your own programs can use
+> its conversations, agents and cloud sandboxes for the agents you need.
 
 ## Architecture
 
