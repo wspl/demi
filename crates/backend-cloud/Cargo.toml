@@ -30,3 +30,4 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["codec"] }
 tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }

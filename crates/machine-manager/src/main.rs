@@ -205,7 +205,7 @@ mod service {
         runtime::simple,
         sandbox::{cgroup, runsc::Runsc},
         server::{self, Socket},
-        storage::{base, durable, room, state, store::ImageStore},
+        storage::{base, durable, room, shared, state, store::ImageStore},
         tools::{Tool, Tools},
     };
     use demi_machine_manager_protocol::{
@@ -407,6 +407,7 @@ mod service {
             blocking::run(move |off| lock::verify_inherited(off, &data)).await?;
             preflight::release_probes(&core.config.data).await?;
             recovery::fence_and_save(&core, &[]).await?;
+            shared::unmount_left(&core, &[]).await?;
             return Ok(());
         }
         let (data, runtime) = (core.config.data.clone(), runs_gvisor.then(|| core.config.runtime().to_owned()));
@@ -436,7 +437,7 @@ mod service {
             match handover::take_over(&core, sandbox).await {
                 Ok(Some(taken)) => {
                     tracing::info!(event = "cloud_runtime.taken_over", host_id = %sandbox.device, "a Cloud the manager before this one left running was taken over");
-                    adopted.push((sandbox.device.clone(), taken.sandbox));
+                    adopted.push((sandbox.device.clone(), taken.sandbox, sandbox.shared.clone()));
                     owners.push(taken.owner);
                 }
                 Ok(None) => tracing::info!(event = "cloud_runtime.ended_meanwhile", host_id = %sandbox.device, "a Cloud the manager before this one left had ended; it is saved"),
@@ -468,7 +469,7 @@ mod service {
         let running_simple: Vec<_> = adopted_simple.iter().map(|(device, _)| device.clone()).collect();
         core.simple.prepare(&core.config.data).await?;
         core.simple.recover(&running_simple).await?;
-        let running: Vec<_> = adopted.iter().map(|(device, _)| device.clone()).collect();
+        let running: Vec<_> = adopted.iter().map(|(device, _, _)| device.clone()).collect();
         if runs_gvisor {
             preflight::release_probes(&core.config.data).await?;
             match core.config.limits {
@@ -479,6 +480,13 @@ mod service {
                 ),
             }
             recovery::fence_and_save(&core, &running).await?;
+            // Only the sandboxes taken over run: the folders they mount stay,
+            // each counted for its sandbox.
+            let kept: Vec<String> = adopted.iter().filter_map(|(_, _, shared)| shared.clone()).collect();
+            for id in &kept {
+                core.shared.adopt(id).await;
+            }
+            shared::unmount_left(&core, &kept).await?;
         }
         if core.config.mode == Mode::Recover {
             return Ok(());
@@ -487,7 +495,7 @@ mod service {
         // over, which keep running. They reach the internet alone until the
         // backend, as it connects, names the network rules.
         if let Ok(gvisor) = &core.gvisor {
-            let slots: Vec<_> = adopted.iter().filter_map(|(_, sandbox)| sandbox.admitted()).collect();
+            let slots: Vec<_> = adopted.iter().filter_map(|(_, sandbox, _)| sandbox.admitted()).collect();
             gvisor.network.prepare(&slots, &NetworkRules::default()).await?;
         }
         let base = base::import(&core.tools, &core.config.image, &core.bases()).await?;
@@ -543,8 +551,8 @@ mod service {
             },
         ];
         let manager = Manager::new(core.clone(), base, offers, deaths, changes);
-        for (device, sandbox) in adopted {
-            manager.adopt(device, sandbox);
+        for (device, sandbox, shared) in adopted {
+            manager.adopt(device, sandbox, shared);
         }
         for (device, process) in adopted_simple {
             manager.adopt_simple(device, process);

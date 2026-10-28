@@ -229,7 +229,22 @@
       "schedules": "Zeitpläne",
       "schedulesDescription": "Einen Chat zu einer Uhrzeit oder bei einer Änderung wecken.",
       "attachments": "Anhänge",
-      "attachmentsDescription": "Dateien an Antworten anhängen."
+      "attachmentsDescription": "Dateien an Antworten anhängen.",
+      "titles": "Titel",
+      "titlesDescription": "Das kleine Modell gibt jedem Chat einen Titel.",
+      "save": "Speichern",
+      "initScript": "Startskript",
+      "initScriptDescription": "Jede Cloud führt es als demi in ~ aus, sobald ihr System neu ist: bei der ersten Nutzung und nach jedem Zurücksetzen. Die Befehle ihrer Chats warten darauf. Eine bestehende Cloud übernimmt eine Änderung erst, wenn du sie zurücksetzt.",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "Gemeinsamer Ordner",
+      "sharedPathDescription": "Ab ihrem nächsten Start sieht jede Cloud dieser Integration hier denselben Ordner.",
+      "sharedPathProblem": "Gib einen Pfad ein, der mit ~/ oder / beginnt.",
+      "delete": "Integration löschen",
+      "deleteDescription": "Ihre Chats, Clouds und der gemeinsame Ordner werden gelöscht. Ihre Nutzung bleibt erhalten.",
+      "deleteButton": "Integration löschen …",
+      "deleteTitle": "„{name}“ löschen?",
+      "deleteBody": "Ihre Chats, Clouds und der gemeinsame Ordner werden gelöscht, und ihr Token funktioniert sofort nicht mehr. Dies kann nicht widerrufen werden.",
+      "deleteConfirm": "Löschen"
     }
   },
   "keyboard": {

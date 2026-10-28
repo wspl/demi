@@ -36,6 +36,8 @@ const props = defineProps<{
   onChange?: (id: string, change: IntegrationChange) => Promise<void>
   /** Replace Token, once the user confirmed it. */
   onReplaceToken?: Action<[id: string]>
+  /** Delete Integration, once the user confirmed it; the list shows again once it is gone. */
+  onDelete?: Action<[id: string]>
 }>()
 const emit = defineEmits<{
   retry: []
@@ -62,6 +64,7 @@ async function changeShown(change: IntegrationChange): Promise<void> {
     :overlay-store="overlayStore"
     :on-change="changeShown"
     :on-replace-token="() => onReplaceToken?.(page!.id)"
+    :on-delete="() => onDelete?.(page!.id)"
     @back="emit('show', null)"
   />
   <SettingsPage

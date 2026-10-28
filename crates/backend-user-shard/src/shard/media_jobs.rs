@@ -152,7 +152,9 @@ impl Shard {
                 return;
             }
         };
-        for job in jobs {
+        for mut job in jobs {
+            // A kept row does not keep whose work the call is.
+            job.usage.attribution = self.attribution(&job.usage.conversation, job.usage.agent).await;
             self.follow_media_job(job, None);
         }
     }

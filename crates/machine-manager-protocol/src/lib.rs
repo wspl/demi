@@ -5,6 +5,7 @@
 //! - The record of a device's stored images.
 //! - The Cloud image manifest.
 //! - The pinned gVisor runtime.
+//! - Where an integration's shared folder may be mounted.
 //!
 //! Both ends link this crate, so each is defined once.
 //!
@@ -39,6 +40,7 @@ pub mod image;
 pub mod isolation;
 pub mod network;
 pub mod runtime;
+pub mod shared;
 pub mod store;
 mod state;
 mod wire;
@@ -97,9 +99,9 @@ pub struct LeftSimple {
 }
 
 /// A sandbox a manager left running: its device, the boot its working pair
-/// records, the base whose `/opt/demi` it mounts, which the next manager
-/// keeps while the sandbox runs, and which machine it is, which decides
-/// whether the network policy applies to it.
+/// records, the base whose `/opt/demi` it mounts and the shared folder it
+/// mounts, which the next manager keeps while the sandbox runs, and which
+/// machine it is, which decides whether the network policy applies to it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeftSandbox {
     pub device: DeviceId,
@@ -112,6 +114,10 @@ pub struct LeftSandbox {
     /// until its next boot.
     #[serde(default = "unknown_machine")]
     pub machine: SandboxMachine,
+    /// The id of the integration's shared folder it mounts; none for none,
+    /// and in a record of a manager before shared folders.
+    #[serde(default)]
+    pub shared: Option<String>,
 }
 
 fn unknown_machine() -> SandboxMachine {
@@ -125,11 +131,11 @@ pub use state::{
 pub use isolation::{Download, Enforces, Isolation, MoveStatus, Offer, RuntimeOffer, Unavailable};
 pub use network::{Allowed, Destination, Domain, DomainName, NetworkRules};
 pub use wire::{
-    Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,
+    Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, DeleteParams, DeleteSharedParams, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
-    SandboxMachine, SetIsolationParams, SetNetworkRulesParams, WakeParams, decode_request, decode_response,
-    encode_line,
+    SandboxMachine, SetIsolationParams, SetNetworkRulesParams, SharedFolder, WakeParams, decode_request,
+    decode_response, encode_line,
 };
 
 /// The room a large write to a server's disk leaves free: the backend's

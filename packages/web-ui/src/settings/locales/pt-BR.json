@@ -229,7 +229,22 @@
       "schedules": "Agendamentos",
       "schedulesDescription": "Despertar uma conversa em um horário ou quando algo mudar.",
       "attachments": "Anexos",
-      "attachmentsDescription": "Anexar arquivos às respostas."
+      "attachmentsDescription": "Anexar arquivos às respostas.",
+      "titles": "Títulos",
+      "titlesDescription": "O modelo pequeno dá um título a cada conversa.",
+      "save": "Salvar",
+      "initScript": "Script de inicialização",
+      "initScriptDescription": "Cada nuvem o executa como demi em ~ quando o sistema é novo: no primeiro uso e depois de cada redefinição. Os comandos das conversas esperam por ele. Uma nuvem existente só recebe uma alteração quando você a redefine.",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "Pasta compartilhada",
+      "sharedPathDescription": "A partir da próxima inicialização, cada nuvem desta integração vê aqui a mesma pasta.",
+      "sharedPathProblem": "Digite um caminho que comece com ~/ ou /.",
+      "delete": "Excluir integração",
+      "deleteDescription": "As conversas, as nuvens e a pasta compartilhada dela são excluídas. O uso permanece.",
+      "deleteButton": "Excluir integração…",
+      "deleteTitle": "Excluir “{name}”?",
+      "deleteBody": "As conversas, as nuvens e a pasta compartilhada dela são excluídas, e o token deixa de funcionar na hora. Não é possível desfazer.",
+      "deleteConfirm": "Excluir"
     }
   },
   "keyboard": {

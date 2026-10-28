@@ -229,7 +229,22 @@
       "schedules": "Programaciones",
       "schedulesDescription": "Activar un chat a una hora o ante un cambio.",
       "attachments": "Archivos adjuntos",
-      "attachmentsDescription": "Adjuntar archivos a las respuestas."
+      "attachmentsDescription": "Adjuntar archivos a las respuestas.",
+      "titles": "Títulos",
+      "titlesDescription": "El modelo pequeño le pone título a cada chat.",
+      "save": "Guardar",
+      "initScript": "Script de inicio",
+      "initScriptDescription": "Cada nube lo ejecuta como demi en ~ cuando su sistema es nuevo: en su primer uso y después de cada restablecimiento. Los comandos de sus chats lo esperan. Una nube existente aplica un cambio solo cuando la restableces.",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "Carpeta compartida",
+      "sharedPathDescription": "Desde su próximo inicio, cada nube de esta integración ve aquí la misma carpeta.",
+      "sharedPathProblem": "Escribe una ruta que empiece con ~/ o /.",
+      "delete": "Eliminar integración",
+      "deleteDescription": "Se eliminan sus chats, nubes y carpeta compartida. Su uso se conserva.",
+      "deleteButton": "Eliminar integración…",
+      "deleteTitle": "¿Eliminar “{name}”?",
+      "deleteBody": "Se eliminan sus chats, nubes y carpeta compartida, y su token deja de funcionar de inmediato. Esta acción no se puede deshacer.",
+      "deleteConfirm": "Eliminar"
     }
   },
   "keyboard": {

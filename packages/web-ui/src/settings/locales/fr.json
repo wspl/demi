@@ -229,7 +229,22 @@
       "schedules": "Planifications",
       "schedulesDescription": "Réveiller une conversation à une heure donnée ou lors d’un changement.",
       "attachments": "Pièces jointes",
-      "attachmentsDescription": "Joindre des fichiers aux réponses."
+      "attachmentsDescription": "Joindre des fichiers aux réponses.",
+      "titles": "Titres",
+      "titlesDescription": "Le petit modèle donne un titre à chaque conversation.",
+      "save": "Enregistrer",
+      "initScript": "Script d’initialisation",
+      "initScriptDescription": "Chaque cloud l’exécute en tant que demi dans ~ dès que son système est neuf : à sa première utilisation et après chaque réinitialisation. Les commandes de ses conversations l’attendent. Un cloud existant ne prend en compte une modification qu’après sa réinitialisation.",
+      "initScriptPlaceholder": "sudo apt-get install -y ripgrep",
+      "sharedPath": "Dossier partagé",
+      "sharedPathDescription": "À partir de son prochain démarrage, chaque cloud de cette intégration voit ici le même dossier.",
+      "sharedPathProblem": "Saisissez un chemin qui commence par ~/ ou /.",
+      "delete": "Supprimer l’intégration",
+      "deleteDescription": "Ses conversations, ses clouds et son dossier partagé sont supprimés. Son utilisation est conservée.",
+      "deleteButton": "Supprimer l’intégration…",
+      "deleteTitle": "Supprimer « {name} » ?",
+      "deleteBody": "Ses conversations, ses clouds et son dossier partagé sont supprimés, et son jeton cesse aussitôt de fonctionner. Cette action est irréversible.",
+      "deleteConfirm": "Supprimer"
     }
   },
   "keyboard": {

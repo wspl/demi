@@ -185,6 +185,7 @@ impl Sandbox {
         runner_release: &str,
         boot: &ManagedBoot,
         machine: SandboxMachine,
+        shared: Option<(&Path, &str)>,
     ) -> Result<(), SandboxError> {
         self.programs = Some(programs_base.clone());
         self.machine = Some(machine);
@@ -254,6 +255,7 @@ impl Sandbox {
             }),
             runner_release,
             backend_socket: &backend_socket,
+            shared,
         })?;
         let directory = self.directory.clone();
         let log = blocking::run(move |off| -> io::Result<_> {

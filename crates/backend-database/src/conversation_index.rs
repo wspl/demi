@@ -1202,7 +1202,16 @@ impl ControlService {
                     raise_hosts_revision(&transaction, &id)?;
                 }
             }
-            if let Some((departed, cwd)) = &ends.departed
+            // A Host that is gone, as a removed device or a deleted Cloud, is
+            // left behind unattached.
+            let departed = match &ends.departed {
+                Some((device, cwd)) => transaction
+                    .query_row("SELECT 1 FROM devices WHERE id = ?1", [device.as_str()], |_| Ok(()))
+                    .optional()?
+                    .map(|()| (device, cwd)),
+                None => None,
+            };
+            if let Some((departed, cwd)) = departed
                 && Some(departed) != ends.arriving.as_ref()
             {
                 let host = AttachedHostRecord {

@@ -96,6 +96,8 @@ pub mod ext4;
 pub mod room;
 #[cfg(target_os = "linux")]
 pub mod tree;
+#[cfg(target_os = "linux")]
+pub mod shared;
 pub mod state;
 pub mod store;
 pub mod working;

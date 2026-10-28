@@ -41,7 +41,7 @@ pub(super) fn routes() -> Router<AppState> {
             .route("/integration", get(integration).patch(patch_integration))
             .route("/models", get(models))
             .route("/clouds", get(clouds).post(create_cloud))
-            .route("/clouds/{cloud}", get(cloud))
+            .route("/clouds/{cloud}", get(cloud).delete(delete_cloud))
             .route("/clouds/{cloud}/reset", post(reset_cloud))
             .route("/conversations", get(conversations).post(create_conversation))
             .route(
@@ -51,7 +51,14 @@ pub(super) fn routes() -> Router<AppState> {
             .route("/conversations/{conversation}/messages", post(send_message))
             .route("/conversations/{conversation}/stop", post(stop))
             .route("/conversations/{conversation}/agents/{agent}/transcript", get(transcript))
-            .route("/socket", get(socket)),
+            .route("/socket", get(socket))
+            .route(
+                "/attachments",
+                post(upload).layer(axum::extract::DefaultBodyLimit::max(super::attachments::BODY_LIMIT)),
+            )
+            .route("/blobs/{sha256}", get(blob))
+            .route("/conversations/{conversation}/attachments/{attachment}", get(conversation_attachment))
+            .route("/usage", get(usage)),
     )
 }
 
@@ -78,12 +85,13 @@ fn unauthenticated() -> ApiError {
     )
 }
 
-fn refused(refusal: IntegrationRefusal) -> ApiError {
+pub(crate) fn refused(refusal: IntegrationRefusal) -> ApiError {
     match refusal {
         IntegrationRefusal::NotFound(what) => {
             ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, format!("The integration has no {what} of that id"))
         }
         IntegrationRefusal::Refused(message) => ApiError::new(StatusCode::CONFLICT, ErrorCode::IntegrationRefused, message),
+        IntegrationRefusal::Invalid(message) => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::IntegrationRefused, message),
         IntegrationRefusal::Storage(error) => error.into(),
     }
 }
@@ -93,6 +101,8 @@ fn integration_answer(record: IntegrationRecord) -> api::Integration {
         id: record.id,
         name: record.name,
         capabilities: record.capabilities,
+        init_script: record.init_script,
+        shared_path: record.shared_path,
     }
 }
 
@@ -123,12 +133,15 @@ async fn patch_integration(
     let stored = StoredPatch {
         name: None,
         capabilities: patch.capabilities,
+        init_script: patch.init_script,
+        shared_path: patch.shared_path,
     };
     let record = state
-        .services
-        .control
-        .update_integration(record.id, stored)
+        .shards
+        .of(&record.user)
+        .call(move |shard, _| async move { shard.change_integration(record.id, stored).await })
         .await?
+        .map_err(refused)?
         .ok_or_else(unauthenticated)?;
     Ok(Json(integration_answer(record)))
 }
@@ -218,6 +231,145 @@ async fn reset_cloud(
         .await?
         .map_err(refused)?;
     Ok(Json(cloud))
+}
+
+/// `DELETE /v1/clouds/:cloud`: the Cloud, once no conversation works on it.
+async fn delete_cloud(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let device = device_id(cloud)?;
+    state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.delete_integration_cloud(&record, &device).await })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /v1/attachments?name=`: a file's bytes, at most 25 MiB, into its
+/// user's blobs, as the composer uploads one.
+async fn upload(
+    State(state): State<AppState>,
+    super::query::QueryParams(query): super::query::QueryParams<api::UploadQuery>,
+    request: axum::extract::Request,
+) -> Result<(StatusCode, Json<api::Attachment>), ApiError> {
+    let record = authenticated(&state, request.headers()).await?;
+    garde::Validate::validate(&query).map_err(|report| ApiError::invalid_query(format!("name: {report}")))?;
+    let sent = super::attachments::sent_media_type(request.headers())?;
+    let too_large = || {
+        ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            ErrorCode::TooLarge,
+            format!("An upload is at most {} bytes", super::attachments::BODY_LIMIT),
+        )
+    };
+    let bytes = super::body::read_within(request, &state, super::attachments::BODY_LIMIT, too_large).await?;
+    if bytes.is_empty() {
+        return Err(ApiError::invalid_body("An upload holds at least one byte"));
+    }
+    let stored = super::attachments::store(&state.services, &record.user, &query.name, &sent, bytes).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(api::Attachment {
+            id: stored.id.to_string(),
+            media_type: stored.media_type,
+            size_bytes: stored.size_bytes,
+            sha256: stored.sha256.to_string(),
+        }),
+    ))
+}
+
+/// `GET /v1/blobs/:sha256`: a blob of the integration's user's, such as a
+/// file an agent attached to its reply, as the web app reads one.
+async fn blob(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let no_such_blob = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No blob of that SHA-256");
+    let blob = demi_shared_types::BlobRef::try_from(name).map_err(|_| no_such_blob())?;
+    let bytes = state
+        .services
+        .blobs
+        .for_user(&record.user)
+        .get(&blob)
+        .await?
+        .ok_or_else(no_such_blob)?;
+    Ok(super::blobs::blob_answer(&bytes, None, &headers))
+}
+
+/// `GET /v1/conversations/:conversation/attachments/:attachment`: a file the
+/// conversation holds, by its number, as a reply's `<attachment id="a3" />`
+/// names it.
+async fn conversation_attachment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, attachment)): Path<(String, String)>,
+) -> Result<Json<api::ConversationAttachment>, ApiError> {
+    use demi_backend_database::conversation_attachments::{self, AttachmentNumber};
+    let record = authenticated(&state, &headers).await?;
+    let id = conversation_id(conversation)?;
+    let no_file = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "The conversation has no attachment of that number");
+    let number: AttachmentNumber = attachment.parse().map_err(|_| no_file())?;
+    let id = state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.integration_conversation_of(&record, &id).await })
+        .await?
+        .map_err(refused)?
+        .id;
+    let row = state
+        .services
+        .conversations
+        .read(&id, move |connection| conversation_attachments::read(connection, number))
+        .await
+        .map_err(ApiError::conversation_unreadable)?
+        .flatten()
+        .ok_or_else(no_file)?;
+    Ok(Json(api::ConversationAttachment {
+        id: row.number.to_string(),
+        name: row.name,
+        media_type: row.media_type,
+        size_bytes: row.size,
+        sha256: row.blob.to_string(),
+    }))
+}
+
+/// `GET /v1/usage`: the integration's usage in a period, grouped.
+async fn usage(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    super::query::QueryParams(query): super::query::QueryParams<api::UsageQuery>,
+) -> Result<Json<api::Usage>, ApiError> {
+    use demi_backend_database::usage::UsageKey;
+    let record = authenticated(&state, &headers).await?;
+    let key = match query.by {
+        api::UsageGrouping::Cloud => UsageKey::Device,
+        api::UsageGrouping::Conversation => UsageKey::Conversation,
+        api::UsageGrouping::Model => UsageKey::Model,
+    };
+    let rows = state
+        .services
+        .control
+        .integration_usage(record.id, query.from, query.to, key)
+        .await?
+        .into_iter()
+        .map(|row| api::UsageRow {
+            key: row.key,
+            requests: row.requests,
+            input_tokens: row.input_tokens,
+            output_tokens: row.output_tokens,
+            cache_read_tokens: row.cache_read_tokens,
+            cache_write_tokens: row.cache_write_tokens,
+            api_cost: row.api_cost,
+        })
+        .collect();
+    Ok(Json(api::Usage { rows }))
 }
 
 /// `GET /v1/conversations`.

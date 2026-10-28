@@ -7,6 +7,7 @@ import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import CopyCode from '../ui/CopyCode.vue'
 import InlineError from '../ui/InlineError.vue'
 import Switch from '../ui/Switch.vue'
+import TextArea from '../ui/TextArea.vue'
 import type { SentenceText } from '../ui/ui-text'
 import { shownError } from '../infra/errors'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -30,7 +31,10 @@ import {
  * - its token, whole with Copy only while the page holds the one its creation
  *   or Replace Token answered, hidden otherwise, since storage keeps only its
  *   hash; Replace Token asks first;
- * - a switch per capability, saved as it turns.
+ * - a switch per capability, saved as it turns;
+ * - its Clouds' init script, saved with Save, and the path of their shared
+ *   folder, saved as it is committed;
+ * - Delete Integration, which asks first and names what goes.
  */
 const props = defineProps<{
   integration: SettingsIntegration
@@ -40,6 +44,8 @@ const props = defineProps<{
   /** Saves a change; a refusal the user can fix is thrown, and its field shows it. */
   onChange: (change: IntegrationChange) => Promise<void>
   onReplaceToken?: Action
+  /** Delete Integration, once the user confirmed it. */
+  onDelete?: Action
 }>()
 
 const emit = defineEmits<{
@@ -80,6 +86,36 @@ async function turn(capability: IntegrationCapability, on: boolean): Promise<voi
     await save('capabilities', { capabilities: { ...wanted.value } })
   } finally {
     saving -= 1
+  }
+}
+
+function pathProblem(value: string): SentenceText | null {
+  const path = value.trim()
+  return path.startsWith('~/') || path.startsWith('/') ? null : t('integrations.page.sharedPathProblem')
+}
+
+// The script as typed, which follows the saved one until the user edits it.
+const script = ref(props.integration.initScript ?? '')
+let shownScript = script.value
+watch(() => props.integration.initScript, (saved) => {
+  if (script.value === shownScript)
+    script.value = saved ?? ''
+  shownScript = saved ?? ''
+})
+const scriptChanged = computed(() => script.value !== (props.integration.initScript ?? ''))
+const savingScript = computed(() => ({ action: 'save', target: `integration-script:${props.integration.id}` }))
+const scriptButton = ref<InstanceType<typeof Button> | null>(null)
+async function saveScript(): Promise<void> {
+  await save('initScript', { initScript: script.value.trim() ? script.value : null })
+}
+
+const deleteOpen = ref(false)
+const deleting = computed(() => ({ action: 'delete', target: `integration:${props.integration.id}` }))
+async function remove(): Promise<void> {
+  try {
+    await props.onDelete?.()
+  } finally {
+    deleteOpen.value = false
   }
 }
 
@@ -153,6 +189,72 @@ async function replace(): Promise<void> {
         />
       </SettingsRow>
     </SettingsGroup>
+
+    <SettingsGroup
+      :title="t('integrations.page.initScript')"
+      :description="t('integrations.page.initScriptDescription')"
+    >
+      <template #actions>
+        <InlineError v-if="problems.initScript" :message="problems.initScript" />
+        <Button
+          ref="scriptButton"
+          size="sm"
+          variant="primary"
+          :operation="savingScript"
+          :disabled="!scriptChanged"
+          @click="saveScript"
+        >
+          {{ t('integrations.page.save') }}
+        </Button>
+      </template>
+      <div class="p-3">
+        <TextArea
+          v-model="script"
+          :rows="8"
+          :aria-label="t('integrations.page.initScript')"
+          :placeholder="t('integrations.page.initScriptPlaceholder')"
+          mono
+          spellcheck="false"
+          @keydown.meta.enter.prevent="scriptButton?.press()"
+          @keydown.ctrl.enter.prevent="scriptButton?.press()"
+        />
+      </div>
+    </SettingsGroup>
+
+    <SettingsGroup>
+      <SettingsRow :label="t('integrations.page.sharedPath')" :description="t('integrations.page.sharedPathDescription')">
+        <template v-if="problems.sharedPath" #detail>
+          <InlineError :message="problems.sharedPath" />
+        </template>
+        <CommitTextInput
+          :model-value="integration.sharedPath"
+          :aria-label="t('integrations.page.sharedPath')"
+          :validate="pathProblem"
+          trim
+          class="w-56 max-w-full"
+          @problem="problems.sharedPath = $event ?? undefined"
+          @commit="save('sharedPath', { sharedPath: $event.trim() })"
+        />
+      </SettingsRow>
+    </SettingsGroup>
+
+    <SettingsGroup>
+      <SettingsRow :label="t('integrations.page.delete')" :description="t('integrations.page.deleteDescription')">
+        <Button size="sm" variant="danger" :operation="deleting" @click="deleteOpen = true">{{ t('integrations.page.deleteButton') }}</Button>
+      </SettingsRow>
+    </SettingsGroup>
+
+    <ConfirmDialog
+      :is-open="deleteOpen"
+      :overlay-store="overlayStore"
+      :title="t('integrations.page.deleteTitle', { name: integration.name })"
+      :action="t('integrations.page.deleteConfirm')"
+      :operation="deleting"
+      :on-confirm="remove"
+      @close="deleteOpen = false"
+    >
+      <p>{{ t('integrations.page.deleteBody', { clouds: integrationSummary(integration) }) }}</p>
+    </ConfirmDialog>
 
     <ConfirmDialog
       :is-open="replaceOpen"

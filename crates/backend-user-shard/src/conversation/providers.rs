@@ -21,7 +21,7 @@ use std::sync::Arc;
 use demi_agent_server::{ProviderResolver, ResolveError};
 use demi_agent_tools::{ProfileModel, Unavailable};
 use demi_backend_host_access::transition::ChangeRefusal;
-use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices, RetireModel};
+use demi_backend_providers::usage::meter::{Attributions, Ledger, MeteredRuntime, ModelPrices, RetireModel};
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
     AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
@@ -933,6 +933,20 @@ fn metered(
             Box::pin(std::future::ready(()))
         })
     };
+    let attribution: Attributions = {
+        let shard = scope.shard.clone();
+        let conversation = conversation.clone();
+        Rc::new(move |agent: Option<u64>| {
+            let shard = shard.clone();
+            let conversation = conversation.clone();
+            Box::pin(async move {
+                match shard.upgrade() {
+                    Some(shard) => shard.attribution(&conversation, agent).await,
+                    None => Default::default(),
+                }
+            })
+        })
+    };
     let ledger = Ledger {
         control: scope.services.control.clone(),
         clock: scope.services.clock.clone(),
@@ -944,6 +958,7 @@ fn metered(
         account: account.or(entry.active()).cloned(),
         prices,
         retire,
+        attribution,
     };
     Box::new(MeteredRuntime::new(runtime, ledger))
 }

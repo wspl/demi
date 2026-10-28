@@ -19,7 +19,8 @@
     "loadFailed": "Não foi possível carregar as integrações",
     "addFailed": "Não foi possível adicionar a integração",
     "saveFailed": "Não foi possível alterar a integração",
-    "replaceFailed": "Não foi possível substituir o token"
+    "replaceFailed": "Não foi possível substituir o token",
+    "deleteFailed": "Não foi possível excluir a integração"
   },
   "plugins": {
     "turnOnFailed": "Não foi possível ativar o plugin",

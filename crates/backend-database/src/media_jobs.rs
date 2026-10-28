@@ -175,6 +175,8 @@ impl KeptUsage {
             price: None,
             system_hash: None,
             tools_hash: None,
+            // Found again as the shard follows the job.
+            attribution: Default::default(),
         }
     }
 }

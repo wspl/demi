@@ -42,6 +42,7 @@
 use std::{collections::HashSet, path::Path};
 
 use demi_machine_manager_protocol::image::{INIT_PATH, PROGRAMS_PATH, RUNNER_PATH};
+use demi_machine_manager_protocol::shared::SANDBOX_HOME;
 use demi_runner_protocol::{
     boot::{BACKEND_SOCKET, TEMPORARY_DIRECTORY},
     release::RELEASE_ENV,
@@ -101,6 +102,10 @@ pub struct Boot<'a> {
     /// where its runner looks for the socket
     /// (`crates/backend-http/src/lib.rs`).
     pub backend_socket: &'a Path,
+    /// The server's mount of the integration's shared folder and the
+    /// absolute path the sandbox sees it at; none for a device of no
+    /// integration.
+    pub shared: Option<(&'a Path, &'a str)>,
 }
 
 /// A sandbox's cgroup under `demi-cloud`, named by the sandbox id, and its
@@ -137,7 +142,7 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
                 .umask(0o022u32)
                 .build()?,
         )
-        .cwd("/home/demi")
+        .cwd(SANDBOX_HOME)
         .args(
             [
                 INIT_PATH,
@@ -233,7 +238,7 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
         )
         .process(process)
         .hostname("demi-cloud")
-        .mounts(mounts(boot.directory, boot.backend_socket)?)
+        .mounts(mounts(boot.directory, boot.backend_socket, boot.shared)?)
         .linux(linux)
         .build()?;
     // The builder starts from oci-spec's default, which carries an empty
@@ -242,7 +247,11 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
     Ok(spec)
 }
 
-fn mounts(directory: &RuntimeDirectory, backend_socket: &Path) -> Result<Vec<Mount>, OciSpecError> {
+fn mounts(
+    directory: &RuntimeDirectory,
+    backend_socket: &Path,
+    shared: Option<(&Path, &str)>,
+) -> Result<Vec<Mount>, OciSpecError> {
     let guest_socket = Path::new(BACKEND_SOCKET)
         .parent()
         .and_then(Path::to_str)
@@ -273,7 +282,7 @@ fn mounts(directory: &RuntimeDirectory, backend_socket: &Path) -> Result<Vec<Mou
             )
             .build()
     };
-    Ok(vec![
+    let mut mounts = vec![
         mount("/proc", "proc", "proc", &["nosuid", "nodev", "noexec"])?,
         mount(
             "/dev",
@@ -333,5 +342,10 @@ fn mounts(directory: &RuntimeDirectory, backend_socket: &Path) -> Result<Vec<Mou
             &["bind", "ro", "nodev"],
         )?,
         bind(directory.hosts(), "/etc/hosts", &["bind", "ro", "nodev"])?,
-    ])
+    ];
+    // After `/home`, which a shared folder in the home lies in.
+    if let Some((source, destination)) = shared {
+        mounts.push(bind(source.to_owned(), destination, &["bind", "nodev", "nosuid"])?);
+    }
+    Ok(mounts)
 }

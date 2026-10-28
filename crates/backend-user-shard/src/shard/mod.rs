@@ -188,6 +188,8 @@ pub struct Shard {
     /// The sockets of the user's integrations, which hear their
     /// conversations' changes.
     pub(crate) integration_events: crate::integrations::IntegrationEvents,
+    pub(crate) init_runs: crate::integration_inits::InitRuns,
+    pub(crate) integration_deletions: crate::integrations::Deletions,
 }
 
 impl Shard {
@@ -281,6 +283,8 @@ impl Shard {
             lent_jobs: lent_media::LentJobs::default(),
             media_jobs: media_jobs::MediaJobs::default(),
             integration_events: crate::integrations::IntegrationEvents::default(),
+            init_runs: crate::integration_inits::InitRuns::default(),
+            integration_deletions: crate::integrations::Deletions::default(),
         }
     }
 

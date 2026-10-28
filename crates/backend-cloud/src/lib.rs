@@ -107,6 +107,7 @@
 pub mod access;
 pub mod capacity;
 pub mod client;
+pub mod deletion;
 pub mod isolation;
 pub mod machine;
 mod maintenance;

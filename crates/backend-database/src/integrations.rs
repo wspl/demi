@@ -32,6 +32,11 @@ pub struct IntegrationRecord {
     pub name: String,
     pub capabilities: IntegrationCapabilities,
     pub created_at: Timestamp,
+    /// The shell script each of its Clouds runs once its system is new.
+    pub init_script: Option<String>,
+    /// Where each of its Clouds mounts its shared folder: `~/...` or a
+    /// top-level directory.
+    pub shared_path: String,
 }
 
 /// A change of an integration's settings; a field left out stays.
@@ -39,6 +44,9 @@ pub struct IntegrationRecord {
 pub struct IntegrationPatch {
     pub name: Option<String>,
     pub capabilities: Option<IntegrationCapabilities>,
+    /// A new init script, or none for none.
+    pub init_script: Option<Option<String>>,
+    pub shared_path: Option<String>,
 }
 
 /// What an integration's conversation keeps beside the conversation's own
@@ -59,9 +67,57 @@ pub struct IntegrationCloud {
     pub device: DeviceId,
     pub integration: IntegrationId,
     pub key: Option<String>,
+    pub init: InitRun,
 }
 
-const COLUMNS: &str = "id, user_id, workspace_id, name, capabilities, created_at";
+/// Where a Cloud's run of its integration's init script is, and how its
+/// last run ended; its output, which may take megabytes, is read on its
+/// own (`cloud_init_output`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitRun {
+    pub state: InitState,
+    pub exit_code: Option<i32>,
+}
+
+/// Where a Cloud's run of its integration's init script is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitState {
+    /// The script runs at its next use: the Cloud is new, or was reset.
+    Pending,
+    Running,
+    Done,
+    Failed,
+    /// Its system was made while its integration had no script; it runs
+    /// none until a reset.
+    Unscripted,
+}
+
+impl InitState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Running => "running",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Unscripted => "unscripted",
+        }
+    }
+
+    fn parse(text: &str) -> Result<Self, String> {
+        Ok(match text {
+            "pending" => Self::Pending,
+            "running" => Self::Running,
+            "done" => Self::Done,
+            "failed" => Self::Failed,
+            "unscripted" => Self::Unscripted,
+            other => return Err(format!("unknown init state {other}")),
+        })
+    }
+}
+
+const COLUMNS: &str = "id, user_id, workspace_id, name, capabilities, created_at, init_script, shared_path";
+
+const CLOUD_COLUMNS: &str = "device_id, integration_id, external_key, init, init_exit_code, init_output";
 
 impl ControlService {
     /// Makes an integration of `user`'s with every setting at its default,
@@ -168,6 +224,20 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE integrations SET capabilities = ?2 WHERE id = ?1",
                     params![id.as_str(), to_json(capabilities)],
+                )?;
+            }
+            // A Cloud whose system was made keeps it; only a new one, or a
+            // reset, runs the new script.
+            if let Some(script) = &patch.init_script {
+                transaction.execute(
+                    "UPDATE integrations SET init_script = ?2 WHERE id = ?1",
+                    params![id.as_str(), script],
+                )?;
+            }
+            if let Some(path) = &patch.shared_path {
+                transaction.execute(
+                    "UPDATE integrations SET shared_path = ?2 WHERE id = ?1",
+                    params![id.as_str(), path],
                 )?;
             }
             let record = integration_in(&transaction, &id)?;
@@ -325,6 +395,10 @@ impl ControlService {
                 device: device.id,
                 integration,
                 key,
+                init: InitRun {
+                    state: InitState::Pending,
+                    exit_code: None,
+                },
             })
         })
         .await
@@ -334,7 +408,7 @@ impl ControlService {
     pub async fn integration_clouds(&self, integration: IntegrationId) -> Result<Vec<IntegrationCloud>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT c.device_id, c.integration_id, c.external_key FROM integration_clouds c
+                "SELECT c.device_id, c.integration_id, c.external_key, c.init, c.init_exit_code, c.init_output FROM integration_clouds c
                  JOIN devices d ON d.id = c.device_id
                  WHERE c.integration_id = ?1 ORDER BY d.claimed_at, d.id",
             )?;
@@ -363,12 +437,103 @@ impl ControlService {
         self.call(move |connection, _| {
             Ok(connection
                 .query_row(
-                    "SELECT device_id, integration_id, external_key FROM integration_clouds WHERE device_id = ?1",
+                    &format!("SELECT {CLOUD_COLUMNS} FROM integration_clouds WHERE device_id = ?1"),
                     [device.as_str()],
                     |row| Ok(integration_cloud_row(row)),
                 )
                 .optional()?
                 .transpose()?)
+        })
+        .await
+    }
+}
+
+impl ControlService {
+    /// The output of the Cloud `device`'s last run of its script, standard
+    /// output and error as they came; none before a run ended.
+    pub async fn cloud_init_output(&self, device: DeviceId) -> Result<Option<String>, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection
+                .query_row(
+                    "SELECT init_output FROM integration_clouds WHERE device_id = ?1",
+                    [device.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .flatten())
+        })
+        .await
+    }
+
+    /// Sets the Cloud `device` to run its script at its next use, as its
+    /// reset makes its system new.
+    pub async fn rerun_cloud_init(&self, device: DeviceId) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute("UPDATE integration_clouds SET init = 'pending' WHERE device_id = ?1", [device.as_str()])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Takes the run the Cloud `device` owes of its integration's script and
+    /// answers the script, in one transaction, so a change of the script
+    /// either comes before, and this run is of the new one, or after, and
+    /// does not reach the Cloud. A Cloud owes a run while it is pending, or
+    /// running in a record no run of the backend holds, as after a stop;
+    /// one whose integration has no script then owes none until a reset.
+    pub async fn claim_cloud_init(&self, device: DeviceId) -> Result<Option<String>, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let owed: Option<Option<String>> = transaction
+                .query_row(
+                    "SELECT i.init_script FROM integration_clouds c JOIN integrations i ON i.id = c.integration_id
+                     WHERE c.device_id = ?1 AND c.init IN ('pending', 'running')",
+                    [device.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let Some(script) = owed else {
+                return Ok(None);
+            };
+            let state = if script.is_some() { InitState::Running } else { InitState::Unscripted };
+            transaction.execute(
+                "UPDATE integration_clouds SET init = ?2 WHERE device_id = ?1",
+                params![device.as_str(), state.as_str()],
+            )?;
+            transaction.commit()?;
+            Ok(script)
+        })
+        .await
+    }
+
+    /// Records the end of the Cloud `device`'s run of its script, unless a
+    /// reset owed it a new run meanwhile.
+    pub async fn end_cloud_init(&self, device: DeviceId, exit_code: Option<i32>, output: String) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            let state = if exit_code == Some(0) { InitState::Done } else { InitState::Failed };
+            connection.execute(
+                "UPDATE integration_clouds SET init = ?2, init_exit_code = ?3, init_output = ?4
+                 WHERE device_id = ?1 AND init = 'running'",
+                params![device.as_str(), state.as_str(), exit_code, output],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Deletes the integration `id`, with its workspace, once its
+    /// conversations and Clouds are gone, which their foreign keys hold to;
+    /// answers whether it was there.
+    pub async fn delete_integration(&self, id: IntegrationId) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let Some(record) = integration_in(&transaction, &id)? else {
+                return Ok(false);
+            };
+            transaction.execute("DELETE FROM integrations WHERE id = ?1", [id.as_str()])?;
+            transaction.execute("DELETE FROM workspaces WHERE id = ?1", [record.workspace.as_str()])?;
+            transaction.commit()?;
+            Ok(true)
         })
         .await
     }
@@ -423,6 +588,8 @@ fn integration_row(row: &Row<'_>) -> Result<IntegrationRecord, StorageError> {
         name: row.get("name")?,
         capabilities: json(TABLE, "capabilities", &row.get::<_, String>("capabilities")?)?,
         created_at: decode(TABLE, "created_at", Timestamp::from_millisecond(row.get("created_at")?))?,
+        init_script: row.get("init_script")?,
+        shared_path: row.get("shared_path")?,
     })
 }
 
@@ -462,8 +629,10 @@ fn integration_cloud_by_key(
 ) -> Result<Option<IntegrationCloud>, StorageError> {
     Ok(connection
         .query_row(
-            "SELECT device_id, integration_id, external_key FROM integration_clouds
-             WHERE integration_id = ?1 AND external_key = ?2",
+            &format!(
+                "SELECT {CLOUD_COLUMNS} FROM integration_clouds
+                 WHERE integration_id = ?1 AND external_key = ?2"
+            ),
             params![integration.as_str(), key],
             |row| Ok(integration_cloud_row(row)),
         )
@@ -477,5 +646,9 @@ fn integration_cloud_row(row: &Row<'_>) -> Result<IntegrationCloud, StorageError
         device: decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>(0)?))?,
         integration: decode(TABLE, "integration_id", IntegrationId::try_from(row.get::<_, String>(1)?))?,
         key: row.get(2)?,
+        init: InitRun {
+            state: decode(TABLE, "init", InitState::parse(&row.get::<_, String>(3)?))?,
+            exit_code: row.get(4)?,
+        },
     })
 }

@@ -58,6 +58,8 @@ pub enum OpError {
     #[error(transparent)]
     Recovery(#[from] RecoveryError),
     #[error(transparent)]
+    Shared(#[from] crate::storage::shared::SharedError),
+    #[error(transparent)]
     Io(#[from] io::Error),
 }
 

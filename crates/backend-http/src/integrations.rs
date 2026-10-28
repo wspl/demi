@@ -54,9 +54,29 @@ pub(super) async fn patch(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move { shard.update_integration(id, patch).await })
-        .await??
+        .await?
+        .map_err(super::integration_edge::refused)?
         .ok_or_else(not_found)?;
     Ok(Json(IntegrationAnswer { integration }))
+}
+
+/// `DELETE /integrations/:id`: Delete Integration.
+pub(super) async fn delete(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let id = integration_id(id)?;
+    let deleted = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.delete_integration(&id).await })
+        .await?
+        .map_err(super::integration_edge::refused)?;
+    if !deleted {
+        return Err(not_found());
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `POST /integrations/:id/token`: a new token, which the old one no longer

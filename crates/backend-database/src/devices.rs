@@ -380,9 +380,13 @@ impl ControlService {
     }
 
     /// Deletes the device with its attachments to conversations, its
-    /// projects and the port forwards it is an end of, one transaction. The projects' conversations first move
+    /// projects, the port forwards it is an end of and a Cloud's resets, one
+    /// transaction. The projects' conversations first move
     /// off them, each to its project's directory, or its worktree's,
     /// on the device as a direct device target, which no longer runs. A project is a pointer: no file goes.
+    /// A conversation in the device's home keeps that directory the same
+    /// way: its last reported home, or for a Cloud that never reported one
+    /// the home every Cloud has.
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -398,12 +402,13 @@ impl ControlService {
             let mut conversations = {
                 let mut statement = transaction.prepare_cached(
                     "UPDATE conversations SET target_kind = 'device', target_project_id = NULL,
-                       target_path = COALESCE(target_worktree_path, target_path, (SELECT home FROM devices WHERE id = ?1)),
+                       target_path = COALESCE(target_worktree_path, target_path,
+                         (SELECT COALESCE(home, CASE kind WHEN 'managed' THEN ?2 END) FROM devices WHERE id = ?1)),
                        target_worktree_name = NULL, target_worktree_path = NULL
                      WHERE target_device_id = ?1 AND target_kind IN ('project', 'home')
                      RETURNING id",
                 )?;
-                let mut rows = statement.query([device.as_str()])?;
+                let mut rows = statement.query([device.as_str(), CLOUD_HOME])?;
                 let mut conversations = Vec::new();
                 while let Some(row) = rows.next()? {
                     conversations.push(decode(
@@ -482,6 +487,8 @@ impl ControlService {
                 [device.as_str()],
             )?;
             transaction.execute("DELETE FROM host_workflows WHERE device_id = ?1", [device.as_str()])?;
+            // A Cloud's resets go with it.
+            transaction.execute("DELETE FROM managed_operations WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
             Ok(DeviceRemoval {

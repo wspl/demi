@@ -25,7 +25,7 @@ mod linux {
     };
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, Download, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, NetworkRules, Offer, Operation,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeleteParams, DeleteSharedParams, DeviceId, Download, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, NetworkRules, Offer, Operation,
         ReconcileParams, Reconciled, ResetParams, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetNetworkRulesParams, Unavailable, WakeParams,
     };
     use tokio::{
@@ -52,6 +52,7 @@ mod linux {
         },
         server::MachineService,
         storage::{
+            shared::SharedImages,
             store::{ImageStore, Retention},
             working::WorkingPair,
         },
@@ -69,6 +70,9 @@ mod linux {
         /// The gVisor runtime, or why this manager cannot run it.
         pub gvisor: Result<Gvisor, String>,
         pub simple: Simple,
+        /// The shared folders mounted, which the sandboxes that name
+        /// them take and give back.
+        pub shared: SharedImages,
     }
 
     impl Core {
@@ -80,6 +84,7 @@ mod linux {
                 simple: Simple::new(&config),
                 tools,
                 config,
+                shared: SharedImages::default(),
             }
         }
 
@@ -232,8 +237,9 @@ mod linux {
         }
 
         /// Gives `device` a worker that runs `sandbox`, which a manager
-        /// before this one left running (`crate::handover`).
-        pub fn adopt(&self, device: DeviceId, sandbox: crate::sandbox::Sandbox) {
+        /// before this one left running (`crate::handover`) with the shared
+        /// folder `shared` mounted.
+        pub fn adopt(&self, device: DeviceId, sandbox: crate::sandbox::Sandbox, shared: Option<String>) {
             let reports = self.reports(&device);
             let runtime = DeviceRuntime::Gvisor(gvisor::Device::adopted(
                 device.clone(),
@@ -241,6 +247,7 @@ mod linux {
                 self.base.clone(),
                 reports.clone(),
                 sandbox,
+                shared,
             ));
             self.start(&device, runtime, reports);
         }
@@ -673,6 +680,7 @@ mod linux {
                         boot: params.boot,
                         machine: params.machine,
                         capacity: params.capacity,
+                        shared: params.shared,
                     };
                     self.run(&device, op).await?;
                     Ok(reply::<WakeParams>(()))
@@ -704,6 +712,16 @@ mod linux {
                     };
                     self.run(&device, op).await?;
                     Ok(reply::<ResetParams>(()))
+                }
+                MachineCall::Delete(params) => {
+                    let device = DeviceId::parse(params.device_id)?;
+                    self.run(&device, DeviceOp::Delete).await?;
+                    Ok(reply::<DeleteParams>(()))
+                }
+                MachineCall::DeleteShared(params) => {
+                    let _admitted = self.admission.enter().await?;
+                    self.core.shared.delete(&self.core, &params.id).await?;
+                    Ok(reply::<DeleteSharedParams>(()))
                 }
             }
         }

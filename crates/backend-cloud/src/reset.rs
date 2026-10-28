@@ -209,7 +209,7 @@ impl dyn CloudShard {
         }
         let hold = self.cloud_services().tuning.reset_hold;
         let uses = self.cloud_uses(&machine.device).await?;
-        let _held = self.hold_uses_for_reset(&uses, hold).await?;
+        let _held = self.hold_uses(&uses, hold, "reset").await?;
         // The runner flushes, best effort, and goes: every command still
         // running on the Cloud ends with it.
         self.flush(device).await;

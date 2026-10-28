@@ -964,11 +964,19 @@ CREATE TABLE usage_ledger (
   -- The SHA-256 of the video a video call made, in hex; null for any other
   -- call, and for a video call written before the ledger kept it.
   media_digest          TEXT,
+  -- The device the call's agent worked on, and the integration whose
+  -- conversation it was, as the row was written; null for none, and in a
+  -- row written before the ledger kept them.
+  device_id             TEXT,
+  integration_id        TEXT,
   CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
 -- A video's call by the video it made.
 CREATE INDEX usage_ledger_media_digest ON usage_ledger (media_digest) WHERE media_digest IS NOT NULL;
+-- An integration's rows by their end.
+CREATE INDEX usage_ledger_integration ON usage_ledger (integration_id, ended_at)
+  WHERE integration_id IS NOT NULL;
 -- A conversation's rows by their end: its first call and its last hour.
 CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id, ended_at);
 -- An agent's rows, newest last: its previous call and its recent calls.
@@ -1080,7 +1088,13 @@ CREATE TABLE integrations (
   created_at   INTEGER NOT NULL,
   -- The plugin its program last declared, Declaration as JSON; none before
   -- its first declaration.
-  declaration  TEXT
+  declaration  TEXT,
+  -- The shell script each of its Clouds runs once its system is new; none
+  -- for none.
+  init_script  TEXT,
+  -- Where each of its Clouds mounts its shared folder from its next
+  -- start: a path in the home, `~/...`, or a top-level directory.
+  shared_path  TEXT NOT NULL DEFAULT '~/shared'
 ) STRICT;
 CREATE INDEX integrations_by_user ON integrations (user_id);
 CREATE TABLE integration_conversations (
@@ -1098,7 +1112,14 @@ CREATE UNIQUE INDEX integration_conversations_by_key
 CREATE TABLE integration_clouds (
   device_id      TEXT PRIMARY KEY REFERENCES devices (id) ON DELETE CASCADE,
   integration_id TEXT NOT NULL REFERENCES integrations (id),
-  external_key   TEXT
+  external_key   TEXT,
+  -- Where its run of the init script is: 'pending' runs the script at its
+  -- next use; 'unscripted' made its system while there was none.
+  init           TEXT NOT NULL DEFAULT 'pending'
+    CHECK (init IN ('pending', 'running', 'done', 'failed', 'unscripted')),
+  -- The last run's exit code and its output; none before a run ended.
+  init_exit_code INTEGER,
+  init_output    TEXT
 ) STRICT;
 CREATE UNIQUE INDEX integration_clouds_by_key
   ON integration_clouds (integration_id, external_key) WHERE external_key IS NOT NULL;

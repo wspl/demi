@@ -6,7 +6,7 @@ use std::{net::Ipv4Addr, path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
 use demi_machine_manager_protocol::{
-    BaseVersion, Capacity, DeviceId, LeftSandbox, MachineImageState, SandboxMachine, Volume,
+    BaseVersion, Capacity, DeviceId, LeftSandbox, MachineImageState, SandboxMachine, SharedFolder, Volume,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 
@@ -63,6 +63,9 @@ pub struct Device {
     base: BaseVersion,
     working: WorkingPair,
     sandbox: Option<Sandbox>,
+    /// The shared folder the running sandbox took, which its stop gives
+    /// back.
+    shared: Option<String>,
     reports: Reports,
 }
 
@@ -105,21 +108,24 @@ impl Device {
             core,
             base,
             sandbox: None,
+            shared: None,
             reports,
         }
     }
 
-    /// `device`, whose sandbox a manager before this one left running and
-    /// this one took over.
+    /// `device`, whose sandbox a manager before this one left running with
+    /// the shared folder `shared` and this one took over.
     pub fn adopted(
         device: DeviceId,
         core: Rc<Core>,
         base: BaseVersion,
         reports: Reports,
         sandbox: Sandbox,
+        shared: Option<String>,
     ) -> Self {
         let mut device = Self::new(device, core, base, reports);
         device.sandbox = Some(sandbox);
+        device.shared = shared;
         device
     }
 
@@ -129,7 +135,8 @@ impl Device {
                 boot,
                 machine,
                 capacity,
-            } => self.wake(&boot, machine, capacity).await,
+                shared,
+            } => self.wake(&boot, machine, capacity, shared.as_ref()).await,
             DeviceOp::Hibernate { retention } => {
                 self.stop().await?;
                 self.save(retention).await
@@ -141,7 +148,36 @@ impl Device {
                 capacity,
                 retention,
             } => self.reset(&operation, &base, capacity, retention).await,
+            DeviceOp::Delete => self.delete().await,
         }
+    }
+
+    /// Stops the sandbox, if any, and removes the working pair and every
+    /// committed generation. Each is first renamed to a stage in the working
+    /// directory, on the same filesystem as the store, which recovery
+    /// removes: a crash midway never leaves half a device that a wake would
+    /// boot.
+    async fn delete(&mut self) -> Result<(), OpError> {
+        self.stop().await?;
+        let working = self.working.directory().to_owned();
+        let committed = self.core.gvisor().store.device_directory(&self.device);
+        let stages = (
+            self.core.config.working().join(format!(".deleted-{}", uuid::Uuid::new_v4())),
+            self.core.config.working().join(format!(".deleted-{}", uuid::Uuid::new_v4())),
+        );
+        blocking::run(move |off| -> std::io::Result<()> {
+            for (directory, stage) in [(working, stages.0), (committed, stages.1)] {
+                match fs_err::rename(&directory, &stage) {
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    renamed => renamed?,
+                }
+                sync(off, stage.parent().expect("a stage lies in its directory"))?;
+                remove_tree(off, &stage)?;
+            }
+            Ok(())
+        })
+        .await?;
+        Ok(())
     }
 
     /// The sandbox exited without being asked to: stop what remains and
@@ -174,8 +210,8 @@ impl Device {
         self.sandbox.as_ref().and_then(Sandbox::admitted)
     }
 
-    /// Hands the running sandbox's boot, programs' base and machine over
-    /// to the next manager, releasing nothing of it.
+    /// Hands the running sandbox's boot, programs' base, machine and shared
+    /// folder over to the next manager, releasing nothing of it.
     pub fn leave(mut self) -> Option<LeftSandbox> {
         let (record, programs, machine) = self.sandbox.take().and_then(Sandbox::leave)?;
         Some(LeftSandbox {
@@ -184,6 +220,7 @@ impl Device {
             slot: record.slot,
             programs,
             machine,
+            shared: self.shared.take(),
         })
     }
 
@@ -207,7 +244,19 @@ impl Device {
             self.sandbox = Some(sandbox);
             return Err(error.into());
         }
+        self.give_back_shared().await;
         Ok(())
+    }
+
+    /// Gives back the shared folder the sandbox that stopped took; a
+    /// failure is logged, and the mount left behind serves the next start,
+    /// or goes with a deletion or the manager's next start.
+    async fn give_back_shared(&mut self) {
+        if let Some(id) = self.shared.take()
+            && let Err(error) = self.core.shared.release(&self.core, &id).await
+        {
+            tracing::warn!(event = "shared_folder.release_failed", host_id = %self.device, %error, "a shared folder stayed mounted");
+        }
     }
 
     /// Publishes the working pair, which no sandbox may be writing, keeping
@@ -231,6 +280,7 @@ impl Device {
         boot: &ManagedBoot,
         machine: SandboxMachine,
         capacity: Capacity,
+        shared: Option<&SharedFolder>,
     ) -> Result<(), OpError> {
         if self.sandbox.is_some() {
             return Ok(());
@@ -252,6 +302,14 @@ impl Device {
         stage.remove().await;
         copied?;
         let lease = self.core.gvisor().slots.take()?;
+        let mount = match shared {
+            Some(folder) => {
+                let source = self.core.shared.acquire(&self.core, &folder.id, folder.capacity_bytes).await?;
+                self.shared = Some(folder.id.clone());
+                Some((source, folder.path.clone()))
+            }
+            None => None,
+        };
         let mut sandbox = Sandbox::new(&self.core, lease);
         let started = sandbox
             .start(
@@ -263,6 +321,7 @@ impl Device {
                 &runner_release,
                 boot,
                 machine,
+                mount.as_ref().map(|(source, path)| (source.as_path(), path.as_str())),
             )
             .await;
         let Err(error) = started else {
@@ -270,7 +329,10 @@ impl Device {
             return Ok(());
         };
         match sandbox.close(&self.core, &self.working).await {
-            Ok(()) => Err(error.into()),
+            Ok(()) => {
+                self.give_back_shared().await;
+                Err(error.into())
+            }
             Err(cleanup) => {
                 self.sandbox = Some(sandbox);
                 Err(OpError::StartAndCleanup(Parts(vec![

@@ -4,6 +4,7 @@
 //! It holds what host access needs of the shard (`HostShard`), whose operations
 //! the edge and the shard's own work reach through `host_shard`.
 
+use demi_backend_database::devices::DeviceRecord;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -107,6 +108,10 @@ impl HostShard for Shard {
 
     fn track_idle(&self, conversation: &ConversationId) {
         Shard::track_idle(self, conversation);
+    }
+
+    fn ready_machine<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, ()> {
+        Box::pin(Shard::ready_machine(self, device))
     }
 
     fn directory_sets<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, Result<DirectorySets, String>> {

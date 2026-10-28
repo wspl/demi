@@ -286,6 +286,7 @@ impl DeviceWorker {
             match command {
                 DeviceCommand::Run { op, reply } => {
                     let wake = matches!(op, DeviceOp::Wake { .. });
+                    let deleted = matches!(op, DeviceOp::Delete);
                     if wake {
                         self.settle().await;
                     }
@@ -294,8 +295,9 @@ impl DeviceWorker {
                     // The requester may have gone; the operation completed anyway.
                     let _ = reply.send(outcome);
                     // A wake that failed leaves the device stopped; the move
-                    // it could not make waits for the next one.
-                    if !wake {
+                    // it could not make waits for the next one. A device
+                    // deleted has nothing left to move.
+                    if !wake && !deleted {
                         self.settle().await;
                     }
                 }

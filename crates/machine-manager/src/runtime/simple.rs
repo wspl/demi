@@ -718,6 +718,11 @@ impl Device {
             // Its files are its storage: a checkpoint makes them durable.
             DeviceOp::Checkpoint { .. } => self.sync().await,
             DeviceOp::Reset { operation, base, .. } => self.reset(&operation, &base).await,
+            DeviceOp::Delete => {
+                self.stop().await?;
+                let device = self.device.clone();
+                self.simple().remove(&device).await
+            }
         }
     }
 

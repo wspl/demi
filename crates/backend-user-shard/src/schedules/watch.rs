@@ -12,26 +12,21 @@
 //! - A check a pause, an edit of the trigger or a deletion overtook is stopped,
 //!   and records nothing.
 
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
 use std::time::Duration;
 
 use demi_backend_database::schedules::{RunCause, StoredSchedule, WatchOutput};
 use demi_backend_page_sync::Part;
-use demi_runner_client::{ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironment};
-use demi_command_protocol::{CommandCaller, CommandContext, Viewable};
-use demi_host_interface::{
-    CommandRecord, Ending, ExecRequest, HostError, JobCaller, Numbers, OutputRecord, PageFeed, ShellEnvironment,
-};
-use demi_shared_types::{NodeId, Sequence, StreamKind, Timestamp};
+use demi_runner_client::RemoteHost;
+use demi_command_protocol::{CommandCaller, CommandContext};
+use demi_host_interface::OutputRecord;
+use demi_shared_types::{StreamKind, Timestamp};
 use demi_web_api_protocol::schedules::{RunNote, RunState, Trigger};
-use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
-use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use super::message::{CUT_BYTES, Output, last_bytes};
 use super::runs::{Fired, Payload, Unrunnable};
+use crate::scripts::{ScriptEnd, run_script};
 use crate::shard::Shard;
 
 /// How long a watch's command may run.
@@ -46,117 +41,52 @@ enum Checked {
     Failed(String),
 }
 
-/// A watch's jobs have no page that follows them.
-struct NoPage(watch::Sender<bool>);
-
-impl PageFeed for NoPage {
-    fn changed(&self, _: &Rc<RefCell<CommandRecord>>) {}
-
-    fn watching(&self) -> watch::Receiver<bool> {
-        self.0.subscribe()
-    }
-}
-
-/// A watch's command numbers, which no one reads.
-#[derive(Default)]
-struct Count(Cell<u64>);
-
-impl Numbers for Count {
-    fn next(&self, _: Sequence) -> LocalBoxFuture<'_, Result<u64, HostError>> {
-        self.0.set(self.0.get() + 1);
-        let next = self.0.get();
-        Box::pin(async move { Ok(next) })
-    }
-}
-
-/// Runs `script` in `cwd` on `host` as the agent's shell would, and answers
-/// its output, or why there is none.
+/// Runs `script` on `host` as the agent's shell would, at most
+/// [`COMMAND_TIME`], and answers its output, or why there is none.
 async fn run_command(
     host: RemoteHost,
-    cwd: Option<String>,
     context: CommandContext,
     script: String,
     stop: &CancellationToken,
 ) -> Checked {
-    let source: ContextSource = Rc::new(move || {
-        let context = context.clone();
-        Box::pin(async move { Ok(context) })
-    });
-    let environment = RemoteShellEnvironment::new(EnvironmentOptions::new(
-        host,
-        source,
-        Rc::new(NoPage(watch::Sender::new(false))),
-        Rc::new(Count::default()),
-    ));
-    let request = ExecRequest {
-        script,
-        cwd,
-        caller: JobCaller {
-            node: NodeId::try_from("schedule").expect("a name is not empty"),
-            tool_use_id: "watch".into(),
-            turn: None,
-        },
-        title: "Change watch".into(),
-        service: true,
-        viewable: Viewable {
-            model: "none".into(),
-            media_types: Some(Vec::new()),
-        },
-    };
-    let cancel = CancellationToken::new();
-    let command = match environment.start(request, cancel.clone()).await {
-        Ok(command) => command,
-        Err(error) => return Checked::Failed(error.to_string()),
-    };
-    let ended = tokio::select! {
-        ended = tokio::time::timeout(COMMAND_TIME, environment.ended(&command)) => Some(ended),
-        () = stop.cancelled() => None,
-    };
-    let checked = match ended {
-        // Dropped by a pause, an edit or a deletion: what it gave is not read.
-        None => Checked::Failed("the check was dropped".into()),
-        Some(Err(_)) => Checked::TimedOut,
-        Some(Ok(Err(error))) => Checked::Failed(error.to_string()),
-        Some(Ok(Ok(Ending::Aborted))) => Checked::Failed("the command was stopped".into()),
-        Some(Ok(Ok(Ending::Lost(reason)))) => Checked::Failed(reason),
-        Some(Ok(Ok(Ending::Exited(exit)))) => match environment.status(&command) {
-            Ok(status) => {
-                let mut stdout = Vec::new();
-                let mut digest = Sha256::new();
-                if let Some(whole) = status.whole {
-                    for record in whole.output.records() {
-                        match record {
-                            OutputRecord::Output(StreamKind::Stdout, bytes) => {
-                                digest.update(bytes);
-                                stdout.extend_from_slice(bytes);
-                                if stdout.len() > 2 * CUT_BYTES {
-                                    stdout = last_bytes(&stdout, CUT_BYTES);
-                                }
-                            }
-                            // Past the 16 MB the Host keeps, the middle is
-                            // left out: its length stands for it.
-                            OutputRecord::LeftOut(bytes) => digest.update(format!("\0left out {bytes}\0")),
-                            OutputRecord::Output(..) => {}
+    let ended = run_script(host, None, context, script, "Change watch", Some(COMMAND_TIME), stop, |exit, whole| {
+        let mut stdout = Vec::new();
+        let mut digest = Sha256::new();
+        if let Some(whole) = whole {
+            for record in whole.records() {
+                match record {
+                    OutputRecord::Output(StreamKind::Stdout, bytes) => {
+                        digest.update(bytes);
+                        stdout.extend_from_slice(bytes);
+                        if stdout.len() > 2 * CUT_BYTES {
+                            stdout = last_bytes(&stdout, CUT_BYTES);
                         }
                     }
+                    // Past the 16 MB the Host keeps, the middle is left
+                    // out: its length stands for it.
+                    OutputRecord::LeftOut(bytes) => digest.update(format!("\0left out {bytes}\0")),
+                    OutputRecord::Output(..) => {}
                 }
-                Checked::Output(
-                    Output {
-                        stdout: last_bytes(&stdout, CUT_BYTES),
-                        exit,
-                    },
-                    digest.finalize().to_vec(),
-                )
             }
-            Err(error) => Checked::Failed(error.to_string()),
-        },
-    };
-    // A command over its time, or of a dropped check, is stopped, and every
-    // one let go of.
-    cancel.cancel();
-    environment.dispose_all().await;
-    checked
+        }
+        (
+            Output {
+                stdout: last_bytes(&stdout, CUT_BYTES),
+                exit,
+            },
+            digest.finalize().to_vec(),
+        )
+    })
+    .await;
+    match ended {
+        ScriptEnd::Read((output, digest)) => Checked::Output(output, digest),
+        ScriptEnd::TimedOut => Checked::TimedOut,
+        // Dropped by a pause, an edit or a deletion: what it gave is not read.
+        ScriptEnd::Dropped => Checked::Failed("the check was dropped".into()),
+        ScriptEnd::Failed(reason) => Checked::Failed(reason),
+    }
 }
+
 
 impl Shard {
     /// Whether the watch's check runs now, which the scheduler does not
@@ -310,7 +240,7 @@ impl Shard {
         let cancel = CancellationToken::new();
         self.host_shard()
             .with_host(&schedule.conversation, None, &cancel, async |host| {
-                run_command(host.host.clone(), None, context, script, stop).await
+                run_command(host.host.clone(), context, script, stop).await
             })
             .await
             .unwrap_or_else(|error| failed(&error))

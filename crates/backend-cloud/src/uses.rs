@@ -104,7 +104,7 @@ impl dyn CloudShard {
         Some(held)
     }
 
-    /// Holds the conversations a reset reaches.
+    /// Holds the conversations a reset or a deletion, `operation`, reaches.
     ///
     /// - Each one's turn is interrupted and its tree held.
     /// - The file transfers and user streams of one whose files are on the
@@ -112,11 +112,12 @@ impl dyn CloudShard {
     /// - Its file gate is reserved once the operations holding it ended.
     ///
     /// Each wait has `hold`. A conversation that does not let go within it
-    /// fails the reset.
-    pub(crate) async fn hold_uses_for_reset(
+    /// fails the operation.
+    pub(crate) async fn hold_uses(
         &self,
         uses: &[(ConversationId, Role)],
         hold: Duration,
+        operation: &str,
     ) -> Result<Vec<Box<dyn ConversationHold>>, CloudError> {
         let mut held = Vec::new();
         for (id, role) in uses {
@@ -127,7 +128,7 @@ impl dyn CloudShard {
                 .hold_for_reset(id, true, hold)
                 .await
                 .ok_or_else(|| {
-                    CloudError::Failed(format!("The conversation {id} did not stop for the reset"))
+                    CloudError::Failed(format!("The conversation {id} did not stop for the {operation}"))
                 })?;
             held.push(conversation);
         }
