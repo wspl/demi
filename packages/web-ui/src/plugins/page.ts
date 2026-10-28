@@ -186,6 +186,13 @@ export interface StateFeed {
 }
 
 /** What the page around the shell supplies for every page. */
+/** A workspace of the user's, as a page names it. */
+export interface PageWorkspace {
+  id: string
+  /** Its name in the page's language. */
+  name: string
+}
+
 export interface PageHost {
   /** The plugin's user state as the product state holds it, read reactively; undefined while there is none. */
   userState(plugin: string): unknown
@@ -234,6 +241,13 @@ export interface PageHost {
     canGo(conversation: string, direction: HistoryDirection): boolean
     /** The web browser's Back or Forward, as the panel's address bar takes it. */
     go(direction: HistoryDirection): void
+  }
+  /** The user's workspaces, read reactively. */
+  workspaces: {
+    /** Every workspace, in the user's order. */
+    list(): readonly PageWorkspace[]
+    /** The workspace of the tab the page is in. */
+    current(): string | null
   }
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
@@ -312,6 +326,8 @@ export interface PageContext {
   /** The panel tabs of the page's own kinds. */
   readonly panel: PageHost['panel']
   readonly settings: { open(section: string): void }
+  /** The user's workspaces and the tab's, read reactively. */
+  readonly workspaces: PageHost['workspaces']
   /** Opens a web page in a new tab, as {@link PageHost.openLink} does. */
   readonly links: { open(url: string | Promise<string>): Promise<void> }
   readonly errors: {
@@ -704,6 +720,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       go: (direction) => host.panel.go(direction),
     },
     settings: { open: (section) => host.openSettings(section) },
+    workspaces: host.workspaces,
     links: { open: (url) => host.openLink(url) },
     errors,
     overlays: host.overlays,

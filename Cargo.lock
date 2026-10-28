@@ -2848,6 +2848,7 @@ dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-shared-types",
+ "demi-web-api-protocol",
  "futures-util",
  "gix",
  "schemars",

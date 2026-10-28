@@ -60,6 +60,7 @@ export {
   type KindTab,
   type PageContext,
   type PagePlugin,
+  type PageWorkspace,
   type PanelKind,
   type HistoryDirection,
   type TabUpdate,

@@ -32,7 +32,7 @@ use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk,
     VideoStep, CallKind, DirectoryPath, HostDirectory, Plugin, PluginError, PluginId, PluginPort,
     PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope, StoredReport,
-    StoredValue,
+    StoredValue, Workspaces,
 };
 use demi_host_interface::{HostFile, HostRead};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId};
@@ -1421,6 +1421,20 @@ impl RequestPort {
                     .map_err(storage)?;
                 let primary = shared.primary_device(conversation).await?.as_ref() == Some(&device);
                 PortAnswer::Kept { primary }
+            }
+            PortMessage::Workspaces => {
+                let workspaces = shared.store.workspaces(shared.user.clone()).await.map_err(storage)?;
+                let current = match &self.conversation {
+                    Some(conversation) => shared
+                        .store
+                        .conversation_workspace(conversation.clone())
+                        .await
+                        .map_err(storage)?,
+                    None => None,
+                };
+                PortAnswer::Workspaces {
+                    workspaces: Workspaces { workspaces, current },
+                }
             }
             PortMessage::PanelTabs => {
                 let registered = &shared.registry.plugins[self.plugin];

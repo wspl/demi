@@ -2,8 +2,12 @@
   "title": "技能",
   "description": "智能体可以遵循的打包工作流。",
   "keywords": "技能,工作流,git,SKILL.md",
+  "places": {
+    "global": "全局",
+    "globalDescription": "在所有工作空间中可用。",
+    "workspaceDescription": "仅在此工作空间中可用。"
+  },
   "sources": {
-    "title": "来源",
     "add": "添加来源…",
     "none": "没有来源",
     "adding": "正在添加",
@@ -17,7 +21,7 @@
   "skill": {
     "warning": "警告",
     "nameTaken": "名称已被占用",
-    "nameTakenDetail": "来自 {origin} 的技能“{name}”已开启。关闭它才能使用此技能。",
+    "nameTakenDetail": "来自 {origin}（{place}）的技能“{name}”已开启。关闭它才能使用此技能。",
     "neverOffered": "从不提供",
     "neverOfferedDetail": "它设置了 disable-model-invocation。",
     "notASkill": "不是技能：{reason}"
@@ -46,7 +50,7 @@
   "permissions": {
     "skills_manage": {
       "action": "管理技能",
-      "description": "“管理技能”允许此对话的智能体添加、更新和移除技能源，以及打开或关闭技能。你的技能可用于每个对话，已打开的技能会安装到你的对话使用的每台主机上。"
+      "description": "“管理技能”允许此对话的智能体添加、更新和移除技能源，以及打开或关闭技能。全局技能可用于每个对话，工作空间的技能可用于该工作空间的对话，已打开的技能会安装到这些对话使用的主机上。"
     }
   },
   "problems": {
@@ -66,6 +70,8 @@
   },
   "refusals": {
     "invalid_origin": "请输入“所有者/存储库”或 Git URL。",
-    "source_exists": "已添加 {origin}。"
+    "source_exists": "已添加 {origin}。",
+    "source_exists_in": "已在“{place}”中添加 {origin}。",
+    "workspace_not_found": "此工作空间已不存在。"
   }
 }

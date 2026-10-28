@@ -4,6 +4,7 @@ import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
 import type { HostArtifact, HostDownload } from '@demicodes/web-ui/devices/installed'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { workspaceName } from '@demicodes/web-ui/workspaces/workspaces'
 import {
   PluginCallError,
   type ConversationFileService,
@@ -22,6 +23,7 @@ import {
 } from '@demicodes/plugin-skills'
 import { removeKeySchema, saveKeySchema, signInSchema, signOutSchema, type WebState } from '@demicodes/plugin-web'
 import { productWould } from '../product-would'
+import { galleryWorkspaces } from './workspaces'
 import type { GalleryBrowser } from './live-browser'
 import type { GalleryBrowserPlugin } from './panel'
 
@@ -59,6 +61,8 @@ export interface GalleryShell {
   openLink?: PageHost['openLink']
   /** Whether the user has `plugin` on, read reactively; every plugin is, unless the specimen says. */
   enabled?(plugin: string): boolean
+  /** The workspace of the specimen's tab; the gallery's first without one. */
+  workspace?: string
 }
 
 /**
@@ -129,6 +133,10 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       // A specimen without a panel has no history of one.
       canGo: () => false,
       go: () => {},
+    },
+    workspaces: {
+      list: () => galleryWorkspaces.list.map((workspace) => ({ id: workspace.id, name: workspaceName(workspace) })),
+      current: () => shell.workspace ?? galleryWorkspaces.list[0]?.id ?? null,
     },
     openSettings: (section) => productWould(`Open ${section} Settings`),
     openLink: shell.openLink ?? (async (url) => {
@@ -219,18 +227,40 @@ function fetchedSkills(origin: string): Omit<SourceState['skills'][number], 'ena
 
 /** `state` as the backend's plugin sends it: each skill that is off names the source whose skill of its name is on. */
 function withTakenNames(state: SkillsState): SkillsState {
-  const on = new Map<string, string>()
+  const on = new Map<string, SourceState>()
   for (const source of state.sources) {
     for (const skill of source.skills.filter((candidate) => candidate.enabled)) {
-      on.set(skill.name, source.origin)
+      on.set(skill.name, source)
     }
   }
   return {
     sources: state.sources.map((source) => ({
       ...source,
-      skills: source.skills.map((skill) => ({ ...skill, takenBy: skill.enabled ? undefined : on.get(skill.name) })),
+      skills: source.skills.map((skill) => {
+        const taker = skill.enabled ? undefined : on.get(skill.name)
+        return { ...skill, takenBy: taker?.origin, takenIn: taker?.workspace ?? undefined }
+      }),
     })),
   }
+}
+
+/**
+ * A repository in the one form the backend's plugin keys sources by: the
+ * URL, `owner/repo` on GitHub, with its host in lowercase and without a
+ * trailing slash or `.git`.
+ */
+function galleryRepository(origin: string): string {
+  const text = origin.trim()
+  const rest = (text.startsWith('https://') ? text : `https://github.com/${text}`).slice('https://'.length)
+  const slash = rest.indexOf('/')
+  const host = (slash < 0 ? rest : rest.slice(0, slash)).toLowerCase()
+  const path = (slash < 0 ? '' : rest.slice(slash + 1)).replace(/\/+$/, '').replace(/\.git$/, '')
+  return `https://${host}/${path}`
+}
+
+/** A place's name as the backend's plugin says it: Global, or its workspace's. */
+function galleryPlace(workspace: string | null | undefined): string {
+  return workspace ? workspaceName(galleryWorkspaces.list.find((each) => each.id === workspace) ?? { name: null }) : 'Global'
 }
 
 /** A commit id for the gallery's fetches and skill sources. */
@@ -364,7 +394,7 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
     for (const other of state.sources) {
       for (const skill of other.skills) {
         if (skill.enabled && names.includes(skill.name) && other.id !== id) {
-          throw new PluginCallError('skill_name_taken', `A skill named “${skill.name}” from ${other.origin} is on. Turn it off first.`)
+          throw new PluginCallError('skill_name_taken', `A skill named “${skill.name}” from ${other.origin}, in ${galleryPlace(other.workspace)}, is on. Turn it off first.`)
         }
       }
     }
@@ -374,15 +404,16 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
     call: async (method, params) => {
       switch (method) {
         case 'add_source': {
-          const { origin } = addSourceSchema.parse(params)
+          const { origin, workspace } = addSourceSchema.parse(params)
           if (!/^(https:\/\/\S+\/\S+|[\w.-]+\/[\w.-]+)$/.test(origin.trim())) {
             throw new PluginCallError('invalid_origin', `"${origin}" is neither owner/repo nor an https URL`)
           }
-          if (state.sources.some((existing) => existing.origin === origin.trim())) {
-            throw new PluginCallError('source_exists', `${origin} is added already`)
+          const existing = state.sources.find((candidate) => galleryRepository(candidate.origin) === galleryRepository(origin))
+          if (existing) {
+            throw new PluginCallError('source_exists', `${origin} is added already, in ${galleryPlace(existing.workspace)}`)
           }
           const id = commitOf(origin).slice(0, 12)
-          state.sources.push({ id, origin: origin.trim(), fetching: true, updateAvailable: false, skills: [], skipped: [] })
+          state.sources.push({ id, origin: origin.trim(), workspace, fetching: true, updateAvailable: false, skills: [], skipped: [] })
           void fetch(id)
           return { source: id }
         }

@@ -1,13 +1,18 @@
 //! User skills: one value per source, keyed by its id, whose files are
 //! blobs the value names; the Host directories of the skills that are on;
 //! and what the page reads of them.
+//!
+//! A source is in one place: Global, whose skills every conversation is
+//! offered, or a workspace, whose skills its conversations are. A source of
+//! a workspace that no longer exists is in no place: [`live`] leaves it out.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use demi_plugin_interface::{
     DirectoryFile, HostDirectory, PluginError, PluginId, PluginPort, PortFailure, PortRefusal,
-    StoredValue,
+    StoredValue, Workspaces,
 };
+use demi_web_api_protocol::ids::WorkspaceId;
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -32,6 +37,10 @@ pub(crate) struct Source {
     pub(crate) skipped: Vec<Skipped>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) failure: Option<Failure>,
+    /// The workspace whose conversations are offered its skills; none for
+    /// Global, every conversation's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) workspace: Option<WorkspaceId>,
 }
 
 /// A skill of a source's pinned commit.
@@ -75,6 +84,61 @@ impl Source {
 
 /// The user's sources, by id, each with the revision its write names.
 pub(crate) type Sources = BTreeMap<String, (Source, u64)>;
+
+/// The places a source may be in, as the user's workspaces are now, and the
+/// workspace of the request's conversation.
+pub(crate) struct Places(Workspaces);
+
+/// What the commands call the place every conversation is offered.
+const GLOBAL: &str = "Global";
+
+impl Places {
+    pub(crate) fn new(workspaces: Workspaces) -> Self {
+        Self(workspaces)
+    }
+
+    /// Whether `workspace` is a place: Global, or a workspace that exists.
+    pub(crate) fn exists(&self, workspace: Option<&WorkspaceId>) -> bool {
+        workspace.is_none_or(|workspace| self.0.workspaces.iter().any(|each| each.id == *workspace))
+    }
+
+    /// The place's name as Demi's commands say it.
+    pub(crate) fn name(&self, workspace: Option<&WorkspaceId>) -> &str {
+        workspace
+            .and_then(|workspace| self.0.workspaces.iter().find(|each| each.id == *workspace))
+            .map_or(GLOBAL, |each| each.name.as_str())
+    }
+
+    /// The workspace of the request's conversation; none for a request of
+    /// no conversation.
+    pub(crate) fn current(&self) -> Option<&WorkspaceId> {
+        self.0.current.as_ref()
+    }
+
+    /// Whether the request's conversation is offered the skills of a source
+    /// in `workspace`: Global's, and its own workspace's.
+    pub(crate) fn offered(&self, workspace: Option<&WorkspaceId>) -> bool {
+        workspace.is_none() || workspace == self.current()
+    }
+}
+
+/// `sources` without those of a workspace that no longer exists, which
+/// answer apart, each with its revision, for their values to be removed.
+pub(crate) fn live(sources: Sources, places: &Places) -> (Sources, Vec<(String, u64)>) {
+    let mut gone = Vec::new();
+    let live = sources
+        .into_iter()
+        .filter_map(|(id, (source, revision))| {
+            if places.exists(source.workspace.as_ref()) {
+                Some((id, (source, revision)))
+            } else {
+                gone.push((id, revision));
+                None
+            }
+        })
+        .collect();
+    (live, gone)
+}
 
 /// Every source of the user's.
 pub(crate) async fn read(port: &PluginPort) -> Result<Sources, PluginError> {
@@ -127,11 +191,13 @@ pub(crate) fn conflict(failure: &PortFailure) -> bool {
 }
 
 /// Turns the skills `skills` of source `id` on or off. Turning one on is
-/// refused when another skill that is on, or another of those turned on,
-/// already has its name, or the name of its directory: the refusal names
-/// the other's source.
+/// refused when another skill that is on, in any place, or another of those
+/// turned on, already has its name, or the name of its directory: a Host may
+/// run conversations of several workspaces. The refusal names the other's
+/// source and its place.
 pub(crate) fn switch(
     sources: &Sources,
+    places: &Places,
     id: &str,
     skills: &BTreeSet<String>,
     enabled: bool,
@@ -147,11 +213,11 @@ pub(crate) fn switch(
         }
     }
     if enabled {
-        let mut taken: BTreeMap<String, &str> = BTreeMap::new();
+        let mut taken: BTreeMap<String, &Source> = BTreeMap::new();
         for (other, (source, _)) in sources {
             for skill in source.skills.iter().filter(|skill| skill.enabled) {
                 if other != id || !skills.contains(&skill.name) {
-                    taken.insert(directory_name(&skill.name), &source.origin);
+                    taken.insert(directory_name(&skill.name), source);
                 }
             }
         }
@@ -162,12 +228,14 @@ pub(crate) fn switch(
             .filter(|skill| skills.contains(&skill.name))
         {
             let directory = directory_name(&skill.name);
-            if let Some(origin) = taken.get(&directory) {
+            if let Some(other) = taken.get(&directory) {
                 return Err(PluginError::refused(
                     "skill_name_taken",
                     format!(
-                        "A skill named \"{}\" from {origin} is on; turn it off first",
-                        skill.name
+                        "A skill named \"{}\" from {}, in {}, is on; turn it off first",
+                        skill.name,
+                        other.origin,
+                        places.name(other.workspace.as_ref())
                     ),
                 ));
             }
@@ -248,6 +316,7 @@ pub(crate) fn fetched(
         skills,
         skipped: fetched.skipped.clone(),
         failure: None,
+        workspace: source.workspace.clone(),
     }
 }
 
@@ -276,6 +345,7 @@ pub(crate) fn directories(sources: &Sources) -> Vec<HostDirectory> {
             directories.push(HostDirectory {
                 name: directory_name(&skill.name),
                 files: skill.files.clone(),
+                workspace: source.workspace.clone(),
             });
         }
     }
@@ -311,6 +381,7 @@ pub(crate) fn location(plugin: &PluginId, skill: &UserSkill) -> String {
     let directory = HostDirectory {
         name: directory_name(&skill.name),
         files: skill.files.clone(),
+        workspace: None,
     };
     format!("{}/SKILL.md", directory.path(plugin))
 }
@@ -329,6 +400,10 @@ pub struct SkillsState {
 pub struct SourceState {
     pub id: String,
     pub origin: String,
+    /// The workspace whose conversations are offered its skills; none for
+    /// Global, every conversation's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -357,6 +432,10 @@ pub struct SkillState {
     /// has its name: turning it on would be refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub taken_by: Option<String>,
+    /// The workspace of that source; none while it is Global's or none
+    /// takes the name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taken_in: Option<WorkspaceId>,
 }
 
 /// The page state of `sources`, `fetching` telling those being fetched and
@@ -371,10 +450,10 @@ pub(crate) fn state(
         .map(|(id, (source, _))| (id, source))
         .collect();
     ordered.sort_by_key(|(_, source)| source.added);
-    let mut on: BTreeMap<String, &str> = BTreeMap::new();
+    let mut on: BTreeMap<String, &Source> = BTreeMap::new();
     for (_, source) in &ordered {
         for skill in source.skills.iter().filter(|skill| skill.enabled) {
-            on.insert(directory_name(&skill.name), &source.origin);
+            on.insert(directory_name(&skill.name), source);
         }
     }
     SkillsState {
@@ -383,6 +462,7 @@ pub(crate) fn state(
             .map(|(id, source)| SourceState {
                 id: id.clone(),
                 origin: source.origin.clone(),
+                workspace: source.workspace.clone(),
                 commit: source.commit.clone(),
                 fetched_at: source.fetched_at,
                 fetching: fetching(id),
@@ -395,16 +475,19 @@ pub(crate) fn state(
                 skills: source
                     .skills
                     .iter()
-                    .map(|skill| SkillState {
-                        name: skill.name.clone(),
-                        description: skill.description.clone(),
-                        warnings: skill.warnings.clone(),
-                        enabled: skill.enabled,
-                        disable_model_invocation: skill.disable_model_invocation,
-                        taken_by: (!skill.enabled)
+                    .map(|skill| {
+                        let taker = (!skill.enabled)
                             .then(|| on.get(&directory_name(&skill.name)))
-                            .flatten()
-                            .map(|origin| (*origin).to_owned()),
+                            .flatten();
+                        SkillState {
+                            name: skill.name.clone(),
+                            description: skill.description.clone(),
+                            warnings: skill.warnings.clone(),
+                            enabled: skill.enabled,
+                            disable_model_invocation: skill.disable_model_invocation,
+                            taken_by: taker.map(|taker| taker.origin.clone()),
+                            taken_in: taker.and_then(|taker| taker.workspace.clone()),
+                        }
                     })
                     .collect(),
                 skipped: source.skipped.clone(),

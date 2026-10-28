@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { PageHost } from '@demicodes/web-ui/plugins/page'
 import { disposePluginStores } from '@demicodes/web-ui/plugins/stores'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { workspaceName } from '@demicodes/web-ui/workspaces/workspaces'
 import { userStreamOf } from '@demicodes/web-ui/transport/user-stream'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { conversationFiles } from '../conversation/files'
@@ -15,6 +16,7 @@ import { useProduct } from '../state/product'
 import { packageDownloading, packageInstalled } from '../state/installed'
 import { useResources } from '../state/resources'
 import { useSettingsAddress } from '../settings/address'
+import { useWorkspaces } from '../state/workspaces'
 import { executionFor } from '../targets/execution'
 import { pluginEnabled } from './enabled'
 import { callFailure } from './errors'
@@ -73,6 +75,7 @@ export function productPageHost(): PageHost {
   const work = useWorkPanel()
   const resources = useResources()
   const settings = useSettingsAddress()
+  const workspaces = useWorkspaces()
   const conversations = useConversations()
   const states = usePluginStates()
   /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
@@ -147,6 +150,10 @@ export function productPageHost(): PageHost {
       },
       canGo: (conversation, direction) => work.canGo(conversation, direction),
       go: (direction) => work.go(direction),
+    },
+    workspaces: {
+      list: () => workspaces.list.map((workspace) => ({ id: workspace.id, name: workspaceName(workspace) })),
+      current: () => workspaces.current,
     },
     openSettings: (section) => void settings.open(section),
     openLink,

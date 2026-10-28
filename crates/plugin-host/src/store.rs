@@ -8,9 +8,9 @@
 
 use std::collections::BTreeMap;
 
-use demi_plugin_interface::HostDirectory;
+use demi_plugin_interface::{HostDirectory, WorkspaceName};
 use demi_shared_types::{BlobRef, Timestamp};
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use demi_web_api_protocol::panel::{PanelChange, PanelEffect, WorkPanel};
 use futures_util::future::LocalBoxFuture;
 use serde_json::Value;
@@ -192,6 +192,14 @@ pub trait PluginStore {
     /// The device the conversation works on, from the records: none for a
     /// conversation whose Host does not exist yet. It asks no Host.
     fn primary_device(&self, conversation: ConversationId) -> Stored<'_, Option<DeviceId>>;
+
+    /// The user's workspaces in the user's order, each with its name as
+    /// Demi's commands say it.
+    fn workspaces(&self, user: UserId) -> Stored<'_, Vec<WorkspaceName>>;
+
+    /// The workspace the conversation is in; none when no conversation has
+    /// the id.
+    fn conversation_workspace(&self, conversation: ConversationId) -> Stored<'_, Option<WorkspaceId>>;
 }
 
 /// The changes the host tells one user's pages of.

@@ -141,6 +141,7 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.5614's, before the server kept whether its users share the
 ///   master's providers, projects said project and an account held
 ///   workspaces.
+/// - 0.1.5658's, before a plugin's Host directory could be one workspace's.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -344,6 +345,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.5614.sql"),
             migration: Migration::Code(control_from_0_1_5614),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5658.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_5658),
         },
     ],
 };
@@ -713,7 +718,7 @@ DROP TABLE server_settings;
 ALTER TABLE server_settings_next RENAME TO server_settings;
 ";
 
-/// From 0.1.5614's control schema to the current one: the server settings'
+/// From 0.1.5614's control schema to 0.1.5658's: the server settings'
 /// part ([`CONTROL_SERVER_SETTINGS_FROM_0_1_5614`]), then a project's tables,
 /// columns, indexes and values say project where they said workspace, and an
 /// account holds workspaces.
@@ -835,6 +840,12 @@ UPDATE conversation_fork_operations SET metadata = json_set(json_remove(metadata
     }
     Ok(())
 }
+
+/// From 0.1.5658's control schema to the current one: a plugin's Host
+/// directory may be one workspace's, and every directory kept is every job's.
+const CONTROL_FROM_0_1_5658: &str = "
+ALTER TABLE plugin_directories ADD COLUMN workspace_id TEXT REFERENCES workspaces (id);
+";
 
 /// The text SQLite keeps of `table` in the schema `sql`: from its `CREATE
 /// TABLE` to the end of its `) STRICT`.
@@ -5296,13 +5307,15 @@ CREATE TABLE plugin_values (
 
 -- Each plugin's Host directories for a user (`plugins.md` § Host
 -- directories): the directory's name, its digest and its files, a JSON
--- array of each file's path, whether it is executable and its SHA-256.
+-- array of each file's path, whether it is executable and its SHA-256; and
+-- the workspace whose conversations' jobs install it, null for every job's.
 CREATE TABLE plugin_directories (
-  user_id TEXT NOT NULL REFERENCES users (id),
-  plugin  TEXT NOT NULL,
-  name    TEXT NOT NULL,
-  digest  TEXT NOT NULL,
-  files   TEXT NOT NULL,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  plugin       TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  digest       TEXT NOT NULL,
+  files        TEXT NOT NULL,
+  workspace_id TEXT REFERENCES workspaces (id),
   PRIMARY KEY (user_id, plugin, name)
 ) STRICT, WITHOUT ROWID;
 

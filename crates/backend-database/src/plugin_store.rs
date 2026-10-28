@@ -8,8 +8,8 @@ use demi_plugin_host::store::{
     OAuthClient, PanelOutcome, PluginReport, PluginStore, PluginValue, SealedSecret, SecretRow, StoreError, Stored,
     ValueWrite, Written,
 };
-use demi_plugin_interface::HostDirectory;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+use demi_plugin_interface::{HostDirectory, WorkspaceName};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use demi_web_api_protocol::panel::{PanelChange, WorkPanel};
 use futures_util::FutureExt;
 use serde_json::Value;
@@ -154,6 +154,28 @@ impl PluginStore for ControlService {
             ControlService::close_panel_kinds(self, owner, kinds)
                 .await
                 .map_err(StoreError::new)
+        }
+        .boxed_local()
+    }
+
+    fn workspaces(&self, user: UserId) -> Stored<'_, Vec<WorkspaceName>> {
+        async move {
+            let records = ControlService::workspaces(self, user).await.map_err(StoreError::new)?;
+            Ok(records
+                .into_iter()
+                .map(|record| WorkspaceName {
+                    name: record.shown_name().to_owned(),
+                    id: record.id,
+                })
+                .collect())
+        }
+        .boxed_local()
+    }
+
+    fn conversation_workspace(&self, conversation: ConversationId) -> Stored<'_, Option<WorkspaceId>> {
+        async move {
+            let record = self.conversation(conversation).await.map_err(StoreError::new)?;
+            Ok(record.map(|record| record.workspace))
         }
         .boxed_local()
     }

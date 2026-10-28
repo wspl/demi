@@ -25,12 +25,12 @@ use crate::{Fetched, State};
 /// The group's category: what the user allows a conversation.
 const MANAGE: &str = "skills.manage";
 
-const SUMMARY: &str = "The user's skills, which every conversation of the user receives: list, add, update, remove, enable, disable. Demi sees only the skills these commands install; one another tool installs reaches no other host and no other conversation. Name a source by its repository, owner/repo for GitHub or an https URL; any spelling of one repository names the same source.";
+const SUMMARY: &str = "The user's skills: list, add, update, remove, enable, disable. A source is Global, whose skills every conversation receives, or a workspace's, whose skills that workspace's conversations receive; these commands see Global's and this conversation's workspace's. Demi sees only the skills these commands install; one another tool installs reaches no other host and no other conversation. Name a source by its repository, owner/repo for GitHub or an https URL; any spelling of one repository names the same source.";
 
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "The user's skills: list, add, update, remove, enable, disable; a skill is installed only this way.";
 
-const MANAGE_DESCRIPTION: &str = "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use.";
+const MANAGE_DESCRIPTION: &str = "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Global skills reach every conversation and a workspace's skills reach that workspace's conversations, and the skills that are on are installed on the Hosts those conversations use.";
 
 const REFUSED_OUTPUT: &str =
     "writes the reason to stderr and exits non-zero, having changed nothing the reason does not name";
@@ -40,7 +40,19 @@ const REFUSED_OUTPUT: &str =
 #[serde(deny_unknown_fields)]
 struct ListArgs {}
 
-/// The input of `demi skills add`, `enable` and `disable`.
+/// The input of `demi skills add`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct AddArgs {
+    /// owner/repo for GitHub, or an https URL of a git repository
+    repository: String,
+    /// A skill of the source, by name; every skill when none is given
+    skill: Option<Vec<String>>,
+    /// Add the source to this conversation's workspace instead of Global
+    workspace: Option<bool>,
+}
+
+/// The input of `demi skills enable` and `disable`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct SkillsArgs {
@@ -64,20 +76,20 @@ pub(crate) fn commands() -> CommandPlugin {
         .index_entry(ENTRY)
         .permission(MANAGE, "manage skills", MANAGE_DESCRIPTION)
         .leaf(
-            LeafBuilder::rpc("list", "Every skill source of the user with its skills, whether each is on, and whether an update is available.")
+            LeafBuilder::rpc("list", "The skill sources of Global and of this conversation's workspace with their skills, whether each is on, and whether an update is available.")
                 .input::<ListArgs>()
                 .json_output::<Vec<SourceState>>()
-                .success_output("a table of the skills of every source: name, source, commit, whether it is on, the source whose skill of that name is on, and description; on stderr, a source that is updating, failed or has an update; with --json, the sources with their skills")
+                .success_output("a table of the skills of those sources: name, source, place (Global or the workspace's name), commit, whether it is on, the source whose skill of that name is on and its place, and description; on stderr, a source that is updating, failed or has an update; with --json, the sources with their skills, each with its workspace's id or none for Global")
                 .bind(PortHandled),
         )
         .leaf(
-            LeafBuilder::rpc("add", "Add a skill source and wait for its first fetch; its skills start on, or only those --skill names.")
-                .input::<SkillsArgs>()
+            LeafBuilder::rpc("add", "Add a skill source to Global, or with --workspace to this conversation's workspace, and wait for its first fetch; its skills start on, or only those --skill names.")
+                .input::<AddArgs>()
                 .positionals(["repository"])
                 .describe("skill", "A skill of the source to turn on; the others stay off")
                 .permission(MANAGE)
                 .success_output("the commit pinned and the skills turned on and left off")
-                .failure_output(format!("a repository that is not owner/repo or an https URL, one added already, a failed fetch (the source stays, showing its failure), or a --skill the commit lacks or whose name a skill that is on has (the source stays, its skills as a new source's start); {REFUSED_OUTPUT}"))
+                .failure_output(format!("a repository that is not owner/repo or an https URL, one added already in any place, naming the place, a failed fetch (the source stays, showing its failure), or a --skill the commit lacks or whose name a skill that is on has (the source stays, its skills as a new source's start); {REFUSED_OUTPUT}"))
                 .bind(PortHandled),
         )
         .leaf(
@@ -86,7 +98,7 @@ pub(crate) fn commands() -> CommandPlugin {
                 .positionals(["repository"])
                 .permission(MANAGE)
                 .success_output("the commit pinned and the skills turned on or off, or that nothing changed")
-                .failure_output(format!("a repository the user has not added, or a failed fetch; {REFUSED_OUTPUT}"))
+                .failure_output(format!("a repository neither Global nor this conversation's workspace has, or a failed fetch; {REFUSED_OUTPUT}"))
                 .bind(PortHandled),
         )
         .leaf(
@@ -95,7 +107,7 @@ pub(crate) fn commands() -> CommandPlugin {
                 .positionals(["repository"])
                 .permission(MANAGE)
                 .success_output("the source and the skills removed")
-                .failure_output(format!("a repository the user has not added; {REFUSED_OUTPUT}"))
+                .failure_output(format!("a repository neither Global nor this conversation's workspace has; {REFUSED_OUTPUT}"))
                 .bind(PortHandled),
         )
         .leaf(
@@ -105,7 +117,7 @@ pub(crate) fn commands() -> CommandPlugin {
                 .describe("skill", "A skill of the source to turn on; every skill when none is given")
                 .permission(MANAGE)
                 .success_output("the skills turned on")
-                .failure_output(format!("a repository or a skill the user does not have, or a skill whose name a skill that is on has, naming that skill's source; {REFUSED_OUTPUT}"))
+                .failure_output(format!("a repository neither Global nor this conversation's workspace has, a skill the source lacks, or a skill whose name a skill that is on in any place has, naming that skill's source and place; {REFUSED_OUTPUT}"))
                 .bind(PortHandled),
         )
         .leaf(
@@ -115,7 +127,7 @@ pub(crate) fn commands() -> CommandPlugin {
                 .describe("skill", "A skill of the source to turn off; every skill when none is given")
                 .permission(MANAGE)
                 .success_output("the skills turned off")
-                .failure_output(format!("a repository or a skill the user does not have; {REFUSED_OUTPUT}"))
+                .failure_output(format!("a repository neither Global nor this conversation's workspace has, or a skill the source lacks; {REFUSED_OUTPUT}"))
                 .bind(PortHandled),
         );
     CommandPlugin::new(Placement::Demi, vec![group])
@@ -169,11 +181,18 @@ fn args<A: DeserializeOwned>(invocation: &RpcInvocation) -> Result<A, PluginErro
     })
 }
 
-/// The id of the source `repository` names.
-fn source_id(repository: &str) -> Result<String, PluginError> {
-    Origin::parse(repository)
+/// The id of the source `repository` names, which must be in Global or in
+/// the conversation's workspace: a command never reaches another
+/// workspace's sources.
+async fn source_id(state: &State, port: &PluginPort, repository: &str) -> Result<String, PluginError> {
+    let id = Origin::parse(repository)
         .map(|origin| origin.id())
-        .map_err(|message| PluginError::refused("invalid_origin", message))
+        .map_err(|message| PluginError::refused("invalid_origin", message))?;
+    let (all, places) = state.sources(port).await?;
+    match all.get(&id) {
+        Some((source, _)) if places.offered(source.workspace.as_ref()) => Ok(id),
+        _ => Err(sources::not_found(repository)),
+    }
 }
 
 async fn list(
@@ -181,7 +200,9 @@ async fn list(
     invocation: &RpcInvocation,
     port: &PluginPort,
 ) -> Result<Printed, PluginError> {
-    let listed = state.state(port).await?;
+    let (_, places) = state.sources(port).await?;
+    let mut listed = state.state(port).await?;
+    listed.sources.retain(|source| places.offered(source.workspace.as_ref()));
     // What a source's row cannot say: that it is being fetched, failed or
     // has an update, told on stderr.
     let command = invocation.path.join(" ");
@@ -208,15 +229,20 @@ async fn list(
         text.push('\n');
         return Ok(Ok(text));
     }
-    let mut table = Table::new(["name", "source", "commit", "enabled", "taken by", "description"]);
+    let mut table = Table::new(["name", "source", "place", "commit", "enabled", "taken by", "description"]);
     for source in &listed.sources {
         for skill in &source.skills {
+            let taken_by = skill
+                .taken_by
+                .as_ref()
+                .map(|origin| format!("{origin}, in {}", places.name(skill.taken_in.as_ref())));
             table.row::<Cell>([
                 skill.name.as_str().into(),
                 source.origin.as_str().into(),
+                places.name(source.workspace.as_ref()).into(),
                 source.commit.as_deref().map(short).into(),
                 skill.enabled.into(),
-                skill.taken_by.as_deref().into(),
+                taken_by.as_deref().into(),
                 skill.description.as_str().into(),
             ]);
         }
@@ -224,8 +250,17 @@ async fn list(
     Ok(Ok(table.render()))
 }
 
-async fn add(state: &Rc<State>, args: SkillsArgs, port: &PluginPort) -> Result<Printed, PluginError> {
-    let id = state.add_source(port, &args.repository).await?;
+async fn add(state: &Rc<State>, args: AddArgs, port: &PluginPort) -> Result<Printed, PluginError> {
+    let workspace = if args.workspace.unwrap_or(false) {
+        let (_, places) = state.sources(port).await?;
+        let Some(current) = places.current() else {
+            return Ok(Err("--workspace needs a conversation's workspace".into()));
+        };
+        Some(current.clone())
+    } else {
+        None
+    };
+    let id = state.add_source(port, &args.repository, workspace).await?;
     let fetched = state.wait_fetch(port, &id).await?;
     if let Some(refused) = fetch_refusal(fetched) {
         return Ok(Err(refused));
@@ -239,14 +274,14 @@ async fn add(state: &Rc<State>, args: SkillsArgs, port: &PluginPort) -> Result<P
         )));
     };
     let named: BTreeSet<String> = named.into_iter().collect();
-    let all = sources::read(port).await?;
+    let (all, places) = state.sources(port).await?;
     let mut problems = Vec::new();
     for name in &named {
         if !source.skills.iter().any(|skill| skill.name == *name) {
             problems.push(format!("the commit has no skill \"{name}\""));
             continue;
         }
-        if let Err(error) = sources::switch(&all, &id, &BTreeSet::from([name.clone()]), true) {
+        if let Err(error) = sources::switch(&all, &places, &id, &BTreeSet::from([name.clone()]), true) {
             problems.push(error.to_string());
         }
     }
@@ -266,7 +301,7 @@ async fn update(
     args: RepositoryArgs,
     port: &PluginPort,
 ) -> Result<Printed, PluginError> {
-    let id = source_id(&args.repository)?;
+    let id = source_id(state, port, &args.repository).await?;
     let (before, _) = sources::read_one(port, &id).await?;
     let fetched = state.wait_fetch(port, &id).await?;
     if let Some(refused) = fetch_refusal(fetched) {
@@ -292,7 +327,7 @@ async fn remove(
     args: RepositoryArgs,
     port: &PluginPort,
 ) -> Result<Printed, PluginError> {
-    let id = source_id(&args.repository)?;
+    let id = source_id(state, port, &args.repository).await?;
     let (source, _) = sources::read_one(port, &id).await?;
     state.remove_source(port, &id).await?;
     let names: Vec<&str> = source.skills.iter().map(|skill| skill.name.as_str()).collect();
@@ -310,7 +345,7 @@ async fn switch(
     port: &PluginPort,
     enabled: bool,
 ) -> Result<Printed, PluginError> {
-    let id = source_id(&args.repository)?;
+    let id = source_id(state, port, &args.repository).await?;
     let (before, _) = sources::read_one(port, &id).await?;
     let named = args.skill.map(|names| names.into_iter().collect::<BTreeSet<_>>());
     let chosen = |source: &Source| match &named {
@@ -420,7 +455,7 @@ impl State {
         named: &BTreeSet<String>,
     ) -> Result<Source, PluginError> {
         let chosen = loop {
-            let mut all = sources::read(port).await?;
+            let (mut all, places) = self.sources(port).await?;
             let (source, revision) = all.get(id).cloned().ok_or_else(|| sources::not_found(id))?;
             let others: BTreeSet<String> = source
                 .skills
@@ -428,9 +463,9 @@ impl State {
                 .map(|skill| skill.name.clone())
                 .filter(|name| !named.contains(name))
                 .collect();
-            let off = sources::switch(&all, id, &others, false)?;
+            let off = sources::switch(&all, &places, id, &others, false)?;
             all.insert(id.to_owned(), (off, revision));
-            let chosen = sources::switch(&all, id, named, true)?;
+            let chosen = sources::switch(&all, &places, id, named, true)?;
             match sources::write(port, id, &chosen, Some(revision)).await {
                 Ok(_) => break chosen,
                 Err(failure) if sources::conflict(&failure) => continue,

@@ -2,8 +2,12 @@
   "title": "スキル",
   "description": "エージェントが従うワークフローをパッケージにしたもの。",
   "keywords": "スキル,ワークフロー,git,SKILL.md",
+  "places": {
+    "global": "グローバル",
+    "globalDescription": "すべてのワークスペースで使えます。",
+    "workspaceDescription": "このワークスペースでのみ使えます。"
+  },
   "sources": {
-    "title": "ソース",
     "add": "ソースを追加…",
     "none": "ソースはありません",
     "adding": "追加中",
@@ -17,7 +21,7 @@
   "skill": {
     "warning": "警告",
     "nameTaken": "名前が重複しています",
-    "nameTakenDetail": "{origin} のスキル「{name}」がオンになっています。このスキルを使うには、そちらをオフにしてください。",
+    "nameTakenDetail": "{origin}（{place}）のスキル「{name}」がオンになっています。このスキルを使うには、そちらをオフにしてください。",
     "neverOffered": "提供されません",
     "neverOfferedDetail": "disable-model-invocation が設定されています。",
     "notASkill": "スキルではありません: {reason}"
@@ -46,7 +50,7 @@
   "permissions": {
     "skills_manage": {
       "action": "スキルの管理",
-      "description": "「スキルの管理」を許可すると、このチャットのエージェントはスキルのソースの追加、更新、削除と、スキルのオンとオフの切り替えを行えます。スキルはすべてのチャットで使われ、オンのスキルはチャットが使用するすべてのホストにインストールされます。"
+      "description": "「スキルの管理」を許可すると、このチャットのエージェントはスキルのソースの追加、更新、削除と、スキルのオンとオフの切り替えを行えます。グローバルのスキルはすべてのチャットで、ワークスペースのスキルはそのワークスペースのチャットで使われ、オンのスキルはそれらのチャットが使用するホストにインストールされます。"
     }
   },
   "problems": {
@@ -66,6 +70,8 @@
   },
   "refusals": {
     "invalid_origin": "owner/repository または Git URL を入力してください。",
-    "source_exists": "{origin} はすでに追加されています。"
+    "source_exists": "{origin} はすでに追加されています。",
+    "source_exists_in": "{origin} は「{place}」にすでに追加されています。",
+    "workspace_not_found": "このワークスペースはもうありません。"
   }
 }

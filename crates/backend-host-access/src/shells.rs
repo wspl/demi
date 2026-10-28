@@ -150,7 +150,7 @@ impl dyn HostShard + '_ {
         // A detach that committed since the admission, or does while the job
         // installs its directories, ends it here, before it starts.
         self.reaches(id, &device, &withdrawal).await?;
-        self.install_directories(&device, &admitted_host).await?;
+        self.install_directories(id, &device, &admitted_host).await?;
         self.reaches(id, &device, &withdrawal).await?;
         job.await;
         Ok(())
