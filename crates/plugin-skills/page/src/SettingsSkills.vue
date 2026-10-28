@@ -13,10 +13,11 @@ import { ConfirmDialog } from '@demicodes/plugin-sdk'
 import { ScrollArea } from '@demicodes/plugin-sdk'
 import { ICON_PX } from '@demicodes/plugin-sdk'
 import AddSkillSourceDialog from './AddSkillSourceDialog.vue'
+import FetcherMenu from './FetcherMenu.vue'
 import { SettingsGroup } from '@demicodes/plugin-sdk'
 import { SettingsPage } from '@demicodes/plugin-sdk'
 import { SettingsRow } from '@demicodes/plugin-sdk'
-import type { AddSourceAnswer, SettingsSkill, SettingsSkillDraft, SettingsSkillSource } from './types'
+import type { AddSourceAnswer, SettingsSkill, SettingsSkillDevice, SettingsSkillDraft, SettingsSkillSource } from './types'
 
 /**
  * Skill sources: one git repository is a pack, pinned to a commit, whose state is a status
@@ -31,6 +32,9 @@ import type { AddSourceAnswer, SettingsSkill, SettingsSkillDraft, SettingsSkillS
  * - Each skill is a row you can turn on, with its own status labels. The SKILL.md files that
  *   are not skills follow, with why.
  * - The pack's switch is on when any skill is on; flipping it sets every skill in the pack.
+ * - What fetches a pack, the server or one of the user's devices, is said under its origin when
+ *   it is a device, and chosen in the first row of its fold. A device that is offline makes the
+ *   pack wait for it; one no longer paired asks for another.
  * - Removing a source asks first, naming its skills, which go with it.
  * - Each control's call is an operation of the page, named by the plugin's method and what it
  *   acts on. The control shows it working whenever it is drawn and takes no input meanwhile.
@@ -43,6 +47,8 @@ const props = defineProps<{
   /** The tab's workspace, with its sources; none while the tab has no workspace. */
   workspace?: { id: string; name: string; sources: SettingsSkillSource[] }
   overlayStore: OverlayStore
+  /** The user's paired devices, which can fetch a pack. */
+  devices: readonly SettingsSkillDevice[]
   /** The page's operation of a method on what a key names (`PageContext.operation`). */
   operation: PageContext['operation']
   /**
@@ -58,6 +64,8 @@ const props = defineProps<{
   onSwitch?: Action<[source: string, skill: string, enabled: boolean]>
   /** Turns every skill of a source on or off; the source's switch works until it settles. */
   onSwitchSource?: Action<[source: string, enabled: boolean]>
+  /** Has a device fetch a source, or the server for null; it fetches it again then. */
+  onSetFetcher?: Action<[source: string, fetcher: string | null]>
 }>()
 
 const addOpen = ref(false)
@@ -97,8 +105,15 @@ function name(source: SettingsSkillSource): string {
   return path.slice(path.lastIndexOf('/') + 1) || source.origin
 }
 
-/** The source's state: the fetch that runs, the last one's failure, or an update to fetch. */
+/** The source's state: the fetch that runs, its device that is away, the last one's failure, or an update to fetch. */
 function sourceStatuses(source: SettingsSkillSource): SettingsRowStatus[] {
+  if (source.fetcher.kind === 'removed') {
+    return [{ label: t('fetcher.removedLabel'), tone: 'warning', detail: t('fetcher.removedDetail') }]
+  }
+  // An offline device fetches nothing: what it last answered no longer says what comes next.
+  if (source.fetcher.kind === 'device' && !source.fetcher.online) {
+    return [{ label: t('fetcher.waiting', { name: source.fetcher.name }) }]
+  }
   if (source.fetching) {
     // A source with no commit and no failure has never been fetched: its first fetch adds it.
     return [{ label: !source.commit && !source.failure ? t('sources.adding') : t('sources.updating') }]
@@ -110,6 +125,16 @@ function sourceStatuses(source: SettingsSkillSource): SettingsRowStatus[] {
     return [{ label: t('sources.updateAvailable'), tone: 'accent' }]
   }
   return []
+}
+
+/** The id of the device that fetches the source; null for the server. */
+function fetcherId(source: SettingsSkillSource): string | null {
+  return source.fetcher.kind === 'server' ? null : source.fetcher.id
+}
+
+/** What the origin's line says after it: a device that fetches the source. */
+function via(source: SettingsSkillSource): string | undefined {
+  return source.fetcher.kind === 'device' ? t('fetcher.via', { name: source.fetcher.name }) : undefined
 }
 
 /** What the skill's row says of it beside its switch. */
@@ -160,8 +185,9 @@ function toggle(id: string) {
     : [...openIds.value, id]
 }
 
-function foldable(source: SettingsSkillSource): boolean {
-  return source.skills.length + source.skipped.length > 0
+/** Every pack folds open: its first row chooses what fetches it. */
+function foldable(_source: SettingsSkillSource): boolean {
+  return true
 }
 
 /** The source whose removal is being asked about; it stays shown while the dialog closes. */
@@ -226,7 +252,7 @@ async function confirmRemove(): Promise<void> {
             <GitBranch :size="ICON_PX.in28" />
           </template>
           <template #description>
-            <span class="block truncate font-mono">{{ source.origin }}<template v-if="source.commit"> · {{ source.commit.slice(0, 7) }}</template></span>
+            <span class="block truncate"><span class="font-mono">{{ source.origin }}<template v-if="source.commit"> · {{ source.commit.slice(0, 7) }}</template></span><template v-if="via(source)"> · {{ via(source) }}</template></span>
           </template>
           <div class="flex items-center gap-2" @click.stop>
             <template v-if="pack(source).total">
@@ -256,7 +282,7 @@ async function confirmRemove(): Promise<void> {
                 :icon="RefreshCw"
                 spin-on-click
                 :spinning="source.fetching"
-                :disabled="source.fetching"
+                :disabled="source.fetching || (source.fetcher.kind === 'device' && !source.fetcher.online) || source.fetcher.kind === 'removed'"
                 :operation="operation('update_source', source.id)"
                 :aria-label="t('sources.update')"
                 @click="onUpdate?.(source.id)"
@@ -283,9 +309,18 @@ async function confirmRemove(): Promise<void> {
           <ScrollArea
             v-if="foldable(source)"
             class="skill-list"
-            :class="source.skills.length + source.skipped.length > SKILL_LIST_CAP ? 'skill-list-scroll' : ''"
+            :class="source.skills.length + source.skipped.length + 1 > SKILL_LIST_CAP ? 'skill-list-scroll' : ''"
             viewport-class="skill-list-rows"
           >
+            <SettingsRow inset :label="t('fetcher.label')" :description="t('fetcher.hint')">
+              <FetcherMenu
+                :overlay-store="overlayStore"
+                :devices="devices"
+                :fetcher="fetcherId(source)"
+                :disabled="source.fetching"
+                @choose="(chosen) => chosen !== fetcherId(source) && onSetFetcher?.(source.id, chosen)"
+              />
+            </SettingsRow>
             <SettingsRow
               v-for="skill in source.skills"
               :key="skill.name"
@@ -329,6 +364,7 @@ async function confirmRemove(): Promise<void> {
     <AddSkillSourceDialog
       :is-open="addOpen"
       :overlay-store="overlayStore"
+      :devices="devices"
       :add-source="(draft) => addSource(draft, addTo)"
       @close="addOpen = false"
     />

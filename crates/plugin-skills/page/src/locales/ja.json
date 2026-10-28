@@ -18,6 +18,17 @@
     "update": "更新",
     "remove": "削除"
   },
+  "fetcher": {
+    "label": "フェッチ方法",
+    "hint": "デバイスは自分の Git、鍵、ネットワークでフェッチします。SSH アドレスにはこれが必要です。",
+    "server": "サーバー",
+    "via": "{name} 経由",
+    "waiting": "{name} を待機中",
+    "offline": "{name} はオフラインです。",
+    "removed": "削除されたデバイス",
+    "removedLabel": "デバイスは削除されました",
+    "removedDetail": "フェッチしていたデバイスはペアリングされていません。フェッチする別のデバイスを選んでください。"
+  },
   "skill": {
     "warning": "警告",
     "nameTaken": "名前が重複しています",
@@ -36,7 +47,7 @@
     "title": "ソースを追加",
     "hint": "Git リポジトリ。その中の SKILL.md がそれぞれスキルになります。",
     "repository": "リポジトリ",
-    "repositoryHint": "owner/repository または Git URL。",
+    "repositoryHint": "owner/repository、Git URL、または SSH アドレス。",
     "browse": "skills.sh を見る",
     "cancel": "キャンセル"
   },
@@ -45,7 +56,8 @@
     "update": "ソースを更新できませんでした",
     "remove": "ソースを削除できませんでした",
     "switchSkill": "スキルを切り替えられませんでした",
-    "switchSkills": "スキルを切り替えられませんでした"
+    "switchSkills": "スキルを切り替えられませんでした",
+    "setFetcher": "フェッチ方法を変更できませんでした"
   },
   "permissions": {
     "skills_manage": {
@@ -69,9 +81,12 @@
     }
   },
   "refusals": {
-    "invalid_origin": "owner/repository または Git URL を入力してください。",
+    "invalid_origin": "owner/repository、Git URL、または SSH アドレスを入力してください。",
     "source_exists": "{origin} はすでに追加されています。",
     "source_exists_in": "{origin} は「{place}」にすでに追加されています。",
-    "workspace_not_found": "このワークスペースはもうありません。"
+    "workspace_not_found": "このワークスペースはもうありません。",
+    "ssh_needs_device": "SSH アドレスはデバイスでフェッチする必要があります。",
+    "fetcher_offline": "{name} はオフラインです。",
+    "fetcher_not_found": "このデバイスはペアリングされていません。"
   }
 }

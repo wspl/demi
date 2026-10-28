@@ -1,3 +1,5 @@
+import type { DeviceMark, DeviceState } from '@demicodes/plugin-sdk'
+
 /** One skill of a source, as the Skills page shows it. */
 export interface SettingsSkill {
   name: string
@@ -20,10 +22,26 @@ export interface SettingsSkippedSkill {
   reason: string
 }
 
+/** A paired device that can fetch a source, drawn as every device is: by its mark and state. */
+export interface SettingsSkillDevice {
+  id: string
+  name: string
+  state: DeviceState
+  mark: DeviceMark | null
+  downloadPercent: number | null
+}
+
+/** What fetches a source: the server, or a paired device; a device no longer paired is `removed`. */
+export type SettingsSkillFetcher =
+  | { kind: 'server' }
+  | { kind: 'device'; id: string; name: string; online: boolean }
+  | { kind: 'removed'; id: string }
+
 /** A git repository the user added, pinned to one commit. */
 export interface SettingsSkillSource {
   id: string
   origin: string
+  fetcher: SettingsSkillFetcher
   /** The pinned commit; none until a fetch succeeded. */
   commit?: string
   fetching: boolean
@@ -37,6 +55,8 @@ export interface SettingsSkillSource {
 
 export interface SettingsSkillDraft {
   origin: string
+  /** The device that fetches it; null for the server. */
+  fetcher: string | null
 }
 
 /**

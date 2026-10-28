@@ -155,6 +155,18 @@ export function productPageHost(): PageHost {
       list: () => workspaces.list.map((workspace) => ({ id: workspace.id, name: workspaceName(workspace) })),
       current: () => workspaces.current,
     },
+    devices: {
+      list: () =>
+        (product.snapshot?.devices ?? [])
+          .filter((device) => device.kind === 'user')
+          .map((device) => ({
+            id: device.id,
+            name: device.name,
+            state: device.state,
+            mark: device.mark,
+            downloadPercent: device.downloadPercent,
+          })),
+    },
     openSettings: (section) => void settings.open(section),
     openLink,
     overlays: appOverlayStore,

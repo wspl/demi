@@ -60,6 +60,7 @@ export {
   type KindTab,
   type PageContext,
   type PagePlugin,
+  type PageDevice,
   type PageWorkspace,
   type PanelKind,
   type HistoryDirection,
@@ -257,3 +258,7 @@ export { default as Tooltip } from '@demicodes/web-ui/ui/Tooltip.vue'
 export { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 // A system's logo, as a device's mark draws it.
 export { default as SystemLogo } from '@demicodes/web-ui/devices/DeviceLogo.vue'
+// A device as every menu row and list draws it: its mark with its state, and its state's words.
+export { deviceGlyph } from '@demicodes/web-ui/devices/device-glyphs'
+export { deviceStatusLabel, type DeviceState } from '@demicodes/web-ui/devices/state'
+export type { DeviceMark } from '@demicodes/web-ui/devices/mark'

@@ -5,7 +5,9 @@
 //!   returns the skills of the commit it pins.
 //! - The check finds the commit that branch points to now.
 //!
-//! Both block, so they run on the blocking pool.
+//! The server's fetch and check run here, with gix, and block, so they run on
+//! the blocking pool. A device's run there, with its own `git`, and answer a
+//! tree whose skills [`from_device`] reads by the same rules.
 
 use std::collections::BTreeSet;
 use std::num::NonZeroU32;
@@ -19,11 +21,11 @@ use crate::skill::{self, Parsed, SkipProblem};
 
 /// The most bytes a fetch receives: they are held in memory while they are
 /// unpacked, and a repository has no size of its own.
-const FETCH_MAX_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const FETCH_MAX_BYTES: usize = 64 * 1024 * 1024;
 
 /// The most bytes the files of one source's skills hold together: they are held
 /// in memory and written to the Host's disk.
-const FILES_MAX_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const FILES_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 /// What gix-pack names the progress of the pack bytes it reads.
 const READ_PACK_BYTES: Id = *b"BWRB";
@@ -163,7 +165,34 @@ pub(crate) fn fetch(
     tree.traverse()
         .breadthfirst(&mut recorder)
         .map_err(|error| failed(&error))?;
-    let fetched = skills_of(&repository_on_disk, &recorder.records, repository)?;
+    // Each file by its path as the skills read it, which a name that is
+    // not UTF-8 reaches in its lossy form: the same form `read` looks up.
+    let objects: std::collections::HashMap<String, gix::ObjectId> = recorder
+        .records
+        .iter()
+        .filter(|entry| entry.mode.is_blob())
+        .map(|entry| (entry.filepath.to_str_lossy().into_owned(), entry.oid))
+        .collect();
+    let files: Vec<TreeFile> = recorder
+        .records
+        .iter()
+        .filter(|entry| entry.mode.is_blob())
+        .map(|entry| TreeFile {
+            path: entry.filepath.to_str_lossy().into_owned(),
+            executable: entry.mode.is_executable(),
+        })
+        .collect();
+    let mut read = |path: &str| -> Result<Vec<u8>, FetchError> {
+        let object = objects
+            .get(path)
+            .ok_or_else(|| FetchError::failed(format!("the tree lists no {path}")))?;
+        Ok(repository_on_disk
+            .find_object(*object)
+            .map_err(FetchError::failed)?
+            .detach()
+            .data)
+    };
+    let fetched = skills_of(&files, &mut read, repository)?;
     Ok(Fetched {
         commit: commit.id.to_string(),
         skills: fetched.0,
@@ -214,19 +243,42 @@ pub(crate) fn remote_head(url: &str) -> Result<String, String> {
         .ok_or_else(|| "the repository holds no commit".to_owned())
 }
 
-/// The skills among `entries`, the commit's whole tree, and the `SKILL.md`
-/// files that are not skills.
+/// A file of a commit's tree.
+pub(crate) struct TreeFile {
+    /// In the repository, with `/` between its parts.
+    pub(crate) path: String,
+    pub(crate) executable: bool,
+}
+
+/// The skills of the commit `commit` that a device's `git` read, `files`
+/// every file of its tree and `bytes` those of the skills' directories;
+/// `repository` names a skill at the root whose front matter names none.
+pub(crate) fn from_device(
+    commit: String,
+    files: Vec<TreeFile>,
+    bytes: std::collections::BTreeMap<String, Vec<u8>>,
+    repository: &str,
+) -> Result<Fetched, FetchError> {
+    let mut read = |path: &str| {
+        bytes
+            .get(path)
+            .cloned()
+            .ok_or_else(|| FetchError::failed(format!("the device read no {path}")))
+    };
+    let (skills, skipped) = skills_of(&files, &mut read, repository)?;
+    Ok(Fetched { commit, skills, skipped })
+}
+
+/// The skills among `files`, the commit's whole tree, whose bytes `read`
+/// gives, and the `SKILL.md` files that are not skills.
 fn skills_of(
-    repository: &gix::Repository,
-    entries: &[gix::traverse::tree::recorder::Entry],
+    files: &[TreeFile],
+    read: &mut dyn FnMut(&str) -> Result<Vec<u8>, FetchError>,
     root_name: &str,
 ) -> Result<(Vec<FetchedSkill>, Vec<Skipped>), FetchError> {
-    let path_of =
-        |entry: &gix::traverse::tree::recorder::Entry| entry.filepath.to_str_lossy().into_owned();
-    let directories: BTreeSet<String> = entries
+    let directories: BTreeSet<String> = files
         .iter()
-        .filter(|entry| entry.mode.is_blob())
-        .map(path_of)
+        .map(|file| file.path.clone())
         .filter_map(|path| match path.rsplit_once('/') {
             Some((directory, "SKILL.md")) => Some(directory.to_owned()),
             None if path == "SKILL.md" => Some(String::new()),
@@ -243,7 +295,7 @@ fn skills_of(
             format!("{directory}/SKILL.md")
         };
         let name = directory.rsplit('/').next().filter(|name| !name.is_empty());
-        let text = read_blob(repository, entries, &manifest)?;
+        let text = read(&manifest)?;
         let parsed = match skill::parse(name.unwrap_or(root_name), &text) {
             Ok(parsed) => parsed,
             Err(not) => {
@@ -255,26 +307,22 @@ fn skills_of(
                 continue;
             }
         };
-        let mut files = Vec::new();
-        for entry in entries.iter().filter(|entry| entry.mode.is_blob()) {
-            let path = path_of(entry);
-            let Some(relative) = within(directory, &path) else {
+        let mut skill_files = Vec::new();
+        for file in files {
+            let path = &file.path;
+            let Some(relative) = within(directory, path) else {
                 continue;
             };
             // A directory below that is a skill of its own keeps its files.
             let nested = directories.iter().any(|other| {
                 other != directory
                     && within(directory, other).is_some()
-                    && within(other, &path).is_some()
+                    && within(other, path).is_some()
             });
             if nested {
                 continue;
             }
-            let content = repository
-                .find_object(entry.oid)
-                .map_err(FetchError::failed)?
-                .detach()
-                .data;
+            let content = read(path)?;
             bytes += content.len();
             if bytes > FILES_MAX_BYTES {
                 return Err(FetchError::problem(
@@ -284,16 +332,16 @@ fn skills_of(
                     "the skills' files hold more than 16 MiB",
                 ));
             }
-            files.push(FetchedFile {
+            skill_files.push(FetchedFile {
                 path: relative.to_owned(),
-                executable: entry.mode.is_executable(),
+                executable: file.executable,
                 bytes: content,
             });
         }
         skills.push(FetchedSkill {
             parsed,
             directory: directory.clone(),
-            files,
+            files: skill_files,
         });
     }
     if skills.is_empty() {
@@ -309,23 +357,6 @@ fn within<'a>(directory: &str, path: &'a str) -> Option<&'a str> {
         return Some(path);
     }
     path.strip_prefix(directory)?.strip_prefix('/')
-}
-
-/// The bytes of the blob at `path`.
-fn read_blob(
-    repository: &gix::Repository,
-    entries: &[gix::traverse::tree::recorder::Entry],
-    path: &str,
-) -> Result<Vec<u8>, FetchError> {
-    let entry = entries
-        .iter()
-        .find(|entry| entry.filepath == path)
-        .expect("the path was listed");
-    Ok(repository
-        .find_object(entry.oid)
-        .map_err(FetchError::failed)?
-        .detach()
-        .data)
 }
 
 /// The fetch's progress, which counts the pack bytes it reads and stops the

@@ -108,6 +108,8 @@ export const SKILLS_CALLS_OPEN = ['web-kit'] as const
  *   out of sight, yet its `outline` keeps Work's off.
  * - Sources: all on, some on, all off, updating, with an update, failed after a
  *   good fetch, failed at the first fetch, and with skipped files.
+ * - Fetchers: the server's; alex-mbp's, of an SSH address; build-01's, which is
+ *   offline, so the source waits for it; and a device no longer paired.
  * - Skills: on, off, with a warning, of a taken name, and never offered to the
  *   agent.
  */
@@ -130,6 +132,7 @@ export function skillsShowcase(): SkillsState {
         ],
       }),
       showcaseSource('archive', {
+        fetcher: 'build',
         skills: [
           showcaseSkill('legacy-deploy', 'Deploy with the old pipeline.', { enabled: false }),
           showcaseSkill('legacy-lint', 'Lint with the old rules.', { enabled: false }),
@@ -144,6 +147,8 @@ export function skillsShowcase(): SkillsState {
       }),
       showcaseSource('platform-infrastructure-skills', {
         workspace: 'work',
+        origin: 'git@github.example.com:acme/platform-infrastructure-skills.git',
+        fetcher: 'mac',
         updateAvailable: true,
         skills: [showcaseSkill('terraform-plan', 'Read a plan before it applies.')],
       }),
@@ -154,6 +159,7 @@ export function skillsShowcase(): SkillsState {
       }),
       showcaseSource('missing', {
         workspace: 'work',
+        fetcher: 'retired-laptop',
         commit: undefined,
         fetchedAt: undefined,
         failure: { at: ahead(-5 * 60_000), message: 'Repository not found' },

@@ -11,11 +11,13 @@ import {
   type IntentService,
   type PageHost,
   type StateFeed,
+  type PageDevice,
 } from '@demicodes/web-ui/plugins/page'
 import { bindTabSchema, navigateTabSchema, stopTabSchema, tabHistorySchema } from '@demicodes/plugin-browser'
 import {
   addSourceSchema,
   setEnabledSchema,
+  setFetcherSchema,
   setSourceEnabledSchema,
   sourceCallSchema,
   type SkillsState,
@@ -24,6 +26,7 @@ import {
 import { removeKeySchema, saveKeySchema, signInSchema, signOutSchema, type WebState } from '@demicodes/plugin-web'
 import { productWould } from '../product-would'
 import { galleryWorkspaces } from './workspaces'
+import { galleryDevices } from './devices'
 import type { GalleryBrowser } from './live-browser'
 import type { GalleryBrowserPlugin } from './panel'
 
@@ -63,6 +66,8 @@ export interface GalleryShell {
   enabled?(plugin: string): boolean
   /** The workspace of the specimen's tab; the gallery's first without one. */
   workspace?: string
+  /** The user's paired devices; the gallery's without them. */
+  devices?: readonly PageDevice[]
 }
 
 /**
@@ -137,6 +142,16 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     workspaces: {
       list: () => galleryWorkspaces.list.map((workspace) => ({ id: workspace.id, name: workspaceName(workspace) })),
       current: () => shell.workspace ?? galleryWorkspaces.list[0]?.id ?? null,
+    },
+    devices: {
+      list: () =>
+        (shell.devices ?? galleryDevices().map((demo) => demo.device)).map((device) => ({
+          id: device.id,
+          name: device.name,
+          state: device.state,
+          mark: device.mark,
+          downloadPercent: device.downloadPercent ?? null,
+        })),
     },
     openSettings: (section) => productWould(`Open ${section} Settings`),
     openLink: shell.openLink ?? (async (url) => {
@@ -355,6 +370,22 @@ export async function openExaSignIn(url: string | Promise<string>): Promise<void
  * - Checking for updates finds none: the fixture's repositories never move.
  */
 export function skillsPlugin(state: SkillsState): GalleryPlugin {
+  /** Refuses `fetcher` for `origin` as the backend's plugin does. */
+  const checkFetcher = (origin: string, fetcher: string | null | undefined): void => {
+    if (!fetcher) {
+      if (/^[^/:]+@|^ssh:\/\//.test(origin.trim())) {
+        throw new PluginCallError('ssh_needs_device', 'An SSH address needs a device to fetch it, with its own keys')
+      }
+      return
+    }
+    const device = galleryDevices().find((demo) => demo.device.id === fetcher)?.device
+    if (!device) {
+      throw new PluginCallError('fetcher_not_found', 'The device that fetches the source is not paired')
+    }
+    if (device.state !== 'online') {
+      throw new PluginCallError('fetcher_offline', `${device.name} is offline`)
+    }
+  }
   const source = (id: string): SourceState => {
     const found = state.sources.find((candidate) => candidate.id === id)
     if (!found) {
@@ -404,21 +435,30 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
     call: async (method, params) => {
       switch (method) {
         case 'add_source': {
-          const { origin, workspace } = addSourceSchema.parse(params)
-          if (!/^(https:\/\/\S+\/\S+|[\w.-]+\/[\w.-]+)$/.test(origin.trim())) {
-            throw new PluginCallError('invalid_origin', `"${origin}" is neither owner/repo nor an https URL`)
+          const { origin, workspace, fetcher } = addSourceSchema.parse(params)
+          if (!/^(https:\/\/\S+\/\S+|ssh:\/\/\S+\/\S+|[^\s/:@]+@[^\s/:]+:\S+|[\w.-]+\/[\w.-]+)$/.test(origin.trim())) {
+            throw new PluginCallError('invalid_origin', `"${origin}" is neither owner/repo, an https URL nor an SSH address`)
           }
           const existing = state.sources.find((candidate) => galleryRepository(candidate.origin) === galleryRepository(origin))
           if (existing) {
             throw new PluginCallError('source_exists', `${origin} is added already, in ${galleryPlace(existing.workspace)}`)
           }
+          checkFetcher(origin, fetcher)
           const id = commitOf(origin).slice(0, 12)
-          state.sources.push({ id, origin: origin.trim(), workspace, fetching: true, updateAvailable: false, skills: [], skipped: [] })
+          state.sources.push({ id, origin: origin.trim(), workspace, fetcher, fetching: true, updateAvailable: false, skills: [], skipped: [] })
           void fetch(id)
           return { source: id }
         }
+        case 'set_fetcher': {
+          const { source: id, fetcher } = setFetcherSchema.parse(params)
+          checkFetcher(source(id).origin, fetcher)
+          source(id).fetcher = fetcher
+          void fetch(id)
+          return null
+        }
         case 'update_source': {
           const { source: id } = sourceCallSchema.parse(params)
+          checkFetcher(source(id).origin, source(id).fetcher)
           if (!source(id).fetching) {
             void fetch(id)
           }

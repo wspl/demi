@@ -3,7 +3,7 @@ import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
-import type { AddSourceAnswer, SettingsSkillDraft, SettingsSkillSource } from './types'
+import type { AddSourceAnswer, SettingsSkillDevice, SettingsSkillDraft, SettingsSkillFetcher, SettingsSkillSource } from './types'
 import { formatBytes, PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
@@ -12,6 +12,7 @@ import {
   type SourceState,
   type SetEnabled,
   type SetSourceEnabled,
+  type SetFetcher,
   type Failure,
   type SourceCall,
   type Skipped,
@@ -72,10 +73,24 @@ function placeName(workspace: string | null | undefined): string {
   return page.workspaces.list().find((each) => each.id === workspace)?.name ?? ''
 }
 
+const devices = computed<SettingsSkillDevice[]>(() => [...page.devices.list()])
+
+/** What fetches `source`, as the page shows it. */
+function fetcherOf(source: SourceState): SettingsSkillFetcher {
+  if (!source.fetcher) {
+    return { kind: 'server' }
+  }
+  const device = devices.value.find((each) => each.id === source.fetcher)
+  return device
+    ? { kind: 'device', id: device.id, name: device.name, online: device.state === 'online' }
+    : { kind: 'removed', id: source.fetcher }
+}
+
 function shown(source: SourceState): SettingsSkillSource {
   return {
     id: source.id,
     origin: source.origin,
+    fetcher: fetcherOf(source),
     commit: source.commit ?? undefined,
     fetching: source.fetching,
     failure: source.failure ? { at: source.failure.at, message: fetchFailure(source.failure) } : undefined,
@@ -104,7 +119,7 @@ const openIds = ref<string[]>([...(props.open ?? [])])
  * Calls `method`, which answers nothing; a refusal says why in a toast. Its
  * control's operation (`page.operation`) runs until the call is answered.
  */
-function change(method: string, params: SourceCall | SetEnabled | SetSourceEnabled, couldNot: HeadlineText): Promise<void> {
+function change(method: string, params: SourceCall | SetEnabled | SetSourceEnabled | SetFetcher, couldNot: HeadlineText): Promise<void> {
   return plugin.call(method, params, z.null()).then(
     () => {},
     (error: unknown) => page.errors.report(couldNot, error),
@@ -127,21 +142,30 @@ function repository(origin: string): string {
 }
 
 /** Why `origin` is added already, naming the place of the source the page lists for it. */
-function exists(origin: string): string {
+function exists(draft: SettingsSkillDraft): string {
+  const origin = draft.origin.trim()
   const listed = all.value.find((source) => repository(source.origin) === repository(origin))
   return listed
     ? t('refusals.source_exists_in', { origin, place: placeName(listed.workspace) })
     : t('refusals.source_exists', { origin })
 }
 
+/** The name of the device `draft` chose to fetch it. */
+function chosenName(draft: SettingsSkillDraft): string {
+  return devices.value.find((device) => device.id === draft.fetcher)?.name ?? ''
+}
+
 /**
- * The refusals that are about the origin typed, which the dialog says under
- * its field, in the page's words.
+ * The refusals that are about what the dialog holds, which it says under its
+ * fields, in the page's words.
  */
-const ORIGIN_REFUSALS = new Map<string, (origin: string) => string>([
+const ORIGIN_REFUSALS = new Map<string, (draft: SettingsSkillDraft) => string>([
   ['invalid_origin', () => t('refusals.invalid_origin')],
   ['source_exists', exists],
   ['workspace_not_found', () => t('refusals.workspace_not_found')],
+  ['ssh_needs_device', () => t('refusals.ssh_needs_device')],
+  ['fetcher_offline', (draft) => t('refusals.fetcher_offline', { name: chosenName(draft) })],
+  ['fetcher_not_found', () => t('refusals.fetcher_not_found')],
 ])
 
 async function add(draft: SettingsSkillDraft, workspace: string | null): Promise<AddSourceAnswer> {
@@ -149,13 +173,16 @@ async function add(draft: SettingsSkillDraft, workspace: string | null): Promise
   if (workspace) {
     params.workspace = workspace
   }
+  if (draft.fetcher) {
+    params.fetcher = draft.fetcher
+  }
   try {
     await plugin.call('add_source', params, addedSourceSchema)
     return { kind: 'added' }
   } catch (error) {
     const refusal = error instanceof PluginCallError ? ORIGIN_REFUSALS.get(error.reason) : undefined
     if (refusal) {
-      return { kind: 'refused', message: refusal(draft.origin.trim()) }
+      return { kind: 'refused', message: refusal(draft) }
     }
     page.errors.report(t('failures.add'), error)
     return { kind: 'failed' }
@@ -168,6 +195,7 @@ async function add(draft: SettingsSkillDraft, workspace: string | null): Promise
     v-model:open="openIds"
     :global="global"
     :workspace="workspace"
+    :devices="devices"
     :operation="page.operation"
     :overlay-store="page.overlays"
     :add-source="add"
@@ -175,5 +203,6 @@ async function add(draft: SettingsSkillDraft, workspace: string | null): Promise
     @remove="(source) => change('remove_source', { source }, t('failures.remove'))"
     @switch="(source, skill, enabled) => change('set_enabled', { source, skill, enabled }, t('failures.switchSkill'))"
     @switch-source="(source, enabled) => change('set_source_enabled', { source, enabled }, t('failures.switchSkills'))"
+    @set-fetcher="(source, fetcher) => change('set_fetcher', fetcher ? { source, fetcher } : { source }, t('failures.setFetcher'))"
   />
 </template>

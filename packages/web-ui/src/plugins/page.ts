@@ -1,3 +1,5 @@
+import type { DeviceState } from '../devices/state'
+import type { DeviceMark } from '../devices/mark'
 import { t } from './locales/text'
 import {
   computed,
@@ -186,6 +188,16 @@ export interface StateFeed {
 }
 
 /** What the page around the shell supplies for every page. */
+/** A paired device of the user's, as a page draws it: as every device is, with its mark and state (`devices/DeviceIcon.vue`). */
+export interface PageDevice {
+  id: string
+  name: string
+  state: DeviceState
+  mark: DeviceMark | null
+  /** How far the download of its next runner has come, while one moves. */
+  downloadPercent: number | null
+}
+
 /** A workspace of the user's, as a page names it. */
 export interface PageWorkspace {
   id: string
@@ -248,6 +260,11 @@ export interface PageHost {
     list(): readonly PageWorkspace[]
     /** The workspace of the tab the page is in. */
     current(): string | null
+  }
+  /** The user's paired devices, read reactively. */
+  devices: {
+    /** Every paired device, in the user's order. */
+    list(): readonly PageDevice[]
   }
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
@@ -328,6 +345,8 @@ export interface PageContext {
   readonly settings: { open(section: string): void }
   /** The user's workspaces and the tab's, read reactively. */
   readonly workspaces: PageHost['workspaces']
+  /** The user's paired devices, read reactively. */
+  readonly devices: PageHost['devices']
   /** Opens a web page in a new tab, as {@link PageHost.openLink} does. */
   readonly links: { open(url: string | Promise<string>): Promise<void> }
   readonly errors: {
@@ -721,6 +740,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
     },
     settings: { open: (section) => host.openSettings(section) },
     workspaces: host.workspaces,
+    devices: host.devices,
     links: { open: (url) => host.openLink(url) },
     errors,
     overlays: host.overlays,

@@ -50,15 +50,29 @@
 //! Host, so a target switch changes no path: the new Host receives the
 //! directory when its first job needs it.
 //!
-//! The plugin writes to no Host, sends no credential when it fetches, and never
-//! blocks the shard thread: git runs on the blocking pool.
+//! The plugin writes to no Host and never blocks the shard thread.
+//!
+//! # Fetchers
+//!
+//! The server fetches a source with gix on the blocking pool, and sends no
+//! credential. A source may instead name one of the user's paired devices,
+//! which fetches it with its own `git`, as its user, with that user's keys,
+//! credential helpers and network (`crates/backend-host-access/src/device_git.rs`):
+//! the one way to an SSH address, or a repository only a company network
+//! reaches. What either fetch answers is read by the same rules, and the
+//! server keeps the files for every Host. An offline device fetches and
+//! checks nothing; its source keeps its skills and waits.
 //!
 //! # Updates
 //!
-//! The backend checks each source's default branch on its own schedule, once
+//! The backend checks each source the server fetches on its own schedule, once
 //! per interval however many users added the source (`heads.rs`), from the
 //! first page state a user's instance reads until the instance ends, and tells
 //! those users' pages when it moved. Opening Settings › Skills checks nothing.
+//!
+//! A source a device fetches is checked by that device, on the same
+//! schedule, while it is online. What it finds is this instance's alone, so
+//! a private repository's commit reaches no other user.
 
 mod catalog;
 mod commands;
@@ -93,7 +107,8 @@ use crate::heads::{CHECK_INTERVAL, Heads};
 use crate::origin::Origin;
 use crate::project::ProjectSkill;
 use crate::sources::{Places, Source, Sources};
-use demi_web_api_protocol::ids::WorkspaceId;
+use demi_web_api_protocol::ids::{DeviceId, WorkspaceId};
+use demi_plugin_interface::{GitRefusal, PortFailure, PortRefusal};
 
 pub use crate::fetch::Skipped;
 pub use crate::sources::{Failure, SkillState, SkillsState, SourceState};
@@ -157,19 +172,33 @@ impl demi_plugin_interface::PluginFactory for Skills {
             fetching: RefCell::default(),
             fetches: RefCell::default(),
             heads: self.heads.clone(),
+            device_heads: Heads::default(),
             follow: RefCell::default(),
         })))
     }
 }
 
-/// `add_source { origin, workspace }`: the source goes to the workspace
-/// named, or to Global without one.
+/// `add_source { origin, workspace, fetcher }`: the source goes to the
+/// workspace named, or to Global without one, and the device named fetches
+/// it, or the server without one.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddSource {
     pub origin: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fetcher: Option<DeviceId>,
+}
+
+/// `set_fetcher { source, fetcher }`: the device named fetches the source
+/// from now on, or the server without one; it fetches it again at once.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetFetcher {
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fetcher: Option<DeviceId>,
 }
 
 /// What `add_source` answers: the new source's id.
@@ -210,6 +239,7 @@ fn page() -> Page {
             Scope::User,
         ))
         .method(Method::new::<SourceCall, ()>("update_source", Scope::User))
+        .method(Method::new::<SetFetcher, ()>("set_fetcher", Scope::User))
         .method(Method::new::<SourceCall, ()>("remove_source", Scope::User))
         .method(Method::new::<SetEnabled, ()>("set_enabled", Scope::User))
         .method(Method::new::<SetSourceEnabled, ()>(
@@ -233,8 +263,12 @@ struct State {
     /// Each running fetch: its task and what stops its blocking part.
     fetches: RefCell<Vec<(AbortHandle, Arc<AtomicBool>)>>,
     /// What each source's default branch points to, by id, as every
-    /// user's instance knows it.
+    /// user's instance knows it: the sources the server fetches.
     heads: Arc<Heads>,
+    /// The same of the sources the user's devices fetch, which this
+    /// instance alone knows: a private repository's commit reaches no other
+    /// user.
+    device_heads: Heads,
     /// The task that checks the user's sources on the backend's schedule
     /// and tells the pages of a move, from the first page state read on.
     follow: RefCell<Option<AbortHandle>>,
@@ -249,8 +283,12 @@ enum Fetched {
     Failed(String),
     /// The source was removed while it was fetched.
     Removed,
-    /// The shutdown cut the fetch off, which recorded nothing.
+    /// The shutdown cut the fetch off, or its device went away, which
+    /// recorded nothing.
     Stopped,
+    /// Another fetcher took the source over while it was fetched: nothing
+    /// was recorded, and the new fetcher fetches it next.
+    Superseded,
 }
 
 /// A running fetch's end, which each command waiting for it reads: none
@@ -326,14 +364,20 @@ impl State {
     ) -> Result<Value, PluginError> {
         match method {
             "add_source" => {
-                let AddSource { origin, workspace } = decode(params)?;
-                let source = self.add_source(&port, &origin, workspace).await?;
+                let AddSource { origin, workspace, fetcher } = decode(params)?;
+                let source = self.add_source(&port, &origin, workspace, fetcher).await?;
                 self.start_fetch(port, source.clone());
                 Ok(serde_json::to_value(AddedSource { source }).expect("a result encodes"))
             }
             "update_source" => {
                 let SourceCall { source } = decode(params)?;
-                sources::read_one(&port, &source).await?;
+                self.ready_to_fetch(&port, &source).await?;
+                self.start_fetch(port, source);
+                Ok(Value::Null)
+            }
+            "set_fetcher" => {
+                let SetFetcher { source, fetcher } = decode(params)?;
+                self.set_fetcher(&port, &source, fetcher).await?;
                 self.start_fetch(port, source);
                 Ok(Value::Null)
             }
@@ -401,11 +445,83 @@ impl State {
     async fn state(&self, port: &PluginPort) -> Result<SkillsState, PluginError> {
         let (sources, _) = self.sources(port).await?;
         let fetching = self.fetching.borrow();
-        Ok(sources::state(
-            &sources,
-            |id| fetching.contains_key(id),
-            &self.heads.of(sources.keys()),
-        ))
+        Ok(sources::state(&sources, |id| fetching.contains_key(id), &self.heads_of(&sources)))
+    }
+
+    /// The heads of `sources`: the server's from the heads every instance
+    /// shares, a device's from this instance's own.
+    fn heads_of(&self, sources: &Sources) -> BTreeMap<String, heads::Head> {
+        let (by_device, by_server): (Vec<&String>, Vec<&String>) =
+            sources.iter().map(|(id, (source, _))| (id, source.fetcher.is_some())).fold(
+                (Vec::new(), Vec::new()),
+                |(mut device, mut server), (id, on_device)| {
+                    if on_device { device.push(id) } else { server.push(id) }
+                    (device, server)
+                },
+            );
+        let mut heads = self.heads.of(by_server);
+        heads.extend(self.device_heads.of(by_device));
+        heads
+    }
+
+    /// Refuses to fetch `origin` with `fetcher`: an SSH address the server
+    /// would fetch, a device that is not paired, or one that is offline.
+    async fn check_fetcher(
+        &self,
+        port: &PluginPort,
+        origin: &Origin,
+        fetcher: Option<&DeviceId>,
+    ) -> Result<(), PluginError> {
+        let Some(fetcher) = fetcher else {
+            if origin.ssh() {
+                return Err(PluginError::refused(
+                    "ssh_needs_device",
+                    "An SSH address needs a device to fetch it, with its own keys",
+                ));
+            }
+            return Ok(());
+        };
+        let devices = port.devices().await?;
+        match devices.iter().find(|device| device.id == *fetcher) {
+            None => Err(PluginError::refused("fetcher_not_found", "The device that fetches the source is not paired")),
+            Some(device) if !device.online => {
+                Err(PluginError::refused("fetcher_offline", format!("{} is offline", device.name)))
+            }
+            Some(_) => Ok(()),
+        }
+    }
+
+    /// Refuses to fetch source `id` now, as [`check_fetcher`](Self::check_fetcher) does.
+    async fn ready_to_fetch(&self, port: &PluginPort, id: &str) -> Result<(), PluginError> {
+        let (source, _) = sources::read_one(port, id).await?;
+        let origin = Origin::parse(&source.origin)
+            .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
+        self.check_fetcher(port, &origin, source.fetcher.as_ref()).await
+    }
+
+    /// Has `fetcher` fetch source `id` from now on, writing again over
+    /// another write that came first; refused while the source is fetched.
+    async fn set_fetcher(&self, port: &PluginPort, id: &str, fetcher: Option<DeviceId>) -> Result<(), PluginError> {
+        if self.fetching.borrow().contains_key(id) {
+            return Err(PluginError::refused(
+                "source_fetching",
+                "The source is being fetched; choose what fetches it once the fetch ends",
+            ));
+        }
+        loop {
+            let (source, revision) = sources::read_one(port, id).await?;
+            let origin = Origin::parse(&source.origin)
+                .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
+            self.check_fetcher(port, &origin, fetcher.as_ref()).await?;
+            let changed = Source { fetcher: fetcher.clone(), ..source };
+            match sources::write(port, id, &changed, Some(revision)).await {
+                Ok(_) => break,
+                Err(failure) if sources::conflict(&failure) => continue,
+                Err(failure) => return Err(failure.into()),
+            }
+        }
+        port.changed(Scope::User).await?;
+        Ok(())
     }
 
     /// Records the source `origin` names in `workspace`, or in Global
@@ -417,9 +533,11 @@ impl State {
         port: &PluginPort,
         origin: &str,
         workspace: Option<WorkspaceId>,
+        fetcher: Option<DeviceId>,
     ) -> Result<String, PluginError> {
         let parsed = Origin::parse(origin)
             .map_err(|message| PluginError::refused("invalid_origin", message))?;
+        self.check_fetcher(port, &parsed, fetcher.as_ref()).await?;
         let id = parsed.id();
         let (existing, places) = self.sources(port).await?;
         if !places.exists(workspace.as_ref()) {
@@ -449,6 +567,7 @@ impl State {
             skipped: Vec::new(),
             failure: None,
             workspace,
+            fetcher,
         };
         match sources::write(port, &id, &source, None).await {
             Ok(_) => {}
@@ -523,6 +642,14 @@ impl State {
                 tracing::warn!(event = "skill_source.fetch_record_failed", source = %id, %error, "a skill source's fetch was not recorded");
             }
             state.fetching.borrow_mut().remove(&id);
+            if matches!(fetched, Ok(Fetched::Superseded)) {
+                // The fetch of the source's new fetcher, which those waiting
+                // for this one hear the end of instead.
+                let mut next = state.start_fetch(port.clone(), id.clone());
+                let next = next.wait_for(Option::is_some).await.map(|ended| ended.clone()).ok().flatten();
+                end.send_replace(next.or(Some(Ok(Fetched::Superseded))));
+                return;
+            }
             end.send_replace(Some(fetched.map_err(|error| error.to_string())));
             // A page that misses this change reads the state again when it
             // reconnects.
@@ -546,11 +673,19 @@ impl State {
         let (source, _) = sources::read_one(port, id).await?;
         let origin = Origin::parse(&source.origin)
             .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
-        let url = (self.resolve)(origin.url());
-        let repository = origin.repository().to_owned();
-        let fetched = tokio::task::spawn_blocking(move || fetch::fetch(&url, &repository, &stop))
-            .await
-            .map_err(|error| PluginError::failed(format!("the fetch ended: {error}")))?;
+        // What fetches it now, which also decides whose heads learn the
+        // commit: a device's commit never reaches the shared heads.
+        let fetcher = source.fetcher.clone();
+        let fetched = match &fetcher {
+            None => {
+                let url = (self.resolve)(origin.url());
+                let repository = origin.repository().to_owned();
+                tokio::task::spawn_blocking(move || fetch::fetch(&url, &repository, &stop))
+                    .await
+                    .map_err(|error| PluginError::failed(format!("the fetch ended: {error}")))?
+            }
+            Some(device) => fetch_on_device(port, device, &origin).await,
+        };
         let outcome = match fetched {
             Ok(fetched) => {
                 let blobs = sources::put_files(port, &fetched).await?;
@@ -564,6 +699,9 @@ impl State {
             let Some((source, revision)) = all.get(id) else {
                 return Ok(Fetched::Removed);
             };
+            if source.fetcher != fetcher {
+                return Ok(Fetched::Superseded);
+            }
             let now = self.clock.now();
             let recorded = match &outcome {
                 Ok((fetched, blobs)) => sources::fetched(&all, id, fetched, blobs, now),
@@ -579,7 +717,8 @@ impl State {
             match sources::write(port, id, &recorded, Some(*revision)).await {
                 Ok(_) => {
                     if let Ok((fetched, _)) = &outcome {
-                        self.heads.fetched(id, now, fetched.commit.clone());
+                        let heads = if fetcher.is_some() { &self.device_heads } else { &*self.heads };
+                        heads.fetched(id, now, fetched.commit.clone());
                     }
                     break;
                 }
@@ -653,8 +792,23 @@ impl State {
         let (all, _) = self.sources(port).await?;
         let now = self.clock.now();
         let mut due: Vec<(String, String)> = Vec::new();
+        let mut on_devices: Vec<(String, DeviceId, String)> = Vec::new();
+        let online: Vec<DeviceId> = if all.values().any(|(source, _)| source.fetcher.is_some()) {
+            port.devices().await?.into_iter().filter(|device| device.online).map(|device| device.id).collect()
+        } else {
+            Vec::new()
+        };
         for (id, (source, _)) in all {
             if source.commit.is_none() || self.fetching.borrow().contains_key(&id) {
+                continue;
+            }
+            if let Some(device) = &source.fetcher {
+                // An offline device checks nothing; the source waits for it.
+                if online.contains(device) && self.device_heads.claim(&id, now) {
+                    let origin = Origin::parse(&source.origin)
+                        .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
+                    on_devices.push((id, device.clone(), origin.url().to_owned()));
+                }
                 continue;
             }
             let origin = Origin::parse(&source.origin)
@@ -668,7 +822,30 @@ impl State {
             let checked = tokio::task::spawn_blocking(move || fetch::remote_head(&url)).await;
             (id, checked, u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX))
         });
-        for (id, checked, ms) in join_all(checks).await {
+        // Each device's check has its own time limit, and none waits for
+        // another or for the server's.
+        let device_checks = on_devices.into_iter().map(|(id, device, url)| async move {
+            let checked = port.device_git_head(device, url).await;
+            (id, checked)
+        });
+        let (device_checked, server_checked) = futures_util::future::join(join_all(device_checks), join_all(checks)).await;
+        let mut moved = false;
+        for (id, checked) in device_checked {
+            let before = self.device_heads.of([&id]).remove(&id).and_then(|head| head.commit);
+            match checked {
+                Ok(commit) => {
+                    moved |= before.as_ref() != Some(&commit);
+                    self.device_heads.checked(&id, now, commit);
+                }
+                Err(error) => {
+                    tracing::info!(event = "skill_source.branch_unchecked", source = %id, reason = %error, "a skill source's default branch was not checked on its device");
+                }
+            }
+        }
+        if moved {
+            port.changed(Scope::User).await?;
+        }
+        for (id, checked, ms) in server_checked {
             match checked {
                 Ok(Ok(commit)) => self.heads.checked(&id, now, commit),
                 Ok(Err(message)) => {
@@ -743,4 +920,42 @@ fn decode<T: DeserializeOwned>(params: Map<String, Value>) -> Result<T, PluginEr
     serde_json::from_value(Value::Object(params)).map_err(|error| PluginError::Usage {
         message: error.to_string(),
     })
+}
+
+/// Fetches `origin` on `device` with its own `git`, as [`fetch::fetch`] does
+/// on the server.
+async fn fetch_on_device(port: &PluginPort, device: &DeviceId, origin: &Origin) -> Result<fetch::Fetched, FetchError> {
+    let tree = port
+        .device_git_fetch(
+            device.clone(),
+            origin.url().to_owned(),
+            "SKILL.md".to_owned(),
+            fetch::FETCH_MAX_BYTES as u64,
+            fetch::FILES_MAX_BYTES as u64,
+        )
+        .await
+        .map_err(|failure| match failure {
+            PortFailure::Refused(PortRefusal::Git { refusal }) => match refusal {
+                GitRefusal::RepositoryTooLarge { limit } => FetchError::Failed {
+                    message: format!("the repository is larger than {} MiB", limit / (1024 * 1024)),
+                    problem: fetch::FetchProblem::RepositoryTooLarge { limit_bytes: limit as u32 },
+                },
+                GitRefusal::FilesTooLarge { limit } => FetchError::Failed {
+                    message: format!("the skills' files hold more than {} MiB", limit / (1024 * 1024)),
+                    problem: fetch::FetchProblem::FilesTooLarge { limit_bytes: limit as u32 },
+                },
+                // The device went away: nothing is recorded, and the source
+                // waits for it as for an offline device.
+                GitRefusal::Offline => FetchError::Stopped,
+                refusal => FetchError::Failed { message: refusal.to_string(), problem: fetch::FetchProblem::Failed },
+            },
+            failure => FetchError::Failed { message: failure.to_string(), problem: fetch::FetchProblem::Failed },
+        })?;
+    let files = tree
+        .entries
+        .into_iter()
+        .map(|entry| fetch::TreeFile { path: entry.path, executable: entry.executable })
+        .collect();
+    let bytes = tree.files.into_iter().map(|file| (file.path, file.bytes.into_bytes().to_vec())).collect();
+    fetch::from_device(tree.commit, files, bytes, origin.repository())
 }

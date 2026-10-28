@@ -23,7 +23,8 @@ import AddModelDialog from '@demicodes/web-ui/settings/AddModelDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.vue'
-import type { AddSourceAnswer } from '@demicodes/plugin-skills/types'
+import { galleryDevices } from '../fixtures/devices'
+import type { AddSourceAnswer, SettingsSkillDevice } from '@demicodes/plugin-skills/types'
 import type { SettingsModelDraft, SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import DeviceRenameDialog from '@demicodes/web-ui/devices/DeviceRenameDialog.vue'
@@ -81,16 +82,30 @@ async function finishSlowly(close: () => void, title: HeadlineText): Promise<voi
   finish(close, title)
 }
 
+/** The devices Fetch With offers, the gallery's own: online, offline, which cannot be chosen, and updating. */
+const skillDevices: SettingsSkillDevice[] = galleryDevices().map(({ device }) => ({
+  id: device.id,
+  name: device.name,
+  state: device.state,
+  mark: device.mark,
+  downloadPercent: device.downloadPercent ?? null,
+}))
+
 /**
- * The plugin's answer after a beat: an origin with no slash is refused as the
- * plugin refuses it, and the dialog says so under its field; any other is added.
+ * The plugin's answer after a beat: an origin with no slash or colon is refused as
+ * the plugin refuses it, and so is an SSH address the server would fetch; the
+ * dialog says so under its fields. Any other is added.
  */
-async function addSkillSource(draft: { origin: string }): Promise<AddSourceAnswer> {
+async function addSkillSource(draft: { origin: string; fetcher: string | null }): Promise<AddSourceAnswer> {
   await new Promise((resolve) => window.setTimeout(resolve, 600))
-  if (!draft.origin.includes('/')) {
-    return { kind: 'refused', message: `"${draft.origin}" is neither owner/repo nor an https URL` }
+  if (!/[/:]/.test(draft.origin)) {
+    return { kind: 'refused', message: 'Enter owner/repository, a Git URL or an SSH address.' }
   }
-  productWould(`Add the Skill Source ${draft.origin}`)
+  if (!draft.fetcher && /^[^/:]+@|^ssh:\/\//.test(draft.origin)) {
+    return { kind: 'refused', message: 'An SSH address needs one of your devices to fetch it.' }
+  }
+  const by = skillDevices.find((device) => device.id === draft.fetcher)?.name ?? 'the Server'
+  productWould(`Add the Skill Source ${draft.origin}, Fetched by ${by}`)
   return { kind: 'added' }
 }
 
@@ -896,11 +911,12 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'skills'">
-      <GallerySection title="Add Skill Source" note="A Git repository whose SKILL.md files become a pack.">
+      <GallerySection title="Add Skill Source" note="A Git repository whose SKILL.md files become a pack, and what fetches it: the Server, or a device with its own Git, keys and network; build-01 is offline, so it cannot be chosen. An SSH address with the Server is refused under the fields.">
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <AddSkillSourceDialog
             :is-open="open"
             :overlay-store="appOverlayStore"
+            :devices="skillDevices"
             :add-source="addSkillSource"
             @close="close"
           />

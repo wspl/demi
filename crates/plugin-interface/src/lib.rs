@@ -64,7 +64,7 @@ pub use web::{
 pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
 pub use port::{
     CallKind, DirectoryFile, DirectoryPath, HostDirectory, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
-    WorkspaceName, Workspaces,
+    WorkspaceName, Workspaces, DeviceName, GitEntry, GitFile, GitRefusal, GitTree,
     StoredReport, StoredValue,
 };
 pub use providers::{

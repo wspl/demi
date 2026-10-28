@@ -32,7 +32,7 @@ use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk,
     VideoStep, CallKind, DirectoryPath, HostDirectory, Plugin, PluginError, PluginId, PluginPort,
     PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope, StoredReport,
-    StoredValue, Workspaces,
+    StoredValue, Workspaces, DeviceName, GitTree,
 };
 use demi_host_interface::{HostFile, HostRead};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId};
@@ -89,6 +89,24 @@ pub trait ProductPort {
     /// The models of `kind` of the user's provider entries, each with the
     /// entries that offer it.
     fn media_models(&self, kind: MediaKind) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>>;
+
+    /// The user's paired devices, each with whether its runner is connected.
+    fn devices(&self) -> LocalBoxFuture<'_, Result<Vec<DeviceName>, PortFailure>>;
+
+    /// The commit `url`'s default branch points to, as the user's paired
+    /// device `device` reads it with its own `git`.
+    fn device_git_head<'a>(&'a self, device: &'a DeviceId, url: &'a str) -> LocalBoxFuture<'a, Result<String, PortFailure>>;
+
+    /// The newest commit of `url`'s default branch as `device` clones it
+    /// with its own `git` ([`PortMessage::DeviceGitFetch`]).
+    fn device_git_fetch<'a>(
+        &'a self,
+        device: &'a DeviceId,
+        url: &'a str,
+        marker: &'a str,
+        repository_max: u64,
+        files_max: u64,
+    ) -> LocalBoxFuture<'a, Result<GitTree, PortFailure>>;
 
     /// Makes the image `ask` names for the conversation, through the entry
     /// and account the providers choose; its usage ledger row names the
@@ -1422,6 +1440,17 @@ impl RequestPort {
                 let primary = shared.primary_device(conversation).await?.as_ref() == Some(&device);
                 PortAnswer::Kept { primary }
             }
+            PortMessage::Devices => PortAnswer::Devices {
+                devices: product.devices().await?,
+            },
+            PortMessage::DeviceGitHead { device, url } => PortAnswer::GitHead {
+                commit: product.device_git_head(&device, &url).await?,
+            },
+            PortMessage::DeviceGitFetch { device, url, marker, repository_max, files_max } => PortAnswer::GitTree {
+                tree: product
+                    .device_git_fetch(&device, &url, &marker, repository_max, files_max)
+                    .await?,
+            },
             PortMessage::Workspaces => {
                 let workspaces = shared.store.workspaces(shared.user.clone()).await.map_err(storage)?;
                 let current = match &self.conversation {

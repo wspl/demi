@@ -12,7 +12,7 @@ use demi_plugin_interface::{
     DirectoryFile, HostDirectory, PluginError, PluginId, PluginPort, PortFailure, PortRefusal,
     StoredValue, Workspaces,
 };
-use demi_web_api_protocol::ids::WorkspaceId;
+use demi_web_api_protocol::ids::{DeviceId, WorkspaceId};
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -41,6 +41,10 @@ pub(crate) struct Source {
     /// Global, every conversation's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) workspace: Option<WorkspaceId>,
+    /// The paired device that fetches it with its own `git`; none for the
+    /// server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) fetcher: Option<DeviceId>,
 }
 
 /// A skill of a source's pinned commit.
@@ -317,6 +321,7 @@ pub(crate) fn fetched(
         skipped: fetched.skipped.clone(),
         failure: None,
         workspace: source.workspace.clone(),
+        fetcher: source.fetcher.clone(),
     }
 }
 
@@ -404,6 +409,9 @@ pub struct SourceState {
     /// Global, every conversation's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceId>,
+    /// The paired device that fetches it; none for the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fetcher: Option<DeviceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -463,6 +471,7 @@ pub(crate) fn state(
                 id: id.clone(),
                 origin: source.origin.clone(),
                 workspace: source.workspace.clone(),
+                fetcher: source.fetcher.clone(),
                 commit: source.commit.clone(),
                 fetched_at: source.fetched_at,
                 fetching: fetching(id),

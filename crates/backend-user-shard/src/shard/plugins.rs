@@ -14,6 +14,9 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_backend_host_access::HostShard;
+use demi_backend_host_access::device_git::DeviceGitError;
+use demi_plugin_interface::{DeviceName, GitEntry, GitFile, GitRefusal, GitTree};
+use demi_web_api_protocol::devices::DeviceKind;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
@@ -133,6 +136,66 @@ impl ProductPort for ShardPort {
 
     fn media_models(&self, kind: MediaKind) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>> {
         Box::pin(async move { super::media::media_models(&*self.shard()?, kind).await })
+    }
+
+    fn devices(&self) -> LocalBoxFuture<'_, Result<Vec<DeviceName>, PortFailure>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            let records = shard
+                .services()
+                .control
+                .paired_devices(shard.user().clone())
+                .await
+                .map_err(|error| failed(format!("the devices cannot be read: {error}")))?;
+            Ok(records
+                .into_iter()
+                .filter(|record| record.kind == DeviceKind::User)
+                .map(|record| DeviceName {
+                    online: shard.host_shard().devices().link(&record.id).is_some(),
+                    id: record.id,
+                    name: record.name,
+                })
+                .collect())
+        })
+    }
+
+    fn device_git_head<'a>(&'a self, device: &'a DeviceId, url: &'a str) -> LocalBoxFuture<'a, Result<String, PortFailure>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            shard.host_shard().device_git_head(device, url).await.map_err(git_refusal)
+        })
+    }
+
+    fn device_git_fetch<'a>(
+        &'a self,
+        device: &'a DeviceId,
+        url: &'a str,
+        marker: &'a str,
+        repository_max: u64,
+        files_max: u64,
+    ) -> LocalBoxFuture<'a, Result<GitTree, PortFailure>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            let limit = |bytes: u64| usize::try_from(bytes).unwrap_or(usize::MAX);
+            let tree = shard
+                .host_shard()
+                .device_git_fetch(device, url, marker, limit(repository_max), limit(files_max))
+                .await
+                .map_err(git_refusal)?;
+            Ok(GitTree {
+                commit: tree.commit,
+                entries: tree
+                    .entries
+                    .into_iter()
+                    .map(|entry| GitEntry { path: entry.path, executable: entry.executable })
+                    .collect(),
+                files: tree
+                    .files
+                    .into_iter()
+                    .map(|(path, bytes)| GitFile { path, bytes: B64Bytes::new(bytes.to_vec()) })
+                    .collect(),
+            })
+        })
     }
 
     fn make_image<'a>(
@@ -396,4 +459,16 @@ impl Shard {
         }
         self.plugins().package_lost(device, lost, &reaching).await;
     }
+}
+
+/// A device's `git` that answered nothing, as the plugins' port says it.
+fn git_refusal(error: DeviceGitError) -> PortFailure {
+    let refusal = match error {
+        DeviceGitError::NotFound => GitRefusal::NotFound,
+        DeviceGitError::Offline => GitRefusal::Offline,
+        DeviceGitError::RepositoryTooLarge { limit } => GitRefusal::RepositoryTooLarge { limit: limit as u64 },
+        DeviceGitError::FilesTooLarge { limit } => GitRefusal::FilesTooLarge { limit: limit as u64 },
+        DeviceGitError::Failed(message) => GitRefusal::Failed { message },
+    };
+    PortFailure::Refused(PortRefusal::Git { refusal })
 }
