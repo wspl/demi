@@ -2,6 +2,7 @@ import { readonly, ref } from 'vue'
 import type { UpdateEnd } from '@demicodes/web-ui/ui/UpdatingScreen.vue'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { errorFields } from '@demicodes/web-ui/infra/errors'
+import { reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { updateStateSchema, type UpdateState } from '../api/generated/web-api'
 
 /**
@@ -9,9 +10,15 @@ import { updateStateSchema, type UpdateState } from '../api/generated/web-api'
  * (`crates/backend-http/src/update.rs`): once any answer says `updating`,
  * or the state channel says the backend stops for an update of the server,
  * the page shows the update screen over everything and asks how far it is
- * until the backend serves. Then the screen shows how the update ended, and
- * the page loads itself again only when the user opens Demi, so every step
- * is seen to end: nothing else loads it while the screen shows.
+ * until the backend serves. Then the screen shows how the update ended.
+ *
+ * A page that was in front when it learned of the update loads itself again
+ * only when the user opens Demi, so the user who watched the update begin
+ * sees every step end. A page that was in the background then, another tab,
+ * a minimized window or a locked phone, loads itself as soon as the update
+ * ends, even if it came to the front meanwhile: nobody watched it begin, and
+ * Open Demi would only add a click. Nothing else loads the page while the
+ * screen shows.
  */
 
 /**
@@ -31,6 +38,9 @@ export interface UpdateShown {
 }
 
 const shown = ref<UpdateShown | null>(null)
+
+/** Whether the page was in front when it learned of the update. */
+let watched = false
 
 /** What the update screen shows; null while the backend is not updating. */
 export const update = readonly(shown)
@@ -58,7 +68,10 @@ function end(state: Extract<UpdateState, { state: 'none' }> | null): void {
   } else {
     shown.value = { progress: last, ended: updated ? 'updated' : 'returned' }
   }
-  pageLog.info('update.ended', { ended: shown.value.ended, version: state?.version ?? null })
+  pageLog.info('update.ended', { ended: shown.value.ended, version: state?.version ?? null, watched })
+  if (!watched) {
+    reloadPage()
+  }
 }
 
 /**
@@ -71,9 +84,10 @@ export function noteUpdating(state: UpdateState | null = null): void {
   if (shown.value !== null)
     return
   shown.value = shownOf(state)
+  watched = document.visibilityState === 'visible'
   document.getElementById('app')?.setAttribute('inert', '')
   window.addEventListener('keydown', (event) => event.stopImmediatePropagation(), { capture: true })
-  pageLog.info('update.shown', {})
+  pageLog.info('update.shown', { watched })
   void follow()
 }
 

@@ -69,7 +69,7 @@ usePasskeySignals()
 providePageHost(productPageHost())
 // A page of another build than the backend serves loads itself again, once
 // per build; one that still gets another says so. While the update screen
-// shows, only its Open Demi loads the page.
+// shows, only the update's end loads the page (`state/update.ts`).
 const updateFailed = ref(false)
 watch(
   () => [product.newBuild, update.value] as const,
