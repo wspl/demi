@@ -45,7 +45,6 @@ use demi_plugin_interface::PluginFactory;
 use demi_provider_common::media_catalog::MediaCatalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::Clock;
-use demi_web_api_protocol::settings::InstanceMode;
 use object_store::ObjectStore;
 
 use crate::conversation::claude_cli::{ClaudeMachine, CliInstalls};
@@ -58,7 +57,6 @@ const SEARCH_INDEXES: &str = "search";
 /// The services that span users, or that are needed before the user is
 /// known. The edge and every shard share them.
 pub struct Services {
-    pub mode: InstanceMode,
     /// The wall clock the backend reads times from.
     pub clock: Arc<dyn Clock>,
     pub control: ControlService,
@@ -168,7 +166,7 @@ pub struct ServiceKeys {
 /// What the services are configured with besides storage, the keys and the
 /// providers.
 pub struct ServiceSettings {
-    pub mode: InstanceMode,
+    pub shared_subscriptions: bool,
     pub log: ServerLog,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
@@ -375,7 +373,8 @@ impl Services {
         };
         let push_transport = public_push()?;
         let push = Pusher::new(control.clone(), keys.push, push_transport);
-        let vault = Vault::new(control.clone(), keys.vault, settings.mode, sync.clone());
+        let mode = control.instance_mode().await?;
+        let vault = Vault::new(control.clone(), keys.vault, mode, settings.shared_subscriptions, sync.clone());
         // A data directory that predates the development sign-in, or holds
         // an earlier one, is brought to the current one before anything
         // infers with it.
@@ -433,7 +432,6 @@ impl Services {
             sync.clone(),
         );
         Ok(Self {
-            mode: settings.mode,
             clock,
             sessions: WebSessions::new(control.clone()),
             limiter: LoginLimiter::new(),

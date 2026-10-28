@@ -139,6 +139,8 @@ impl ReadBlob for NoBlobs {
 ///   said whether it stays quiet while the user is on another device.
 /// - 0.1.5586's, before a turn call missed the cache only when it read less
 ///   of it than its agent's previous call.
+/// - 0.1.5614's, before the server kept whether its users share the
+///   master's providers.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -338,6 +340,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.5586.sql"),
             migration: Migration::Code(control_from_0_1_5586),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.5614.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_5614),
         },
     ],
 };
@@ -682,13 +688,31 @@ ALTER TABLE conversations ADD COLUMN notifications_card TEXT
   CHECK (notifications_card IN ('shown', 'dismissed'));
 ";
 
-/// From 0.1.5586's control schema to the current one: each turn call's cache
+/// From 0.1.5586's control schema to 0.1.5614's: each turn call's cache
 /// miss is judged again by what it read of the cache, as a call written now
 /// is (`crates/backend-database/src/usage.rs`); one that only added to its
 /// prompt missed nothing.
 fn control_from_0_1_5586(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     super::usage::judge_misses(transaction).map_err(storage)
 }
+
+/// From 0.1.5614's control schema to the current one: the server settings
+/// keep the instance mode, which a server that never chose one has as
+/// isolated, and an upgrade channel no one chose is null in a row that holds
+/// a mode.
+///
+/// The table is rebuilt, since SQLite cannot make a column nullable in place.
+const CONTROL_FROM_0_1_5614: &str = "
+CREATE TABLE server_settings_next (
+  id              INTEGER PRIMARY KEY CHECK (id = 1),
+  upgrade_channel TEXT CHECK (upgrade_channel IN ('beta', 'canary')),
+  instance_mode   TEXT NOT NULL DEFAULT 'isolated' CHECK (instance_mode IN ('shared', 'isolated'))
+) STRICT;
+INSERT INTO server_settings_next (id, upgrade_channel)
+  SELECT id, upgrade_channel FROM server_settings;
+DROP TABLE server_settings;
+ALTER TABLE server_settings_next RENAME TO server_settings;
+";
 
 /// The shortcuts' part of [`control_from_0_1_65`]: the saved shortcuts are
 /// the Mac's set, since all of them are written in its notation; the PC's set
@@ -5652,7 +5676,10 @@ CREATE TABLE attachments (
 -- Settings › Updates offers.
 CREATE TABLE server_settings (
   id              INTEGER PRIMARY KEY CHECK (id = 1),
-  upgrade_channel TEXT NOT NULL CHECK (upgrade_channel IN ('beta', 'canary'))
+  -- The channel an administrator chose in Settings › Updates; none keeps the installation's.
+  upgrade_channel TEXT CHECK (upgrade_channel IN ('beta', 'canary')),
+  -- Whether every user uses the master's providers, which the master chooses in Settings › Users.
+  instance_mode   TEXT NOT NULL DEFAULT 'isolated' CHECK (instance_mode IN ('shared', 'isolated'))
 ) STRICT;
 ";
 

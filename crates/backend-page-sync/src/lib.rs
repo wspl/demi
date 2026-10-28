@@ -87,6 +87,9 @@ pub enum Part {
     /// Settings › Updates, which only the channels of the master and
     /// admins send.
     ServerUpgrade,
+    /// Whether every user uses the master's providers, which every channel
+    /// sends.
+    Instance,
     /// The backend stops for an update of the server: every page shows the
     /// update's screen.
     Update,

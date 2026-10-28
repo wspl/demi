@@ -99,7 +99,6 @@
 //!    cargo build --workspace --all-targets
 //!    DEMI_RELEASE=/opt/demi/dev-<build> \
 //!    DEMI_BACKEND_DATA=~/.demi/development \
-//!    DEMI_INSTANCE_MODE=isolated \
 //!    DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
 //!    target/debug/demi-backend
 //!    ```
@@ -579,7 +578,6 @@ fn spawn_backend(
         .env("DEMI_RELEASE", release)
         .env("DEMI_BACKEND_DATA", data)
         .env("DEMI_BACKEND_LISTEN", format!("127.0.0.1:{port}"))
-        .env("DEMI_INSTANCE_MODE", "isolated")
         .env("DEMI_BACKEND_PUBLIC_URL", public)
         .env("DEMI_MACHINE_MANAGER_SOCKET", socket)
         .stdin(Stdio::null());

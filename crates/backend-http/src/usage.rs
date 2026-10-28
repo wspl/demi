@@ -27,7 +27,7 @@ pub(super) async fn instance(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<InstanceUsage>, ApiError> {
-    if services.mode != InstanceMode::Shared {
+    if services.vault.mode() != InstanceMode::Shared {
         return Err(ApiError::forbidden(
             "The instance's usage is a shared instance's view",
         ));

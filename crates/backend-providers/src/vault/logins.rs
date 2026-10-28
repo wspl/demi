@@ -83,6 +83,9 @@ pub enum LoginRefusal {
     /// The family has no login.
     #[error("{0} has no login")]
     NoLoginFlow(String),
+    /// The instance offers no subscription now, as a shared one does not.
+    #[error("Subscriptions aren’t offered while providers are shared")]
+    NotOffered,
     /// The owner already holds the family's subscription entry.
     #[error("This scope already has a {0} subscription")]
     Exists(String),
@@ -266,6 +269,9 @@ impl LoginFlows {
         let registered = self.assembly.family(&family)?;
         if registered.credential() != CredentialKind::Subscription {
             return Err(LoginRefusal::NoLoginFlow(family));
+        }
+        if !self.assembly.vault().offers_subscriptions() {
+            return Err(LoginRefusal::NotOffered);
         }
         let id = LoginId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         let provider_id = existing.as_ref().map(|entry| entry.id.clone());

@@ -752,8 +752,17 @@ export type NewPasswordOutcome =
  * page decides from `users` and `viewerId` which actions each row offers; the
  * host carries them out, and says itself a refusal it could not hide.
  */
+/** Whether every user uses the master's providers, which only the master sees and changes. */
+export interface SettingsProviderSharing {
+  mode: 'shared' | 'isolated'
+  subscriptions: boolean
+  set: (mode: 'shared' | 'isolated') => Promise<void>
+}
+
 export interface SettingsUsersHost extends VerificationHost {
   users: readonly SettingsUser[]
+  /** Present for the master alone. */
+  sharing?: SettingsProviderSharing
   /** The signed-in user's account: its row is marked You and has no menu. */
   viewerId: string
   add: (user: SettingsNewUser) => Promise<UserAddOutcome>

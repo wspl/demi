@@ -19,6 +19,8 @@ import { productWould } from '../product-would'
  * - Reset Password… and New Password make a first password and mark the account
  *   the same.
  * - Change Role…, Cloud Storage… and Disable Account… change the row.
+ * - The master's Providers choice changes after its question, and a toast says
+ *   that the product would give every user the providers of the new mode.
  * - The product would end the sessions of an account signed out, which a toast
  *   says.
  */
@@ -55,6 +57,16 @@ function find(id: string) {
 const host = computed<SettingsUsersHost>(() => ({
   users: props.state.users,
   viewerId: props.state.viewerId,
+  sharing: props.state.sharing && {
+    ...props.state.sharing,
+    set: async (mode) => {
+      await beat()
+      if (props.state.sharing) {
+        props.state.sharing.mode = mode
+      }
+      productWould(mode === 'shared' ? 'Share the Providers With Every User' : 'Stop Sharing the Providers')
+    },
+  },
   ...verification.host,
   add: async (draft) => {
     await beat()

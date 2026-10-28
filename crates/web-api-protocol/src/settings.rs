@@ -13,7 +13,8 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::conversations::ModelSettings;
 use crate::ids::{DeviceId, ProviderId};
 
-/// Who configures providers, fixed for the instance's lifetime.
+/// Who configures providers: each user their own, or the master for every
+/// user, which the master changes in Settings › Users.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InstanceMode {
@@ -24,9 +25,17 @@ pub enum InstanceMode {
 serde_plain::derive_display_from_serialize!(InstanceMode);
 serde_plain::derive_fromstr_from_deserialize!(InstanceMode);
 
-/// `GET /settings`: the instance's fixed mode.
+/// `GET /settings`: the instance's mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Settings {
+    pub mode: InstanceMode,
+}
+
+/// `PUT /settings/instance-mode`, which only the master sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct SetInstanceMode {
+    #[garde(skip)]
     pub mode: InstanceMode,
 }
 

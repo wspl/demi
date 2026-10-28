@@ -1121,7 +1121,7 @@ export function createSettingsState() {
       sessions: gallerySessions(),
     },
     /** The Users page as the master sees it. */
-    users: createUsersState(('alex')),
+    users: createUsersState('alex', { mode: 'isolated', subscriptions: false }),
     providers: mockProviders(),
     selectedProviderId: null as string | null,
     providerDetailOpen: false,

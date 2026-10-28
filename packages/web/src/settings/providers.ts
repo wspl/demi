@@ -104,8 +104,10 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }))
     // The signed-in subscriptions in the user's order, which generated
     // media follow, then each one nobody signed in to, in the vendors' order,
-    // as what could be added follows what was.
-    const placeholders = (product.vendors?.subscriptions ?? []).flatMap((subscription) =>
+    // as what could be added follows what was; none while the instance
+    // offers no subscription, whose entries the backend then sends none of.
+    const offered = product.snapshot?.mode !== 'shared' || product.snapshot.sharedSubscriptions
+    const placeholders = (offered ? product.vendors?.subscriptions ?? [] : []).flatMap((subscription) =>
       configured.some(
         (provider) =>
           provider.kind === 'subscription' &&

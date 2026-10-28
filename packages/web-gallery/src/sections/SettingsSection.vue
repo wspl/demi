@@ -155,6 +155,10 @@ adding.providers = mockProviders().filter((entry) => ['claude-code', 'anthropic'
 adding.selectedProviderId = 'anthropic'
 adding.providerDetailOpen = true
 /** Providers each lacking a part: a sign-in, a key, a model, a key and a model. */
+const sharedKeys = createSettingsState()
+sharedKeys.providers = mockProviders().filter((entry) => entry.kind !== 'subscription')
+sharedKeys.selectedProviderId = 'anthropic'
+sharedKeys.providerDetailOpen = true
 const incomplete = createSettingsState()
 incomplete.providers = incompleteProviders()
 incomplete.selectedProviderId = 'google'
@@ -227,9 +231,9 @@ const sections = computed(() =>
   ),
 )
 /** The Users specimens: the master's page, an admin's, and the master's at phone width. */
-const usersAsMaster = createUsersState(('alex'))
+const usersAsMaster = createUsersState('alex', { mode: 'isolated', subscriptions: false })
 const usersAsAdmin = createUsersState('ana')
-const usersNarrow = createUsersState(('alex'))
+const usersNarrow = createUsersState('alex', { mode: 'shared', subscriptions: false })
 const fullTab = ref<SettingsTab | null>('models')
 const fullNarrowTab = ref<SettingsTab | null>(null)
 // Each pinned dialog closes from its own Close and opens again in place from Open,
@@ -364,7 +368,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Users"
-        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (alex@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Cloud Storage… changes the account’s sizes (Bo has a 64 GB home), Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, the master’s row and the other admin’s have no menu, and her own has Cloud Storage… alone."
+        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. The master alone has Model Providers above the accounts: Providers switches between Each User’s Own and Shared after a question that says what users lose and keep, and a toast says what the product would do (the narrow one starts shared). Every control acts on its own specimen: Add User… adds a row (alex@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Cloud Storage… changes the account’s sizes (Bo has a 64 GB home), Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, the master’s row and the other admin’s have no menu, and her own has Cloud Storage… alone."
       >
         <GallerySpecimen variant="Master" wide>
           <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">
@@ -398,6 +402,15 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       >
         <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
           <GallerySettingsProviders :state="adding" />
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Providers · Shared"
+        note="Settings › Providers as the master of a server whose providers are shared sees it: a shared server offers no subscription, so the list has no Subscriptions group and starts with API Keys, which every user of the server uses."
+      >
+        <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
+          <GallerySettingsProviders :state="sharedKeys" />
         </div>
       </GallerySection>
 

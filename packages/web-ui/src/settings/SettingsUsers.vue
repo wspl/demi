@@ -19,6 +19,7 @@ import Menu from '../ui/Menu.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
+import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import AddUserDialog from './AddUserDialog.vue'
@@ -57,13 +58,47 @@ import { roleLabel, assignableRoles, userActions, type UserAction } from './user
  * - Enable Account does not ask, since it only undoes.
  *
  * The host carries each out and says itself a refusal it could not hide.
+ *
+ * Above the accounts, the master alone chooses whether every user uses their
+ * own providers or the master's, as Open WebUI's administrator does in Admin ›
+ * Connections. Either change asks first, saying what users lose and keep.
  */
 const props = defineProps<{
   host: SettingsUsersHost
   overlayStore: OverlayStore
 }>()
 
-type Dialog = 'add' | 'reset' | 'role' | 'cloudStorage' | 'signOut' | 'disable'
+type Dialog = 'add' | 'reset' | 'role' | 'cloudStorage' | 'signOut' | 'disable' | 'sharing'
+
+type SharingMode = 'shared' | 'isolated'
+
+const sharingOptions = computed<readonly SegmentedOption<SharingMode>[]>(() => [
+  { value: 'isolated', label: t('users.sharing.own') },
+  { value: 'shared', label: t('users.sharing.shared') },
+])
+/** The mode the open question asks for, kept while it closes. */
+const askedMode = ref<SharingMode>('shared')
+
+function askSharing(mode: SharingMode): void {
+  if (mode === props.host.sharing?.mode) {
+    return
+  }
+  askedMode.value = mode
+  open.value = 'sharing'
+}
+
+const sharingQuestion = computed(() => {
+  const sharing = askedMode.value === 'shared'
+  const body = sharing ? [t('users.sharing.share.body')] : [t('users.sharing.stop.body')]
+  if (sharing && !props.host.sharing?.subscriptions) {
+    body.push(t('users.sharing.share.subscriptions'))
+  }
+  return {
+    title: sharing ? t('users.sharing.share.title') : t('users.sharing.stop.title'),
+    action: sharing ? t('users.sharing.share.action') : t('users.sharing.stop.action'),
+    body,
+  }
+})
 
 const viewer = computed(() => props.host.users.find((user) => user.id === props.host.viewerId))
 /** The roles the viewer may give; none when the viewer's account is not in the list. */
@@ -209,6 +244,17 @@ async function setCloudStorage(storage: SettingsCloudStorage): Promise<void> {
   }
 }
 
+async function changeSharing(): Promise<void> {
+  const mode = askedMode.value
+  try {
+    await props.host.sharing?.set(mode)
+  } finally {
+    if (open.value === 'sharing' && askedMode.value === mode) {
+      open.value = null
+    }
+  }
+}
+
 async function signOutEverywhere(): Promise<void> {
   const user = target.value
   if (user) {
@@ -291,6 +337,20 @@ function closeDialog(): void {
 
 <template>
   <SettingsPage :title="t('users.title')" :description="t('users.description')">
+    <SettingsGroup v-if="host.sharing" :title="t('users.sharing.group')">
+      <SettingsRow
+        :label="t('users.sharing.label')"
+        :description="host.sharing.subscriptions ? t('users.sharing.description') : t('users.sharing.descriptionApiKeys')"
+      >
+        <Segmented
+          :model-value="host.sharing.mode"
+          size="sm"
+          :options="sharingOptions"
+          :aria-label="t('users.sharing.label')"
+          @update:model-value="askSharing"
+        />
+      </SettingsRow>
+    </SettingsGroup>
     <SettingsGroup :title="t('users.accounts')">
       <template #actions>
         <Button size="sm" @click="openAdd">{{ t('users.add') }}</Button>
@@ -423,6 +483,17 @@ function closeDialog(): void {
     @close="confirmation.settle(false)"
     @verified="confirmation.settle(true)"
   />
+  <ConfirmDialog
+    :is-open="open === 'sharing'"
+    :overlay-store="overlayStore"
+    :title="sharingQuestion.title"
+    :action="sharingQuestion.action"
+    :operation="{ action: 'providerSharing', target: 'instance' }"
+    @close="closeDialog"
+    @confirm="changeSharing"
+  >
+    <p v-for="(line, index) in sharingQuestion.body" :key="index">{{ line }}</p>
+  </ConfirmDialog>
   <ConfirmDialog
     :is-open="open === 'signOut'"
     :overlay-store="overlayStore"

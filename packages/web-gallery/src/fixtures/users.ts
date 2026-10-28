@@ -24,8 +24,12 @@ export function galleryUsers(): SettingsUser[] {
 }
 
 /** A specimen's accounts and whose page it is: the master's, or an admin's. */
-export function createUsersState(viewerId: string) {
-  return reactive({ users: galleryUsers(), viewerId })
+/**
+ * A specimen's accounts as `viewerId` sees them; `sharing` is the master's
+ * choice of providers, which only the master's specimen shows.
+ */
+export function createUsersState(viewerId: string, sharing?: { mode: 'shared' | 'isolated'; subscriptions: boolean }) {
+  return reactive({ users: galleryUsers(), viewerId, sharing })
 }
 
 export type UsersState = ReturnType<typeof createUsersState>

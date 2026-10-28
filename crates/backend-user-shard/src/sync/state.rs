@@ -97,7 +97,8 @@ impl Shard {
         let server_upgrade = if user.role == Role::User { None } else { services.upgrades.snapshot() };
         Ok(ProductState {
             user,
-            mode: services.mode,
+            mode: services.vault.mode(),
+            shared_subscriptions: services.vault.shared_subscriptions(),
             preferences,
             providers,
             models,
@@ -151,6 +152,9 @@ impl Shard {
             }
             Part::ConversationOrder => SyncEvent::ConversationOrder {
                 ids: control.conversation_order(self.user().clone()).await?,
+            },
+            Part::Instance => SyncEvent::Instance {
+                mode: self.services().vault.mode(),
             },
             Part::Preferences => SyncEvent::Preferences {
                 preferences: control.preferences(self.user().clone()).await?,
