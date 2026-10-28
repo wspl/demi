@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import type { ReplyPicture } from '@demicodes/protocol'
 import type { AttachmentLookup, AttachmentOrigin } from '@demicodes/web-ui/markdown/types'
 import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from './blobs'
@@ -85,10 +86,33 @@ export const hostPicturesKept: ReplyPicture[] = [
 ]
 
 /**
+ * Whether the gallery's backend answers the bytes of a16, the screenshot of
+ * `unloadedImageMarkdown`: while it does not, its address loads nothing, as a
+ * blob the page asked for while Demi restarted.
+ */
+export const unloadedImageReached = ref(false)
+
+/**
+ * A reply whose screenshot's bytes did not come: its tile keeps its box and
+ * shows that it did not load, and loads once the backend answers.
+ */
+export const unloadedImageMarkdown = `The sign-in page as it shows now:
+
+<attachment id="a16" />
+`
+
+/**
  * An attachment of the gallery's conversation, as the product's route
  * answers it: one the conversation does not hold is missing.
  */
 export function galleryAttachment(id: string): AttachmentLookup {
+  if (id === 'a16') {
+    const reached = galleryAttachment('a1')
+    if (reached.state !== 'found')
+      return reached
+    const { attachment } = reached
+    return { state: 'found', attachment: { ...attachment, name: 'sign-in.png', url: unloadedImageReached.value ? attachment.url : '/fixtures/preview/not-answered.png' } }
+  }
   const held = attachments[id]
   if (!held) {
     return { state: 'missing' }

@@ -13,6 +13,7 @@ import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { useMediaUrl } from './media-source'
 import type { ToolPicture } from './tool-media'
 import { rowPictureBox } from './row-pictures'
+import { mediaReloads } from '../files/media-reload'
 
 /**
  * One image or video a tool returned, small in its row's line.
@@ -24,7 +25,8 @@ import { rowPictureBox } from './row-pictures'
  * - A video shows its first frame with a play mark and never plays in place.
  * - Resting the pointer on the picture shows it large in a card. A click opens
  *   it in the viewer.
- * - One the page cannot show says so, pointed at, in its place.
+ * - One the page cannot show says so, pointed at, in its place, and is shown
+ *   again whenever its bytes may come now (`mediaReloads`).
  */
 const props = defineProps<{ picture: ToolPicture }>()
 
@@ -42,6 +44,9 @@ const box = computed(() => rowPictureBox(props.picture))
 watch(src, () => {
   failed.value = false
   loaded.value = null
+})
+watch(mediaReloads, () => {
+  failed.value = false
 })
 
 function onLoaded(): void {
