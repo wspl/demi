@@ -21,7 +21,6 @@ import PendingCallBlock from './PendingCallBlock.vue'
 import WorkGroupBlock from './WorkGroupBlock.vue'
 import StepsNotSharedBlock from './StepsNotSharedBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
-import DeliveryFailure from './DeliveryFailure.vue'
 import AccountSwitchBlock from './AccountSwitchBlock.vue'
 import StoppedBlock from './StoppedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
@@ -84,6 +83,8 @@ const runOpen = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{
   recallSteer: [id: string]
   interruptPendingSteer: [id: string]
+  /** Send the message `id`, which was not delivered, again. */
+  retryUndelivered: [id: string]
   recallQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
@@ -167,6 +168,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       @delete="emit('deleteSubmission', block.submission.id)"
       @recall="recallSubmission(block.submission)"
       @send-now="sendSubmissionNow(block.submission)"
+      @retry="emit('retryUndelivered', block.submission.id)"
     />
     <UserBlock
       v-else-if="block.type === 'user'"
@@ -208,6 +210,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       :content="block.content"
       :comments="block.comments"
       :pending="waitingAs(block)"
+      :waiting-id="block.pendingSteerId"
       @recall="emit('recallSteer', block.pendingSteerId)"
       @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
     />
@@ -218,6 +221,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       :comments="block.comments"
       :origin="originOf(block.schedule)"
       :pending="waitingAs(block)"
+      :waiting-id="block.queueId"
       @recall="emit('recallQueued', block.queueId)"
       @send-now="emit('sendQueued', block.queueId)"
     />
@@ -342,13 +346,6 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         v-else-if="block.type === 'activity_slot'"
         v-bind="block.slot"
       />
-      <div
-        v-else-if="block.type === 'delivery_failure'"
-        class="px-[var(--agent-pad-x,2rem)]"
-        data-delivery-failure
-      >
-        <DeliveryFailure :submission="block.submission" />
-      </div>
       <div
         v-else-if="block.type === 'session_failure'"
         class="px-[var(--agent-pad-x,2rem)] py-1.5"

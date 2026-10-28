@@ -126,6 +126,7 @@
     "cloud_unavailable": "The Cloud isn’t available right now.",
     "request_failed": "The request failed ({status}).",
     "unreadable_response": "The server’s answer couldn’t be read.",
+    "unreachable": "Demi can’t be reached.",
     "upload_connection_failed": "The upload lost its connection.",
     "upload_cancelled": "The upload was canceled.",
     "restore_before_sending": "Restore this conversation before sending.",

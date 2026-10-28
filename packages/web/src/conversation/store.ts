@@ -9,7 +9,7 @@ import { NO_COST, agentCost, conversationCost, recentOf, type CostShown, type Co
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { finishedSubagents, runningSubagents } from '@demicodes/web-ui/agent/subagents'
-import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
+import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure, untilUnsent } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
   beginSavedEdit,
   editHasContent,
@@ -24,6 +24,9 @@ import {
 import { coded, errorCode, errorFields, errorMessage, reportError, requestIdOf, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationLaneError } from '@demicodes/web-ui/transport/conversation-lane'
+import { browserOnline, userWaits } from '@demicodes/web-ui/transport/liveness'
+import { operations } from '@demicodes/web-ui/ui/operations'
+import { sendNowOperation } from '@demicodes/web-ui/agent/pending-steers'
 import { sessionShown, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
@@ -134,6 +137,27 @@ import {
   type SavedFile,
 } from './drafts'
 
+/**
+ * How often the page checks its connections while a message waits for the
+ * backend to confirm it (`userWaits`): a confirmation comes within a round
+ * trip, so a message that waits this long finds a connection that died
+ * without a close, or one that waits to connect again, within seconds.
+ */
+const CHECK_WHILE_SENDING_MS = 2_000
+/**
+ * How long Send on a waiting message waits for the session to take it before
+ * offering it again: the session takes it within a round trip, so one still
+ * waiting after this was not taken, as when the connection went down meanwhile.
+ */
+const SEND_NOW_WAIT_MS = 30_000
+/**
+ * How long a message given to the session waits for its confirmation before
+ * it shows as not delivered: a confirmation comes within a round trip, and by
+ * then the connection checks (`CHECK_WHILE_SENDING_MS`) have found a dead
+ * connection and tried a new one, so a message still waiting has no way to
+ * the backend that the user can see.
+ */
+const NOT_DELIVERED_AFTER_MS = 10_000
 /**
  * How long a session's first connection waits for the conversation's copy on
  * disk, to follow from it with no read. The web browser's storage answers in
@@ -255,7 +279,7 @@ export const useConversations = defineStore('conversations', () => {
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('failures.uploadAttachment', t('failures.uploadAttachment'), error),
   )
-  const { uploadInComposer, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
+  const { uploadInComposer, addFiles, removeFile, releaseFile, releaseSpare, arrangeFiles, retryFile } = uploads
   const recordSync = createRecordSync({
     show: showWriting,
     prepend: prependToComposer,
@@ -502,6 +526,7 @@ export const useConversations = defineStore('conversations', () => {
       files: [],
       attachmentIds: [],
       pendingSends: [],
+      delivered: [],
       removing: [],
       messageEdit: null,
       scroll: null,
@@ -1784,6 +1809,7 @@ export const useConversations = defineStore('conversations', () => {
       onEvent: (next) => {
         applyConversationEvent(conversation, next)
         reconcileSubmission(conversation)
+        settleDelivered(conversation)
       },
     })
     entry.runtime = runtime
@@ -2087,6 +2113,7 @@ export const useConversations = defineStore('conversations', () => {
       || running(conversation)
       || catchingUp(conversation)
       || conversation.pendingSends.length > 0
+      || conversation.delivered.length > 0
   }
 
   /**
@@ -3501,20 +3528,18 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The dock's Retry: each message whose delivery failed goes again with its
-   * id, in the order they were sent, as a new message at the end, after the
-   * messages on their way.
-   *
-   * - The first is answered next, or queued while a turn runs or a message on
-   *   its way starts one, and the rest are queued after it.
-   * - A steer the session already holds is not sent again.
-   * - One a resend cannot deliver stays where it is, for its Edit.
+   * The alert of the message `id`, which was not delivered: it goes again
+   * with its id as a new message at the end, after the messages on their way,
+   * answered next, or queued while a turn runs or a message on its way starts
+   * one. A steer the session already holds is not sent again, and one a resend
+   * cannot deliver stays where it is, for its Edit.
    */
-  async function retrySends(conversation: Conversation): Promise<void> {
+  async function retrySend(conversation: Conversation, id: string): Promise<void> {
     if (conversation.archived) {
       return
     }
-    const again = conversation.pendingSends.filter((pending) => pending.error !== null && resendable(conversation, pending))
+    const again = conversation.pendingSends.filter((pending) =>
+      pending.id === id && pending.error !== null && resendable(conversation, pending))
     const delivered = again.map((pending) => {
       withdrawSend(conversation, pending)
       pending.followers = []
@@ -3585,9 +3610,15 @@ export const useConversations = defineStore('conversations', () => {
     // to open, and goes with its id once the backend answers again. Only a
     // refusal is a failed delivery.
     const current = () => conversation.pendingSends.some((each) => each.id === pending.id)
+    const checking = setInterval(userWaits, CHECK_WHILE_SENDING_MS)
     try {
       if (pending.saved) {
-        await deliverSaved(conversation, pending, pending.saved, way)
+        const unsent = notDeliveredAfter(NOT_DELIVERED_AFTER_MS)
+        try {
+          await untilUnsent(deliverSaved(conversation, pending, pending.saved, way), unsent.signal)
+        } finally {
+          unsent.stop()
+        }
         moved('delivered', 'accepted')
         return
       }
@@ -3597,18 +3628,36 @@ export const useConversations = defineStore('conversations', () => {
         // which the lane's opening brings, so the tail row says Requesting
         // throughout.
         const content = await sentFiles()
-        await persistConversation(conversation, {
-          messageId: pending.id,
-          content,
-          ...(pending.comments.length > 0 ? { comments: pending.comments } : {}),
-        })
+        const unsent = notDeliveredAfter(NOT_DELIVERED_AFTER_MS)
+        try {
+          await untilUnsent(persistConversation(conversation, {
+            messageId: pending.id,
+            content,
+            ...(pending.comments.length > 0 ? { comments: pending.comments } : {}),
+          }), unsent.signal)
+        } finally {
+          unsent.stop()
+        }
         void runtimeFor(conversation).catch(() => {})
         moved('delivered', 'created_with_conversation')
         return
       }
-      const [content] = await Promise.all([sentFiles(), persistConversation(conversation)])
-      const runtime = await runtimeFor(conversation)
-      await (way === 'steer' ? runtime.steer(content, pending.id, pending.comments) : runtime.submit(content, pending.id, pending.comments))
+      // The record is made while the files upload; the wait for the session
+      // to confirm the message counts from the end of the uploads, which a
+      // slow network makes as long as the files are large.
+      const persisted = persistConversation(conversation)
+      persisted.catch(() => {})
+      const content = await sentFiles()
+      const unsent = notDeliveredAfter(NOT_DELIVERED_AFTER_MS)
+      try {
+        await untilUnsent(persisted, unsent.signal)
+        const runtime = await untilUnsent(runtimeFor(conversation), unsent.signal)
+        await (way === 'steer'
+          ? runtime.steer(content, pending.id, pending.comments, unsent.signal)
+          : runtime.submit(content, pending.id, pending.comments, unsent.signal))
+      } finally {
+        unsent.stop()
+      }
       clearSubmission(conversation, pending.id)
       moved('delivered', 'accepted')
     } catch (error) {
@@ -3646,9 +3695,35 @@ export const useConversations = defineStore('conversations', () => {
           }
         }
       }
+    } finally {
+      clearInterval(checking)
     }
     if (!signal.aborted) {
       saveDrafts()
+    }
+  }
+
+  /**
+   * Gives up waiting for the session to confirm a message after `ms`, or at
+   * once while the browser says it is offline: the message is then not
+   * delivered, with its Try Again, rather than on its way for as long as the
+   * network is gone. One that arrives after all is taken once by its id.
+   */
+  function notDeliveredAfter(ms: number): { signal: AbortSignal; stop: () => void } {
+    const controller = new AbortController()
+    const giveUp = () => controller.abort(coded(new Error('Demi can’t be reached.'), 'unreachable'))
+    const timer = setTimeout(giveUp, ms)
+    const stopWatching = watch(browserOnline, (online) => {
+      if (!online) {
+        giveUp()
+      }
+    }, { immediate: true })
+    return {
+      signal: controller.signal,
+      stop: () => {
+        clearTimeout(timer)
+        stopWatching()
+      },
     }
   }
 
@@ -3771,7 +3846,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /** The messages on their way and those not delivered, as the conversation shows them. */
   function submissions(conversation: Conversation): PendingSubmissionState[] {
-    return conversation.pendingSends.map((pending) => ({
+    const sending: PendingSubmissionState[] = conversation.pendingSends.map((pending) => ({
       id: pending.id,
       way: pending.way,
       text: pending.text,
@@ -3779,10 +3854,23 @@ export const useConversations = defineStore('conversations', () => {
       comments: pending.comments,
       error: pending.error,
       requestId: pending.requestId ?? null,
-      ...(pending.error !== null && !resendable(conversation, pending) ? { retryable: false } : {}),
+      // An archived conversation sends nothing until it is restored.
+      ...(pending.error !== null && (conversation.archived || !resendable(conversation, pending)) ? { retryable: false } : {}),
       ...(pending.followers.length > 0 ? { followers: [...pending.followers] } : {}),
     }))
+    const delivered: PendingSubmissionState[] = conversation.delivered.map((sent) => ({
+      id: sent.id,
+      way: 'send',
+      text: sent.text,
+      attachments: sent.files,
+      comments: sent.comments,
+      error: null,
+      delivered: true,
+    }))
+    // Every message the backend took was sent before those still on their way.
+    return [...delivered, ...sending]
   }
+
 
   /**
    * Edit on a message not delivered: its text, files and comments go back into
@@ -3891,8 +3979,17 @@ export const useConversations = defineStore('conversations', () => {
     } else {
       conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== id)
     }
-    for (const fileId of pending.fileIds) {
-      removeFile(conversation, fileId)
+    if (fate === 'delivered' && !isWritten(conversation, id)) {
+      // Shown as sent until the transcript the page shows holds it, with its
+      // files, which leave the composer's but keep their pictures till then.
+      const files = conversation.files.filter((file) => pending.fileIds.includes(file.id))
+      conversation.files = conversation.files.filter((file) => !pending.fileIds.includes(file.id))
+      conversation.attachmentIds = conversation.attachmentIds.filter((each) => !pending.fileIds.includes(each))
+      conversation.delivered = [...conversation.delivered, { id, text: pending.text, files, comments: pending.comments }]
+    } else {
+      for (const fileId of pending.fileIds) {
+        removeFile(conversation, fileId)
+      }
     }
     // The message is gone: what its composer still held for an undo goes with it.
     releaseSpare(conversation)
@@ -4127,6 +4224,78 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /**
+   * Lets go each message the backend took that no longer needs showing as
+   * sent: the transcript the page shows holds it, or the page holds what the
+   * session says now and neither the transcript nor the waiting messages hold
+   * it, as a queued message recalled from another page.
+   *
+   * While the page reads the transcript again, or its connection is down,
+   * what the session says of the message, starting a turn, waiting in the
+   * queue, may move on before the transcript the page shows does, so a
+   * message the backend took stays in sight until that transcript holds it.
+   */
+  function settleDelivered(conversation: Conversation): void {
+    if (conversation.delivered.length === 0) {
+      return
+    }
+    const current = cache.get(conversation.id)?.runtime?.caughtUp ?? false
+    const gone = conversation.delivered.filter((sent) =>
+      isWritten(conversation, sent.id) || (current && !hasAcceptedSubmission(conversation, sent.id)))
+    if (gone.length === 0) {
+      return
+    }
+    conversation.delivered = conversation.delivered.filter((sent) => !gone.includes(sent))
+    for (const file of gone.flatMap((sent) => sent.files)) {
+      releaseFile(file)
+    }
+  }
+
+  /**
+   * Send on the waiting message `id`, which `list` holds, or will once it
+   * arrives, for one still on its way, whose press is kept as the user's wish
+   * and carried out then. The press is sent, which the session does not
+   * answer, and the work lasts until the session took the message, which
+   * leaves the list, so its button shows the spinner until then.
+   */
+  async function sendNow(
+    conversation: Conversation,
+    id: string,
+    list: () => readonly { id: string }[],
+    operation: (runtime: ConversationRuntime) => Promise<void>,
+  ): Promise<void> {
+    if (keepWish(conversation, id, 'sendNow')) {
+      await untilLeaves(() => conversation.pendingSends, id)
+    } else if (!(await attempt(conversation, operation))) {
+      return
+    }
+    await untilLeaves(list, id)
+  }
+
+  /**
+   * Resolves once `list` no longer holds the message `id`, or after
+   * `SEND_NOW_WAIT_MS`: a message still there was not taken, and its Send is
+   * offered again.
+   */
+  function untilLeaves(list: () => readonly { id: string }[], id: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(done, SEND_NOW_WAIT_MS)
+      const stop = watch(() => list().some((message) => message.id === id), (held) => {
+        if (!held) {
+          done()
+        }
+      })
+      function done(): void {
+        clearTimeout(timer)
+        stop()
+        resolve()
+      }
+      if (!list().some((message) => message.id === id)) {
+        done()
+      }
+    })
+  }
+
   /** Runs `operation` on the conversation's runtime, reporting a failure; answers whether it succeeded. */
   async function attempt(
     conversation: Conversation,
@@ -4254,7 +4423,7 @@ export const useConversations = defineStore('conversations', () => {
     deleteSchedule,
     settleStartingWorkflow,
     send,
-    retrySends,
+    retrySend,
     editSend,
     deleteSend,
     submissions,
@@ -4320,17 +4489,13 @@ export const useConversations = defineStore('conversations', () => {
     // row away at once in either case.
     recall,
     pasteHost,
+    // Send on a waiting message runs as its button's operation until the
+    // session takes it, so the press shows at once however slow the way.
     sendQueued: (conversation: Conversation, id: string) =>
-      {
-        if (!keepWish(conversation, id, 'sendNow')) {
-          action(conversation, (runtime) => runtime.sendQueuedNow(id))
-        }
-      },
+      void operations.start(sendNowOperation(id), () =>
+        sendNow(conversation, id, () => conversation.queue, (runtime) => runtime.sendQueuedNow(id))),
     interruptWithSteer: (conversation: Conversation, id: string) =>
-      {
-        if (!keepWish(conversation, id, 'sendNow')) {
-          action(conversation, (runtime) => runtime.interruptPendingSteer(id))
-        }
-      },
+      void operations.start(sendNowOperation(id), () =>
+        sendNow(conversation, id, () => conversation.pendingSteers, (runtime) => runtime.interruptPendingSteer(id))),
   }
 })

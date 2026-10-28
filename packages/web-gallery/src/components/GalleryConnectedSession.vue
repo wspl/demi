@@ -185,7 +185,7 @@ function detach(id: string): void {
         @save-scroll="(_id, state) => (session.scroll = state)"
         :pending-submissions="flow.pendingSubmissions.value"
         :removing="flow.removing.value"
-        @retry-undelivered="flow.retrySubmissions()"
+        @retry-undelivered="(id) => flow.retrySubmission(id)"
         @edit-submission="flow.editSubmission"
         @delete-submission="flow.deleteSubmission"
         @retry="flow.resume()"

@@ -302,6 +302,7 @@ export function createConversationUploads(
     addFiles,
     retryFile,
     removeFile,
+    releaseFile,
     releaseSpare,
     arrangeFiles,
     showFiles,

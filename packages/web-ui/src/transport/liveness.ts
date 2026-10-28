@@ -68,13 +68,14 @@ const HANDSHAKE_MS = 10_000
 const PONG_MS = 5_000
 
 /** Why the page let an open connection go that had not closed. */
-type Break = 'silence' | 'return' | 'probe'
+type Break = 'silence' | 'return' | 'probe' | 'waited'
 
 /** What the page's log says of each. */
 const BREAK_WORDS: Record<Break, string> = {
   silence: 'brought nothing for 75 seconds',
   return: 'had brought nothing for 75 seconds by the clock when the page returned',
   probe: 'brought no pong at return within 5 seconds',
+  waited: 'brought no pong within 5 seconds while the user waited on it',
 }
 
 /**
@@ -82,7 +83,7 @@ const BREAK_WORDS: Record<Break, string> = {
  * makes: of its silence, and then of its pong; it calls `judged` once, when
  * the connection is judged alive or broken.
  */
-const watched = new Set<(judged: () => void) => void>()
+const watched = new Set<(judged: () => void, cause?: 'return' | 'wait') => void>()
 /**
  * The page's sockets still opening, each by what abandons it at the
  * return when it began before the page went away.
@@ -278,7 +279,7 @@ export function watchSilence(name: string, broken: () => void, ping?: (id: numbe
     watched.delete(watch)
   }
   const lose = (why: Break) => {
-    if (why !== 'silence') {
+    if (why === 'return' || why === 'probe') {
       letGoAtReturn += 1
     }
     stop()
@@ -308,7 +309,7 @@ export function watchSilence(name: string, broken: () => void, ping?: (id: numbe
     }, ms)
   }
   /** Asks the connection whether it is alive, and calls `judged` once it is judged. */
-  const probe = (send: (id: number) => void, judged: () => void) => {
+  const probe = (send: (id: number) => void, judged: () => void, unanswered: Break) => {
     // A return during a ping's wait asks again: only the latest pong counts.
     settle()
     const id = nextPingId()
@@ -320,7 +321,7 @@ export function watchSilence(name: string, broken: () => void, ping?: (id: numbe
         if (asked?.id !== id) {
           return
         }
-        lose('probe')
+        lose(unanswered)
         // The connection's owner started its wait as the break reached it; the
         // return does not wait for it.
         connectWaiting()
@@ -330,13 +331,15 @@ export function watchSilence(name: string, broken: () => void, ping?: (id: numbe
     }
     send(id)
   }
-  const watch = (judged: () => void) => {
-    judge('return')
-    if (ping === undefined || !watched.has(watch)) {
+  const watch = (judged: () => void, cause: 'return' | 'wait' = 'return') => {
+    judge(cause === 'return' ? 'return' : 'silence')
+    // A wait asked already lets its ping's deadline run, which asking again
+    // would push back for as long as the user waits.
+    if (ping === undefined || !watched.has(watch) || (cause === 'wait' && asked !== null)) {
       judged()
       return
     }
-    probe(ping, judged)
+    probe(ping, judged, cause === 'return' ? 'probe' : 'waited')
   }
   arm(SILENCE_MS)
   watched.add(watch)
@@ -491,6 +494,24 @@ export function pageReturned(): Promise<void> {
   })
   returnCheck = { done, absence }
   return done
+}
+
+/**
+ * The user waits on what the page's connections should bring, as a message of
+ * theirs whose delivery the backend has not confirmed yet: each open
+ * connection that can answer a ping is asked whether it is alive, as at the
+ * page's return, and each closed one connects now instead of after the rest of
+ * its wait.
+ *
+ * A connection the phone's system cut without a close would otherwise keep a
+ * message for the 75 seconds of silence that judge it broken, and a wait
+ * that doubled to 30 seconds would keep it after the network came back.
+ */
+export function userWaits(): void {
+  for (const check of [...watched]) {
+    check(() => {}, 'wait')
+  }
+  connectWaiting()
 }
 
 /**

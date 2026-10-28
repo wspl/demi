@@ -173,6 +173,7 @@ const emit = defineEmits<{
   ]
   recallSteer: [id: string]
   interruptPendingSteer: [id: string]
+  retryUndelivered: [id: string]
   recallQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
@@ -787,6 +788,7 @@ defineExpose({
                   v-bind="{ 'onUpdate:open': rowActionsOf(renderBlocks[item.index]!.id)['onUpdate:open'] }"
                   @recall-steer="(id) => emit('recallSteer', id)"
                   @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
+                  @retry-undelivered="(id) => emit('retryUndelivered', id)"
                   @recall-queued="(id) => emit('recallQueued', id)"
                   @send-queued="(id) => emit('sendQueued', id)"
                   @edit-user="(id) => emit('editUser', id)"

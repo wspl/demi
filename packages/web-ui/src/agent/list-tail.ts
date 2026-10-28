@@ -131,24 +131,18 @@ export function listTailBlocks(input: ListTailInput): ListTail {
       ...pendingSteersToRenderBlocks(steers),
       ...rows((submission) => submission.way === 'steer' && !startsTurn(submission)),
       ...(queued.length > 0
-        ? [{ type: 'queue_divider', id: 'queue-divider', count: queued.filter((row) => row.type !== 'delivery_failure').length } as const, ...queued]
+        ? [{ type: 'queue_divider', id: 'queue-divider', count: queued.length } as const, ...queued]
         : []),
     ],
   }
 }
 
 /**
- * The rows of a message on its way: the message, and under it, when its
- * delivery failed, the row that tells it, which the Requesting row gives
- * way to. `startsTurn` when it is a steer that starts the turn.
+ * The row of a message on its way, or one not delivered, which tells it on
+ * its bubble. `startsTurn` when it is a steer that starts the turn.
  */
 export function submissionRows(submission: PendingSubmissionState, startsTurn = false): MessageListBlock[] {
-  return [
-    { type: 'pending_submission', id: `pending-submission:${submission.id}`, submission, startsTurn },
-    ...(submission.error !== null
-      ? [{ type: 'delivery_failure', id: `delivery-failure:${submission.id}`, submission } as const]
-      : []),
-  ]
+  return [{ type: 'pending_submission', id: `pending-submission:${submission.id}`, submission, startsTurn }]
 }
 
 /**

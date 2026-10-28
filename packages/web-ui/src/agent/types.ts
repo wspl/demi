@@ -49,6 +49,12 @@ export interface PendingSubmissionState {
    * before the first of them that shows. Absent or empty while none was.
    */
   followers?: readonly string[]
+  /**
+   * The backend took it, and the transcript the page shows does not hold it
+   * yet, as while the page reads it again: it shows as sent, starts nothing
+   * and is on its way no more. Absent for a message on its way.
+   */
+  delivered?: true
 }
 
 /**

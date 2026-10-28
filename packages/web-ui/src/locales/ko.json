@@ -126,6 +126,7 @@
     "cloud_unavailable": "클라우드를 지금은 사용할 수 없습니다.",
     "request_failed": "요청에 실패했습니다({status}).",
     "unreadable_response": "서버의 응답을 읽을 수 없습니다.",
+    "unreachable": "Demi에 연결할 수 없습니다.",
     "upload_connection_failed": "업로드 연결이 끊어졌습니다.",
     "upload_cancelled": "업로드가 취소되었습니다.",
     "restore_before_sending": "보내기 전에 이 대화의 보관을 해제하십시오.",

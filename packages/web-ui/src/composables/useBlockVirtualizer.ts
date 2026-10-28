@@ -92,7 +92,6 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   compaction_marker: 36,
   compaction_progress: 36,
   history_edge: 36,
-  delivery_failure: 64,
   session_failure: 52,
 }
 

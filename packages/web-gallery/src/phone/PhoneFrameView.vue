@@ -325,7 +325,7 @@ onMounted(async () => {
         @archive="leaveShown('Archive the Conversation and Open a New One')"
         @delete="leaveShown('Delete the Conversation and Open a New One')"
         @retry="flow.resume()"
-        @retry-undelivered="flow.retrySubmissions()"
+        @retry-undelivered="(id) => flow.retrySubmission(id)"
         @edit-submission="flow.editSubmission"
         @delete-submission="flow.deleteSubmission"
         @abort-subagents="flow.abortSubagents"

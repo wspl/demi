@@ -774,7 +774,7 @@ onBeforeUnmount(() => {
             @abort-terminal="sessionFlow.abortTerminal"
             @edit-submission="sessionFlow.editSubmission"
             @delete-submission="sessionFlow.deleteSubmission"
-            @retry-undelivered="sessionFlow.retrySubmissions()"
+            @retry-undelivered="(id) => sessionFlow.retrySubmission(id)"
             @retry="sessionFlow.resume()"
             @recall-queued="sessionFlow.recallQueued"
             @send-queued="sessionFlow.sendQueued"

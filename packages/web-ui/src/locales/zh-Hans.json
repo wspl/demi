@@ -126,6 +126,7 @@
     "cloud_unavailable": "云端目前不可用。",
     "request_failed": "请求失败（{status}）。",
     "unreadable_response": "无法读取服务器的响应。",
+    "unreachable": "无法连接到 Demi。",
     "upload_connection_failed": "上传连接已断开。",
     "upload_cancelled": "上传已取消。",
     "restore_before_sending": "发送前请先恢复此对话。",

@@ -99,7 +99,7 @@
       "sendsNext": "エージェントの次のステップで送信されます",
       "recall": "取り消す",
       "recalled": "メッセージを取り消しました",
-      "notDelivered": "このメッセージは配信されませんでした。",
+      "notDeliveredMark": "未配信",
       "fromSchedule": "スケジュール",
       "fromConversation": "チャット"
     },

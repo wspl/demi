@@ -6,6 +6,16 @@ import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import type { ActivitySlotState } from './useActivitySlot'
 import type { SessionFailureNotice } from './session-status'
+import type { Operation } from '../ui/operations'
+
+/**
+ * Send on the waiting message `id`, a steer or a queued message the session
+ * holds: its button shows the spinner while it runs, from the press until the
+ * session takes it, which a slow way to the backend can make seconds.
+ */
+export function sendNowOperation(id: string): Operation {
+  return { action: 'send-now', target: `waiting:${id}` }
+}
 
 export interface PendingSteerRenderBlock {
   type: 'pending_steer'
@@ -38,17 +48,6 @@ export interface ActivitySlotRow {
 }
 
 /**
- * A message whose delivery failed, told under it with Retry: for a message
- * sent to start a turn, in the place of the Requesting row it replaces, which
- * Retry brings back.
- */
-export interface DeliveryFailureRow {
-  type: 'delivery_failure'
-  id: `delivery-failure:${string}`
-  submission: PendingSubmissionState
-}
-
-/**
  * A session-level failure, told at the tail of the transcript, in the tail
  * row's place.
  */
@@ -72,7 +71,7 @@ export interface StepsNotSharedRow {
 
 export type MessageListBlock =
   HeldBlock | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
-  PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | DeliveryFailureRow | SessionFailureRow | StepsNotSharedRow |
+  PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | SessionFailureRow | StepsNotSharedRow |
   /**
    * A message on its way; `startsTurn` when it is a steer that starts the turn,
    * which reads as the user's next message.

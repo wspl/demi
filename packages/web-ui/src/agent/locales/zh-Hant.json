@@ -99,7 +99,7 @@
       "sendsNext": "將在智慧體的下一步傳送",
       "recall": "收回",
       "recalled": "訊息已收回",
-      "notDelivered": "此訊息未能送達。",
+      "notDeliveredMark": "未送達",
       "fromSchedule": "排程",
       "fromConversation": "對話"
     },

@@ -99,7 +99,7 @@
       "sendsNext": "Sends at the agent’s next step",
       "recall": "Recall",
       "recalled": "Message Recalled",
-      "notDelivered": "This message was not delivered.",
+      "notDeliveredMark": "Not Delivered",
       "fromSchedule": "Schedule",
       "fromConversation": "Conversation"
     },
