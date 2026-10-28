@@ -2,7 +2,7 @@
 #
 # Starting it:
 #
-# - A push to `feat/demi-next` starts it, so the branch's newest commit is
+# - A push to `main` starts it, so the branch's newest commit is
 #   built by the time a release or a deploy asks for it (release.yml).
 # - A manual start on a branch, `gh workflow run build.yml --ref <branch>`,
 #   builds the branch's newest commit.
@@ -43,7 +43,7 @@ name: Build
 
 on:
   push:
-    branches: [feat/demi-next]
+    branches: [main]
   workflow_dispatch:
   workflow_call:
     inputs:
