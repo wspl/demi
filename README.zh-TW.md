@@ -52,6 +52,12 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```
 
+也可以把這句話傳給 Claude Code、Codex 等程式設計 agent，讓它幫你安裝：
+
+```text
+依照 https://raw.githubusercontent.com/wspl/demi/main/docs/delivery/install-with-an-agent.md 在我的伺服器上安裝 Demi
+```
+
 安裝程式會問幾個問題，然後完成安裝。安裝完成後：
 
 1. 立即開啟你的網域，建立管理員帳號。
