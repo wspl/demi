@@ -1,5 +1,5 @@
 //! The words of a model's ID or name, which the small model's tiers
-//! (`crates/backend-providers/src/llm/small_model.rs`) and a key's image models match whole.
+//! (`crates/provider-registry/src/small_model.rs`) and a key's image models match whole.
 
 /// The lowercase words of `text`, split at `-`, `_`, `.`, `/` and spaces.
 pub fn model_words(text: &str) -> Vec<String> {

@@ -11,21 +11,20 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use demi_backend_database::providers::CredentialRow;
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_shared_types::{Clock, QuotaSnapshot, SnapshotSource, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use super::entries::Vault;
+use crate::store::{RegistryStore, StoredAccount};
 
 type Account = (ProviderId, CredentialId);
 
 /// The snapshots of every account this process uses.
 pub struct AccountQuotas {
-    /// Where the snapshots are stored, and whose pages see them change.
-    vault: Vault,
+    /// Where the snapshots are stored, and who is told when they change.
+    store: Arc<dyn RegistryStore>,
     /// The edge's runtime, which outlives the shards: the record writes run
     /// there, wherever the update came from.
     edge: tokio::runtime::Handle,
@@ -43,9 +42,9 @@ pub struct AccountQuotas {
 }
 
 impl AccountQuotas {
-    pub fn new(vault: Vault, edge: tokio::runtime::Handle, clock: Arc<dyn Clock>) -> Arc<Self> {
+    pub fn new(store: Arc<dyn RegistryStore>, edge: tokio::runtime::Handle, clock: Arc<dyn Clock>) -> Arc<Self> {
         Arc::new(Self {
-            vault,
+            store,
             edge,
             writes: TaskTracker::new(),
             held: Mutex::default(),
@@ -61,7 +60,7 @@ impl AccountQuotas {
     pub fn used_up(self: &Arc<Self>, provider: &ProviderId, until: Timestamp) {
         let quotas = self.clone();
         let entry = provider.clone();
-        self.writes.spawn_on(async move { quotas.vault.mark_entry_changed(&entry).await }, &self.edge);
+        self.writes.spawn_on(async move { quotas.store.entry_changed(entry).await }, &self.edge);
         self.announce_at(provider, until);
     }
 
@@ -79,7 +78,7 @@ impl AccountQuotas {
             async move {
                 tokio::select! {
                     () = quotas.stop.cancelled() => {}
-                    () = tokio::time::sleep(wait) => quotas.vault.mark_entry_changed(&key.0).await,
+                    () = tokio::time::sleep(wait) => quotas.store.entry_changed(key.0.clone()).await,
                 }
                 quotas.awaited.lock().unwrap_or_else(PoisonError::into_inner).remove(&key);
             },
@@ -98,7 +97,7 @@ impl AccountQuotas {
     pub fn store(
         self: &Arc<Self>,
         provider: &ProviderId,
-        record: &CredentialRow,
+        record: &StoredAccount,
     ) -> Arc<dyn QuotaSnapshotStore> {
         let account = (provider.clone(), record.id.clone());
         self.lock()
@@ -111,7 +110,7 @@ impl AccountQuotas {
     }
 
     /// The account's snapshot now: this process's newest, else its record's.
-    pub fn latest(&self, provider: &ProviderId, record: &CredentialRow) -> Option<QuotaSnapshot> {
+    pub fn latest(&self, provider: &ProviderId, record: &StoredAccount) -> Option<QuotaSnapshot> {
         let account = (provider.clone(), record.id.clone());
         match self.lock().get(&account) {
             Some(held) => held.as_deref().cloned(),
@@ -166,9 +165,8 @@ impl AccountQuotas {
                 let (provider, id) = account;
                 let id_for_log = id.clone();
                 let stored = quotas
-                    .vault
-                    .control()
-                    .set_credential_quota(provider.clone(), id, snapshot)
+                    .store
+                    .set_quota(provider.clone(), id, snapshot)
                     .await;
                 if let Err(error) = stored {
                     tracing::warn!(
@@ -180,7 +178,7 @@ impl AccountQuotas {
                     );
                     return;
                 }
-                quotas.vault.mark_entry_changed(&provider).await;
+                quotas.store.entry_changed(provider.clone()).await;
                 if let Some(reset) = resets {
                     quotas.announce_at(&provider, reset);
                 }

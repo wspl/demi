@@ -1,6 +1,4 @@
-//! Provider assembly
-//! (`crates/backend-user-shard/src/conversation/providers.rs`): the provider of
-//! each entry and account.
+//! The registry: the provider of each entry and account.
 //!
 //! An entry's family builds each provider from a fresh read of the entry. The
 //! provider is reused only while the entry read is unchanged, so a lookup that
@@ -22,7 +20,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
-use demi_backend_database::StorageError;
 use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::images::ImageMaker;
@@ -36,24 +33,25 @@ use demi_provider_common::models_dev::ModelsDevError;
 use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE, Vendor};
 use demi_web_api_protocol::text::EndpointUrl;
 
-use super::catalog_cache::ModelCatalogCache;
-use super::rotation::{AccountRotation, Candidate, Choice};
-use super::families::{
+use crate::catalog_cache::ModelCatalogCache;
+use crate::rotation::{AccountRotation, Candidate, Choice};
+use crate::families::{
     AccountBinding, ApiKeyArgs, CompatibleAudioArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError,
     FamilyRegistry, ProviderFamily, SubscriptionArgs,
 };
-use super::vendors::{VendorCatalog, sort_by_name};
+use crate::vendors::{VendorCatalog, sort_by_name};
 
 /// The family of the vendors that make media and no text (`crates/backend/src/families.rs`).
 pub const MEDIA_FAMILY: &str = "media";
-use crate::vault::entries::{EntryCredential, ProviderEntry, Vault};
-use crate::vault::quotas::AccountQuotas;
+use crate::entry::{EntryCredential, ProviderEntry};
+use crate::quotas::AccountQuotas;
+use crate::store::{RegistryStore, StoreError};
 
 /// Why an entry's provider could not be built.
 #[derive(Debug, thiserror::Error)]
-pub enum AssemblyError {
+pub enum RegistryError {
     #[error(transparent)]
-    Storage(#[from] StorageError),
+    Storage(#[from] StoreError),
     /// The entry names a family this backend does not register.
     #[error("the provider family {0} is not available")]
     UnknownFamily(String),
@@ -97,8 +95,8 @@ impl LoginAccounts {
 }
 
 /// The providers of every entry, shared by the edge and the shards.
-pub struct ProviderAssembly {
-    vault: Vault,
+pub struct ProviderRegistry {
+    store: Arc<dyn RegistryStore>,
     families: FamilyRegistry,
     quotas: Arc<AccountQuotas>,
     catalogs: ModelCatalogCache,
@@ -121,9 +119,9 @@ pub struct ProviderAssembly {
     devices: OnceLock<Arc<dyn DeviceRoute>>,
 }
 
-impl ProviderAssembly {
+impl ProviderRegistry {
     pub fn new(
-        vault: Vault,
+        store: Arc<dyn RegistryStore>,
         families: FamilyRegistry,
         quotas: Arc<AccountQuotas>,
         catalogs: ModelCatalogCache,
@@ -134,7 +132,7 @@ impl ProviderAssembly {
     ) -> Self {
         Self {
             media,
-            vault,
+            store,
             families,
             quotas,
             catalogs,
@@ -154,7 +152,7 @@ impl ProviderAssembly {
     /// A second setting is refused and the first kept.
     pub fn set_machine(&self, machine: Arc<dyn AccountMachine>) {
         if self.machine.set(machine).is_err() {
-            tracing::error!(event = "assembly.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
+            tracing::error!(event = "provider_registry.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
         }
     }
 
@@ -163,7 +161,7 @@ impl ProviderAssembly {
     /// A second setting is refused and the first kept.
     pub fn set_devices(&self, route: Arc<dyn DeviceRoute>) {
         if self.devices.set(route).is_err() {
-            tracing::error!(event = "assembly.set_twice", what = "devices", "the way to the devices was set twice; the first is kept");
+            tracing::error!(event = "provider_registry.set_twice", what = "devices", "the way to the devices was set twice; the first is kept");
         }
     }
 
@@ -205,13 +203,14 @@ impl ProviderAssembly {
         self.quotas.used_up(entry, until);
     }
 
-    /// Now, by the clock the assembly's choices read.
+    /// Now, by the clock the registry's choices read.
     pub fn now(&self) -> demi_shared_types::Timestamp {
         self.clock.now()
     }
 
-    pub fn vault(&self) -> &Vault {
-        &self.vault
+    /// What the program stores for the registry.
+    pub fn store(&self) -> &dyn RegistryStore {
+        &*self.store
     }
 
     pub fn families(&self) -> &FamilyRegistry {
@@ -301,7 +300,7 @@ impl ProviderAssembly {
     pub async fn provider_for(
         &self,
         entry: &ProviderEntry,
-    ) -> Result<Arc<dyn Provider>, AssemblyError> {
+    ) -> Result<Arc<dyn Provider>, RegistryError> {
         self.provider_of(entry, entry.active()).await
     }
 
@@ -311,7 +310,7 @@ impl ProviderAssembly {
         &self,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
-    ) -> Result<Arc<dyn Provider>, AssemblyError> {
+    ) -> Result<Arc<dyn Provider>, RegistryError> {
         let key = (entry.id.clone(), account.cloned());
         let reused = self
             .lock()
@@ -333,12 +332,12 @@ impl ProviderAssembly {
         &self,
         entry: &ProviderEntry,
         account: &CredentialId,
-    ) -> Result<Option<Arc<dyn Provider>>, AssemblyError> {
+    ) -> Result<Option<Arc<dyn Provider>>, RegistryError> {
         if entry.active() == Some(account) {
             return self.provider_for(entry).await.map(Some);
         }
         let stored = self
-            .vault
+            .store
             .account(entry.id.clone(), account.clone())
             .await?;
         if stored.is_none() {
@@ -353,13 +352,13 @@ impl ProviderAssembly {
     ///
     /// With `fresh`, a snapshot older than five minutes, or none, is read again
     /// first by a free probe, and one that fails leaves the snapshot as it was
-    /// (`crates/backend-providers/src/llm/rotation.rs`).
+    /// (`crates/provider-registry/src/rotation.rs`).
     pub async fn candidates(
         &self,
         entry: &ProviderEntry,
         fresh: bool,
-    ) -> Result<Vec<Candidate>, AssemblyError> {
-        let mut records = self.vault.accounts(entry.id.clone()).await?;
+    ) -> Result<Vec<Candidate>, RegistryError> {
+        let mut records = self.store.accounts(entry.id.clone()).await?;
         records.retain(|record| !record.signed_out);
         let now = self.clock.now().as_millisecond();
         let mut stale = Vec::new();
@@ -409,7 +408,7 @@ impl ProviderAssembly {
         &self,
         entry: &ProviderEntry,
         model: &Model,
-    ) -> Result<(Option<Choice>, Vec<Candidate>), AssemblyError> {
+    ) -> Result<(Option<Choice>, Vec<Candidate>), RegistryError> {
         let rotation = entry.rotation();
         let candidates = self
             .candidates(entry, rotation == Rotation::Balanced)
@@ -422,7 +421,7 @@ impl ProviderAssembly {
 
     /// The account operations a login into `entry` runs, whose sign-in runs
     /// on the Claude Code machine for a family whose login runs a process.
-    pub async fn login_accounts(&self, entry: &ProviderEntry) -> Result<LoginAccounts, AssemblyError> {
+    pub async fn login_accounts(&self, entry: &ProviderEntry) -> Result<LoginAccounts, RegistryError> {
         let family = self.family(&entry.family)?;
         let args = self.entry_args(entry, None).await?;
         match family.login_accounts(args) {
@@ -441,7 +440,7 @@ impl ProviderAssembly {
         id: &str,
         label: &str,
         pool: Arc<dyn CredentialPool>,
-    ) -> Result<LoginAccounts, AssemblyError> {
+    ) -> Result<LoginAccounts, RegistryError> {
         let registered = self.family(family)?;
         let args = || {
             let credential = FamilyCredential::Subscription(SubscriptionArgs {
@@ -460,7 +459,7 @@ impl ProviderAssembly {
 
     /// Whether `entry`'s provider runs a process on a Host, which then is the
     /// Claude Code machine (`crates/provider-claude-code/src/placement.rs`).
-    pub async fn runs_a_process(&self, entry: &ProviderEntry) -> Result<bool, AssemblyError> {
+    pub async fn runs_a_process(&self, entry: &ProviderEntry) -> Result<bool, RegistryError> {
         Ok(self.provider_for(entry).await?.capabilities().process_host)
     }
 
@@ -473,24 +472,24 @@ impl ProviderAssembly {
         account: Option<&CredentialId>,
         env: RuntimeEnv,
         placement: Rc<dyn Placement>,
-    ) -> Result<Box<dyn ProviderRuntime>, AssemblyError> {
+    ) -> Result<Box<dyn ProviderRuntime>, RegistryError> {
         let family = self.family(&entry.family)?;
         let args = self.entry_args(entry, account).await?;
         let runtime = family
             .process_runtime(args, env, placement)
-            .ok_or_else(|| AssemblyError::NoProcessRuntime(entry.family.clone()))?;
+            .ok_or_else(|| RegistryError::NoProcessRuntime(entry.family.clone()))?;
         Ok(runtime?)
     }
 
     /// Forgets the entry's provider and catalog after its configuration or
     /// active account changed.
-    pub async fn invalidate(&self, id: &ProviderId) -> Result<(), StorageError> {
+    pub async fn invalidate(&self, id: &ProviderId) -> Result<(), StoreError> {
         self.lock().retain(|(built, _), _| built != id);
         self.catalogs.invalidate(id).await
     }
 
     /// Forgets everything held of a deleted entry.
-    pub async fn forget(&self, id: &ProviderId) -> Result<(), StorageError> {
+    pub async fn forget(&self, id: &ProviderId) -> Result<(), StoreError> {
         self.quotas.forget_entry(id);
         self.rotation.forget_entry(id);
         self.invalidate(id).await
@@ -619,17 +618,17 @@ impl ProviderAssembly {
         &self.http
     }
 
-    pub fn family(&self, name: &str) -> Result<&Arc<dyn ProviderFamily>, AssemblyError> {
+    pub fn family(&self, name: &str) -> Result<&Arc<dyn ProviderFamily>, RegistryError> {
         self.families
             .get(name)
-            .ok_or_else(|| AssemblyError::UnknownFamily(name.to_owned()))
+            .ok_or_else(|| RegistryError::UnknownFamily(name.to_owned()))
     }
 
     async fn build(
         &self,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
-    ) -> Result<Arc<dyn Provider>, AssemblyError> {
+    ) -> Result<Arc<dyn Provider>, RegistryError> {
         let family = self.family(&entry.family)?;
         let args = self.entry_args(entry, account).await?;
         Ok(family.provider(args)?)
@@ -641,7 +640,7 @@ impl ProviderAssembly {
         &self,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
-    ) -> Result<FamilyArgs, AssemblyError> {
+    ) -> Result<FamilyArgs, RegistryError> {
         let credential = match &entry.credential {
             EntryCredential::ApiKey(config) => {
                 // A provider is built from a vendor entry's key and a
@@ -650,7 +649,7 @@ impl ProviderAssembly {
                 let lacks = config.is_compatible() && config.base_url.is_none()
                     || !config.is_compatible() && config.api_key.is_none();
                 if lacks {
-                    return Err(AssemblyError::Incomplete);
+                    return Err(RegistryError::Incomplete);
                 }
                 FamilyCredential::ApiKey(ApiKeyArgs {
                     api_key: config.api_key.clone(),
@@ -669,7 +668,7 @@ impl ProviderAssembly {
             EntryCredential::Subscription { .. } => {
                 let binding = match account {
                     Some(account) => self
-                        .vault
+                        .store
                         .account(entry.id.clone(), account.clone())
                         .await?
                         .map(|record| AccountBinding {
@@ -679,7 +678,7 @@ impl ProviderAssembly {
                     None => None,
                 };
                 FamilyCredential::Subscription(SubscriptionArgs {
-                    pool: self.vault.pool(entry.id.clone()),
+                    pool: self.store.pool(entry.id.clone()),
                     account: binding,
                 })
             }

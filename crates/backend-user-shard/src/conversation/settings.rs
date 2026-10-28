@@ -134,8 +134,8 @@ impl Shard {
             .visible(self.user(), provider)
             .await?
             .ok_or(ChangeRefusal::ProviderNotFound)?;
-        let built = services.assembly.provider_for(&entry).await;
-        let catalog = services.assembly.entry_catalog(&entry, &built, false).await;
+        let built = services.provider_registry.provider_for(&entry).await;
+        let catalog = services.provider_registry.entry_catalog(&entry, &built, false).await;
         catalog
             .models
             .into_iter()

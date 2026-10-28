@@ -16,7 +16,7 @@ import { formatTokens } from '../ui/token-count'
 
 /**
  * Add Model is a search and nothing else
- * (`crates/backend-providers/src/llm/vendors.rs`): typing searches models.dev.
+ * (`crates/provider-registry/src/vendors.rs`): typing searches models.dev.
  *
  * The list under the field offers *Custom* first and then the matches with their
  * vendor and context window. Choosing a row adds the model at once, filled from

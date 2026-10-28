@@ -30,7 +30,7 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_backend_remote_host::{
+use demi_runner_client::{
     Pipe, PipeReader, PipeWriter, ResidentCallError, ResidentRequest, ResidentStream,
 };
 use demi_backend_runners::command_context::command_context;

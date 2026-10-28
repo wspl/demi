@@ -18,7 +18,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_plugins::PanelError;
+use demi_plugin_host::PanelError;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::{PANEL_BYTES_MAX, PanelAnswer, PanelChanges};

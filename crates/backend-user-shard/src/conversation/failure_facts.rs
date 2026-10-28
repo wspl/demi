@@ -8,7 +8,7 @@
 //! Three kinds of fact need more than the provider's own reading:
 //!
 //! - A usage limit of a subscription entry with several accounts is read
-//!   against them too (`crates/backend-providers/src/llm/rotation.rs`). Under
+//!   against them too (`crates/provider-registry/src/rotation.rs`). Under
 //!   rotation its moment is the earliest one among the accounts once every one
 //!   is used up. Without rotation the dock offers the account with the most room
 //!   now.
@@ -27,8 +27,9 @@ use demi_shared_types::{
 };
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 
-use demi_backend_providers::llm::assembly::ProviderAssembly;
-use demi_backend_providers::vault::entries::ProviderEntry;
+use demi_backend_providers::vault::entries::Vault;
+use demi_provider_registry::registry::ProviderRegistry;
+use demi_provider_registry::entry::ProviderEntry;
 
 use crate::shard::exposed_ports::endpoint_device;
 
@@ -36,7 +37,7 @@ use crate::shard::exposed_ports::endpoint_device;
 /// reads them; none when no block yields one. A block whose provider entry
 /// is gone, or cannot be read, shows without facts. A port to expose is a
 /// fact only for the entry's owner, whose device it is.
-pub async fn failure_facts(assembly: &ProviderAssembly, viewer: &UserId, blocks: &[Block]) -> Option<Failures> {
+pub async fn failure_facts(vault: &Vault, provider_registry: &ProviderRegistry, viewer: &UserId, blocks: &[Block]) -> Option<Failures> {
     let mut failures = Failures::new();
     let mut readers: HashMap<String, Option<Reader>> = HashMap::new();
     for block in blocks {
@@ -56,7 +57,7 @@ pub async fn failure_facts(assembly: &ProviderAssembly, viewer: &UserId, blocks:
         }
         let provider = &error.model.provider_id;
         if !readers.contains_key(provider) {
-            let reader = reader(assembly, provider).await;
+            let reader = reader(vault, provider_registry, provider).await;
             readers.insert(provider.clone(), reader);
         }
         let Some(Some(reader)) = readers.get(provider) else {
@@ -74,18 +75,18 @@ pub async fn failure_facts(assembly: &ProviderAssembly, viewer: &UserId, blocks:
         };
         if used_up {
             if facts.retry_at.is_none() {
-                facts.retry_at = quota_moment(assembly, reader, error).await;
+                facts.retry_at = quota_moment(provider_registry, reader, error).await;
             }
-            account_facts(assembly, &reader.entry, error, &mut facts).await;
+            account_facts(provider_registry, &reader.entry, error, &mut facts).await;
         }
         if refused {
-            facts.signed_out = signed_out(assembly, &reader.entry, error).await;
+            facts.signed_out = signed_out(vault, &reader.entry, error).await;
         }
         if unexposed && reader.entry.owner == *viewer {
-            facts.not_exposed = endpoint_device(assembly.vault().control(), &reader.entry).await;
+            facts.not_exposed = endpoint_device(vault.control(), &reader.entry).await;
         }
         if offline {
-            facts.device_offline = endpoint_device(assembly.vault().control(), &reader.entry)
+            facts.device_offline = endpoint_device(vault.control(), &reader.entry)
                 .await
                 .map(|named| OfflineDevice {
                     device_id: named.device_id,
@@ -115,7 +116,7 @@ struct Reader {
 /// shows used up, the account the error block names under rotation, else
 /// the active one.
 async fn quota_moment(
-    assembly: &ProviderAssembly,
+    provider_registry: &ProviderRegistry,
     reader: &Reader,
     error: &ErrorBlock,
 ) -> Option<Timestamp> {
@@ -124,7 +125,7 @@ async fn quota_moment(
         .as_deref()
         .and_then(|account| CredentialId::try_from(account).ok());
     let provider = match named {
-        Some(account) => match assembly.for_account(&reader.entry, &account).await {
+        Some(account) => match provider_registry.for_account(&reader.entry, &account).await {
             Ok(provider) => provider?,
             Err(failure) => {
                 tracing::warn!(event = "failure_facts.read_failed", provider = %reader.entry.id, what = "usage_limit_account", error = &failure as &dyn std::error::Error, "a usage limit's account was not read");
@@ -144,12 +145,12 @@ async fn quota_moment(
 ///
 /// A read that fails adds nothing: the facts only add to the failure.
 async fn account_facts(
-    assembly: &ProviderAssembly,
+    provider_registry: &ProviderRegistry,
     entry: &ProviderEntry,
     error: &ErrorBlock,
     facts: &mut ProviderFailureFacts,
 ) {
-    let candidates = match assembly.candidates(entry, false).await {
+    let candidates = match provider_registry.candidates(entry, false).await {
         Ok(candidates) if candidates.len() >= 2 => candidates,
         Ok(_) => return,
         Err(error) => {
@@ -157,9 +158,9 @@ async fn account_facts(
             return;
         }
     };
-    let rotation = assembly.rotation();
+    let rotation = provider_registry.rotation();
     let model = &error.model.model;
-    let now = assembly.now();
+    let now = provider_registry.now();
     match entry.rotation() {
         Rotation::Manual => {
             let others: Vec<_> = candidates
@@ -189,7 +190,7 @@ async fn account_facts(
 /// An account signed in again since shows the failure as it was. A read that
 /// fails adds nothing.
 async fn signed_out(
-    assembly: &ProviderAssembly,
+    vault: &Vault,
     entry: &ProviderEntry,
     error: &ErrorBlock,
 ) -> Option<SignedOutAccount> {
@@ -198,7 +199,7 @@ async fn signed_out(
         .as_deref()
         .and_then(|account| CredentialId::try_from(account).ok());
     let account = named.or_else(|| entry.active().cloned())?;
-    let record = match assembly.vault().account(entry.id.clone(), account).await {
+    let record = match vault.account(entry.id.clone(), account).await {
         Ok(record) => record?,
         Err(failure) => {
             tracing::warn!(event = "failure_facts.read_failed", provider = %entry.id, what = "signed_out_account", error = &failure as &dyn std::error::Error, "a refused sign-in's account was not read");
@@ -214,9 +215,9 @@ async fn signed_out(
 /// The entry `provider` and its provider. Facts only add to what the web
 /// app receives anyway, so an entry that is gone or cannot be read yields
 /// no reader rather than holding back the transcript.
-async fn reader(assembly: &ProviderAssembly, provider: &str) -> Option<Reader> {
+async fn reader(vault: &Vault, provider_registry: &ProviderRegistry, provider: &str) -> Option<Reader> {
     let id = ProviderId::try_from(provider).ok()?;
-    let entry = match assembly.vault().entry(id).await {
+    let entry = match vault.entry(id).await {
         Ok(entry) => entry?,
         Err(error) => {
             tracing::warn!(
@@ -229,7 +230,7 @@ async fn reader(assembly: &ProviderAssembly, provider: &str) -> Option<Reader> {
             return None;
         }
     };
-    match assembly.provider_for(&entry).await {
+    match provider_registry.provider_for(&entry).await {
         Ok(provider) => Some(Reader { entry, provider }),
         Err(error) => {
             tracing::warn!(event = "failure_facts.read_failed", provider = %entry.id, what = "provider_build", error = &error as &dyn std::error::Error, "a failure's provider was not built");

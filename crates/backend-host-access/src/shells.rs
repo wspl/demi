@@ -4,7 +4,7 @@
 //!
 //! A node's Host is the conversation's current primary Host, which the host
 //! access admits and lets go at once. A node's environment on it is
-//! backend-remote-host's:
+//! runner-client's:
 //!
 //! - Each of its jobs runs inside the conversation's host access and is refused
 //!   once the conversation's Host is another.
@@ -23,7 +23,7 @@ use demi_backend_database::command_outputs::{CommandOutput, OutputRow};
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::running::{self, RunningCommand};
-use demi_backend_remote_host::{
+use demi_runner_client::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteHost,
     RemoteShellEnvironment, Withdrawal, edited_file, encode_output,
 };
@@ -70,7 +70,7 @@ impl dyn HostShard + '_ {
     /// no lease of its file gate, no wait for its device to return and no
     /// wake of its Cloud. The commands taken up wait for the runner's hello
     /// to say whether they went on, ended or were lost
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     pub async fn adopting_host(&self, id: &ConversationId) -> Result<Rc<RemoteHost>, HostError> {
         let record = self.owned_conversation(id).await?;
         let target = self.resolve_target(&record).await.map_err(|error| HostError::failed(None, error.to_string()))?;
@@ -91,11 +91,11 @@ impl dyn HostShard + '_ {
                 .operation_admission(&record)
                 .await
                 .map_err(|error| HostError::failed(None, error.to_string()))?,
-            Some(_) => demi_backend_remote_host::Admission::Free,
+            Some(_) => demi_runner_client::Admission::Free,
             // A revoked device: the commands taken up on it are lost.
             None => {
                 self.devices().removed(&device);
-                demi_backend_remote_host::Admission::Free
+                demi_runner_client::Admission::Free
             }
         };
         Ok(Rc::new(self.devices().adopting_host(

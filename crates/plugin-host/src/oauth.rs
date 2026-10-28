@@ -21,8 +21,8 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use demi_backend_database::StorageError;
-use demi_backend_database::plugin_secrets::OAuthClient;
+use crate::store::StoreError;
+use crate::store::OAuthClient;
 use demi_host_interface::PortError;
 use demi_plugin_interface::{
     OAuth, PortFailure, PortRefusal, StoredSecret, WebFailure, WebMethod, WebRequest, WebResponse,
@@ -159,7 +159,7 @@ pub enum CallbackError {
     #[error("{vendor} did not issue the tokens: {failure}")]
     Exchange { vendor: String, failure: PortFailure },
     #[error(transparent)]
-    Storage(#[from] StorageError),
+    Storage(#[from] StoreError),
 }
 
 /// What a token endpoint answered.
@@ -258,8 +258,8 @@ impl Shared {
         let id = self.plugin_id(plugin);
         let issuer = oauth.issuer.to_string();
         let known = self
-            .control
-            .plugin_oauth_client(id.clone(), issuer.clone())
+            .store
+            .oauth_client(id.clone(), issuer.clone())
             .await
             .map_err(storage)?;
         if let Some(client) = known.filter(|client| client.redirect_uri == redirect_uri) {
@@ -294,8 +294,8 @@ impl Shared {
             redirect_uri: redirect_uri.to_owned(),
             client_id: registered.client_id.clone(),
         };
-        self.control
-            .set_plugin_oauth_client(id, issuer, client)
+        self.store
+            .set_oauth_client(id, issuer, client)
             .await
             .map_err(storage)?;
         Ok(registered.client_id)
@@ -305,8 +305,8 @@ impl Shared {
     /// registers again.
     async fn forget_client(&self, plugin: usize, oauth: &OAuth, client_id: &str) {
         let forgot = self
-            .control
-            .forget_plugin_oauth_client(
+            .store
+            .forget_oauth_client(
                 self.plugin_id(plugin),
                 oauth.issuer.to_string(),
                 client_id.to_owned(),

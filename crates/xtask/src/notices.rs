@@ -88,7 +88,7 @@ struct Library {
 ///   frames, and whose binary license asks the product to credit it
 ///   (`crates/shared-openh264/src/lib.rs`).
 /// - The vendors' marks the web app shows, models.dev's and Simple Icons'
-///   (`crates/backend-providers/src/llm/vendors.rs`).
+///   (`crates/provider-registry/src/vendors.rs`).
 /// - The Android robot, an Android emulator's logo
 ///   (`crates/plugin-mobile/page/src/index.ts`), whose license asks for its
 ///   attribution.

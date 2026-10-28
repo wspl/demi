@@ -7,36 +7,15 @@
 
 use std::collections::HashMap;
 
+use demi_plugin_host::store::PanelOutcome;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::panel::{PanelChange, PanelDocument, PanelEffect, Refused, WorkPanel};
+use demi_web_api_protocol::panel::{PanelChange, PanelDocument, Refused, WorkPanel};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
 use super::drafts::archived;
-
-/// What a request of changes came to.
-#[derive(Debug, Clone, PartialEq)]
-pub enum PanelOutcome {
-    /// The changes are in the panel, which is at `revision` now; each that
-    /// had something to do did this.
-    Changed {
-        revision: u64,
-        effects: Vec<PanelEffect>,
-    },
-    /// The changes had nothing to do; the panel stays at `revision`.
-    Unchanged {
-        revision: u64,
-    },
-    /// A create past the most tabs or the most data.
-    Full,
-    /// An update past the most data.
-    TooLarge,
-    Archived,
-    /// No conversation has that id.
-    Missing,
-}
 
 impl ControlService {
     /// `owner`'s conversations that are not archived and whose panel has

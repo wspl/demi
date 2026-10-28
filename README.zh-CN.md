@@ -186,10 +186,10 @@ Demi 与 OpenHands、Orca、T3 Code、DeepSeek Harness、opencode、Pi、herdr �
 Demi 的大部分代码采用 [Apache License 2.0](LICENSE) 发布，以下部分可以用于任何用途：
 
 - Agent 运行时
-- 模型提供方
-- 装在你机器上的 Runner
+- 模型提供方，以及按配置创建它们的库
+- 装在你机器上的 Runner，以及驱动它的库
 - 命令
-- 插件及其 SDK
+- 插件、其 SDK，以及运行插件的宿主
 - UI 组件库及其图库
 - 各类协议
 - 文档

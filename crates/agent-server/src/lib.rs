@@ -54,6 +54,7 @@
 //! - owns no socket: the backend owns the conversation lane and hands the
 //!   server decoded frames.
 
+pub mod instructions;
 mod node;
 mod server;
 

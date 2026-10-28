@@ -1,5 +1,6 @@
-//! The plugin host: the registry of the backend's plugins with the checks of
-//! their manifests, and each user's plugins.
+//! The plugin host: the registry of a program's plugins with the checks of
+//! their manifests, and each user's plugins. Demi's backend runs one; any
+//! program that runs Demi's plugins can.
 //!
 //! A user's plugins provide:
 //!
@@ -7,9 +8,12 @@
 //! - The instances that serve the user's requests.
 //! - The port operations the host answers.
 //!
-//! The composition root registers the plugins linked into the backend, as it
-//! registers the provider families, and a user turns each on or off while the
-//! backend runs.
+//! The program registers the plugins linked into it, and a user turns each on
+//! or off while it runs. What the host keeps, and the changes it tells the
+//! user's pages of, go through the traits of `store` ([`store::PluginStore`],
+//! [`store::PluginChanges`]), which the program implements; the rest of what
+//! a plugin's port asks, such as a Host's files or a generated image, through
+//! [`ProductPort`].
 //!
 //! A plugin lives while the user has it on:
 //!
@@ -28,10 +32,10 @@
 //! opens again, which a reload offers.
 //!
 //! Plugins are trusted with every user's data: a plugin serves every user of
-//! the backend, and choosing the plugins is the deployment's decision, made
+//! the program, and choosing the plugins is the deployment's decision, made
 //! when it is built. The host must not:
 //!
-//! - See the user's `Shard` (what it needs of it is `PluginShard`).
+//! - See the program's state but through its store and its `ProductPort`.
 //! - Reach a Host.
 //! - Know an agent's session.
 //! - Hold the logic of one plugin.
@@ -40,6 +44,7 @@ mod commands;
 mod oauth;
 mod registry;
 mod secrets;
+pub mod store;
 mod user;
 mod web;
 

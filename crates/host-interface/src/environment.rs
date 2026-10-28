@@ -123,7 +123,7 @@ pub trait ShellEnvironment {
     fn stop_waiting(&self) -> LocalBoxFuture<'_, ()>;
 
     /// Takes up `taken`, a command that still ran when the backend last
-    /// knew it (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// knew it (`crates/runner-client/src/device_jobs.rs`).
     fn adopt(&self, taken: TakenUp);
 
     /// Lets go of every command, which runs on, as a disposed node does;
@@ -136,7 +136,7 @@ pub trait ShellEnvironment {
     fn owns_command(&self, command: &CommandId) -> bool;
 
     /// The node's commands are `commands` from now on, as a plugin turned
-    /// on or off makes them (`crates/backend-plugins/src/lib.rs`): each job
+    /// on or off makes them (`crates/plugin-host/src/lib.rs`): each job
     /// that starts afterwards offers them, and a call of a job already
     /// running runs in them. Fails only for a set the Host's catalog cannot
     /// serve, which leaves the commands as they were.

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_providers::vault::entries::ProviderEntry;
+use demi_provider_registry::entry::ProviderEntry;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::providers::{NewestVersion, ProviderCli};
 use demi_web_api_protocol::query::Refresh;
@@ -35,7 +35,7 @@ async fn process_entry(
     id: &str,
 ) -> Result<ProviderEntry, ApiError> {
     let entry = scoped(services, user, id).await?;
-    if services.assembly.runs_a_process(&entry).await? {
+    if services.provider_registry.runs_a_process(&entry).await? {
         Ok(entry)
     } else {
         Err(ApiError::provider_not_found())

@@ -10,31 +10,14 @@
 //! Sealing and opening belong to the vault; these operations store and read the
 //! sealed bytes.
 
-use demi_shared_types::{CacheTtl, ProviderModelList, QuotaSnapshot, Timestamp};
+use demi_shared_types::{CacheTtl, CatalogRecord, QuotaSnapshot, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, Rotation};
-use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
-use serde::{Deserialize, Serialize};
 
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
-
-/// An entry's cached catalog as the control store keeps it: model metadata
-/// only, under the key of the configuration and account it was read for.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CatalogRecord {
-    /// The digest of the entry's configuration and active account.
-    #[garde(length(min = 1))]
-    pub key: String,
-    /// When the source last answered.
-    #[garde(skip)]
-    pub checked_at: Timestamp,
-    #[garde(dive)]
-    pub catalog: ProviderModelList,
-}
 
 /// What the control migrations that re-encode sealed values work with: the
 /// vault, which alone holds the key they are sealed under and knows their
@@ -469,7 +452,7 @@ impl ControlService {
     ///   none when it was the last (`crates/backend-providers/src/vault/logins.rs`).
     /// - An entry left with fewer than two accounts has nothing to rotate, and its
     ///   rotation goes back to Manual in the same transaction
-    ///   (`crates/backend-providers/src/llm/rotation.rs`).
+    ///   (`crates/provider-registry/src/rotation.rs`).
     ///
     /// Answers the account active afterwards.
     pub async fn remove_credential(

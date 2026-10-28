@@ -23,10 +23,10 @@ use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, Configured
 use futures_util::future::join_all;
 use sha2::{Digest, Sha256};
 
-use super::assembly::{AssemblyError, ProviderAssembly};
-use super::catalog_cache::CatalogFetch;
-use super::families::api_vendor;
-use crate::vault::entries::{EntryCredential, ProviderEntry};
+use crate::catalog_cache::CatalogFetch;
+use crate::entry::{EntryCredential, ProviderEntry};
+use crate::families::api_vendor;
+use crate::registry::{ProviderRegistry, RegistryError};
 
 /// A model the entry's configured list does not name; its request fails.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -116,7 +116,7 @@ enum Reading {
     Known,
 }
 
-impl ProviderAssembly {
+impl ProviderRegistry {
     /// The entry's catalog, from the first source it has. A failed read of
     /// the source is the catalog's warning: the last good copy stays, and
     /// without one the catalog is empty. `provider` is the entry's provider,
@@ -124,7 +124,7 @@ impl ProviderAssembly {
     pub async fn entry_catalog(
         &self,
         entry: &ProviderEntry,
-        provider: &Result<Arc<dyn Provider>, AssemblyError>,
+        provider: &Result<Arc<dyn Provider>, RegistryError>,
         refresh: bool,
     ) -> ProviderModelList {
         self.read_entry_catalog(entry, provider, Reading::Waits { refresh }).await
@@ -133,7 +133,7 @@ impl ProviderAssembly {
     async fn read_entry_catalog(
         &self,
         entry: &ProviderEntry,
-        provider: &Result<Arc<dyn Provider>, AssemblyError>,
+        provider: &Result<Arc<dyn Provider>, RegistryError>,
         reading: Reading,
     ) -> ProviderModelList {
         // An entry of media alone has no text models to list.
@@ -177,7 +177,7 @@ impl ProviderAssembly {
                 })
             }
             // An incomplete entry's availability says what it lacks.
-            (None, Err(AssemblyError::Incomplete)) => return unfetched(Vec::new(), Vec::new()),
+            (None, Err(RegistryError::Incomplete)) => return unfetched(Vec::new(), Vec::new()),
             (None, Err(error)) => return unfetched(Vec::new(), vec![error.to_string()]),
         };
         let key = catalog_key(entry);
@@ -209,7 +209,7 @@ impl ProviderAssembly {
     pub async fn model_price(
         &self,
         entry: &ProviderEntry,
-        provider: &Result<Arc<dyn Provider>, AssemblyError>,
+        provider: &Result<Arc<dyn Provider>, RegistryError>,
         model: &str,
     ) -> Option<ModelCost> {
         let catalog = self.entry_catalog(entry, provider, false).await;
@@ -263,7 +263,7 @@ impl ProviderAssembly {
             cli_package: provider
                 .as_ref()
                 .ok()
-                .and_then(|provider| super::claude_releases::cli_package(provider.as_ref())),
+                .and_then(|provider| crate::claude_releases::cli_package(provider.as_ref())),
             models,
             // The media service fills them, which knows the media catalog.
             image_models: Vec::new(),
@@ -272,7 +272,7 @@ impl ProviderAssembly {
             source_fetched_at: catalog.source_fetched_at,
             stale: catalog.stale,
             warnings: catalog.warnings,
-            availability: super::details::availability(entry, &auth, &runtime),
+            availability: crate::details::availability(entry, &auth, &runtime),
             auth,
             runtime,
         }

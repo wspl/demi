@@ -52,7 +52,7 @@ use std::rc::{Rc, Weak};
 use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
 };
-use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob, Withdrawal};
+use demi_runner_client::{JobEnd, JobStart, Pipe, RemoteJob, Withdrawal};
 use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
     Call, DEMI_ROOT, GroupBuilder, LeafBuilder, ProcessEnd, RpcError,
@@ -1014,7 +1014,7 @@ async fn run_on_host(
                 .await
                 .map_err(|error| error.message)?;
             let start = JobStart {
-                id: demi_backend_remote_host::RemoteHost::job_id(),
+                id: demi_runner_client::RemoteHost::job_id(),
                 script,
                 cwd: target.path.clone(),
                 env: BTreeMap::new(),

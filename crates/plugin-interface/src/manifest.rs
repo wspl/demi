@@ -99,7 +99,7 @@ pub struct Manifest {
     /// names its command when it has one, as plain text since settings show
     /// it as written.
     pub description: String,
-    /// Its command groups and roots (`crates/backend-plugins/src/commands.rs`).
+    /// Its command groups and roots (`crates/plugin-host/src/commands.rs`).
     #[serde(default)]
     pub commands: Vec<Commands>,
     /// Whether the plugin is a context source, asked before each provider
@@ -122,7 +122,7 @@ pub struct Manifest {
     /// Its part of the web app's data and calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<Page>,
-    /// The sign-in of its vendor, which the plugin host runs (`crates/backend-plugins/src/oauth.rs`).
+    /// The sign-in of its vendor, which the plugin host runs (`crates/plugin-host/src/oauth.rs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oauth: Option<OAuth>,
 }
@@ -144,7 +144,7 @@ impl Manifest {
     }
 }
 
-/// A vendor that signs its users in with OAuth 2.1 (`crates/backend-plugins/src/oauth.rs`): the
+/// A vendor that signs its users in with OAuth 2.1 (`crates/plugin-host/src/oauth.rs`): the
 /// plugin host registers Demi with its authorization server, runs the sign-in and keeps the tokens.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

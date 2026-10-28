@@ -729,7 +729,7 @@ async fn pass(
                     core.commit();
                     // The next request writes its prefix anew in any case,
                     // so the agent takes an account again for it
-                    // (`crates/backend-providers/src/llm/rotation.rs`).
+                    // (`crates/provider-registry/src/rotation.rs`).
                     core.take_account(None);
                     if let Some(text) = running_text(&running) {
                         core.push_context(NewContext {

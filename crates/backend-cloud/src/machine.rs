@@ -38,7 +38,7 @@ use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::{DeviceRecord, ManagedMachine};
 use demi_backend_database::managed::ManagedOperation;
 use demi_backend_page_sync::{Part, UserMarks};
-use demi_backend_remote_host::Admission;
+use demi_runner_client::Admission;
 use demi_backend_runners::codes::new_device_token;
 use demi_host_interface::{HostError, HostErrorKind};
 use demi_backend_database::control::ControlService;
@@ -904,7 +904,7 @@ impl dyn CloudShard {
     ///
     /// The Cloud runs, and its runner connects again by itself, so a
     /// same-release restart stops no Cloud and no command on one
-    /// (`crates/backend-remote-host/src/device_jobs.rs`). A Cloud that finds no
+    /// (`crates/runner-client/src/device_jobs.rs`). A Cloud that finds no
     /// capacity is saved and stopped.
     pub async fn take_over_cloud(&self, device: &DeviceRecord) -> Result<(), CloudError> {
         let machine = self.cloud_machine(device).await?;

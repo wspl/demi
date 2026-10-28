@@ -115,7 +115,7 @@ use std::time::Duration;
 use demi_backend_database::control::ControlService;
 use demi_backend_idle_watch::Activity;
 use demi_backend_page_sync::UserMarks;
-use demi_backend_providers::llm::assembly::ProviderAssembly;
+use demi_provider_registry::registry::ProviderRegistry;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
@@ -175,7 +175,7 @@ pub trait CloudShard {
     /// The credential vault, whose entries say which providers run a
     /// process on the Cloud.
     fn vault(&self) -> &Vault;
-    fn assembly(&self) -> &ProviderAssembly;
+    fn provider_registry(&self) -> &ProviderRegistry;
     /// Every task the shard spawns, which its close waits for.
     fn tasks(&self) -> &TaskTracker;
     /// Resolves once the shard starts closing.

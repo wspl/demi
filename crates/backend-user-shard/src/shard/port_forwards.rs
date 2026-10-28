@@ -67,7 +67,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_database::port_forwards::{PortForwardChange, PortForwardRecord, PortForwardRefusal};
 use demi_backend_page_sync::Part;
-use demi_backend_remote_host::{DirectAnswer, ForwardEvent, Link, PeerEvent};
+use demi_runner_client::{DirectAnswer, ForwardEvent, Link, PeerEvent};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, DialRefusal, Introduced, OfferRefusal};
 use demi_runner_protocol::forward::{DEADLINE, Forward, ForwardRunState};
 use demi_web_api_protocol::ids::{DeviceId, PortForwardId};

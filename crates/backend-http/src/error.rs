@@ -19,7 +19,7 @@ use demi_backend_accounts::passwords::HashError;
 use demi_backend_blobs::ObjectError;
 use demi_backend_cloud::machine::CloudError;
 use demi_backend_database::StorageError;
-use demi_backend_providers::llm::assembly::AssemblyError;
+use demi_provider_registry::registry::RegistryError;
 use demi_backend_providers::vault::accounts::AccountRefusal;
 use demi_backend_providers::vault::logins::LoginRefusal;
 use demi_backend_runners::files::{TextError, TextRefusal};
@@ -409,6 +409,18 @@ impl From<StorageError> for ApiError {
     }
 }
 
+impl From<demi_plugin_host::store::StoreError> for ApiError {
+    fn from(error: demi_plugin_host::store::StoreError) -> Self {
+        Self::internal(&error)
+    }
+}
+
+impl From<demi_provider_registry::store::StoreError> for ApiError {
+    fn from(error: demi_provider_registry::store::StoreError) -> Self {
+        Self::internal(&error)
+    }
+}
+
 impl From<PasskeyError> for ApiError {
     fn from(error: PasskeyError) -> Self {
         Self::internal(&error)
@@ -427,8 +439,8 @@ impl From<HashError> for ApiError {
     }
 }
 
-impl From<AssemblyError> for ApiError {
-    fn from(error: AssemblyError) -> Self {
+impl From<RegistryError> for ApiError {
+    fn from(error: RegistryError) -> Self {
         Self::internal(&error)
     }
 }
@@ -444,7 +456,7 @@ impl From<AccountRefusal> for ApiError {
             ),
             AccountRefusal::NotFound => Self::account_not_found(),
             AccountRefusal::Order => Self::invalid_body(message),
-            AccountRefusal::Assembly(_) | AccountRefusal::Forget(_) => Self::internal(&refusal),
+            AccountRefusal::Registry(_) | AccountRefusal::Forget(_) => Self::internal(&refusal),
         }
     }
 }
@@ -463,12 +475,12 @@ impl From<LoginRefusal> for ApiError {
                 login_id: login,
                 ..Self::provider_busy()
             },
-            LoginRefusal::Assembly(AssemblyError::UnknownFamily(_)) => Self::new(
+            LoginRefusal::Registry(RegistryError::UnknownFamily(_)) => Self::new(
                 StatusCode::BAD_REQUEST,
                 ErrorCode::UnknownProviderType,
                 message,
             ),
-            LoginRefusal::Assembly(_) => Self::internal(&refusal),
+            LoginRefusal::Registry(_) => Self::internal(&refusal),
         }
     }
 }

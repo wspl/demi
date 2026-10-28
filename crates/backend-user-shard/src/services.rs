@@ -23,16 +23,17 @@ use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_backend_host_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
-use demi_backend_plugins::{Registry, RegistryError};
-use demi_backend_providers::llm::assembly::ProviderAssembly;
-use demi_backend_providers::llm::catalog_cache::ModelCatalogCache;
-use demi_backend_providers::llm::claude_releases::ClaudeReleases;
-use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_backend_providers::llm::vendors::VendorCatalog;
+use demi_plugin_host::{Registry, RegistryError};
+use demi_provider_registry::registry::ProviderRegistry;
+use demi_provider_registry::catalog_cache::ModelCatalogCache;
+use demi_provider_registry::claude_releases::ClaudeReleases;
+use demi_provider_registry::families::FamilyRegistry;
+use demi_provider_registry::vendors::VendorCatalog;
 use demi_backend_providers::vault::entries::{VaultReseal, SeededAccount, Vault};
 use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
 use demi_backend_providers::vault::operations::ProviderOperations;
-use demi_backend_providers::vault::quotas::AccountQuotas;
+use demi_provider_registry::quotas::AccountQuotas;
+use demi_provider_registry::store::RegistryStore;
 use demi_backend_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::devices::Returning;
@@ -76,7 +77,7 @@ pub struct Services {
     /// The account the master account's entry of its family holds from each
     /// start and from setup, a development backend's only (`crates/xtask/src/dev/mod.rs`).
     pub master_account: Option<SeededAccount>,
-    pub assembly: Arc<ProviderAssembly>,
+    pub provider_registry: Arc<ProviderRegistry>,
     /// The catalog of image and video models (`crates/provider-common/src/media_catalog.rs`).
     pub media: MediaCatalog,
     /// The vendor's Claude Code releases, which the CLI on the Claude Code machine follows.
@@ -102,7 +103,7 @@ pub struct Services {
     pub media_tuning: MediaTuning,
     /// The command packages each shard's catalog is built from.
     pub native: NativeCatalog,
-    /// The backend's plugins, checked at startup (`crates/backend-plugins/src/lib.rs`).
+    /// The backend's plugins, checked at startup (`crates/plugin-host/src/lib.rs`).
     pub plugins: Arc<Registry>,
     /// The user streams a page may open.
     pub user_streams: UserStreams,
@@ -131,7 +132,7 @@ pub struct Services {
     pub sync: SyncRegistry,
     /// The devices the backend's last shutdown disconnected, which Host
     /// operations wait for in the grace after the start
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     pub returning: Arc<Returning>,
     /// The server's updates, Settings › Updates.
     pub upgrades: Arc<crate::upgrades::Upgrades>,
@@ -404,11 +405,12 @@ impl Services {
         let claude_releases =
             ClaudeReleases::new(&providers.claude_releases, edge.clone(), clock.clone())
                 .map_err(ServicesError::Http)?;
-        let assembly = Arc::new(ProviderAssembly::new(
-            vault.clone(),
+        let store: Arc<dyn RegistryStore> = Arc::new(vault.clone());
+        let provider_registry = Arc::new(ProviderRegistry::new(
+            store.clone(),
             providers.families,
-            AccountQuotas::new(vault.clone(), edge.clone(), providers.clock.clone()),
-            ModelCatalogCache::new(control.clone(), providers.clock.clone(), edge),
+            AccountQuotas::new(store.clone(), edge.clone(), providers.clock.clone()),
+            ModelCatalogCache::new(store, providers.clock.clone(), edge),
             VendorCatalog::new(models_dev),
             http,
             providers.clock,
@@ -417,7 +419,7 @@ impl Services {
         // A source's new model list changes the catalog of every user who
         // infers with its entry: their pages hear of it. The task ends with
         // the cache, whose last owner drops the sender.
-        let mut models = assembly.catalogs().subscribe();
+        let mut models = provider_registry.catalogs().subscribe();
         let announced = sync.clone();
         tokio::spawn(async move {
             while models.changed().await.is_ok() {
@@ -426,7 +428,8 @@ impl Services {
         });
         let operations = Arc::new(ProviderOperations::default());
         let logins = LoginFlows::new(
-            assembly.clone(),
+            vault.clone(),
+            provider_registry.clone(),
             operations.clone(),
             providers.logins,
             clock.clone(),
@@ -451,7 +454,7 @@ impl Services {
             blobs,
             vault,
             master_account: providers.master_account,
-            assembly,
+            provider_registry,
             media,
             claude_releases,
             cli_installs: CliInstalls::default(),
@@ -491,7 +494,7 @@ impl Services {
     /// writes, before storage closes.
     pub async fn close_providers(&self) {
         self.logins.close().await;
-        self.assembly.close().await;
+        self.provider_registry.close().await;
         self.media.close();
     }
 

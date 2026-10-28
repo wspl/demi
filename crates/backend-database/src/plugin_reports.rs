@@ -6,7 +6,7 @@
 //! after a restart of the backend while the Host is away, and never asks the
 //! Host (`crates/plugin-interface/src/request.rs`).
 
-use demi_shared_types::Timestamp;
+use demi_plugin_host::store::PluginReport;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use rusqlite::{OptionalExtension, params};
 use serde_json::Value;
@@ -16,15 +16,6 @@ use super::columns::{decode, instant, to_json};
 use super::control::ControlService;
 
 const TABLE: &str = "plugin_reports";
-
-/// A report as last kept.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PluginReport {
-    /// The package's own count of its changes.
-    pub revision: u64,
-    pub value: Value,
-    pub reported_at: Timestamp,
-}
 
 impl ControlService {
     /// What `plugin`'s package on the Host of `device` last reported of

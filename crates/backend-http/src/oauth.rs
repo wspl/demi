@@ -1,4 +1,4 @@
-//! A plugin's OAuth callback (`crates/backend-plugins/src/oauth.rs`): where the
+//! A plugin's OAuth callback (`crates/plugin-host/src/oauth.rs`): where the
 //! vendor sends the browser back after the user signed in.
 //!
 //! It is a session route: the browser's own navigation carries the session
@@ -9,7 +9,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::header::ACCEPT_LANGUAGE;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Html;
-use demi_backend_plugins::{Callback, CallbackError};
+use demi_plugin_host::{Callback, CallbackError};
 use demi_shared_types::xml_escaped;
 use demi_web_api_protocol::settings::Language;
 use rust_i18n::t;

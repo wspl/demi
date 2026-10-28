@@ -72,7 +72,7 @@ use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTar
 use demi_backend_database::devices::DeviceRecord;
 use demi_agent_tools::duration;
 use demi_backend_database::workspaces::TypedDirectory;
-use demi_backend_remote_host::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
+use demi_runner_client::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_host_interface::{HostError, HostErrorKind, HostFs};
 use demi_runner_protocol::files::FsFailure;
@@ -1098,7 +1098,7 @@ impl dyn HostShard + '_ {
     /// Lifecycle access (§ Lifecycle access): tells every connected runner of
     /// the user to stop the residents of `packages`, which ends what they hold
     /// for each of the user's conversations, as turning their plugin off asks
-    /// (`crates/backend-plugins/src/lib.rs`). It waits for no Host, for the
+    /// (`crates/plugin-host/src/lib.rs`). It waits for no Host, for the
     /// reason [`Self::tell_release`] gives.
     pub async fn release_packages(&self, packages: &[String]) {
         let devices = match self.user_devices().await {

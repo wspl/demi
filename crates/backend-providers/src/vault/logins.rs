@@ -42,9 +42,12 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
 
-use super::entries::ProviderEntry;
+use demi_provider_registry::entry::ProviderEntry;
+use demi_provider_registry::registry::{LoginAccounts, ProviderRegistry, RegistryError};
+use demi_provider_registry::store::StoreError;
+
+use super::entries::Vault;
 use super::operations::{Held, HeldBy, OperationGuard, ProviderOperations};
-use crate::llm::assembly::{AssemblyError, LoginAccounts, ProviderAssembly};
 
 /// How long a login waits for its user, and how long its result is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,12 +95,13 @@ pub enum LoginRefusal {
     #[error("Another provider operation is still running")]
     Busy(Option<LoginId>),
     #[error(transparent)]
-    Assembly(#[from] AssemblyError),
+    Registry(#[from] RegistryError),
 }
 
 /// The logins of the backend.
 pub struct LoginFlows {
-    assembly: Arc<ProviderAssembly>,
+    vault: Vault,
+    provider_registry: Arc<ProviderRegistry>,
     operations: Arc<ProviderOperations>,
     timing: LoginTiming,
     /// The wall clock the expiry a login shows is read from.
@@ -219,14 +223,16 @@ enum Target {
 
 impl LoginFlows {
     pub fn new(
-        assembly: Arc<ProviderAssembly>,
+        vault: Vault,
+        provider_registry: Arc<ProviderRegistry>,
         operations: Arc<ProviderOperations>,
         timing: LoginTiming,
         clock: Arc<dyn Clock>,
         sync: SyncRegistry,
     ) -> Arc<Self> {
         Arc::new(Self {
-            assembly,
+            vault,
+            provider_registry,
             operations,
             timing,
             clock,
@@ -263,7 +269,7 @@ impl LoginFlows {
         if self.closing.is_cancelled() {
             return Err(LoginRefusal::Busy(None));
         }
-        let registered = self.assembly.family(&family)?;
+        let registered = self.provider_registry.family(&family)?;
         if registered.credential() != CredentialKind::Subscription {
             return Err(LoginRefusal::NoLoginFlow(family));
         }
@@ -337,22 +343,21 @@ impl LoginFlows {
         let prepared = async {
             let (accounts, target) = match existing {
                 Some(entry) => {
-                    let accounts = self.assembly.login_accounts(&entry).await?;
+                    let accounts = self.provider_registry.login_accounts(&entry).await?;
                     let entry = Box::new(entry);
                     (accounts, Target::Existing { entry })
                 }
                 None => {
                     let entries = self
-                        .assembly
-                        .vault()
+                        .vault
                         .entries(owner.clone())
                         .await
-                        .map_err(AssemblyError::from)?;
+                        .map_err(|error| RegistryError::from(StoreError::new(error)))?;
                     if entries.iter().any(|entry| entry.family == family) {
                         return Err(LoginRefusal::Exists(family.clone()));
                     }
                     let staged = MemoryCredentialPool::new();
-                    let accounts = self.assembly.detached_login_accounts(
+                    let accounts = self.provider_registry.detached_login_accounts(
                         &family,
                         id.as_str(),
                         &label,
@@ -775,8 +780,7 @@ impl LoginFlows {
                 staged,
             } => {
                 let created = self
-                    .assembly
-                    .vault()
+                    .vault
                     .create_subscription(owner, family.clone(), label, &staged)
                     .await;
                 match created {
@@ -786,7 +790,7 @@ impl LoginFlows {
                 }
             }
             Target::Existing { entry, .. } => {
-                self.assembly
+                self.provider_registry
                     .invalidate(&entry.id)
                     .await
                     .map_err(|error| error.to_string())?;

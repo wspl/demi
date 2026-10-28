@@ -44,6 +44,7 @@ demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-provider-common = { path = "../provider-common" }
+demi-provider-registry = { path = "../provider-registry" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
 demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-provider-codex = { path = "../provider-codex" }

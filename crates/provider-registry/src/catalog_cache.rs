@@ -1,5 +1,5 @@
 //! The model catalog cache: one validated record per entry, held in memory and
-//! in the control store's `model_catalogs` table.
+//! in the program's store.
 //!
 //! - A record is fresh for 15 minutes.
 //! - A refresh runs one at a time, in a task of the cache's own that a reader
@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_shared_types::{Clock, ProviderModelList, Timestamp};
+use demi_shared_types::{CatalogRecord, Clock, ProviderModelList, Timestamp};
 use demi_web_api_protocol::ids::ProviderId;
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared};
@@ -34,8 +34,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use demi_backend_database::control::ControlService;
-use demi_backend_database::providers::CatalogRecord;
+use crate::store::{RegistryStore, StoreError};
 
 /// How long a record stays fresh.
 const FRESH_FOR: SignedDuration = SignedDuration::from_mins(15);
@@ -52,7 +51,7 @@ pub type CatalogFetch = BoxFuture<'static, Result<ProviderModelList, String>>;
 type Refresh = Shared<BoxFuture<'static, Result<Arc<CatalogRecord>, String>>>;
 
 pub struct ModelCatalogCache {
-    control: ControlService,
+    store: Arc<dyn RegistryStore>,
     clock: Arc<dyn Clock>,
     /// The edge's runtime, which refreshes run on, whoever asked.
     edge: tokio::runtime::Handle,
@@ -106,12 +105,12 @@ impl Entry {
 
 impl ModelCatalogCache {
     pub fn new(
-        control: ControlService,
+        store: Arc<dyn RegistryStore>,
         clock: Arc<dyn Clock>,
         edge: tokio::runtime::Handle,
     ) -> Self {
         Self {
-            control,
+            store,
             clock,
             edge,
             refreshes: TaskTracker::new(),
@@ -246,7 +245,7 @@ impl ModelCatalogCache {
     pub async fn invalidate(
         &self,
         provider: &ProviderId,
-    ) -> Result<(), demi_backend_database::StorageError> {
+    ) -> Result<(), StoreError> {
         let entry = self.lock().remove(provider);
         if let Some(entry) = &entry {
             entry.cancel.cancel();
@@ -257,7 +256,7 @@ impl ModelCatalogCache {
                 let _ = refresh.await;
             }
         }
-        self.control.delete_catalog_record(provider.clone()).await
+        self.store.delete_catalog(provider.clone()).await
     }
 
     /// Cancels the running refreshes and waits for them.
@@ -304,8 +303,8 @@ impl ModelCatalogCache {
             return Ok(record);
         }
         let stored = self
-            .control
-            .catalog_record(provider.clone())
+            .store
+            .catalog(provider.clone())
             .await
             .map_err(|error| error.to_string())?;
         let record = stored
@@ -330,7 +329,7 @@ impl ModelCatalogCache {
         fetch: CatalogFetch,
     ) -> Refresh {
         let task = refresh(
-            self.control.clone(),
+            self.store.clone(),
             self.clock.clone(),
             self.changes.clone(),
             provider.clone(),
@@ -372,7 +371,7 @@ fn stale_without_warning(record: &CatalogRecord) -> ProviderModelList {
 /// usable catalog, the new record, read under `revision`, in storage and in
 /// memory. A cancelled refresh writes nothing.
 async fn refresh(
-    control: ControlService,
+    store: Arc<dyn RegistryStore>,
     clock: Arc<dyn Clock>,
     changes: watch::Sender<()>,
     provider: ProviderId,
@@ -397,7 +396,7 @@ async fn refresh(
             if entry.cancel.is_cancelled() {
                 Err("The catalog refresh was cancelled".to_owned())
             } else {
-                match control.put_catalog_record(provider, record.clone()).await {
+                match store.put_catalog(provider, record.clone()).await {
                     Ok(()) => Ok(Arc::new(record)),
                     Err(error) => Err(format!("The catalog could not be stored: {error}")),
                 }

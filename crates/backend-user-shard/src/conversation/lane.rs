@@ -930,13 +930,13 @@ impl Shard {
     /// reference).
     async fn present(&self, conversation: &ConversationId, streamed: &mut StreamedText, frame: ServerFrame) -> ServerFrame {
         let services = self.services();
-        let assembly = &services.assembly;
+        let provider_registry = &services.provider_registry;
         match frame {
             ServerFrame::TranscriptPatch {
                 node, patches, version, ..
             } => {
                 let added = blocks_added(&patches);
-                let failures = failure_facts(assembly, self.user(), &added).await;
+                let failures = failure_facts(&services.vault, provider_registry, self.user(), &added).await;
                 let attachments = streamed
                     .named(&services.conversations, conversation, &node, &patches)
                     .await

@@ -136,7 +136,7 @@ impl Default for RunnerTuning {
             hello_deadline: Duration::from_secs(30),
             claim_lifetime: Duration::from_secs(10 * 60),
             claims_per_minute: 10,
-            ping: Some(demi_backend_remote_host::PING_INTERVAL),
+            ping: Some(demi_runner_client::PING_INTERVAL),
             probe: Duration::from_secs(5),
             updating: Duration::from_secs(2 * 60),
             returning: Duration::from_secs(10),

@@ -14,22 +14,25 @@ use demi_web_api_protocol::providers::{
     UnavailableReason,
 };
 
-use super::assembly::{AssemblyError, ProviderAssembly};
-use crate::vault::entries::{EntryCredential, ProviderEntry};
-use crate::vault::pool::meta;
+use crate::entry::{EntryCredential, ProviderEntry};
+use crate::registry::{ProviderRegistry, RegistryError};
 
-impl ProviderAssembly {
+/// What an entry without an account says, in its status and when a request
+/// is refused before inference: the user adds an account to use it.
+pub const NO_ACCOUNT: &str = "This provider has no account. Add one in Settings to use it.";
+
+impl ProviderRegistry {
     /// The provider's authentication and runtime state. A subscription entry
     /// without an account is unauthenticated whatever its provider says.
     pub async fn health(
         &self,
         entry: &ProviderEntry,
-        provider: &Result<Arc<dyn Provider>, AssemblyError>,
+        provider: &Result<Arc<dyn Provider>, RegistryError>,
     ) -> (AuthState, RuntimeState) {
         let provider = match provider {
             Ok(provider) => provider,
             // Nothing is known of a provider that is not set up yet.
-            Err(AssemblyError::Incomplete) => {
+            Err(RegistryError::Incomplete) => {
                 return (
                     AuthState::Unauthenticated { message: None },
                     RuntimeState::Unknown { message: None },
@@ -46,7 +49,7 @@ impl ProviderAssembly {
             && entry.active().is_none();
         let auth = if missing_account {
             AuthState::Unauthenticated {
-                message: Some(crate::vault::accounts::NO_ACCOUNT.into()),
+                message: Some(NO_ACCOUNT.into()),
             }
         } else {
             provider.auth_status().await
@@ -60,14 +63,14 @@ impl ProviderAssembly {
         &self,
         entry: &ProviderEntry,
         disclose: bool,
-    ) -> Result<ProviderDetails, AssemblyError> {
+    ) -> Result<ProviderDetails, RegistryError> {
         let provider = self.provider_for(entry).await;
         let (auth, runtime) = self.health(entry, &provider).await;
         let provider = match provider {
             Ok(provider) => provider,
             // An entry without its key has no provider to ask,
             // nor accounts or quota yet.
-            Err(AssemblyError::Incomplete) => {
+            Err(RegistryError::Incomplete) => {
                 return Ok(ProviderDetails {
                     auth,
                     runtime,
@@ -81,13 +84,13 @@ impl ProviderAssembly {
             Err(error) => return Err(error),
         };
         let accounts = match entry.credential {
-            EntryCredential::Subscription { .. } => self.vault().accounts(entry.id.clone()).await?,
+            EntryCredential::Subscription { .. } => self.store().accounts(entry.id.clone()).await?,
             EntryCredential::ApiKey(_) => Vec::new(),
         };
         let accounts: Vec<AccountDto> = accounts
             .iter()
             .map(|record| AccountDto {
-                account: meta(record).info(),
+                account: record.meta().info(),
                 quota: self.quotas().latest(&entry.id, record),
             })
             .collect();
@@ -114,7 +117,7 @@ impl ProviderAssembly {
             active,
             quota,
             quota_capability,
-            cli_package: super::claude_releases::cli_package(provider.as_ref()),
+            cli_package: crate::claude_releases::cli_package(provider.as_ref()),
         };
         Ok(if disclose {
             details

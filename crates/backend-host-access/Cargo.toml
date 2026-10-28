@@ -22,7 +22,7 @@ demi-command-protocol = { path = "../command-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
-demi-backend-remote-host = { path = "../backend-remote-host" }
+demi-runner-client = { path = "../runner-client" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }

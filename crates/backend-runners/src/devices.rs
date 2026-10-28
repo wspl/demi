@@ -39,7 +39,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::{DeviceRecord, FirstHome};
 use demi_backend_page_sync::{Part, UserMarks};
-use demi_backend_remote_host::{
+use demi_runner_client::{
     Admission, DeviceJobs, DeviceLink, DeviceSession, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
     socket_frame,
 };
@@ -68,7 +68,7 @@ const REVOKED_LOST: &str = "its device was revoked";
 const SHUTTING_DOWN: &str = "backend shutting down";
 
 /// How long after the backend starts a device the last shutdown
-/// disconnected is returning (`crates/backend-remote-host/src/device_jobs.rs`).
+/// disconnected is returning (`crates/runner-client/src/device_jobs.rs`).
 pub const RETURN_GRACE: Duration = Duration::from_secs(30);
 
 /// The devices whose connections the backend's last shutdown ended, whose
@@ -880,7 +880,7 @@ impl Devices {
 
     /// Ends every connection as the backend shuts down, and records the
     /// devices whose connections it ended: their runners connect again by
-    /// themselves, and the next start waits for them (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// themselves, and the next start waits for them (`crates/runner-client/src/device_jobs.rs`).
     pub async fn shut_down(&self, control: &ControlService) {
         let links: Vec<(DeviceId, Link)> = self
             .slots

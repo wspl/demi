@@ -87,7 +87,7 @@ impl Shard {
                 None
             }
         };
-        let plugins = self.plugins().entries().await?;
+        let plugins = self.plugins().entries().await.map_err(StorageError::from)?;
         let plugin_states = self.plugins().page_states().await?;
         let public_url = services
             .public_url
@@ -243,7 +243,7 @@ impl Shard {
                 state: self.services().upgrades.update_state(),
             },
             Part::Plugins => SyncEvent::Plugins {
-                plugins: self.plugins().entries().await?,
+                plugins: self.plugins().entries().await.map_err(StorageError::from)?,
             },
             Part::Plugin(plugin) => {
                 let Some(state) = self.plugins().page_state(plugin).await? else {
@@ -279,14 +279,14 @@ impl Shard {
         let entries = services.vault.entries(owner).await?;
         let disclose = services.vault.configures(user);
         let providers = join_all(entries.iter().map(|entry| async move {
-            let details = match services.assembly.details(entry, disclose).await {
+            let details = match services.provider_registry.details(entry, disclose).await {
                 Ok(details) => ProviderReading::Read(Box::new(details)),
                 Err(error) => ProviderReading::Failed {
                     message: error.to_string(),
                 },
             };
             ProviderState {
-                provider: services.assembly.provider_dto(entry),
+                provider: services.provider_registry.provider_dto(entry),
                 details,
                 cli_install: services.cli_installs.state(&user.id, &entry.id),
             }

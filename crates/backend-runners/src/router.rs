@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_backend_remote_host::{CommandSelection, JobOrigin};
+use demi_runner_client::{CommandSelection, JobOrigin};
 use demi_host_interface::CommandSet;
 use demi_web_api_protocol::ids::ConversationId;
 

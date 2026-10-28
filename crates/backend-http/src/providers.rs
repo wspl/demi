@@ -11,8 +11,8 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_providers::llm::assembly::AssemblyError;
-use demi_backend_providers::vault::entries::ProviderEntry;
+use demi_provider_registry::registry::RegistryError;
+use demi_provider_registry::entry::ProviderEntry;
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::Provider;
 use demi_provider_common::quota::QuotaError;
@@ -59,6 +59,7 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
     let message = refusal.to_string();
     let (status, code) = match refusal {
         ProviderRefusal::Storage(error) => return error.into(),
+        ProviderRefusal::Store(error) => return error.into(),
         ProviderRefusal::NotConfiguring => return ApiError::forbidden(message),
         ProviderRefusal::NotFound => return ApiError::provider_not_found(),
         ProviderRefusal::Busy => return ApiError::provider_busy(),
@@ -101,7 +102,7 @@ pub(super) async fn list(
     Ok(Json(Providers {
         providers: entries
             .iter()
-            .map(|entry| services.assembly.provider_dto(entry))
+            .map(|entry| services.provider_registry.provider_dto(entry))
             .collect(),
     }))
 }
@@ -123,15 +124,15 @@ pub(super) async fn catalog(
     State(services): State<Arc<Services>>,
     AuthUser(_): AuthUser,
 ) -> Result<Json<VendorCatalog>, ApiError> {
-    let assembly = &services.assembly;
-    let subscriptions = assembly
+    let provider_registry = &services.provider_registry;
+    let subscriptions = provider_registry
         .families()
         .subscriptions()
         .map(|family| SubscriptionFamily {
             provider_type: family.to_owned(),
         })
         .collect();
-    let vendors = assembly
+    let vendors = provider_registry
         .offered_vendors()
         .await
         .map_err(catalog_unavailable)?;
@@ -163,7 +164,7 @@ pub(super) async fn create(
     Ok((
         StatusCode::CREATED,
         Json(ProviderAnswer {
-            provider: services.assembly.provider_dto(&entry),
+            provider: services.provider_registry.provider_dto(&entry),
         }),
     ))
 }
@@ -181,7 +182,7 @@ pub(super) async fn update(
         .await
         .map_err(refused)?;
     Ok(Json(ProviderAnswer {
-        provider: services.assembly.provider_dto(&updated),
+        provider: services.provider_registry.provider_dto(&updated),
     }))
 }
 
@@ -207,9 +208,9 @@ pub(super) async fn status(
 ) -> Result<Json<ProviderDetails>, ApiError> {
     let entry = scoped(&services, &user, &id).await?;
     let disclose = services.vault.configures(&user);
-    match services.assembly.details(&entry, disclose).await {
+    match services.provider_registry.details(&entry, disclose).await {
         Ok(details) => Ok(Json(details)),
-        Err(AssemblyError::Storage(error)) => Err(error.into()),
+        Err(RegistryError::Storage(error)) => Err(error.into()),
         // As the entry's `failed` details in the sync state say it.
         Err(error) => Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -228,11 +229,11 @@ async fn account_provider(
 ) -> Result<Arc<dyn Provider>, ApiError> {
     match account {
         Some(account) => services
-            .assembly
+            .provider_registry
             .for_account(entry, account)
             .await?
             .ok_or_else(ApiError::account_not_found),
-        None => Ok(services.assembly.provider_for(entry).await?),
+        None => Ok(services.provider_registry.provider_for(entry).await?),
     }
 }
 

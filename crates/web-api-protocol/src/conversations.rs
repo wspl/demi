@@ -264,7 +264,7 @@ pub struct ConversationMetadata {
     pub turn_speed: Option<TurnSpeed>,
     /// Whether the conversation's tree is open with commands of plugins the
     /// user has since turned on or off, so a reload would change them
-    /// (`crates/backend-plugins/src/lib.rs`).
+    /// (`crates/plugin-host/src/lib.rs`).
     pub plugins_changed: bool,
     /// Whether the conversation shows the card that asks the user to turn
     /// notifications on, as its agent found that no browser of the user

@@ -1,6 +1,6 @@
 //! A value read from a vendor's service and kept for a while, such as the
 //! newest release of a vendor's CLI
-//! (`crates/backend-providers/src/llm/claude_releases.rs`,
+//! (`crates/provider-registry/src/claude_releases.rs`,
 //! `crates/provider-codex/src/models.rs`).
 //!
 //! The value is believed until it is older than its lifetime, then read again

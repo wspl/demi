@@ -49,9 +49,9 @@ use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::control::ControlService;
 use demi_backend_page_sync::Part;
-use demi_backend_plugins::Lost;
-use demi_backend_providers::llm::claude_releases::ReleaseError;
-use demi_backend_remote_host::{
+use demi_plugin_host::Lost;
+use demi_provider_registry::claude_releases::ReleaseError;
+use demi_runner_client::{
     AttachedArtifact, Link, RemoteHost, ResidentCallError, ResidentRequest, WeakLink,
 };
 use demi_backend_runners::command_context::{command_context, provider_context};
@@ -864,7 +864,7 @@ impl MachinePlacement {
             // A start that finds the executable it was given gone, as after
             // another runner sharing the cache removed it, drops what is
             // kept of the machine's versions
-            // (`crates/backend-providers/src/llm/claude_releases.rs`).
+            // (`crates/provider-registry/src/claude_releases.rs`).
             let kept_by = self.shard.clone();
             let device = access.device.id.clone();
             let exit = process
@@ -1192,7 +1192,7 @@ pub(crate) struct ClaudeCli {
 type Versions = Shared<LocalBoxFuture<'static, Result<Vec<Installed>, CliError>>>;
 
 /// What the backend keeps of the CLI versions a machine has
-/// (`crates/backend-providers/src/llm/claude_releases.rs`).
+/// (`crates/provider-registry/src/claude_releases.rs`).
 ///
 /// It is the answer of the runner connection `link`, asked once on it, or what
 /// the backend's own install over it left. A new connection asks again.
@@ -1216,7 +1216,7 @@ impl KeptVersions {
 /// A start waiting for an ask of a machine's versions. The last one to
 /// give up before the answer drops the ask, so the next start asks again
 /// rather than wait for an ask nobody waits for
-/// (`crates/backend-providers/src/llm/claude_releases.rs`).
+/// (`crates/provider-registry/src/claude_releases.rs`).
 struct WaitingForVersions<'a> {
     cli: &'a ClaudeCli,
     device: &'a DeviceId,
@@ -1327,7 +1327,7 @@ impl Shard {
     }
 
     /// The executable to start on `target`
-    /// (`crates/backend-providers/src/llm/claude_releases.rs`): the wanted
+    /// (`crates/provider-registry/src/claude_releases.rs`): the wanted
     /// version when the machine has it, else the newest it has while the wanted
     /// one installs beside it.
     ///
@@ -1375,7 +1375,7 @@ impl Shard {
 
     /// The versions `target`'s machine has, newest install first, as the backend
     /// keeps them for its runner connection
-    /// (`crates/backend-providers/src/llm/claude_releases.rs`).
+    /// (`crates/provider-registry/src/claude_releases.rs`).
     ///
     /// The versions are asked once on the connection, by whichever start comes
     /// first, while the others wait for the same answer. A failed ask, or one
@@ -1466,7 +1466,7 @@ impl Shard {
 
     /// Drops what is kept of `device`'s CLI versions when `lost` names the
     /// package's state there, which went without the runner saying so
-    /// (`crates/backend-providers/src/llm/claude_releases.rs`).
+    /// (`crates/provider-registry/src/claude_releases.rs`).
     pub(crate) fn cli_package_lost(&self, device: &DeviceId, lost: &Lost<'_>) {
         if matches!(lost, Lost::Every | Lost::Package(PACKAGE)) {
             self.claude_cli().forget_versions(device);

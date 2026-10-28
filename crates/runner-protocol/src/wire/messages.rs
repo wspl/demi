@@ -43,7 +43,7 @@ pub enum Inbound {
     },
     /// Stops the residents of `packages`, by their ids, which ends what they
     /// hold for every conversation: their plugin was turned off
-    /// (`crates/backend-plugins/src/lib.rs`).
+    /// (`crates/plugin-host/src/lib.rs`).
     PackageRelease {
         id: String,
         #[garde(inner(length(min = 1)))]

@@ -16,7 +16,7 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::StatusCode;
 use bytes::Bytes;
-use demi_backend_remote_host::PipeReader;
+use demi_runner_client::PipeReader;
 use demi_host_interface::HostError;
 use demi_web_api_protocol::error::ErrorCode;
 use futures_util::StreamExt as _;

@@ -17,14 +17,14 @@ use std::sync::Arc;
 use demi_agent_server::{ProviderResolver, ResolveError};
 use demi_agent_tools::{ProfileModel, Unavailable};
 use demi_backend_host_access::transition::ChangeRefusal;
-use demi_backend_providers::llm::catalog::configured_selection;
+use demi_provider_registry::catalog::configured_selection;
 use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices};
-use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
+use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
     AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
-use demi_backend_providers::llm::rotation::{Candidate, Choice, Running, USED_UP_FOR_MS, window_used_up};
+use demi_provider_registry::rotation::{Candidate, Choice, Running, USED_UP_FOR_MS, window_used_up};
 use demi_shared_types::{
     AgentAccount, Model, ModelSelection, NodeId, QuotaWindowName, Rotation, Timestamp, UnavailableSetting,
     session_context_window,
@@ -261,7 +261,7 @@ struct ConversationRuntime {
     /// family, and so this, never changes.
     prepares_ahead: bool,
     /// The account the agent took under the entry's rotation, which it
-    /// keeps while idle; none under Manual (`crates/backend-providers/src/llm/rotation.rs`).
+    /// keeps while idle; none under Manual (`crates/provider-registry/src/rotation.rs`).
     account: Option<CredentialId>,
     /// The agent counted as running a turn on `account`, from a request
     /// until the session's action ends; Balanced spreads agents by these
@@ -403,18 +403,20 @@ impl ConversationRuntime {
         named: Option<&AgentAccount>,
         runs: bool,
     ) -> Result<(CredentialId, Option<Option<AgentAccount>>), ProviderFailure> {
-        let assembly = self.scope.services.assembly.clone();
+        let provider_registry = self.scope.services.provider_registry.clone();
         let rotation = entry.rotation();
         let now = self.scope.services.clock.now();
         if let Some(named) = named.filter(|named| named.rotation == rotation) {
-            let accounts = assembly
-                .vault()
+            let accounts = self
+                .scope
+                .services
+                .vault
                 .accounts(entry.id.clone())
                 .await
                 .map_err(|error| refused(entry_unreadable(&error), None))?;
             let kept = accounts.into_iter().find(|account| {
                 account.id.as_str() == named.credential_id
-                    && !assembly.rotation().is_used_up(&entry.id, &account.id, now)
+                    && !provider_registry.rotation().is_used_up(&entry.id, &account.id, now)
             });
             if let Some(kept) = kept {
                 self.keep(entry, kept.id.clone(), runs);
@@ -425,7 +427,7 @@ impl ConversationRuntime {
         if named.is_none()
             && self.unannounced
             && let Some(account) = self.account.clone()
-            && !assembly.rotation().is_used_up(&entry.id, &account, now)
+            && !provider_registry.rotation().is_used_up(&entry.id, &account, now)
         {
             // Taken ahead of this request: the session learns of it now.
             self.keep(entry, account.clone(), runs);
@@ -435,7 +437,7 @@ impl ConversationRuntime {
         let previous = named
             .map(|named| named.credential_id.clone())
             .or_else(|| self.account.as_ref().map(ToString::to_string));
-        let (choice, candidates) = assembly
+        let (choice, candidates) = provider_registry
             .take_account(entry, model)
             .instrument(tracing::info_span!(
                 "account_choice",
@@ -450,7 +452,7 @@ impl ConversationRuntime {
                 if let Some(previous) = previous.filter(|previous| previous != account.as_str()) {
                     // The account the agent kept was used up, removed or of another rotation.
                     let used_up = CredentialId::try_from(previous.as_str())
-                        .is_ok_and(|previous| assembly.rotation().is_used_up(&entry.id, &previous, now));
+                        .is_ok_and(|previous| provider_registry.rotation().is_used_up(&entry.id, &previous, now));
                     tracing::info!(
                         event = "account.rotated",
                         conversation = %self.scope.conversation,
@@ -480,7 +482,7 @@ impl ConversationRuntime {
             .as_ref()
             .is_some_and(|running| *running.account() == account);
         if runs && !counted {
-            self.running = Some(self.scope.services.assembly.rotation().run(&entry.id, &account));
+            self.running = Some(self.scope.services.provider_registry.rotation().run(&entry.id, &account));
         } else if !counted {
             self.running = None;
         }
@@ -525,7 +527,7 @@ impl ConversationRuntime {
         });
         self.scope
             .services
-            .assembly
+            .provider_registry
             .mark_used_up(&entry.id, &used_up, until, source);
         Some((used_up, moment, window))
     }
@@ -535,19 +537,19 @@ impl ConversationRuntime {
     /// takes another, whose runtime serves the same request again.
     ///
     /// Answers the move, or nothing when every account is used up
-    /// (`crates/backend-providers/src/llm/rotation.rs`).
+    /// (`crates/provider-registry/src/rotation.rs`).
     async fn switch_account(
         &mut self,
         failure: &ProviderFailure,
     ) -> Result<(AccountSwitch, AgentAccount), ()> {
         let entry = self.entry().await.map_err(drop)?;
         let (used_up, moment, window) = self.mark_used_up(&entry, failure).ok_or(())?;
-        let assembly = self.scope.services.assembly.clone();
+        let provider_registry = self.scope.services.provider_registry.clone();
         let model = self.selection.model.clone();
         // The agent stops counting on the used-up account before the
         // choice, which then counts it nowhere.
         self.running = None;
-        let (choice, candidates) = assembly
+        let (choice, candidates) = provider_registry
             .take_account(&entry, &model)
             .instrument(tracing::info_span!(
                 "account_choice",
@@ -607,19 +609,19 @@ impl ConversationRuntime {
             // closes it.
             self.close_current().await;
             return Err(refused(
-                demi_backend_providers::vault::accounts::NO_ACCOUNT,
+                demi_provider_registry::details::NO_ACCOUNT,
                 Some(ErrorCode::AuthMissing),
             ));
         }
         let scope = self.scope.clone();
-        let assembly = &scope.services.assembly;
+        let provider_registry = &scope.services.provider_registry;
         let provider = match account {
-            Some(account) if entry.active() != Some(account) => assembly
+            Some(account) if entry.active() != Some(account) => provider_registry
                 .for_account(entry, account)
                 .await
                 .map_err(|error| refused(error.to_string(), None))?
                 .ok_or_else(|| refused("The account is no longer available", None))?,
-            _ => assembly
+            _ => provider_registry
                 .provider_for(entry)
                 .await
                 .map_err(|error| refused(error.to_string(), None))?,
@@ -636,29 +638,29 @@ impl ConversationRuntime {
                 let work = ProcessWork::Conversation(scope.conversation.clone());
                 let placement = CrossPlacement::placement(scope.shard.clone(), work);
                 let env = RuntimeEnv {
-                    http: assembly.http_for(entry, scope.http.clone()),
+                    http: provider_registry.http_for(entry, scope.http.clone()),
                 };
-                assembly
+                provider_registry
                     .process_runtime(entry, account.or(entry.active()), env, placement)
                     .await
                     .map_err(|error| refused(error.to_string(), None))?
             } else {
                 provider
                     .runtime(RuntimeEnv {
-                        http: assembly.http_for(entry, scope.http.clone()),
+                        http: provider_registry.http_for(entry, scope.http.clone()),
                     })
                     .map_err(|error| refused(error.to_string(), None))?
             };
             // Each row is priced at the catalog's prices as it is written.
             let prices: ModelPrices = {
-                let assembly = scope.services.assembly.clone();
+                let provider_registry = scope.services.provider_registry.clone();
                 let entry = entry.clone();
                 let provider = provider.clone();
                 Rc::new(move |model: String| {
-                    let assembly = assembly.clone();
+                    let provider_registry = provider_registry.clone();
                     let entry = entry.clone();
                     let provider = provider.clone();
-                    Box::pin(async move { assembly.model_price(&entry, &Ok(provider), &model).await })
+                    Box::pin(async move { provider_registry.model_price(&entry, &Ok(provider), &model).await })
                 })
             };
             let ledger = Ledger {
@@ -701,7 +703,7 @@ fn agent_account(account: &CredentialId, rotation: Rotation) -> AgentAccount {
 
 /// The failure of a request no account of `entry` can serve: every one is
 /// used up, and the turn ends as it would with Manual
-/// (`crates/backend-providers/src/llm/rotation.rs`).
+/// (`crates/provider-registry/src/rotation.rs`).
 fn all_used_up(entry: &ProviderEntry, candidates: &[Candidate]) -> ProviderFailure {
     let message = match candidates.len() {
         0 | 1 => format!("{} has reached its usage limit", entry.label),
@@ -724,7 +726,7 @@ impl ProviderRuntime for ConversationRuntime {
     /// Under rotation, a usage limit before anything of the run reached the agent
     /// moves the agent to another account and sends the same request again at once,
     /// which is no retry of the agent's
-    /// (`crates/backend-providers/src/llm/rotation.rs`).
+    /// (`crates/provider-registry/src/rotation.rs`).
     ///
     /// Such an attempt leaves nothing: the vendor's record it mirrored, such as the
     /// previous call's result, is held until the model's first output and dropped

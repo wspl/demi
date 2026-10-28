@@ -307,7 +307,7 @@ const emit = defineEmits<{
   /**
    * The failed turn's usage limit offered another account of its entry, without
    * rotation. The host makes it active, then resumes
-   * (`crates/backend-providers/src/llm/rotation.rs`).
+   * (`crates/provider-registry/src/rotation.rs`).
    */
   continueWith: [providerId: string, credentialId: string]
   /**

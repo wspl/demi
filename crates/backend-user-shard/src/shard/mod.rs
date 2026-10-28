@@ -42,8 +42,8 @@ use std::sync::Arc;
 
 use demi_agent_server::AgentServer;
 use demi_backend_cloud::machine::Cloud;
-use demi_backend_plugins::UserPlugins;
-use demi_backend_remote_host::{ARRIVAL, Pipes};
+use demi_plugin_host::UserPlugins;
+use demi_runner_client::{ARRIVAL, Pipes};
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::router::CommandRouter;
 use demi_shared_gates::KeyedSerialGate;
@@ -203,8 +203,8 @@ impl Shard {
                 services: services.clone(),
                 web,
             }),
-            services.control.clone(),
-            services.sync.of(&user),
+            Rc::new(services.control.clone()),
+            Rc::new(services.sync.of(&user)),
         );
         let ConversationParts { agent, titles } = conversation::conversation_parts(
             shard.clone(),
@@ -733,12 +733,12 @@ impl ShardPool {
         // (`crates/backend-cloud/src/lib.rs`).
         let machine = ClaudeMachine::new(shards.clone(), shared.control.clone());
         if shared.claude_machine.set(machine.clone()).is_err() {
-            tracing::error!(event = "assembly.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
+            tracing::error!(event = "provider_registry.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
         }
-        shared.assembly.set_machine(Arc::new(machine));
+        shared.provider_registry.set_machine(Arc::new(machine));
         // A provider entry's request to one of its owner's devices goes
         // through the owner's shard (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
-        shared.assembly.set_devices(exposed_ports::DeviceRequests::new(shards.clone()));
+        shared.provider_registry.set_devices(exposed_ports::DeviceRequests::new(shards.clone()));
         Ok(Self { shards, workers })
     }
 

@@ -4,6 +4,9 @@
 //! - the Host contract: an execution target's filesystem and processes
 //!   ([`Host`], [`HostFs`], [`HostProcess`]) and its value identity
 //!   ([`HostKey`]);
+//! - batched reads of a Host's files ([`HostRead`], [`HostFile`]), and the
+//!   directories a project's files are searched in ([`project`]), which a
+//!   plugin's port, the product and the agent runtime read with;
 //! - the command system: a [`CommandSet`] pairs declaration trees with the
 //!   handler of each `rpc` leaf, built with [`GroupBuilder`] and
 //!   [`LeafBuilder`]. A handler receives its call as data ([`RpcInvocation`])
@@ -25,14 +28,17 @@
 mod builders;
 mod commands;
 mod environment;
+mod files;
 mod host;
 mod media;
 mod output;
 mod paths;
+pub mod project;
 mod record;
 mod reserved;
 mod rpc;
 
+pub use files::{EntryKind, HostEntry, HostFile, HostRead};
 pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
 pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};
 pub use demi_command_declarations::{CapabilityIndex, IndexGroup};

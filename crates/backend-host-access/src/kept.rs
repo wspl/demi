@@ -34,7 +34,7 @@ use std::hash::Hash;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use demi_backend_remote_host::{HostEvent, HostSubscriber};
+use demi_runner_client::{HostEvent, HostSubscriber};
 use demi_runner_protocol::files::Subject;
 use demi_runner_protocol::wire::SUBSCRIPTION_LEASE;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};

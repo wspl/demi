@@ -1,4 +1,4 @@
-//! `xtask logos` (`crates/backend-providers/src/llm/vendors.rs`): refreshes the
+//! `xtask logos` (`crates/provider-registry/src/vendors.rs`): refreshes the
 //! marks of the vendors the backend offers from models.dev into the web app's
 //! logos directory.
 //!
@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use demi_backend_providers::llm::vendors::VendorCatalog;
+use demi_provider_registry::vendors::VendorCatalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::SystemClock;
 use reqwest::Url;

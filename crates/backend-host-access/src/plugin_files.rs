@@ -26,12 +26,13 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
 use demi_backend_blobs::blobs::UserBlobs;
-use demi_backend_remote_host::{DirectoryFile, HostSubscriber, Link, Look, LookAt, RemoteHost, WeakLink};
+use demi_runner_client::{DirectoryFile, HostSubscriber, Link, Look, LookAt, RemoteHost, WeakLink};
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
 use demi_host_interface::{ByteRange, FileKind, Host as _, HostError, HostErrorKind, HostFs as _};
 use demi_runner_protocol::wire::FileHash;
-use demi_plugin_interface::{EntryKind, HostDirectory, HostEntry, HostFile, HostRead, PluginId};
+use demi_plugin_interface::{HostDirectory, PluginId};
+use demi_host_interface::{EntryKind, HostEntry, HostFile, HostRead};
 use demi_shared_types::{B64Bytes, ReadAt};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use tokio_util::sync::CancellationToken;

@@ -1473,7 +1473,7 @@ export function signedOutErrorBlock(id: string): Block {
  * The line an agent's move to another account leaves when its account
  * reached its 5-hour limit, which resets at `resetsAt`, and the
  * answer the same request then got from the next account
- * (`crates/backend-providers/src/llm/rotation.rs`).
+ * (`crates/provider-registry/src/rotation.rs`).
  */
 export function accountSwitchBlocks(resetsAt: string): Block[] {
   return inRequests([

@@ -117,7 +117,7 @@ import type { TitleText } from '../ui/ui-text'
  * A subscription with several accounts offers its rotation and orders its
  * accounts by dragging. Adding its second account and choosing In Order or
  * Balanced first warn, once, that several personal subscriptions may be against
- * the vendor's terms (`crates/backend-providers/src/llm/rotation.rs`).
+ * the vendor's terms (`crates/provider-registry/src/rotation.rs`).
  */
 /** Each rotation's mark: the one by hand, the one down the list, the one weighed by room. */
 const ROTATION_ICONS: Record<SettingsRotation, Component> = { manual: Hand, in_order: ListOrdered, balanced: Scale }
@@ -388,7 +388,7 @@ function askRemoveAccount(
   })
 }
 
-// The warning about several accounts (`crates/backend-providers/src/llm/rotation.rs`): what
+// The warning about several accounts (`crates/provider-registry/src/rotation.rs`): what
 // Continue goes on with, which Cancel drops.
 const warning = ref<(() => void) | null>(null)
 const warningOpen = ref(false)

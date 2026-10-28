@@ -239,7 +239,7 @@ export function refusedForSize(blocks: readonly RecordCandidate[]): boolean {
 /**
  * The account a usage limit that ended the unfinished turn offers to go on
  * with, beside Resume, on an entry without rotation
- * (`crates/backend-providers/src/llm/rotation.rs`): the one its failure's facts
+ * (`crates/provider-registry/src/rotation.rs`): the one its failure's facts
  * name. It reads the turn's record as Resume does, so input written behind the
  * failure, such as a child's report, keeps it. Null while running, and for any
  * other end. /

@@ -25,7 +25,7 @@ use tracing::Instrument as _;
 use std::rc::Rc;
 use std::time::Instant;
 
-use demi_backend_remote_host::{HostEvent, HostSubscriber};
+use demi_runner_client::{HostEvent, HostSubscriber};
 use demi_host_interface::HostErrorKind;
 use demi_runner_protocol::files::{Effect, PageSubscription, PageSubscriptions};
 use demi_web_api_protocol::files::{

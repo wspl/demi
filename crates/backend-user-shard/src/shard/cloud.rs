@@ -14,8 +14,8 @@ use demi_backend_cloud::{CloudServices, CloudShard, ConversationHold};
 use demi_backend_database::control::ControlService;
 use demi_backend_idle_watch::Activity;
 use demi_backend_page_sync::UserMarks;
-use demi_backend_plugins::Lost;
-use demi_backend_providers::llm::assembly::ProviderAssembly;
+use demi_plugin_host::Lost;
+use demi_provider_registry::registry::ProviderRegistry;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
@@ -68,8 +68,8 @@ impl CloudShard for Shard {
         &self.services.vault
     }
 
-    fn assembly(&self) -> &ProviderAssembly {
-        &self.services.assembly
+    fn provider_registry(&self) -> &ProviderRegistry {
+        &self.services.provider_registry
     }
 
     fn tasks(&self) -> &TaskTracker {

@@ -37,10 +37,10 @@ pub trait Provider: Send + Sync + 'static {
     /// A fresh read of the provider's model directory.
     ///
     /// The provider keeps no catalog of its own: the backend's catalog cache is
-    /// the only one (`crates/backend-providers/src/llm/catalog_cache.rs`). A
+    /// the only one (`crates/provider-registry/src/catalog_cache.rs`). A
     /// provider without a directory, whose entry lists its vendor's models from
     /// models.dev or the ones the user configured
-    /// (`crates/backend-providers/src/llm/catalog.rs`), lists none.
+    /// (`crates/provider-registry/src/catalog.rs`), lists none.
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
         Box::pin(async {
             Ok(ProviderModelList {
@@ -169,7 +169,7 @@ pub trait ProviderRuntime {
     /// next request.
     ///
     /// A runtime that counts what runs, such as an agent's account under
-    /// rotation (`crates/backend-providers/src/llm/rotation.rs`), stops
+    /// rotation (`crates/provider-registry/src/rotation.rs`), stops
     /// counting it; most runtimes have nothing to do.
     fn idle(&mut self) {}
 
@@ -363,7 +363,7 @@ pub struct InferenceRequest {
     pub cancel: CancellationToken,
     /// The account the session's agent took under its entry's rotation,
     /// as its state keeps it; none before it took one, after a compaction,
-    /// and for a request that is no session's (`crates/backend-providers/src/llm/rotation.rs`).
+    /// and for a request that is no session's (`crates/provider-registry/src/rotation.rs`).
     pub account: Option<AgentAccount>,
     /// What the request is for, which its usage ledger rows say
     /// (`crates/backend-database/src/usage.rs`).
@@ -650,7 +650,7 @@ pub enum ProviderEvent {
     ///
     /// None when the entry's rotation gives the agent no account of its own.
     /// The session keeps it with its state
-    /// (`crates/backend-providers/src/llm/rotation.rs`).
+    /// (`crates/provider-registry/src/rotation.rs`).
     Account(Option<AgentAccount>),
     /// The agent's account reached its limit and the request goes on with
     /// another account, which an `Account` event names next.
@@ -775,7 +775,7 @@ impl ProviderEvent {
     /// The run's usage, cache lifetime and failure, the agent's account and the
     /// vendor's record of the session are bookkeeping, which writes nothing of the answer. A
     /// usage limit after only those still sends the request again on another
-    /// account (`crates/backend-providers/src/llm/rotation.rs`).
+    /// account (`crates/provider-registry/src/rotation.rs`).
     pub fn is_output(&self) -> bool {
         match self {
             Self::ThinkingStart

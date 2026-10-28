@@ -10,7 +10,7 @@
 //! - reads the answer as JSON or as an event stream;
 //! - initializes again when the server forgot the session;
 //! - sends a request the server refused with 401 once more with the token the
-//!   plugin host renewed (`crates/backend-plugins/src/oauth.rs`).
+//!   plugin host renewed (`crates/plugin-host/src/oauth.rs`).
 //!
 //! It takes on nothing else of MCP. Exa signs a third-party app in only for its
 //! MCP server, whose resource the tokens are issued for, while its REST API

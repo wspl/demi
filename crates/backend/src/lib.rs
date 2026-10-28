@@ -44,7 +44,7 @@
 //!   before the user is known:
 //!   - the control service, the conversation stores, the object store and the
 //!     vault;
-//!   - provider assembly with the model catalogs;
+//!   - provider registry with the model catalogs;
 //!   - the machine manager's client and Cloud capacity;
 //!   - runners waiting to be paired and login lockout;
 //!   - the registry of each user's synchronization channels.
@@ -68,10 +68,9 @@
 //!
 //! ```text
 //! demi-backend (configuration, composition)
-//!   |-- backend-providers (provider families)
+//!   |-- backend-providers (the credential vault)
 //!   `-- backend-http (the HTTP edge)
 //!         `-- backend-user-shard (the user's shard, conversations)
-//!               |-- backend-plugins (the plugin host)
 //!               |-- backend-permissions (conversation permissions)
 //!               |-- backend-host-access --> backend-cloud, backend-runners
 //!               |-- backend-cloud -------> backend-runners, backend-providers,
@@ -82,7 +81,7 @@
 //! ```
 //!
 //! A test imports each part it replaces from the library that owns it
-//! (`backend-providers`, `backend-user-shard`, `backend-cloud`,
+//! (`provider-registry`, `backend-user-shard`, `backend-cloud`,
 //! `backend-runners`), never through the executable.
 //!
 //! # What the backend refuses to do

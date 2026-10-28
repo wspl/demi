@@ -12,6 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
+demi-plugin-host = { path = "../plugin-host" }
 demi-backend-database = { path = "../backend-database" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 tokio.workspace = true

@@ -10,8 +10,8 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_backend_providers::llm::catalog::configured_selection;
-use demi_backend_providers::vault::entries::ProviderEntry;
+use demi_provider_registry::catalog::configured_selection;
+use demi_provider_registry::entry::ProviderEntry;
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
 };
@@ -42,16 +42,16 @@ impl Shard {
     /// the vendor's words.
     async fn test_media_key(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>, cancel: CancellationToken) -> TestResult {
         let services = self.services();
-        let assembly = &services.assembly;
-        let shapes = assembly.media_shapes(entry);
+        let provider_registry = &services.provider_registry;
+        let shapes = provider_registry.media_shapes(entry);
         let maker = MediaKind::ALL
             .into_iter()
             .filter(|kind| shapes.makes(*kind))
-            .find_map(|kind| assembly.maker(entry, provider, kind));
+            .find_map(|kind| provider_registry.maker(entry, provider, kind));
         let Some(maker) = maker else {
             return TestResult::Failed { message: "This provider makes nothing yet".into(), model: None, not_exposed: None };
         };
-        let http = assembly.http_for(entry, self.http().clone());
+        let http = provider_registry.http_for(entry, self.http().clone());
         let catalog = services.media.current();
         let listing = tokio::select! {
             () = cancel.cancelled() => {
@@ -80,14 +80,14 @@ impl Shard {
         model_id: Option<String>,
         cancel: CancellationToken,
     ) -> TestResult {
-        let assembly = &self.services().assembly;
-        if !assembly.makes_text(&entry) {
+        let provider_registry = &self.services().provider_registry;
+        if !provider_registry.makes_text(&entry) {
             return self.test_media_key(&entry, &provider, cancel).await;
         }
         let Some(model_id) = model_id else {
             return TestResult::Failed { message: "Name a text model to test".into(), model: None, not_exposed: None };
         };
-        let catalog = assembly
+        let catalog = provider_registry
             .entry_catalog(&entry, &Ok(provider.clone()), false)
             .await;
         let Some(model) = catalog
@@ -119,15 +119,15 @@ impl Shard {
             let placement = CrossPlacement::placement(Rc::downgrade(&self.this()), work);
             let account = account.as_ref().or(entry.active());
             let env = RuntimeEnv {
-                http: assembly.http_for(&entry, self.http().clone()),
+                http: provider_registry.http_for(&entry, self.http().clone()),
             };
-            assembly
+            provider_registry
                 .process_runtime(&entry, account, env, placement)
                 .await
                 .map_err(|error| error.to_string())
         } else {
             let env = RuntimeEnv {
-                http: assembly.http_for(&entry, self.http().clone()),
+                http: provider_registry.http_for(&entry, self.http().clone()),
             };
             provider.runtime(env).map_err(|error| error.to_string())
         };

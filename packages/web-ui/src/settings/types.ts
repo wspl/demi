@@ -19,7 +19,7 @@ import type { VerificationHost } from '../auth/verification'
 
 /**
  * The small model the user chose in Settings › Agent
- * (`crates/backend-providers/src/llm/small_model.rs`): model settings without a
+ * (`crates/provider-registry/src/small_model.rs`): model settings without a
  * tier, since small requests use the default one. It is none for Automatic.
  */
 /** The least prompt cache lifetime for which an idle conversation compacts. */
@@ -248,7 +248,7 @@ export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
 
 /**
  * Which account each agent of a subscription uses
- * (`crates/backend-providers/src/llm/rotation.rs`):
+ * (`crates/provider-registry/src/rotation.rs`):
  *
  * - the active one,
  * - the first in the list that is not used up, or

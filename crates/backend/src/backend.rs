@@ -229,7 +229,7 @@ async fn take_over_clouds(
 
 /// Forgets each Cloud the last shutdown disconnected that does not run, as
 /// after an upgrade stopped it: no operation waits for its runner, which
-/// does not come back by itself (`crates/backend-remote-host/src/device_jobs.rs`).
+/// does not come back by itself (`crates/runner-client/src/device_jobs.rs`).
 async fn forget_stopped_clouds(
     running: &[demi_backend_database::devices::DeviceRecord],
     services: &demi_backend_user_shard::services::Services,
@@ -608,7 +608,7 @@ impl Backend {
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));
         }
-        self.services.assembly.close().await;
+        self.services.provider_registry.close().await;
         // A refresh that asked its vendor stores the answer before the
         // database closes (`crates/provider-common/src/credentials/refresh.rs`).
         self.services.vault.gates().close().await;

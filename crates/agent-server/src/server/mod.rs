@@ -289,7 +289,7 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Gives every live tree the product's toolset now, as the user's switch
-    /// of a plugin asks (`crates/backend-plugins/src/lib.rs`): each node's
+    /// of a plugin asks (`crates/plugin-host/src/lib.rs`): each node's
     /// commands change, and its system prompt keeps the commands it opened
     /// with.
     pub async fn adopt_toolset(self: &Rc<Self>) -> Result<(), String> {

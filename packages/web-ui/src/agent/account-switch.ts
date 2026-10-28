@@ -5,7 +5,7 @@ import { windowNameInSentence } from '../settings/window-name'
 
 /**
  * The neutral line an agent's move to another account reads as
- * (`crates/backend-providers/src/llm/rotation.rs`): "alex@example.com reached
+ * (`crates/provider-registry/src/rotation.rs`): "alex@example.com reached
  * its 5-hour limit, resetting at 9:00 PM. Continuing with sam@example.com."
  *
  * The line names the window in the viewer's language as a sentence names it,

@@ -22,7 +22,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use demi_backend_remote_host::{DirectAnswer, PeerEvent};
+use demi_runner_client::{DirectAnswer, PeerEvent};
 use demi_backend_runners::command_context::{Reported, reported};
 use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduced, Introduction, OfferRefusal};

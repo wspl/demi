@@ -17,12 +17,13 @@ demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-shared-types = { path = "../shared-types", features = ["tracing"] }
 demi-shared-gates = { path = "../shared-gates" }
-demi-backend-remote-host = { path = "../backend-remote-host" }
+demi-runner-client = { path = "../runner-client" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 demi-plugin-interface = { path = "../plugin-interface" }
+demi-plugin-host = { path = "../plugin-host" }
 base64.workspace = true
 bytes.workspace = true
 comrak = { version = "0.56", default-features = false }

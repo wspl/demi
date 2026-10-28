@@ -259,10 +259,11 @@ Most of Demi is released under the [Apache License 2.0](LICENSE). Use these
 parts for anything:
 
 - The agent runtime.
-- The model providers.
-- The runner you install on your machines.
+- The model providers, and the library that sets them up from your
+  configuration.
+- The runner you install on your machines, and the library that drives it.
 - The commands.
-- The plugins and their SDK.
+- The plugins, their SDK, and the host that runs them.
 - The UI component library and its gallery.
 - The protocols.
 - The docs.

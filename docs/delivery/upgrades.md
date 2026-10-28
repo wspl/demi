@@ -39,7 +39,7 @@ the following happens:
     A service gets it at the node's next turn
     (`crates/agent-session/src/reports.rs`).
   - A backend that only restarts, on the same release, ends no command
-    (`crates/backend-remote-host/src/device_jobs.rs`).
+    (`crates/runner-client/src/device_jobs.rs`).
 - Each paired device's runner reconnects and finds that the backend serves
   another runner release. It replaces itself with that release and connects
   again, without its user doing anything (`crates/runner/src/update.rs`).

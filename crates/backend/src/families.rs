@@ -1,5 +1,5 @@
 //! The built-in provider families, one per vendor crate
-//! (`crates/backend-providers/src/llm/families.rs`).
+//! (`crates/provider-registry/src/families.rs`).
 //!
 //! They are the registry the backend starts with, beside which a test registers
 //! scripted families.
@@ -7,8 +7,8 @@
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use demi_backend_providers::llm::assembly::MEDIA_FAMILY;
-use demi_backend_providers::llm::families::{
+use demi_provider_registry::registry::MEDIA_FAMILY;
+use demi_provider_registry::families::{
     AccountBinding, CompatibleAudioArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
     ProviderFamily,
 };

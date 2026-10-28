@@ -941,7 +941,7 @@ impl Owner<'_> {
     }
 
     /// Answers a second start of `job` with the job the runner has, since
-    /// it starts a job id once in its life (`crates/backend-remote-host/src/device_jobs.rs`): a job that runs goes on; one that ended
+    /// it starts a job id once in its life (`crates/runner-client/src/device_jobs.rs`): a job that runs goes on; one that ended
     /// answers its exit again while its directory lasts; and one released,
     /// whose end the backend has, or one that failed before it made its
     /// directory, answers that it was started already.

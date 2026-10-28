@@ -92,7 +92,7 @@ pub(crate) struct SessionCore {
     pub(super) edits: Vec<EditReceipt>,
     /// The account the agent took under its entry's rotation, which every
     /// request names; none before it took one and after a compaction
-    /// (`crates/backend-providers/src/llm/rotation.rs`).
+    /// (`crates/provider-registry/src/rotation.rs`).
     pub(super) account: Option<AgentAccount>,
     /// The edit being prepared or run, from its admission until its action
     /// ends.

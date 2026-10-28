@@ -276,7 +276,7 @@ pub trait AgentTreeStore {
     /// (`crates/backend-database/src/command_outputs.rs`).
     ///
     /// The node takes them up again when it is restored
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/runner-client/src/device_jobs.rs`).
     fn running_commands<'a>(
         &'a self,
         node: &'a NodeId,
@@ -635,7 +635,7 @@ pub struct CheckpointState {
     #[garde(dive)]
     pub edits: Vec<EditReceipt>,
     /// The account the agent took under its entry's rotation; absent before
-    /// it took one and after a compaction (`crates/backend-providers/src/llm/rotation.rs`).
+    /// it took one and after a compaction (`crates/provider-registry/src/rotation.rs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub account: Option<AgentAccount>,

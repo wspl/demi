@@ -6,7 +6,7 @@
 use bytes::BytesMut;
 use demi_command_protocol::EDIT_FILE_BYTES;
 pub use demi_command_protocol::{TextRefusal, text_of};
-use demi_backend_remote_host::RemoteHost;
+use demi_runner_client::RemoteHost;
 use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, LinkTarget};
 use demi_runner_protocol::wire::{self, ReadAt};
 use futures_util::StreamExt as _;
