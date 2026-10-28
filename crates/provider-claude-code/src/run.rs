@@ -46,7 +46,7 @@ use std::task::Poll;
 use async_stream::stream;
 use demi_provider_common::credentials::{AuthFailure, AuthReason};
 use demi_provider_common::{
-    Ahead, CallEvent, CallOutcome, ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    Ahead, CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, ToolResultKinds, offers, quota::Observation,
 };
 use demi_shared_types::Model;
@@ -57,7 +57,7 @@ use futures_util::stream::{self, Stream};
 use crate::Shared;
 use crate::failure::read_failure;
 use crate::idle::Kept;
-use crate::live::{LiveCli, Next};
+use crate::live::{LiveCli, Next, Written};
 use crate::output::{Answered, ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
 use crate::placement::{Placement, WorkLease};
 use crate::prepared::Prepared;
@@ -104,22 +104,6 @@ impl ClaudeCodeRuntime {
     fn take_kept(&mut self) -> Option<LiveCli> {
         self.live.take().or_else(|| self.kept.take().and_then(Kept::take))
     }
-}
-
-/// Whether `items` end with the model's answer, so a process resuming them
-/// waits for input.
-///
-/// They are no empty history, which the CLI cannot resume, and end in no input
-/// still to answer, such as a message whose turn failed or a call's result.
-fn answered(items: &[InferenceItem]) -> bool {
-    matches!(
-        items.last(),
-        Some(
-            InferenceItem::AssistantText { .. }
-                | InferenceItem::AssistantThinking { .. }
-                | InferenceItem::AssistantRedactedThinking { .. }
-        )
-    )
 }
 
 impl ProviderRuntime for ClaudeCodeRuntime {
@@ -206,7 +190,7 @@ impl ProviderRuntime for ClaudeCodeRuntime {
                 Ahead::Opened | Ahead::Chosen => !continues,
                 Ahead::Ended => false,
             };
-            if !wanted || !answered(&request.items) {
+            if !wanted {
                 return;
             }
             if let Some(live) = self.take_kept() {
@@ -333,7 +317,10 @@ fn run(
                     if let Some((previous, _)) = previous {
                         previous.close().await;
                     }
-                    let started = LiveCli::start(&runtime.shared, &*runtime.placement, &request, Took::New);
+                    let started = async {
+                        let written = Written::of(&runtime.shared, &request).await?;
+                        LiveCli::start(&runtime.shared, &*runtime.placement, &request, written, Took::New).await
+                    };
                     let mut live = match cancel.run_until_cancelled(started).await {
                         // Giving the start up drops what it started, which
                         // closes it.
