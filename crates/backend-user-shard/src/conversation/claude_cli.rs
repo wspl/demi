@@ -49,7 +49,7 @@ use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::control::ControlService;
 use demi_backend_page_sync::Part;
-use demi_backend_plugins::Lost;
+use demi_plugin_host::Lost;
 use demi_provider_registry::claude_releases::ReleaseError;
 use demi_runner_client::{
     AttachedArtifact, Link, RemoteHost, ResidentCallError, ResidentRequest, WeakLink,

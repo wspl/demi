@@ -71,7 +71,6 @@
 //!   |-- backend-providers (the credential vault)
 //!   `-- backend-http (the HTTP edge)
 //!         `-- backend-user-shard (the user's shard, conversations)
-//!               |-- backend-plugins (the plugin host)
 //!               |-- backend-permissions (conversation permissions)
 //!               |-- backend-host-access --> backend-cloud, backend-runners
 //!               |-- backend-cloud -------> backend-runners, backend-providers,

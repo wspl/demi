@@ -1983,6 +1983,7 @@ dependencies = [
  "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
+ "demi-plugin-host",
  "demi-plugin-interface",
  "demi-runner-client",
  "demi-runner-protocol",
@@ -2064,13 +2065,13 @@ dependencies = [
  "demi-backend-host-access",
  "demi-backend-page-sync",
  "demi-backend-permissions",
- "demi-backend-plugins",
  "demi-backend-providers",
  "demi-backend-runners",
  "demi-backend-user-shard",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-plugin-host",
  "demi-plugin-interface",
  "demi-provider-common",
  "demi-provider-registry",
@@ -2120,6 +2121,7 @@ name = "demi-backend-page-sync"
 version = "0.1.65"
 dependencies = [
  "demi-backend-database",
+ "demi-plugin-host",
  "demi-web-api-protocol",
  "tokio",
 ]
@@ -2140,33 +2142,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "demi-backend-plugins"
-version = "0.1.65"
-dependencies = [
- "base64 0.22.1",
- "demi-backend-database",
- "demi-backend-page-sync",
- "demi-command-declarations",
- "demi-host-interface",
- "demi-plugin-interface",
- "demi-provider-common",
- "demi-shared-types",
- "demi-web-api-protocol",
- "futures-util",
- "jiff",
- "rand 0.9.5",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
 ]
 
 [[package]]
@@ -2249,7 +2224,6 @@ dependencies = [
  "demi-backend-idle-watch",
  "demi-backend-page-sync",
  "demi-backend-permissions",
- "demi-backend-plugins",
  "demi-backend-providers",
  "demi-backend-runners",
  "demi-command-declarations",
@@ -2258,6 +2232,7 @@ dependencies = [
  "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
+ "demi-plugin-host",
  "demi-plugin-interface",
  "demi-provider-claude-code",
  "demi-provider-common",
@@ -2773,6 +2748,31 @@ version = "0.1.65"
 dependencies = [
  "demi-plugin-interface",
  "futures-util",
+]
+
+[[package]]
+name = "demi-plugin-host"
+version = "0.1.65"
+dependencies = [
+ "base64 0.22.1",
+ "demi-command-declarations",
+ "demi-host-interface",
+ "demi-plugin-interface",
+ "demi-provider-common",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "jiff",
+ "rand 0.9.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
 ]
 
 [[package]]

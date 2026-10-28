@@ -10,9 +10,9 @@
 //! or log carries one: a page learns only what the plugin's state says about
 //! it, such as the last four characters of a key.
 
-use demi_backend_database::StorageError;
-use demi_backend_database::plugin_secrets::SecretRow;
-use demi_backend_database::plugin_values::Written;
+use crate::store::StoreError;
+use crate::store::SecretRow;
+use crate::store::Written;
 use demi_plugin_interface::{PortFailure, PortRefusal, StoredSecret};
 
 use crate::user::{Shared, storage};
@@ -34,7 +34,7 @@ impl Shared {
         name: &str,
     ) -> Result<Option<StoredSecret>, PortFailure> {
         let row = self.secret_row(plugin, name);
-        let Some(stored) = self.control.plugin_secret(row).await.map_err(storage)? else {
+        let Some(stored) = self.store.secret(row).await.map_err(storage)? else {
             return Ok(None);
         };
         let id = self.plugin_id(plugin);
@@ -43,11 +43,9 @@ impl Shared {
             .open(&self.user, &id, name, &stored.sealed)
             .and_then(|plaintext| String::from_utf8(plaintext).ok());
         let Some(value) = opened else {
-            return Err(storage(StorageError::Corrupt {
-                table: "plugin_secrets",
-                column: "sealed",
-                reason: format!("the secret \"{name}\" of the plugin \"{id}\" does not open"),
-            }));
+            return Err(storage(StoreError::corrupt(format!(
+                "plugin_secrets.sealed holds an invalid value: the secret \"{name}\" of the plugin \"{id}\" does not open"
+            ))));
         };
         Ok(Some(StoredSecret {
             value,
@@ -69,8 +67,8 @@ impl Shared {
             .product
             .seal(&self.user, &row.plugin, name, value.as_bytes());
         match self
-            .control
-            .write_plugin_secret(row, sealed, revision)
+            .store
+            .write_secret(row, sealed, revision)
             .await
             .map_err(storage)?
         {
@@ -89,8 +87,8 @@ impl Shared {
     ) -> Result<(), PortFailure> {
         let row = self.secret_row(plugin, name);
         match self
-            .control
-            .remove_plugin_secret(row, revision)
+            .store
+            .remove_secret(row, revision)
             .await
             .map_err(storage)?
         {

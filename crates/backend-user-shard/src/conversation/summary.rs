@@ -112,7 +112,7 @@ impl Shard {
     pub async fn conversation_metadata(&self, record: ConversationRecord) -> Result<ConversationMetadata, StorageError> {
         let tree = self.agent().tree(&root_of(&record.id));
         let plugins_changed = match &tree {
-            Some(tree) => tree.toolset() != self.plugins().revision().await?,
+            Some(tree) => tree.toolset() != self.plugins().revision().await.map_err(StorageError::from)?,
             None => false,
         };
         let facts = self.summary_facts(&record.id).await;
@@ -133,7 +133,8 @@ impl Shard {
         let panel_states = self
             .plugins()
             .panel_states(record.id.clone(), CancellationToken::new())
-            .await?;
+            .await
+            .map_err(StorageError::from)?;
         let permissions = demi_backend_permissions::read(self.permission_shard(), &record.id).await?;
         let other_cost = services
             .control

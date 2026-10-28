@@ -14,7 +14,7 @@ use demi_backend_cloud::{CloudServices, CloudShard, ConversationHold};
 use demi_backend_database::control::ControlService;
 use demi_backend_idle_watch::Activity;
 use demi_backend_page_sync::UserMarks;
-use demi_backend_plugins::Lost;
+use demi_plugin_host::Lost;
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;

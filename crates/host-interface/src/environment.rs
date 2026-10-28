@@ -136,7 +136,7 @@ pub trait ShellEnvironment {
     fn owns_command(&self, command: &CommandId) -> bool;
 
     /// The node's commands are `commands` from now on, as a plugin turned
-    /// on or off makes them (`crates/backend-plugins/src/lib.rs`): each job
+    /// on or off makes them (`crates/plugin-host/src/lib.rs`): each job
     /// that starts afterwards offers them, and a call of a job already
     /// running runs in them. Fails only for a set the Host's catalog cannot
     /// serve, which leaves the commands as they were.

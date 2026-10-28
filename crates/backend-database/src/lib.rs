@@ -126,6 +126,7 @@ pub mod passkeys;
 mod path;
 pub mod permissions;
 pub mod plugin_secrets;
+mod plugin_store;
 pub mod plugin_values;
 pub mod port_forwards;
 pub mod providers;

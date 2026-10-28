@@ -409,6 +409,12 @@ impl From<StorageError> for ApiError {
     }
 }
 
+impl From<demi_plugin_host::store::StoreError> for ApiError {
+    fn from(error: demi_plugin_host::store::StoreError) -> Self {
+        Self::internal(&error)
+    }
+}
+
 impl From<demi_provider_registry::store::StoreError> for ApiError {
     fn from(error: demi_provider_registry::store::StoreError) -> Self {
         Self::internal(&error)

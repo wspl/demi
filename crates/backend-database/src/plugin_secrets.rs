@@ -1,5 +1,5 @@
 //! The plugins' secrets and OAuth clients
-//! (`crates/backend-plugins/src/secrets.rs`;
+//! (`crates/plugin-host/src/secrets.rs`;
 //! `crates/backend/src/config/secret.rs`).
 //!
 //! The module stores:
@@ -12,38 +12,14 @@
 //! The control database stores a secret only sealed; the plugin host seals and
 //! opens it.
 
-use demi_web_api_protocol::ids::UserId;
+use demi_plugin_host::store::{OAuthClient, SealedSecret, SecretRow, Written};
 use rusqlite::{OptionalExtension, params};
 
 use super::StorageError;
 use super::columns::decode;
 use super::control::ControlService;
-use super::plugin_values::Written;
 
 const TABLE: &str = "plugin_secrets";
-
-/// A sealed secret and its revision.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SealedSecret {
-    pub sealed: Vec<u8>,
-    pub revision: u64,
-}
-
-/// Where a secret is: its plugin, its user and its name, which its sealing
-/// binds it to.
-#[derive(Debug, Clone)]
-pub struct SecretRow {
-    pub user: UserId,
-    pub plugin: String,
-    pub name: String,
-}
-
-/// A client a plugin registered.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OAuthClient {
-    pub redirect_uri: String,
-    pub client_id: String,
-}
 
 impl ControlService {
     /// The secret at `row`.

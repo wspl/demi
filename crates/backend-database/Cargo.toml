@@ -23,6 +23,7 @@ demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 demi-plugin-interface = { path = "../plugin-interface" }
+demi-plugin-host = { path = "../plugin-host" }
 base64.workspace = true
 bytes.workspace = true
 comrak = { version = "0.56", default-features = false }

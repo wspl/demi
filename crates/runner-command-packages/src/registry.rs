@@ -38,7 +38,7 @@
 //! protocol, fails a conversation release, or keeps a handler past the
 //! cancellation grace. Losing the backend connection stops every resident, and
 //! the backend stops a package's residents when the user turns its plugin off
-//! (`crates/backend-plugins/src/lib.rs`).
+//! (`crates/plugin-host/src/lib.rs`).
 //!
 //! For example, a job whose manifest names `demi.browser` holds a lease on its
 //! artifact while the job runs, and the installed manifest holds another. When

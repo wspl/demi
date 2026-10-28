@@ -400,6 +400,26 @@ impl UserMarks {
     }
 }
 
+/// The user's pages as the plugin host tells them of its changes
+/// (`crates/plugin-host/src/store.rs`).
+impl demi_plugin_host::store::PluginChanges for UserMarks {
+    fn plugins_changed(&self) {
+        self.mark(Part::Plugins);
+    }
+
+    fn plugin_changed(&self, plugin: String) {
+        self.mark(Part::Plugin(plugin));
+    }
+
+    fn conversation_changed(&self, conversation: ConversationId) {
+        self.mark(Part::Conversation(conversation));
+    }
+
+    fn metadata_changed(&self, conversation: ConversationId) {
+        self.mark(Part::Metadata(conversation));
+    }
+}
+
 /// A channel's place in the registry, which dropping it gives up.
 pub struct Registration {
     registry: SyncRegistry,

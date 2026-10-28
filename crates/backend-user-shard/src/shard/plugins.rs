@@ -19,7 +19,7 @@ use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
-use demi_backend_plugins::{Lost, ProductPort, ReadOn, VideoJob};
+use demi_plugin_host::{Lost, ProductPort, ReadOn, VideoJob};
 use demi_backend_providers::vault::seal::Row;
 use demi_runner_client::ResidentCallError;
 use demi_command_declarations::NativeOperation;
@@ -239,14 +239,14 @@ impl ProductPort for ShardPort {
 }
 
 /// The client of a shard thread's plugins' outbound requests
-/// (`crates/backend-plugins/src/web.rs`). A test's backend trusts the
+/// (`crates/plugin-host/src/web.rs`). A test's backend trusts the
 /// authorities its HTTPS servers present.
 pub(crate) fn web_client(services: &Services) -> reqwest::Client {
     let roots = {
         let _ = services;
         &[]
     };
-    demi_backend_plugins::web_client(roots)
+    demi_plugin_host::web_client(roots)
 }
 
 fn failed(error: impl ToString) -> PortFailure {
@@ -311,7 +311,7 @@ pub enum ReloadRefusal {
 }
 
 impl Shard {
-    /// Turns `plugin` on or off for the user (`crates/backend-plugins/src/lib.rs`).
+    /// Turns `plugin` on or off for the user (`crates/plugin-host/src/lib.rs`).
     ///
     /// Every live tree takes the commands of the plugins now on, and its
     /// summary is marked, since whether a reload would change its system
@@ -322,7 +322,7 @@ impl Shard {
         &self,
         plugin: &str,
         enabled: bool,
-    ) -> Result<(), demi_backend_plugins::SwitchError> {
+    ) -> Result<(), demi_plugin_host::SwitchError> {
         let Some(switched) = self.plugins().switch(plugin, enabled).await? else {
             return Ok(());
         };

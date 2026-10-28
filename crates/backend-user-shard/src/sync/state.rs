@@ -87,7 +87,7 @@ impl Shard {
                 None
             }
         };
-        let plugins = self.plugins().entries().await?;
+        let plugins = self.plugins().entries().await.map_err(StorageError::from)?;
         let plugin_states = self.plugins().page_states().await?;
         let public_url = services
             .public_url
@@ -243,7 +243,7 @@ impl Shard {
                 state: self.services().upgrades.update_state(),
             },
             Part::Plugins => SyncEvent::Plugins {
-                plugins: self.plugins().entries().await?,
+                plugins: self.plugins().entries().await.map_err(StorageError::from)?,
             },
             Part::Plugin(plugin) => {
                 let Some(state) = self.plugins().page_state(plugin).await? else {

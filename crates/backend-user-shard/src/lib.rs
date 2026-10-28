@@ -9,7 +9,7 @@
 //!
 //! The shard implements what the Cloud, the conversations' host access, the
 //! conversation permissions and the plugin host need of it (`CloudShard`,
-//! `HostShard`, `PermissionShard`, `PluginShard`).
+//! `HostShard`, `PermissionShard`, `ProductPort`).
 //!
 //! A user's conversations, devices, workspaces and attachments belong to that
 //! user alone in both instance modes. An administrator's role gives no access to

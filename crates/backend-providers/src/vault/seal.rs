@@ -3,7 +3,7 @@
 //!
 //! It is stored as one BLOB of a random 12-byte nonce, the ciphertext and the 16-byte tag.
 //!
-//! The plugins' secrets are sealed here too (`crates/backend-plugins/src/secrets.rs`), through the
+//! The plugins' secrets are sealed here too (`crates/plugin-host/src/secrets.rs`), through the
 //! product's side of the plugin host's port, and so are the values of the users' credentials.
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};

@@ -263,7 +263,7 @@ parts for anything:
   configuration.
 - The runner you install on your machines, and the library that drives it.
 - The commands.
-- The plugins and their SDK.
+- The plugins, their SDK, and the host that runs them.
 - The UI component library and its gallery.
 - The protocols.
 - The docs.

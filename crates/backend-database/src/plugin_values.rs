@@ -1,5 +1,5 @@
 //! The users' plugin choices and plugin values
-//! (`crates/backend-plugins/src/lib.rs`).
+//! (`crates/plugin-host/src/lib.rs`).
 //!
 //! The module stores:
 //!
@@ -14,10 +14,10 @@
 use std::collections::BTreeMap;
 
 use demi_plugin_interface::{DirectoryFile, HostDirectory};
+use demi_plugin_host::store::{PluginValue, ValueWrite, Written};
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::UserId;
 use rusqlite::{Connection, OptionalExtension, params};
-use serde_json::Value;
 
 use super::StorageError;
 use super::columns::decode;
@@ -25,13 +25,6 @@ use super::control::ControlService;
 
 const TABLE: &str = "plugin_values";
 const DIRECTORIES: &str = "plugin_directories";
-
-/// A stored value and its revision.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PluginValue {
-    pub document: Value,
-    pub revision: u64,
-}
 
 impl ControlService {
     /// Each plugin `user` turned on or off, by id; one the user never
@@ -256,28 +249,6 @@ impl ControlService {
         })
         .await
     }
-}
-
-/// A write of a plugin value.
-pub struct ValueWrite {
-    pub user: UserId,
-    pub plugin: String,
-    pub key: String,
-    pub document: Value,
-    /// The revision the write read; none for a value that does not exist
-    /// yet.
-    pub revision: Option<u64>,
-    /// The blobs the value names.
-    pub blobs: Vec<BlobRef>,
-}
-
-/// What a conditional write of a plugin value or secret did.
-#[derive(Debug)]
-pub enum Written {
-    /// The value's new revision.
-    Revision(u64),
-    /// Another write came first.
-    Conflict,
 }
 
 /// The blobs `user`'s plugins name: each value's list, and the files of each

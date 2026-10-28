@@ -42,7 +42,7 @@ use std::sync::Arc;
 
 use demi_agent_server::AgentServer;
 use demi_backend_cloud::machine::Cloud;
-use demi_backend_plugins::UserPlugins;
+use demi_plugin_host::UserPlugins;
 use demi_runner_client::{ARRIVAL, Pipes};
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::router::CommandRouter;
@@ -203,8 +203,8 @@ impl Shard {
                 services: services.clone(),
                 web,
             }),
-            services.control.clone(),
-            services.sync.of(&user),
+            Rc::new(services.control.clone()),
+            Rc::new(services.sync.of(&user)),
         );
         let ConversationParts { agent, titles } = conversation::conversation_parts(
             shard.clone(),

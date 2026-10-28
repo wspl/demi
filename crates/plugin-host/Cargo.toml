@@ -1,8 +1,8 @@
 [package]
-name = "demi-backend-plugins"
+name = "demi-plugin-host"
 version.workspace = true
 edition.workspace = true
-license = "LicenseRef-Demi-License"
+license.workspace = true
 publish.workspace = true
 
 [lib]
@@ -12,8 +12,6 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-backend-database = { path = "../backend-database" }
-demi-backend-page-sync = { path = "../backend-page-sync" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }

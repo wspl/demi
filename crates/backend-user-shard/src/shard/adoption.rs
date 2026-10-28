@@ -14,7 +14,7 @@ use axum::extract::ws::Message;
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
-use demi_backend_plugins::Lost;
+use demi_plugin_host::Lost;
 use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
 use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};

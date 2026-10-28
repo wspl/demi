@@ -81,7 +81,7 @@ impl fmt::Debug for StoredSecret {
     }
 }
 
-/// One outbound request (`crates/backend-plugins/src/web.rs`): only `https`,
+/// One outbound request (`crates/plugin-host/src/web.rs`): only `https`,
 /// with a deadline and a limit on the response's body the plugin names.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

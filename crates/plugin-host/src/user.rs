@@ -23,11 +23,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_backend_database::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::panels::PanelOutcome;
-use demi_backend_database::plugin_values::{ValueWrite, Written};
-use demi_backend_page_sync::{Part, UserMarks};
+use crate::store::StoreError;
+use crate::store::PanelOutcome;
+use crate::store::{PluginChanges, PluginStore, ValueWrite, Written};
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
@@ -222,7 +220,7 @@ pub enum PanelError {
     #[error("No conversation of that id")]
     Missing,
     #[error(transparent)]
-    Storage(#[from] StorageError),
+    Storage(#[from] StoreError),
 }
 
 impl PanelError {
@@ -254,7 +252,7 @@ pub enum SwitchError {
     #[error("No plugin \"{0}\"")]
     UnknownPlugin(String),
     #[error(transparent)]
-    Storage(#[from] StorageError),
+    Storage(#[from] StoreError),
 }
 
 /// What follows from a plugin turned on or off that the product does.
@@ -292,10 +290,10 @@ pub(crate) struct Shared {
     /// request made it.
     lives: RefCell<Vec<Option<Live>>>,
     pub(crate) product: Rc<dyn ProductPort>,
-    pub(crate) control: ControlService,
+    pub(crate) store: Rc<dyn PluginStore>,
     /// The user's OAuth sign-ins under way, and the turns of their renewals.
     pub(crate) sign_ins: SignIns,
-    marks: UserMarks,
+    changes: Rc<dyn PluginChanges>,
     /// Whether the user has each plugin on, by its index, once read: every
     /// switch goes through this shard, so the copy stays current.
     enabled: RefCell<Option<Vec<bool>>>,
@@ -393,11 +391,11 @@ impl Shared {
     }
 
     /// Whether the user has each plugin on, by its index.
-    async fn enabled(&self) -> Result<Vec<bool>, StorageError> {
+    async fn enabled(&self) -> Result<Vec<bool>, StoreError> {
         if let Some(enabled) = &*self.enabled.borrow() {
             return Ok(enabled.clone());
         }
-        let choices = self.control.user_plugins(self.user.clone()).await?;
+        let choices = self.store.switches(self.user.clone()).await?;
         let enabled: Vec<bool> = self
             .registry
             .plugins
@@ -420,15 +418,7 @@ impl Shared {
     /// The Host the conversation works on, from the records: none for a
     /// Cloud conversation whose Cloud was never made. It asks no Host.
     async fn primary_device(&self, conversation: &ConversationId) -> Result<Option<DeviceId>, PortFailure> {
-        let Some(record) = self.control.conversation(conversation.clone()).await.map_err(storage)? else {
-            return Ok(None);
-        };
-        let target = self
-            .control
-            .execution_target(record.owner, record.id, record.target)
-            .await
-            .map_err(storage)?;
-        Ok(target.device().cloned())
+        self.store.primary_device(conversation.clone()).await.map_err(storage)
     }
 
     fn revision(&self, plugin: usize, conversation: &ConversationId) -> u64 {
@@ -441,11 +431,11 @@ impl Shared {
     /// which the conversation's metadata carries.
     pub(crate) fn changed(&self, plugin: usize, conversation: Option<&ConversationId>) {
         match conversation {
-            None => self.marks.mark(Part::Plugin(self.plugin_id(plugin))),
+            None => self.changes.plugin_changed(self.plugin_id(plugin)),
             Some(conversation) => {
                 let key = (plugin, conversation.clone());
                 *self.revisions.borrow_mut().entry(key).or_default() += 1;
-                self.marks.mark(Part::Metadata(conversation.clone()));
+                self.changes.metadata_changed(conversation.clone());
             }
         }
     }
@@ -459,12 +449,12 @@ impl Shared {
         changes: Vec<PanelChange>,
     ) -> Result<(u64, Vec<PanelEffect>), PanelError> {
         match self
-            .control
+            .store
             .change_panel(conversation.clone(), changes)
             .await?
         {
             PanelOutcome::Changed { revision, effects } => {
-                self.marks.mark(Part::Conversation(conversation.clone()));
+                self.changes.conversation_changed(conversation.clone());
                 Ok((revision, effects))
             }
             PanelOutcome::Unchanged { revision } => Ok((revision, Vec::new())),
@@ -539,11 +529,11 @@ impl Shared {
     }
 
     /// Each plugin's Host directories, by its index.
-    async fn directories(&self) -> Result<Vec<Vec<HostDirectory>>, StorageError> {
+    async fn directories(&self) -> Result<Vec<Vec<HostDirectory>>, StoreError> {
         if let Some(directories) = &*self.directories.borrow() {
             return Ok(directories.clone());
         }
-        let mut stored = self.control.plugin_directories(self.user.clone()).await?;
+        let mut stored = self.store.directories(self.user.clone()).await?;
         let directories: Vec<Vec<HostDirectory>> = self
             .registry
             .plugins
@@ -563,8 +553,8 @@ impl Shared {
     ) -> Result<Vec<DirectoryPath>, PortFailure> {
         HostDirectory::check_set(&directories).map_err(PortError::Failed)?;
         let mut current = self.directories().await.map_err(storage)?;
-        self.control
-            .set_plugin_directories(
+        self.store
+            .set_directories(
                 self.user.clone(),
                 self.plugin_id(plugin),
                 directories.clone(),
@@ -601,14 +591,14 @@ pub enum Lost<'a> {
 
 impl UserPlugins {
     /// An instance of every plugin of `registry` for `user`, whose port
-    /// reaches `product`, the user's values in `control` and the user's
-    /// pages through `marks`.
+    /// reaches `product`, the user's values in `store` and the user's
+    /// pages through `changes`.
     pub fn new(
         registry: Arc<Registry>,
         user: UserId,
         product: Rc<dyn ProductPort>,
-        control: ControlService,
-        marks: UserMarks,
+        store: Rc<dyn PluginStore>,
+        changes: Rc<dyn PluginChanges>,
     ) -> Self {
         let lives = registry.plugins.iter().map(|_| None).collect();
         let sign_ins = SignIns::new(registry.plugins.len());
@@ -617,9 +607,9 @@ impl UserPlugins {
             user,
             lives: RefCell::new(lives),
             product,
-            control,
+            store,
             sign_ins,
-            marks,
+            changes,
             enabled: RefCell::new(None),
             switched: RefCell::default(),
             directories: RefCell::new(None),
@@ -628,13 +618,13 @@ impl UserPlugins {
     }
 
     /// Whether the user has each plugin on, by its index.
-    async fn enabled(&self) -> Result<Vec<bool>, StorageError> {
+    async fn enabled(&self) -> Result<Vec<bool>, StoreError> {
         self.0.enabled().await
     }
 
     /// The backend's plugins with whether the user has each on, for the
     /// settings page.
-    pub async fn entries(&self) -> Result<Vec<PluginEntry>, StorageError> {
+    pub async fn entries(&self) -> Result<Vec<PluginEntry>, StoreError> {
         let enabled = self.enabled().await?;
         Ok(self
             .0
@@ -673,8 +663,8 @@ impl UserPlugins {
             return Ok(None);
         }
         self.0
-            .control
-            .set_user_plugin(self.0.user.clone(), plugin.to_owned(), enabled)
+            .store
+            .set_switch(self.0.user.clone(), plugin.to_owned(), enabled)
             .await?;
         current[index] = enabled;
         self.0.enabled.replace(Some(current.clone()));
@@ -688,10 +678,9 @@ impl UserPlugins {
         }
         let switched = std::mem::take(&mut *self.0.switched.borrow_mut());
         switched.cancel();
-        self.0.marks.mark(Part::Plugins);
+        self.0.changes.plugins_changed();
         self.0
-            .marks
-            .mark(Part::Plugin(registered.id().as_str().to_owned()));
+            .changes.plugin_changed(registered.id().as_str().to_owned());
         Ok(Some(Switched { released }))
     }
 
@@ -700,7 +689,7 @@ impl UserPlugins {
     /// when it connects, as turning their plugin off stops them on a connected
     /// one. A list of what is off, not of what is on, since a Host also runs
     /// packages no plugin binds.
-    pub async fn stopped_packages(&self) -> Result<Vec<String>, StorageError> {
+    pub async fn stopped_packages(&self) -> Result<Vec<String>, StoreError> {
         let current = self.enabled().await?;
         let registry = &self.0.registry;
         let off = registry
@@ -737,24 +726,24 @@ impl UserPlugins {
     /// Removes the tabs of plugin `plugin`'s kinds from every panel of the
     /// user's conversations, archived ones included, and marks the entry in the
     /// list of each that changed.
-    async fn close_tabs(&self, plugin: usize) -> Result<(), StorageError> {
+    async fn close_tabs(&self, plugin: usize) -> Result<(), StoreError> {
         let Some(page) = &self.0.registry.plugins[plugin].page else {
             return Ok(());
         };
         let closed = self
             .0
-            .control
+            .store
             .close_panel_kinds(self.0.user.clone(), page.panel_kinds.clone())
             .await?;
         for conversation in closed {
-            self.0.marks.mark(Part::Conversation(conversation));
+            self.0.changes.conversation_changed(conversation);
         }
         Ok(())
     }
 
     /// The toolset of the plugins the user has on: their commands, with the
     /// product's `product` groups under `demi`.
-    pub async fn toolset(&self, product: Vec<GroupBuilder>) -> Result<PluginToolset, StorageError> {
+    pub async fn toolset(&self, product: Vec<GroupBuilder>) -> Result<PluginToolset, StoreError> {
         let enabled = self.enabled().await?;
         let commands = compose(&self.0.registry, Some(&self.0), product, |index| {
             enabled[index]
@@ -767,7 +756,7 @@ impl UserPlugins {
     }
 
     /// The revision of the toolset the user's plugins give now.
-    pub async fn revision(&self) -> Result<String, StorageError> {
+    pub async fn revision(&self) -> Result<String, StoreError> {
         let enabled = self.enabled().await?;
         Ok(self.revision_of(&enabled))
     }
@@ -823,7 +812,7 @@ impl UserPlugins {
     }
 
     /// Whether `plugin` declares a project search and the user has it on.
-    pub async fn searches_projects(&self, plugin: &PluginId) -> Result<bool, StorageError> {
+    pub async fn searches_projects(&self, plugin: &PluginId) -> Result<bool, StoreError> {
         let Some((index, registered)) = self.0.registry.plugin(plugin.as_str()) else {
             return Ok(false);
         };
@@ -871,7 +860,7 @@ impl UserPlugins {
     /// Every plugin's Host directories for the user, which host access
     /// installs before a job: a plugin the user has off has none, so a Host
     /// loses its directories at its next installation.
-    pub async fn directories(&self) -> Result<Vec<(PluginId, Vec<HostDirectory>)>, StorageError> {
+    pub async fn directories(&self) -> Result<Vec<(PluginId, Vec<HostDirectory>)>, StoreError> {
         let enabled = self.enabled().await?;
         let directories = self.0.directories().await?;
         Ok(self
@@ -897,7 +886,7 @@ impl UserPlugins {
 
     /// What ends the user stream `name` once its plugin is turned off; none
     /// while the user has its plugin off, when the stream does not exist.
-    pub async fn stream_end(&self, name: &str) -> Result<Option<CancellationToken>, StorageError> {
+    pub async fn stream_end(&self, name: &str) -> Result<Option<CancellationToken>, StoreError> {
         let Some(index) = self.0.registry.stream_owner(name) else {
             return Ok(None);
         };
@@ -1013,7 +1002,7 @@ impl UserPlugins {
             return;
         }
         for conversation in conversations {
-            let panel = match self.0.control.panel(conversation.clone()).await {
+            let panel = match self.0.store.panel(conversation.clone()).await {
                 Ok(panel) => panel,
                 Err(error) => {
                     // The plugin then shows the lost state until its
@@ -1062,8 +1051,8 @@ impl UserPlugins {
     }
 
     /// The conversation's work panel.
-    pub async fn panel(&self, conversation: ConversationId) -> Result<WorkPanel, StorageError> {
-        self.0.control.panel(conversation).await
+    pub async fn panel(&self, conversation: ConversationId) -> Result<WorkPanel, StoreError> {
+        self.0.store.panel(conversation).await
     }
 
     /// The held conversation states of the plugins the user has on whose
@@ -1075,7 +1064,7 @@ impl UserPlugins {
         &self,
         conversation: ConversationId,
         cancel: CancellationToken,
-    ) -> Result<Vec<HeldState>, StorageError> {
+    ) -> Result<Vec<HeldState>, StoreError> {
         let enabled = self.enabled().await?;
         let mut states = Vec::new();
         for (index, registered) in self.0.registry.plugins.iter().enumerate() {
@@ -1292,8 +1281,8 @@ impl RequestPort {
             }
             PortMessage::ReadValue { key } => {
                 let value = shared
-                    .control
-                    .plugin_value(shared.user.clone(), shared.plugin_id(self.plugin), key)
+                    .store
+                    .value(shared.user.clone(), shared.plugin_id(self.plugin), key)
                     .await
                     .map_err(storage)?;
                 PortAnswer::Value {
@@ -1302,8 +1291,8 @@ impl RequestPort {
             }
             PortMessage::ListValues => {
                 let values = shared
-                    .control
-                    .plugin_values(shared.user.clone(), shared.plugin_id(self.plugin))
+                    .store
+                    .values(shared.user.clone(), shared.plugin_id(self.plugin))
                     .await
                     .map_err(storage)?;
                 PortAnswer::Values {
@@ -1328,8 +1317,8 @@ impl RequestPort {
                     blobs,
                 };
                 let written = shared
-                    .control
-                    .write_plugin_value(write)
+                    .store
+                    .write_value(write)
                     .await
                     .map_err(storage)?;
                 match written {
@@ -1339,8 +1328,8 @@ impl RequestPort {
             }
             PortMessage::RemoveValue { key, revision } => {
                 let removed = shared
-                    .control
-                    .remove_plugin_value(
+                    .store
+                    .remove_value(
                         shared.user.clone(),
                         shared.plugin_id(self.plugin),
                         key,
@@ -1398,8 +1387,8 @@ impl RequestPort {
                 let conversation = self.conversation()?;
                 let report = match shared.primary_device(conversation).await? {
                     Some(device) => shared
-                        .control
-                        .plugin_report(shared.plugin_id(self.plugin), conversation.clone(), device)
+                        .store
+                        .report(shared.plugin_id(self.plugin), conversation.clone(), device)
                         .await
                         .map_err(storage)?,
                     None => None,
@@ -1419,8 +1408,8 @@ impl RequestPort {
                 })?;
                 let conversation = self.conversation()?;
                 shared
-                    .control
-                    .keep_plugin_report(
+                    .store
+                    .keep_report(
                         shared.plugin_id(self.plugin),
                         conversation.clone(),
                         device.clone(),
@@ -1435,7 +1424,7 @@ impl RequestPort {
             PortMessage::PanelTabs => {
                 let registered = &shared.registry.plugins[self.plugin];
                 let mut panel = shared
-                    .control
+                    .store
                     .panel(self.conversation()?.clone())
                     .await
                     .map_err(storage)?;
@@ -1567,7 +1556,7 @@ fn job_failure(message: &str) -> PortFailure {
     async fn own_tab(&self, id: &str) -> Result<(), PortFailure> {
         let panel = self
             .shared
-            .control
+            .store
             .panel(self.conversation()?.clone())
             .await
             .map_err(storage)?;
@@ -1599,7 +1588,7 @@ impl PluginTransport for RequestPort {
     }
 }
 
-fn stored(value: demi_backend_database::plugin_values::PluginValue) -> StoredValue {
+fn stored(value: crate::store::PluginValue) -> StoredValue {
     StoredValue {
         value: value.document,
         revision: value.revision,
@@ -1608,6 +1597,6 @@ fn stored(value: demi_backend_database::plugin_values::PluginValue) -> StoredVal
 
 /// A storage failure as the port reports it: the operation failed, which a
 /// plugin cannot cause.
-pub(crate) fn storage(error: StorageError) -> PortFailure {
+pub(crate) fn storage(error: StoreError) -> PortFailure {
     PortFailure::Port(PortError::Failed(error.to_string()))
 }

@@ -12,7 +12,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_plugins::{PageCall, PageCallError, SwitchError};
+use demi_plugin_host::{PageCall, PageCallError, SwitchError};
 use demi_backend_user_shard::shard::ReloadRefusal;
 use demi_plugin_interface::{PluginError, PortRefusal};
 use demi_web_api_protocol::error::ErrorCode;

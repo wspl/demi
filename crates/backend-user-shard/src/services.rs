@@ -23,7 +23,7 @@ use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_backend_host_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
-use demi_backend_plugins::{Registry, RegistryError};
+use demi_plugin_host::{Registry, RegistryError};
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_provider_registry::catalog_cache::ModelCatalogCache;
 use demi_provider_registry::claude_releases::ClaudeReleases;
@@ -103,7 +103,7 @@ pub struct Services {
     pub media_tuning: MediaTuning,
     /// The command packages each shard's catalog is built from.
     pub native: NativeCatalog,
-    /// The backend's plugins, checked at startup (`crates/backend-plugins/src/lib.rs`).
+    /// The backend's plugins, checked at startup (`crates/plugin-host/src/lib.rs`).
     pub plugins: Arc<Registry>,
     /// The user streams a page may open.
     pub user_streams: UserStreams,

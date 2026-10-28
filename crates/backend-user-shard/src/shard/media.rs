@@ -42,7 +42,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_database::usage::{UsageRow, merge_windows};
-use demi_backend_plugins::VideoJob;
+use demi_plugin_host::VideoJob;
 use demi_provider_registry::store::StoreError;
 use demi_provider_registry::registry::{RegistryError, MakerOf};
 use demi_provider_registry::rotation::{Choice, USED_UP_FOR_MS};
