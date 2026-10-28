@@ -82,7 +82,7 @@ pub enum UpgradePreparation {
     Installing { version: String },
     /// Update Now has only the checks and the restart left.
     Ready { version: String },
-    /// The work failed; the next hourly check tries again.
+    /// The work failed; the next check tries again.
     Failed { version: String, reason: String },
 }
 
