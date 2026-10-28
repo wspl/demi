@@ -1,8 +1,13 @@
-//! The Cloud (`crates/machine-manager/src/lib.rs`): each user's one managed
-//! device, a Host behind a runner like a paired device, which the machine
-//! manager runs as a gVisor sandbox.
+//! The Cloud (`crates/machine-manager/src/lib.rs`): a user's managed device, a
+//! Host behind a runner like a paired device, which the machine manager runs
+//! as a gVisor sandbox.
 //!
-//! The user's shard holds the Cloud's machine:
+//! A user holds their own Cloud, the one the web app shows, starts and resets,
+//! which the user's record names and a conversation targets by kind; and any
+//! number of others, which a conversation targets by their device as it
+//! targets a paired one. Each is a machine of its own.
+//!
+//! The user's shard holds each Cloud's machine, by its device:
 //!
 //! - Its phase, and the capacity permit it holds while it is not stopped.
 //! - Its gate, which every operation on it holds and which an idle stop and a
@@ -62,7 +67,7 @@
 //!
 //! # The Claude Code machine
 //!
-//! Besides each user's Cloud the manager keeps one more machine, where every
+//! Besides the users' Clouds the manager keeps one more machine, where every
 //! CLI process of the Claude Code provider runs, for every user. It holds each
 //! account's sign-in in a directory of its own, so the one copy of a sign-in
 //! lives where no user has a shell.
@@ -77,8 +82,8 @@
 //! - Only the backend's machine access reaches it.
 //!
 //! Its record belongs to the instance's master, as a managed machine of a
-//! second kind beside the master's Cloud (one of each per user at most, the
-//! second for the master only). So the master's shard holds it: its runner is
+//! second kind beside the master's Clouds (one per user at most, the master
+//! only). So the master's shard holds it: its runner is
 //! adopted there, and its phase, admission and idle watch run there.
 //!
 //! Its activity is the work in flight on it, not any conversation of the

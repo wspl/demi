@@ -15,7 +15,11 @@ CREATE TABLE users (
   last_active_at INTEGER,
   -- The size of the account's Cloud disks in whole GB, which its Cloud's next start takes.
   cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_system_gb BETWEEN 1 AND 1024),
-  cloud_home_gb   INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024)
+  cloud_home_gb   INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024),
+  -- The device of the user's own Cloud, the one the web app shows; none
+  -- before its first use. Other Clouds of the user are managed devices it
+  -- does not name.
+  cloud_device_id TEXT
 ) STRICT;
 CREATE UNIQUE INDEX users_one_master ON users (role) WHERE role = 'master';
 
@@ -210,7 +214,7 @@ CREATE TABLE devices (
   -- computer); none when it does, or before its runner first said.
   autostart_unavailable TEXT
 ) STRICT;
-CREATE UNIQUE INDEX devices_one_machine ON devices (user_id, machine) WHERE kind = 'managed';
+CREATE UNIQUE INDEX devices_one_claude_code ON devices (user_id) WHERE machine = 'claude_code';
 
 -- A workspace: a part of the user's account with conversations and
 -- projects of its own, which the sidebar shows one at a time. Its name is

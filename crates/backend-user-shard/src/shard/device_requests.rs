@@ -156,7 +156,7 @@ pub(crate) async fn through_device(control: &ControlService, entry: &ProviderEnt
     let id = entry.through_device.as_ref()?;
     let read = async {
         let mut devices = control.paired_devices(entry.owner.clone()).await?;
-        devices.extend(control.managed_device(entry.owner.clone()).await?);
+        devices.extend(control.clouds(entry.owner.clone()).await?);
         Ok::<_, StorageError>(devices)
     };
     let devices = match read.await {
