@@ -16,13 +16,16 @@
 //!
 //! A credential has no owner of its own: it belongs to a provider entry, and
 //! every entry belongs to a user. Instance mode, which the master changes at
-//! any time, only decides whose entries a user infers with: a change moves no
-//! entry, and each reader of the entries meets the new owner's from its next
-//! read. There is no ownerless entry and no second kind of credential.
+//! any time, only decides whose entries a user infers with, kind by kind
+//! ([`Owners`]): a change moves no entry, and each reader of the entries meets
+//! the new owners' from its next read. There is no ownerless entry and no
+//! second kind of credential.
 //!
-//! A shared instance offers no subscription entry: the vault reads none, the
-//! master's included, and refuses a sign-in. The entries stay stored for the
-//! isolated mode.
+//! A user manages the entries they own and infer with, and no other: on a
+//! shared instance every user signs in to subscriptions of their own, which
+//! nobody else infers with, and only the master changes the API keys. A
+//! user's own API keys stay stored on a shared instance, and come back with
+//! the isolated mode.
 //!
 //! On a shared instance the master's credentials are used by many users on
 //! many workers at once, so:
@@ -45,10 +48,10 @@ use demi_provider_common::credentials::{
     credential_id_for, decode_secret,
 };
 use demi_shared_types::{CacheTtl, Timestamp};
-use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, Rotation};
 use demi_web_api_protocol::settings::InstanceMode;
+use demi_web_api_protocol::state::ManagedKinds;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -66,6 +69,8 @@ struct Shared {
     key: VaultKey,
     /// The mode the control store holds, which `set_mode` writes after it.
     mode: std::sync::RwLock<InstanceMode>,
+    /// Whether a shared instance's users infer with the master's
+    /// subscriptions rather than their own (`DEMI_SHARED_SUBSCRIPTIONS`).
     shared_subscriptions: bool,
     /// The master, whose entries a shared instance's users infer with; setup
     /// creates it once and it never changes.
@@ -121,6 +126,34 @@ struct SealedConfig {
     config: ApiKeyConfig,
 }
 
+/// Whose entries a user infers with, by kind: their own, or the master's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Owners {
+    user: UserId,
+    api_keys: UserId,
+    subscriptions: UserId,
+}
+
+impl Owners {
+    /// The owner of the entries of `kind` the user infers with.
+    pub fn of(&self, kind: CredentialKind) -> &UserId {
+        match kind {
+            CredentialKind::ApiKey => &self.api_keys,
+            CredentialKind::Subscription => &self.subscriptions,
+        }
+    }
+
+    /// Whether the user infers with `entry`.
+    pub fn holds(&self, entry: &ProviderEntry) -> bool {
+        entry.owner == *self.of(entry.kind())
+    }
+
+    /// Whether the user adds the entries of `kind` they infer with: an API
+    /// key, or a subscription by its sign-in.
+    pub fn manages(&self, kind: CredentialKind) -> bool {
+        *self.of(kind) == self.user
+    }
+}
 
 impl Vault {
     /// The vault of an instance whose control store holds `mode`.
@@ -241,30 +274,13 @@ impl Vault {
         Ok(())
     }
 
-    /// Whether the instance offers subscription entries now: an isolated
-    /// one does.
-    pub fn offers_subscriptions(&self) -> bool {
-        self.mode() == InstanceMode::Isolated || self.0.shared_subscriptions
-    }
-
     pub fn shared_subscriptions(&self) -> bool {
         self.0.shared_subscriptions
     }
 
-    /// Whether `user` configures the entries of their scope: everyone on an
-    /// isolated instance, only the master on a shared one.
-    pub fn configures(&self, user: &UserDto) -> bool {
-        self.mode() == InstanceMode::Isolated || user.role == Role::Master
-    }
-
-    /// Whose entries `user` infers with: their own on an isolated instance, the
-    /// master's on a shared one.
-    pub async fn owner_for(&self, user: &UserId) -> Result<UserId, StorageError> {
-        if self.mode() == InstanceMode::Isolated {
-            return Ok(user.clone());
-        }
-        let master = self
-            .0
+    /// The master, whose entries a shared instance's users infer with.
+    async fn master(&self) -> Result<&UserId, StorageError> {
+        self.0
             .master
             .get_or_try_init(|| async {
                 match self.0.control.master().await? {
@@ -278,30 +294,78 @@ impl Vault {
                     }),
                 }
             })
-            .await?;
-        Ok(master.clone())
+            .await
+    }
+
+    /// Whose entries `user` infers with: their own on an isolated instance;
+    /// on a shared one the master's API keys, and their own subscriptions,
+    /// or the master's when `DEMI_SHARED_SUBSCRIPTIONS` shares them.
+    pub async fn owners(&self, user: &UserId) -> Result<Owners, StorageError> {
+        if self.mode() == InstanceMode::Isolated {
+            return Ok(Owners {
+                user: user.clone(),
+                api_keys: user.clone(),
+                subscriptions: user.clone(),
+            });
+        }
+        let master = self.master().await?;
+        Ok(Owners {
+            user: user.clone(),
+            api_keys: master.clone(),
+            subscriptions: if self.0.shared_subscriptions { master } else { user }.clone(),
+        })
+    }
+
+    /// Which kinds of the entries `user` infers with are their own.
+    pub async fn managed_kinds(&self, user: &UserId) -> Result<ManagedKinds, StorageError> {
+        let owners = self.owners(user).await?;
+        Ok(ManagedKinds {
+            api_keys: owners.manages(CredentialKind::ApiKey),
+            subscriptions: owners.manages(CredentialKind::Subscription),
+        })
+    }
+
+    /// Whether `user` manages `entry`, one of the entries they infer with:
+    /// reads its accounts, plan and usage, and changes it. They do when they
+    /// own it.
+    pub fn manages(user: &UserId, entry: &ProviderEntry) -> bool {
+        entry.owner == *user
     }
 
     /// Marks the providers changed on the channels of every user who infers
-    /// with the entries of `owner`: every user on a shared instance, the
-    /// owner alone on an isolated one.
-    pub fn mark_changed(&self, owner: &UserId) {
-        match self.mode() {
-            InstanceMode::Shared => self.0.sync.mark_everyone(&Part::Providers),
-            InstanceMode::Isolated => self.0.sync.mark(owner, Part::Providers),
+    /// with `owner`'s entries of `kind`: everyone for the master's entries a
+    /// shared instance shares, the owner alone for any other.
+    pub async fn mark_changed(&self, owner: &UserId, kind: CredentialKind) {
+        let shares = self.mode() == InstanceMode::Shared
+            && (kind == CredentialKind::ApiKey || self.0.shared_subscriptions);
+        if shares {
+            match self.master().await {
+                Ok(master) if master == owner => {
+                    self.0.sync.mark_everyone(&Part::Providers);
+                    return;
+                }
+                Ok(_) => {}
+                // Nobody's pages miss the change, whoever's it was.
+                Err(error) => {
+                    tracing::warn!(
+                        event = "entry_change.master_unread",
+                        error = &error as &dyn std::error::Error,
+                        "the master was not read, so a change of an entry is marked on every page"
+                    );
+                    self.0.sync.mark_everyone(&Part::Providers);
+                    return;
+                }
+            }
         }
+        self.0.sync.mark(owner, Part::Providers);
     }
 
     /// Marks the providers changed for every user who infers with the entry
     /// `id`. A lookup that fails is logged: the pages then show the change
     /// with the entry's next one.
     pub async fn mark_entry_changed(&self, id: &ProviderId) {
-        if self.mode() == InstanceMode::Shared {
-            self.0.sync.mark_everyone(&Part::Providers);
-            return;
-        }
         match self.0.control.provider(id.clone()).await {
-            Ok(Some(row)) => self.0.sync.mark(&row.owner, Part::Providers),
+            Ok(Some(row)) => self.mark_changed(&row.owner, row.kind).await,
             // An entry deleted meanwhile marked its owner as it went.
             Ok(None) => {}
             Err(error) => tracing::warn!(
@@ -313,33 +377,42 @@ impl Vault {
         }
     }
 
-    /// The entry `id` when it is one of `user`'s scope.
+    /// The entry `id` when `user` infers with it.
     pub async fn visible(
         &self,
         user: &UserId,
         id: &ProviderId,
     ) -> Result<Option<ProviderEntry>, StorageError> {
-        let owner = self.owner_for(user).await?;
+        let owners = self.owners(user).await?;
         let entry = self.entry(id.clone()).await?;
-        Ok(entry.filter(|entry| entry.owner == owner))
+        Ok(entry.filter(|entry| owners.holds(entry)))
     }
 
-    /// The owner's entries the instance offers, in the order of Settings ›
-    /// Providers.
+    /// The entries `user` infers with, in the order of Settings › Providers:
+    /// the subscriptions in their owner's order, then the API keys in
+    /// theirs.
+    pub async fn entries_for(&self, user: &UserId) -> Result<Vec<ProviderEntry>, StorageError> {
+        let owners = self.owners(user).await?;
+        let mut entries = self.entries(owners.subscriptions.clone()).await?;
+        if owners.api_keys != owners.subscriptions {
+            entries.extend(self.entries(owners.api_keys.clone()).await?);
+        }
+        entries.retain(|entry| owners.holds(entry));
+        entries.sort_by_key(|entry| entry.kind() != CredentialKind::Subscription);
+        Ok(entries)
+    }
+
+    /// Every entry `owner` holds, in their order, whether or not anyone
+    /// infers with it now.
     pub async fn entries(&self, owner: UserId) -> Result<Vec<ProviderEntry>, StorageError> {
         let rows = self.0.control.providers(owner).await?;
-        let offered = self.offers_subscriptions();
-        rows.into_iter()
-            .map(|row| self.decode(row))
-            .filter(|entry| !entry.as_ref().is_ok_and(|entry| !offered && entry.kind() == CredentialKind::Subscription))
-            .collect()
+        rows.into_iter().map(|row| self.decode(row)).collect()
     }
 
-    /// The entry `id`, when the instance offers it.
+    /// The entry `id`.
     pub async fn entry(&self, id: ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
         let row = self.0.control.provider(id).await?;
-        let entry = row.map(|row| self.decode(row)).transpose()?;
-        Ok(entry.filter(|entry| self.offers_subscriptions() || entry.kind() != CredentialKind::Subscription))
+        row.map(|row| self.decode(row)).transpose()
     }
 
     /// Stores a new API-key entry.
@@ -366,7 +439,7 @@ impl Vault {
         let row = self.0.control.insert_provider(provider, Vec::new()).await?;
         // An API-key entry is under no uniqueness rule.
         let row = row.expect("an API-key entry is always stored");
-        self.mark_changed(&row.owner);
+        self.mark_changed(&row.owner, row.kind).await;
         self.decode(row)
     }
 
@@ -424,7 +497,7 @@ impl Vault {
         };
         let row = self.0.control.insert_provider(provider, accounts).await?;
         if let Some(row) = &row {
-            self.mark_changed(&row.owner);
+            self.mark_changed(&row.owner, row.kind).await;
         }
         row.map(|row| self.decode(row)).transpose()
     }
@@ -497,7 +570,7 @@ impl Vault {
         if entry.active() != Some(&id) {
             self.set_active_account(&entry.id, id).await?;
         }
-        self.mark_changed(&entry.owner);
+        self.mark_changed(&entry.owner, entry.kind()).await;
         Ok(())
     }
 
@@ -522,29 +595,32 @@ impl Vault {
             .update_provider(id, label, family, sealed, rotation, switches, cache_ttl)
             .await?;
         if let Some(row) = &row {
-            self.mark_changed(&row.owner);
+            self.mark_changed(&row.owner, row.kind).await;
         }
         row.map(|row| self.decode(row)).transpose()
     }
 
-    /// Puts the owner's entries in the order `ids` names them; `false`,
-    /// changing nothing, unless it names each one the instance offers once.
-    /// The entries it does not offer, which no page lists, keep their order
-    /// before the others, where the subscriptions are.
-    pub async fn set_order(&self, owner: &UserId, ids: Vec<ProviderId>) -> Result<bool, StorageError> {
+    /// Puts the entries `user` owns and infers with in the order `ids` names
+    /// them; `false`, changing nothing, unless it names each one once. The
+    /// user's entries nobody infers with now, which no page lists, keep
+    /// their order before the others.
+    pub async fn set_order(&self, user: &UserId, ids: Vec<ProviderId>) -> Result<bool, StorageError> {
+        let owners = self.owners(user).await?;
         let mut all = Vec::new();
-        if !self.offers_subscriptions() {
-            for row in self.0.control.providers(owner.clone()).await? {
-                let entry = self.decode(row)?;
-                if entry.kind() == CredentialKind::Subscription {
-                    all.push(entry.id);
-                }
+        let mut kinds = Vec::new();
+        for entry in self.entries(user.clone()).await? {
+            if !owners.holds(&entry) {
+                all.push(entry.id);
+            } else if !kinds.contains(&entry.kind()) {
+                kinds.push(entry.kind());
             }
         }
         all.extend(ids);
-        let ordered = self.0.control.set_provider_order(owner.clone(), all).await?;
+        let ordered = self.0.control.set_provider_order(user.clone(), all).await?;
         if ordered {
-            self.mark_changed(owner);
+            for kind in kinds {
+                self.mark_changed(user, kind).await;
+            }
         }
         Ok(ordered)
     }
@@ -552,7 +628,7 @@ impl Vault {
     /// Deletes the entry with its accounts and catalog record.
     pub async fn delete(&self, entry: &ProviderEntry) -> Result<(), StorageError> {
         self.0.control.delete_provider(entry.id.clone()).await?;
-        self.mark_changed(&entry.owner);
+        self.mark_changed(&entry.owner, entry.kind()).await;
         Ok(())
     }
 

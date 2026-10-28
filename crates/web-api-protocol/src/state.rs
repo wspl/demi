@@ -25,6 +25,16 @@ use crate::users::ListedUser;
 use crate::projects::ProjectDto;
 use crate::workspaces::WorkspaceDto;
 
+/// Which kinds of the entries the user infers with are their own, which
+/// they add, order and change: on a shared instance the master's API keys,
+/// and with `DEMI_SHARED_SUBSCRIPTIONS` the master's subscriptions, are not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedKinds {
+    pub api_keys: bool,
+    pub subscriptions: bool,
+}
+
 /// The product state `GET /state` answers: the signed-in user, the instance
 /// mode, the user's preferences, the provider entries the user infers with and
 /// the catalog of their models, the user's projects in their order, the
@@ -40,6 +50,7 @@ pub struct ProductState {
     pub user: UserDto,
     pub mode: InstanceMode,
     pub shared_subscriptions: bool,
+    pub manages: ManagedKinds,
     pub preferences: Preferences,
     pub providers: Vec<ProviderState>,
     /// The models of the entries the user infers with, as the model menu
@@ -189,9 +200,11 @@ pub enum SyncEvent {
     Preferences {
         preferences: Preferences,
     },
-    /// The master changed the instance mode.
+    /// The master changed the instance mode, and with it which kinds of the
+    /// entries the user infers with are their own.
     Instance {
         mode: InstanceMode,
+        manages: ManagedKinds,
     },
     /// The account changed: its nickname, its email or its role, or its
     /// owner chose the password. The first message of the channel of an

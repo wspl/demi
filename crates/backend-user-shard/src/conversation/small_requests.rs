@@ -52,8 +52,7 @@ impl SmallRequests {
     /// with `conversation`, from the entries' catalogs as they are now.
     async fn resolve(&self, conversation: &ModelSelection) -> Result<ModelSelection, StorageError> {
         let services = &self.services;
-        let owner = services.vault.owner_for(&self.user).await?;
-        let entries = services.vault.entries(owner).await?;
+        let entries = services.vault.entries_for(&self.user).await?;
         let preferences = services.control.preferences(self.user.clone()).await?;
         let catalog = services.provider_registry.model_catalog(&entries, false).await;
         Ok(small_model(&catalog, &preferences, conversation))

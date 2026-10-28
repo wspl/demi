@@ -26,7 +26,8 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::request_id;
-use super::providers::{configures, reserve, scoped};
+use super::providers::{managed, reserve, scoped};
+use demi_backend_providers::vault::entries::Vault;
 use demi_backend_user_shard::services::Services;
 
 /// The entry's accounts; a user who only infers sees none.
@@ -36,7 +37,7 @@ pub(super) async fn list(
     Path(id): Path<String>,
 ) -> Result<Json<Accounts>, ApiError> {
     let entry = scoped(&services, &user, &id).await?;
-    let disclose = services.vault.configures(&user);
+    let disclose = Vault::manages(&user.id, &entry);
     Ok(Json(
         accounts::list(&services.vault, &entry, disclose).await?,
     ))
@@ -49,8 +50,7 @@ pub(super) async fn activate(
     Path(id): Path<String>,
     JsonBody(activate): JsonBody<ActivateAccount>,
 ) -> Result<Json<ActiveAccount>, ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
+    let entry = managed(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
     let active = accounts::activate(&services.vault, &services.provider_registry, &entry, activate.credential_id).await?;
     Ok(Json(ActiveAccount { active }))
@@ -63,8 +63,7 @@ pub(super) async fn reorder(
     Path(id): Path<String>,
     JsonBody(order): JsonBody<AccountOrder>,
 ) -> Result<StatusCode, ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
+    let entry = managed(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
     accounts::reorder(&services.vault, &entry, order.credential_ids).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -77,8 +76,7 @@ pub(super) async fn remove(
     AuthUser(user): AuthUser,
     Path((id, account)): Path<(String, String)>,
 ) -> Result<Json<RemovedAccount>, ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
+    let entry = managed(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
     let account = CredentialId::try_from(account).map_err(|_| ApiError::account_not_found())?;
     let active = accounts::remove(&services.vault, &services.provider_registry, &entry, account).await?;
@@ -100,17 +98,15 @@ pub(super) async fn start_login(
     AuthUser(user): AuthUser,
     JsonBody(login): JsonBody<SubscriptionLogin>,
 ) -> Result<(StatusCode, Json<LoginStarted>), ApiError> {
-    configures(&services, &user)?;
     let family = login.provider_type;
     let label = match login.label {
         Some(label) => label.into_string(),
         None => family_name(&family).to_owned(),
     };
-    let owner = services.vault.owner_for(&user.id).await?;
     let request = request_id::current_or_new();
     let id = services
         .logins
-        .start(owner, user.id, family, label, None, request)
+        .start(user.id, family, label, None, request)
         .await?;
     Ok(started(id))
 }
@@ -122,8 +118,7 @@ pub(super) async fn login_into(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<LoginStarted>), ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
+    let entry = managed(&services, &user, &id).await?;
     if entry.kind() != CredentialKind::Subscription {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -133,11 +128,10 @@ pub(super) async fn login_into(
     }
     let family = entry.family.clone();
     let label = entry.label.clone();
-    let owner = entry.owner.clone();
     let request = request_id::current_or_new();
     let id = services
         .logins
-        .start(owner, user.id, family, label, Some(entry), request)
+        .start(user.id, family, label, Some(entry), request)
         .await?;
     Ok(started(id))
 }
@@ -172,7 +166,6 @@ pub(super) async fn submit_code(
     Path(id): Path<String>,
     JsonBody(body): JsonBody<LoginCode>,
 ) -> Result<Json<CodeTaken>, ApiError> {
-    configures(&services, &user)?;
     let id = LoginId::try_from(id).map_err(|_| login_not_found())?;
     // The body allows one line only, which is what a secret is.
     let code = Secret::try_from(body.code.into_string()).map_err(|_| {
@@ -199,7 +192,6 @@ pub(super) async fn cancel_login(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    configures(&services, &user)?;
     let id = LoginId::try_from(id).map_err(|_| login_not_found())?;
     if services.logins.cancel(&id, &user.id).await {
         Ok(StatusCode::NO_CONTENT)

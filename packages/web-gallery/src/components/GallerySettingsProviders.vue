@@ -37,6 +37,8 @@ import { HOUR_SECONDS, WEEK_SECONDS, windowNamed } from '../fixtures/usage-limit
  */
 const props = defineProps<{
   state: SettingsState
+  /** Whether the user infers with API keys the master shares, as a user of a shared server does. */
+  sharedApiKeys?: boolean
 }>()
 
 const s = computed(() => props.state)
@@ -541,6 +543,7 @@ function closeLogin() {
     v-model:selected-id="s.selectedProviderId"
     v-model:detail-open="s.providerDetailOpen"
     :providers="s.providers"
+    :shared-api-keys="sharedApiKeys"
     :vendors="mockVendors"
     :overlay-store="appOverlayStore"
     :refreshing-usage="refreshingUsage"

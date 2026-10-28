@@ -29,6 +29,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::providers::MediaSwitches;
 use demi_provider_registry::families::{ProviderFamily, family_name};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
+use demi_backend_providers::vault::entries::Vault;
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{Secret, SecretError};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
@@ -134,10 +135,26 @@ fn plural(kind: ModelKind) -> &'static str {
 }
 
 impl Services {
-    /// Refuses a user who does not configure the entries of their scope.
-    pub fn may_configure(&self, user: &UserDto) -> Result<(), ProviderRefusal> {
-        if self.vault.configures(user) {
+    /// Refuses a user who infers with another's entries of `kind`, and so
+    /// adds none.
+    pub async fn may_add(&self, user: &UserId, kind: CredentialKind) -> Result<(), ProviderRefusal> {
+        if self.vault.owners(user).await?.manages(kind) {
             Ok(())
+        } else {
+            Err(ProviderRefusal::NotConfiguring)
+        }
+    }
+
+    /// The entry `id` when `user` infers with it and manages it; one they
+    /// only infer with is refused, and any other reads as missing.
+    pub async fn managed_entry(
+        &self,
+        user: &UserId,
+        id: &str,
+    ) -> Result<ProviderEntry, ProviderRefusal> {
+        let entry = self.scoped_entry(user, id).await?;
+        if Vault::manages(user, &entry) {
+            Ok(entry)
         } else {
             Err(ProviderRefusal::NotConfiguring)
         }
@@ -175,7 +192,7 @@ impl Services {
         user: &UserDto,
         body: CreateProvider,
     ) -> Result<ProviderEntry, ProviderRefusal> {
-        self.may_configure(user)?;
+        self.may_add(&user.id, CredentialKind::ApiKey).await?;
         let (family, label, config) = match body {
             CreateProvider::Vendor {
                 vendor_id,
@@ -265,7 +282,7 @@ impl Services {
             .families()
             .get(&family)
             .and_then(|family| family.default_cache_ttl());
-        let owner = self.vault.owner_for(&user.id).await?;
+        let owner = user.id.clone();
         let label = match label {
             Ok(given) => given.into_string(),
             Err(default) => {
@@ -289,8 +306,7 @@ impl Services {
         id: &str,
         patch: ProviderPatch,
     ) -> Result<ProviderEntry, ProviderRefusal> {
-        self.may_configure(user)?;
-        let entry = self.scoped_entry(&user.id, id).await?;
+        let entry = self.managed_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
         let protocol = patch.provider_type.is_some() || patch.wire_api.is_some();
         let image_shape = patch.media.as_ref().and_then(|media| media.image.as_ref()).and_then(|image| image.shape);
@@ -454,9 +470,7 @@ impl Services {
     /// each once: the order of Settings › Providers, which generated media
     /// try entries in.
     pub async fn order_providers(&self, user: &UserDto, ids: Vec<ProviderId>) -> Result<(), ProviderRefusal> {
-        self.may_configure(user)?;
-        let owner = self.vault.owner_for(&user.id).await?;
-        if !self.vault.set_order(&owner, ids).await? {
+        if !self.vault.set_order(&user.id, ids).await? {
             return Err(ProviderRefusal::Order);
         }
         Ok(())
@@ -469,8 +483,7 @@ impl Services {
         user: &UserDto,
         id: &str,
     ) -> Result<ProviderEntry, ProviderRefusal> {
-        self.may_configure(user)?;
-        let entry = self.scoped_entry(&user.id, id).await?;
+        let entry = self.managed_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
         self.vault.delete(&entry).await?;
         self.provider_registry.forget(&entry.id).await?;
@@ -510,8 +523,7 @@ impl Services {
         user: &UserId,
         waits: Option<bool>,
     ) -> Result<demi_web_api_protocol::providers::ModelCatalog, CatalogError> {
-        let owner = self.vault.owner_for(user).await?;
-        let entries = self.vault.entries(owner).await?;
+        let entries = self.vault.entries_for(user).await?;
         let preferences = self.control.preferences(user.clone()).await?;
         let mut providers = match waits {
             Some(refresh) => self.provider_registry.model_catalog(&entries, refresh).await,

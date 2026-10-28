@@ -141,7 +141,7 @@ function partEvent(state: ProductState, part: Part): PartEvent {
     case 'preferences':
       return { type: 'preferences', preferences: known(state.preferences, part) }
     case 'instance':
-      return { type: 'instance', mode: known(state.mode, part) }
+      return { type: 'instance', mode: known(state.mode, part), manages: known(state.manages, part) }
     case 'user':
       return { type: 'user', user: known(state.user, part) }
     case 'workspaces':
@@ -200,7 +200,7 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
     case 'preferences':
       return { ...state, preferences: event.preferences }
     case 'instance':
-      return { ...state, mode: event.mode }
+      return { ...state, mode: event.mode, manages: event.manages }
     case 'user':
       // A user's channel never carries the server's updates: an account made
       // a user drops what it held as an administrator.

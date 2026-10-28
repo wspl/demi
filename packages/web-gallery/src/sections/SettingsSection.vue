@@ -155,9 +155,10 @@ adding.providers = mockProviders().filter((entry) => ['claude-code', 'anthropic'
 adding.selectedProviderId = 'anthropic'
 adding.providerDetailOpen = true
 /** Providers each lacking a part: a sign-in, a key, a model, a key and a model. */
+/** A user of a shared server: their own subscriptions, and the master's API keys, which the page does not list. */
 const sharedKeys = createSettingsState()
-sharedKeys.providers = mockProviders().filter((entry) => entry.kind !== 'subscription')
-sharedKeys.selectedProviderId = 'anthropic'
+sharedKeys.providers = mockProviders().filter((entry) => entry.kind === 'subscription')
+sharedKeys.selectedProviderId = 'claude-code'
 sharedKeys.providerDetailOpen = true
 const incomplete = createSettingsState()
 incomplete.providers = incompleteProviders()
@@ -407,10 +408,10 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Providers · Shared"
-        note="Settings › Providers as the master of a server whose providers are shared sees it: a shared server offers no subscription, so the list has no Subscriptions group and starts with API Keys, which every user of the server uses."
+        note="Settings › Providers as a user of a server whose providers are shared sees it: the user signs in to, orders and removes their own subscriptions, which nobody else uses, as on any server, and infers with the API keys the master shares, so the API Keys group lists none, has no Add, and says whose keys they are."
       >
         <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
-          <GallerySettingsProviders :state="sharedKeys" />
+          <GallerySettingsProviders :state="sharedKeys" shared-api-keys />
         </div>
       </GallerySection>
 
