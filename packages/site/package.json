@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "bun build.ts",
     "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.app.json tsconfig.node.json",
-    "record": "bun record.ts"
+    "record": "bun record.ts",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@demicodes/protocol": "workspace:^",
@@ -23,10 +24,11 @@
     "@tailwindcss/vite": "^4.3.1",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/tsconfig": "^0.9.1",
+    "playwright": "1.63.0",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
-    "playwright": "1.63.0"
+    "wrangler": "^4.154.0"
   },
   "license": "Apache-2.0"
 }
