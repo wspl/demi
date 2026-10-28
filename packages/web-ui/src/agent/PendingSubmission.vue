@@ -15,23 +15,27 @@ import type { PendingSubmissionState } from './types'
  * - Its delivery is part of the wait for the answer, which the tail row tells.
  * - A lost connection is told by the spinner over the transcript's end.
  *
- * A failed delivery is told by the row under the bubble (`DeliveryFailureRow`),
- * which takes the Requesting row's place. The message's own hover actions offer
- * Edit and Delete. The dock's Retry sends it again.
+ * A failed delivery is told on the bubble itself: the red alert beside it,
+ * whose press sends it again, and why under it. The message's own hover
+ * actions offer Edit and Delete.
  *
  * A steer or a queued message shows as the one it will be from the send, with
  * its line and its controls. The host keeps them as the user's wish until the
  * session holds the message. A message that was not delivered is one to try
  * again, without them.
  */
-const props = defineProps<PendingSubmissionState & {
+const props = withDefaults(defineProps<PendingSubmissionState & {
   /**
    * What it will be when it waits for the agent, which its line says
    * (`waitingAs`).
    */
   pending?: 'steer' | 'queued'
-}>()
-const emit = defineEmits<{ edit: []; delete: []; recall: []; sendNow: [] }>()
+}>(), {
+  // Absent is a message a resend can deliver, which Vue would read as false.
+  retryable: undefined,
+  delivered: undefined,
+})
+const emit = defineEmits<{ edit: []; delete: []; recall: []; sendNow: []; retry: [] }>()
 /** The text as the message the server confirms holds it. */
 const markdown = computed(() => sentMarkdown(props.text, props.attachments.length))
 </script>
@@ -45,6 +49,9 @@ const markdown = computed(() => sentMarkdown(props.text, props.attachments.lengt
       :editable="error !== null"
       :deletable="error !== null"
       :pending="pending"
+      :waiting-id="pending ? id : undefined"
+      :not-delivered="error !== null ? { reason: error, requestId: requestId ?? null, retryable: retryable !== false } : undefined"
+      @retry="emit('retry')"
       @recall="emit('recall')"
       @send-now="emit('sendNow')"
       @edit="emit('edit')"

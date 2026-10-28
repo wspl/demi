@@ -2,7 +2,6 @@
 import { onBeforeUnmount, reactive, ref } from 'vue'
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
-import UndeliveredRetryChip from '@demicodes/web-ui/agent/UndeliveredRetryChip.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { applyAttachmentUpdate, composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
@@ -23,7 +22,8 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * the padding and rhythm are the product's.
  *
  * No failure carries a button: Resume and Retry sit in the dock above the
- * composer, which each specimen of an undelivered message shows under its list.
+ * composer. An undelivered message is the exception, as Messages marks one: a
+ * red alert beside its bubble sends it again.
  *
  * Nothing sits in or under the composer:
  *
@@ -125,10 +125,10 @@ function runToolAgain(): void {
 }
 
 onBeforeUnmount(() => clearTimeout(toolRunTimer))
-// The exact message stays where it was sent, the failure under it, and the
-// message sent after it comes below with its turn. Retry sends it again
-// with the same id, as a new message at the end, and Requesting shows until
-// its turn answers.
+// The exact message stays where it was sent, Not Delivered and why under
+// it, and the message sent after it comes below with its turn. Its alert sends
+// it again with the same id, as a new message at the end, and Requesting
+// shows until its turn answers.
 const undeliveredFlow = useTurnFlow({ id: 'gallery-undelivered-message' })
 const undeliveredText = `Please keep this exact message, the plan ${ATTACHMENT_MARK} and the capture ${ATTACHMENT_MARK}.`
 const undeliveredFiles = [
@@ -167,7 +167,7 @@ failDelivery()
 
 // A message sent while its file uploads shows at once, the capsule telling
 // the upload, and goes once the upload is done; one whose upload fails is
-// undelivered, and Retry uploads the file again, then delivers the message.
+// undelivered, and its alert uploads the file again, then delivers the message.
 const captureText = `What goes wrong in this capture ${ATTACHMENT_MARK}?`
 const captureContent = joinMessageContent(captureText, [[
   { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png' } },
@@ -223,7 +223,7 @@ function failUpload(): void {
 failUpload()
 
 // A file of the message is gone, its bytes with the page that had them:
-// sending again cannot deliver it, so the dock offers no Retry; its Edit
+// sending again cannot deliver it, so its alert sends nothing; its Edit
 // takes the message back to the composer, where the file shows as missing.
 const goneFlow = useTurnFlow({ id: 'gallery-file-gone' })
 function loseFile(): void {
@@ -271,7 +271,7 @@ loseFile()
     </GallerySection>
     <GallerySection
       title="Undelivered Message · the Notice Follows the Message"
-      note="The exact text and its attachments stay where they were sent, a message sent later and its turn below them; the failure follows in flow, saying why, with no button. The message’s hover actions offer Copy, Edit, which takes the message back to the composer, and Delete, which takes it away at once. Retry sits in the dock, shown here under each list: it sends every undelivered message again in the order they were sent, each as a new message at the end. A refusal sending again cannot change, such as a file that is gone, is skipped, and with no other left there is no Retry."
+      note="The exact text and its attachments stay where they were sent, a message sent later and its turn below them. As Messages marks a message it could not send, a red alert stands left of the bubble, always in view, and Not Delivered with the reason and the request ID stands under it. The alert sends that message again, as a new message at the end. The message’s hover actions offer Copy, Edit, which takes the message back to the composer, and Delete, which takes it away at once. A refusal sending again cannot change, such as a file that is gone, marks the message with the same alert, which sends nothing, and Edit is the way on."
     >
       <GallerySpecimen wide variant="Send failed · a later message below it">
         <div class="flex h-[26rem] flex-col overflow-hidden rounded-lg bg-surface phone:[--agent-pad-x:0.75rem]">
@@ -290,10 +290,10 @@ loseFile()
             read-only
             @edit-submission="undeliveredFlow.editSubmission"
             @delete-submission="undeliveredFlow.deleteSubmission"
+            @retry-undelivered="(id) => undeliveredFlow.retrySubmission(id)"
           />
         </div>
         <div class="mt-2 flex items-center gap-2">
-          <UndeliveredRetryChip :pending-submissions="undeliveredFlow.pendingSubmissions.value" @retry="undeliveredFlow.retrySubmissions()" />
           <Button size="sm" @click="sendAnother">Send Another</Button>
           <Button size="sm" @click="failDelivery">Fail Again</Button>
         </div>
@@ -315,10 +315,10 @@ loseFile()
             read-only
             @edit-submission="uploadingFlow.editSubmission"
             @delete-submission="uploadingFlow.deleteSubmission"
+            @retry-undelivered="(id) => uploadingFlow.retrySubmission(id)"
           />
         </div>
         <div class="mt-2 flex items-center gap-2">
-          <UndeliveredRetryChip :pending-submissions="uploadingFlow.pendingSubmissions.value" @retry="uploadingFlow.retrySubmissions()" />
           <Button size="sm" @click="sendWhileUploading">Send Again</Button>
         </div>
       </GallerySpecimen>
@@ -339,14 +339,14 @@ loseFile()
             read-only
             @edit-submission="uploadFailedFlow.editSubmission"
             @delete-submission="uploadFailedFlow.deleteSubmission"
+            @retry-undelivered="(id) => uploadFailedFlow.retrySubmission(id, () => uploadCapture(failedCapture))"
           />
         </div>
         <div class="mt-2 flex items-center gap-2">
-          <UndeliveredRetryChip :pending-submissions="uploadFailedFlow.pendingSubmissions.value" @retry="uploadFailedFlow.retrySubmissions(() => uploadCapture(failedCapture))" />
           <Button size="sm" @click="failUpload">Fail Again</Button>
         </div>
       </GallerySpecimen>
-      <GallerySpecimen wide variant="A file is gone · Edit, and no Retry">
+      <GallerySpecimen wide variant="A file is gone · Edit, and the alert sends nothing">
         <div class="flex h-[14rem] flex-col overflow-hidden rounded-lg bg-surface phone:[--agent-pad-x:0.75rem]">
           <AgentMessageList
             class="min-h-0 flex-1"
@@ -363,10 +363,10 @@ loseFile()
             read-only
             @edit-submission="goneFlow.editSubmission"
             @delete-submission="goneFlow.deleteSubmission"
+            @retry-undelivered="(id) => goneFlow.retrySubmission(id)"
           />
         </div>
         <div class="mt-2 flex items-center gap-2">
-          <UndeliveredRetryChip :pending-submissions="goneFlow.pendingSubmissions.value" @retry="goneFlow.retrySubmissions()" />
           <Button size="sm" @click="loseFile">Fail Again</Button>
         </div>
       </GallerySpecimen>

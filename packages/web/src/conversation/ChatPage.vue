@@ -415,7 +415,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @dismiss-notifications-card="void notifications.dismissCard(conversation!.id)"
     :pending-submissions="pendingSubmissions"
     :removing="conversation.removing"
-    @retry-undelivered="store.retrySends(conversation)"
+    @retry-undelivered="store.retrySend(conversation, $event)"
     @edit-submission="store.editSend(conversation, $event)"
     @delete-submission="store.deleteSend(conversation, $event)"
     @retry="store.start(conversation)"

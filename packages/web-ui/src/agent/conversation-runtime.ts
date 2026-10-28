@@ -230,15 +230,15 @@ export class ConversationRuntime {
    * again with its id, which the session takes only once, unless what the
    * reopened conversation shows already holds it.
    */
-  async submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
+  async submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = [], unsent?: AbortSignal): Promise<void> {
     this.options.state.lastError = null
     for (;;) {
-      const client = await this.ensureOpen()
+      const client = await untilUnsent(this.ensureOpen(), unsent)
       if (hasAcceptedSubmission(this.options.state, messageId)) {
         return
       }
       try {
-        await client.submit(content, messageId, comments)
+        await untilUnsent(client.submit(content, messageId, comments), unsent)
         return
       } catch (error) {
         if (!(error instanceof ConversationLaneError)) {
@@ -258,21 +258,21 @@ export class ConversationRuntime {
    * neither lists nor holds in the transcript is sent as a message, so it is
    * never lost and never delivered twice.
    */
-  async steer(content: ClientContent[], id: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
+  async steer(content: ClientContent[], id: string = createId(), comments: readonly MessageComment[] = [], unsent?: AbortSignal): Promise<void> {
     this.options.state.lastError = null
-    const client = await this.ensureOpen()
+    const client = await untilUnsent(this.ensureOpen(), unsent)
     try {
-      await client.steer(content, id, comments)
+      await untilUnsent(client.steer(content, id, comments), unsent)
       return
     } catch (error) {
       if (!(error instanceof ConversationLaneError)) {
         throw error
       }
-      if (await this.holdsSteer(id)) {
+      if (await untilUnsent(this.holdsSteer(id), unsent)) {
         return
       }
     }
-    await this.submit(content, id, comments)
+    await this.submit(content, id, comments, unsent)
   }
 
   /**
@@ -866,4 +866,24 @@ export class ConversationRuntime {
       state.load = 'opening'
     }
   }
+}
+
+/**
+ * `work`, or the reason of `unsent` once it aborts first: the page gives up
+ * waiting for the session to confirm a message, which it tells as not
+ * delivered. A message already on its way may still arrive, and is then
+ * taken once by its id.
+ */
+export function untilUnsent<T>(work: Promise<T>, unsent: AbortSignal | undefined): Promise<T> {
+  if (!unsent) {
+    return work
+  }
+  if (unsent.aborted) {
+    return Promise.reject(unsent.reason)
+  }
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(unsent.reason)
+    unsent.addEventListener('abort', abort, { once: true })
+    work.then(resolve, reject).finally(() => unsent.removeEventListener('abort', abort))
+  })
 }

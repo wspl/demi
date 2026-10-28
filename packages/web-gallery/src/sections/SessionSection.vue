@@ -130,7 +130,6 @@ import {
 } from '@demicodes/web-ui/agent/session-status'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
-import UndeliveredRetryChip from '@demicodes/web-ui/agent/UndeliveredRetryChip.vue'
 import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
@@ -3191,7 +3190,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the lane is lost: the message shows as it will stay and the tail row says Requesting, never that it failed; once the lane has been lost for half a second, the spinner over the transcript’s end turns, and the message goes with its ID once the lane is back. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its lane. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: a red alert stands left of the message and Not Delivered with the reason under it; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the alert sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the lane is lost: the message shows as it will stay and the tail row says Requesting; once the lane has been lost for half a second, the spinner over the transcript’s end turns, and the message goes with its ID once the lane is back within ten seconds, or shows Not Delivered with its alert after that, at once when the browser says it is offline. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its lane. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -3262,6 +3261,7 @@ onBeforeUnmount(() => {
                 read-only
                 @edit-submission="turnFlow.editSubmission"
                 @delete-submission="turnFlow.deleteSubmission"
+                @retry-undelivered="(id) => turnFlow.retrySubmission(id)"
                 @recall-steer="turnFlow.recallSteer"
                 @interrupt-pending-steer="turnFlow.interruptPendingSteer"
                 @recall-queued="turnFlow.recallQueued"
@@ -3274,9 +3274,6 @@ onBeforeUnmount(() => {
                 :show-scroll-to-bottom="!!turnList && !turnList.isAtBottom"
                 @scroll-to-bottom="turnList?.scrollToBottom()"
               >
-                <template #chips>
-                  <UndeliveredRetryChip :pending-submissions="turnFlow.pendingSubmissions.value" @retry="turnFlow.retrySubmissions()" />
-                </template>
                 <GalleryComposer
                   :running="turnFlow.state.phase === 'running' || turnFlow.startingTurn.value"
                   :compacting="turnFlow.state.phase === 'compacting'"
@@ -3757,10 +3754,10 @@ onBeforeUnmount(() => {
                 read-only
                 @edit-submission="deliveryFlow.editSubmission"
                 @delete-submission="deliveryFlow.deleteSubmission"
+                @retry-undelivered="(id) => deliveryFlow.retrySubmission(id)"
               />
             </div>
             <div class="mt-2 flex items-center gap-2">
-              <UndeliveredRetryChip :pending-submissions="deliveryFlow.pendingSubmissions.value" @retry="deliveryFlow.retrySubmissions()" />
               <Button size="sm" @click="failDelivery">Fail Again</Button>
             </div>
           </GallerySpecimen>
@@ -3939,7 +3936,7 @@ onBeforeUnmount(() => {
                 @open-aside="panelAsideOpen = true"
                 :pending-submissions="sessionFlow.pendingSubmissions.value"
                 :removing="sessionFlow.removing.value"
-                @retry-undelivered="sessionFlow.retrySubmissions()"
+                @retry-undelivered="(id) => sessionFlow.retrySubmission(id)"
                 @edit-submission="sessionFlow.editSubmission"
                 @delete-submission="sessionFlow.deleteSubmission"
                 @retry="sessionFlow.resume()"
@@ -4338,7 +4335,7 @@ onBeforeUnmount(() => {
         @regenerate="regenerateMessage(editHost, $event)"
         :pending-submissions="sessionFlow.pendingSubmissions.value"
         :removing="sessionFlow.removing.value"
-        @retry-undelivered="sessionFlow.retrySubmissions()"
+        @retry-undelivered="(id) => sessionFlow.retrySubmission(id)"
         @edit-submission="sessionFlow.editSubmission"
         @delete-submission="sessionFlow.deleteSubmission"
         @retry="sessionFlow.resume()"

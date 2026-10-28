@@ -99,7 +99,7 @@
       "sendsNext": "에이전트의 다음 단계에서 보내집니다",
       "recall": "회수",
       "recalled": "메시지 회수됨",
-      "notDelivered": "이 메시지를 전달하지 못했습니다.",
+      "notDeliveredMark": "전달되지 않음",
       "fromSchedule": "일정",
       "fromConversation": "대화"
     },

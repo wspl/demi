@@ -79,7 +79,7 @@ switchBack()
       @rename="session.title = $event"
       @save-scroll="(_id, state) => (session.scroll = state)"
       @retry="flow.resume()"
-      @retry-undelivered="flow.retrySubmissions()"
+      @retry-undelivered="(id) => flow.retrySubmission(id)"
       @edit-submission="flow.editSubmission"
       @delete-submission="flow.deleteSubmission"
       @recall-queued="flow.recallQueued"

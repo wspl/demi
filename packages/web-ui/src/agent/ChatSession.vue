@@ -28,7 +28,6 @@ import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
-import UndeliveredRetryChip from './UndeliveredRetryChip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
@@ -322,11 +321,10 @@ const emit = defineEmits<{
   exposePort: [deviceId: string, port: number]
   retryLoad: []
   /**
-   * The dock's Retry. The messages not delivered go again in the order they
-   * were sent, each as a new message at the end, except one a resend cannot
-   * deliver.
+   * The alert of the message `id`, which was not delivered: it goes again as
+   * a new message at the end.
    */
-  retryUndelivered: []
+  retryUndelivered: [id: string]
   /**
    * Edit on the message `id`, whose delivery failed: it goes back into the
    * composer.
@@ -589,12 +587,12 @@ const dockShown = computed(() => props.conversation.archived || transcriptShown(
 // - a session that has told its turn
 //
 // A message the user sent and still on its way is the other way forward. One
-// not delivered is not, and the dock's Retry stands before Resume for it.
+// not delivered is not: its own alert sends it again.
 const canRecover = computed(
   () =>
     props.hasProvider &&
     !props.messageEdit &&
-    !props.pendingSubmissions?.some((submission) => submission.error === null) &&
+    !props.pendingSubmissions?.some((submission) => submission.error === null && !submission.delivered) &&
     !props.conversation.archived &&
     sessionShown(props.conversation.load),
 )
@@ -1023,6 +1021,7 @@ watch(
             @send-queued="(id) => emit('sendQueued', id)"
             @recall-steer="(id) => emit('recallSteer', id)"
             @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
+            @retry-undelivered="(id) => emit('retryUndelivered', id)"
             @edit-user="editUser"
             @regenerate="regenerate"
             @switch-version="(id, to) => emit('switchVersion', id, to)"
@@ -1063,11 +1062,6 @@ watch(
                 The transcript says what happened; the recovery controls are
                 here, over the input.
               -->
-              <UndeliveredRetryChip
-                v-if="hasProvider && !conversation.archived"
-                :pending-submissions="pendingSubmissions ?? []"
-                @retry="emit('retryUndelivered')"
-              />
               <SessionDockChip v-if="recovery" @click="recover">
                 <Play :size="ICON_PX.in28" />
                 {{ recovery === 'resume' ? t('dock.resume') : t('dock.continue') }}

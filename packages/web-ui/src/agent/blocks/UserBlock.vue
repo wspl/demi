@@ -4,7 +4,7 @@ import { t as shared } from '../../locales/text'
 import { computed, onMounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
-import { AlarmClock, Copy, MessagesSquare, Pencil, Trash2 } from '@lucide/vue'
+import { AlarmClock, CircleAlert, Copy, MessagesSquare, Pencil, Trash2 } from '@lucide/vue'
 import { useCopy } from '../../composables/useCopy'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
@@ -22,6 +22,8 @@ import type { MessageEditContent } from '../message-editing'
 import type { VersionChoice } from '../versions'
 import type { MessageOrigin } from '../message-origins'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
+import { sendNowOperation } from '../pending-steers'
 import NoticeLabel from './NoticeLabel.vue'
 import VersionSwitcher from './VersionSwitcher.vue'
 import { composerCapsule, composerTransfer, contentMessage, provideTransfers } from '../message-editor/capsules'
@@ -50,6 +52,19 @@ const props = defineProps<{
    * when that is empty.
    */
   pending?: 'steer' | 'queued'
+  /**
+   * The waiting message's id, for a `pending` one the session holds: its Send
+   * shows the spinner from the press until the session takes it
+   * (`sendNowOperation`), however slow the way to the backend.
+   */
+  waitingId?: string
+  /**
+   * The message was not delivered, and why: a red alert stands left of the
+   * bubble, as Messages marks one, its press sends the message again when a
+   * resend can deliver it (`retryable`), and Not Delivered with the reason
+   * stands under it. Absent for any other message.
+   */
+  notDelivered?: { reason: string; requestId: string | null; retryable: boolean }
   /**
    * The comments sent with the message: each quoted text as a quote block
    * followed by its comment, before the message's own text; a picture's as a
@@ -92,12 +107,15 @@ const props = defineProps<{
  * Where a picture comment's picture loads from, which the bubble shows as its
  * quote.
  */
+const phone = usePhone()
 const mediaAddress = useMediaAddress()
 
 
 const emit = defineEmits<{
   recall: []
   sendNow: []
+  /** Send the message that was not delivered again. */
+  retry: []
   /** Open this message's editor. */
   edit: []
   /** Delete the message, which was not delivered. */
@@ -320,24 +338,43 @@ useResizeObserver(bodyRef, measure)
       <div
         v-if="!pending"
         ref="actionsRef"
-        class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100 phone:opacity-100"
-        :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
+        class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center"
       >
-        <CopyButton class="inline-flex" :source="copySource" @click.stop />
-        <Tooltip
-          v-for="action in actions"
-          :key="action.key"
-          :content="action.hint"
-          class="inline-flex"
+        <span
+          class="flex items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100 phone:opacity-100"
+          :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
         >
+          <CopyButton class="inline-flex" :source="copySource" @click.stop />
+          <Tooltip
+            v-for="action in actions"
+            :key="action.key"
+            :content="action.hint"
+            class="inline-flex"
+          >
+            <IconButton
+              :icon="action.icon"
+              size="sm"
+              variant="ghost"
+              :aria-label="action.hint"
+              @click.stop="action.emit()"
+            />
+          </Tooltip>
+        </span>
+        <!-- Always in view, nearest the bubble, as Messages marks a message it could not send. -->
+        <Tooltip v-if="notDelivered?.retryable" :content="shared('common.retry')" class="inline-flex">
           <IconButton
-            :icon="action.icon"
+            :icon="CircleAlert"
             size="sm"
-            variant="ghost"
-            :aria-label="action.hint"
-            @click.stop="action.emit()"
+            variant="alert"
+            data-not-delivered
+            :aria-label="shared('common.retry')"
+            @click.stop="emit('retry')"
           />
         </Tooltip>
+        <!-- One a resend cannot deliver is marked the same, and its Edit is the way on. -->
+        <span v-else-if="notDelivered" class="flex size-hit-sm items-center justify-center text-on-danger" data-not-delivered>
+          <CircleAlert :size="ICON_PX.in24" aria-hidden="true" />
+        </span>
       </div>
       <div
         ref="contentRef"
@@ -393,6 +430,13 @@ useResizeObserver(bodyRef, measure)
         @click.stop="expanded = !expanded"
       >{{ expanded ? t('transcript.user.showLess') : t('transcript.user.showMore') }}</Button>
     </div>
+    <!-- Why a message was not delivered, under it, as the alert beside it marks it. -->
+    <p
+      v-if="notDelivered"
+      class="mt-1 max-w-[80%] select-text text-right text-detail leading-5 text-on-danger"
+    >
+      {{ t('transcript.user.notDeliveredMark') }} · {{ notDelivered.reason }}<template v-if="notDelivered.requestId"> · {{ notDelivered.requestId }}</template>
+    </p>
     <!-- An edited message's versions, under it at its end, always in view. -->
     <VersionSwitcher v-if="versions && !pending" :choice="versions" class="-mr-1 mt-0.5" />
     <!--
@@ -408,8 +452,16 @@ useResizeObserver(bodyRef, measure)
         so.
       -->
       <span v-if="pending === 'steer'" class="mr-1">{{ t('transcript.user.sendsNext') }}</span>
-      <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">{{ t('composer.send') }}</Button>
-      <Button size="xs" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
+      <!-- The two stay on one line, wrapping under the note together, each a finger's height on a phone. -->
+      <span class="flex items-center gap-x-1">
+        <Button
+          :size="phone ? 'lg' : 'xs'"
+          variant="ghost"
+          :operation="waitingId ? sendNowOperation(waitingId) : undefined"
+          @click.stop="emit('sendNow')"
+        >{{ t('composer.send') }}</Button>
+        <Button :size="phone ? 'lg' : 'xs'" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
+      </span>
     </div>
   </div>
 </template>

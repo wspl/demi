@@ -21,8 +21,8 @@ import { printLive } from './live-command'
  *
  * - `turn`: a full turn from a sent message, whose delivery the server
  *   confirms.
- * - `undelivered`: a sent message whose delivery fails, until Retry sends it
- *   again.
+ * - `undelivered`: a sent message whose delivery fails, until its alert sends
+ *   it again.
  * - `offline`: a message sent while the lane is lost, under Requesting with
  *   the spinner over the transcript's end, which goes once the lane is back.
  * - `first`: a new conversation's first message, sent with its creation while
@@ -1064,17 +1064,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /**
-   * The dock's Retry, as the product's: each undelivered message a resend can
-   * deliver goes again with its id, in the order they were sent, as a new
-   * message at the end, once `ready` answers the upload it tries again for it;
-   * this time each arrives.
-   *
-   * - The first starts a turn while nothing runs, and the rest wait in the
-   *   queue, as one does while a turn runs or a message on its way starts one.
-   * - One a resend cannot deliver stays.
+   * The alert of the undelivered message `id`, as the product's: it goes
+   * again with its id as a new message at the end, once `ready` answers the
+   * upload it tries again for it; this time it arrives. It starts a turn
+   * while nothing runs, and waits in the queue while a turn runs or a message
+   * on its way starts one. One a resend cannot deliver stays.
    */
-  function retrySubmissions(ready?: (id: string) => Promise<UserContentBlock[]> | undefined): void {
-    const again = pendingSubmissions.value.filter((pending) => pending.error !== null && pending.retryable !== false)
+  function retrySubmission(id: string, ready?: (id: string) => Promise<UserContentBlock[]> | undefined): void {
+    const again = pendingSubmissions.value.filter((pending) => pending.id === id && pending.error !== null && pending.retryable !== false)
     for (const pending of again) {
       resend(pending, ready?.(pending.id))
     }
@@ -1552,7 +1549,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     play,
     settleWork,
     turn,
-    retrySubmissions,
+    retrySubmission,
     editSubmission,
     deleteSubmission,
     undelivered,

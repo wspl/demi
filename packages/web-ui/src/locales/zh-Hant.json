@@ -126,6 +126,7 @@
     "cloud_unavailable": "雲端目前無法使用。",
     "request_failed": "請求失敗（{status}）。",
     "unreadable_response": "無法讀取伺服器的回應。",
+    "unreachable": "無法連線到 Demi。",
     "upload_connection_failed": "上傳連線已中斷。",
     "upload_cancelled": "上傳已取消。",
     "restore_before_sending": "傳送前請先取消封存此對話。",

@@ -37,6 +37,15 @@ export type ProductAttachment =
 /** A message sent and not yet confirmed, with the way it was sent. */
 export type PendingSend = SavedDraft['pendingSends'][number] & { way: SendWay }
 
+/** A message the backend took, as the page shows it until the transcript holds it. */
+export interface DeliveredSend {
+  id: string
+  text: string
+  /** Its files, which leave the composer's with it and are released once it goes. */
+  files: ProductAttachment[]
+  comments: MessageComment[]
+}
+
 /** The sidebar's `device` is derived from `target` and the devices for the row (`App.vue`), never kept. */
 export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** The workspace it is in. */
@@ -132,6 +141,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * whose delivery was interrupted.
    */
   pendingSends: PendingSend[]
+  /**
+   * The messages the backend took that the transcript the page shows does not
+   * hold yet, in the order they were sent, with their files: the page shows
+   * each as sent until the transcript holds it (`settleDelivered`), so a
+   * message never drops out of sight between its delivery and its block, as
+   * while the page reads the transcript again on a slow network.
+   */
+  delivered: DeliveredSend[]
   /**
    * The waiting messages whose Recall is on its way, by id: a steer, a
    * queued message, or a message on its way that will be one. The list

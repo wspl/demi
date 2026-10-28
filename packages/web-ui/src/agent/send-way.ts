@@ -48,6 +48,8 @@ export function chooseSendWay(working: boolean, preferred: SendWhileRunning, ask
 export interface MessageOnItsWay {
   way: SendWay
   error: string | null
+  /** The backend took it already; it only shows until the transcript holds it. */
+  delivered?: true
 }
 
 /**
@@ -90,14 +92,6 @@ export function markWithdrawn(sent: readonly SentInOrder[], id: string): void {
 }
 
 /**
- * Whether the dock offers Retry: a message was not delivered, and sending it
- * again can deliver it.
- */
-export function offersRetry(sent: readonly (MessageOnItsWay & { retryable?: false })[]): boolean {
-  return sent.some((message) => message.error !== null && message.retryable !== false)
-}
-
-/**
  * The message on its way that starts a turn, or undefined while none does: the
  * one reading for the composer's Stop and its way of sending, the transcript's
  * Requesting row, Stop's wait and Retry's way. Its turn is as good as running
@@ -111,10 +105,10 @@ export function offersRetry(sent: readonly (MessageOnItsWay & { retryable?: fals
  * While nothing runs, it is the first message on its way, whichever way it was
  * sent: the session answers any message next then, a steer that no turn takes
  * included, and a queued message whose turn ended. A message whose delivery
- * failed starts nothing.
+ * failed starts nothing, nor does one the backend took already.
  */
 export function turnStartingMessage<T extends MessageOnItsWay>(phase: SessionPhase, sent: readonly T[]): T | undefined {
-  return sent.find((message) => message.error === null && (message.way === 'send' || phase === 'idle'))
+  return sent.find((message) => message.error === null && !message.delivered && (message.way === 'send' || phase === 'idle'))
 }
 
 /**
