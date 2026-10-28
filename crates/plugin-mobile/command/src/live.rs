@@ -952,6 +952,8 @@ async fn view(
         }
     };
     unlook(hub, &open, &shows, &mut watched, viewer, &input, &mut delivery, writer).await;
+    // The hinge's task ends with its sender, once the move under way is out.
+    drop(hinge);
     drop(input);
     let _released = tokio::time::timeout(FLUSH, input_task).await;
     ended.cancel();
