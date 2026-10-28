@@ -17,9 +17,26 @@ const BLOCK: usize = 4096;
 /// How much of a data range is read at once.
 const CHUNK: usize = 1 << 20;
 
+/// How a file was cloned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cloned {
+    /// The copy shares the source's extents, and takes room only as either
+    /// is written.
+    Shared,
+    /// The filesystem shares no extents, so the copy holds every data range
+    /// again.
+    Copied,
+}
+
 /// Copies `source` to the new file `destination`, mode 0600, keeping its
-/// length and every byte it holds.
-pub fn clone_sparse(_: &OffLoop, source: &Path, destination: &Path) -> io::Result<()> {
+/// length and every byte it holds. Before a copy that shares no extents, it
+/// asks `room` for the bytes the copy takes (`crate::storage::room`).
+pub fn clone_sparse(
+    off: &OffLoop,
+    source: &Path,
+    destination: &Path,
+    room: &mut dyn FnMut(&OffLoop, u64) -> io::Result<super::room::Reserved>,
+) -> io::Result<Cloned> {
     let from = fs_err::File::open(source)?;
     let to = fs_err::OpenOptions::new()
         .write(true)
@@ -27,14 +44,17 @@ pub fn clone_sparse(_: &OffLoop, source: &Path, destination: &Path) -> io::Resul
         .mode(0o600)
         .open(destination)?;
     match rustix::fs::ioctl_ficlone(to.file(), from.file()) {
-        Ok(()) => return Ok(()),
+        Ok(()) => return Ok(Cloned::Shared),
         // The filesystem cannot share extents between these files.
         Err(Errno::OPNOTSUPP | Errno::XDEV | Errno::INVAL | Errno::NOTTY | Errno::NOSYS) => {}
         Err(error) => return Err(crate::linux::failed("cloning to", destination, error)),
     }
-    let length = from.metadata()?.len();
+    let metadata = from.metadata()?;
+    let _reserved = room(off, std::os::unix::fs::MetadataExt::blocks(&metadata).saturating_mul(512))?;
+    let length = metadata.len();
     copy_data(&from, &to, length)?;
-    to.set_len(length)
+    to.set_len(length)?;
+    Ok(Cloned::Copied)
 }
 
 /// Copies each data range of `from`, leaving holes and all-zero blocks

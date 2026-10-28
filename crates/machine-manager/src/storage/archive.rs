@@ -21,10 +21,14 @@ pub enum ArchiveError {
     UnsafeHardlink,
 }
 
-/// Reads every entry of the zstd-compressed tar archive at `archive`.
-pub fn vet(_: &OffLoop, archive: &Path) -> Result<(), ArchiveError> {
+/// Reads every entry of the zstd-compressed tar archive at `archive`, and
+/// answers about the bytes its extraction takes: each member's size in whole
+/// blocks of 4 KiB, and a block for its own record.
+pub fn vet(_: &OffLoop, archive: &Path) -> Result<u64, ArchiveError> {
+    const BLOCK: u64 = 4096;
     let decoder = zstd::stream::read::Decoder::new(fs_err::File::open(archive)?)?;
     let mut archive = tar::Archive::new(decoder);
+    let mut bytes = 0u64;
     for entry in archive.entries()? {
         let entry = entry?;
         let kind = entry.header().entry_type();
@@ -43,8 +47,9 @@ pub fn vet(_: &OffLoop, archive: &Path) -> Result<(), ArchiveError> {
                 return Err(ArchiveError::UnsafeHardlink);
             }
         }
+        bytes = bytes.saturating_add(entry.size().div_ceil(BLOCK).saturating_add(1).saturating_mul(BLOCK));
     }
-    Ok(())
+    Ok(bytes)
 }
 
 /// Whether `path` names something beneath the extraction root.

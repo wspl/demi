@@ -96,10 +96,20 @@ pub fn size(data: &Path, databases: &[Migrating]) -> io::Result<u64> {
     Ok(total)
 }
 
-/// Whether the file system of `data` has `bytes` free.
-pub fn room(data: &Path, bytes: u64) -> io::Result<bool> {
-    let stats = rustix::fs::statvfs(data)?;
-    Ok(stats.f_bavail.saturating_mul(stats.f_frsize) >= bytes)
+/// Refuses a write of `bytes` to the filesystem of `path` that would leave it
+/// less than the reserve every large write leaves
+/// ([`ROOM_RESERVE`](demi_machine_manager_protocol::ROOM_RESERVE)).
+pub fn ensure_room(path: &Path, bytes: u64, what: &str) -> io::Result<()> {
+    let stats = rustix::fs::statvfs(path)?;
+    let free = stats.f_bavail.saturating_mul(stats.f_frsize);
+    let needed = bytes.saturating_add(demi_machine_manager_protocol::ROOM_RESERVE);
+    if free >= needed {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "Not enough disk space for {what}: needs {:.1} GB more",
+        (needed - free) as f64 / 1e9
+    )))
 }
 
 pub fn snapshot(data: &Path, version: &Version) -> PathBuf {

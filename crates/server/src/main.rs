@@ -68,6 +68,7 @@ mod runners;
 mod services;
 mod settings;
 mod setup;
+mod store;
 
 use std::{
     io::{self, BufRead as _, Write as _},

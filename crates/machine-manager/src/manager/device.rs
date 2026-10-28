@@ -29,7 +29,7 @@ use crate::{
     storage::{
         clone::clone_sparse,
         durable::{remove_tree, sync, write_json},
-        base, ext4, skeleton,
+        base, ext4, room, skeleton,
         store::{ImagePair, Retention},
         working::{WorkingPair, new_generation},
     },
@@ -316,9 +316,10 @@ impl DeviceWorker {
         let sources = self.core.store.images(&self.device, &state.generation);
         let copies = ImagePair::in_directory(stage);
         let copied = copies.clone();
+        let mut room = room::for_device(self.core.store.clone(), self.device.clone());
         blocking::run(move |off| -> std::io::Result<()> {
             for volume in Volume::ALL {
-                clone_sparse(off, sources.get(volume), copied.get(volume))?;
+                clone_sparse(off, sources.get(volume), copied.get(volume), &mut room)?;
                 sync(off, copied.get(volume))?;
             }
             Ok(())
@@ -440,7 +441,8 @@ impl DeviceWorker {
             // once the sandbox is resumed.
             Err(error) => (Err(OpError::from(error)), Vec::new()),
             Ok(()) => {
-                let capture = sandbox.capture(&self.working, stage).await;
+                let room = room::for_device(self.core.store.clone(), self.device.clone());
+                let capture = sandbox.capture(&self.working, stage, room).await;
                 let cleanup = capture.thaw_errors.into_iter().map(OpError::from).collect();
                 (capture.copied.map_err(OpError::from), cleanup)
             }

@@ -39,6 +39,7 @@ use crate::{
     runners,
     services::Services,
     settings::Settings,
+    store,
 };
 
 /// Why a move did not reach its release.
@@ -138,6 +139,7 @@ fn prepare(
     run(settings.command(&bin.join("demi-backend")).arg("--check-config"))?;
     let manager = bin.join("demi-machine-manager");
     run(settings.command(&manager).arg("--check-config"))?;
+    store::require_tools(&settings.manager_data()?)?;
     let format = manager_format(&settings.manager_data()?)?;
     if to < from && format.is_some_and(|format| format > STATE_FORMAT) {
         return Err(io::Error::other(format!(
@@ -159,12 +161,7 @@ fn prepare(
             Data::Keep
         } else {
             let size = data::size(&backend, &migrating)?;
-            if !data::room(&backend, size)? {
-                return Err(io::Error::other(format!(
-                    "{} has no room for the {size} bytes of the databases {to} migrates",
-                    backend.display()
-                )));
-            }
+            data::ensure_room(&backend, size, &format!("the databases {to} migrates"))?;
             notices.done(
                 UpgradeStepKind::CheckDatabases,
                 StepSummary::Count {
@@ -349,6 +346,30 @@ fn take_steps(
                 notices.done_restart(RestartStepKind::Switch, StepSummary::None);
             }
             Step::Starting => {
+                // The release's manager starts on a store that shares
+                // extents: the first release that has them moves the store
+                // in, while nothing runs on it. A move that fails stays for
+                // the next run, which goes on with it; no return to the
+                // release left starts a manager on a store half moved.
+                notices.start_restart(RestartStepKind::StartManager);
+                // A run that goes on after the machine restarted finds the
+                // release's manager started by its unit: it stops, and
+                // saves every Cloud, before its store moves.
+                services.stop(MANAGER)?;
+                let moved = store::move_in(&settings.manager_data()?, &mut |done, total| {
+                    notices.progress_restart(
+                        RestartStepKind::StartManager,
+                        StepProgress::Bytes {
+                            done,
+                            total,
+                            per_second: None,
+                            left_seconds: None,
+                        },
+                    );
+                })?;
+                if let store::Moved::Moved { bytes } = moved {
+                    println!("Moved the Cloud store, {bytes} bytes, onto a filesystem that shares extents");
+                }
                 // The backend reports ready once its data is up to date,
                 // which may take minutes: meanwhile it says how far it is.
                 let watch = settings.backend_listen().map(progress::Watch::start);
@@ -517,7 +538,7 @@ fn prune(layout: &Layout, backend: &std::path::Path, journal: &Journal) -> io::R
 }
 
 /// Runs a program of the release, which reports its own failure.
-fn run(command: &mut Command) -> io::Result<()> {
+pub(crate) fn run(command: &mut Command) -> io::Result<()> {
     let status = command.status()?;
     if !status.success() {
         return Err(io::Error::other(format!(

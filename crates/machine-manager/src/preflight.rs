@@ -12,7 +12,7 @@ use crate::{
     linux::{freeze, loopdev, mount},
     manager::Core,
     sandbox::runsc::reports_version,
-    storage::{clone::clone_sparse, durable::remove_tree, ext4},
+    storage::{clone::clone_sparse, durable::remove_tree, ext4, room},
     tools::ToolError,
 };
 
@@ -208,7 +208,8 @@ async fn probe(core: &Core, stage: &Path) -> Result<(), PreflightError> {
         mount::system_overlay(off, &stage.join("base"), &volume, &stage.join("merged"))?;
         fs_err::write(stage.join("merged/probe"), "Cloud storage preflight")?;
         freeze::freeze(off, &volume)?;
-        clone_sparse(off, &image, &stage.join("copy.ext4"))
+        clone_sparse(off, &image, &stage.join("copy.ext4"), &mut room::unchecked)?;
+        Ok(())
     })
     .await?;
     Ok(())
