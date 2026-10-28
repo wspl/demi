@@ -454,18 +454,24 @@ not published again:
 git fetch origin main
 commit=$(git rev-parse FETCH_HEAD)
 version=0.1.$(git rev-list --count "$commit")
-if ! gh release view "v$version" > /dev/null 2>&1; then
+published() {
+  [ "$(gh release view "v$version" --json isDraft -q .isDraft 2> /dev/null)" = false ]
+}
+if ! published; then
   run=$(gh workflow run release.yml --ref main -f commit="$commit" -f prerelease=true)
   gh run watch --exit-status "${run##*/}" || true
-  gh release view "v$version" > /dev/null
+  published
 fi
 ```
 
 `gh workflow run` prints the URL of the run it started, which `gh run watch`
-takes by its number. A release that `canary.yml` started for the same commit
-meanwhile makes this one refuse the version, so the deploy checks for the
-pre-release rather than for the run's success. Each other command that fails
-stops the deploy: no server is touched until the pre-release exists.
+takes by its number. A release makes a draft, uploads the files into it and
+publishes it last, and `gh release view` finds a draft too, so a release
+counts only once it is no draft. A release that `canary.yml` started for the
+same commit meanwhile makes this one wait behind it and then refuse the
+version, so the deploy checks for the published pre-release rather than for
+the run's success. Each other command that fails stops the deploy: no server
+is touched until the pre-release is published.
 
 The release finds that commit's build and publishes its files as a GitHub
 pre-release, `v$version` (`.github/workflows/release.yml`):
@@ -517,13 +523,12 @@ the database copies, the switch and the return on failure are an upgrade's.
   - When a server keeps data of a deployed version, its schema enters the
     history as any release's does, named by its version, with a tested
     migration, so the next deploy and the next release carry the data on.
-  - A schema enters once per release, a Canary included, not once per
-    change. The first change to a schema after a release adds the released
-    schema with its migration, in the same work package, and every later
-    change before the next release extends that migration. A Canary follows
-    nearly every push, so a change to a schema adds a step in most cases;
-    `git show "v$version":<path>` reads the newest release's schema to tell
-    whether its starting point shipped.
+  - Every work package that changes a schema adds the schema `origin/main`
+    holds to the history, with its migration, named by the version of the
+    commit on main it was taken from. Any commit of main may become a Canary,
+    one whose checks passed and whose build started while later work merged
+    included, so any schema main held may be on a server. A step that no server needed costs only
+    that step.
 
 ## Rollback
 

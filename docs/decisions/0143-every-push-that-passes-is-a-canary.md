@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0146
 ---
 
 # Every push to main that builds and passes its checks is a Canary

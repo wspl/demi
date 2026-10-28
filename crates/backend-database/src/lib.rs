@@ -70,12 +70,11 @@
 //!
 //! The rules:
 //!
-//! - The first change to a schema after a release or a deploy adds the schema
-//!   that release or deploy shipped to the history, with its migration. A later
-//!   change before the next release or deploy extends that migration, so two
-//!   shipments apart are one step whatever changed between them. A database that
-//!   records a version outside the history, such as one a development build of
-//!   another unpublished schema made, is refused, never changed.
+//! - Every change to a schema adds the schema `main` holds to the history, with
+//!   its migration: any commit of `main` may be published as a Canary, so any
+//!   schema `main` held may be on a server. A database that records a version
+//!   outside the history, such as one a local development build made, is
+//!   refused, never changed.
 //! - Every published release's schema is in the history, so migrations are
 //!   written and tested on real upgrades long before a user depends on them. The
 //!   first formal release clears the history; its schemas start a new one.
