@@ -204,8 +204,8 @@ impl ControlService {
         .await
     }
 
-    /// Deletes the user's workspace `id` and its projects, once its
-    /// conversations are deleted, as one transaction.
+    /// Deletes the user's workspace `id`, its projects and its plugins' Host
+    /// directories, once its conversations are deleted, as one transaction.
     pub async fn delete_workspace(&self, user: UserId, id: WorkspaceId) -> Result<WorkspaceDeletion, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -219,6 +219,7 @@ impl ControlService {
                 return Ok(WorkspaceDeletion::Changed);
             }
             transaction.execute("DELETE FROM projects WHERE workspace_id = ?1", [id.as_str()])?;
+            transaction.execute("DELETE FROM plugin_directories WHERE workspace_id = ?1", [id.as_str()])?;
             transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id.as_str()])?;
             transaction.commit()?;
             Ok(WorkspaceDeletion::Deleted)

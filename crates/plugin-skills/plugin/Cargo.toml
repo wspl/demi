@@ -15,6 +15,7 @@ bench = false
 demi-host-interface = { path = "../../host-interface" }
 demi-plugin-interface = { path = "../../plugin-interface" }
 demi-shared-types = { path = "../../shared-types" }
+demi-web-api-protocol = { path = "../../web-api-protocol" }
 futures-util.workspace = true
 # The sources' shallow fetch over HTTPS, through the workspace's reqwest.
 gix = { version = "0.87", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "sha1"] }

@@ -1006,7 +1006,7 @@ async fn run_on_host(
                 .await
                 .map_err(|error| error.message)?;
             shard
-                .install_directories(&target.device, host)
+                .install_directories(conversation, &target.device, host)
                 .await
                 .map_err(|error| error.message)?;
             shard

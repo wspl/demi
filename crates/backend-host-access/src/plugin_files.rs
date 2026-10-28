@@ -34,7 +34,7 @@ use demi_runner_protocol::wire::FileHash;
 use demi_plugin_interface::{HostDirectory, PluginId};
 use demi_host_interface::{EntryKind, HostEntry, HostFile, HostRead};
 use demi_shared_types::{B64Bytes, ReadAt};
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, WorkspaceId};
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
@@ -171,16 +171,19 @@ impl dyn HostShard + '_ {
         Ok((access.device, subscriber))
     }
 
-    /// Brings `host`, admitted on `device` for a job, to the user's directory
-    /// sets, once per runner connection and set.
+    /// Brings `host`, admitted on `device` for a job of `conversation`, to the
+    /// user's directory sets, once per runner connection, set and workspace.
     ///
     /// 1. It lists every plugin's directory on the Host with one request.
     /// 2. It removes what the sets no longer name with one more request.
-    /// 3. It writes each directory that is missing with one request each.
+    /// 3. It writes each directory the job's conversation needs that is
+    ///    missing with one request each: those of every job and those of the
+    ///    conversation's workspace. Another workspace's stay as they are.
     ///
     /// A failure fails the job.
     pub(crate) async fn install_directories(
         &self,
+        conversation: &ConversationId,
         device: &DeviceId,
         host: &ConversationHost,
     ) -> Result<(), HostError> {
@@ -192,7 +195,17 @@ impl dyn HostShard + '_ {
             .directory_sets()
             .await
             .map_err(|error| HostError::failed(None, error))?;
-        let revision = revision_of(&sets);
+        let workspace = self
+            .control()
+            .conversation(conversation.clone())
+            .await
+            .map_err(|error| HostError::failed(None, error.to_string()))?
+            .map(|record| record.workspace);
+        let revision = format!(
+            "{}for {}",
+            revision_of(&sets),
+            workspace.as_ref().map_or("", WorkspaceId::as_str)
+        );
         let installs = self.plugin_installs();
         if installs.synced(device, &link, &revision) {
             return Ok(());
@@ -207,7 +220,7 @@ impl dyn HostShard + '_ {
                 "the Host reported no home directory for the plugins' files",
             )
         })?;
-        sync_directories(&host.host, home, &sets, &self.blobs()).await?;
+        sync_directories(&host.host, home, &sets, workspace.as_ref(), &self.blobs()).await?;
         installs
             .synced
             .borrow_mut()
@@ -218,11 +231,13 @@ impl dyn HostShard + '_ {
 
 /// Brings the plugins' directories on `host` to `sets`: every plugin's
 /// directory listed with one request, what no set names removed with one,
-/// and each directory missing written with one, all at once.
+/// and each directory missing that a job of `workspace` needs, every job's
+/// and the workspace's own, written with one, all at once.
 async fn sync_directories(
     host: &RemoteHost,
     home: &str,
     sets: &DirectorySets,
+    workspace: Option<&WorkspaceId>,
     blobs: &UserBlobs,
 ) -> Result<(), HostError> {
     let paths = host.identity().paths;
@@ -267,6 +282,7 @@ async fn sync_directories(
         missing.extend(
             wanted
                 .into_iter()
+                .filter(|(_, directory)| directory.workspace.is_none() || directory.workspace.as_ref() == workspace)
                 .filter(|(name, _)| !present.contains(name))
                 .map(|(name, directory)| (paths.join(&base(plugin), &name), directory)),
         );
@@ -429,7 +445,9 @@ fn not_running(error: &HostError) -> bool {
 }
 
 /// The revision of the user's sets, which a Host is brought to once per
-/// connection: each plugin with the names its Host directory holds.
+/// connection: each plugin with the names its Host directory holds and the
+/// workspace each is for, since a directory that moves to another workspace
+/// keeps its name.
 fn revision_of(sets: &DirectorySets) -> String {
     let mut revision = String::new();
     for (plugin, set) in sets {
@@ -437,6 +455,10 @@ fn revision_of(sets: &DirectorySets) -> String {
         for directory in set {
             revision.push(' ');
             revision.push_str(&directory.host_name());
+            if let Some(workspace) = &directory.workspace {
+                revision.push('@');
+                revision.push_str(workspace.as_str());
+            }
         }
         revision.push('\n');
     }

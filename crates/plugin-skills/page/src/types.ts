@@ -10,6 +10,8 @@ export interface SettingsSkill {
   disableModelInvocation: boolean
   /** While off, the origin of the source whose skill that is on has its name. */
   takenBy?: string
+  /** The place of that source: Global or its workspace, by name. */
+  takenIn?: string
 }
 
 /** A SKILL.md of a source that is not a skill, and why. */

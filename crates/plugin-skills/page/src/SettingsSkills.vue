@@ -2,7 +2,7 @@
 import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { GitBranch, RefreshCw, Trash2 } from '@lucide/vue'
-import type { Action, OverlayStore, PageContext, SettingsRowStatus } from '@demicodes/plugin-sdk'
+import type { Action, OverlayStore, PageContext, SettingsRowStatus, TitleText } from '@demicodes/plugin-sdk'
 import { Fold } from '@demicodes/plugin-sdk'
 import { FoldChevron } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
@@ -22,6 +22,10 @@ import type { AddSourceAnswer, SettingsSkill, SettingsSkillDraft, SettingsSkillS
  * Skill sources: one git repository is a pack, pinned to a commit, whose state is a status
  * label after its name.
  *
+ * - Two groups: Global's packs, which every workspace's conversations are offered, and the
+ *   packs of the tab's workspace, which only its conversations are. Each group adds a pack
+ *   to itself.
+ *
  * - Packs start folded unless `open` names them. Opening a pack of more than six skills
  *   scrolls inside the pack.
  * - Each skill is a row you can turn on, with its own status labels. The SKILL.md files that
@@ -34,12 +38,18 @@ import type { AddSourceAnswer, SettingsSkill, SettingsSkillDraft, SettingsSkillS
 const SKILL_LIST_CAP = 6
 
 const props = defineProps<{
-  sources: SettingsSkillSource[]
+  /** Global's sources, which every workspace's conversations are offered. */
+  global: SettingsSkillSource[]
+  /** The tab's workspace, with its sources; none while the tab has no workspace. */
+  workspace?: { id: string; name: string; sources: SettingsSkillSource[] }
   overlayStore: OverlayStore
   /** The page's operation of a method on what a key names (`PageContext.operation`). */
   operation: PageContext['operation']
-  /** Adds a source; the dialog stays open until it is added. */
-  addSource: (draft: SettingsSkillDraft) => Promise<AddSourceAnswer>
+  /**
+   * Adds a source to `workspace`, the one whose group's Add Source… opened the dialog, or to
+   * Global without one; the dialog stays open until it is added.
+   */
+  addSource: (draft: SettingsSkillDraft, workspace: string | null) => Promise<AddSourceAnswer>
   /** Removes a source; Remove in the question works until it settles. */
   onRemove?: Action<[source: string]>
   /** Fetches a source again; its button works until it settles. */
@@ -51,6 +61,33 @@ const props = defineProps<{
 }>()
 
 const addOpen = ref(false)
+/** The workspace the open dialog adds to, as it was when its group's Add Source… was pressed; null for Global. */
+const addTo = ref<string | null>(null)
+
+function askAdd(workspace: string | null): void {
+  addTo.value = workspace
+  addOpen.value = true
+}
+
+/** Global's group, then the tab's workspace's. */
+const groups = computed(() => [
+  {
+    key: 'global',
+    title: t('places.global'),
+    description: t('places.globalDescription'),
+    sources: props.global,
+    workspace: null,
+  },
+  ...(props.workspace
+    ? [{
+        key: 'workspace',
+        title: props.workspace.name as TitleText,
+        description: t('places.workspaceDescription'),
+        sources: props.workspace.sources,
+        workspace: props.workspace.id,
+      }]
+    : []),
+])
 /** The packs shown open. */
 const openIds = defineModel<string[]>('open', { default: () => [] })
 
@@ -84,7 +121,7 @@ function skillStatuses(skill: SettingsSkill): SettingsRowStatus[] {
   if (skill.takenBy) {
     statuses.push({
       label: t('skill.nameTaken'),
-      detail: t('skill.nameTakenDetail', { name: skill.name, origin: skill.takenBy }),
+      detail: t('skill.nameTakenDetail', { name: skill.name, origin: skill.takenBy, place: skill.takenIn ?? '' }),
     })
   }
   if (skill.disableModelInvocation) {
@@ -127,8 +164,6 @@ function foldable(source: SettingsSkillSource): boolean {
   return source.skills.length + source.skipped.length > 0
 }
 
-const empty = computed(() => props.sources.length === 0)
-
 /** The source whose removal is being asked about; it stays shown while the dialog closes. */
 const removing = ref<SettingsSkillSource | null>(null)
 const removeOpen = ref(false)
@@ -170,11 +205,16 @@ async function confirmRemove(): Promise<void> {
     :title="t('title')"
     :description="t('description')"
   >
-    <SettingsGroup :title="t('sources.title')">
+    <SettingsGroup
+      v-for="group in groups"
+      :key="group.key"
+      :title="group.title"
+      :description="group.description"
+    >
       <template #actions>
-        <Button size="sm" @click="addOpen = true">{{ t('sources.add') }}</Button>
+        <Button size="sm" @click="askAdd(group.workspace)">{{ t('sources.add') }}</Button>
       </template>
-      <div v-for="source in sources" :key="source.id">
+      <div v-for="source in group.sources" :key="source.id">
         <SettingsRow
           :label="name(source)"
           :interactive="foldable(source)"
@@ -280,7 +320,7 @@ async function confirmRemove(): Promise<void> {
         </Fold>
       </div>
       <div
-        v-if="empty"
+        v-if="group.sources.length === 0"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
         {{ t('sources.none') }}
@@ -289,7 +329,7 @@ async function confirmRemove(): Promise<void> {
     <AddSkillSourceDialog
       :is-open="addOpen"
       :overlay-store="overlayStore"
-      :add-source="addSource"
+      :add-source="(draft) => addSource(draft, addTo)"
       @close="addOpen = false"
     />
     <ConfirmDialog

@@ -101,8 +101,11 @@ export function skillsCalls(): SkillsState {
 export const SKILLS_CALLS_OPEN = ['web-kit'] as const
 
 /**
- * Every state of a skill source and of a skill, pinned at once:
+ * Every state of a skill source and of a skill, pinned at once, as a tab of
+ * the Work workspace shows them:
  *
+ * - Places: Global's sources, and Work's below them. Personal's source stays
+ *   out of sight, yet its `outline` keeps Work's off.
  * - Sources: all on, some on, all off, updating, with an update, failed after a
  *   good fetch, failed at the first fetch, and with skipped files.
  * - Skills: on, off, with a warning, of a taken name, and never offered to the
@@ -140,21 +143,29 @@ export function skillsShowcase(): SkillsState {
         ],
       }),
       showcaseSource('platform-infrastructure-skills', {
+        workspace: 'work',
         updateAvailable: true,
         skills: [showcaseSkill('terraform-plan', 'Read a plan before it applies.')],
       }),
       showcaseSource('flaky-skills', {
+        workspace: 'work',
         failure: { at: ahead(-20 * 60_000), message: 'Could not connect to github.com: the connection timed out' },
         skills: [showcaseSkill('triage', 'Sort new issues by area and urgency.')],
       }),
       showcaseSource('missing', {
+        workspace: 'work',
         commit: undefined,
         fetchedAt: undefined,
         failure: { at: ahead(-5 * 60_000), message: 'Repository not found' },
         skills: [],
       }),
+      showcaseSource('writing-kit', {
+        workspace: 'personal',
+        skills: [showcaseSkill('outline', 'Outline a story before writing it.')],
+      }),
       showcaseSource('drafts', {
-        skills: [showcaseSkill('outline', 'Outline a document before writing it.')],
+        workspace: 'work',
+        skills: [showcaseSkill('outline', 'Outline a document before writing it.', { enabled: false })],
         skipped: [
           { path: 'skills/draft/SKILL.md', reason: 'the front matter has no description' },
           { path: 'skills/huge/SKILL.md', reason: 'the file is larger than 256 KiB' },

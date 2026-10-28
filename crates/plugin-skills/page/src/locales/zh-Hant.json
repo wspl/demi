@@ -2,8 +2,12 @@
   "title": "技能",
   "description": "智慧體可以遵循的封裝工作流程。",
   "keywords": "技能,工作流程,git,SKILL.md",
+  "places": {
+    "global": "全域",
+    "globalDescription": "在所有工作區中可用。",
+    "workspaceDescription": "僅在此工作區中可用。"
+  },
   "sources": {
-    "title": "來源",
     "add": "新增來源…",
     "none": "沒有來源",
     "adding": "正在新增",
@@ -17,7 +21,7 @@
   "skill": {
     "warning": "警告",
     "nameTaken": "名稱已被使用",
-    "nameTakenDetail": "來自 {origin} 的技能「{name}」已開啟。關閉它才能使用此技能。",
+    "nameTakenDetail": "來自 {origin}（{place}）的技能「{name}」已開啟。關閉它才能使用此技能。",
     "neverOffered": "從不提供",
     "neverOfferedDetail": "它設定了 disable-model-invocation。",
     "notASkill": "不是技能：{reason}"
@@ -46,7 +50,7 @@
   "permissions": {
     "skills_manage": {
       "action": "管理技能",
-      "description": "「管理技能」可讓此對話的智慧體新增、更新和移除技能來源，以及開啟或關閉技能。你的技能可用於每個對話，已開啟的技能會安裝到你的對話使用的每台主機上。"
+      "description": "「管理技能」可讓此對話的智慧體新增、更新和移除技能來源，以及開啟或關閉技能。全域技能可用於每個對話，工作區的技能可用於該工作區的對話，已開啟的技能會安裝到這些對話使用的主機上。"
     }
   },
   "problems": {
@@ -66,6 +70,8 @@
   },
   "refusals": {
     "invalid_origin": "請輸入 owner/repository 或 Git URL。",
-    "source_exists": "已新增 {origin}。"
+    "source_exists": "已新增 {origin}。",
+    "source_exists_in": "已在「{place}」中新增 {origin}。",
+    "workspace_not_found": "此工作區已不存在。"
   }
 }

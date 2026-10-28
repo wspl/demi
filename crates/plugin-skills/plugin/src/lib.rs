@@ -3,12 +3,25 @@
 //! The plugin holds:
 //!
 //! - the user's skill sources, fetched from git and pinned to a commit, whose
-//!   skills the user turns on one by one and which every Host the user's jobs
-//!   run on receives as a directory;
+//!   skills the user turns on one by one and which the Hosts that run the
+//!   conversations offered them receive as directories;
 //! - the skills a repository carries;
 //! - the catalog of both, which reaches the model as a context block.
 //!
 //! Nothing else in Demi knows skills.
+//!
+//! # Places
+//!
+//! A source is in one place, which the user picks when adding it:
+//!
+//! ```text
+//!   Global ───────────┬──► every conversation's catalog
+//!   workspace Work ───┴──► Work's conversations' catalog only
+//! ```
+//!
+//! A repository is a source in one place, since a source's id is its
+//! repository's. A workspace's deletion takes its sources with it: the next
+//! read of the sources removes those of a workspace that no longer exists.
 //!
 //! # Which skills are on
 //!
@@ -22,13 +35,16 @@
 //!   offered. On, it would only install its files on every Host and take its
 //!   name from another skill.
 //!
-//! Two skills that are on never share a name, which an update cannot break
-//! either, since a skill stays on only under the name it was on with.
+//! Two skills that are on never share a name, in any place, which an update
+//! cannot break either, since a skill stays on only under the name it was on
+//! with: a Host may run conversations of several workspaces, and a skill's
+//! directory is named after it.
 //!
 //! # Hosts
 //!
-//! Every skill that is on is installed on each Host the user's jobs run on, so
-//! the bounds of a fetch bound what a Host keeps.
+//! A Global skill that is on is installed on each Host the user's jobs run
+//! on, and a workspace's on each Host its conversations' jobs run on, so the
+//! bounds of a fetch bound what a Host keeps.
 //!
 //! A skill's path in the catalog is its directory on a Host, the same on every
 //! Host, so a target switch changes no path: the new Host receives the
@@ -76,7 +92,8 @@ use crate::fetch::FetchError;
 use crate::heads::{CHECK_INTERVAL, Heads};
 use crate::origin::Origin;
 use crate::project::ProjectSkill;
-use crate::sources::Source;
+use crate::sources::{Places, Source, Sources};
+use demi_web_api_protocol::ids::WorkspaceId;
 
 pub use crate::fetch::Skipped;
 pub use crate::sources::{Failure, SkillState, SkillsState, SourceState};
@@ -145,11 +162,14 @@ impl demi_plugin_interface::PluginFactory for Skills {
     }
 }
 
-/// `add_source { origin }`.
+/// `add_source { origin, workspace }`: the source goes to the workspace
+/// named, or to Global without one.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddSource {
     pub origin: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceId>,
 }
 
 /// What `add_source` answers: the new source's id.
@@ -306,8 +326,8 @@ impl State {
     ) -> Result<Value, PluginError> {
         match method {
             "add_source" => {
-                let AddSource { origin } = decode(params)?;
-                let source = self.add_source(&port, &origin).await?;
+                let AddSource { origin, workspace } = decode(params)?;
+                let source = self.add_source(&port, &origin, workspace).await?;
                 self.start_fetch(port, source.clone());
                 Ok(serde_json::to_value(AddedSource { source }).expect("a result encodes"))
             }
@@ -348,9 +368,38 @@ impl State {
         }
     }
 
+    /// The user's sources that are in a place, and the places. A source of a
+    /// workspace that no longer exists is removed on the way, with its Host
+    /// directories, and the pages hear of it.
+    ///
+    /// The sources are read before the workspaces: a source is added only to
+    /// a workspace that exists, so a workspace made meanwhile never makes its
+    /// new source look orphaned.
+    async fn sources(&self, port: &PluginPort) -> Result<(Sources, Places), PluginError> {
+        let read = sources::read(port).await?;
+        let places = Places::new(port.workspaces().await?);
+        let (live, gone) = sources::live(read, &places);
+        if gone.is_empty() {
+            return Ok((live, places));
+        }
+        for (id, revision) in gone {
+            match port.remove_value(&id, revision).await {
+                Ok(()) => {}
+                // Another write came first; the next read removes it.
+                Err(failure) if sources::conflict(&failure) => {}
+                Err(failure) => return Err(failure.into()),
+            }
+        }
+        // Read again: a write that came during the removals is in the set.
+        let (live, _) = sources::live(sources::read(port).await?, &places);
+        port.set_directories(sources::directories(&live)).await?;
+        port.changed(Scope::User).await?;
+        Ok((live, places))
+    }
+
     /// The page's state of the user's sources.
     async fn state(&self, port: &PluginPort) -> Result<SkillsState, PluginError> {
-        let sources = sources::read(port).await?;
+        let (sources, _) = self.sources(port).await?;
         let fetching = self.fetching.borrow();
         Ok(sources::state(
             &sources,
@@ -359,21 +408,31 @@ impl State {
         ))
     }
 
-    /// Records the source `origin` names, with no commit and no skills, and
-    /// answers its id.
-    async fn add_source(&self, port: &PluginPort, origin: &str) -> Result<String, PluginError> {
+    /// Records the source `origin` names in `workspace`, or in Global
+    /// without one, with no commit and no skills, and answers its id. A
+    /// repository is a source in one place: one another place has is
+    /// refused, naming the place.
+    async fn add_source(
+        &self,
+        port: &PluginPort,
+        origin: &str,
+        workspace: Option<WorkspaceId>,
+    ) -> Result<String, PluginError> {
         let parsed = Origin::parse(origin)
             .map_err(|message| PluginError::refused("invalid_origin", message))?;
         let id = parsed.id();
-        let existing = sources::read(port).await?;
-        let taken = || {
+        let (existing, places) = self.sources(port).await?;
+        if !places.exists(workspace.as_ref()) {
+            return Err(PluginError::refused("workspace_not_found", "The workspace no longer exists"));
+        }
+        let taken = |place: Option<&WorkspaceId>| {
             PluginError::refused(
                 "source_exists",
-                format!("{} is added already", parsed.url()),
+                format!("{} is added already, in {}", parsed.url(), places.name(place)),
             )
         };
-        if existing.contains_key(&id) {
-            return Err(taken());
+        if let Some((other, _)) = existing.get(&id) {
+            return Err(taken(other.workspace.as_ref()));
         }
         let added = existing
             .values()
@@ -389,10 +448,14 @@ impl State {
             skills: Vec::new(),
             skipped: Vec::new(),
             failure: None,
+            workspace,
         };
         match sources::write(port, &id, &source, None).await {
             Ok(_) => {}
-            Err(failure) if sources::conflict(&failure) => return Err(taken()),
+            Err(failure) if sources::conflict(&failure) => {
+                let other = sources::find(port, &id).await?.and_then(|(other, _)| other.workspace);
+                return Err(taken(other.as_ref()));
+            }
             Err(failure) => return Err(failure.into()),
         }
         port.changed(Scope::User).await?;
@@ -421,9 +484,9 @@ impl State {
         enabled: bool,
     ) -> Result<(), PluginError> {
         loop {
-            let all = sources::read(port).await?;
+            let (all, places) = self.sources(port).await?;
             let (source, revision) = all.get(id).ok_or_else(|| sources::not_found(id))?;
-            let changed = sources::switch(&all, id, &chosen(source), enabled)?;
+            let changed = sources::switch(&all, &places, id, &chosen(source), enabled)?;
             match sources::write(port, id, &changed, Some(*revision)).await {
                 Ok(_) => break,
                 Err(failure) if sources::conflict(&failure) => continue,
@@ -436,7 +499,7 @@ impl State {
     /// The skills that are on changed: the Host directories follow, and
     /// every page receives the new state.
     async fn directories_changed(&self, port: &PluginPort) -> Result<(), PluginError> {
-        let all = sources::read(port).await?;
+        let (all, _) = self.sources(port).await?;
         port.set_directories(sources::directories(&all)).await?;
         port.changed(Scope::User).await?;
         Ok(())
@@ -497,7 +560,7 @@ impl State {
             Err(FetchError::Failed { message, problem }) => Err((message, problem)),
         };
         loop {
-            let all = sources::read(port).await?;
+            let (all, _) = self.sources(port).await?;
             let Some((source, revision)) = all.get(id) else {
                 return Ok(Fetched::Removed);
             };
@@ -526,7 +589,7 @@ impl State {
         }
         match outcome {
             Ok(_) => {
-                let all = sources::read(port).await?;
+                let (all, _) = self.sources(port).await?;
                 port.set_directories(sources::directories(&all)).await?;
                 Ok(Fetched::Pinned)
             }
@@ -587,7 +650,7 @@ impl State {
     /// [`CHECK_INTERVAL`]; a move found reaches every user's pages through
     /// the heads.
     async fn check_due(&self, port: &PluginPort) -> Result<(), PluginError> {
-        let all = sources::read(port).await?;
+        let (all, _) = self.sources(port).await?;
         let now = self.clock.now();
         let mut due: Vec<(String, String)> = Vec::new();
         for (id, (source, _)) in all {
@@ -621,7 +684,8 @@ impl State {
 
     /// The node's catalog block, when it differs from the newest of `seen`,
     /// the plugin's blocks the model receives: the project skills the
-    /// backend holds, `project`, and the user's skills that are on.
+    /// backend holds, `project`, and the user's skills that are on in Global
+    /// and in the conversation's workspace.
     async fn context(
         &self,
         port: &PluginPort,
@@ -646,7 +710,11 @@ impl State {
                 });
             }
         }
-        for (source, _) in sources::read(port).await?.into_values() {
+        let (all, places) = self.sources(port).await?;
+        for (source, _) in all.into_values() {
+            if !places.offered(source.workspace.as_ref()) {
+                continue;
+            }
             for skill in source.skills.iter().filter(|skill| skill.enabled) {
                 let shadowed = entries.iter().any(|entry| entry.name == skill.name);
                 if shadowed {

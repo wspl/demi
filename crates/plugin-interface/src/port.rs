@@ -10,6 +10,7 @@ use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostFile, HostRead, PortError, PortRequest, PortResponse, PortTransport, RpcPort};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind};
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::WorkspaceId;
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
 use crate::{
@@ -99,6 +100,8 @@ pub enum PortMessage {
     /// The request's conversation's work panel, with only the tabs of the
     /// plugin's own panel kinds.
     PanelTabs,
+    /// The user's workspaces, and the one the request's conversation is in.
+    Workspaces,
     /// Creates a tab of one of the plugin's panel kinds.
     CreatePanelTab {
         tab: CreatePanelTab,
@@ -241,6 +244,9 @@ pub enum PortAnswer {
     Panel {
         panel: WorkPanel,
     },
+    Workspaces {
+        workspaces: Workspaces,
+    },
     /// The panel's revision once a change is in it.
     PanelRevision {
         revision: u64,
@@ -299,6 +305,7 @@ impl PortAnswer {
             Self::Kept { .. } => "kept",
             Self::Report { .. } => "report",
             Self::Panel { .. } => "panel",
+            Self::Workspaces { .. } => "workspaces",
             Self::PanelRevision { .. } => "panel_revision",
             Self::Secret { .. } => "secret",
             Self::Response { .. } => "response",
@@ -332,7 +339,8 @@ pub struct StoredValue {
     pub revision: u64,
 }
 
-/// A directory the plugin keeps on every Host its user's jobs run on
+/// A directory the plugin keeps on every Host its user's jobs run on, or
+/// only on those the jobs of one workspace's conversations run on
 /// (`crates/backend-host-access/src/plugin_files.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -340,6 +348,29 @@ pub struct HostDirectory {
     /// 1 to 64 lowercase letters, digits and hyphens, unique in the set.
     pub name: String,
     pub files: Vec<DirectoryFile>,
+    /// The workspace whose conversations' jobs install it; none for every
+    /// job's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceId>,
+}
+
+/// The user's workspaces, in the user's order, and the one a request's
+/// conversation is in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Workspaces {
+    pub workspaces: Vec<WorkspaceName>,
+    /// None for a request of no conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<WorkspaceId>,
+}
+
+/// A workspace and its name as Demi's commands say it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceName {
+    pub id: WorkspaceId,
+    pub name: String,
 }
 
 impl HostDirectory {
@@ -697,6 +728,14 @@ impl PluginPort {
         match self.ask(message).await? {
             PortAnswer::Kept { primary } => Ok(primary),
             answer => Err(unexpected("write_report", &answer)),
+        }
+    }
+
+    /// The user's workspaces, and the one the request's conversation is in.
+    pub async fn workspaces(&self) -> Result<Workspaces, PortFailure> {
+        match self.ask(PortMessage::Workspaces).await? {
+            PortAnswer::Workspaces { workspaces } => Ok(workspaces),
+            answer => Err(unexpected("workspaces", &answer)),
         }
     }
 

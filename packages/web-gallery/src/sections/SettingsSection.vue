@@ -675,7 +675,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Skills · Every State"
-        note="Every source state and every skill state, pinned. Sources: all on, some on, all off, updating, update available, failed after a good fetch (keeps its skills), first fetch failed (no commit, no skills), skipped files. Skills, in web-kit: on, off, a warning, a taken name, never offered to the agent. Every control acts on the showcase’s own state."
+        note="Every source state and every skill state, pinned, in a tab of the Work workspace: Global’s sources, then Work’s; Personal’s writing-kit stays out of sight, yet its outline keeps Work’s drafts › outline off, a taken name in another place. Add Source… of each group adds to that place, and adding a repository another place has says which. Sources: all on, some on, all off, updating, update available, failed after a good fetch (keeps its skills), first fetch failed (no commit, no skills), skipped files. Skills, in web-kit: on, off, a warning, a taken name, never offered to the agent. Every control acts on the showcase’s own state."
       >
         <GallerySpecimen variant="Wide" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">

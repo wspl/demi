@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use demi_plugin_interface::{DirectoryFile, HostDirectory};
 use demi_plugin_host::store::{PluginValue, ValueWrite, Written};
 use demi_shared_types::BlobRef;
-use demi_web_api_protocol::ids::UserId;
+use demi_web_api_protocol::ids::{UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
@@ -197,16 +197,20 @@ impl ControlService {
     ) -> Result<BTreeMap<String, Vec<HostDirectory>>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT plugin, name, files FROM plugin_directories
+                "SELECT plugin, name, files, workspace_id FROM plugin_directories
                  WHERE user_id = ?1 ORDER BY plugin, name",
             )?;
             let mut rows = statement.query([user.as_str()])?;
             let mut sets: BTreeMap<String, Vec<HostDirectory>> = BTreeMap::new();
             while let Some(row) = rows.next()? {
                 let files: String = row.get(2)?;
+                let workspace: Option<String> = row.get(3)?;
                 let directory = HostDirectory {
                     name: row.get(1)?,
                     files: decode(DIRECTORIES, "files", serde_json::from_str(&files))?,
+                    workspace: workspace
+                        .map(|workspace| decode(DIRECTORIES, "workspace_id", WorkspaceId::try_from(workspace)))
+                        .transpose()?,
                 };
                 sets.entry(row.get(0)?).or_default().push(directory);
             }
@@ -216,7 +220,8 @@ impl ControlService {
     }
 
     /// Replaces `plugin`'s Host directories for `user` whole, in one
-    /// transaction.
+    /// transaction. A directory of a workspace that no longer exists is
+    /// dropped, as the workspace's deletion drops those it had.
     pub async fn set_plugin_directories(
         &self,
         user: UserId,
@@ -233,14 +238,16 @@ impl ControlService {
                 let files = serde_json::to_string(&directory.files)
                     .expect("a directory's files encode as JSON");
                 transaction.execute(
-                    "INSERT INTO plugin_directories (user_id, plugin, name, digest, files)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    "INSERT INTO plugin_directories (user_id, plugin, name, digest, files, workspace_id)
+                     SELECT ?1, ?2, ?3, ?4, ?5, ?6
+                     WHERE ?6 IS NULL OR EXISTS (SELECT 1 FROM workspaces WHERE id = ?6 AND user_id = ?1)",
                     params![
                         user.as_str(),
                         plugin,
                         directory.name,
                         directory.digest(),
-                        files
+                        files,
+                        directory.workspace.as_ref().map(WorkspaceId::as_str)
                     ],
                 )?;
             }

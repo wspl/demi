@@ -426,7 +426,7 @@ plugin-host -> plugin-interface, command-declarations, shared-types, host-interf
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
 plugin-mobile -> plugin-interface, command-declarations, command-package-mobile-protocol, host-interface, live-view-protocol, web-api-protocol
-plugin-skills -> plugin-interface, host-interface, shared-types
+plugin-skills -> plugin-interface, host-interface, shared-types, web-api-protocol
 plugin-web -> plugin-interface, command-declarations, command-package-fetch-protocol, host-interface
 plugin-media -> plugin-interface, host-interface, shared-types
 plugin-image -> plugin-media, plugin-interface, host-interface, shared-types
