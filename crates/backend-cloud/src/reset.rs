@@ -54,19 +54,28 @@ use crate::{CloudServices, CloudShard};
 const RECOVERED: &str = "Reset disks recovered. Retry to start Cloud.";
 
 impl dyn CloudShard {
-    /// Admits the reset `id` of the user's Cloud, or answers the one of that
-    /// id: the same operation while it runs or once it is ready, and a failed
-    /// one resumed on the base it selected.
-    ///
-    /// A new operation selects the base the manager has now. Another reset
-    /// while one runs is refused. So is a reset of a stopped Cloud that finds
-    /// no capacity permit.
+    /// Admits the reset `id` of the user's own Cloud, made on its first use,
+    /// as [`reset_machine`](Self::reset_machine) does.
     pub async fn reset_cloud(&self, id: OperationId) -> Result<ManagedOperation, CloudError> {
         if self.cloud().is_closed() {
             return Err(CloudError::Closed);
         }
         let device = self.cloud_device().await?;
-        let machine = self.cloud_machine(&device).await?;
+        self.reset_machine(&device, id).await
+    }
+
+    /// Admits the reset `id` of the user's Cloud `device`, or answers the one
+    /// of that id: the same operation while it runs or once it is ready, and
+    /// a failed one resumed on the base it selected.
+    ///
+    /// A new operation selects the base the manager has now. Another reset
+    /// while one runs is refused. So is a reset of a stopped Cloud that finds
+    /// no capacity permit.
+    pub async fn reset_machine(&self, device: &DeviceRecord, id: OperationId) -> Result<ManagedOperation, CloudError> {
+        if self.cloud().is_closed() {
+            return Err(CloudError::Closed);
+        }
+        let machine = self.cloud_machine(device).await?;
         if let Some(running) = self.running_reset(&machine, &id)? {
             return Ok(running);
         }
@@ -199,7 +208,7 @@ impl dyn CloudShard {
             let _ = transition.await;
         }
         let hold = self.cloud_services().tuning.reset_hold;
-        let uses = self.cloud_uses().await?;
+        let uses = self.cloud_uses(&machine.device).await?;
         let _held = self.hold_uses_for_reset(&uses, hold).await?;
         // The runner flushes, best effort, and goes: every command still
         // running on the Cloud ends with it.
@@ -222,7 +231,7 @@ impl dyn CloudShard {
             .call(reset_params(machine, &operation, capacity))
             .await?;
         self.control()
-            .announce_cloud_reset(self.user().clone(), operation.id.clone())
+            .announce_cloud_reset(self.user().clone(), operation.id.clone(), machine.device.id.clone())
             .await?;
         machine.clear_deaths();
         self.record_phase(machine, &operation, ResetPhase::Booting, None)
@@ -297,7 +306,7 @@ pub async fn recover_clouds(
         // The reset stops a sandbox that still runs before its disk step.
         cloud.machines.call(params).await?;
         control
-            .announce_cloud_reset(record.user, operation.id.clone())
+            .announce_cloud_reset(record.user.clone(), operation.id.clone(), device.clone())
             .await?;
         let failed = ManagedOperation {
             phase: ResetPhase::Failed,

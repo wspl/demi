@@ -215,11 +215,11 @@ impl Shard {
     }
 
     /// The user's Hosts in the devices list's order: the paired devices
-    /// oldest first, then the Cloud.
+    /// oldest first, then the user's own Cloud, then their other Clouds.
     pub(crate) async fn host_records(&self) -> Result<Vec<DeviceRecord>, StorageError> {
         let control = &self.services().control;
         let mut devices = control.paired_devices(self.user().clone()).await?;
-        devices.extend(control.managed_device(self.user().clone()).await?);
+        devices.extend(control.clouds(self.user().clone()).await?);
         Ok(devices)
     }
 

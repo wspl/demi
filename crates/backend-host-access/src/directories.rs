@@ -35,24 +35,30 @@ impl dyn HostShard + '_ {
         Ok(ConversationTarget::Device { device_id, path })
     }
 
-    /// `path` on the user's paired device `device_id` as typed.
+    /// `path` on the user's device `device_id`, a paired one or a Cloud, as
+    /// typed.
     pub async fn device_directory(&self, device_id: &DeviceId, path: &str) -> Result<String, ChangeRefusal> {
-        let device = self.paired_device(device_id).await?;
+        let device = self.host_device(device_id).await?;
         typed_directory(&device, path)
     }
 
-    /// The user's paired device `device_id`.
-    async fn paired_device(&self, device_id: &DeviceId) -> Result<DeviceRecord, ChangeRefusal> {
+    /// The user's device `device_id` a conversation may target by its id: a
+    /// paired one, or one of the user's Clouds other than their own, which
+    /// a conversation targets by kind.
+    async fn host_device(&self, device_id: &DeviceId) -> Result<DeviceRecord, ChangeRefusal> {
+        let own = self.control().managed_device(self.user().clone()).await?;
         self.control()
             .device(device_id.clone())
             .await?
-            .filter(|device| device.user == *self.user() && device.kind == DeviceKind::User)
+            .filter(|device| device.is_host_of(self.user()))
+            .filter(|device| own.is_none_or(|own| own.id != device.id))
             .ok_or(ChangeRefusal::DeviceNotFound)
     }
 
     /// A move's destination `to` as typed, for the move to store and answer:
     ///
-    /// - A directory of a paired device, given or a project's, is stored as it
+    /// - A directory of a paired device or of a Cloud other than the user's
+    ///   own, given or a project's, is stored as it
     ///   is; a project keeps its own id.
     /// - A Cloud directory a move names, as `demi host move` does, is stored
     ///   as typed, and the Cloud is not woken for it.
@@ -64,7 +70,7 @@ impl dyn HostShard + '_ {
     ) -> Result<ConversationTarget, ChangeRefusal> {
         match to {
             ConversationTarget::Device { device_id, path } => {
-                let device = self.paired_device(&device_id).await?;
+                let device = self.host_device(&device_id).await?;
                 let path = typed_directory(&device, &path)?;
                 Ok(ConversationTarget::Device { device_id, path })
             }

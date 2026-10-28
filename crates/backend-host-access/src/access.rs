@@ -959,6 +959,9 @@ impl dyn HostShard + '_ {
         };
         let found = match (&named, &target) {
             (Some(host), _) => control.device(host.device.clone()).await?,
+            // A Cloud's home by its device, which may be any of the user's
+            // Clouds, not only their own.
+            (None, ExecutionTarget::Cloud { device_id: Some(device), .. }) => control.device(device.clone()).await?,
             (None, ExecutionTarget::Cloud { .. }) if allocate => {
                 Some(self.cloud_shard().cloud_device().await?)
             }
@@ -1210,7 +1213,7 @@ impl dyn HostShard + '_ {
             .into_iter()
             .map(|device| device.id)
             .collect();
-        devices.extend(control.managed_device(self.user().clone()).await?.map(|device| device.id));
+        devices.extend(control.clouds(self.user().clone()).await?.into_iter().map(|device| device.id));
         Ok(devices)
     }
 }

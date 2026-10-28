@@ -26,7 +26,7 @@
 //! made takes a lease of its own, refused while the Cloud is not running.
 
 use std::cell::{Cell, RefCell, RefMut};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
@@ -156,36 +156,25 @@ pub struct CloudAdmission {
 /// waits.
 pub(crate) type Transition = Shared<LocalBoxFuture<'static, Result<(), CloudError>>>;
 
-/// The user's managed machines, in the user's shard: the Cloud, and for the
-/// master the Claude Code machine, each made on the first need, and whether
-/// the shard is closing them.
+/// The user's managed machines, in the user's shard, by their device: each
+/// of the user's Clouds, their own and any other, and for the master the
+/// Claude Code machine, each made on the first need, and whether the shard
+/// is closing them.
 #[derive(Default)]
 pub struct Cloud {
-    machine: RefCell<Option<Rc<Machine>>>,
-    claude_code: RefCell<Option<Rc<Machine>>>,
+    machines: RefCell<BTreeMap<DeviceId, Rc<Machine>>>,
     closed: Cell<bool>,
 }
 
 impl Cloud {
-    /// The user's Cloud machine, once its first need made it.
-    pub(crate) fn machine(&self) -> Option<Rc<Machine>> {
-        self.machine.borrow().clone()
-    }
-
-    /// The slot of the managed machine `kind`.
-    fn slot(&self, kind: ManagedMachine) -> &RefCell<Option<Rc<Machine>>> {
-        match kind {
-            ManagedMachine::Cloud => &self.machine,
-            ManagedMachine::ClaudeCode => &self.claude_code,
-        }
+    /// The machine of `device`, once its first need made it.
+    fn machine(&self, device: &DeviceId) -> Option<Rc<Machine>> {
+        self.machines.borrow().get(device).cloned()
     }
 
     /// Every managed machine the shard made.
     pub(crate) fn machines(&self) -> Vec<Rc<Machine>> {
-        [self.machine(), self.claude_code.borrow().clone()]
-            .into_iter()
-            .flatten()
-            .collect()
+        self.machines.borrow().values().cloned().collect()
     }
 
     pub(crate) fn is_closed(&self) -> bool {
@@ -436,16 +425,16 @@ impl Machine {
 }
 
 impl dyn CloudShard {
-    /// The managed machine of `device`, the user's Cloud or the Claude Code
-    /// machine, made on the first need with the latest reset its records
-    /// hold.
+    /// The managed machine of `device`, one of the user's Clouds or the
+    /// Claude Code machine, made on the first need with the latest reset its
+    /// records hold.
     pub(crate) async fn cloud_machine(
         &self,
         device: &DeviceRecord,
     ) -> Result<Rc<Machine>, StorageError> {
         let kind = device.machine.unwrap_or(ManagedMachine::Cloud);
-        let slot = self.cloud().slot(kind);
-        if let Some(machine) = slot.borrow().clone() {
+        let cloud = self.cloud();
+        if let Some(machine) = cloud.machine(&device.id) {
             return Ok(machine);
         }
         let operation = self
@@ -454,12 +443,12 @@ impl dyn CloudShard {
             .await?;
         // Two first needs may both have read; the first to get here makes
         // the machine, and no await separates this check from the store.
-        if let Some(machine) = slot.borrow().clone() {
+        if let Some(machine) = cloud.machine(&device.id) {
             return Ok(machine);
         }
         let marks = (kind == ManagedMachine::Cloud).then(|| self.marks());
         let machine = Rc::new(Machine::new(device.clone(), operation, marks));
-        slot.replace(Some(machine.clone()));
+        cloud.machines.borrow_mut().insert(device.id.clone(), machine.clone());
         Ok(machine)
     }
 

@@ -341,7 +341,7 @@ pub(crate) async fn endpoint_device(control: &ControlService, entry: &ProviderEn
     let address = DeviceAddress::of(config.base_url.as_ref()?.url())?;
     let read = async {
         let mut devices = control.paired_devices(entry.owner.clone()).await?;
-        devices.extend(control.managed_device(entry.owner.clone()).await?);
+        devices.extend(control.clouds(entry.owner.clone()).await?);
         Ok::<_, StorageError>(devices)
     };
     let devices = match read.await {

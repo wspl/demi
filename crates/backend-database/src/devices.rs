@@ -265,7 +265,7 @@ impl ControlService {
         self.managed_machine(user, ManagedMachine::Cloud).await
     }
 
-    /// The user's Cloud device, made on its first use.
+    /// The user's own Cloud device, made on its first use.
     pub async fn managed_device_or_create(
         &self,
         user: UserId,
@@ -273,25 +273,53 @@ impl ControlService {
         self.managed_machine_or_create(user, ManagedMachine::Cloud).await
     }
 
-    /// The user's managed device of `machine`, when its first use made it.
+    /// Every Cloud of the user's, their own first, then the others oldest
+    /// first: the Hosts the user holds beside their paired devices.
+    pub async fn clouds(&self, user: UserId) -> Result<Vec<DeviceRecord>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {DEVICE_COLUMNS} FROM devices
+                 WHERE user_id = ?1 AND kind = 'managed' AND machine = 'cloud'
+                 ORDER BY id <> (SELECT cloud_device_id FROM users WHERE id = ?1), claimed_at, id"
+            ))?;
+            let mut rows = statement.query([user.as_str()])?;
+            let mut devices = Vec::new();
+            while let Some(row) = rows.next()? {
+                devices.push(device_row(row)?);
+            }
+            Ok(devices)
+        })
+        .await
+    }
+
+    /// Makes another Cloud of the user's, beside their own: a managed device
+    /// the user's record does not name, which boots on its first use.
+    pub async fn create_cloud(&self, user: UserId) -> Result<DeviceRecord, StorageError> {
+        self.call(move |connection, now| insert_cloud(connection, &user, now)).await
+    }
+
+    /// The user's managed device of `machine`, when its first use made it:
+    /// their own Cloud, or the Claude Code machine.
     pub async fn managed_machine(
         &self,
         user: UserId,
         machine: ManagedMachine,
     ) -> Result<Option<DeviceRecord>, StorageError> {
-        self.call(move |connection, _| {
-            one_of(
+        self.call(move |connection, _| match machine {
+            ManagedMachine::Cloud => managed_device_in(connection, &user),
+            ManagedMachine::ClaudeCode => one_of(
                 connection,
                 "kind = 'managed' AND user_id = ?1 AND machine = ?2",
                 [user.as_str(), machine.as_str()],
-            )
+            ),
         })
         .await
     }
 
     /// The user's managed device of `machine`, made on its first use: the
-    /// Cloud of any user, the Claude Code machine of the master. The partial
-    /// unique index admits one of each per user, so concurrent first uses
+    /// own Cloud of any user, the Claude Code machine of the master. One
+    /// transaction makes and names the Cloud, and the partial unique index
+    /// admits one Claude Code machine per user, so concurrent first uses
     /// find the same one. Its token is issued when it boots.
     pub async fn managed_machine_or_create(
         &self,
@@ -300,7 +328,12 @@ impl ControlService {
     ) -> Result<DeviceRecord, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let device = machine_in_or_create(&transaction, &user, machine, now, DEVICE_COLUMNS)?;
+            let device = match machine {
+                ManagedMachine::Cloud => cloud_device_in(&transaction, &user, now)?,
+                ManagedMachine::ClaudeCode => {
+                    machine_in_or_create(&transaction, &user, machine, now, DEVICE_COLUMNS)?
+                }
+            };
             transaction.commit()?;
             Ok(device)
         })
@@ -554,7 +587,7 @@ impl ControlService {
             let system_changed = record.os.as_ref() != Some(&os);
             if system_changed || home_changed {
                 // A Cloud conversation in a conversation's directory names
-                // no device: the Cloud is its owner's managed one.
+                // no device: the Cloud is the one its owner's record names.
                 transaction.execute(
                     "UPDATE conversations SET context_version = context_version + 1
                      WHERE id IN (
@@ -562,12 +595,11 @@ impl ControlService {
                          JOIN devices device ON device.id = ?1
                        WHERE (?2 AND (
                            conversation.target_device_id = device.id
-                           OR (conversation.target_kind = 'cloud' AND device.kind = 'managed'
-                             AND device.machine = 'cloud' AND conversation.user_id = device.user_id)))
+                           OR (conversation.target_kind = 'cloud'
+                             AND device.id = (SELECT cloud_device_id FROM users WHERE id = conversation.user_id))))
                          OR (?3 AND (
                            (conversation.target_kind = 'cloud' AND conversation.target_path IS NULL
-                             AND device.kind = 'managed' AND device.machine = 'cloud'
-                             AND conversation.user_id = device.user_id)
+                             AND device.id = (SELECT cloud_device_id FROM users WHERE id = conversation.user_id))
                            OR (conversation.target_kind = 'home' AND conversation.target_device_id = device.id)
                            OR EXISTS (SELECT 1 FROM conversation_hosts host
                              WHERE host.conversation_id = conversation.id
@@ -877,18 +909,50 @@ pub(crate) fn device_in(connection: &Connection, id: &DeviceId) -> Result<Option
 pub(crate) fn managed_device_in(connection: &Connection, user: &UserId) -> Result<Option<DeviceRecord>, StorageError> {
     one_of(
         connection,
-        "kind = 'managed' AND user_id = ?1 AND machine = ?2",
-        [user.as_str(), ManagedMachine::Cloud.as_str()],
+        "id = (SELECT cloud_device_id FROM users WHERE id = ?1)",
+        [user.as_str()],
     )
 }
 
-/// The user's Cloud device, made now when it was never made.
+/// The user's own Cloud device, made now and named by the user's record when
+/// it was never made, in the caller's transaction.
 pub(crate) fn cloud_device_in(connection: &Connection, user: &UserId, now: Timestamp) -> Result<DeviceRecord, StorageError> {
-    machine_in_or_create(connection, user, ManagedMachine::Cloud, now, DEVICE_COLUMNS)
+    if let Some(device) = managed_device_in(connection, user)? {
+        return Ok(device);
+    }
+    let device = insert_cloud(connection, user, now)?;
+    connection.execute(
+        "UPDATE users SET cloud_device_id = ?2 WHERE id = ?1",
+        params![user.as_str(), device.id.as_str()],
+    )?;
+    Ok(device)
 }
 
-/// [`cloud_device_in`] for a migration step before 0.1.25's, whose
-/// `devices` table has no `autostart_unavailable` yet.
+/// Makes a Cloud device of the user's now, which boots on its first use.
+fn insert_cloud(connection: &Connection, user: &UserId, now: Timestamp) -> Result<DeviceRecord, StorageError> {
+    let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
+    connection.execute(
+        "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at, machine)
+         VALUES (?1, ?2, 'managed', ?3, ?4, NULL, ?5, NULL, ?6)",
+        params![
+            id.as_str(),
+            user.as_str(),
+            ManagedMachine::Cloud.name(),
+            CLOUD_PLATFORM.to_string(),
+            now.as_millisecond(),
+            ManagedMachine::Cloud.as_str()
+        ],
+    )?;
+    one_of(connection, "id = ?1", [id.as_str()])?.ok_or(StorageError::Corrupt {
+        table: "devices",
+        column: "id",
+        reason: "a Cloud just made was not found".into(),
+    })
+}
+
+/// The user's Cloud device, made now when it was never made, for a migration
+/// step before 0.1.25's, whose `devices` table has no `autostart_unavailable`
+/// yet and whose partial unique index admits one Cloud per user.
 pub(crate) fn cloud_device_before_0_1_25_in(
     connection: &Connection,
     user: &UserId,
@@ -898,7 +962,8 @@ pub(crate) fn cloud_device_before_0_1_25_in(
 }
 
 /// The user's managed device of `machine`, made now when it was never made, in
-/// the caller's transaction.
+/// the caller's transaction: the Claude Code machine, or a migration step's
+/// Cloud.
 ///
 /// The partial unique index admits one of each per user, so concurrent first uses
 /// find the same one. Its token is issued when it boots. `columns` reads the row:

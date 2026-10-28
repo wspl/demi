@@ -197,7 +197,12 @@ pub(crate) fn select(
         }
         ConversationTarget::Device { device_id, path } => {
             match device_in(connection, device_id)? {
-                Some(device) if device.user == *owner && device.kind == DeviceKind::User => {
+                // A paired device, or a Cloud of the user's by its device;
+                // their own Cloud is targeted by kind alone.
+                Some(device)
+                    if device.is_host_of(owner)
+                        && managed_device_in(connection, owner)?.is_none_or(|own| own.id != device.id) =>
+                {
                     select_directory(connection, workspace, conversation, &device, path, now)
                 }
                 _ => Ok(Err(Unselectable::DeviceNotFound)),

@@ -162,19 +162,28 @@ impl ControlService {
         .await
     }
 
-    /// Tells every conversation of the user that its Cloud was reset by
-    /// `operation`: each one's execution context advances once per reset,
-    /// so every node reads the reset in its next context block.
+    /// Tells the conversations of the user that reach the Cloud `cloud` that
+    /// it was reset by `operation`: each one's execution context advances
+    /// once per reset, so every node reads the reset in its next context
+    /// block.
     pub async fn announce_cloud_reset(
         &self,
         user: UserId,
         operation: OperationId,
+        cloud: DeviceId,
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
+            // Every conversation of the user hears of a reset of their own
+            // Cloud, which any of them may reach; one of another Cloud reaches
+            // the conversations that work on it or attach it.
             connection.execute(
                 "UPDATE conversations SET context_version = context_version + 1, cloud_reset_id = ?2
-                 WHERE user_id = ?1 AND (cloud_reset_id IS NULL OR cloud_reset_id <> ?2)",
-                [user.as_str(), operation.as_str()],
+                 WHERE user_id = ?1 AND (cloud_reset_id IS NULL OR cloud_reset_id <> ?2)
+                   AND (?3 = (SELECT cloud_device_id FROM users WHERE id = ?1)
+                     OR target_device_id = ?3
+                     OR target_project_id IN (SELECT id FROM projects WHERE device_id = ?3)
+                     OR id IN (SELECT conversation_id FROM conversation_hosts WHERE device_id = ?3))",
+                [user.as_str(), operation.as_str(), cloud.as_str()],
             )?;
             Ok(())
         })
@@ -208,13 +217,15 @@ impl ControlService {
         .await
     }
 
-    /// The user's conversations that are not archived, as the Cloud's
-    /// lifecycle weighs them; `cloud` is the user's Cloud device, once its
-    /// first use made it.
+    /// The user's conversations that are not archived, as the lifecycle of
+    /// the Cloud `cloud` weighs them: the user's own Cloud when `own`, which a
+    /// conversation targets by kind, once its first use made it; another
+    /// Cloud of the user's, which a conversation targets by its device.
     pub async fn cloud_uses(
         &self,
         user: UserId,
         cloud: Option<DeviceId>,
+        own: bool,
     ) -> Result<Vec<CloudUseRecord>, StorageError> {
         const TABLE: &str = "conversations";
         self.call(move |connection, _| {
@@ -234,7 +245,7 @@ impl ControlService {
                 let device: Option<String> = row.get("target_device_id")?;
                 let project_device: Option<String> = row.get("project_device")?;
                 let target_device = device.or(project_device);
-                let on_cloud = kind == "cloud" || (cloud.is_some() && target_device.as_deref() == cloud);
+                let on_cloud = (own && kind == "cloud") || (cloud.is_some() && target_device.as_deref() == cloud);
                 let provider = row
                     .get::<_, Option<String>>("model")?
                     .map(|model| {

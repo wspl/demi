@@ -613,7 +613,7 @@ impl Shard {
     pub async fn disconnect_runners(&self, reason: &str) -> Result<(), StorageError> {
         let control = &self.services().control;
         let mut devices = control.paired_devices(self.user().clone()).await?;
-        devices.extend(control.managed_device(self.user().clone()).await?);
+        devices.extend(control.clouds(self.user().clone()).await?);
         for device in devices {
             self.devices().disconnect(&device.id, reason);
         }

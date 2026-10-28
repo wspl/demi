@@ -60,7 +60,7 @@ impl dyn CloudShard {
     /// Claude Code machine, whose work holds its gate instead.
     async fn uses_of(&self, machine: &Machine) -> Result<Vec<(ConversationId, Role)>, String> {
         match machine.kind() {
-            ManagedMachine::Cloud => self.cloud_uses().await.map_err(|error| error.to_string()),
+            ManagedMachine::Cloud => self.cloud_uses(&machine.device).await.map_err(|error| error.to_string()),
             ManagedMachine::ClaudeCode => Ok(Vec::new()),
         }
     }

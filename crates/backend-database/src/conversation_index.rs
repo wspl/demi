@@ -1360,8 +1360,8 @@ pub fn may_reach(
              OR EXISTS (
                SELECT 1 FROM conversations c WHERE c.id = ?1 AND (
                  c.target_device_id = ?2
-                 OR (c.target_kind = 'cloud' AND EXISTS (
-                   SELECT 1 FROM devices d WHERE d.id = ?2 AND d.kind = 'managed' AND d.machine = 'cloud' AND d.user_id = c.user_id))))",
+                 OR (c.target_kind = 'cloud'
+                   AND ?2 = (SELECT u.cloud_device_id FROM users u WHERE u.id = c.user_id))))",
         params![conversation.as_str(), device.as_str()],
         |row| row.get(0),
     )?)
