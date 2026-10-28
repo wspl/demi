@@ -21,6 +21,7 @@ use serde_json::Value;
 
 use super::{
     PatchBatch, is_interruption, reply_markdown::named_pictures,
+    cut::{ended_turn_answer, ends_turn, from_another_conversation, turn_of},
     earlier::Earlier,
     journal::{DirtyRows, Journal, patch_index},
 };
@@ -33,6 +34,16 @@ pub struct PendingCall {
     pub tool_name: String,
     /// The call's input as the JSON text the provider supplied.
     pub input: String,
+}
+
+/// The end of a turn the user asked for, as it ended: the block that ended
+/// it, whether it failed, and the Markdown of its last text that is not
+/// blank.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AskedEnd {
+    pub id: BlockId,
+    pub failed: bool,
+    pub answer: Option<String>,
 }
 
 pub struct TranscriptLog {
@@ -53,6 +64,12 @@ pub struct TranscriptLog {
     epoch: String,
     ids: Rc<dyn IdSource>,
     clock: Arc<dyn Clock>,
+    /// The turn the latest input opened or joined, and whether the user
+    /// asked for it ([`TranscriptLog::take_asked_end`]), decided as its
+    /// inputs arrive; none before an input arrived in this log.
+    asking: Option<(TurnId, bool)>,
+    /// The latest end of a turn the user asked for, until it is taken.
+    asked_end: Option<AskedEnd>,
 }
 
 impl TranscriptLog {
@@ -68,6 +85,8 @@ impl TranscriptLog {
             epoch,
             ids,
             clock,
+            asking: None,
+            asked_end: None,
         }
     }
 
@@ -428,6 +447,10 @@ impl TranscriptLog {
         }))
         .collect();
         self.blocks = blocks;
+        // A rewritten path, as an edit or a switch of versions makes, says
+        // anew whose its last turn is; an end kept before it may be gone.
+        self.asking = self.held_turn();
+        self.asked_end = None;
         PatchBatch {
             revision: self.revision,
             patches,
@@ -887,9 +910,80 @@ impl TranscriptLog {
     fn append_received(&mut self, mut block: Block, sender_below: bool) {
         block.set_run(run_of(&self.blocks, &block, sender_below));
         block.set_request(request_of(&self.blocks, &block));
+        self.note_input(&block);
         let index = self.len();
         self.journal.add(index, &block, self.versions.get(&index).copied());
         self.blocks.push(block);
+        self.note_end();
+    }
+
+    /// Decides, as an input of a turn arrives, whether the user asked for its
+    /// turn ([`opens_asked`]); a steer of the user joins it to the user's.
+    fn note_input(&mut self, block: &Block) {
+        let Some(turn) = turn_of(block) else {
+            return;
+        };
+        let same = self.asking.as_ref().is_some_and(|(current, _)| current == turn);
+        let asked = match block {
+            Block::Steer(_) => true,
+            _ if same => return,
+            _ => opens_asked(block, || matches!(self.user_input(), Some(None))),
+        };
+        self.asking = Some((turn.clone(), asked));
+    }
+
+    /// The last turn the held blocks have an input of, and whether the user
+    /// asked for it, as [`note_input`](Self::note_input) would have decided
+    /// it from its inputs in order; none when they hold no input.
+    fn held_turn(&self) -> Option<(TurnId, bool)> {
+        let last = self.blocks.iter().rposition(|block| turn_of(block).is_some())?;
+        let turn = turn_of(&self.blocks[last])?.clone();
+        let mut opener = last;
+        let mut steered = false;
+        for (index, block) in self.blocks[..=last].iter().enumerate().rev() {
+            match turn_of(block) {
+                Some(input) if *input == turn => {
+                    opener = index;
+                    steered |= matches!(block, Block::Steer(_));
+                }
+                Some(_) => break,
+                None => {}
+            }
+        }
+        let before = &self.blocks[..opener];
+        let asked = steered
+            || opens_asked(&self.blocks[opener], || {
+                let input = before.iter().rev().find_map(crate::user_input).or_else(|| self.earlier.user_input().cloned());
+                matches!(input, Some(None))
+            });
+        Some((turn, asked))
+    }
+
+    /// Keeps the end of a turn the user asked for, as it just arrived.
+    fn note_end(&mut self) {
+        let Some(end) = self.blocks.last() else {
+            return;
+        };
+        let failed = match end {
+            Block::Response(_) => false,
+            Block::Error(_) if ends_turn(end) => true,
+            _ => return,
+        };
+        // A log restored within a turn decides by what it holds.
+        if self.asking.is_none() {
+            self.asking = self.held_turn();
+        }
+        let asked = self.asking.as_ref().is_some_and(|(_, asked)| *asked);
+        if asked {
+            let answer = ended_turn_answer(&self.blocks).and_then(|(_, text)| text).map(|text| text.text.clone());
+            self.asked_end = Some(AskedEnd { id: end.id().clone(), failed, answer });
+        }
+    }
+
+    /// Takes the latest end of a turn the user asked for since the last
+    /// take; none when no such turn ended.
+    pub fn take_asked_end(&mut self) -> Option<AskedEnd> {
+        self.asked_end.take()
     }
 
     fn record_replace(&mut self, index: usize) {
@@ -901,4 +995,19 @@ impl TranscriptLog {
 /// position a rewrite from `old` to `new` changes.
 pub fn kept(old: &[Block], new: &[Block]) -> usize {
     old.iter().zip(new).take_while(|(old, new)| old == new).count()
+}
+
+/// Whether the user asked for the turn `block`, its first input, opens: the
+/// user's own message or steer did, a schedule's message or another
+/// conversation's did not, and any other input, a command's report, a
+/// subagent's message, a resume, opens a turn of the work it continues,
+/// which `continues_users` tells: whether the latest message of the user or
+/// a schedule before it is the user's.
+fn opens_asked(block: &Block, continues_users: impl FnOnce() -> bool) -> bool {
+    match block {
+        Block::Steer(_) => true,
+        Block::User(user) => user.schedule.is_none(),
+        Block::AgentMessage(message) if from_another_conversation(message) => false,
+        _ => continues_users(),
+    }
 }
