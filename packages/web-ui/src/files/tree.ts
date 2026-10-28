@@ -26,16 +26,54 @@ export interface TreeRow {
  */
 export type TreeDropTarget = { kind: 'row'; path: string } | { kind: 'tree' }
 
-/** A directory row and the rows it holds, as indices into `rows`: from the row to the last one under it. */
-export function treeBlock(rows: readonly TreeRow[], path: string): { first: number; last: number } | null {
-  const first = rows.findIndex((row) => row.path === path)
-  if (first < 0)
-    return null
-  const depth = rows[first]!.depth
-  let last = first
-  while (last + 1 < rows.length && rows[last + 1]!.depth > depth)
-    last += 1
-  return { first, last }
+/**
+ * Where each row sits in the tree, by index into the rows, built once per rows so
+ * that nothing a scroll or a key does walks every row: a row's directory, the
+ * rows it holds, and its place among its siblings.
+ *
+ * The rows hold every directory's rows right after it, so the rows a directory
+ * holds are the block from its row to `end`.
+ */
+export interface TreeIndex {
+  /** Each row's index, by path. */
+  indexOf: ReadonlyMap<string, number>
+  /** The index of each row's directory row, or -1 for a row under the root. */
+  parent: Int32Array
+  /** The index of the last row each row holds, or its own when it holds none. */
+  end: Int32Array
+  /** Each row's place among the rows of its directory, from 1. */
+  position: Int32Array
+  /** How many rows its directory holds directly. */
+  siblings: Int32Array
+}
+
+export function indexTree(rows: readonly TreeRow[]): TreeIndex {
+  const count = rows.length
+  const indexOf = new Map<string, number>()
+  const parent = new Int32Array(count)
+  const end = new Int32Array(count)
+  const position = new Int32Array(count)
+  const siblings = new Int32Array(count)
+  // How many rows each directory holds directly, by its index; the root is -1.
+  const held = new Map<number, number>()
+  // The rows still open above the current one, deepest last.
+  const open: number[] = []
+  rows.forEach((row, index) => {
+    indexOf.set(row.path, index)
+    while (open.length > 0 && rows[open.at(-1)!]!.depth >= row.depth)
+      end[open.pop()!] = index - 1
+    open.push(index)
+    const up = row.parent === null ? -1 : (indexOf.get(row.parent) ?? -1)
+    parent[index] = up
+    const place = (held.get(up) ?? 0) + 1
+    held.set(up, place)
+    position[index] = place
+  })
+  for (const index of open)
+    end[index] = count - 1
+  for (let index = 0; index < count; index++)
+    siblings[index] = held.get(parent[index]!)!
+  return { indexOf, parent, end, position, siblings }
 }
 
 /**
@@ -71,7 +109,8 @@ export interface StickyTreeStack {
 }
 
 /**
- * The directory rows to pin at the top for a viewport scrolled to `scrollTop`.
+ * The directory rows to pin at the top for a viewport scrolled to `scrollTop`,
+ * where row `i` starts at `firstTop + i` pitches.
  *
  * Level by level, the row under the stack's next slot names the chain of
  * directories it sits in (itself included when it is an open directory with
@@ -83,71 +122,58 @@ export interface StickyTreeStack {
  * - A row outside the pinned chain ends the stack.
  * - As the deepest pinned directory's last row scrolls under the stack, the
  *   stack rides up with it instead of vanishing.
+ *
+ * Every step is arithmetic on the index, so the stack costs as much in a
+ * directory of a hundred thousand rows as in one of ten.
  */
 export function stickyTreeRows(
   rows: readonly TreeRow[],
-  rowTop: (path: string) => number | undefined,
+  index: TreeIndex,
   scrollTop: number,
-  captionPx: number,
+  firstTop: number,
   rowPx = TREE_ROW_PX,
 ): StickyTreeStack {
   const pitch = rowPx + 1
-  const byPath = new Map(rows.map((row) => [row.path, row]))
-  const chainOf = (row: TreeRow): string[] => {
-    const chain = [row.path]
-    let parent = row.parent
-    while (parent !== null) {
-      chain.unshift(parent)
-      parent = byPath.get(parent)?.parent ?? null
-    }
+  const topOf = (at: number): number => firstTop + at * pitch
+  const chainOf = (at: number): number[] => {
+    const chain: number[] = []
+    for (let up = at; up >= 0; up = index.parent[up]!)
+      chain.unshift(up)
     return chain
   }
-  const isInside = (row: TreeRow, dir: string): boolean => {
-    let up = row.parent
-    while (up !== null) {
-      if (up === dir) {
-        return true
-      }
-      up = byPath.get(up)?.parent ?? null
-    }
-    return false
-  }
-  const lastBottom = (dir: string): number => {
-    const last = rows.findLast((row) => isInside(row, dir))
-    return last ? (rowTop(last.path) ?? 0) + rowPx : 0
-  }
   /** The row under `y`: the first one whose bottom is below it. */
-  const rowAt = (y: number): TreeRow | undefined =>
-    rows.find((row) => {
-      const top = rowTop(row.path)
-      return top !== undefined && top + rowPx > y
-    })
+  const rowAt = (y: number): number | null => {
+    const at = Math.max(0, Math.floor((y - firstTop - rowPx) / pitch) + 1)
+    return at < rows.length ? at : null
+  }
   const paths: string[] = []
+  const pinned: number[] = []
   let offset = 0
   for (let level = 0; ; level++) {
-    const slotTop = scrollTop + captionPx + level * pitch
+    const slotTop = scrollTop + firstTop + level * pitch
     const anchor = rowAt(slotTop)
-    if (!anchor) {
+    if (anchor === null) {
       break
     }
     const chain = chainOf(anchor)
     // The row under the slot belongs elsewhere than the pinned directories: they end here.
-    if (chain.length <= level || paths.some((path, index) => chain[index] !== path)) {
+    if (chain.length <= level || pinned.some((at, depth) => chain[depth] !== at)) {
       break
     }
-    const path = chain[level]!
-    const top = rowTop(path)
+    const at = chain[level]!
     // Still below its slot: no pin here, nor for the directories inside it. At the
     // slot exactly, the pinned copy sits where the row is, so the swap shows nothing.
-    if (top === undefined || top > slotTop) {
+    if (topOf(at) > slotTop) {
       break
     }
     // Nothing of it below the slot (a file, a closed or empty directory): the directory is past.
-    const bottom = lastBottom(path)
+    const last = index.end[at]!
+    const bottom = last > at ? topOf(last) + rowPx : 0
     if (bottom <= slotTop) {
       break
     }
-    paths.push(path)
+    pinned.push(at)
+    paths.push(rows[at]!.path)
     offset = Math.min(0, bottom - (slotTop + pitch))
   }
   return { paths, offset }
