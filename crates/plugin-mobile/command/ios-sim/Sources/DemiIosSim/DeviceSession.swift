@@ -116,18 +116,43 @@ struct DisplayLayout {
   /// A foldable's outer display, its primary one, and its inner display.
   let fold: (outer: SimulatorDisplay, inner: SimulatorDisplay)?
 
-  init(_ configuration: SimulatorDisplayConfiguration) {
+  /// The layout of `configuration`'s displays on a device of the type in
+  /// `bundle`. Each display's turn is the one its panel is mounted at, as the
+  /// device type declares it to the guest, rather than the turns the displays
+  /// report: those follow the device, and a closed foldable's outer display
+  /// stays upright while its inner one turns, so their difference is the
+  /// upright one only while the device is upright.
+  init(_ configuration: SimulatorDisplayConfiguration, deviceType bundle: URL) {
     let integrated = configuration.displays.filter(\.isIntegrated)
     let primary = integrated.first(where: \.isPrimary)
-    let base = primary.flatMap { Turn($0.rotation)?.quarters } ?? 0
+    let mounted = Self.mountedDegrees(bundle)
+    let base = primary.flatMap { mounted[$0.name] } ?? 0
+    // The interface turns back what the panel's mounting turned: a panel
+    // mounted at 270° shows it a quarter turn clockwise.
     natural = Dictionary(
-      integrated.map { ($0.uniqueID, ((Turn($0.rotation)?.quarters ?? 0) - base + 4) % 4) },
+      integrated.map { ($0.uniqueID, ((base - (mounted[$0.name] ?? 0)) / 90 % 4 + 4) % 4) },
       uniquingKeysWith: { first, _ in first })
     if integrated.count == 2, let primary, let inner = integrated.first(where: { !$0.isPrimary }) {
       fold = (primary, inner)
     } else {
       fold = nil
     }
+  }
+
+  /// The degrees each integrated display's panel is mounted at, by its
+  /// name, from the device type's capabilities.
+  private static func mountedDegrees(_ bundle: URL) -> [String: Int] {
+    let file = bundle.appendingPathComponent("Contents/Resources/capabilities.plist")
+    let capabilities = NSDictionary(contentsOf: file)?["capabilities"] as? [String: Any]
+    let displays = capabilities?["displays"] as? [[String: Any]] ?? []
+    return Dictionary(
+      displays.compactMap { display in
+        guard display["displayType"] as? String == "integrated", let name = display["displayName"] as? String,
+          let degrees = (display["nativeRotation"] as? NSNumber)?.intValue
+        else { return nil }
+        return (name, degrees)
+      },
+      uniquingKeysWith: { first, _ in first })
   }
 
   /// `display`'s size in points while the device is upright.
@@ -278,7 +303,7 @@ final class DeviceSession: @unchecked Sendable {
     let scale = lit?.scale ?? Double(simulator.screenInfo?.scale ?? 3)
     let points = CGSize(
       width: Double(IOSurfaceGetWidth(surface)) / scale, height: Double(IOSurfaceGetHeight(surface)) / scale)
-    let layout = lit.map { _ in DisplayLayout(configuration) }
+    let layout = lit.map { _ in DisplayLayout(configuration, deviceType: simulator.device.deviceType.bundle.bundleURL) }
     var faces = [lit?.uniqueID ?? "": attachment]
     // A foldable's other display, which is off, shows on its face too.
     if let fold = layout?.fold {
