@@ -911,7 +911,18 @@ impl UserPlugins {
     /// The toolset of the plugins the user has on: their commands, with the
     /// product's `product` groups under `demi`.
     pub async fn toolset(&self, product: Vec<GroupBuilder>) -> Result<PluginToolset, StoreError> {
-        let enabled = self.enabled().await?;
+        self.toolset_where(product, |_| true).await
+    }
+
+    /// [`toolset`](Self::toolset) with only the plugins `allows` lets in by
+    /// their id, of those the user has on: an integration's capabilities
+    /// (`crates/backend-user-shard/src/integrations.rs`).
+    pub async fn toolset_where(
+        &self,
+        product: Vec<GroupBuilder>,
+        allows: impl Fn(&str) -> bool,
+    ) -> Result<PluginToolset, StoreError> {
+        let enabled = self.allowed(&allows).await?;
         let features = self.0.features().await?;
         let on = |index: usize, feature: &Feature| {
             let declared = &self.0.registry.plugins[index].factory.manifest().features;
@@ -930,9 +941,27 @@ impl UserPlugins {
 
     /// The revision of the toolset the user's plugins give now.
     pub async fn revision(&self) -> Result<String, StoreError> {
-        let enabled = self.enabled().await?;
+        self.revision_where(|_| true).await
+    }
+
+    /// The revision of [`toolset_where`](Self::toolset_where)'s toolset now.
+    pub async fn revision_where(&self, allows: impl Fn(&str) -> bool) -> Result<String, StoreError> {
+        let enabled = self.allowed(&allows).await?;
         let features = self.0.features().await?;
         Ok(self.revision_of(&enabled, &features))
+    }
+
+    /// Which plugins are on for the user and let in by `allows`.
+    async fn allowed(&self, allows: &impl Fn(&str) -> bool) -> Result<Vec<bool>, StoreError> {
+        let enabled = self.enabled().await?;
+        Ok(self
+            .0
+            .registry
+            .plugins
+            .iter()
+            .zip(enabled)
+            .map(|(registered, enabled)| enabled && allows(registered.id().as_str()))
+            .collect())
     }
 
     /// The plugins on that have commands, each with the features it has

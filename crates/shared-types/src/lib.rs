@@ -79,6 +79,7 @@ mod context_limit;
 mod failure;
 mod file_types;
 mod ids;
+mod integration;
 mod idle_compaction;
 mod kept;
 mod log;
@@ -163,6 +164,7 @@ pub use quota::{
 pub use kept::{KeptMessage, choose_kept, kept_words_budget, text_tokens};
 pub use read_at::ReadAt;
 pub use schema::Nullable;
+pub use integration::IntegrationCapabilities;
 pub use workflow::WorkflowChoice;
 pub use session::{
     ContextRow, ContextRowKind, ContextUsage, PendingCall, PendingSteer,

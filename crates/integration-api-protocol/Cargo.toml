@@ -1,0 +1,22 @@
+[package]
+name = "demi-integration-api-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
+demi-shared-types = { path = "../shared-types" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
+garde.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_with.workspace = true

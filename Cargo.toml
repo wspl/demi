@@ -20,6 +20,7 @@ members = [
   "crates/backend-cloud",
   "crates/backend-http",
   "crates/backend-host-access",
+  "crates/integration-api-protocol",
   "crates/backend-idle-watch",
   "crates/backend-blobs",
   "crates/backend-providers",

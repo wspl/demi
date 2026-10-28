@@ -87,6 +87,7 @@ mod from_0_1_5979_network_policy;
 mod from_0_1_5979_port_forward_routes;
 mod from_0_1_5979_suggested_reply_history;
 mod from_0_1_65_dev_one_cloud;
+mod from_0_1_65_dev_no_integrations;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -399,5 +400,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_65_dev_one_cloud.sql"),
         migration: from_0_1_65_dev_one_cloud::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_65_dev_no_integrations.sql"),
+        migration: from_0_1_65_dev_no_integrations::MIGRATION,
     },
 ];

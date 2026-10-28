@@ -75,7 +75,7 @@ pub use self::announcement::AgentsError;
 pub(crate) use self::product::ShardHosts;
 pub(crate) use self::providers::{lent_limits, lent_runtime};
 use self::product::{
-    ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
+    ExecutionContext, INSTRUCTIONS, ShardGuides, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
 };
 use self::providers::ConversationProviders;
 use self::small_requests::SmallRequests;
@@ -166,7 +166,7 @@ pub(crate) fn conversation_parts(
             shard: shard.clone(),
         }),
         instructions: Rc::from(INSTRUCTIONS),
-        guide: Rc::from(HARNESS_GUIDE),
+        guides: Rc::new(ShardGuides { shard: shard.clone() }),
         hosts: Rc::new(ShardHosts {
             shard: shard.clone(),
         }),
@@ -187,9 +187,15 @@ pub(crate) fn conversation_parts(
                 if let Some(shard) = shard.upgrade() {
                     shard.follow_runs(&conversation);
                     shard.follow_failed_turn(&conversation);
-                    shard.follow_turn_end(&conversation);
-                    shard.follow_suggested_replies(&conversation);
+                    // An integration's turns are its program's, which hears
+                    // their end on its socket: no person is notified or
+                    // offered replies.
+                    if shard.integration_of_open(&conversation).is_none() {
+                        shard.follow_turn_end(&conversation);
+                        shard.follow_suggested_replies(&conversation);
+                    }
                     shard.follow_idle_compaction_end(&conversation);
+                    shard.integration_status_changed(&conversation);
                     // A conversation no longer loaded keeps no project files.
                     if shard.agent().tree(root).is_none() {
                         shard.project_files().release(&conversation);
@@ -200,6 +206,7 @@ pub(crate) fn conversation_parts(
         },
         agents: Rc::new(ShardAgents { shard: shard.clone() }),
         reply_files: Rc::new(ShardReplyFiles { shard: shard.clone() }),
+        observers: Rc::new(crate::integrations::IntegrationObservers { shard: shard.clone() }),
         idle_compaction_due: {
             let shard = shard.clone();
             Rc::new(move |root: &NodeId, due| {

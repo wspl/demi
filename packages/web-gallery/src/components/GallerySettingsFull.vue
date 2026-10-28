@@ -40,6 +40,7 @@ import GalleryAbout from './GalleryAbout.vue'
 import GalleryUpdates from './GalleryUpdates.vue'
 import GalleryCloud from './GalleryCloud.vue'
 import GalleryPortForwards from './GalleryPortForwards.vue'
+import GalleryIntegrations from './GalleryIntegrations.vue'
 import { slow } from '../fixtures/slow'
 import { formatDay } from '@demicodes/web-ui/ui/dates'
 import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
@@ -403,6 +404,7 @@ function resetShortcuts() {
   />
 
   <GalleryPortForwards v-else-if="tab === 'portForwards'" />
+  <GalleryIntegrations v-else-if="tab === 'integrations'" />
 
   <SettingsKeyboard
     v-else-if="tab === 'keyboard'"

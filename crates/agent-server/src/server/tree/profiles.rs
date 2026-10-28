@@ -70,6 +70,9 @@ const SUBAGENTS_OFF: &str = "subagents are turned off in settings; do this work 
 
 /// Why a spawn fails in a conversation whose Workflow menu says No
 /// Subagents.
+/// Why an agent of a conversation that does not reach the user's profiles
+/// finds none of them.
+const NO_USER_PROFILES: &str = "this conversation's agents reach only the profiles of its own workflow";
 const OFF_HERE: &str = "subagents are turned off for this conversation; do this work in this session, or have Global Workflow or a workflow picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use global or use <id> once the user allows it.";
 
 /// What a setup is for.
@@ -230,6 +233,9 @@ impl<H: HostResolver> Tree<H> {
         let omitting = purpose.omitting();
         let profiles = match self.conversation_profiles(server).await? {
             ConversationProfiles::Off if purpose == SetupFor::Spawn => return Err(OFF_HERE.to_owned()),
+            ConversationProfiles::Off if !server.deps.subagents.reaches_user_profiles(self.root.id()).await => {
+                return Err(NO_USER_PROFILES.to_owned());
+            }
             ConversationProfiles::Off => ConversationProfiles::Settings,
             profiles => profiles,
         };
@@ -489,6 +495,9 @@ impl<H: HostResolver> Tree<H> {
                 return Ok(workflow_answer(&workflow, child));
             }
         }
+        if !server.deps.subagents.reaches_user_profiles(self.root.id()).await {
+            return Err(NO_USER_PROFILES.to_owned());
+        }
         let profile = settings
             .profiles
             .iter()
@@ -507,6 +516,9 @@ impl<H: HostResolver> Tree<H> {
         draft: NewProfileDraft,
     ) -> Result<(ProfileAnswer, Option<String>), String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        if !server.deps.subagents.reaches_user_profiles(self.root.id()).await {
+            return Err(NO_USER_PROFILES.to_owned());
+        }
         // Read before the profile is saved, so that what the warning needs
         // cannot fail a creation that succeeded.
         let workflow = match self.conversation_profiles(&server).await? {
@@ -531,6 +543,9 @@ impl<H: HostResolver> Tree<H> {
         edit: ProfileEdit,
     ) -> Result<ProfileAnswer, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        if !server.deps.subagents.reaches_user_profiles(self.root.id()).await {
+            return Err(NO_USER_PROFILES.to_owned());
+        }
         let changed = server.deps.subagents.edit_profile(name, edit).await?;
         Ok(answer(&server, &changed).await)
     }
@@ -538,6 +553,9 @@ impl<H: HostResolver> Tree<H> {
     /// `demi agent profiles delete`.
     pub(crate) async fn delete_profile(&self, name: &str) -> Result<Deleted, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        if !server.deps.subagents.reaches_user_profiles(self.root.id()).await {
+            return Err(NO_USER_PROFILES.to_owned());
+        }
         server.deps.subagents.delete_profile(name).await?;
         Ok(Deleted {
             name: name.to_owned(),

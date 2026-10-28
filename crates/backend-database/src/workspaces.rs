@@ -196,7 +196,7 @@ impl ControlService {
         id: WorkspaceId,
     ) -> Result<Option<Vec<ConversationId>>, StorageError> {
         self.call(move |connection, _| {
-            if !owns(connection, &user, &id)? {
+            if !owns_shown(connection, &user, &id)? {
                 return Ok(None);
             }
             Ok(Some(conversations_in(connection, &id)?))
@@ -209,7 +209,7 @@ impl ControlService {
     pub async fn delete_workspace(&self, user: UserId, id: WorkspaceId) -> Result<WorkspaceDeletion, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            if !owns(&transaction, &user, &id)? {
+            if !owns_shown(&transaction, &user, &id)? {
                 return Ok(WorkspaceDeletion::Missing);
             }
             if workspaces_of(&transaction, &user)?.len() == 1 {
@@ -245,7 +245,7 @@ impl ControlService {
     ) -> Result<Result<WorkspaceMoved, MoveRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            if !owns(&transaction, &user, &id)? {
+            if !owns_shown(&transaction, &user, &id)? {
                 return Ok(Err(MoveRefusal::WorkspaceNotFound));
             }
             let mut moved = WorkspaceMoved::default();
@@ -338,11 +338,26 @@ impl ControlService {
     }
 }
 
-/// Whether the workspace `id` is `user`'s.
+/// Whether the workspace `id` is `user`'s, an integration's included
+/// (`crates/backend-database/src/integrations.rs`).
 pub(crate) fn owns(connection: &Connection, user: &UserId, id: &WorkspaceId) -> Result<bool, StorageError> {
     Ok(connection
         .query_row(
             "SELECT 1 FROM workspaces WHERE id = ?1 AND user_id = ?2",
+            params![id.as_str(), user.as_str()],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+/// Whether the workspace `id` is `user`'s and one their pages show: an
+/// integration's is none.
+pub(crate) fn owns_shown(connection: &Connection, user: &UserId, id: &WorkspaceId) -> Result<bool, StorageError> {
+    Ok(connection
+        .query_row(
+            "SELECT 1 FROM workspaces WHERE id = ?1 AND user_id = ?2
+               AND id NOT IN (SELECT workspace_id FROM integrations)",
             params![id.as_str(), user.as_str()],
             |_| Ok(()),
         )
@@ -368,6 +383,12 @@ pub(crate) fn insert_first(connection: &Connection, user: &UserId, now: Timestam
     insert_workspace(connection, user, None, WorkspaceIcon::User, WorkspaceColor::Blue, now)
 }
 
+/// The workspace of a new integration of `user`'s, which holds its
+/// conversations and which no page lists.
+pub(crate) fn insert_integration_workspace(connection: &Connection, user: &UserId, now: Timestamp) -> Result<WorkspaceId, StorageError> {
+    insert_workspace(connection, user, None, WorkspaceIcon::User, WorkspaceColor::Blue, now)
+}
+
 fn insert_workspace(
     connection: &Connection,
     user: &UserId,
@@ -388,7 +409,11 @@ fn insert_workspace(
 
 fn workspaces_of(connection: &Connection, user: &UserId) -> Result<Vec<WorkspaceRecord>, StorageError> {
     let mut statement = connection
-        .prepare_cached(&format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE user_id = ?1 ORDER BY sort_order, id"))?;
+        .prepare_cached(&format!(
+            "SELECT {WORKSPACE_COLUMNS} FROM workspaces
+             WHERE user_id = ?1 AND id NOT IN (SELECT workspace_id FROM integrations)
+             ORDER BY sort_order, id"
+        ))?;
     let mut rows = statement.query([user.as_str()])?;
     let mut workspaces = Vec::new();
     while let Some(row) = rows.next()? {

@@ -17,10 +17,10 @@
 use demi_backend_database::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;
+use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::conversations::{
     ConversationTarget, CreateConversation, FirstMessageAnswer, ModelSettings,
 };
-use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
 
@@ -67,8 +67,8 @@ impl Shard {
     }
 
     /// Creates the user's conversation `id` with what `start` says, checked:
-    /// the page's request, or an agent's `demi conversation new`
-    /// (`organize.rs`).
+    /// the page's request, an agent's `demi conversation new`
+    /// (`organize.rs`), or an integration's (`integrations.rs`).
     pub(crate) async fn create_started(
         &self,
         id: ConversationId,

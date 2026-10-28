@@ -15,6 +15,12 @@
     "removeFailed": "No se pudo eliminar el reenvío",
     "retryFailed": "No se pudo volver a intentar"
   },
+  "integrations": {
+    "loadFailed": "No se pudieron cargar las integraciones",
+    "addFailed": "No se pudo agregar la integración",
+    "saveFailed": "No se pudo cambiar la integración",
+    "replaceFailed": "No se pudo reemplazar el token"
+  },
   "plugins": {
     "turnOnFailed": "No se pudo activar el plugin",
     "turnOffFailed": "No se pudo desactivar el plugin",

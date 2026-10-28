@@ -110,6 +110,11 @@ pub trait PermissionShard {
     /// The revision of each conversation's requests.
     fn revisions(&self) -> &Revisions;
 
+    /// Whether the conversation needs no grant at all: an integration's, whose
+    /// requests are always allowed, since no person answers them
+    /// (`crates/backend-user-shard/src/integrations.rs`).
+    fn allows_all<'a>(&'a self, conversation: &'a ConversationId) -> LocalBoxFuture<'a, bool>;
+
     /// The permission categories of the command set the user's
     /// conversations open with.
     fn categories(&self) -> LocalBoxFuture<'_, Result<Vec<Category>, String>>;
@@ -360,6 +365,9 @@ pub async fn check(
         call,
         command,
     } = asking(shard, invocation)?;
+    if shard.allows_all(&conversation).await {
+        return Ok(());
+    }
     let needed = match need {
         Need::Category(category) => Needed::Category(category.id.clone()),
         Need::Device(device) => Needed::Device(device),

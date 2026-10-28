@@ -192,6 +192,46 @@
       "removeBody": "Sie hört auf zu lauschen, und ihre offenen Verbindungen enden."
     }
   },
+  "integrations": {
+    "title": "Integrationen",
+    "description": "Programme, die über die API auf Demi aufbauen. Jedes hat eigene Tokens, Clouds und Chats, die keine Seitenleiste zeigt.",
+    "yours": "Deine Integrationen",
+    "add": "Integration hinzufügen",
+    "loading": "Integrationen werden geladen …",
+    "none": "Keine Integrationen",
+    "clouds": "Keine Clouds | 1 Cloud | {count} Clouds",
+    "conversations": "keine Chats | 1 Chat | {count} Chats",
+    "page": {
+      "name": "Name",
+      "nameProblem": "Gib einen Namen ein.",
+      "token": "Token",
+      "tokenDescription": "Anfragen senden es als Bearer-Token.",
+      "tokenNew": "Kopiere dieses Token jetzt. Du siehst es nicht wieder.",
+      "tokenHidden": "Ausgeblendet",
+      "replace": "Token ersetzen …",
+      "replaceTitle": "Token dieser Integration ersetzen?",
+      "replaceBody": "Anfragen mit dem aktuellen Token funktionieren sofort nicht mehr.",
+      "replaceConfirm": "Token ersetzen",
+      "capabilities": "Fähigkeiten",
+      "capabilitiesDescription": "Was ihre Agenten tun dürfen. Zugangsdaten, Benachrichtigungen, Hosts und andere Chats gehören nie dazu.",
+      "subagents": "Subagenten",
+      "subagentsDescription": "Agenten starten Subagenten.",
+      "browser": "Browser",
+      "browserDescription": "Ein Browser auf jeder Cloud.",
+      "web": "Websuche",
+      "webDescription": "Im Web suchen und Seiten lesen.",
+      "skills": "Skills",
+      "skillsDescription": "Die Skills, die du aktiviert hast.",
+      "media": "Bilder, Video und Audio",
+      "mediaDescription": "Medien mit deinen Modellen erstellen.",
+      "mobile": "Simulatoren und Emulatoren",
+      "mobileDescription": "iOS-Simulatoren und Android-Emulatoren.",
+      "schedules": "Zeitpläne",
+      "schedulesDescription": "Einen Chat zu einer Uhrzeit oder bei einer Änderung wecken.",
+      "attachments": "Anhänge",
+      "attachmentsDescription": "Dateien an Antworten anhängen."
+    }
+  },
   "keyboard": {
     "title": "Tastatur",
     "description": "Klicke auf „Ändern“ und drücke dann die neuen Tasten.",
@@ -419,6 +459,9 @@
     },
     "updates": {
       "keywords": "Update,Upgrade,Version,Release,Canary,Beta,Aktualisierung"
+    },
+    "integrations": {
+      "keywords": "Integration,API,Token,Bot,App,Programm,Cloud"
     }
   },
   "andMore": "{names} und {count} weitere",

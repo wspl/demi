@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   Monitor,
   Network,
+  PlugZap,
   ScrollText,
   Settings2,
   Sparkles,
@@ -200,6 +201,12 @@ export function settingsSections(): SettingsNavGroup[] {
     {
       id: 'system',
       items: [
+        {
+          id: 'integrations',
+          label: t('integrations.title'),
+          icon: PlugZap,
+          keywords: words(t('sections.integrations.keywords')),
+        },
         {
           id: 'developer',
           label: t('developer.title'),

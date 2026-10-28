@@ -15,6 +15,12 @@
     "removeFailed": "Impossible de supprimer la redirection",
     "retryFailed": "Impossible de réessayer"
   },
+  "integrations": {
+    "loadFailed": "Impossible de charger les intégrations",
+    "addFailed": "Impossible d’ajouter l’intégration",
+    "saveFailed": "Impossible de modifier l’intégration",
+    "replaceFailed": "Impossible de remplacer le jeton"
+  },
   "plugins": {
     "turnOnFailed": "Impossible d’activer le plug-in",
     "turnOffFailed": "Impossible de désactiver le plug-in",

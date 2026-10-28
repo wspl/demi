@@ -66,6 +66,9 @@ pub enum ErrorCode {
     NotFound,
     /// A JSON body does not match its request type.
     InvalidBody,
+    /// An integration's request could not change what it names, as its
+    /// message says (`crates/backend-user-shard/src/integrations.rs`).
+    IntegrationRefused,
     /// A body the backend reads whole is over its limit.
     TooLarge,
     /// The backend failed in a way the request could not cause.

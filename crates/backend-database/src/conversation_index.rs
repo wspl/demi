@@ -456,8 +456,33 @@ impl ControlService {
         .await
     }
 
+    /// [`conversations`](Self::conversations) as the owner's pages and agents
+    /// see them: without an integration's, which only its integration
+    /// reaches (`crates/backend-database/src/integrations.rs`).
+    pub async fn shown_conversations(
+        &self,
+        owner: UserId,
+        archived: bool,
+    ) -> Result<Vec<ConversationRecord>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare(&format!(
+                "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE user_id = ?1 AND (archived_at IS NOT NULL) = ?2
+                   AND workspace_id NOT IN (SELECT workspace_id FROM integrations)
+                 ORDER BY {CONVERSATION_ORDER}"
+            ))?;
+            let mut rows = statement.query(params![owner.as_str(), archived])?;
+            let mut conversations = Vec::new();
+            while let Some(row) = rows.next()? {
+                conversations.push(conversation_row(row)?);
+            }
+            Ok(conversations)
+        })
+        .await
+    }
+
     /// The owner's conversations that are archived, or that are not, in
-    /// their order: the last archived first, or the sidebar's.
+    /// their order: the last archived first, or the sidebar's; an
+    /// integration's included.
     pub async fn conversations(
         &self,
         owner: UserId,
@@ -516,9 +541,19 @@ impl ControlService {
         &self,
         owner: UserId,
     ) -> Result<Vec<ConversationId>, StorageError> {
+        self.ordered(owner, "").await
+    }
+
+    /// [`conversation_order`](Self::conversation_order) as the owner's pages
+    /// list them: without an integration's conversations.
+    pub async fn shown_conversation_order(&self, owner: UserId) -> Result<Vec<ConversationId>, StorageError> {
+        self.ordered(owner, "AND workspace_id NOT IN (SELECT workspace_id FROM integrations)").await
+    }
+
+    async fn ordered(&self, owner: UserId, shown: &'static str) -> Result<Vec<ConversationId>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
-                "SELECT id FROM conversations WHERE user_id = ?1 ORDER BY archived_at IS NOT NULL, {CONVERSATION_ORDER}"
+                "SELECT id FROM conversations WHERE user_id = ?1 {shown} ORDER BY archived_at IS NOT NULL, {CONVERSATION_ORDER}"
             ))?;
             let mut rows = statement.query([owner.as_str()])?;
             let mut ids = Vec::new();

@@ -192,6 +192,46 @@
       "removeBody": "Ele para de escutar e as conexões abertas são encerradas."
     }
   },
+  "integrations": {
+    "title": "Integrações",
+    "description": "Programas que usam o Demi como base por meio da API. Cada um tem seu próprio token, nuvens e conversas, que nenhuma barra lateral mostra.",
+    "yours": "Suas integrações",
+    "add": "Adicionar integração",
+    "loading": "Carregando integrações…",
+    "none": "Nenhuma integração",
+    "clouds": "Nenhuma nuvem | 1 nuvem | {count} nuvens",
+    "conversations": "nenhuma conversa | 1 conversa | {count} conversas",
+    "page": {
+      "name": "Nome",
+      "nameProblem": "Digite um nome.",
+      "token": "Token",
+      "tokenDescription": "As solicitações o enviam como token de portador.",
+      "tokenNew": "Copie este token agora. Você não o verá de novo.",
+      "tokenHidden": "Oculto",
+      "replace": "Substituir token…",
+      "replaceTitle": "Substituir o token desta integração?",
+      "replaceBody": "As solicitações com o token atual deixam de funcionar na hora.",
+      "replaceConfirm": "Substituir token",
+      "capabilities": "Recursos",
+      "capabilitiesDescription": "O que seus agentes podem fazer. Credenciais, notificações, hosts e outras conversas nunca ficam ao alcance deles.",
+      "subagents": "Subagentes",
+      "subagentsDescription": "Os agentes iniciam subagentes.",
+      "browser": "Navegador",
+      "browserDescription": "Um navegador em cada nuvem.",
+      "web": "Busca na web",
+      "webDescription": "Pesquisar na web e ler páginas.",
+      "skills": "Habilidades",
+      "skillsDescription": "As habilidades que você ativou.",
+      "media": "Imagens, vídeo e áudio",
+      "mediaDescription": "Criar mídia com seus modelos.",
+      "mobile": "Simuladores e emuladores",
+      "mobileDescription": "Simuladores de iOS e emuladores de Android.",
+      "schedules": "Agendamentos",
+      "schedulesDescription": "Despertar uma conversa em um horário ou quando algo mudar.",
+      "attachments": "Anexos",
+      "attachmentsDescription": "Anexar arquivos às respostas."
+    }
+  },
   "keyboard": {
     "title": "Teclado",
     "description": "Clique em Alterar e pressione as novas teclas.",
@@ -419,6 +459,9 @@
     },
     "updates": {
       "keywords": "atualização,upgrade,versão,lançamento,canary,beta"
+    },
+    "integrations": {
+      "keywords": "integração,API,token,bot,app,programa,nuvem"
     }
   },
   "andMore": "{names} e mais {count}",

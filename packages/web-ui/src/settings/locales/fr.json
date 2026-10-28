@@ -192,6 +192,46 @@
       "removeBody": "Elle cesse d’écouter et ses connexions ouvertes se terminent."
     }
   },
+  "integrations": {
+    "title": "Intégrations",
+    "description": "Des programmes qui s’appuient sur Demi via son API. Chacun a son propre jeton, ses clouds et ses conversations, qu’aucune barre latérale n’affiche.",
+    "yours": "Vos intégrations",
+    "add": "Ajouter une intégration",
+    "loading": "Chargement des intégrations…",
+    "none": "Aucune intégration",
+    "clouds": "Aucun cloud | 1 cloud | {count} clouds",
+    "conversations": "aucune conversation | 1 conversation | {count} conversations",
+    "page": {
+      "name": "Nom",
+      "nameProblem": "Saisissez un nom.",
+      "token": "Jeton",
+      "tokenDescription": "Les requêtes l’envoient comme jeton du porteur.",
+      "tokenNew": "Copiez ce jeton maintenant. Vous ne le reverrez plus.",
+      "tokenHidden": "Masqué",
+      "replace": "Remplacer le jeton…",
+      "replaceTitle": "Remplacer le jeton de cette intégration ?",
+      "replaceBody": "Les requêtes avec le jeton actuel cessent aussitôt de fonctionner.",
+      "replaceConfirm": "Remplacer le jeton",
+      "capabilities": "Capacités",
+      "capabilitiesDescription": "Ce que ses agents peuvent faire. Les identifiants, les notifications, les hôtes et les autres conversations ne leur sont jamais ouverts.",
+      "subagents": "Sous-agents",
+      "subagentsDescription": "Les agents lancent des sous-agents.",
+      "browser": "Navigateur",
+      "browserDescription": "Un navigateur sur chaque cloud.",
+      "web": "Recherche web",
+      "webDescription": "Chercher sur le web et lire des pages.",
+      "skills": "Compétences",
+      "skillsDescription": "Les compétences que vous avez activées.",
+      "media": "Images, vidéo et audio",
+      "mediaDescription": "Créer des médias avec vos modèles.",
+      "mobile": "Simulateurs et émulateurs",
+      "mobileDescription": "Simulateurs iOS et émulateurs Android.",
+      "schedules": "Planifications",
+      "schedulesDescription": "Réveiller une conversation à une heure donnée ou lors d’un changement.",
+      "attachments": "Pièces jointes",
+      "attachmentsDescription": "Joindre des fichiers aux réponses."
+    }
+  },
   "keyboard": {
     "title": "Clavier",
     "description": "Cliquez sur Modifier, puis appuyez sur les nouvelles touches.",
@@ -419,6 +459,9 @@
     },
     "updates": {
       "keywords": "mise à jour,mise à niveau,version,publication,canary,beta"
+    },
+    "integrations": {
+      "keywords": "intégration,API,jeton,token,bot,app,programme,cloud"
     }
   },
   "andMore": "{names} et {count} autres",

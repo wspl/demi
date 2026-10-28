@@ -116,6 +116,12 @@ impl<H: HostResolver> Node<H> {
         &self.runtime.node
     }
 
+    /// The harness guide of its system prompt, which its tree's children
+    /// carry too.
+    pub(crate) fn guide(&self) -> Rc<str> {
+        self.runtime.guide.clone()
+    }
+
     /// The node's record as it is now: a child's place changes with `demi
     /// agent cwd`.
     pub fn record(&self) -> NodeRecord {
