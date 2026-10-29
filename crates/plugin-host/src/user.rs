@@ -237,8 +237,6 @@ pub enum PanelError {
     Full,
     #[error("The work panel's tabs would be over their size")]
     TooLarge,
-    #[error("The conversation is archived")]
-    Archived,
     #[error("No conversation of that id")]
     Missing,
     #[error(transparent)]
@@ -252,7 +250,6 @@ impl PanelError {
             Self::UnknownKind(_) => ErrorCode::UnknownPanelKind,
             Self::Full => ErrorCode::PanelFull,
             Self::TooLarge => ErrorCode::TooLarge,
-            Self::Archived => ErrorCode::ConversationArchived,
             Self::Missing => ErrorCode::ConversationNotFound,
             Self::Storage(_) => {
                 let Self::Storage(error) = self else {
@@ -498,7 +495,6 @@ impl Shared {
             PanelOutcome::Unchanged { revision } => Ok((revision, Vec::new())),
             PanelOutcome::Full => Err(PanelError::Full),
             PanelOutcome::TooLarge => Err(PanelError::TooLarge),
-            PanelOutcome::Archived => Err(PanelError::Archived),
             PanelOutcome::Missing => Err(PanelError::Missing),
         }
     }
