@@ -21,6 +21,10 @@ The conversion changed the following:
 - The TypeScript-only `metadata` and `streamingOutput` went.
 - Later, its harness name went with the harness, and each model's input limit
   with the model's.
+- Later still, the times its blocks did not keep went in as null: when a
+  thinking or text block ended, when a call began to be written, when a
+  request and its first attempt were sent and its first output came, and
+  when a compaction began.
 
 The fixture loads the session with the agent's own decoding, so a block that
 does not decode stops it. When the block format changes, the file changes with

@@ -946,6 +946,13 @@ pub struct ThinkingBlock {
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub signature: Option<String>,
+    /// When its latest piece came, its last once it ended; null in a block
+    /// written before the transcript kept it. With `created_at` it times the
+    /// thinking.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub ended_at: Option<Timestamp>,
     /// The run of steps the block belongs to: the id of the run's first
     /// block, which the backend sets as it stores the block and never
     /// changes.
@@ -1053,6 +1060,13 @@ pub struct TextBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub text: String,
+    /// When its latest piece came, its last once it ended; null in a block
+    /// written before the transcript kept it. With `created_at` it times the
+    /// text.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub ended_at: Option<Timestamp>,
     /// Set once the text is complete and a Fork may start after it;
     /// omitted until then. The transcript alone decides it: the text is
     /// complete when the provider's answer moves on to anything but more of
@@ -1234,6 +1248,14 @@ pub struct ToolCallBlock {
     #[schemars(with = "Nullable<ToolView>")]
     #[garde(dive)]
     pub view: Option<ToolView>,
+    /// When the model began writing the call, its title showing from then;
+    /// the call enters the transcript once its input is complete, as it
+    /// runs (`created_at`). Null when the provider handed the call over
+    /// whole, and in a block written before the transcript kept it.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub writing_started_at: Option<Timestamp>,
     /// When the call returned, set as its result is stored; null while it
     /// executes. A run's time adds up its calls' times from `created_at` to
     /// this.
@@ -1280,7 +1302,8 @@ serde_plain::derive_fromstr_from_deserialize!(ToolCallStatus);
 
 /// One completed provider request, with the usage of its last call to the
 /// model, which anchors the context estimate; none when the provider
-/// reported none, and then it anchors nothing.
+/// reported none, and then it anchors nothing. `created_at` is when the
+/// response ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResponseBlock {
@@ -1302,6 +1325,28 @@ pub struct ResponseBlock {
     pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
+    /// When the request left Demi. A later model call the provider made
+    /// within one run, as Claude Code does after Demi returned a batch of calls,
+    /// left when Demi handed over the last result it answers. Null in a block
+    /// written before the transcript kept it.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub sent_at: Option<Timestamp>,
+    /// When the request's first attempt left, for a request sent again
+    /// after its attempts before failed and left no trace; null when its
+    /// first attempt answered, and in a block written before the transcript
+    /// kept it.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub first_sent_at: Option<Timestamp>,
+    /// When the request's first thinking, text or call came; null when none
+    /// came, and in a block written before the transcript kept it.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub first_output_at: Option<Timestamp>,
     #[garde(dive)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
@@ -1455,6 +1500,12 @@ pub struct CompactionMarkerBlock {
     pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
+    /// When the pass began; it ended at `created_at`. Null in a block written
+    /// before the transcript kept it.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub started_at: Option<Timestamp>,
     /// The boundary this pass inserted.
     #[garde(skip)]
     pub boundary_id: BlockId,

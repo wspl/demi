@@ -14,8 +14,6 @@ import type { WorkStep } from '../work-groups'
  */
 defineProps<{
   step: WorkStep
-  /** When a thinking step ended: the start of the block after it. */
-  endedAt?: string | null
 }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 </script>
@@ -27,7 +25,7 @@ const isOpen = defineModel<boolean>('open', { default: false })
       :thinking="step.text"
       :is-streaming="false"
       :created-at="step.createdAt"
-      :ended-at="endedAt"
+      :ended-at="step.endedAt"
     />
   </BlockScope>
   <BlockScope v-else-if="step.type === 'tool_call'" :block="step">

@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use demi_shared_types::{AgentMessageEvent, Block, BlockId, MAX_SAFE_INTEGER, ToolResultContentBlock, ToolView};
+use demi_shared_types::{AgentMessageEvent, Block, BlockId, MAX_SAFE_INTEGER, Timestamp, ToolResultContentBlock, ToolView};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -36,13 +36,16 @@ pub enum TranscriptPatch {
         #[garde(dive)]
         value: Block,
     },
-    /// Append text to the text or thinking block at the index. Consecutive
-    /// appends to one block merge into one.
+    /// Append text to the text or thinking block at the index, whose
+    /// `ended_at` becomes the patch's: when the latest of the text came.
+    /// Consecutive appends to one block merge into one.
     AppendText {
         #[garde(skip)]
         index: u32,
         #[garde(skip)]
         delta: String,
+        #[garde(skip)]
+        ended_at: Timestamp,
     },
     /// Remove every block from the index `length` on.
     Truncate {

@@ -16,7 +16,7 @@ export interface StepPlace {
 }
 
 const thinking = (id: string, text: string, at: number): WorkStep => ({
-  type: 'thinking', id, createdAt: ago(at), model: demoModel, text, signature: null,
+  type: 'thinking', id, createdAt: ago(at), endedAt: ago(at - 5_000), model: demoModel, text, signature: null,
 })
 
 /** The step before each one in its run: thinking that ended; before a thinking, a command. */

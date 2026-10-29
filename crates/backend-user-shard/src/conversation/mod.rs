@@ -40,6 +40,7 @@ pub mod settings;
 pub mod shares;
 mod lane;
 mod summary;
+mod turn_timing;
 pub(crate) mod small_requests;
 pub(crate) mod titles;
 pub mod transition;

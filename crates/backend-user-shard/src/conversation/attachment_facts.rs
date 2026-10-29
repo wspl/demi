@@ -204,7 +204,7 @@ impl StreamedText {
                         texts.remove(index);
                     }
                 },
-                TranscriptPatch::AppendText { index, delta } => {
+                TranscriptPatch::AppendText { index, delta, .. } => {
                     // A block this socket holds no text of, such as a thinking
                     // block, is read from its delta alone.
                     let so_far = texts.get_mut(index);

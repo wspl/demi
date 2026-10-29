@@ -254,7 +254,6 @@ loseFile()
           <AgentMessageVirtualBlock
             :block="block"
             :is-thinking-streaming="false"
-            :thinking-ended-at="null"
           />
         </div>
       </GallerySpecimen>
@@ -263,7 +262,6 @@ loseFile()
           <AgentMessageVirtualBlock
             :block="toolFailure"
             :is-thinking-streaming="false"
-            :thinking-ended-at="null"
           />
         </div>
         <Button size="sm" variant="ghost" class="mt-2" @click="runToolAgain">Run Again</Button>

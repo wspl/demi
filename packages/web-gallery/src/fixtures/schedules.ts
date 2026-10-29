@@ -156,12 +156,12 @@ export function wokenConversationBlocks(id: string, schedule: ConversationSchedu
       type: 'user', id: `${id}-start`, turnId: `${id}-start-turn`, createdAt: ago(3 * DAY), model: demoModel,
       content: [{ type: 'text', text: 'Keep an eye on this for me; set up a schedule to wake yourself.' }], preamble: null,
     },
-    { type: 'text', id: `${id}-start-answer`, createdAt: ago(3 * DAY - 30_000), model: demoModel, text: 'Sure. Each time it wakes me I’ll compare with what we have here.' },
+    { type: 'text', id: `${id}-start-answer`, createdAt: ago(3 * DAY - 30_000), endedAt: ago(3 * DAY - 30_000), model: demoModel, text: 'Sure. Each time it wakes me I’ll compare with what we have here.' },
     {
       type: 'user', id: `${id}-message`, turnId: `${id}-turn`, createdAt: at, model: demoModel,
       content: [{ type: 'text', text: [head, '', 'Compare with the last time and tell me what changed.', ...extra].join('\n') }], preamble: null,
       schedule: { scheduleId: schedule.id, runId: `${schedule.id}-run`, name: schedule.name, at },
     },
-    { type: 'text', id: `${id}-answer`, createdAt: ago(40 * MINUTE - 40_000), model: demoModel, text: 'Nothing new since the last check; the count went from 1349 to 1329.' },
+    { type: 'text', id: `${id}-answer`, createdAt: ago(40 * MINUTE - 40_000), endedAt: ago(40 * MINUTE - 40_000), model: demoModel, text: 'Nothing new since the last check; the count went from 1349 to 1329.' },
   ])
 }

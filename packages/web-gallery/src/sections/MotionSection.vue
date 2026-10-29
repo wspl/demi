@@ -46,6 +46,7 @@ const entranceThinking: Block = {
   id: 'entrance-thinking',
   run: 'entrance-thinking',
   createdAt: entranceThinkingStartedAt,
+  endedAt: entranceThinkingEndedAt,
   model: demoModel,
   text: 'The helper is fine. Update the assertion and leave cookie.ts alone.',
   signature: null,
@@ -234,7 +235,6 @@ const exploratoryMarks: {
         <AgentMessageVirtualBlock
           :block="entranceThinking"
           :is-thinking-streaming="false"
-          :thinking-ended-at="entranceThinkingEndedAt"
           entering
         />
         <AgentMessageVirtualBlock

@@ -411,17 +411,6 @@ function isStreamingTextAt(index: number): boolean {
   )
 }
 
-// The next block's createdAt marks when a thinking block stopped; it is null
-// while the block is still the last, that is, actively thinking. ThinkingBlock
-// shows a frozen "thought for Xs" from it, which survives reload.
-function thinkingEndedAt(index: number): string | null {
-  const transcriptIndex = transcriptIndexAt(index)
-  if (transcriptIndex < 0)
-    return null
-  const next = visibleTranscriptBlocks.value[transcriptIndex + 1]
-  return next && 'createdAt' in next ? next.createdAt : null
-}
-
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 const scrollContainer = computed(() => scrollArea.value?.el)
 
@@ -775,7 +764,6 @@ defineExpose({
                   :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                   :is-text-streaming="isStreamingTextAt(item.index)"
                   :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"
-                  :thinking-ended-at="thinkingEndedAt(item.index)"
                   :fork="fork ? rowActionsOf(renderBlocks[item.index]!.id).fork : undefined"
                   :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
                   :share="share ? rowActionsOf(renderBlocks[item.index]!.id).share : undefined"

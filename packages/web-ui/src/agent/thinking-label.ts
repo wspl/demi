@@ -1,9 +1,14 @@
 import { formatSpan } from '../ui/dates'
 import { t } from './locales/text'
 
+/**
+ * What a thinking row says: while it streams, for how long so far; once it
+ * ended, for how long it took, or only that it took place when its block
+ * does not record its end.
+ */
 export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null): string {
   if (elapsedMs === null)
-    return t('transcript.thinking.now')
+    return streaming ? t('transcript.thinking.now') : t('transcript.thinking.done')
   if (elapsedMs <= 1000)
     return streaming ? t('transcript.thinking.now') : t('transcript.thinking.briefly')
   const span = formatSpan(elapsedMs)

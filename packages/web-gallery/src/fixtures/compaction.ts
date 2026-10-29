@@ -15,11 +15,11 @@ function user(id: string, text: string): Block {
 
 function answer(id: string, text: string): Block[] {
   return [
-    { type: 'text', id, createdAt, model: demoModel, text, forkable: true },
+    { type: 'text', id, createdAt, endedAt: createdAt, model: demoModel, text, forkable: true },
     {
       type: 'response',
       id: `${id}-usage`,
-      createdAt,
+      createdAt, sentAt: createdAt, firstSentAt: null, firstOutputAt: createdAt,
       model: demoModel,
       usage: { inputTokens: 120_000, outputTokens: 800, cacheReadTokens: 0, cacheWriteTokens: 0 },
     },
@@ -61,7 +61,7 @@ export function compactionTranscript(state: CompactionCase): Block[] {
     {
       type: 'compaction_marker',
       id: 'compaction-marker',
-      createdAt,
+      createdAt, startedAt: createdAt,
       model: demoModel,
       boundaryId: 'compaction-boundary',
       compactedTokens: 121_000,
@@ -124,7 +124,7 @@ export function compactedAfterFailedTurnTranscript(): Block[] {
     {
       type: 'compaction_marker',
       id: 'compaction-after-failure-marker',
-      createdAt,
+      createdAt, startedAt: createdAt,
       model: demoModel,
       boundaryId: 'compaction-after-failure-boundary',
       compactedTokens: 60_000,

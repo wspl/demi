@@ -50,7 +50,7 @@ const conversation = computed<ChatSessionState>(() => ({
   history: wholeHistory([
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,
       content: [{ type: 'text', text: 'Why does the sync stall after my laptop wakes up?' }], preamble: null },
-    { type: 'text', id: 'answer-1', model: demoModel, createdAt, forkable: true, text: text.value },
+    { type: 'text', id: 'answer-1', model: demoModel, createdAt, endedAt: createdAt, forkable: true, text: text.value },
   ]),
 }))
 

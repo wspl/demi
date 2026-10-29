@@ -223,7 +223,7 @@ function toolCall(
   const createdAt = partial.createdAt ?? iso(120_000)
   return {
     type: 'tool_call',
-    createdAt,
+    createdAt, writingStartedAt: null,
     model: demoModel,
     toolUseId: `${partial.id}-use`,
     output: [],
@@ -677,7 +677,7 @@ export function screenshotRunBlocks(): Block[] {
       content: [{ type: 'text', text: 'Screenshot the whole sign-in flow.' }], preamble: null,
     },
     ...inRun(open, shots),
-    { type: 'text', id: 'shots-run-answer', createdAt: iso(580_000), model: demoModel, text: 'Twelve screenshots, one per screenful: the form, its errors, and the dashboard after it.' },
+    { type: 'text', id: 'shots-run-answer', createdAt: iso(580_000), endedAt: iso(580_000), model: demoModel, text: 'Twelve screenshots, one per screenful: the form, its errors, and the dashboard after it.' },
   ])
 }
 
@@ -708,7 +708,7 @@ export function viewerTranscriptBlocks(): Block[] {
     },
     ...inRun(shots),
     {
-      type: 'text', id: 'viewer-answer', createdAt: iso(580_000), model: demoModel,
+      type: 'text', id: 'viewer-answer', createdAt: iso(580_000), endedAt: iso(580_000), model: demoModel,
       text: 'The tabs differ only in the button. The test pattern and the whole page, from the project:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n<attachment id=\"a5\" />',
       pictures: hostPictureCopies,
     },
@@ -1021,7 +1021,7 @@ export function changesDemoBlocks(): Block[] {
   const text = (id: string, offsetMs: number, body: string): Block => ({
     type: 'text',
     id,
-    createdAt: iso(offsetMs),
+    createdAt: iso(offsetMs), endedAt: iso(offsetMs),
     model: demoModel,
     text: body,
   })
@@ -1079,6 +1079,7 @@ export function changesDemoBlocks(): Block[] {
         type: 'thinking',
         id: 'changes-thinking',
         createdAt: iso(190_000),
+        endedAt: iso(184_000),
         model: demoModel,
         text: 'The name lives in cookie.ts, the login test, the snapshots and a prop on every widget. Start from the helper, then sweep the widgets with a codemod.',
         signature: null,
@@ -1326,7 +1327,7 @@ export function shortTranscriptBlocks(): Block[] {
     {
       type: 'text',
       id: 'short-answer',
-      createdAt: iso(60_000),
+      createdAt: iso(60_000), endedAt: iso(60_000),
       model: demoModel,
       text: 'The game is ready.\n\nChoose a difficulty, reveal cells and mark suspected mines. The first click is always safe, and the timer starts with the first move.',
     },
@@ -1490,7 +1491,7 @@ export function accountSwitchBlocks(resetsAt: string): Block[] {
     {
       type: 'text',
       id: 'account-switch-answer',
-      createdAt: iso(34_000),
+      createdAt: iso(34_000), endedAt: iso(34_000),
       model: demoModel,
       text: 'The board now opens every empty neighbor when a blank cell is revealed.',
     },
@@ -1535,6 +1536,7 @@ export function transcriptDemoBlocks(): Block[] {
         type: 'thinking',
         id: 'thinking-streaming',
         createdAt: thinkingStartedAt,
+        endedAt: thinkingStartedAt,
         model: demoModel,
         text: thinkingText,
         signature: null,
@@ -1543,6 +1545,7 @@ export function transcriptDemoBlocks(): Block[] {
         type: 'thinking',
         id: 'thinking-done',
         createdAt: thinkingStartedAt,
+        endedAt: thinkingEndedAt,
         model: demoModel,
         text: thinkingText,
         signature: null,
@@ -1587,7 +1590,7 @@ export function transcriptDemoBlocks(): Block[] {
     {
       type: 'text',
       id: 'assistant-1',
-      createdAt: thinkingEndedAt,
+      createdAt: thinkingEndedAt, endedAt: thinkingEndedAt,
       model: demoModel,
       text: assistantMarkdown,
       pictures: hostPictureCopies,
@@ -1652,10 +1655,10 @@ export function thoughtAnswerBlocks(): Block[] {
       content: [{ type: 'text', text: 'Is 1001 prime?' }], preamble: null,
     },
     ...inRun({
-      type: 'thinking', id: 'thought-think', createdAt: iso(119_000), model: demoModel,
+      type: 'thinking', id: 'thought-think', createdAt: iso(119_000), endedAt: iso(114_000), model: demoModel,
       text: '1001 = 7 × 11 × 13, so it is not prime.', signature: null,
     }),
-    { type: 'text', id: 'thought-answer', createdAt: iso(114_000), model: demoModel, text: 'No: 1001 is 7 × 11 × 13.' },
+    { type: 'text', id: 'thought-answer', createdAt: iso(114_000), endedAt: iso(114_000), model: demoModel, text: 'No: 1001 is 7 × 11 × 13.' },
   ])
 }
 
@@ -1682,7 +1685,7 @@ export function requestPairsBlocks(count: number): Block[] {
       model: demoModel, content: [{ type: 'text', text: `Request ${index + 1}: check the next module.` }], preamble: null,
     },
     {
-      type: 'text', id: `pair-${index}-answer`, createdAt: iso(index * 2_000 + 1_000), model: demoModel,
+      type: 'text', id: `pair-${index}-answer`, createdAt: iso(index * 2_000 + 1_000), endedAt: iso(index * 2_000 + 1_000), model: demoModel,
       text: `The module ${index + 1} reads its settings once and passes them on; nothing there needs a change.`,
     },
   ]).flat()
@@ -1694,10 +1697,10 @@ export function commandLookBlocks(): Block[] {
     content: [{ type: 'text', text }], preamble: null,
   })
   const think = (id: string, at: number, text: string): Block => ({
-    type: 'thinking', id, createdAt: iso(at), model: demoModel, text, signature: null,
+    type: 'thinking', id, createdAt: iso(at), endedAt: iso(at - 5_000), model: demoModel, text, signature: null,
   })
   const reply = (id: string, at: number, text: string): Block => ({
-    type: 'text', id, createdAt: iso(at), model: demoModel, text,
+    type: 'text', id, createdAt: iso(at), endedAt: iso(at), model: demoModel, text,
   })
   const run = (id: string, at: number, commandId: string): Block => toolCall({
     id,
@@ -1761,7 +1764,7 @@ export function runningRunBlocks(): Block[] {
       content: [{ type: 'text', text: 'Merge the reset wording and run the tests.' }], preamble: null,
     },
     ...inRun(
-      { type: 'thinking', id: 'running-run-think', createdAt: iso(98_000), model: demoModel, text: 'Check the branch is clean, then merge and run the suite.', signature: null },
+      { type: 'thinking', id: 'running-run-think', createdAt: iso(98_000), endedAt: iso(96_000), model: demoModel, text: 'Check the branch is clean, then merge and run the suite.', signature: null },
       shell('running-run-status', 96_000, 'git status', 'Check the branch', true),
       shell(RUNNING_RUN_CALL, 92_000, 'git merge --no-ff fix/reset-wording && bun run test', 'Review and merge the pricing page copy', false),
     ),
@@ -1825,7 +1828,7 @@ export function steppedRunBlocks(stage: number): Block[] {
     ...inRun(...calls),
   ]
   if (stage === 4)
-    blocks.push({ type: 'text', id: 'stepped-run-answer', createdAt: iso(1_000), model: demoModel, text: 'The auth tests pass now: the run script was not executable.' })
+    blocks.push({ type: 'text', id: 'stepped-run-answer', createdAt: iso(1_000), endedAt: iso(1_000), model: demoModel, text: 'The auth tests pass now: the run script was not executable.' })
   return inRequests(blocks)
 }
 
@@ -1846,7 +1849,7 @@ export function leftRunningBlocks(): Block[] {
       content: [{ type: 'text', text: 'Start the end-to-end suite and tell me when it ends.' }], preamble: null,
     },
     ...inRun(
-      { type: 'thinking', id: 'left-running-think', createdAt: iso(138_000), model: demoModel, text: 'The suite takes minutes: start it and let it report.', signature: null },
+      { type: 'thinking', id: 'left-running-think', createdAt: iso(138_000), endedAt: iso(137_000), model: demoModel, text: 'The suite takes minutes: start it and let it report.', signature: null },
       // Screenshots of the app's screens the run took first: the folded row holds their pictures.
       screenshotsCall(
         {
@@ -1870,7 +1873,7 @@ export function leftRunningBlocks(): Block[] {
         view: shellView({ commandId: '71', status: 'running', runningMs: 15_000, chunks: [{ stream: 'stdout', text: 'Running 140 specs\n' }] }),
       }),
     ),
-    { type: 'text', id: 'left-running-reply', createdAt: iso(120_000), model: demoModel, text: 'The suite is running; I will tell you when it ends.' },
+    { type: 'text', id: 'left-running-reply', createdAt: iso(120_000), endedAt: iso(120_000), model: demoModel, text: 'The suite is running; I will tell you when it ends.' },
   ])
 }
 
@@ -1885,7 +1888,7 @@ export function viewedMediaBlocks(): Block[] {
     content: [{ type: 'text', text }], preamble: null,
   })
   const reply = (id: string, at: number, text: string): Block => ({
-    type: 'text', id, createdAt: iso(at), model: demoModel, text,
+    type: 'text', id, createdAt: iso(at), endedAt: iso(at), model: demoModel, text,
   })
   const open = toolCall({
     id: 'viewed-open',
@@ -1950,7 +1953,7 @@ export function callBeingWrittenBlocks(): Block[] {
     {
       type: 'text',
       id: 'writing-text',
-      createdAt: '2026-10-08T12:00:04.000Z',
+      createdAt: '2026-10-08T12:00:04.000Z', endedAt: '2026-10-08T12:00:04.000Z',
       model: demoModel,
       text: 'Now I have everything needed to classify. Let me write a categorizer.',
       forkable: true,
@@ -1968,12 +1971,15 @@ export function callBeingWrittenBlocks(): Block[] {
 export function busyRequestBlocks(working = false): Block[] {
   let at = 600_000
   const next = () => (at -= 9_000)
-  const think = (id: string, text: string): Block => ({
-    type: 'thinking', id: `busy-${id}`, createdAt: iso(next()), model: demoModel, text, signature: null,
-  })
-  const say = (id: string, text: string): Block => ({
-    type: 'text', id: `busy-${id}`, createdAt: iso(next()), model: demoModel, text,
-  })
+  // Each thought ends where the block after it starts.
+  const think = (id: string, text: string): Block => {
+    const createdAt = iso(next())
+    return { type: 'thinking', id: `busy-${id}`, createdAt, endedAt: iso(at - 9_000), model: demoModel, text, signature: null }
+  }
+  const say = (id: string, text: string): Block => {
+    const createdAt = iso(next())
+    return { type: 'text', id: `busy-${id}`, createdAt, endedAt: createdAt, model: demoModel, text }
+  }
   const run = (
     id: string,
     description: string,
@@ -2070,7 +2076,7 @@ export function foundMarkBlocks(): Block[] {
     content: [{ type: 'text', text }], preamble: null,
   })
   const reply = (id: string, at: number, text: string): Block => ({
-    type: 'text', id, createdAt: iso(at), model: demoModel, text,
+    type: 'text', id, createdAt: iso(at), endedAt: iso(at), model: demoModel, text,
   })
   const steps = [
     'The session cookie was renamed from `sid` to `session` in the cookie helper, and the login test still reads the old name.',

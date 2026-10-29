@@ -78,6 +78,7 @@
     "thinking": {
       "now": "생각 중",
       "briefly": "잠시 생각함",
+      "done": "생각함",
       "nowFor": "{span} 동안 생각 중",
       "doneFor": "{span} 동안 생각함",
       "requesting": "요청 중",

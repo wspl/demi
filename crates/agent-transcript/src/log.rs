@@ -72,6 +72,17 @@ pub struct TranscriptLog {
     asked_end: Option<AskedEnd>,
 }
 
+/// When a request left Demi and its first output came, which its response
+/// block keeps.
+#[derive(Debug, Clone, Copy)]
+pub struct RequestTimes {
+    pub sent_at: Timestamp,
+    /// When its first attempt left, for a request sent again after the
+    /// attempts before failed.
+    pub first_sent_at: Option<Timestamp>,
+    pub first_output_at: Option<Timestamp>,
+}
+
 impl TranscriptLog {
     pub fn new(blocks: Vec<Block>, ids: Rc<dyn IdSource>, clock: Arc<dyn Clock>) -> Self {
         let epoch = ids.next_id();
@@ -501,14 +512,15 @@ impl TranscriptLog {
     }
 
     /// Appends the marker of the boundary `boundary_id` with the estimate of
-    /// what it summarized, of a pass that ran while the conversation was
-    /// `idle` or not.
+    /// what it summarized, of a pass that began at `started_at` and ran
+    /// while the conversation was `idle` or not.
     pub fn push_compaction_marker(
         &mut self,
         model: &ModelSelection,
         boundary_id: BlockId,
         compacted_tokens: u64,
         idle: bool,
+        started_at: Timestamp,
     ) {
         let (id, created_at) = self.stamp();
         self.append(Block::CompactionMarker(CompactionMarkerBlock {
@@ -516,6 +528,7 @@ impl TranscriptLog {
             created_at,
             request: None,
             model: model.clone(),
+            started_at: Some(started_at),
             boundary_id,
             compacted_tokens,
             idle,
@@ -605,6 +618,7 @@ impl TranscriptLog {
             model: model.clone(),
             text,
             signature: None,
+            ended_at: Some(created_at),
             text_length: None,
             entries: Vec::new(),
         }));
@@ -617,8 +631,10 @@ impl TranscriptLog {
             && let Block::Thinking(open) = &mut self.blocks[at]
             && open.signature.is_none()
         {
+            let now = self.clock.now();
             open.text.push_str(text);
-            self.journal.append_text(self.start + at, text);
+            open.ended_at = Some(now);
+            self.journal.append_text(self.start + at, text, now);
             return;
         }
         self.open_thinking(model, text.to_owned());
@@ -660,8 +676,10 @@ impl TranscriptLog {
             && let Block::Text(open) = &mut self.blocks[at]
             && !open.forkable
         {
+            let now = self.clock.now();
             open.text.push_str(text);
-            self.journal.append_text(self.start + at, text);
+            open.ended_at = Some(now);
+            self.journal.append_text(self.start + at, text, now);
             return;
         }
         let (id, created_at) = self.stamp();
@@ -673,6 +691,7 @@ impl TranscriptLog {
             pictures: None,
             model: model.clone(),
             text: text.to_owned(),
+            ended_at: Some(created_at),
             forkable: false,
             entries: Vec::new(),
         }));
@@ -718,8 +737,8 @@ impl TranscriptLog {
     ///
     /// Its input is kept as text: a vendor that could not parse the input hands
     /// its text over as a JSON string, and a call without input has an empty
-    /// object.
-    pub fn push_tool_call(&mut self, model: &ModelSelection, call: ToolCall) {
+    /// object. `writing_started_at` is when the model began writing it.
+    pub fn push_tool_call(&mut self, model: &ModelSelection, call: ToolCall, writing_started_at: Option<Timestamp>) {
         let input = match call.input {
             Value::String(text) => text,
             Value::Null => "{}".to_owned(),
@@ -738,6 +757,7 @@ impl TranscriptLog {
             status: ToolCallStatus::Executing,
             output: Vec::new(),
             view: None,
+            writing_started_at,
             ended_at: None,
             entries: Vec::new(),
         }));
@@ -759,13 +779,23 @@ impl TranscriptLog {
         }));
     }
 
-    pub fn push_response(&mut self, model: &ModelSelection, usage: Option<TokenUsage>) {
+    /// Ends a request with the usage its provider reported, at the times
+    /// it left and its first output came.
+    pub fn push_response(&mut self, model: &ModelSelection, usage: Option<TokenUsage>, times: RequestTimes) {
+        let RequestTimes {
+            sent_at,
+            first_sent_at,
+            first_output_at,
+        } = times;
         let (id, created_at) = self.stamp();
         self.append(Block::Response(ResponseBlock {
             id,
             created_at,
             request: None,
             model: model.clone(),
+            sent_at: Some(sent_at),
+            first_sent_at,
+            first_output_at,
             usage,
         }));
     }

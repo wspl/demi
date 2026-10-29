@@ -7,6 +7,8 @@
 //!   and every other block as one line that names how to open it.
 //! - `open` prints what such a line names, or saves an attachment under the
 //!   scratch directory.
+//! - `timing` prints where each turn's time went, from the times the blocks
+//!   keep (`turn_timing.rs`).
 //! - A search covers messages, texts and the commands' descriptions only.
 //!   Thinking, scripts and command output are most of a transcript's text and
 //!   would drown what was said.
@@ -43,6 +45,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use super::organize::{READ, failed, refused, verb};
+use super::turn_timing::{TurnTiming, Turns, turn_of};
 use crate::shard::Shard;
 
 /// About how many characters a read prints, and a page of what `open`
@@ -60,6 +63,8 @@ const GROUP_SUMMARY: &str = "A transcript, which keeps every block, also what a 
 const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messages and steers, your texts and the titles of the commands you ran that hold every word, or any with --any; a word matches anywhere in a text, in any language, case aside. The newest come first, five to a page, each a row with its index, who wrote it, when and its text cut around the words, which are marked **like this**, between rows of the message before and after it; stderr names the page and the search of the next. Thinking, scripts and command output are not searched. Filters narrow the search, so a common word does not bury what was asked: --from user keeps your user's or parent's messages and steers, --from agent your texts and commands; --after and --before keep what lies after or before a block, 4213, or a day, 2026-10-14, in the user's time zone, and both may be given; --oldest lists the oldest first. For example, search --from user --before 2026-10-15 README finds what the user asked of the README in the days before.";
 
 const READ_SUMMARY: &str = "Print the transcript in a range of block indices, 4213..4260, 4213.. or ..4260: each message and each of your texts whole, every other block as one line saying what it is and how to open it, such as [4214 command: Run the tests · exit 0 · 3s]; thinking and context blocks are left out. With --from user only your user's or parent's messages are printed, with --from agent only your texts and command lines, as search --from counts them. A read stops at about 8,000 characters, at a block's end, and its last line says where to go on.";
+
+const TIMING_SUMMARY: &str = "Print where the time of each turn that starts in a range of block indices went, 4213..4260, 4213.. or ..4260: one row per turn, by the index of its first block, with its time and how many requests it made, and the time of each part in milliseconds. preparing is Demi's own before a request left, waiting from a request leaving to its first output, thinking, text the model writing its answer, calls the model writing tool calls, tools the calls running, compacting, retrying a failed request and the wait after it, and other the time no part covers, so the parts add up to the turn; time two parts share counts once. Fifty turns a page; stderr names the next page.";
 
 const OPEN_SUMMARY: &str = "Print what a read names in one line, by its index: a command's script, exit code, duration and output, the output a page at a time as demi shell output pages it; a thinking block's text; a subagent's report; a compaction's summary. An attachment or an image of a message, such as 4213/a1, is saved under $DEMI_SCRATCH and its path printed, for demi file view or the ordinary tools. --page <n> takes the next page.";
 
@@ -136,6 +141,17 @@ struct ReadArgs {
     target: Target,
 }
 
+/// The input of `demi conversation history timing`.
+#[derive(Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+struct TimingArgs {
+    /// The blocks whose turns to time, by index: 4213..4260, 4213.. or
+    /// ..4260
+    range: String,
+    #[serde(flatten)]
+    target: Target,
+}
+
 /// The input of `demi conversation history open`.
 #[derive(Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -170,6 +186,15 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .success_output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
                 .permission_when(READ, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), read))),
+        )
+        .leaf(
+            LeafBuilder::rpc("timing", TIMING_SUMMARY)
+                .input::<TimingArgs>()
+                .positionals(["range"])
+                .success_output("a table of the turns that start in the range, one row per turn; on stderr, the next page when more turns follow")
+                .json_output::<Vec<TurnTiming>>()
+                .permission_when(READ, "conversation")
+                .bind(TypedRpc::new(verb(shard.clone(), timing))),
         )
         .leaf(
             LeafBuilder::rpc("open", OPEN_SUMMARY)
@@ -315,6 +340,22 @@ impl Reader {
             .await
             .map_err(failed)?;
         Ok(read.unwrap_or_default())
+    }
+}
+
+impl Reader {
+    /// The turn the latest block before `index` that names one named.
+    async fn turn_before(&self, shard: &Shard, index: usize) -> Result<Option<String>, RpcError> {
+        let mut end = index;
+        while end > 0 {
+            let start = end.saturating_sub(BATCH);
+            let (blocks, _) = self.blocks(shard, start..=end - 1).await?;
+            if let Some(turn) = blocks.iter().rev().find_map(turn_of) {
+                return Ok(Some(turn.to_owned()));
+            }
+            end = start;
+        }
+        Ok(None)
     }
 }
 
@@ -694,6 +735,113 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
         _ => {}
     }
     port.stdout(printed.join("\n") + "\n").await?;
+    Ok(0)
+}
+
+/// How many turns `timing` prints at a time.
+///
+/// Bounded because what it prints goes into the model's context window,
+/// which the vendor limits.
+const TURNS_PER_PAGE: usize = 50;
+
+async fn timing(shard: Rc<Shard>, call: Call<TimingArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let reader = Reader::of(&shard, &call, &call.args.target).await?;
+    let Some((from, to)) = range(&call.args.range) else {
+        return Err(refused(format!(
+            "{}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260",
+            call.args.range
+        )));
+    };
+    let first_end = to.map_or(from + BATCH - 1, |to| to.min(from + BATCH - 1));
+    let (mut blocks, length) = reader.blocks(&shard, from..=first_end).await?;
+    if length == 0 {
+        return Err(failed("the transcript has no blocks yet"));
+    }
+    if from >= length {
+        return Err(failed(format!(
+            "{from} is past the end: the transcript's last block is {}",
+            length - 1
+        )));
+    }
+    let end = to.map_or(length - 1, |to| to.min(length - 1));
+    let mut turns = Turns::after(reader.turn_before(&shard, from).await?);
+    // The turns that start in the range, each read to its end, which may
+    // lie after the range's.
+    let mut next = None;
+    let mut at = from;
+    'reading: loop {
+        for block in &blocks {
+            let starts = turns.starts(block);
+            if at > end && (starts || !turns.is_open()) {
+                break 'reading;
+            }
+            if starts && turns.started() == TURNS_PER_PAGE {
+                next = Some(at);
+                break 'reading;
+            }
+            turns.add(at, block);
+            at += 1;
+        }
+        if blocks.is_empty() || at >= length {
+            break;
+        }
+        blocks = reader.blocks(&shard, at..=(at + BATCH - 1).min(length - 1)).await?.0;
+    }
+    let turns = turns.into_turns();
+    let timings: Vec<TurnTiming> = turns.into_iter().map(|turn| turn.timing()).collect();
+    let command = "demi conversation history timing";
+    let mut notes = Vec::new();
+    if let Some(name) = reader.name() {
+        notes.push(format!("transcript of {name}"));
+    }
+    if timings.iter().any(|timing| timing.untimed) {
+        notes.push("some blocks were written before the transcript kept their times, and their time counts as other".to_owned());
+    }
+    if let Some(next) = next {
+        let rest = to.map_or_else(String::new, |_| end.to_string());
+        notes.push(format!("next: {command}{} {next}..{rest}", reader.flags()));
+    }
+    if !notes.is_empty() {
+        port.stderr(output::note(command, &notes.join("; "))).await?;
+    }
+    if call.invocation.json {
+        let text = serde_json::to_string(&timings).map_err(failed)?;
+        port.stdout(text + "\n").await?;
+        return Ok(0);
+    }
+    let mut table = Table::new([
+        "turn",
+        "started",
+        "time(ms)",
+        "requests",
+        "preparing(ms)",
+        "waiting(ms)",
+        "thinking(ms)",
+        "text(ms)",
+        "calls(ms)",
+        "tools(ms)",
+        "compacting(ms)",
+        "retrying(ms)",
+        "other(ms)",
+    ]);
+    for timing in &timings {
+        table.row::<Cell>([
+            timing.index.into(),
+            timing.started_at.into(),
+            timing.ms.into(),
+            timing.requests.into(),
+            timing.preparing_ms.into(),
+            timing.waiting_ms.into(),
+            timing.thinking_ms.into(),
+            timing.text_ms.into(),
+            timing.calls_ms.into(),
+            timing.tools_ms.into(),
+            timing.compacting_ms.into(),
+            timing.retrying_ms.into(),
+            timing.other_ms.into(),
+        ]);
+    }
+    port.stdout(table.render()).await?;
     Ok(0)
 }
 

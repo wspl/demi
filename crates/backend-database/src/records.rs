@@ -46,8 +46,10 @@ use super::columns::{json, to_json};
 use super::contents::{self, Hash, LEVEL};
 
 /// The format of the blocks records hold (`blocks.body: transcript block
-/// format 16` in the schema). A release reads each format it knows.
-pub(crate) const FORMAT: i64 = 16;
+/// format 17` in the schema). A release reads each format it knows: format
+/// 16 is format 17 without the times a block's parts started and ended,
+/// which read as null ([`times_unkept`]).
+pub(crate) const FORMAT: i64 = 17;
 
 /// A value of at least this many bytes is a content. A shorter one costs
 /// less inline than its marker and the lookup of its bytes.
@@ -331,7 +333,7 @@ impl<'c> Codec<'c> {
 
     /// The JSON document `stored` holds, joined with its contents.
     pub(crate) fn document(&self, stored: &Stored) -> Result<Value, StorageError> {
-        if stored.format != FORMAT {
+        if stored.format != FORMAT && stored.format != 16 {
             return Err(corrupt(format!("a record of block format {} is not one this release reads", stored.format)));
         }
         let plain = {
@@ -354,11 +356,31 @@ impl<'c> Codec<'c> {
         let mut value: Value =
             serde_json::from_slice(&plain).map_err(|error| corrupt(format!("a record's body is not JSON: {error}")))?;
         self.join(&mut value)?;
+        if stored.format == 16 {
+            times_unkept(&mut value);
+        }
         Ok(value)
     }
 
     fn join(&self, value: &mut Value) -> Result<(), StorageError> {
         join_with(value, &mut |hash| contents::read(self.connection, hash))
+    }
+}
+
+/// A block of format 16 as format 17 reads it: the times format 16 did not
+/// keep are null.
+fn times_unkept(block: &mut Value) {
+    let unkept: &[&str] = match block.get("type").and_then(Value::as_str) {
+        Some("thinking" | "text") => &["endedAt"],
+        Some("tool_call") => &["writingStartedAt"],
+        Some("response") => &["sentAt", "firstSentAt", "firstOutputAt"],
+        Some("compaction_marker") => &["startedAt"],
+        _ => &[],
+    };
+    if let Value::Object(fields) = block {
+        for field in unkept {
+            fields.insert((*field).to_owned(), Value::Null);
+        }
     }
 }
 

@@ -46,7 +46,6 @@ const props = defineProps<{
   isThinkingStreaming: boolean
   isTextStreaming?: boolean
   showAssistantFooter?: boolean
-  thinkingEndedAt?: string | null
   editable?: boolean
   /** Regenerate in an answer's footer; absent where it is not offered. */
   regenerate?: () => void
@@ -266,7 +265,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         :thinking="block.text"
         :is-streaming="isThinkingStreaming"
         :created-at="block.createdAt"
-        :ended-at="thinkingEndedAt"
+        :ended-at="block.endedAt"
       />
       <AssistantTextBlock
         v-else-if="block.type === 'text'"

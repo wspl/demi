@@ -113,7 +113,7 @@ function pickRest(paths: readonly string[]): void {
 <template>
   <!-- A lone step is its own row, in the list's column already. -->
   <div v-if="lone" class="[--agent-pad-x:0px]">
-    <StepRow v-model:open="isOpen" :step="lone" :ended-at="group.ends[0]" />
+    <StepRow v-model:open="isOpen" :step="lone" />
   </div>
   <template v-else>
     <FunctionalBlock
@@ -140,7 +140,7 @@ function pickRest(paths: readonly string[]): void {
             :data-step-id="isOpen ? step.id : undefined"
             v-bind="chromeEntrance(entering.has(stepKey(step)))"
           >
-            <StepRow :step="step" :ended-at="group.ends[index]" />
+            <StepRow :step="step" />
           </div>
         </div>
       </template>

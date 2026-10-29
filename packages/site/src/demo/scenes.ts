@@ -513,6 +513,7 @@ function researcher(parent: string, { company, found }: (typeof RESEARCHERS)[num
     input: JSON.stringify({ description: `Read ${company}’s pricing page`, script: `demi web fetch https://${company.toLowerCase()}.example.com/pricing` }),
     status: ended ? 'completed' : 'executing',
     output: [],
+    writingStartedAt: null,
     endedAt: ended ? now : null,
     view: { kind: 'shell', status: ended ? 'exited' : 'running', ...(ended ? { exitCode: 0 } : {}), commandId: `${index + 30}`, runningMs: 1200, idleMs: 0, viewTruncated: false, chunks: [] },
   }

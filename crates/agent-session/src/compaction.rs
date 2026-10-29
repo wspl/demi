@@ -27,7 +27,7 @@ use demi_agent_transcript::{
 use demi_conversation_lane_protocol::{AgentCode, Refusal};
 use demi_provider_common::{ErrorCode, InferenceItem, RequestLimits, ToolDefinition, UserPart};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
-use demi_shared_types::{
+use demi_shared_types::{Timestamp, 
     B64Bytes, BlobRef, Block, ContextUsage, EXECUTION_SOURCE, Model, ModelSelection, NodeId, TokenUsage,
     TurnId, UserContentBlock, kept_words_budget,
 };
@@ -569,18 +569,18 @@ pub(super) async fn run_pass(
     trigger: &Trigger,
 ) -> Result<bool, TurnError> {
     s.read(|core| trigger.log(core));
-    let began = s.read(|core| core.clock().now().as_millisecond());
+    let began = s.read(|core| core.clock().now());
     let tokens_before = held_context_usage(s).await.map(|usage| usage.tokens);
     let mut facts = PassFacts::default();
     let idle = matches!(trigger, Trigger::Idle { .. });
-    let result = pass(s, cancel, &mut facts, idle).await;
+    let result = pass(s, cancel, &mut facts, idle, began).await;
     let outcome = match &result {
         Ok(true) => "done",
         Ok(false) => "no_gain",
         Err(TurnError::Cancelled) => "stopped",
         Err(TurnError::Failed(_)) => "failed",
     };
-    let ms = s.read(|core| u64::try_from(core.clock().now().as_millisecond() - began).unwrap_or(0));
+    let ms = s.read(|core| u64::try_from(core.clock().now().as_millisecond() - began.as_millisecond()).unwrap_or(0));
     s.read(|core| {
         let turn = core.running_turn();
         session_log!(
@@ -636,6 +636,7 @@ async fn pass(
     cancel: &TurnCancel,
     facts: &mut PassFacts,
     idle: bool,
+    began: Timestamp,
 ) -> Result<bool, TurnError> {
     let record_failure = |s: &SessionShared, report: Box<ErrorReport>| {
         if idle {
@@ -725,7 +726,7 @@ async fn pass(
                         kept,
                     );
                     core.transcript
-                        .push_compaction_marker(&model, boundary, compacted_tokens, idle);
+                        .push_compaction_marker(&model, boundary, compacted_tokens, idle, began);
                     core.commit();
                     // The next request writes its prefix anew in any case,
                     // so the agent takes an account again for it

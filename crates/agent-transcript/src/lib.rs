@@ -30,7 +30,7 @@ pub use cut::{
 pub use earlier::{Earlier, UserInput, user_input};
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
-pub use log::{AskedEnd, PendingCall, TranscriptLog, kept};
+pub use log::{AskedEnd, PendingCall, RequestTimes, TranscriptLog, kept};
 pub use replay::{REPLAY_CHARS, Replay, ReplayedBlock, RequestView, bound_text, replay, tool_input};
 pub use reply_markdown::{has_scheme, markdown_options, named_pictures, picture_path};
 pub use reports::{duration, labelled_output, report_text, reports_text};

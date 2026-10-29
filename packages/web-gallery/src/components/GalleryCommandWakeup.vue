@@ -30,7 +30,7 @@ const title = 'Run the end-to-end suite'
 const input = JSON.stringify({ script: 'sh scripts/e2e.sh', description: title })
 function call(status: 'executing' | 'completed'): Block {
   return withEnd({
-    type: 'tool_call', id: 'wake-call', run: 'wake-call', createdAt: created(), model: demoModel,
+    type: 'tool_call', id: 'wake-call', run: 'wake-call', createdAt: created(), writingStartedAt: null, model: demoModel,
     toolUseId: 'wake-call-use', toolName: 'shell', input, status,
     output: status === 'executing' ? [] : [{ type: 'text', text: 'status: running\ncommandId: 4\noutput:\nscenario 1 ok\nscenario 5 ok\n' }],
     view: status === 'executing' ? null : shellView({ commandId: '4', status: 'running', runningMs: 30_000, chunks: [{ stream: 'stdout', text: 'scenario 1 ok\n…\nscenario 5 ok\n' }] }),
@@ -44,7 +44,8 @@ function report(id: string, event: CommandReport['event'], output: string): Bloc
   }
 }
 function text(id: string, value: string): Block {
-  return { type: 'text', id, createdAt: created(), model: demoModel, text: value, forkable: true }
+  const createdAt = created()
+  return { type: 'text', id, createdAt, endedAt: createdAt, model: demoModel, text: value, forkable: true }
 }
 
 /** The run, as the transcript and the session's phase show it, each step a moment after the one before. */
