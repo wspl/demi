@@ -453,6 +453,9 @@ pub struct ConversationHost {
 /// file lease, then the Cloud's admission.
 pub struct Admitted {
     pub host: ConversationHost,
+    /// The Cloud's device and the conversation's directory there, which a
+    /// read makes once it let go of the file gate.
+    unmade: Option<(DeviceId, String)>,
     _files: FileLease,
     _cloud: Option<CloudAdmission>,
 }
@@ -499,7 +502,8 @@ pub struct Waits<'a> {
     /// Whether the admission may make the conversation's directory on its
     /// Host, as its first use does (`first_use`). A turn's work, a transfer
     /// and a `demi host` command do; a request the user makes to read does
-    /// not, and finds a directory that is not there missing.
+    /// not, and finds a directory that is not there missing, except the
+    /// directory of a conversation on the Cloud, which is Demi's to make.
     pub creates: bool,
 }
 
@@ -667,9 +671,12 @@ impl dyn HostShard + '_ {
         cancel: &CancellationToken,
         operation: impl AsyncFnOnce(&ConversationHost) -> T,
     ) -> Result<T, HostAccessError> {
-        let Admitted { host, _files, _cloud } =
+        let Admitted { host, unmade, _files, _cloud } =
             self.admit_host(id, device, Waits::request(cancel).reading()).await?;
         drop(_files);
+        if let Some((device, root)) = unmade {
+            self.make_cloud_directory(id, &device, &root, &host).await;
+        }
         let output = operation(&host).await;
         drop(host);
         drop(_cloud);
@@ -700,6 +707,10 @@ impl dyn HostShard + '_ {
                 return Err(HostError::new(HostErrorKind::Unavailable, reason).into());
             }
             let mut selected = self.select_host(&record.id, device, true).await?;
+            // A read of a Cloud conversation's directory makes it, once the
+            // gate is let go (`with_unheld_host`).
+            let unmade = (!waits.creates && matches!(selected.typed, Some(TypedDirectory::Cloud(_))))
+                .then(|| (selected.device.id.clone(), selected.root.clone()));
             if !waits.creates {
                 selected.typed = None;
             }
@@ -766,6 +777,7 @@ impl dyn HostShard + '_ {
             self.track_idle(&record.id);
             return Ok(Admitted {
                 host,
+                unmade,
                 _files: files,
                 _cloud: cloud,
             });
@@ -979,6 +991,31 @@ impl dyn HostShard + '_ {
             root,
             home: self.devices().home(device),
         })
+    }
+
+    /// Makes a Cloud conversation's directory for a read, without the file
+    /// gate, once per connection: the Cloud is Demi's, so a conversation that
+    /// ran nothing yet shows an empty folder, not a missing one. Its name is
+    /// the work's to settle (`first_use`): one the Cloud names otherwise is
+    /// left for the work's first use to name. A directory the Cloud cannot
+    /// make is the read's to find missing.
+    async fn make_cloud_directory(&self, id: &ConversationId, device: &DeviceId, root: &str, host: &ConversationHost) {
+        let Some(link) = self.devices().link(device) else {
+            return;
+        };
+        let slot = self.conversations().slot(id);
+        if slot.directory_checked(device, root, &link) {
+            return;
+        }
+        match host.host.directory(root, true).await {
+            Ok(canonical) if canonical == root => slot.remember_directory(device, [root, root], &link),
+            Ok(_) => {}
+            Err(error) => tracing::warn!(
+                event = "cloud_directory.unmade",
+                error = %error.message,
+                "a Cloud conversation's directory could not be made for a read"
+            ),
+        }
     }
 
     /// The first time a conversation's work reaches its directory over a
