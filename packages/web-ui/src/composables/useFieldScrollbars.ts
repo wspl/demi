@@ -1,6 +1,6 @@
 import { watch, type Ref } from 'vue'
 import { useOverlayScrollbars } from 'overlayscrollbars-vue'
-import { scrollbarsOptions, scrollbarsTarget } from '../ui/scrollbars'
+import { inPlace, scrollbarsOptions, scrollbarsTarget } from '../ui/scrollbars'
 
 /**
  * The app's scrollbar on a multi-line text field that scrolls past its height
@@ -21,6 +21,6 @@ export function useFieldScrollbars(
   // A field rendered after its owner, as one in a frame of its own, is taken once it is there.
   watch([field, frame], ([element, slot]) => {
     if (element && slot && !scrollbars())
-      initialize(scrollbarsTarget(element, slot))
+      inPlace(element, () => initialize(scrollbarsTarget(element, slot)))
   }, { immediate: true, flush: 'post' })
 }

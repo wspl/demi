@@ -38,8 +38,9 @@ export function scrollbarsOptions(axis: ScrollAxis): PartialOptions {
 
 /**
  * Initialisation on an element that scrolls itself and stays the scrolling
- * element: OverlayScrollbars neither wraps nor moves its content, so its padding,
- * its layout and whoever reads its scroll position are unchanged.
+ * element: OverlayScrollbars does not wrap its content, so its padding, its
+ * layout and whoever reads its scroll position are unchanged. Set it up through
+ * {@link inPlace}, which keeps the content where it is.
  *
  * The bars go into `slot`, an element that does not scroll and whose box is the
  * scroller's, or into the scroller itself, where the library keeps them in place
@@ -54,10 +55,35 @@ export function scrollbarsTarget(scroller: HTMLElement, slot: HTMLElement = scro
 }
 
 /**
+ * Runs `initialize`, which sets OverlayScrollbars up on `scroller` at once,
+ * leaving the scroller's content in the document.
+ *
+ * The library appends each child of the scroller to it again, in order. The
+ * children end where they were, but each leaves the document for a moment: a
+ * frame loads its page again, a video stops, a scroller inside goes back to its
+ * start. A bar set up when the user first reaches the scroller, long after its
+ * content loaded, would show each of them. While `initialize` runs, appending a
+ * child the scroller already has does nothing, which ends with the same order.
+ */
+export function inPlace<T>(scroller: HTMLElement, initialize: () => T): T {
+  const children = new Set<Node>(scroller.childNodes)
+  const append = scroller.appendChild
+  Object.defineProperty(scroller, 'appendChild', {
+    configurable: true,
+    value: <N extends Node>(node: N): N => children.has(node) ? node : append.call(scroller, node) as N,
+  })
+  try {
+    return initialize()
+  } finally {
+    Reflect.deleteProperty(scroller, 'appendChild')
+  }
+}
+
+/**
  * Overlay scrollbars on a scroller another library owns (CodeMirror's, a
  * rendered document's code block). The caller destroys the instance when the
  * scroller goes.
  */
 export function attachScrollbars(scroller: HTMLElement, axis: ScrollAxis, slot?: HTMLElement): OverlayScrollbars {
-  return OverlayScrollbars(scrollbarsTarget(scroller, slot), scrollbarsOptions(axis))
+  return inPlace(scroller, () => OverlayScrollbars(scrollbarsTarget(scroller, slot), scrollbarsOptions(axis)))
 }
