@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mediaReloads } from './media-reload'
 import { computed, ref, watch } from 'vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import { t as shared } from '../locales/text'
@@ -50,8 +51,9 @@ const emit = defineEmits<{
 const { src, gone, bytes } = useMediumSource(() => props.medium, () => props.open)
 watch(bytes, (size) => emit('bytes', size), { immediate: true })
 const failed = ref(false)
-// Another medium, or a new version of the file, may show where the last could not.
-watch([() => mediumKey(props.medium), src], () => {
+// Another medium, or a new version of the file, may show where the last could
+// not, and so may the same one once its bytes may come (`mediaReloads`).
+watch([() => mediumKey(props.medium), src, mediaReloads], () => {
   failed.value = false
 })
 

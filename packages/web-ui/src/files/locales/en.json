@@ -236,5 +236,10 @@
     "failed": "Couldn’t search the files.",
     "results": "Files",
     "limited": "Showing the first {count} file found. Type more to narrow the search. | Showing the first {count} files found. Type more to narrow the search."
+  },
+  "download": {
+    "ready": "Ready to Save",
+    "save": "Save…",
+    "failed": "Couldn’t Download"
   }
 }

@@ -2467,6 +2467,40 @@ html[data-theme="light"] .file-pill {
   outline-offset: -1px;
 }
 
+/* Where the system has a menu of its own for a picture, as on an iPhone, a
+   message's picture keeps it (`markdown/render.ts`), whatever around it takes
+   the long press for the page. */
+.markdown-body :where(.media-lone, .media-run) img {
+  -webkit-touch-callout: default;
+}
+
+/* An attachment's tile whose medium did not load keeps its box, and shows in
+   its place what a tool's picture that did not load shows (`RowPicture`): the
+   theme's faint edge and Lucide's ImageOff at its middle, never the browser's
+   broken picture. It loads again by itself (`files/media-reload.ts`). */
+.markdown-body a[data-media-failed] {
+  position: relative;
+  border-radius: 0.375rem;
+  outline: 1px solid var(--line-subtle);
+  outline-offset: -1px;
+}
+
+.markdown-body a[data-media-failed] > :is(img, video, .media-play-mark) {
+  opacity: 0;
+}
+
+.markdown-body a[data-media-failed]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  translate: -50% -50%;
+  background: var(--fg-faint);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3Cpath d='M10.41 10.41a2 2 0 1 1-2.83-2.83'/%3E%3Cline x1='13.5' x2='6' y1='13.5' y2='21'/%3E%3Cline x1='18' x2='21' y1='12' y2='15'/%3E%3Cpath d='M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59'/%3E%3Cpath d='M21 15V5a2 2 0 0 0-2-2H9'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 /* An attachment's video shows its first frame with a play mark, and a click
    plays it in the viewer (`markdown/render.ts`). */
 .markdown-body .message-video {

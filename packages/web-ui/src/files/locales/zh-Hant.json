@@ -236,5 +236,10 @@
     "failed": "無法搜尋檔案。",
     "results": "檔案",
     "limited": "僅顯示找到的前 {count} 個檔案。輸入更多內容以縮小範圍。"
+  },
+  "download": {
+    "ready": "可以儲存了",
+    "save": "儲存…",
+    "failed": "無法下載"
   }
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { LONG_PRESS_MS } from '../ui/context-menu'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useDevicePixelRatio, useElementSize, useMediaQuery } from '@vueuse/core'
 import { dropSource } from './preview'
@@ -44,6 +45,8 @@ import type { PixelSize } from './thumbnail'
  *
  * - A tap toggles and a drag moves the picture the same way, and a pinch zooms
  *   it about the fingers, which the page itself never does (`phone-page.ts`).
+ *   A long press is no tap: it leaves the picture as it is, under the
+ *   system's menu for it where the system has one.
  * - With `dismissible`, as the phone's full screen shows it, a tap beside the
  *   picture, outside the box it is drawn in, asks to close it instead.
  *
@@ -317,6 +320,9 @@ function onPress(event: PointerEvent): void {
         return
       }
       if (wasPinched || axis === 'vertical')
+        return
+      // A finger held as long as a long press asked for the system's menu, not for a tap.
+      if (!cancelled && !dragged && event.pointerType === 'touch' && performance.now() - pressedAt >= LONG_PRESS_MS)
         return
       if (cancelled)
         view.value = start

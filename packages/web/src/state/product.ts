@@ -8,6 +8,7 @@ import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
 import { browserOnline, waitToReconnect, type ReconnectWait } from '@demicodes/web-ui/transport/liveness'
 import { Lane, backendRestarting, connectionFailures, openLane } from '@demicodes/web-ui/transport/page-connection'
 import { backendUnreachable, connectionCause, connectionState, type ConnectionState } from '@demicodes/web-ui/transport/connection'
+import { reloadFailedMedia } from '@demicodes/web-ui/files/media-reload'
 import { t } from './locales/text'
 import { ApiError, apiRequest, logReadAnswered, logReadFailed, notifySessionEnded, readResponse, unreachable as backendNotReached, waitForBackendWith } from '../api/client'
 import {
@@ -432,6 +433,12 @@ export const useProduct = defineStore('product', () => {
   })
   /** Whether the page cannot reach the backend. */
   const unreachable = computed(() => backendUnreachable(connectionFacts()))
+  // The images and videos that did not load while it could not may load now,
+  // also after a blip the next connection mended, which never shows as unreachable.
+  watch(() => connectionCause(connectionFacts()) === 'reached', (reached, before) => {
+    if (reached && !before)
+      reloadFailedMedia()
+  })
   /** Every change of where the connection stands is a line, with how long it stood there. */
   let connectionSince = Date.now()
   watch(() => connectionState(connectionFacts()), (to: ConnectionState, from: ConnectionState) => {

@@ -4,6 +4,7 @@ import type { CopySource } from '../composables/useCopy'
 import type { Operation } from './operations'
 import { t as shared } from '../locales/text'
 import { t } from './locales/text'
+import { SYSTEM_PICTURE_MENUS } from './system-picture-menu'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
@@ -34,7 +35,10 @@ import type { SentenceText, TitleText } from './ui-text'
  *
  * On a phone a message's text keeps the system's long press, which selects words.
  * The selection's comment field (`selectionField`, SelectionFieldHost) stands by
- * the selection on both the desktop and a phone.
+ * the selection on both the desktop and a phone. A picture whose system shows
+ * a menu of its own, as iOS and iPadOS do, keeps the system's long press too
+ * (`systemPictureMenu`), since a page cannot stop that menu but by taking it
+ * away.
  *
  * The page's selection is read in one place (`readSelection`): what it selects,
  * judged by the characters and pictures it takes rather than by where the browser
@@ -384,6 +388,11 @@ export function composeContextMenu(ask: ContextMenuAsk, services: ContextMenuSer
   }
 }
 
+/** Whether a long press on `target` shows the system's menu for a picture, which `-webkit-touch-callout: none` takes away. */
+function systemPictureMenu(target: Element): boolean {
+  return SYSTEM_PICTURE_MENUS && target instanceof HTMLImageElement && getComputedStyle(target).getPropertyValue('-webkit-touch-callout') !== 'none'
+}
+
 /** A press held this long, without moving, is a long press. */
 export const LONG_PRESS_MS = 500
 /** A finger that moves farther than this scrolls or drags, and is no long press. */
@@ -506,7 +515,7 @@ export function installContextMenus(root: ContextMenuRoot): () => void {
     endPress()
     const finger = event.touches[0]
     const target = event.target instanceof Element ? event.target : null
-    if (!root.phone() || event.touches.length !== 1 || !finger || !target || inTextField(target) || inSelectableText(target))
+    if (!root.phone() || event.touches.length !== 1 || !finger || !target || inTextField(target) || inSelectableText(target) || systemPictureMenu(target))
       return
     const x = finger.clientX
     const y = finger.clientY

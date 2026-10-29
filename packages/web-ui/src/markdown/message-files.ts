@@ -186,7 +186,7 @@ export function messageLinkMenu(
 export function pressMessageLink(event: KeyboardEvent): void {
   if (event.key !== 'Enter' && event.key !== ' ')
     return
-  const link = event.target instanceof HTMLElement && event.target.matches('[data-agent-link][role="button"]') ? event.target : null
+  const link = event.target instanceof HTMLElement && event.target.matches('[data-agent-link][role="button"], a[data-attachment-image][role="link"], a[data-attachment-video][role="link"]') ? event.target : null
   if (!link)
     return
   event.preventDefault()

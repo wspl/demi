@@ -22,6 +22,7 @@ import AttachmentCard from '@demicodes/web-ui/files/AttachmentCard.vue'
 import { ATTACHMENT_AUDIO_ATTRIBUTE, ATTACHMENT_CARD_ATTRIBUTE, messageAttachment } from '@demicodes/web-ui/markdown/render'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
+import { useFailedMedia } from '@demicodes/web-ui/files/media-reload'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
 import type { TextArrival } from '@demicodes/conversation-client'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
@@ -220,7 +221,10 @@ async function openCard(place: HTMLElement): Promise<void> {
     shown.openAttachment?.(id, attachment)
 }
 
+const failedMedia = useFailedMedia()
+
 function onMediumLoad(event: Event): void {
+  failedMedia.onLoaded(event)
   const medium = event.target
   if (!(medium instanceof HTMLImageElement || medium instanceof HTMLVideoElement))
     return
@@ -247,6 +251,7 @@ function onMediumLoad(event: Event): void {
     @keydown="pressMessageLink"
     @load.capture="onMediumLoad"
     @loadedmetadata.capture="onMediumLoad"
+    @error.capture="failedMedia.onError"
   />
   <Teleport v-for="(block, index) in codeBlocks" :key="index" :to="block">
     <CodeBlockCopy :block="block" />
