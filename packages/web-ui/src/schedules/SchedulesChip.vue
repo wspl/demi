@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { AlarmClock } from '@lucide/vue'
 import { useNow } from '@vueuse/core'
+import { type ComponentPublicInstance, nextTick, ref, useTemplateRef, watch } from 'vue'
 import SessionDockChip from '../agent/SessionDockChip.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
 import { useIconPx } from '../ui/icon-metrics'
+import { usePhone } from '../ui/phone'
 import { t } from './locales/text'
 import ScheduleMenuItem from './ScheduleMenuItem.vue'
 import type { ConversationSchedule } from './types'
@@ -19,8 +21,11 @@ import type { ConversationSchedule } from './types'
  * queued message does not, and leave the menu open. With no schedule left, the
  * chip and its menu go.
  *
- * The menu is as wide as its widest row needs, between 20rem and 40rem. It is
- * open when `open` says so: a schedule's name in the transcript opens it.
+ * The menu opens as wide as its widest row needs, between 20rem and 40rem, and
+ * keeps that width while it stays open, as a browser's tabs keep theirs while
+ * one is closed: a row turned on gains its time, and a time grows as it
+ * drifts, by narrowing the text before them, never by moving the menu's edge.
+ * It is open when `open` says so: a schedule's name in the transcript opens it.
  */
 defineProps<{
   schedules: readonly ConversationSchedule[]
@@ -40,6 +45,21 @@ const emit = defineEmits<{
 const icons = useIconPx()
 // The times from now drift while the menu stays open.
 const now = useNow({ interval: 30_000 })
+
+const phone = usePhone()
+const menu = useTemplateRef<ComponentPublicInstance>('menu')
+/** The width the menu opened at, in pixels; none while it is closed, before it is measured, or on a phone, whose sheet spans the screen. */
+const openWidth = ref<number | null>(null)
+watch([open, phone], async ([isOpen, isPhone]) => {
+  openWidth.value = null
+  if (!isOpen || isPhone)
+    return
+  await nextTick()
+  const element: unknown = menu.value?.$el
+  // The computed width, not the drawn box, which the opening animation scales.
+  if (element instanceof HTMLElement && open.value)
+    openWidth.value = Number.parseFloat(getComputedStyle(element).width)
+}, { immediate: true })
 </script>
 
 <template>
@@ -55,7 +75,11 @@ const now = useNow({ interval: 30_000 })
       </SessionDockChip>
     </template>
     <template #content>
-      <Menu class="min-w-[20rem] max-w-[40rem]">
+      <Menu
+        ref="menu"
+        class="min-w-[20rem] max-w-[40rem]"
+        :style="openWidth === null ? undefined : { width: `${openWidth}px` }"
+      >
         <ScheduleMenuItem
           v-for="schedule in schedules"
           :key="schedule.id"
