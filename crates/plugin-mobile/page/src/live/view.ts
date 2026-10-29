@@ -111,3 +111,69 @@ export function areaPoint(point: { x: number; y: number }, screen: Size, placed:
     y: placed.top + (point.y / screen.height) * placed.height,
   }
 }
+
+/**
+ * Where a device being turned shows, relative to where its layout puts it:
+ * turned `angle` degrees clockwise and scaled by `scale` about its screen's
+ * center, then moved by `offset`.
+ */
+export interface TurnPose {
+  angle: number
+  scale: number
+  offset: { x: number; y: number }
+}
+
+/** The device where its layout puts it. */
+export const RESTING: TurnPose = { angle: 0, scale: 1, offset: { x: 0, y: 0 } }
+
+function centerOf(placed: Placement): { x: number; y: number } {
+  return { x: placed.left + placed.width / 2, y: placed.top + placed.height / 2 }
+}
+
+/**
+ * The pose that shows a layout whose screen is `to` where `pose` showed one
+ * whose screen was `from`, the device having turned `quarters` quarter turns
+ * clockwise between them.
+ */
+export function poseBetween(from: Placement, pose: TurnPose, to: Placement, quarters: number): TurnPose {
+  const [before, after] = [centerOf(from), centerOf(to)]
+  // The old screen's width over the new one's side that turns back into it.
+  const scale = from.width / (quarters % 2 === 0 ? to.width : to.height)
+  return {
+    angle: pose.angle - quarters * 90,
+    scale: pose.scale * scale,
+    offset: { x: before.x - after.x + pose.offset.x, y: before.y - after.y + pose.offset.y },
+  }
+}
+
+/**
+ * The pose a turn from `start` has reached at `progress`, 0 to 1, easing out
+ * as a hand's turn does, scaled down where needed so that the device, of
+ * `device` laid out, stays inside an area of `area` at every angle.
+ */
+export function poseAt(start: TurnPose, progress: number, device: Size, area: Size): TurnPose {
+  const eased = 1 - (1 - Math.min(1, Math.max(0, progress))) ** 3
+  const angle = start.angle * (1 - eased)
+  const scale = start.scale + (1 - start.scale) * eased
+  const radians = (angle * Math.PI) / 180
+  const [cos, sin] = [Math.abs(Math.cos(radians)), Math.abs(Math.sin(radians))]
+  const across = scale * (device.width * cos + device.height * sin)
+  const down = scale * (device.width * sin + device.height * cos)
+  const fit = Math.min(1, area.width / across, area.height / down)
+  return { angle, scale: scale * fit, offset: { x: start.offset.x * (1 - eased), y: start.offset.y * (1 - eased) } }
+}
+
+/** The CSS transform of `pose` for a layout whose screen is `screen`, about the area's top left corner. */
+export function poseTransform(pose: TurnPose, screen: Placement): string {
+  const center = centerOf(screen)
+  return `translate(${center.x + pose.offset.x}px, ${center.y + pose.offset.y}px) rotate(${pose.angle}deg) scale(${pose.scale}) translate(${-center.x}px, ${-center.y}px)`
+}
+
+/** The point of the layout whose screen is `screen` that `pose` shows at `at`, a point of the area. */
+export function unposed(at: { x: number; y: number }, pose: TurnPose, screen: Placement): { x: number; y: number } {
+  const center = centerOf(screen)
+  const [x, y] = [(at.x - center.x - pose.offset.x) / pose.scale, (at.y - center.y - pose.offset.y) / pose.scale]
+  const radians = (-pose.angle * Math.PI) / 180
+  const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
+  return { x: center.x + x * cos - y * sin, y: center.y + x * sin + y * cos }
+}
