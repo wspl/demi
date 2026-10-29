@@ -22,6 +22,8 @@ jiff.workspace = true
 # `zstd`: a command executable arrives in zstd content coding
 # (`crates/backend-runners/src/publication.rs`).
 reqwest = { workspace = true, features = ["rustls", "stream", "zstd"] }
+# The releases' feed, which a Canary check reads (`releases::newest`).
+roxmltree = "0.21"
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true

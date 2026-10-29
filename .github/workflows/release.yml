@@ -5,7 +5,9 @@
 # - A manual start on a branch, `gh workflow run release.yml --ref <branch>`,
 #   publishes the build of the branch's newest commit, or with `commit`, of that
 #   commit, which must be in the branch's history. It refuses a version that has
-#   a release already, and creates the tag v<version> on the commit it published
+#   a release already or is below the highest published one, since servers find
+#   the newest release among those published last (crates/shared-artifacts/
+#   src/releases.rs), and creates the tag v<version> on the commit it published
 #   (the npm packages' tags name their package, so the two never collide).
 # - canary.yml starts it for a push to main whose build and checks passed.
 #   Nothing else starts it.
@@ -93,6 +95,13 @@ jobs:
           }
           if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "v$VERSION has a release already: a published version is immutable" >&2
+            exit 1
+          fi
+          # Versions are published in their order: a server finds the newest
+          # among the releases GitHub's feed lists, the ten published last.
+          highest=$(git tag --list 'v[0-9]*' | sort -V | tail -n 1)
+          if [ -n "$highest" ] && [ "$(printf '%s\nv%s\n' "$highest" "$VERSION" | sort -V | tail -n 1)" = "$highest" ]; then
+            echo "v$VERSION is below $highest, which is published: versions are published in their order" >&2
             exit 1
           fi
       # The newest finished build of the branch whose files are all kept;

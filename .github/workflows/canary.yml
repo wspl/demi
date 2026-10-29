@@ -17,9 +17,9 @@
 # - A deploy that publishes the same commit meanwhile makes this run's release
 #   refuse the version, which counts as published once it is no draft
 #   (docs/delivery/upgrades.md).
-# - A deploy that publishes a newer commit meanwhile can make an older commit's
-#   Canary come after it. Installers and servers take the highest version, so
-#   it is never offered over the newer one.
+# - A deploy that publishes a newer commit meanwhile makes this run's release
+#   refuse the older version, since versions are published in their order
+#   (release.yml), and the run publishes nothing.
 name: Canary
 
 on:
@@ -77,6 +77,14 @@ jobs:
           run=$(gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main \
             -f commit="$COMMIT" -f prerelease=true)
           gh run watch --repo "$GITHUB_REPOSITORY" --exit-status "${run##*/}" > /dev/null || true
-          draft=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)
+          if ! draft=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft); then
+            git fetch --quiet --tags
+            newest=$(git tag --list 'v[0-9]*' | sort -V | tail -n 1)
+            if [ "$(printf '%s\nv%s\n' "$newest" "$version" | sort -V | tail -n 1)" = "$newest" ]; then
+              echo "$newest was published meanwhile, above v$version: nothing to publish"
+              exit 0
+            fi
+            exit 1
+          fi
           [ "$draft" = false ]
           echo "Published v$version as the next Canary"

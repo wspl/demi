@@ -10,9 +10,6 @@ use semver::Version;
 /// The repository whose GitHub releases are Demi's.
 pub const REPOSITORY: &str = "wspl/demi";
 
-/// The most releases one page of GitHub's list gives.
-const PAGE: usize = 100;
-
 /// Which releases count as the newest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Channel {
@@ -82,25 +79,13 @@ pub async fn channel_of(version: &Version) -> std::io::Result<Channel> {
 /// published yet, or none is tagged `v<version>`.
 pub async fn newest(channel: Channel) -> std::io::Result<Option<Published>> {
     match channel {
-        Channel::Canary => {
-            let mut highest: Option<(Version, Release)> = None;
-            for page in 1.. {
-                let releases: Vec<Release> = github(&format!("releases?per_page={PAGE}&page={page}"))
-                    .await?
-                    .unwrap_or_default();
-                let whole = releases.len() == PAGE;
-                for release in releases {
-                    let Some(version) = release.version() else { continue };
-                    if highest.as_ref().is_none_or(|(highest, _)| &version > highest) {
-                        highest = Some((version, release));
-                    }
-                }
-                if !whole {
-                    break;
-                }
-            }
-            highest.map(|(_, release)| release.published()).transpose()
-        }
+        // The feed, not the API's list of releases: each release in the list
+        // describes every one of its dozens of assets, some 100 KB a release,
+        // and finding the highest read them all, a page of 100 at a time.
+        Channel::Canary => match get(&format!("https://github.com/{REPOSITORY}/releases.atom"), "application/atom+xml").await? {
+            Some(feed) => highest_in_feed(&String::from_utf8_lossy(&feed)),
+            None => Ok(None),
+        },
         Channel::Beta => github::<Release>("releases/latest").await?.map(Release::published).transpose(),
     }
 }
@@ -144,14 +129,63 @@ pub fn page_url(version: &Version) -> String {
     format!("https://github.com/{REPOSITORY}/releases/tag/v{version}")
 }
 
+/// The highest Demi release among the entries of the repository's releases
+/// feed, with when it was published.
+///
+/// The feed lists the ten releases GitHub published last, newest first, each
+/// with its tag at the end of its `id` and its publication as `updated`.
+/// The release workflow refuses a version below the highest published one
+/// (`.github/workflows/release.yml`), so the highest is among them. A tag that is no `v<version>`, such as the gVisor build's, is
+/// no Demi release.
+fn highest_in_feed(feed: &str) -> std::io::Result<Option<Published>> {
+    let document = roxmltree::Document::parse(feed).map_err(std::io::Error::other)?;
+    let child = |entry: roxmltree::Node<'_, '_>, name: &str| {
+        entry
+            .children()
+            .find(|node| node.has_tag_name((ATOM, name)))
+            .and_then(|node| node.text())
+            .map(str::trim)
+            .map(str::to_owned)
+    };
+    let mut highest: Option<Published> = None;
+    for entry in document.root_element().children().filter(|node| node.has_tag_name((ATOM, "entry"))) {
+        let Some(version) = child(entry, "id")
+            .and_then(|id| Version::parse(id.rsplit('/').next()?.strip_prefix('v')?).ok())
+        else {
+            continue;
+        };
+        if highest.as_ref().is_some_and(|highest| highest.version >= version) {
+            continue;
+        }
+        let at = child(entry, "updated")
+            .ok_or_else(|| std::io::Error::other(format!("the feed's entry of {version} says no time")))?
+            .parse()
+            .map_err(std::io::Error::other)?;
+        highest = Some(Published { version, at });
+    }
+    Ok(highest)
+}
+
+/// The Atom namespace, the feed's.
+const ATOM: &str = "http://www.w3.org/2005/Atom";
+
 /// Reads `path` of the repository's GitHub API; none when GitHub has
 /// nothing there.
 async fn github<T: serde::de::DeserializeOwned>(path: &str) -> std::io::Result<Option<T>> {
+    match get(&format!("https://api.github.com/repos/{REPOSITORY}/{path}"), "application/vnd.github+json").await? {
+        Some(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(std::io::Error::other),
+        None => Ok(None),
+    }
+}
+
+/// The body GitHub answers `url` with, of the media type `accept`; none when
+/// it has nothing there.
+async fn get(url: &str, accept: &str) -> std::io::Result<Option<bytes::Bytes>> {
     let client = crate::client().map_err(std::io::Error::other)?;
     let response = client
-        .get(format!("https://api.github.com/repos/{REPOSITORY}/{path}"))
+        .get(url)
         .header("user-agent", "demi")
-        .header("accept", "application/vnd.github+json")
+        .header("accept", accept)
         .send()
         .await
         .map_err(|error| std::io::Error::other(error.without_url().to_string()))?;
@@ -161,9 +195,9 @@ async fn github<T: serde::de::DeserializeOwned>(path: &str) -> std::io::Result<O
     let response = response
         .error_for_status()
         .map_err(|error| std::io::Error::other(error.without_url().to_string()))?;
-    let bytes = response
+    response
         .bytes()
         .await
-        .map_err(|error| std::io::Error::other(error.without_url().to_string()))?;
-    serde_json::from_slice(&bytes).map(Some).map_err(std::io::Error::other)
+        .map(Some)
+        .map_err(|error| std::io::Error::other(error.without_url().to_string()))
 }
