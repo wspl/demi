@@ -317,12 +317,18 @@ impl Shard {
         let model = self
             .chosen_selection(&ModelSettings {
                 provider_id: ProviderId::try_from(request.model.provider_id.clone())
-                    .map_err(|_| IntegrationRefusal::Refused("No provider has that id.".to_owned()))?,
+                    .map_err(|_| IntegrationRefusal::Invalid("No provider has that id.".to_owned()))?,
                 model_id: request.model.model_id.clone(),
                 thinking_effort: None,
                 service_tier_id: None,
             })
-            .await?;
+            .await
+            .map_err(|refusal| match refusal {
+                ChangeRefusal::ProviderNotFound | ChangeRefusal::ModelNotFound => {
+                    IntegrationRefusal::Invalid(refusal.to_string())
+                }
+                refusal => refusal.into(),
+            })?;
         let id = ConversationId::try_from(uuid::Uuid::new_v4().to_string().as_str()).expect("a UUID is a conversation id");
         let start = ConversationStart {
             workspace: integration.workspace.clone(),
@@ -421,14 +427,14 @@ impl Shard {
         let frame = if message.steer {
             ClientFrame::Steer {
                 steer_id: BlockId::try_from(message_id.clone())
-                    .map_err(|_| IntegrationRefusal::Refused("The message id is no id.".to_owned()))?,
+                    .map_err(|_| IntegrationRefusal::Invalid("The message id is no id.".to_owned()))?,
                 content,
                 comments: Vec::new(),
             }
         } else {
             ClientFrame::Send(SendMessage {
                 message_id: TurnId::try_from(message_id.clone())
-                    .map_err(|_| IntegrationRefusal::Refused("The message id is no id.".to_owned()))?,
+                    .map_err(|_| IntegrationRefusal::Invalid("The message id is no id.".to_owned()))?,
                 content,
                 comments: Vec::new(),
             })
