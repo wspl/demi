@@ -87,9 +87,9 @@ bash crates/machine-manager/scripts/lima-machines.sh \
 `--public-url` is the backend's public URL:
 
 - The Cloud guests reach the backend through its runner socket, which Lima
-  forwards into the VM at `/run/demi-backend/runners.sock`
-  (`crates/backend-http/src/lib.rs`), and name the URL only as the backend's
-  origin.
+  forwards into the VM and a systemd relay serves at
+  `/run/demi-backend/runners.sock` (`crates/backend-http/src/lib.rs`), and
+  name the URL only as the backend's origin.
 - The Mac's own runner connects to the URL directly, so it names the Mac's
   address on its network, such as Wi-Fi's `192.168.75.36`.
 

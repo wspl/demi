@@ -19,19 +19,35 @@ portForwards:
   - guestSocket: "/run/user/{{.UID}}/demi-machine-manager.sock"
     hostSocket: "{{.Dir}}/sock/demi-machine-manager.sock"
   # The other way: the backend on the Mac serves its Clouds' runners on this
-  # socket, which appears in the VM where the manager mounts it into each
-  # Cloud (`crates/backend-http/src/lib.rs`).
-  - guestSocket: "/run/demi-backend/runners.sock"
+  # socket. Lima's SSH makes it as soon as SSH is up, before any provisioning,
+  # so it lies in the user's runtime directory, which exists by then, and
+  # only the user may open it. The relay below serves it to the Clouds.
+  - guestSocket: "/run/user/{{.UID}}/demi-backend-runners.sock"
     hostSocket: "{{.Dir}}/sock/runners.sock"
     reverse: true
 provision:
-  # The directory of the backend's runner socket, which Lima's forward
-  # makes as the VM's user.
+  # The relay: systemd listens at the runner socket's path, whose directory
+  # the manager mounts into each Cloud (`crates/backend-http/src/lib.rs`),
+  # open to every user as the backend makes it on Linux, and passes each
+  # connection to the forwarded socket.
   - mode: system
     script: |
       #!/bin/bash
       set -euo pipefail
-      install -d -m 0755 -o "{{.User}}" /run/demi-backend
+      cat > /etc/systemd/system/demi-backend-runners.socket <<'UNIT'
+      [Socket]
+      ListenStream=/run/demi-backend/runners.sock
+      SocketMode=0666
+
+      [Install]
+      WantedBy=sockets.target
+      UNIT
+      cat > /etc/systemd/system/demi-backend-runners.service <<'UNIT'
+      [Service]
+      ExecStart=/usr/lib/systemd/systemd-socket-proxyd /run/user/{{.UID}}/demi-backend-runners.sock
+      UNIT
+      systemctl daemon-reload
+      systemctl enable --now demi-backend-runners.socket
   # Lima mounts the data disk in cloud-init's final stage, after
   # multi-user.target, and runs these scripts on every boot after that. The
   # manager's unit waits for the mount (lima-machines.sh) and starts here.
