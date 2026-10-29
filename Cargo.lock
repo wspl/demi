@@ -1980,6 +1980,7 @@ dependencies = [
  "bytes",
  "comrak",
  "demi-agent-store",
+ "demi-backend-database",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",

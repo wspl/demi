@@ -268,9 +268,11 @@ Inside a crate, these rules apply:
 
 A crate whose tests [Testing](docs/delivery/testing.md) admits keeps them in
 one test binary of its own, so that no crate's tests make another crate's
-binary depend on it. There are two: the compaction tests'
-(`crates/agent-session/tests/agent-session`) and the live view's rate
-control's (`crates/live-view/tests/live-view`). These rules apply:
+binary depend on it. There are three: the compaction tests'
+(`crates/agent-session/tests/agent-session`), the live view's rate
+control's (`crates/live-view/tests/live-view`) and the databases'
+migrations' (`crates/backend-database/tests/backend-database`). These rules
+apply:
 
 -   The library and every executable set `test = false`. Every library sets
     `doctest = false` and `bench = false`. Otherwise, `--all-targets` compiles

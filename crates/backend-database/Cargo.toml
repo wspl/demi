@@ -11,6 +11,11 @@ test = false
 doctest = false
 bench = false
 
+[features]
+# Each database's schemas and its migration, which the crate's test runs
+# (`demi_backend_database::testing`).
+testing = []
+
 [dependencies]
 demi-agent-store = { path = "../agent-store" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
@@ -61,3 +66,11 @@ webauthn-rs = { version = "=0.5.5", default-features = false, features = ["condi
 # backend and `demi-server` need no system OpenSSL. No runner, command
 # package or Host program depends on this crate.
 openssl = { version = "0.10", features = ["vendored"] }
+
+[dev-dependencies]
+demi-backend-database = { path = ".", features = ["testing"] }
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+
+[[test]]
+name = "backend-database"
+path = "tests/backend-database/main.rs"

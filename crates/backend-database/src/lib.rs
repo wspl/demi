@@ -76,11 +76,13 @@
 //!   outside the history, such as one a local development build made, is
 //!   refused, never changed.
 //! - Every published release's schema is in the history, so migrations are
-//!   written and tested on real upgrades long before a user depends on them. The
-//!   first formal release clears the history; its schemas start a new one.
+//!   written and tested on real upgrades long before a user depends on them.
+//!   The crate's test takes every step of each history to the current schema
+//!   and compares the result with a new database (`schema/mod.rs`).
 //! - A migration is SQL, or Rust where SQL cannot express the change, such as
-//!   re-encoding a stored value. What it writes goes through the encoding and
-//!   validation of any write.
+//!   re-encoding a stored value. It stands alone: it uses none of the types
+//!   and functions the rest of Demi serves with, which change after it
+//!   (`schema/mod.rs`).
 //! - A value stored as JSON is part of its schema: the schema's text names the
 //!   format of each such column in a comment (`-- nodes.state: checkpoint state
 //!   format 8`). A release that changes what the value holds raises that number,
@@ -103,7 +105,6 @@ pub mod schedules;
 pub mod columns;
 pub mod command_outputs;
 mod contents;
-mod convert;
 pub mod conversation_attachments;
 pub mod control;
 pub mod credentials;
@@ -136,6 +137,8 @@ pub mod running;
 pub mod saved;
 mod schema;
 pub use schema::{DatabaseKind, SchemaFit, schema_fit};
+#[cfg(feature = "testing")]
+pub mod testing;
 mod selection;
 pub use selection::{CLOUD_HOME, Selection, Unselectable, Worktree};
 pub mod search;

@@ -313,7 +313,7 @@ impl Backend {
                 source,
             })?;
         // The listener answers before the data is ready: while a new release
-        // migrates or converts it, every page shows how far it is.
+        // migrates it, every page shows how far it is.
         let update = Arc::new(Update::default());
         // The steps of the server update that started this release, which
         // its pages go on showing until it serves.
@@ -356,7 +356,7 @@ impl Backend {
         started
     }
 
-    /// Opens the data, migrating and converting what an earlier release left,
+    /// Opens the data, migrating what an earlier release left,
     /// as `update` tells.
     async fn open_storage(
         config: &BackendConfig,

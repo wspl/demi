@@ -7,10 +7,10 @@
 //!   nothing: the next call opens it again.
 //! - A read that needs no live session takes a short-lived read-only connection
 //!   on the blocking pool instead, which takes no writer and never creates a file.
-//! - A database of an earlier release is brought to the current schema by the
-//!   first open or read, which waits for it under the file's opening turn: a
-//!   migration, or a conversion into a new file (`convert.rs`), which the
-//!   backend also runs in the background after it starts.
+//! - A database of an earlier release is brought to the current schema by its
+//!   migration, which the backend runs for every conversation before it
+//!   serves, and which the first open or read of one that failed tries again,
+//!   waiting for it under the file's opening turn.
 //! - A test may hold the commits of the checkpoints (`CommitHold`) and the
 //!   migrations of the databases (`MigrationHold`).
 
@@ -26,7 +26,7 @@ use hashlink::LruCache;
 use rusqlite::{Connection, OpenFlags};
 
 use super::update::{self, Update};
-use super::{StorageError, convert, schema, sqlite};
+use super::{StorageError, schema, sqlite};
 
 /// The most writer connections open at once.
 ///
@@ -178,10 +178,7 @@ impl ConversationStores {
             sqlite::close(writer).await?;
         }
         let database = file.path(&self.0.directory);
-        holding(turn, move || {
-            convert::remove_with_logs(&convert::converting(&database))?;
-            convert::remove_with_logs(&database)
-        })
+        holding(turn, move || remove_with_logs(&database))
         .await
         .map(|_| ())
     }
@@ -228,32 +225,24 @@ impl ConversationStores {
         let due = match self.due().await {
             Ok(due) => due,
             Err(error) => {
-                tracing::warn!(event = "conversation.conversions_failed", error = &error as &dyn std::error::Error, "the conversations to convert could not be listed");
+                tracing::warn!(event = "conversation.migrations_failed", error = &error as &dyn std::error::Error, "the conversations to migrate could not be listed");
                 return;
             }
         };
         for (conversation, size) in due {
-            let progress: Progress = {
-                let update = update.clone();
-                Arc::new(move |share| update.within(size, share))
-            };
-            match self.bring_current(&conversation, progress).await {
+            match self.bring_current(&conversation).await {
                 Ok(()) => {}
                 Err(StorageError::Closed) => return,
-                // `convert_if_due` or the migration logged why.
+                // The migration logged why.
                 Err(_) => {}
             }
             update.finished(size);
         }
     }
 
-    /// Gives the conversation's database the current schema, converting or
-    /// migrating one of an earlier release's, as its next open would.
-    pub async fn convert(&self, conversation: &ConversationId) -> Result<(), StorageError> {
-        self.bring_current(conversation, Arc::new(|_| {})).await
-    }
-
-    async fn bring_current(&self, conversation: &ConversationId, progress: Progress) -> Result<(), StorageError> {
+    /// Gives the conversation's database the current schema, migrating one
+    /// of an earlier release's, as its next open would.
+    pub async fn bring_current(&self, conversation: &ConversationId) -> Result<(), StorageError> {
         let db = self.db(conversation);
         let turn = self.0.opening.acquire(db.file.clone()).await;
         if db.open_writer()?.is_some() {
@@ -266,7 +255,6 @@ impl ConversationStores {
                 blobs: &*blobs,
                 conversation,
             };
-            convert::convert_if_due(&path, &blobs, &*progress)?;
             if !path.try_exists()? {
                 return Ok(());
             }
@@ -280,9 +268,6 @@ impl ConversationStores {
         .map(|_| ())
     }
 }
-
-/// What a conversion tells of the share of a file it has done.
-type Progress = Arc<dyn Fn(f64) + Send + Sync>;
 
 impl Stores {
     fn lock(&self) -> MutexGuard<'_, Writers> {
@@ -301,7 +286,7 @@ impl ConversationDb {
         if file == self.file {
             return Ok(None);
         }
-        ConversationStores(self.stores.clone()).convert(other).await?;
+        ConversationStores(self.stores.clone()).bring_current(other).await?;
         Ok(Some(file.path(&self.stores.directory)))
     }
 
@@ -398,26 +383,13 @@ impl ConversationDb {
 }
 
 /// Opens the writer of the database at `path`, under its file's opening
-/// `turn`, converting a database of whole blocks first; gives the turn back
-/// with the writer.
+/// `turn`; gives the turn back with the writer.
 async fn open_writer(
     path: &Path,
     blobs: Arc<dyn ConversationBlobs>,
     conversation: ConversationId,
     turn: Turn,
 ) -> Result<(tokio_rusqlite::Connection, Turn), StorageError> {
-    let turn = {
-        let (path, blobs, conversation) = (path.to_owned(), blobs.clone(), conversation.clone());
-        holding(turn, move || {
-            let blobs = BlobsOf {
-                blobs: &*blobs,
-                conversation,
-            };
-            convert::convert_if_due(&path, &blobs, &|_| {})
-        })
-        .await?
-        .1
-    };
     let writer = tokio_rusqlite::Connection::open(path).await?;
     let path = path.to_owned();
     writer
@@ -491,7 +463,6 @@ where
     match schema::CONVERSATION.current(version) {
         Some(true) => work(&transaction).map(|value| Cold::Read(Some(value))),
         Some(false) => Ok(Cold::Stale(work)),
-        None if schema::LEGACY_CONVERSATION.current(version).is_some() => Ok(Cold::Stale(work)),
         None => Err(StorageError::OtherSchema {
             path: path.to_owned(),
         }),
@@ -516,8 +487,6 @@ where
         Cold::Read(value) => return Ok(value),
         Cold::Stale(work) => work,
     };
-    // The file is there: removing it takes the opening turn too.
-    convert::convert_if_due(path, blobs, &|_| {})?;
     let mut connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -525,4 +494,19 @@ where
     migrate(&mut connection, path, blobs)?;
     let transaction = connection.transaction()?;
     work(&transaction).map(Some)
+}
+
+/// Removes the database at `path` with the journal and logs beside it; one
+/// already gone is no failure.
+fn remove_with_logs(path: &Path) -> Result<(), StorageError> {
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let mut name = path.as_os_str().to_owned();
+        name.push(suffix);
+        match std::fs::remove_file(PathBuf::from(name)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }

@@ -1,6 +1,6 @@
 //! An update's progress as `GET /api/update` says it: the steps of a server
 //! update from its restart on, the last two of which are this backend's own,
-//! the databases it migrates or converts before it serves, measured in the
+//! the databases it migrates before it serves, measured in the
 //! bytes of their files.
 //!
 //! - A backend that serves says so, or, once it heard that the server
@@ -41,7 +41,7 @@ const ESTIMATE_AFTER: Duration = Duration::from_secs(3);
 enum UpdateReport {
     /// It starts, with nothing to migrate.
     Starting,
-    /// It migrates or converts its databases.
+    /// It migrates its databases.
     Updating(Progress),
     /// It serves.
     Ready,
@@ -83,8 +83,6 @@ struct State {
     conversations_done: u64,
     /// The bytes of the databases done.
     done: u64,
-    /// The bytes of the database under way that are done.
-    current: u64,
     began: Option<Instant>,
     phase: Phase,
     /// The steps `demi-server` took before this start, its own taken as done.
@@ -128,7 +126,7 @@ impl Update {
         state.began = Some(Instant::now());
     }
 
-    /// The start has nothing to migrate or convert.
+    /// The start has nothing to migrate.
     pub fn nothing_due(&self) {
         self.locked().checked = true;
     }
@@ -143,16 +141,10 @@ impl Update {
         }
     }
 
-    /// The database under way, of `bytes`, is `share` done.
-    pub fn within(&self, bytes: u64, share: f64) {
-        self.locked().current = (bytes as f64 * share.clamp(0.0, 1.0)) as u64;
-    }
-
     /// A conversation's database of `bytes` is done.
     pub fn finished(&self, bytes: u64) {
         let mut state = self.locked();
         state.done += bytes;
-        state.current = 0;
         state.conversations_done += 1;
     }
 
@@ -206,7 +198,7 @@ impl Update {
             control: !state.control_done,
             conversations_done: state.conversations_done.min(due.conversations),
             conversations: due.conversations,
-            bytes_done: (state.done + state.current).min(due.all),
+            bytes_done: state.done.min(due.all),
             bytes: due.all,
             left: None,
         };
@@ -400,7 +392,7 @@ fn now() -> demi_shared_types::Timestamp {
     demi_shared_types::Timestamp::truncate(jiff::Timestamp::now())
 }
 
-/// The databases a start migrates or converts.
+/// The databases a start migrates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Due {
     /// The control database's bytes, or 0 when it has the current form.
@@ -412,7 +404,7 @@ pub struct Due {
 }
 
 /// What the control database at `control` and the conversation databases
-/// in `conversations` hold that a start migrates or converts; none when
+/// in `conversations` hold that a start migrates; none when
 /// every one has the current form. An empty file, which a start gives its
 /// schema at once, is none of them.
 pub fn due(control: &Path, conversations: &Path) -> Result<Option<Due>, StorageError> {
@@ -440,7 +432,7 @@ pub fn due(control: &Path, conversations: &Path) -> Result<Option<Due>, StorageE
     }))
 }
 
-/// The size of the database at `path` when a start migrates or converts it,
+/// The size of the database at `path` when a start migrates it,
 /// else 0. A conversation's database that cannot be read is left as it is,
 /// as its open fails on its own and the others still serve; control's fails
 /// the start.
@@ -468,7 +460,7 @@ pub(crate) fn due_bytes(path: &Path, kind: DatabaseKind) -> Result<u64, StorageE
         Err(error) => return Err(error),
     };
     Ok(match fit {
-        SchemaFit::Migrates | SchemaFit::Converts => size,
+        SchemaFit::Migrates => size,
         SchemaFit::Current | SchemaFit::Other => 0,
     })
 }

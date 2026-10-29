@@ -187,11 +187,6 @@ pub struct DeviceChange {
 const DEVICE_COLUMNS: &str =
     "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route, mark_number, machine, home, autostart_unavailable";
 
-/// `DEVICE_COLUMNS` as a migration step before 0.1.25's finds them, the
-/// step that adds `autostart_unavailable` still ahead: none said why.
-const DEVICE_COLUMNS_BEFORE_0_1_25: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route, mark_number, machine, home, NULL AS autostart_unavailable";
-
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
 /// The name of the Claude Code machine's record, which no page shows.
@@ -300,7 +295,7 @@ impl ControlService {
     ) -> Result<DeviceRecord, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let device = machine_in_or_create(&transaction, &user, machine, now, DEVICE_COLUMNS)?;
+            let device = machine_in_or_create(&transaction, &user, machine, now)?;
             transaction.commit()?;
             Ok(device)
         })
@@ -884,31 +879,19 @@ pub(crate) fn managed_device_in(connection: &Connection, user: &UserId) -> Resul
 
 /// The user's Cloud device, made now when it was never made.
 pub(crate) fn cloud_device_in(connection: &Connection, user: &UserId, now: Timestamp) -> Result<DeviceRecord, StorageError> {
-    machine_in_or_create(connection, user, ManagedMachine::Cloud, now, DEVICE_COLUMNS)
-}
-
-/// [`cloud_device_in`] for a migration step before 0.1.25's, whose
-/// `devices` table has no `autostart_unavailable` yet.
-pub(crate) fn cloud_device_before_0_1_25_in(
-    connection: &Connection,
-    user: &UserId,
-    now: Timestamp,
-) -> Result<DeviceRecord, StorageError> {
-    machine_in_or_create(connection, user, ManagedMachine::Cloud, now, DEVICE_COLUMNS_BEFORE_0_1_25)
+    machine_in_or_create(connection, user, ManagedMachine::Cloud, now)
 }
 
 /// The user's managed device of `machine`, made now when it was never made, in
 /// the caller's transaction.
 ///
 /// The partial unique index admits one of each per user, so concurrent first uses
-/// find the same one. Its token is issued when it boots. `columns` reads the row:
-/// `DEVICE_COLUMNS`, or those of the schema a migration step works on.
+/// find the same one. Its token is issued when it boots.
 fn machine_in_or_create(
     connection: &Connection,
     user: &UserId,
     machine: ManagedMachine,
     now: Timestamp,
-    columns: &str,
 ) -> Result<DeviceRecord, StorageError> {
     let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
     connection.execute(
@@ -926,7 +909,7 @@ fn machine_in_or_create(
     )?;
     read(
         connection,
-        columns,
+        DEVICE_COLUMNS,
         "kind = 'managed' AND user_id = ?1 AND machine = ?2",
         [user.as_str(), machine.as_str()],
     )?
