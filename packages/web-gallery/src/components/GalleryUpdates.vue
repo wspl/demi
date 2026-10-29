@@ -2,7 +2,7 @@
 import { onUnmounted, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsUpdates from '@demicodes/web-ui/settings/SettingsUpdates.vue'
-import type { UpgradeChannel, ServerUpgrade, UpgradePreparation, UpgradeStep, UpgradeStepKind } from '@demicodes/web-ui/settings/server-upgrade'
+import type { OfferedRelease, UpgradeChannel, ServerUpgrade, UpgradePreparation, UpgradeStep, UpgradeStepKind } from '@demicodes/web-ui/settings/server-upgrade'
 import type { StepState } from '@demicodes/web-ui/ui/update-steps'
 import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
@@ -23,9 +23,13 @@ const props = withDefaults(defineProps<{ moment?: UpdatesMoment }>(), { moment: 
 
 const RUNNING = '0.1.5469'
 const NEWER = '0.1.5500'
-const NOTES = 'https://github.com/example/demi/releases/tag/v0.1.5500'
+/** The page of `version`'s release, with its notes. */
+const notesOf = (version: string) => `https://github.com/example/demi/releases/tag/v${version}`
+const NOTES = notesOf(NEWER)
 const MB = 1024 * 1024
 const AT = '2026-10-25T09:00:00Z'
+/** Canary's newest, published a day before the stand-in server last looked. */
+const OFFERED: OfferedRelease = { version: NEWER, notesUrl: NOTES, publishedAt: '2026-10-24T08:00:00Z' }
 const KINDS: readonly UpgradeStepKind[] = ['download', 'unpack', 'checkConfiguration', 'downloadGvisor', 'installImage', 'checkDatabases', 'restart']
 
 /** The steps with those before `kind` done as a typical update does them, `kind` as `state`, and those after waiting. */
@@ -62,21 +66,22 @@ const NONE: UpgradePreparation = { state: 'none' }
 const READY: UpgradePreparation = { state: 'ready', version: NEWER }
 
 function startingAt(moment: UpdatesMoment): ServerUpgrade {
-  const offered = { state: 'checked', at: AT, newer: NEWER, notesUrl: NOTES } as const
+  const offered = { state: 'checked', at: AT, newer: OFFERED } as const
   switch (moment) {
     case 'upToDate':
-      return { running: RUNNING, channel: 'beta', check: { state: 'checked', at: AT, newer: null }, preparation: NONE, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', check: { state: 'checked', at: AT, newer: null }, preparation: NONE, run: { state: 'none' } }
     case 'checking':
-      return { running: RUNNING, channel: 'beta', check: { state: 'checking' }, preparation: NONE, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', check: { state: 'checking' }, preparation: NONE, run: { state: 'none' } }
     case 'preparing':
-      return { running: RUNNING, channel: 'canary', check: offered, preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB }, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', check: offered, preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB }, run: { state: 'none' } }
     case 'available':
-      return { running: RUNNING, channel: 'canary', check: offered, preparation: READY, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', check: offered, preparation: READY, run: { state: 'none' } }
     case 'prepareFailed':
-      return { running: RUNNING, channel: 'canary', check: offered, preparation: { state: 'failed', version: NEWER, reason: 'GitHub answered 503 Service Unavailable' }, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', check: offered, preparation: { state: 'failed', version: NEWER, reason: 'GitHub answered 503 Service Unavailable' }, run: { state: 'none' } }
     case 'downloading':
       return {
         running: RUNNING,
+        runningNotesUrl: notesOf(RUNNING),
         channel: 'canary',
         check: offered,
         preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB },
@@ -85,6 +90,7 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
     case 'installing':
       return {
         running: RUNNING,
+        runningNotesUrl: notesOf(RUNNING),
         channel: 'canary',
         check: offered,
         preparation: { state: 'installing', version: NEWER },
@@ -93,6 +99,7 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
     case 'failed':
       return {
         running: RUNNING,
+        runningNotesUrl: notesOf(RUNNING),
         channel: 'canary',
         check: offered,
         preparation: READY,
@@ -104,7 +111,7 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
         },
       }
     case 'checkFailed':
-      return { running: RUNNING, channel: 'beta', check: { state: 'failed', at: AT, reason: 'GitHub answered 403 Forbidden' }, preparation: NONE, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', check: { state: 'failed', at: AT, reason: 'GitHub answered 403 Forbidden' }, preparation: NONE, run: { state: 'none' } }
   }
 }
 
@@ -117,10 +124,10 @@ async function check(): Promise<void> {
   state.value = { ...state.value, check: { state: 'checking' } }
   await slow(800)
   // Canary's newest is NEWER, offered only to a server that runs an older one.
-  const newer = state.value.channel === 'canary' && state.value.running !== NEWER ? NEWER : null
-  state.value = { ...state.value, check: { state: 'checked', at: new Date().toISOString(), newer, notesUrl: newer ? NOTES : null } }
+  const newer = state.value.channel === 'canary' && state.value.running !== NEWER ? OFFERED : null
+  state.value = { ...state.value, check: { state: 'checked', at: new Date().toISOString(), newer } }
   if (newer !== null && state.value.preparation.state !== 'ready')
-    await prepare(newer)
+    await prepare(newer.version)
 }
 
 /** Gets `version` ready in the background, as the server does after a check found it. */
@@ -185,7 +192,7 @@ async function update(version: string): Promise<void> {
   show()
   await slow(1200)
   productWould(`Restart in ${version}`)
-  state.value = { ...startingAt('upToDate'), running: version, channel: state.value.channel }
+  state.value = { ...startingAt('upToDate'), running: version, runningNotesUrl: notesOf(version), channel: state.value.channel }
 }
 </script>
 

@@ -56,7 +56,7 @@ fn image_asset(version: &Version, architecture: &str) -> String {
 /// channel.
 pub async fn newest(source: &Source, channel: Channel) -> io::Result<Version> {
     match source {
-        Source::GitHub => releases::newest(channel).await?.ok_or_else(|| {
+        Source::GitHub => releases::newest(channel).await?.map(|newest| newest.version).ok_or_else(|| {
             io::Error::other(match channel {
                 Channel::Beta => "Demi has published no beta release yet: --canary takes the newest build",
                 Channel::Canary => "Demi has no release yet",

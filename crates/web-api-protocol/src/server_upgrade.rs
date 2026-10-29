@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 pub struct ServerUpgrade {
     /// The release the server runs.
     pub running: String,
+    /// The page of `running`'s release, with its notes.
+    pub running_notes_url: String,
     pub channel: UpgradeChannel,
     pub check: UpgradeCheck,
     /// The newest release, which the server gets ready while it serves.
@@ -55,11 +57,20 @@ pub enum UpgradeCheck {
         at: Timestamp,
         /// The newest release of the channel when it is newer than the
         /// running one.
-        newer: Option<String>,
-        /// The page of `newer`'s release, with its notes.
-        notes_url: Option<String>,
+        newer: Option<OfferedRelease>,
     },
     Failed { at: Timestamp, reason: String },
+}
+
+/// The release a check offers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedRelease {
+    pub version: String,
+    /// The page of its release, with its notes.
+    pub notes_url: String,
+    /// When it was published.
+    pub published_at: Timestamp,
 }
 
 /// How far the server is in getting a newer release ready ahead of Update

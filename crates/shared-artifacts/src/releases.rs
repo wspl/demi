@@ -28,13 +28,45 @@ pub enum Channel {
 /// without end.
 pub const REDIRECTS: usize = 10;
 
-/// A release as GitHub's API describes it, of which only the tag and
-/// whether it is a pre-release matter.
+/// A release as GitHub's API describes it, of which only the tag, whether
+/// it is a pre-release and when it was published matter.
 #[derive(serde::Deserialize)]
 struct Release {
     tag_name: String,
     #[serde(default)]
     prerelease: bool,
+    /// None for a draft, which GitHub shows only to the repository's members.
+    #[serde(default)]
+    published_at: Option<String>,
+}
+
+impl Release {
+    /// The Demi version its tag names: none for a tag that is no
+    /// `v<version>`, such as the gVisor build's `runsc-release-*`.
+    fn version(&self) -> Option<Version> {
+        Version::parse(self.tag_name.strip_prefix('v')?).ok()
+    }
+
+    /// The release as one of Demi's, or why it is none.
+    fn published(self) -> std::io::Result<Published> {
+        let version = self
+            .version()
+            .ok_or_else(|| std::io::Error::other(format!("the release's tag {} names no version", self.tag_name)))?;
+        let at = self
+            .published_at
+            .ok_or_else(|| std::io::Error::other(format!("the release {} is not published", self.tag_name)))?
+            .parse()
+            .map_err(std::io::Error::other)?;
+        Ok(Published { version, at })
+    }
+}
+
+/// One of Demi's published releases.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Published {
+    pub version: Version,
+    /// When GitHub published it.
+    pub at: jiff::Timestamp,
 }
 
 /// The channel whose releases include `version`: Canary for a pre-release,
@@ -48,31 +80,28 @@ pub async fn channel_of(version: &Version) -> std::io::Result<Channel> {
 
 /// The newest release of `channel`, or none when it has none: no release is
 /// published yet, or none is tagged `v<version>`.
-pub async fn newest(channel: Channel) -> std::io::Result<Option<Version>> {
+pub async fn newest(channel: Channel) -> std::io::Result<Option<Published>> {
     match channel {
         Channel::Canary => {
-            let mut tags = Vec::new();
+            let mut highest: Option<(Version, Release)> = None;
             for page in 1.. {
                 let releases: Vec<Release> = github(&format!("releases?per_page={PAGE}&page={page}"))
                     .await?
                     .unwrap_or_default();
                 let whole = releases.len() == PAGE;
-                tags.extend(releases.into_iter().map(|release| release.tag_name));
+                for release in releases {
+                    let Some(version) = release.version() else { continue };
+                    if highest.as_ref().is_none_or(|(highest, _)| &version > highest) {
+                        highest = Some((version, release));
+                    }
+                }
                 if !whole {
                     break;
                 }
             }
-            Ok(highest(tags.iter().map(String::as_str)))
+            highest.map(|(_, release)| release.published()).transpose()
         }
-        Channel::Beta => {
-            let Some(latest) = github::<Release>("releases/latest").await? else {
-                return Ok(None);
-            };
-            let version = latest.tag_name.strip_prefix('v').ok_or_else(|| {
-                std::io::Error::other(format!("the newest release's tag {} names no version", latest.tag_name))
-            })?;
-            Version::parse(version).map(Some).map_err(std::io::Error::other)
-        }
+        Channel::Beta => github::<Release>("releases/latest").await?.map(Release::published).transpose(),
     }
 }
 
@@ -113,14 +142,6 @@ pub fn asset_url(version: &Version, name: &str) -> String {
 /// The page of `version`'s release, with its notes.
 pub fn page_url(version: &Version) -> String {
     format!("https://github.com/{REPOSITORY}/releases/tag/v{version}")
-}
-
-/// The highest version among `tags` that are `v<version>`; any other tag,
-/// such as the gVisor build's `runsc-release-*`, is no Demi release.
-pub fn highest<'a>(tags: impl IntoIterator<Item = &'a str>) -> Option<Version> {
-    tags.into_iter()
-        .filter_map(|tag| Version::parse(tag.strip_prefix('v')?).ok())
-        .max()
 }
 
 /// Reads `path` of the repository's GitHub API; none when GitHub has

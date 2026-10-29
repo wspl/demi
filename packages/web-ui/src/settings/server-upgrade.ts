@@ -12,8 +12,17 @@ export type UpgradeChannel = 'beta' | 'canary'
 export type UpgradeCheck =
   | { state: 'never' }
   | { state: 'checking' }
-  | { state: 'checked', at: string, newer?: string | null, notesUrl?: string | null }
+  | { state: 'checked', at: string, newer?: OfferedRelease | null }
   | { state: 'failed', at: string, reason: string }
+
+/** The release a check offers. */
+export interface OfferedRelease {
+  version: string
+  /** The page of its release, with its notes. */
+  notesUrl: string
+  /** When it was published. */
+  publishedAt: string
+}
 
 /** The steps an update takes while the server serves, in order. */
 export type UpgradeStepKind =
@@ -51,6 +60,8 @@ export type UpgradeRun =
 /** Settings › Updates: the release the server runs, its channel, the check and the run. */
 export interface ServerUpgrade {
   running: string
+  /** The page of `running`'s release, with its notes. */
+  runningNotesUrl: string
   channel: UpgradeChannel
   check: UpgradeCheck
   preparation: UpgradePreparation
@@ -58,7 +69,7 @@ export interface ServerUpgrade {
 }
 
 /** Whether `state` offers a release newer than the running one, which nothing updates to yet. */
-export function updateOffered(state: ServerUpgrade): string | null {
+export function updateOffered(state: ServerUpgrade): OfferedRelease | null {
   if (state.run.state === 'updating') {
     return null
   }

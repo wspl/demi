@@ -36,8 +36,10 @@ use demi_runner_protocol::release::{
     PREPARE_REQUEST_NAME, StepProgress, StepState, UpdateRecord, UpgradeNotice, UpgradeStepKind,
 };
 use demi_shared_artifacts::releases::{self, Channel};
-use demi_shared_types::Clock;
-use demi_web_api_protocol::server_upgrade::{ServerUpgrade, UpgradeChannel, UpgradeCheck, UpgradePreparation, UpgradeRun};
+use demi_shared_types::{Clock, Timestamp};
+use demi_web_api_protocol::server_upgrade::{
+    OfferedRelease, ServerUpgrade, UpgradeChannel, UpgradeCheck, UpgradePreparation, UpgradeRun,
+};
 use demi_web_api_protocol::state::UpdateState;
 use semver::Version;
 
@@ -184,6 +186,7 @@ impl Upgrades {
             let state = self.locked();
             ServerUpgrade {
                 running: self.running.to_string(),
+                running_notes_url: releases::page_url(&self.running),
                 channel: state.channel,
                 check: state.check.clone(),
                 preparation: state.preparation.clone(),
@@ -271,14 +274,16 @@ impl Upgrades {
         .await;
         let at = self.clock.now();
         let check = match found {
-            Ok(newest) => {
-                let newer = newest.filter(|newest| newest > &self.running);
-                UpgradeCheck::Checked {
-                    at,
-                    notes_url: newer.as_ref().map(releases::page_url),
-                    newer: newer.map(|newer| newer.to_string()),
-                }
-            }
+            Ok(newest) => UpgradeCheck::Checked {
+                at,
+                newer: newest
+                    .filter(|newest| newest.version > self.running)
+                    .map(|newer| OfferedRelease {
+                        notes_url: releases::page_url(&newer.version),
+                        version: newer.version.to_string(),
+                        published_at: Timestamp::truncate(newer.at),
+                    }),
+            },
             Err(error) => {
                 tracing::warn!(event = "upgrade.check_failed", %error, "the newest release could not be read from GitHub");
                 UpgradeCheck::Failed {
@@ -296,7 +301,7 @@ impl Upgrades {
             } else {
                 state.checked = Some(Instant::now());
                 let newer = match &check {
-                    UpgradeCheck::Checked { newer, .. } => newer.clone(),
+                    UpgradeCheck::Checked { newer, .. } => newer.as_ref().map(|newer| newer.version.clone()),
                     _ => None,
                 };
                 state.check = check;

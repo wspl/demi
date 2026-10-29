@@ -72,11 +72,36 @@ watchEffect(() => {
 onUnmounted(() => clearInterval(ticking))
 
 const offered = computed(() => updateOffered(props.state))
-/** The notes of the release offered. */
+/**
+ * The notes of the release the row names: the newer one a check found, which
+ * an update also moves to, or the one the server runs. The row always has the
+ * line, so it keeps its height as one state replaces another.
+ */
 const notesUrl = computed(() => {
   const check = props.state.check
-  return offered.value !== null && check.state === 'checked' ? (check.notesUrl ?? null) : null
+  return check.state === 'checked' && check.newer ? check.newer.notesUrl : props.state.runningNotesUrl
 })
+/** How long ago the release offered was published, shown while nothing updates to it. */
+const published = computed(() => offered.value === null ? null : formatPast(offered.value.publishedAt, now.value))
+/** The download of the release offered while it runs in the background with a known size, which a bar shows. */
+const backgroundDownload = computed(() => {
+  const preparation = props.state.preparation
+  return offered.value !== null && preparation.state === 'downloading' && preparation.version === offered.value.version && preparation.total > 0
+    ? { done: formatBytes(preparation.done), all: formatBytes(preparation.total), widest: widestSizes(preparation.total), value: preparation.done, max: preparation.total }
+    : null
+})
+
+/**
+ * Every size up to `total` that can read widest: `total` itself, and the
+ * 1,023 of each smaller unit, which shows four digits before the next unit
+ * takes over ("1,023 KB" is wider than "214 MB").
+ */
+function widestSizes(total: number): string[] {
+  const sizes = [formatBytes(total)]
+  for (let unit = 1; 1023 * unit < total; unit *= 1024)
+    sizes.push(formatBytes(1023 * unit))
+  return sizes
+}
 
 const steps = computed<readonly UpgradeStep[]>(() => props.state.run.state === 'none' ? [] : props.state.run.steps)
 const current = computed(() => currentStep(steps.value))
@@ -176,7 +201,7 @@ const status = computed<{ label: string, description: string }>(() => {
       return { label: t('updates.checkFailed'), description: check.reason }
     case 'checked':
       return check.newer
-        ? { label: t('updates.available', { version: check.newer }), description: preparationOf(check.newer) }
+        ? { label: t('updates.available', { version: check.newer.version }), description: preparationOf(check.newer.version) }
         : { label: t('updates.upToDate'), description: currentVersion }
   }
   return { label: '', description: '' }
@@ -222,7 +247,7 @@ const agents = ref(0)
 const asked = ref<string | null>(null)
 
 async function ask(): Promise<void> {
-  asked.value = offered.value
+  asked.value = offered.value?.version ?? null
   counting.value = true
   try {
     agents.value = (await props.onCountAgents?.()) ?? 0
@@ -246,10 +271,32 @@ function update(): unknown {
   <SettingsPage :title="t('updates.title')" :description="t('updates.description')">
     <SettingsGroup>
       <SettingsRow :label="status.label" phone-stacked>
+        <!-- A phone, whose first line has no room for it, says it beside Release Notes. -->
+        <template v-if="published" #tags>
+          <span class="whitespace-nowrap text-setting-small text-fg-subtle phone:hidden">{{ published }}</span>
+        </template>
         <template #description>
-          <span class="flex min-w-0 items-center gap-2 phone:min-h-hit-sm">
-            <span class="min-w-0 truncate" :title="status.description">{{ status.description }}</span>
-            <ExternalLink v-if="notesUrl" :href="notesUrl" class="shrink-0">{{ t('updates.releaseNotes') }}</ExternalLink>
+          <span class="flex w-full min-w-0 items-center gap-2 phone:min-h-hit-sm">
+            <template v-if="backgroundDownload">
+              <span class="min-w-16 flex-1">
+                <ProgressBar :value="backgroundDownload.value" :max="backgroundDownload.max" :label="status.description" />
+              </span>
+              <!-- The sizes keep the room of the widest they reach, so the bar keeps its length as they grow. -->
+              <span class="grid shrink-0 justify-items-start tabular-nums" aria-hidden="true">
+                <span v-for="widest in backgroundDownload.widest" :key="widest" class="invisible col-start-1 row-start-1">{{ t('updates.downloaded', { done: widest, all: backgroundDownload.all }) }}</span>
+                <span class="col-start-1 row-start-1">{{ t('updates.downloaded', { done: backgroundDownload.done, all: backgroundDownload.all }) }}</span>
+              </span>
+            </template>
+            <span v-else class="min-w-0 truncate" :title="status.description">{{ status.description }}</span>
+          </span>
+        </template>
+        <template #detail>
+          <span class="flex min-w-0 items-center gap-1.5 text-setting-small">
+            <template v-if="published">
+              <span class="hidden whitespace-nowrap text-fg-subtle phone:inline">{{ published }}</span>
+              <span class="hidden text-fg-subtle phone:inline" aria-hidden="true">·</span>
+            </template>
+            <ExternalLink :href="notesUrl">{{ t('updates.releaseNotes') }}</ExternalLink>
           </span>
         </template>
         <!-- On a phone the control goes under the text, and its line stays when there is none. -->
