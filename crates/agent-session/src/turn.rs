@@ -328,7 +328,8 @@ async fn stream(
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
         let request_cancel = request.cancel.clone();
-        s.update(|core| core.start_output(request_id.clone()));
+        let retry = attempt > 1 || refusal_compacted;
+        s.update(|core| core.start_output(request_id.clone(), retry));
         let read = read(s, cancel, window, &model, runtime.run(request), &request_cancel).await;
         // However the request ended, no call of it is being written, and
         // its output is what it streamed: a failed attempt's stays until

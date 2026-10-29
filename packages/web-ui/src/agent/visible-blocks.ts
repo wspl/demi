@@ -22,7 +22,7 @@ export function getVisibleBlocks(blocks: readonly Block[]): Block[] {
   for (const block of blocks) {
     if (block.type === 'redacted_thinking') {
       const { id, createdAt, model, run } = block
-      visible.push({ type: 'thinking', id, createdAt, model, text: '', signature: null, ...(run === undefined ? {} : { run }) })
+      visible.push({ type: 'thinking', id, createdAt, model, text: '', signature: null, endedAt: null, ...(run === undefined ? {} : { run }) })
       continue
     }
     if (

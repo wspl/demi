@@ -78,6 +78,7 @@
     "thinking": {
       "now": "思考中",
       "briefly": "稍作思考",
+      "done": "已思考",
       "nowFor": "思考中 {span}",
       "doneFor": "已思考 {span}",
       "requesting": "請求中",

@@ -10,14 +10,6 @@ const sampleBlocks = computed(() => transcriptDemoBlocks().filter((block) => (
   || block.id === 'tool-shell'
   || block.id === 'assistant-1'
 )))
-
-function sampleThinkingEndedAt(index: number): string | null {
-  const block = sampleBlocks.value[index]
-  const next = sampleBlocks.value[index + 1]
-  if (block?.type !== 'thinking' || !next || !('createdAt' in next))
-    return null
-  return next.createdAt
-}
 </script>
 
 <template>
@@ -58,11 +50,10 @@ function sampleThinkingEndedAt(index: number): string | null {
       <div class="border-b border-line px-4 py-2 text-[12px] text-fg-subtle">Same login-test transcript under the current axes.</div>
       <div class="bg-surface py-4">
         <AgentMessageVirtualBlock
-          v-for="(block, index) in sampleBlocks"
+          v-for="block in sampleBlocks"
           :key="block.id"
           :block="block"
           :is-thinking-streaming="false"
-          :thinking-ended-at="sampleThinkingEndedAt(index)"
         />
       </div>
     </div>

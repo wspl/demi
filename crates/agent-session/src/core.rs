@@ -19,7 +19,7 @@ use demi_agent_store::{
     CheckpointState, CheckpointUpdate, CommandWatch, EditReceipt, PendingAgentInput, Watch,
     media::{self, HeldMedia, ModelView},
 };
-use demi_agent_transcript::{
+use demi_agent_transcript::{RequestTimes, 
     DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, REPLAY_CHARS, RequestView,
     TranscriptLog, kept, labelled_output,
     estimate::{OutputEstimate, anchor_tokens, blocks_tokens, context_anchor},
@@ -497,6 +497,8 @@ struct Requests {
 pub(super) struct WritingCall {
     call: PendingCall,
     input: String,
+    /// When the model began writing it, which its block keeps.
+    started_at: Timestamp,
 }
 
 /// The derived values listeners and the save were last told about.
@@ -526,13 +528,20 @@ struct StreamedOutput {
     estimate: OutputEstimate,
     /// The response's own output tokens, once it reported them.
     reported: Option<u64>,
-    /// When the model's first output of the request came.
-    first_at: Option<Timestamp>,
+    /// When the model's first output of the request came, of any kind,
+    /// which its response block keeps.
+    first_output_at: Option<Timestamp>,
+    /// When the first output that adds to the count came, from which the
+    /// speed counts.
+    first_counted_at: Option<Timestamp>,
     /// When the response ended.
     ended_at: Option<Timestamp>,
     /// When the request was sent, from which its prompt cache's lifetime
     /// counts.
     sent_at: Timestamp,
+    /// When the request's first attempt was sent, for a request sent again
+    /// after its attempts before failed; its response block keeps it.
+    first_sent_at: Option<Timestamp>,
     /// How long the vendor keeps the request's prompt cache, when its
     /// provider said.
     cache_lifetime: Option<std::time::Duration>,
@@ -552,7 +561,7 @@ impl StreamedOutput {
     /// `now` while it streams; none before its first token.
     fn streamed_ms(&self, now: Timestamp) -> Option<u64> {
         let until = self.ended_at.unwrap_or(now);
-        self.first_at
+        self.first_counted_at
             .map(|first| u64::try_from(until.as_millisecond() - first.as_millisecond()).unwrap_or(0))
     }
 }
@@ -2546,15 +2555,29 @@ impl SessionCore {
     /// A new request starts: its output counts from zero, whatever the
     /// request before it in the turn, a failed attempt included, wrote,
     /// which counts for the turn's speed.
-    pub(super) fn start_output(&mut self, request_id: String) {
+    ///
+    /// A request sent again, `retry`, after its attempt before failed keeps
+    /// when its first attempt was sent.
+    pub(super) fn start_output(&mut self, request_id: String, retry: bool) {
+        let sent_at = self.clock.now();
+        let first_sent_at = retry
+            .then(|| self.output.as_ref().map(|output| output.first_sent_at.unwrap_or(output.sent_at)))
+            .flatten();
+        self.start_output_sent_at(request_id, sent_at, first_sent_at);
+    }
+
+    /// Starts the output of a request that left Demi at `sent_at`.
+    fn start_output_sent_at(&mut self, request_id: String, sent_at: Timestamp, first_sent_at: Option<Timestamp>) {
         self.add_to_turn_output();
         self.output = Some(StreamedOutput {
             request_id,
             estimate: OutputEstimate::default(),
             reported: None,
-            first_at: None,
+            first_output_at: None,
+            first_counted_at: None,
             ended_at: None,
-            sent_at: self.clock.now(),
+            sent_at,
+            first_sent_at,
             cache_lifetime: None,
             carried: None,
         });
@@ -2598,9 +2621,16 @@ impl SessionCore {
     /// request's, counted from zero.
     fn count_output(&mut self, event: &ProviderEvent) {
         let now = self.clock.now();
-        if event.is_output() && self.output.as_ref().is_some_and(|output| output.ended_at.is_some()) {
+        let ended = self.output.as_ref().and_then(|output| output.ended_at);
+        if event.is_output()
+            && let Some(ended) = ended
+        {
+            // The provider sent this call itself, once the response before
+            // ended and Demi handed it the last result of that response's
+            // calls.
+            let sent_at = self.last_returned_of_response().map_or(ended, |returned| returned.max(ended));
             let request_id = self.ids.next_id();
-            self.start_output(request_id);
+            self.start_output_sent_at(request_id, sent_at, None);
         }
         let writing = &self.writing;
         let Some(output) = self.output.as_mut().filter(|output| output.ended_at.is_none()) else {
@@ -2637,10 +2667,13 @@ impl SessionCore {
             ProviderEvent::CacheLifetime(lifetime) => output.cache_lifetime = Some(*lifetime),
             _ => {}
         }
+        if output.first_output_at.is_none() && event.is_output() {
+            output.first_output_at = Some(now);
+        }
         // The speed's clock starts at the first output that adds to the
         // count, not at a reasoning block that opens empty.
-        if output.first_at.is_none() && output.estimate != before {
-            output.first_at = Some(now);
+        if output.first_counted_at.is_none() && output.estimate != before {
+            output.first_counted_at = Some(now);
         }
     }
 
@@ -2673,6 +2706,24 @@ impl SessionCore {
             self.turn_speed = speed;
             self.mark_state_changed();
         }
+    }
+
+    /// When the last of the calls of the latest response returned, the
+    /// calls written between it and the response before; none when none
+    /// did.
+    fn last_returned_of_response(&self) -> Option<Timestamp> {
+        self.transcript
+            .blocks()
+            .iter()
+            .rev()
+            .skip_while(|block| !matches!(block, Block::Response(_)))
+            .skip(1)
+            .take_while(|block| !matches!(block, Block::Response(_)))
+            .filter_map(|block| match block {
+                Block::ToolCall(call) => call.ended_at,
+                _ => None,
+            })
+            .max()
     }
 
     /// The output of the turn's latest request as the pages see it now.
@@ -2715,6 +2766,7 @@ impl SessionCore {
                             description: None,
                         },
                         input: String::new(),
+                        started_at: self.clock.now(),
                     });
                 }
             }
@@ -2736,12 +2788,29 @@ impl SessionCore {
             // The call leaves the calls being written in the step
             // that adds its block.
             ProviderEvent::ToolCall(call) => {
+                let writing_started_at = self
+                    .writing
+                    .iter()
+                    .find(|writing| writing.call.tool_use_id == call.tool_use_id)
+                    .map(|writing| writing.started_at);
                 self.writing
                     .retain(|writing| writing.call.tool_use_id != call.tool_use_id);
-                self.transcript.push_tool_call(&self.model, call)
+                self.transcript.push_tool_call(&self.model, call, writing_started_at)
             }
             ProviderEvent::Response(usage) => {
-                self.transcript.push_response(&self.model, usage)
+                let times = match &self.output {
+                    Some(output) => RequestTimes {
+                        sent_at: output.sent_at,
+                        first_sent_at: output.first_sent_at,
+                        first_output_at: output.first_output_at,
+                    },
+                    None => RequestTimes {
+                        sent_at: self.clock.now(),
+                        first_sent_at: None,
+                        first_output_at: None,
+                    },
+                };
+                self.transcript.push_response(&self.model, usage, times)
             }
             ProviderEvent::Error(failure) => self.push_failure(&(&failure).into()),
             ProviderEvent::Account(account) => self.take_account(account),

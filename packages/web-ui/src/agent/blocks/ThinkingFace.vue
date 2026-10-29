@@ -6,22 +6,23 @@ import { useElapsedTime } from '../../composables/useElapsedTime'
 /**
  * What a thinking row says, wherever it stands: Thinking and for how long
  * while it streams, Thought for how long once it ended, from its start to
- * the start of the block after it.
+ * its end as the block records it.
  */
 const props = defineProps<{
   streaming: boolean
   createdAt: string
   /**
-   * The start of the block after the thinking, when it ended; none while it
-   * streams or nothing followed.
+   * When the thinking's latest piece came, which is its end once it no
+   * longer streams; null for a block that does not record it.
    */
-  endedAt?: string | null
+  endedAt: string | null
 }>()
 
 const elapsedMs = useElapsedTime(
   () => Date.parse(props.createdAt),
   () => props.streaming,
-  () => (props.endedAt ? Date.parse(props.endedAt) : null),
+  // While it streams the clock runs on: its latest piece is not its end.
+  () => (!props.streaming && props.endedAt ? Date.parse(props.endedAt) : null),
 )
 const label = computed(() => thinkingFaceLabel(props.streaming, elapsedMs.value))
 </script>

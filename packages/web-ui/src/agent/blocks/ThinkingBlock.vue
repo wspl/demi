@@ -10,11 +10,8 @@ const props = defineProps<{
   thinking: string
   isStreaming: boolean
   createdAt: string
-  /**
-   * Start of the block after this one — the moment thinking ended. Null while
-   * still thinking.
-   */
-  endedAt?: string | null
+  /** When the thinking's latest piece came, as its block records it. */
+  endedAt: string | null
 }>()
 
 const hasContent = computed(() => props.thinking.trim().length > 0)

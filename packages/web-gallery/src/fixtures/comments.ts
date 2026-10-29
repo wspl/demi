@@ -33,7 +33,7 @@ export function commentedConversation(): Block[] {
       content: [{ type: 'text', text: 'Uploads from the mobile app fail on slow connections. Why, and what should we change?' }],
       preamble: null,
     },
-    { type: 'text', id: COMMENTED_REPLY_ID, createdAt: minutesAgo(13), model: demoModel, text: COMMENTED_REPLY },
+    { type: 'text', id: COMMENTED_REPLY_ID, createdAt: minutesAgo(13), endedAt: minutesAgo(13), model: demoModel, text: COMMENTED_REPLY },
   ])
 }
 

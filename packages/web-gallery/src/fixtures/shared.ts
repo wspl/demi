@@ -18,7 +18,7 @@ export function sharedItems(): SharedItem[] {
     },
     { type: 'steps_not_shared', id: 'steps-not-shared:1', count: 3 },
     {
-      type: 'text', id: 'shared-answer', createdAt: ago(200_000), model: demoModel,
+      type: 'text', id: 'shared-answer', createdAt: ago(200_000), endedAt: ago(200_000), model: demoModel,
       text: [
         'The health check timed out: the new build listens on port **3272**, and the check still asks **3271**. [Read the deploy logs](agent:3) found it in the job’s log.',
         '',
@@ -34,7 +34,7 @@ export function sharedItems(): SharedItem[] {
     },
     { type: 'steps_not_shared', id: 'steps-not-shared:4', count: 12 },
     {
-      type: 'text', id: 'shared-fixed', createdAt: ago(60_000), model: demoModel,
+      type: 'text', id: 'shared-fixed', createdAt: ago(60_000), endedAt: ago(60_000), model: demoModel,
       text: 'The check now asks port 3272, and the deploy went through: the health check answered in 40 ms.',
     },
   ]

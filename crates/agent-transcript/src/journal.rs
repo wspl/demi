@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use demi_conversation_lane_protocol::{TranscriptPatch, Versions};
-use demi_shared_types::Block;
+use demi_shared_types::{Block, Timestamp};
 
 /// The patches of one commit, which advances the revision by one.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,22 +109,26 @@ impl Journal {
         });
     }
 
-    /// Consecutive appends to one block merge into one patch.
-    pub(super) fn append_text(&mut self, index: usize, delta: &str) {
+    /// Consecutive appends to one block merge into one patch, which ends
+    /// when the latest of them came.
+    pub(super) fn append_text(&mut self, index: usize, delta: &str, ended_at: Timestamp) {
         self.rows.change(index);
         let index = patch_index(index);
         if let Some(TranscriptPatch::AppendText {
             index: last,
             delta: merged,
+            ended_at: merged_end,
         }) = self.patches.last_mut()
             && *last == index
         {
             merged.push_str(delta);
+            *merged_end = ended_at;
             return;
         }
         self.patches.push(TranscriptPatch::AppendText {
             index,
             delta: delta.to_owned(),
+            ended_at,
         });
     }
 

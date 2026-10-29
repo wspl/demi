@@ -54,7 +54,7 @@ function user(id: string, offsetMs: number, text: string, preamble: string | nul
 }
 
 function text(id: string, offsetMs: number, body: string): Block {
-  return { type: 'text', id, createdAt: ago(offsetMs), model: demoModel, text: body, forkable: true }
+  return { type: 'text', id, createdAt: ago(offsetMs), endedAt: ago(offsetMs), model: demoModel, text: body, forkable: true }
 }
 
 function shell(
@@ -68,7 +68,7 @@ function shell(
   return withEnd({
     type: 'tool_call',
     id,
-    createdAt: ago(offsetMs),
+    createdAt: ago(offsetMs), writingStartedAt: null,
     model: demoModel,
     toolUseId: `${id}-use`,
     toolName: 'shell',

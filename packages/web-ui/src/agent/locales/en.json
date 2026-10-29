@@ -78,6 +78,7 @@
     "thinking": {
       "now": "Thinking",
       "briefly": "Thought briefly",
+      "done": "Thought",
       "nowFor": "Thinking for {span}",
       "doneFor": "Thought for {span}",
       "requesting": "Requesting",

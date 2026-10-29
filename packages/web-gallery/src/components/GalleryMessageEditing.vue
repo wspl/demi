@@ -112,7 +112,7 @@ function testComments(reply: string): MessageComment[] {
 }
 
 function replyBlock(id: string, text: string): Block {
-  return { type: 'text', id, createdAt: new Date().toISOString(), model: demoModel, text }
+  return { type: 'text', id, createdAt: new Date().toISOString(), endedAt: new Date().toISOString(), model: demoModel, text }
 }
 
 /**

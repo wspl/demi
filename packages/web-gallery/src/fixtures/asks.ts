@@ -88,7 +88,7 @@ export function askStep(id: string, turn: number, index: number, step: AskStep):
   return withEnd({
     type: 'tool_call',
     id: `${id}-s${turn}-${index}`,
-    createdAt: at(),
+    createdAt: at(), writingStartedAt: null,
     model: demoModel,
     toolUseId: `${id}-s${turn}-${index}-use`,
     toolName: 'shell',
@@ -100,7 +100,8 @@ export function askStep(id: string, turn: number, index: number, step: AskStep):
 }
 
 export function askAnswer(id: string, turn: number, text: string): Block {
-  return { type: 'text', id: `${id}-a${turn}`, createdAt: at(), model: demoModel, text }
+  const createdAt = at()
+  return { type: 'text', id: `${id}-a${turn}`, createdAt, endedAt: createdAt, model: demoModel, text }
 }
 
 /** The failure a specimen's turn ends with: the provider's overload, as a turn's record shows it. */

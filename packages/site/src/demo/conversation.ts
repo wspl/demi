@@ -282,6 +282,7 @@ export class Conversation {
       input: JSON.stringify({ script: step.script, description: step.description }),
       status: 'executing',
       output: [],
+      writingStartedAt: null,
       endedAt: null,
       view: { kind: 'shell', status: 'running', commandId, runningMs: 0, idleMs: 0, viewTruncated: false, chunks: [] },
     } as ToolCallBlock as Block) as ToolCallBlock

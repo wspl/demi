@@ -1054,8 +1054,8 @@ const sessionFlow = useTurnFlow({
   cwd: project.root,
   blocks: [
     ...transcriptDemoBlocks(),
-    { type: 'text', id: 'assistant-media', createdAt: new Date(Date.now() - 600).toISOString(), model: demoModel, text: frameMediaMarkdown },
-    { type: 'text', id: 'assistant-widgets', createdAt: new Date(Date.now() - 500).toISOString(), model: demoModel, text: widgetMarkdown },
+    { type: 'text', id: 'assistant-media', createdAt: new Date(Date.now() - 600).toISOString(), endedAt: new Date(Date.now() - 600).toISOString(), model: demoModel, text: frameMediaMarkdown },
+    { type: 'text', id: 'assistant-widgets', createdAt: new Date(Date.now() - 500).toISOString(), endedAt: new Date(Date.now() - 500).toISOString(), model: demoModel, text: widgetMarkdown },
   ],
   subagents: agents,
   terminals,
@@ -1386,6 +1386,7 @@ function recallSpecimen(show: (shown: boolean) => void): void {
 }
 const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
+const functionalUntimed = ref(false)
 const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
 const functionalShellLive = ref(true)
@@ -1486,7 +1487,7 @@ const editHost: MessageEditHost = {
       },
       {
         type: 'text', id: `reply-${request.operationId}`,
-        createdAt: new Date().toISOString(), model: demoModel,
+        createdAt: new Date().toISOString(), endedAt: new Date().toISOString(), model: demoModel,
         text: 'Continuing from the edited message.',
       },
     ]
@@ -2545,6 +2546,18 @@ onBeforeUnmount(() => {
               />
             </GallerySpecimen>
             <GallerySpecimen
+              variant="end not recorded · a block written before thinking kept its end"
+              wide
+            >
+              <ThinkingBlock
+                v-model:open="functionalUntimed"
+                :thinking="thinkingText"
+                :is-streaming="false"
+                :created-at="functionalThinkingStartedAt"
+                :ended-at="null"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
               variant="loading"
               wide
             >
@@ -2552,6 +2565,7 @@ onBeforeUnmount(() => {
                 thinking=""
                 :is-streaming="true"
                 :created-at="functionalThinkingStartedAt"
+                :ended-at="functionalThinkingStartedAt"
               />
             </GallerySpecimen>
             <GallerySpecimen

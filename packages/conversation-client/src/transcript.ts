@@ -393,7 +393,8 @@ function truncated<B extends Held>(windows: readonly TranscriptWindow<B>[], leng
  * - A block a patch touches is replaced, never changed in place, so snapshots
  *   can share blocks.
  * - Text an `add` or an `append_text` brings is marked as arrived at
- *   `receivedAt`.
+ *   `receivedAt`; an `append_text` ends its block where the patch says its
+ *   latest text came.
  * - `version` is the transcript's version after them, as the stream that
  *   brought them counts it; the held one stays without.
  */
@@ -452,7 +453,7 @@ export function applyTranscriptPatches(
           const next = patch.op === 'replace_block'
             ? (block.versions ? { ...patch.value, versions: block.versions } : patch.value)
             : (block.type === 'text' || block.type === 'thinking')
-              ? arrived({ ...block, text: block.text + patch.delta }, receivedAt)
+              ? arrived({ ...block, text: block.text + patch.delta, endedAt: patch.endedAt }, receivedAt)
               : block
           const blocks = [...window.blocks]
           blocks[offset] = next

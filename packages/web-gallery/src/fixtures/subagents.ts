@@ -25,11 +25,12 @@ function user(id: string, createdAt: string, text: string): Block {
   }
 }
 
-function thinking(id: string, createdAt: string, text: string): Block {
+function thinking(id: string, createdAt: string, text: string, endedAt: string): Block {
   return {
     type: 'thinking',
     id,
     createdAt,
+    endedAt,
     model: demoModel,
     text,
     signature: null,
@@ -40,7 +41,7 @@ function text(id: string, createdAt: string, body: string): Block {
   return {
     type: 'text',
     id,
-    createdAt,
+    createdAt, endedAt: createdAt,
     model: demoModel,
     text: body,
   }
@@ -57,7 +58,7 @@ function shell(
   return withEnd({
     type: 'tool_call',
     id,
-    createdAt,
+    createdAt, writingStartedAt: null,
     model: demoModel,
     toolUseId: `${id}-use`,
     toolName: 'shell',
@@ -261,7 +262,7 @@ export function gallerySubagents(): SubagentRecord[] {
           'Find the expect that still looks for sid in auth.test.ts. Do not edit yet.',
         ),
         // A screenshot the child viewed, which opens in the viewer over the Agents window.
-        ...inRun(thinking('ag-cookie-think', ago(120_000), thinkingText), {
+        ...inRun(thinking('ag-cookie-think', ago(120_000), thinkingText, ago(100_000)), {
           ...screenshotTool,
           id: 'ag-cookie-screenshot',
           toolUseId: 'ag-cookie-screenshot-use',
@@ -380,6 +381,7 @@ export function gallerySubagents(): SubagentRecord[] {
           'ag-comments-think',
           ago(400_000),
           'Comments only. The helper already writes the new header.',
+          ago(360_000),
         ), shell(
           'ag-comments-tool',
           ago(360_000),
@@ -466,6 +468,7 @@ export function gallerySubagents(): SubagentRecord[] {
           'ag-ci-think',
           ago(160_000),
           'The screenshot is an attachment on the parent turn.',
+          ago(155_000),
         )),
         {
           type: 'abort',

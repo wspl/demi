@@ -352,7 +352,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  function thinkingBlock(id: string, createdAt: string, text: string): Block {
+  /** Thinking from `createdAt` whose latest piece came at `endedAt`. */
+  function thinkingBlock(id: string, createdAt: string, text: string, endedAt: string): Block {
     return {
       type: 'thinking',
       id,
@@ -360,14 +361,17 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       model: demoModel,
       text,
       signature: null,
+      endedAt,
     }
   }
 
-  function textBlock(id: string, createdAt: string, text: string, complete = false): Block {
+  /** Text from `createdAt` whose latest piece came at `endedAt`. */
+  function textBlock(id: string, createdAt: string, text: string, complete = false, endedAt = createdAt): Block {
     return {
       type: 'text',
       id,
       createdAt,
+      endedAt,
       model: demoModel,
       text,
       // The backend marks a text complete (`forkable`) when its response ends.
@@ -382,7 +386,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return {
       type: 'tool_call',
       id,
-      createdAt,
+      createdAt, writingStartedAt: null,
       model: demoModel,
       toolUseId: `${id}-use`,
       toolName: 'shell',
@@ -441,10 +445,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     let createdAt = ''
     at(run, startMs, () => {
       createdAt = now()
-      appendStep(thinkingBlock(id, createdAt, ''))
+      appendStep(thinkingBlock(id, createdAt, '', createdAt))
     })
     return streamTextInto(run, startMs + CHROME_ROLL_MS, text, (partial) => {
-      replace(id, thinkingBlock(id, createdAt, partial))
+      replace(id, thinkingBlock(id, createdAt, partial, now()))
     })
   }
 
@@ -452,18 +456,21 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   function reply(run: number, startMs: number, text: string): void {
     const id = nextId('text')
     let createdAt = ''
+    let endedAt = ''
     // The backend opens a text block with its first words, never empty.
     const prefixes = feedPrefixes(text)
     at(run, startMs, () => {
       createdAt = now()
+      endedAt = createdAt
       append(textBlock(id, createdAt, prefixes[0]!))
     })
     const end = streamTextInto(run, startMs + FEED_MS, text, (partial) => {
-      replace(id, textBlock(id, createdAt, partial))
+      endedAt = now()
+      replace(id, textBlock(id, createdAt, partial, false, endedAt))
     })
     at(run, end + 160, () => {
       // The response ends: its text is complete before the session is idle.
-      replace(id, textBlock(id, createdAt, text, true))
+      replace(id, textBlock(id, createdAt, text, true, endedAt))
       // A steer that came during the reply is read before the turn ends.
       if (writeSteers()) {
         waitForModel()
@@ -567,7 +574,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return {
       type: 'tool_call',
       id,
-      createdAt,
+      createdAt, writingStartedAt: null,
       model: demoModel,
       toolUseId: `${id}-use`,
       toolName: 'shell',
@@ -723,8 +730,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       userBlock([{ type: 'text', text: WORK_TEXT }]),
       ...inRun(...WORK_STEPS.map((step): Block => {
         switch (step.kind) {
-          case 'think':
-            return thinkingBlock(nextId('think'), next(STEP_ANSWER_MS), step.text)
+          case 'think': {
+            const startedAt = next(STEP_ANSWER_MS)
+            return thinkingBlock(nextId('think'), startedAt, step.text, new Date(clock).toISOString())
+          }
           case 'notice':
             return workNotice(nextId('notice'), next(0), calls.get(step.of) ?? '', step.of)
           case 'receipt':
@@ -1182,6 +1191,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
     const run = token
     state.phase = 'compacting'
+    const startedAt = now()
     at(run, COMPACT_MS, () => {
       const boundaryId = nextId('boundary')
       const cut = Math.max(0, state.blocks.findLastIndex((block) => block.type === 'user'))
@@ -1200,7 +1210,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         {
           type: 'compaction_marker',
           id: nextId('marker'),
-          createdAt: now(),
+          createdAt: now(), startedAt,
           model: demoModel,
           boundaryId,
           compactedTokens: state.contextUsage?.tokens ?? 0,
@@ -1434,10 +1444,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       // Thinking is the tail from the first running frame, so nothing is waited for.
       const id = nextId('think')
       const createdAt = now()
-      state.blocks = inRun(thinkingBlock(id, createdAt, ''))
+      state.blocks = inRun(thinkingBlock(id, createdAt, '', createdAt))
       state.phase = 'running'
       const thought = streamTextInto(run, FEED_MS, THINK_1, (partial) => {
-        replace(id, thinkingBlock(id, createdAt, partial))
+        replace(id, thinkingBlock(id, createdAt, partial, now()))
       })
       reply(run, thought + 240, REPLY)
       return

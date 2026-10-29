@@ -44,7 +44,7 @@ function switchBack(): void {
       {
         type: 'text',
         id: `catch-up-${read}`,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(), endedAt: new Date().toISOString(),
         model: demoModel,
         text: MEANWHILE[(read - 1) % MEANWHILE.length]!,
       },

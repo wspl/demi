@@ -11,9 +11,7 @@ import type { WorkGroupBlock as Group, WorkStep } from '@demicodes/web-ui/agent/
  */
 const props = defineProps<{ step: WorkStep; before: WorkStep }>()
 
-// An ended run ended as the block after it started, now; a running one has not.
-const endedAt = new Date().toISOString()
-const group = (id: string, steps: WorkStep[]): Group => ({ type: 'work_group', id, steps, ends: steps.map(() => endedAt) })
+const group = (id: string, steps: WorkStep[]): Group => ({ type: 'work_group', id, steps })
 const alone = computed(() => group(`alone:${props.step.id}`, [props.step]))
 const inside = computed(() => group(`inside:${props.step.id}`, [props.before, props.step]))
 const aloneOpen = ref(false)
