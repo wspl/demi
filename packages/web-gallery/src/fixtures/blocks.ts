@@ -247,7 +247,7 @@ export const steerPrompt: UserContentBlock[] = [
   },
 ]
 
-export const assistantMarkdown = `The cookie helper is fine. The test still expects \`sid\`.
+export const assistantMarkdown = `The cookie helper is fine. The test still expects \`sid\`: it failed 3~5 times in 10 runs from 09:00~10:00, from ~~a slow timer~~ the old name.
 
 I updated the assertion in [auth.test.ts](tests/login/auth.test.ts) and left [cookie.ts](src/auth/cookie.ts) alone. The login page the test drives, and the whole page as the test captured it:
 

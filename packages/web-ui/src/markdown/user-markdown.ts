@@ -22,10 +22,6 @@ const dialect = markdownReader({
     emStrong(src) {
       return src.startsWith('_') ? undefined : false
     },
-    // A single `~` stays as typed: `~/.zshrc`.
-    del(src) {
-      return src.startsWith('~~') ? false : undefined
-    },
     // HTML, `<…>` and reference links stay as typed.
     tag() {
       return undefined

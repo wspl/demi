@@ -25,7 +25,6 @@ const OPENERS: readonly [string, readonly ('em' | 'strong' | 'del')[]][] = [
   ['~~', ['del']],
   ['*', ['em']],
   ['_', ['em']],
-  ['~', ['del']],
 ]
 
 interface Opener {
