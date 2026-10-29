@@ -206,13 +206,6 @@ async function decodeImages(frame: LiveFrame, decode: (src: string) => Promise<v
   await Promise.all(sources.map(decode))
 }
 
-/** Decodes an image as the page shows it. */
-function decodeImage(src: string): Promise<void> {
-  const image = new Image()
-  image.src = src
-  return image.decode()
-}
-
 export interface DeviceSessionOptions {
   open: OpenUserStream
   /** The device the stream carries. */
@@ -312,6 +305,12 @@ export class DeviceSession {
    * needed while no answer came, if it knew it.
    */
   private asked: { area: FrameArea; orientation: Orientation | null } | null = null
+  /**
+   * The frames' images, decoded, by source: the view shows these elements
+   * themselves, since an image element given a new source draws the one it
+   * had until it decodes the new one, as a turn would show.
+   */
+  private readonly images = new Map<string, HTMLImageElement>()
   /** The orientations whose frame shows from the disk cache, until the Host's replaces it. */
   private readonly cached = new Set<Orientation>()
   /** The area of the frame the Host sent last for each orientation, which a frame the cache read later does not replace. */
@@ -646,9 +645,11 @@ export class DeviceSession {
     this.readying.set(orientation, frame.frame)
     const failed = (error: unknown) => {
       if (this.readying.get(orientation) !== frame.frame || this.state.gone) {
+        this.keepImages()
         return
       }
       this.readying.delete(orientation)
+      this.keepImages()
       if (from === 'cache') {
         this.askFrame(orientation)
         return
@@ -660,8 +661,9 @@ export class DeviceSession {
       failed(new Error(`a ${orientation} frame whose screen has the other orientation’s shape`))
       return
     }
-    decodeImages(frame.frame, this.options.decodeImage ?? decodeImage).then(() => {
+    decodeImages(frame.frame, this.options.decodeImage ?? ((src) => this.frameImage(src).decode())).then(() => {
       if (this.readying.get(orientation) !== frame.frame || this.state.gone) {
+        this.keepImages()
         return
       }
       this.readying.delete(orientation)
@@ -679,6 +681,7 @@ export class DeviceSession {
       } else {
         this.lookBeforePicture()
       }
+      this.keepImages()
       // The Host drew the frame for a screen that turned since: the view
       // still needs the frame of the orientation the device has.
       const expected = this.expectedOrientation()
@@ -740,6 +743,38 @@ export class DeviceSession {
    * Answers the press's identity, which its answer names; none when the
    * view shows nothing to turn yet.
    */
+  /**
+   * The image element of the frame image `src`, decoded once the frame
+   * shows; the images of frames the session no longer holds are let go.
+   */
+  frameImage(src: string): HTMLImageElement {
+    let image = this.images.get(src)
+    if (!image) {
+      image = new Image()
+      image.src = src
+      this.images.set(src, image)
+    }
+    return image
+  }
+
+  /** Lets go of the images of frames the session no longer holds. */
+  private keepImages(): void {
+    const held = new Set<string>()
+    for (const frame of [this.state.look?.frame, ...Object.values(this.state.frames).map((each) => each?.frame), ...this.readying.values()]) {
+      if (frame?.kind === 'image') {
+        held.add(`data:image/png;base64,${frame.png}`)
+        if (frame.silhouette) {
+          held.add(`data:image/png;base64,${frame.silhouette}`)
+        }
+      }
+    }
+    for (const src of this.images.keys()) {
+      if (!held.has(src)) {
+        this.images.delete(src)
+      }
+    }
+  }
+
   turning(turn: Turn): number | null {
     const shown = this.shownOrientation()
     if (!shown) {
