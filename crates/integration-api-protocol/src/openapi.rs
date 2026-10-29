@@ -18,6 +18,19 @@ struct Route {
     body: Option<Content>,
     /// The status of a success and its body; none for an empty one.
     answer: (u16, Option<Content>),
+    /// The refusals of its own, beyond those its body, query and path give
+    /// it: each status, and when it comes with which error code.
+    refusals: Vec<(u16, &'static str)>,
+    /// Whether the ids in its path name things of the integration's own,
+    /// which another integration's answer 404 for.
+    owned_ids: bool,
+}
+
+impl Route {
+    fn refuses(mut self, status: u16, when: &'static str) -> Self {
+        self.refusals.push((status, when));
+        self
+    }
 }
 
 type Make = fn(&mut SchemaGenerator) -> Schema;
@@ -42,6 +55,8 @@ fn json(method: &'static str, path: &'static str, summary: &'static str, body: O
         query: None,
         body: body.map(Content::Json),
         answer: (answer.0, answer.1.map(Content::Json)),
+        refusals: Vec::new(),
+        owned_ids: true,
     }
 }
 
@@ -49,20 +64,20 @@ fn json(method: &'static str, path: &'static str, summary: &'static str, body: O
 fn routes() -> Vec<Route> {
     vec![
         json("get", "/integration", "The integration", None, (200, Some(of::<Integration>))),
-        json("patch", "/integration", "Change the integration's settings", Some(of::<IntegrationPatch>), (200, Some(of::<Integration>))),
+        json("patch", "/integration", "Change the integration's settings", Some(of::<IntegrationPatch>), (200, Some(of::<Integration>))).refuses(400, "`sharedPath` has an empty, `.` or `..` part, is neither under `~` nor a top-level directory, or covers the system's own (`integration_refused`)."),
         json("get", "/models", "The models a conversation may run on", None, (200, Some(of::<ModelList>))),
         json("get", "/clouds", "The integration's Clouds", None, (200, Some(of::<CloudList>))),
-        json("post", "/clouds", "Make a Cloud, or find the one of a key", Some(of::<CreateCloud>), (201, Some(of::<Cloud>))),
+        json("post", "/clouds", "Make a Cloud, or find the one of a key", Some(of::<CreateCloud>), (201, Some(of::<Cloud>))).refuses(409, "The integration is being deleted (`integration_refused`)."),
         json("get", "/clouds/{cloud}", "A Cloud", None, (200, Some(of::<Cloud>))),
-        json("delete", "/clouds/{cloud}", "Delete a Cloud no conversation works on", None, (204, None)),
-        json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))),
+        json("delete", "/clouds/{cloud}", "Delete a Cloud no conversation works on", None, (204, None)).refuses(409, "A conversation works on the Cloud, and the message names each; or the Cloud is being deleted, or its machine refused (`integration_refused`)."),
+        json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))).refuses(409, "The Cloud's machine refused the reset, as the message says (`integration_refused`)."),
         json("get", "/conversations", "The integration's conversations", None, (200, Some(of::<ConversationList>))),
-        json("post", "/conversations", "Make a conversation, or find the one of a key", Some(of::<CreateConversation>), (201, Some(of::<Conversation>))),
-        json("get", "/conversations/{conversation}", "A conversation with its agents", None, (200, Some(of::<ConversationDetail>))),
-        json("patch", "/conversations/{conversation}", "Move a conversation to another Cloud, or rename it", Some(of::<ConversationPatch>), (200, Some(of::<Conversation>))),
-        json("delete", "/conversations/{conversation}", "Delete a conversation", None, (204, None)),
-        json("post", "/conversations/{conversation}/messages", "Send a message", Some(of::<SendMessage>), (200, Some(of::<MessageAnswer>))),
-        json("post", "/conversations/{conversation}/stop", "Stop every agent of a conversation", None, (204, None)),
+        json("post", "/conversations", "Make a conversation, or find the one of a key", Some(of::<CreateConversation>), (201, Some(of::<Conversation>))).refuses(400, "`providerId` and `modelId` name no model of `GET /models` (`integration_refused`).").refuses(404, "The integration has no Cloud of the body's `cloud` (`not_found`).").refuses(409, "The integration or the Cloud is being deleted, or the conversation could not be made, as the message says (`integration_refused`)."),
+        json("get", "/conversations/{conversation}", "A conversation with its agents", None, (200, Some(of::<ConversationDetail>))).refuses(409, "Its agents could not be read, as the message says (`integration_refused`)."),
+        json("patch", "/conversations/{conversation}", "Move a conversation to another Cloud, or rename it", Some(of::<ConversationPatch>), (200, Some(of::<Conversation>))).refuses(404, "The integration has no Cloud of the body's `cloud` (`not_found`).").refuses(409, "The Cloud it moves to is being deleted, or another move of it came first (`integration_refused`)."),
+        json("delete", "/conversations/{conversation}", "Delete a conversation", None, (204, None)).refuses(409, "The conversation could not be deleted, as the message says (`integration_refused`)."),
+        json("post", "/conversations/{conversation}/messages", "Send a message", Some(of::<SendMessage>), (200, Some(of::<MessageAnswer>))).refuses(409, "The conversation did not take the message, as the message says (`integration_refused`)."),
+        json("post", "/conversations/{conversation}/stop", "Stop every agent of a conversation", None, (204, None)).refuses(409, "The conversation did not take the stop, as the message says (`integration_refused`)."),
         json("get", "/conversations/{conversation}/agents/{agent}/transcript", "An agent's latest transcript", None, (200, Some(of::<Transcript>))),
         json("get", "/conversations/{conversation}/attachments/{attachment}", "An attachment a conversation holds, such as an agent's `a3`", None, (200, Some(of::<ConversationAttachment>))),
         Route {
@@ -72,6 +87,8 @@ fn routes() -> Vec<Route> {
             query: Some(of::<UploadQuery>),
             body: Some(Content::Bytes),
             answer: (201, Some(Content::Json(of::<Attachment>))),
+            refusals: vec![(400, "The body is empty, or `Content-Type` is missing, invalid or multipart (`invalid_body`).")],
+            owned_ids: true,
         },
         Route {
             method: "get",
@@ -80,6 +97,11 @@ fn routes() -> Vec<Route> {
             query: None,
             body: None,
             answer: (200, Some(Content::Bytes)),
+            refusals: vec![(
+                404,
+                "No file of the integration's user has that SHA-256 (`not_found`); every integration of the user reads the files any of them uploaded or was sent.",
+            )],
+            owned_ids: false,
         },
         Route {
             method: "get",
@@ -88,6 +110,8 @@ fn routes() -> Vec<Route> {
             query: Some(of::<UsageQuery>),
             body: None,
             answer: (200, Some(Content::Json(of::<Usage>))),
+            refusals: Vec::new(),
+            owned_ids: true,
         },
     ]
 }
@@ -129,14 +153,49 @@ fn query_parameters(make: Make, generator: &mut SchemaGenerator) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// Each status `route` answers with an error body, and when, its error
+/// codes named: those every route shares, those of its body, its query and
+/// its path's ids, and its own.
+fn refusals(route: &Route) -> Vec<(u16, String)> {
+    let mut refusals: Vec<(u16, &str)> = Vec::new();
+    if matches!(route.body, Some(Content::Json(_))) {
+        refusals.push((400, "The body does not read as its type (`invalid_body`)."));
+    }
+    if route.query.is_some() {
+        refusals.push((400, "The query does not read as its type (`invalid_query`)."));
+    }
+    refusals.push((401, "The token is missing, wrong or replaced (`unauthenticated`)."));
+    if route.owned_ids && route.path.contains('{') {
+        refusals.push((
+            404,
+            "The integration has nothing of an id in the path (`not_found`); another integration's ids answer this too.",
+        ));
+    }
+    if route.body.is_some() {
+        refusals.push((408, "The body stopped arriving (`transfer_stalled`)."));
+        refusals.push((413, "The body is over its limit, which `params.limitBytes` gives where known (`too_large`)."));
+    }
+    refusals.push((500, "The server failed; `code` says how, such as `internal_error`."));
+    refusals.push((503, "The server is starting, updating or stopping; retry later (`backend_starting`, `updating`, `backend_closing`)."));
+    refusals.extend(route.refusals.iter().copied());
+    let mut merged: std::collections::BTreeMap<u16, Vec<&str>> = std::collections::BTreeMap::new();
+    for (status, when) in refusals {
+        merged.entry(status).or_default().push(when);
+    }
+    merged.into_iter().map(|(status, whens)| (status, whens.join(" "))).collect()
+}
+
 /// The document, its routes under `server` and [`PREFIX`].
 pub fn openapi(server: &str) -> Value {
     let mut generator = SchemaSettings::draft2020_12()
         .with(|settings| settings.definitions_path = "/components/schemas".into())
         .into_generator();
     let error = of::<ErrorBody>(&mut generator);
-    let event = of::<Event>(&mut generator);
-    let client = of::<ClientMessage>(&mut generator);
+    // The socket's messages, which no route's body names, are schemas of
+    // their own, as an API whose WebSocket OpenAPI cannot describe lists
+    // its events.
+    of::<Event>(&mut generator);
+    of::<ClientMessage>(&mut generator);
     let mut paths = Map::new();
     for route in routes() {
         let mut parameters: Vec<Value> = route
@@ -156,9 +215,12 @@ pub fn openapi(server: &str) -> Value {
                     Some(body) => json!({ "description": "Done", "content": content(body, &mut generator) }),
                     None => json!({ "description": "Done" }),
                 },
-                "default": { "description": "Refused", "content": { "application/json": { "schema": error.clone() } } },
             },
         });
+        for (status, when) in refusals(&route) {
+            operation["responses"][status.to_string()] =
+                json!({ "description": when, "content": { "application/json": { "schema": error.clone() } } });
+        }
         if let Some(body) = &route.body {
             operation["requestBody"] = json!({ "required": true, "content": content(body, &mut generator) });
         }
@@ -178,8 +240,6 @@ pub fn openapi(server: &str) -> Value {
         "components": {
             "securitySchemes": { "token": { "type": "http", "scheme": "bearer" } },
             "schemas": generator.take_definitions(true),
-            "x-events": event,
-            "x-client-messages": client,
         },
     })
 }
