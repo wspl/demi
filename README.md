@@ -125,8 +125,9 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **Built for long jobs**: commands run in the background and report back.
 
 > [!NOTE]
-> **Planned**: an OpenAPI for the Demi server, so your own programs can use
-> its conversations, agents and cloud sandboxes.
+> **Integrations**: your own programs build agent products on Demi's
+> conversations, agents and Clouds through its API. See
+> [Build on Demi with an integration](docs/guides/integrations.md).
 
 ## Architecture
 

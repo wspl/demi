@@ -118,7 +118,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **為長任務而生**：指令在背景執行，完成後回報。
 
 > [!NOTE]
-> **規劃中**：為 Demi 伺服器提供 OpenAPI，讓你自己的程式也能使用它的對話、智慧體和雲端沙箱。
+> **整合**：你的程式可以透過 Demi 的 API，使用它的對話、智慧體和雲端沙箱打造自己的智慧體產品。參見[串接指南（英文）](docs/guides/integrations.md)。
 
 ## 架構
 

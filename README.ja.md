@@ -118,7 +118,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **長い仕事のために**：コマンドはバックグラウンドで動き、終わると報告します。
 
 > [!NOTE]
-> **予定**：Demi サーバーの OpenAPI。あなたのプログラムから、会話、エージェント、クラウドのサンドボックスを使えるようにします。
+> **インテグレーション**：あなたのプログラムから Demi の API を通じて、会話、エージェント、クラウドのサンドボックスを使ったエージェント製品を構築できます。詳しくは[ガイド（英語）](docs/guides/integrations.md)を参照してください。
 
 ## アーキテクチャ
 

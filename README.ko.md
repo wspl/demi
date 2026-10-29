@@ -118,7 +118,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **긴 작업을 위해**: 명령은 백그라운드에서 실행되고 끝나면 보고합니다.
 
 > [!NOTE]
-> **예정**: Demi 서버용 OpenAPI. 내 프로그램에서 대화, 에이전트, 클라우드 샌드박스를 쓸 수 있게 합니다.
+> **통합**: 내 프로그램에서 Demi의 API로 대화, 에이전트, 클라우드 샌드박스를 사용해 에이전트 제품을 만들 수 있습니다. 자세한 내용은 [가이드(영어)](docs/guides/integrations.md)를 참고하세요.
 
 ## 아키텍처
 
