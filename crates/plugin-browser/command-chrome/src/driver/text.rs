@@ -18,7 +18,7 @@ use crate::driver::{
         BrowserOperation, BrowserTarget, BrowserTreeNode, BrowserViewport, CapabilitiesResult,
         CdpDetachResult, CdpEventsResult, CdpSendResult, CdpTargetsResult, ClipboardReadResult,
         ClipboardWriteResult, ContentFetchResult, ContentReadResult, Dialog,
-        DialogInspectResult, DialogOutcome, DialogResult, DownloadResult, EvalResult, FindResult,
+        DialogInspectResult, DialogOutcome, DialogResult, DownloadResult, DrawResult, EvalResult, FindResult,
         HistoryResult, InfoResult, InspectResult, InstallResult, LogsResult, MouseButton, NavigationResult,
         NodeValue, ProbeResult, ReadResult, ResolvedElement, ScreenshotResult,
         SelectedOption, ShowResult, TabCloseResult, TabListResult, TabNewResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
@@ -142,6 +142,10 @@ pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<Strin
         BrowserOperation::AssetsExport(_) => assets_export(&typed(value)?),
         BrowserOperation::Capabilities(_) => capabilities(&typed(value)?),
         BrowserOperation::Install(_) => install(&typed(value)?),
+        BrowserOperation::Draw(_) => {
+            let result: DrawResult = typed(value)?;
+            format!("Drew {}×{}\n", result.width, result.height)
+        }
         BrowserOperation::WebmcpList(_) => webmcp_list(&typed(value)?),
         BrowserOperation::WebmcpCall(_) => {
             let result: WebmcpCallResult = typed(value)?;

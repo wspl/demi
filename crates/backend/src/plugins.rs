@@ -14,6 +14,7 @@ use demi_plugin_interface::PluginFactory;
 use demi_plugin_mobile::Mobile;
 use demi_plugin_skills::Skills;
 use demi_plugin_web::Web;
+use demi_plugin_widget::Widgets;
 
 /// The plugins built into the backend.
 pub fn builtin() -> Vec<Box<dyn PluginFactory>> {
@@ -26,6 +27,7 @@ pub fn builtin() -> Vec<Box<dyn PluginFactory>> {
         Box::new(Image::new()),
         Box::new(Video::new()),
         Box::new(Audio::new()),
+        Box::new(Widgets::new()),
         Box::new(Changes::new()),
         Box::new(FileBrowser::new()),
     ]

@@ -54,6 +54,16 @@ export type AttachmentLookup =
   | { state: 'failed' }
 
 /**
+ * What the page knows of a plugin's reply block a message names: its facts,
+ * as its plugin answered them and the transcript brought them with the
+ * message, or that it has none, a block the user does not have or whose
+ * facts did not come.
+ */
+export type ReplyBlockLookup =
+  | { state: 'found'; facts: unknown }
+  | { state: 'missing' }
+
+/**
  * A Host file a message names, by its absolute path, and the line it opens
  * at, if any; an empty path names no file, only a directory's tree. `root`
  * is the directory the view opens for, the working directory of the agent
@@ -107,6 +117,19 @@ export interface ConversationFiles {
    * attachment shows its alt text.
    */
   attachment?(id: string): AttachmentLookup
+  /**
+   * The facts of the plugin's reply block `id` of `tag`, such as a widget's
+   * frame, which the transcript brought with the messages that name it;
+   * absent, every block's are missing.
+   */
+  replyBlock?(tag: string, id: string): ReplyBlockLookup
+  /**
+   * Opens the reply block `id` of `tag` whole in the work panel, under
+   * `title`, through the `block` intent; absent while no plugin the user has
+   * on opens it or the panel takes no change, as on a share or in an
+   * archived conversation.
+   */
+  openReplyBlock?(tag: string, id: string, title: string): void
   /**
    * Opens attachment `id`, a file that is no image, video or audio, in the
    * work panel through the `attachment` intent, previewed from its copy; absent
@@ -221,4 +244,9 @@ export interface MarkdownRenderOptions {
    * leaves open, such as `**half wri`, shows as it will once it closes.
    */
   partial?: boolean
+  /**
+   * The tags of the plugins' reply blocks the page draws
+   * (`markdown/reply-block.ts`); absent, such a line shows as its text.
+   */
+  blocks?: readonly string[]
 }

@@ -29,7 +29,7 @@
 use std::{collections::BTreeMap, rc::Rc};
 
 use bytes::Bytes;
-use demi_command_protocol::CommandContext;
+use demi_command_protocol::{CommandContext, MediumFacts};
 use demi_shared_types::B64Bytes;
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
@@ -193,6 +193,14 @@ pub enum PortRequest {
     /// return and its window does not run (`crates/agent-tools/src/lib.rs`),
     /// and the job reports no progress.
     AwaitsUser { awaits: bool },
+    /// A medium the call hands its job, which keeps it and shows it to the
+    /// model as it does one `demi file view` hands it
+    /// (`crates/runner-jobs/src/job_media.rs`); only a leaf that declares
+    /// `media` may.
+    Medium {
+        facts: MediumFacts,
+        bytes: B64Bytes,
+    },
 }
 
 /// The reply to a [`PortRequest`].
@@ -261,6 +269,16 @@ impl RpcPort {
     pub async fn awaits_user(&self, awaits: bool) -> Result<(), PortError> {
         let request = PortRequest::AwaitsUser { awaits };
         written(self.transport.request(request).await?, "awaits_user")
+    }
+
+    /// Hands the calling job a medium that `facts` describe
+    /// ([`PortRequest::Medium`]).
+    pub async fn medium(&self, facts: MediumFacts, bytes: impl Into<Bytes>) -> Result<(), PortError> {
+        let request = PortRequest::Medium {
+            facts,
+            bytes: B64Bytes::new(bytes),
+        };
+        written(self.transport.request(request).await?, "medium")
     }
 
     /// The next interactive write to the calling job; none once it ended.

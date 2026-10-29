@@ -40,3 +40,36 @@ pub struct PluginStateAnswer {
     #[garde(skip)]
     pub state: serde_json::Value,
 }
+
+/// The most reply blocks one read of their facts names: a page asks for the
+/// blocks the replies it shows name, and a bound keeps a request from asking
+/// a plugin without end.
+pub const REPLY_BLOCKS_PER_READ: usize = 256;
+
+/// A plugin's reply block a reply names, by its tag and its ID.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NamedReplyBlock {
+    #[garde(length(min = 1, max = 64))]
+    pub tag: String,
+    #[garde(length(min = 1, max = 128))]
+    pub id: String,
+}
+
+/// `POST /reply-blocks { blocks }`: the facts of reply blocks the page holds
+/// replies naming but no facts of, such as those of a copy it kept, which a
+/// transcript's pages and frames bring otherwise.
+#[derive(Debug, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct ReplyBlocksRead {
+    #[garde(length(min = 1, max = REPLY_BLOCKS_PER_READ), dive)]
+    pub blocks: Vec<NamedReplyBlock>,
+}
+
+/// What `POST /reply-blocks` answers: each block's facts, null for one the
+/// user does not have.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplyBlocksAnswer {
+    pub reply_blocks: Vec<demi_conversation_lane_protocol::ReplyBlockFacts>,
+}

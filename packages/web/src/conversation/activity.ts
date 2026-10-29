@@ -6,7 +6,7 @@ import {
   resetTranscript,
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
-import type { AgentEntry, ConversationAttachment, Version } from '@demicodes/protocol'
+import type { AgentEntry, ConversationAttachment, ReplyBlockFacts, Version } from '@demicodes/protocol'
 import { boundedHistory, latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation, SideRecord } from '../state/types'
 import { settleSent, sideRecord } from './side-records'
@@ -109,6 +109,30 @@ export function describeAttachments(
   }
 }
 
+/**
+ * Holds `blocks`, the facts of the plugins' reply blocks the conversation's
+ * replies name, as a frame or a page brings them. Facts held already stand,
+ * as the block's do; none held, a block named before it was made, give way
+ * to its facts once they come.
+ */
+export function describeReplyBlocks(
+  holder: Pick<Conversation, 'replyBlockFacts'>,
+  blocks: readonly ReplyBlockFacts[],
+): void {
+  const held = toRaw(holder.replyBlockFacts)
+  for (const block of blocks) {
+    const key = replyBlockKey(block.tag, block.id)
+    if (held[key] === undefined || held[key] === null) {
+      holder.replyBlockFacts[key] = block.facts
+    }
+  }
+}
+
+/** The key of the reply block `id` of `tag` among a conversation's facts. */
+export function replyBlockKey(tag: string, id: string): string {
+  return `${tag}:${id}`
+}
+
 /** The record of the node `node` other than the root, whose messages it holds. */
 function nodeRecord(conversation: Conversation, node: string): Conversation['subagents'][number] | SideRecord | undefined {
   return conversation.subagents.find((agent) => agent.id === node) ?? conversation.sides.find((side) => side.id === node)
@@ -127,6 +151,7 @@ export function applyConversationEvent(
     takeAgents(conversation, [event.agent], event.version, event.receivedAt, false)
   } else if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
     describeAttachments(conversation, event.attachments)
+    describeReplyBlocks(conversation, event.replyBlocks)
     if (event.type === 'transcript_reset' && event.node === conversation.id) {
       // The root's page brings what its context card and its compaction
       // dividers tell; its messages are the runtime's.

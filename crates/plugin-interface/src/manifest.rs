@@ -116,6 +116,10 @@ pub struct Manifest {
     /// backend keeps current and gives to its context requests.
     #[serde(default)]
     pub project_search: bool,
+    /// Whether it keeps something of a conversation, and so is told when the
+    /// user deletes or forks one ([`Request::ConversationDeleted`](crate::Request::ConversationDeleted),
+    /// [`Request::ConversationForked`](crate::Request::ConversationForked)).
+    pub conversations: bool,
     /// Its user streams.
     #[serde(default)]
     pub streams: Vec<Stream>,
@@ -137,6 +141,7 @@ impl Manifest {
             commands: Vec::new(),
             context: false,
             project_search: false,
+            conversations: false,
             streams: Vec::new(),
             page: None,
             oauth: None,
@@ -249,6 +254,25 @@ pub struct Page {
     /// says every one in words of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasons: Option<Schema>,
+    /// The blocks its page draws in replies, each a line `<tag id="..." />`
+    /// (`packages/web-ui/src/plugins/page.ts` § ReplyBlock), whose facts a
+    /// reply's data carries ([`crate::Request::ReplyBlocks`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<ReplyBlock>,
+}
+
+/// A block of the reply a plugin's page draws: its line's tag, and whether
+/// it has an HTML document ([`crate::Request::ReplyBlockDocument`]), which
+/// the backend serves as a page of its own in an opaque origin
+/// (`crates/backend-http/src/blocks.rs`) for the component to frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplyBlock {
+    pub tag: String,
+    /// What a block's facts are, which its component reads.
+    pub facts: Schema,
+    #[serde(default)]
+    pub document: bool,
 }
 
 impl Page {
@@ -261,7 +285,19 @@ impl Page {
             methods: Vec::new(),
             panel_kinds: Vec::new(),
             reasons: None,
+            blocks: Vec::new(),
         }
+    }
+
+    /// Its page draws reply blocks of `tag`, whose facts are `F`, which have
+    /// an HTML document when `document` says so.
+    pub fn block<F: JsonSchema>(mut self, tag: impl Into<String>, document: bool) -> Self {
+        self.blocks.push(ReplyBlock {
+            tag: tag.into(),
+            facts: schema_of::<F>(Direction::Serializes),
+            document,
+        });
+        self
     }
 
     /// The page may be told a failure with each of the words of `R`, a
@@ -425,6 +461,12 @@ pub struct Commands {
     /// The tree, as data: an `rpc` leaf reaches the plugin as a command
     /// request, a native leaf runs its operation on the Host.
     pub tree: Node<NativeOperation>,
+    /// The package operations its `rpc` leaves call through the port
+    /// ([`PluginPort::package_call`](crate::PluginPort::package_call)),
+    /// which bind the tree as its native leaves do: a tree one of whose
+    /// operations the startup catalog does not serve is left out whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<NativeOperation>,
 }
 
 /// Where a plugin's command tree goes.

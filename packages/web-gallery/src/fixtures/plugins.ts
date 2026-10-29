@@ -7,6 +7,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { workspaceName } from '@demicodes/web-ui/workspaces/workspaces'
 import {
   PluginCallError,
+  type AnyPluginPage,
   type ConversationFileService,
   type IntentService,
   type PageHost,
@@ -47,6 +48,8 @@ export interface GalleryPlugin {
   installed?(): readonly HostArtifact[]
   /** What the specimen's Host downloads of its packages now, read reactively. */
   downloading?(): readonly HostDownload[]
+  /** Where its reply block `tag` of `id` loads, as the backend's route would serve it. */
+  blockDocument?(tag: string, id: string): string
 }
 
 /**
@@ -68,6 +71,8 @@ export interface GalleryShell {
   workspace?: string
   /** The user's paired devices; the gallery's without them. */
   devices?: readonly PageDevice[]
+  /** The pages whose reply blocks the specimen's replies draw; none without them. */
+  pages?: readonly AnyPluginPage[]
 }
 
 /**
@@ -93,7 +98,10 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     return found
   }
   return {
+    pages: () => shell.pages ?? [],
+    blockDocument: (plugin, tag, id) => plugins[plugin]?.blockDocument?.(tag, id) ?? 'about:blank',
     userState: (plugin) => (enabled(plugin) ? plugins[plugin]?.state?.() : undefined),
+    enabled,
     followState: (plugin, conversation) => {
       const follow = fixture(plugin).followState
       if (!follow) {

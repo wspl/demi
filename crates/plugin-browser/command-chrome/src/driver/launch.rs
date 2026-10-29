@@ -76,7 +76,7 @@ impl Runtime {
     /// Chrome's environment with the runtime: its libraries before the
     /// Host's, its fonts, and neither the Host's crypto policy nor its GIO
     /// modules, which are built for the Host's newer libraries.
-    fn environment(&self) -> Vec<(String, String)> {
+    pub fn environment(&self) -> Vec<(String, String)> {
         let path = |path: &Path| path.to_string_lossy().into_owned();
         vec![
             ("LD_LIBRARY_PATH".to_owned(), path(&self.libraries)),
@@ -269,6 +269,34 @@ pub async fn configure(
     Ok(builder)
 }
 
+/// How the Chrome of a drawing starts (`crate::tabs::drawing`): with the same
+/// switches, in the light scheme, which a drawn document's own theme
+/// overrides, and with neither the capture extension nor profile preferences,
+/// since it draws one document and ends.
+pub fn drawing(
+    builder: BrowserConfigBuilder,
+    version: &str,
+    runtime: Option<&Runtime>,
+) -> BrowserConfigBuilder {
+    let mut builder = builder
+        .disable_default_args()
+        .with_head()
+        .envs(runtime.map(Runtime::environment).unwrap_or_default());
+    if runtime.is_some() {
+        builder = builder.no_sandbox();
+    }
+    for (name, value) in switches(version, ColorScheme::Light, runtime) {
+        if name == "allowlisted-extension-id" {
+            continue;
+        }
+        builder = match value {
+            Some(value) => builder.arg((name.as_str(), value.as_str())),
+            None => builder.arg(name),
+        };
+    }
+    builder
+}
+
 /// Chrome's environment: the time zone every renderer uses, on Linux the
 /// locale that sets a page's default formats, and the runtime's variables.
 /// They are Chrome's alone: set for the runner, the runtime's libraries
@@ -297,11 +325,11 @@ fn environment(locale: &CommandLocale, runtime: Option<&Runtime>) -> Vec<(String
 /// must not see, since the configuration only adds variables.
 pub fn complete<'a>(
     command: &'a mut tokio::process::Command,
-    locale: &CommandLocale,
+    locale: Option<&CommandLocale>,
     runtime: Option<&Runtime>,
 ) -> &'a mut tokio::process::Command {
     if cfg!(target_os = "macos")
-        && let Some(language) = locale.languages.first()
+        && let Some(language) = locale.and_then(|locale| locale.languages.first())
     {
         command.args(["-AppleLanguages".to_owned(), format!("({language})")]);
     }

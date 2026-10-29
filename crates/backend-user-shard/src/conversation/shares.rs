@@ -295,6 +295,18 @@ impl Shard {
             .flatten())
     }
 
+    /// Whether the share shows the reply block `<tag id="id" />`
+    /// (`shares::shows_block`).
+    pub async fn shows_block(&self, share: &ShareRecord, tag: String, id: String) -> Result<bool, StorageError> {
+        let token = share.token.clone();
+        Ok(self
+            .services()
+            .conversations
+            .read(&share.conversation, move |connection| shares::shows_block(connection, &token, &tag, &id))
+            .await?
+            .unwrap_or(false))
+    }
+
     /// The bytes of `blob` when the share shows it.
     pub async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError> {
         let token = share.token.clone();

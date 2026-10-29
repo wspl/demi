@@ -69,6 +69,9 @@ fn page_module(manifest: &Manifest, page: &Page) -> Result<String, Error> {
     if let Some(reasons) = &page.reasons {
         schemas.push((reasons.value(), Direction::Receives));
     }
+    for block in &page.blocks {
+        schemas.push((block.facts.value(), Direction::Receives));
+    }
     for stream in &manifest.streams {
         schemas.push((stream.receives.value(), Direction::Receives));
         schemas.push((stream.sends.value(), Direction::Sends));

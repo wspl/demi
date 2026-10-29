@@ -424,6 +424,13 @@ impl Backend {
             .as_deref()
             .map(web_build)
             .transpose()?;
+        demi_backend_database::shares::register_block_tags(
+            config
+                .plugins
+                .iter()
+                .flat_map(|factory| factory.manifest().page.iter().flat_map(|page| &page.blocks))
+                .map(|block| block.tag.clone()),
+        );
         let settings = ServiceSettings {
             shared_subscriptions: config.shared_subscriptions,
             log: config.log,
@@ -525,6 +532,7 @@ impl Backend {
             }),
             update: update.clone(),
             html: Arc::default(),
+            blocks: Arc::default(),
         };
         let runner_socket = match config.runner_socket.as_deref().map(runner_socket).transpose() {
             Ok(socket) => socket.flatten(),

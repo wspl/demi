@@ -6,7 +6,9 @@
 //!   conversations and which page states, page calls and user streams exist.
 //! - An instance of each plugin on, made at its first request after the shard
 //!   started or the plugin was turned on, and dropped, with every task it
-//!   started, when it is turned off.
+//!   started, when it is turned off. A conversation's deletion or fork reaches
+//!   a plugin that keeps something of a conversation on or off, through an
+//!   instance made for it alone.
 //! - The context sources among them.
 //! - The Host directories of the plugins on.
 //! - The answers to their port operations.
@@ -71,6 +73,7 @@ pub trait ProductPort {
         conversation: &'a ConversationId,
         operation: &'a NativeOperation,
         args: Map<String, Value>,
+        input: String,
         kind: CallKind,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Value, PortFailure>>;
@@ -379,10 +382,26 @@ impl Shared {
             video: RefCell::new(None),
         };
         let enabled = self.enabled().await.map_err(PluginError::failed)?;
-        let Some(live) = self.live(plugin, &enabled) else {
-            return Err(PluginError::Ended {
-                message: format!("The plugin \"{}\" is off", self.plugin_id(plugin)),
-            });
+        // A conversation's deletion or fork reaches a plugin that is off too,
+        // through an instance made for it alone, so what it keeps of the
+        // conversation follows the conversation whatever the switch says; so
+        // does a read of its reply blocks' facts, as a block keeps its room
+        // while its plugin is off.
+        let lifecycle = matches!(
+            request,
+            Request::ConversationDeleted { .. } | Request::ConversationForked { .. } | Request::ReplyBlocks { .. }
+        );
+        let live = match self.live(plugin, &enabled) {
+            Some(live) => live,
+            None if lifecycle => Live {
+                instance: self.registry.plugins[plugin].factory.instance(),
+                ended: CancellationToken::new(),
+            },
+            None => {
+                return Err(PluginError::Ended {
+                    message: format!("The plugin \"{}\" is off", self.plugin_id(plugin)),
+                });
+            }
         };
         let port = PluginPort::new(Rc::new(transport), cancel);
         // A request the switch cut off ends here, which drops what it was
@@ -1045,6 +1064,124 @@ impl UserPlugins {
         }
     }
 
+    /// The user deleted `conversation`: each plugin that keeps something of
+    /// a conversation, on or off, is told (`Request::ConversationDeleted`),
+    /// and the answer waits for every one; the first that failed is the
+    /// answer's failure, which the deletion keeps pending for.
+    pub async fn conversation_deleted(&self, conversation: &ConversationId) -> Result<(), PluginError> {
+        let requests = self.keepers().into_iter().map(|plugin| {
+            let request = Request::ConversationDeleted {
+                user: self.0.user.clone(),
+                conversation: conversation.clone(),
+            };
+            self.0.request(plugin, request, Some(conversation.clone()), None, CancellationToken::new())
+        });
+        for reply in futures_util::future::join_all(requests).await {
+            reply?;
+        }
+        Ok(())
+    }
+
+    /// The user forked `from` into `conversation`: each plugin that keeps
+    /// something of a conversation, on or off, is told
+    /// (`Request::ConversationForked`), and the answer waits for every one.
+    pub async fn conversation_forked(&self, from: &ConversationId, conversation: &ConversationId) -> Result<(), PluginError> {
+        let requests = self.keepers().into_iter().map(|plugin| {
+            let request = Request::ConversationForked {
+                user: self.0.user.clone(),
+                conversation: conversation.clone(),
+                from: from.clone(),
+            };
+            self.0.request(plugin, request, Some(conversation.clone()), None, CancellationToken::new())
+        });
+        for reply in futures_util::future::join_all(requests).await {
+            reply?;
+        }
+        Ok(())
+    }
+
+    /// The facts of the reply blocks `ids` of `tag`, by id, null for one the
+    /// user does not have, as the plugin whose page draws the tag answers
+    /// them, on or off (`Request::ReplyBlocks`); none for a tag no plugin
+    /// draws.
+    pub async fn reply_block_facts(
+        &self,
+        tag: &str,
+        ids: Vec<String>,
+    ) -> Result<Option<Map<String, Value>>, PluginError> {
+        let Some((plugin, _)) = self.reply_block(tag) else {
+            return Ok(None);
+        };
+        let request = Request::ReplyBlocks { user: self.0.user.clone(), tag: tag.to_owned(), ids: ids.clone() };
+        match self.0.request(plugin, request, None, None, CancellationToken::new()).await? {
+            Reply::ReplyBlocks { mut facts } => {
+                for id in ids {
+                    facts.entry(id).or_insert(Value::Null);
+                }
+                Ok(Some(facts))
+            }
+            reply => Err(PluginError::failed(format!("the plugin answered its reply blocks with {reply:?}"))),
+        }
+    }
+
+    /// Whether the plugin whose page draws reply blocks of `tag` is on; false
+    /// for a tag no plugin draws.
+    pub async fn reply_block_on(&self, tag: &str) -> Result<bool, PluginError> {
+        let Some((plugin, _)) = self.reply_block(tag) else {
+            return Ok(false);
+        };
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        Ok(enabled[plugin])
+    }
+
+    /// The HTML document of `plugin`'s reply block `id` of `tag`, while the
+    /// plugin is on (`Request::ReplyBlockDocument`); none for a block the
+    /// user does not have.
+    pub async fn reply_block_document(
+        &self,
+        plugin: &str,
+        tag: &str,
+        id: String,
+        cancel: CancellationToken,
+    ) -> Result<Option<String>, PageCallError> {
+        let Some((index, true)) = self.reply_block(tag) else {
+            return Ok(None);
+        };
+        if self.0.plugin_id(index) != plugin {
+            return Ok(None);
+        }
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        if !enabled[index] {
+            return Err(PageCallError::Disabled(plugin.to_owned()));
+        }
+        let request = Request::ReplyBlockDocument { user: self.0.user.clone(), tag: tag.to_owned(), id };
+        match self.0.request(index, request, None, None, cancel).await? {
+            Reply::ReplyBlockDocument { document } => Ok(document),
+            reply => Err(PluginError::failed(format!("the plugin answered a block's document with {reply:?}")).into()),
+        }
+    }
+
+    /// The plugin whose page draws reply blocks of `tag`, by its index, and
+    /// whether they have a document.
+    fn reply_block(&self, tag: &str) -> Option<(usize, bool)> {
+        self.0.registry.plugins.iter().enumerate().find_map(|(index, registered)| {
+            let block = registered.page.as_ref()?.blocks.iter().find(|block| block.tag == tag)?;
+            Some((index, block.document))
+        })
+    }
+
+    /// The plugins that keep something of a conversation, by their indices.
+    fn keepers(&self) -> Vec<usize> {
+        self.0
+            .registry
+            .plugins
+            .iter()
+            .enumerate()
+            .filter(|(_, registered)| registered.factory.manifest().conversations)
+            .map(|(index, _)| index)
+            .collect()
+    }
+
     /// The plugins that bind `package` and that the user has on.
     async fn receivers(&self, package: &str) -> Vec<usize> {
         self.receivers_of(|registered| registered.packages.contains(package)).await
@@ -1386,6 +1523,7 @@ impl RequestPort {
             PortMessage::PackageCall {
                 operation,
                 args,
+                input,
                 kind,
             } => {
                 let registered = &shared.registry.plugins[self.plugin];
@@ -1398,7 +1536,7 @@ impl RequestPort {
                 }
                 let conversation = self.conversation()?;
                 let result = product
-                    .package_call(conversation, &operation, args, kind, &self.cancel)
+                    .package_call(conversation, &operation, args, input, kind, &self.cancel)
                     .await?;
                 PortAnswer::Called { result }
             }

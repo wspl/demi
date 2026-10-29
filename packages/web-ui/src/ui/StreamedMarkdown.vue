@@ -21,6 +21,8 @@ import AudioPlayer from '@demicodes/web-ui/files/AudioPlayer.vue'
 import AttachmentCard from '@demicodes/web-ui/files/AttachmentCard.vue'
 import { ATTACHMENT_AUDIO_ATTRIBUTE, ATTACHMENT_CARD_ATTRIBUTE, messageAttachment } from '@demicodes/web-ui/markdown/render'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { REPLY_BLOCK_ATTRIBUTE, REPLY_BLOCK_ID_ATTRIBUTE } from '@demicodes/web-ui/markdown/reply-block'
+import { PageScope, useReplyBlocks } from '@demicodes/web-ui/plugins/page'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useFailedMedia } from '@demicodes/web-ui/files/media-reload'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
@@ -75,6 +77,9 @@ const agents = useMessageAgents()
 const viewer = useMediaViewer()
 const transcript = useTranscript()
 const renderFiles = useRenderedFiles(files)
+/** The plugins' reply blocks, which a line of their tag places. */
+const replyBlocks = useReplyBlocks()
+const blockTags = computed(() => [...replyBlocks.value.keys()])
 /** A link to a file, a commit or an agent has that object's menu, as the conversation has it when the menu opens. */
 const linkMenus: LinkMenus = (link) => messageLinkMenu(link, files(), agents())
 // The files the reply's inline code names, by the code that names them, as
@@ -108,6 +113,7 @@ function renderBlock(source: () => string, last: boolean): () => string {
       codeFiles: codeFiles.value,
       ...(text.includes('![') ? { pictures: pictureCopies.value } : {}),
       agents: agents(),
+      ...(blockTags.value.length ? { blocks: blockTags.value } : {}),
       ...(last && partial.value ? { partial: true } : {}),
     })
   }
@@ -120,6 +126,7 @@ function renderBlock(source: () => string, last: boolean): () => string {
  * - Each link gets its icon (a file's, a commit's or a web page's).
  * - Each attachment block that is a card gets its card.
  * - Each agent link gets its agent's mark and tip.
+ * - Each plugin's reply block gets its page's component.
  *
  * A render replaces them; the component of each place moves into the new one and
  * keeps its state, as a code block's Copied.
@@ -132,6 +139,8 @@ interface Places {
   audios: HTMLElement[]
   /** The places of attachment blocks' cards. */
   cards: HTMLElement[]
+  /** The places of plugins' reply blocks. */
+  blocks: HTMLElement[]
   media: (HTMLImageElement | HTMLVideoElement)[]
 }
 const codeBlocks = shallowRef<HTMLElement[]>([])
@@ -139,6 +148,7 @@ const linkIcons = shallowRef<HTMLElement[]>([])
 const agentLinks = shallowRef<HTMLElement[]>([])
 const audios = shallowRef<HTMLElement[]>([])
 const cards = shallowRef<HTMLElement[]>([])
+const blocks = shallowRef<HTMLElement[]>([])
 /** The message's pictures, each a tile with its preview on hover. */
 const pictures = shallowRef<MessagePicture[]>([])
 /** Each medium's picture, kept while its render shows, so its loaded size stays with it. */
@@ -161,6 +171,7 @@ function placesIn(nodes: readonly ChildNode[], fresh: readonly ChildNode[]): Pla
     agentLinks: within('[data-agent-link]'),
     audios: within(`[${ATTACHMENT_AUDIO_ATTRIBUTE}]`),
     cards: within(`[${ATTACHMENT_CARD_ATTRIBUTE}]`),
+    blocks: within(`[${REPLY_BLOCK_ATTRIBUTE}]`),
     media: elements.flatMap((element) => messagePictures(element).map((picture) => picture.element)),
   }
 }
@@ -180,6 +191,7 @@ useMarkdownBlocks({
     agentLinks.value = found.flatMap((places) => places.agentLinks)
     audios.value = found.flatMap((places) => places.audios)
     cards.value = found.flatMap((places) => places.cards)
+    blocks.value = found.flatMap((places) => places.blocks)
     pictures.value = found.flatMap((places) => places.media).map((medium) => {
       const picture = pictureOf.get(medium) ?? messagePicture(medium)
       pictureOf.set(medium, picture)
@@ -222,6 +234,28 @@ async function openCard(place: HTMLElement): Promise<void> {
 }
 
 const failedMedia = useFailedMedia()
+
+/** The page block a reply block's place names; null for a tag no page draws now. */
+function placeBlock(place: HTMLElement) {
+  return replyBlocks.value.get(place.getAttribute(REPLY_BLOCK_ATTRIBUTE) ?? '') ?? null
+}
+
+/**
+ * The props of a reply block's component: its line's id, its facts, null when
+ * it has none, and how it opens in the work panel, where one opens it.
+ */
+function blockProps(place: HTMLElement): { id: string, facts: unknown, open?: (title: string) => void } {
+  const tag = place.getAttribute(REPLY_BLOCK_ATTRIBUTE) ?? ''
+  const id = place.getAttribute(REPLY_BLOCK_ID_ATTRIBUTE) ?? ''
+  const shown = files()
+  const found = shown?.replyBlock?.(tag, id)
+  const openBlock = shown?.openReplyBlock
+  return {
+    id,
+    facts: found?.state === 'found' ? found.facts : null,
+    ...(openBlock ? { open: (title: string) => openBlock(tag, id, title) } : {}),
+  }
+}
 
 function onMediumLoad(event: Event): void {
   failedMedia.onLoaded(event)
@@ -270,6 +304,11 @@ function onMediumLoad(event: Event): void {
     :size="picture.size"
     :caption="picture.caption"
   />
+  <template v-for="(place, index) in blocks" :key="`${place.getAttribute(REPLY_BLOCK_ATTRIBUTE)}:${place.getAttribute(REPLY_BLOCK_ID_ATTRIBUTE)}:${index}`">
+    <Teleport v-if="placeBlock(place)" :to="place">
+      <PageScope :page="placeBlock(place)!.page" :component="placeBlock(place)!.block.component" :props="blockProps(place)" />
+    </Teleport>
+  </template>
   <Teleport v-for="(place, index) in audios" :key="index" :to="place">
     <AudioPlayer :src="place.getAttribute(ATTACHMENT_AUDIO_ATTRIBUTE) ?? ''" :name="place.dataset.audioName ?? ''" />
   </Teleport>

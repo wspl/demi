@@ -54,6 +54,7 @@ impl Shard {
             summaries,
             versions: page.versions,
             attachments: Vec::new(),
+            reply_blocks: Vec::new(),
             version: Some(page.version),
             commands,
             request_output,

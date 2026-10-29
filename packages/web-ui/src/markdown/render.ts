@@ -6,6 +6,7 @@ import type { PictureCopy, PictureFailure } from '@demicodes/protocol'
 import { codeBlockHtml } from './highlight'
 import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
 import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
+import { REPLY_BLOCK_ATTRIBUTE, REPLY_BLOCK_ID_ATTRIBUTE, replyBlockAt, replyBlockStart } from './reply-block'
 import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
@@ -651,6 +652,9 @@ function separateMedia(blocks: Token[]): void {
 /** The token of an attachment block (`attachment-block.ts`). */
 const ATTACHMENT_BLOCK = 'attachmentBlock'
 
+/** The token of a plugin's reply block (`reply-block.ts`). */
+const REPLY_BLOCK = 'replyBlock'
+
 /**
  * Whether a run of marks opens, as the message's reader reads it beside the
  * same two characters with a closing run after them: the reader's rules for
@@ -699,6 +703,19 @@ agentMarked.use({
     },
     renderer(token) {
       return attachmentBlock(token.id, token.raw)
+    },
+  }, {
+    // A plugin's block, ahead of an HTML block too: its place, which the
+    // plugin's component fills (`StreamedMarkdown.vue`).
+    name: REPLY_BLOCK,
+    level: 'block',
+    start: (src) => (activeOptions?.blocks?.length ? replyBlockStart(src, activeOptions.blocks) : undefined),
+    tokenizer(src) {
+      const block = activeOptions?.blocks?.length ? replyBlockAt(src, activeOptions.blocks) : null
+      return block ? { type: REPLY_BLOCK, raw: block.raw, tag: block.tag, id: block.id } : undefined
+    },
+    renderer(token) {
+      return `<div class="reply-block" ${REPLY_BLOCK_ATTRIBUTE}="${escapeHtml(token.tag)}" ${REPLY_BLOCK_ID_ATTRIBUTE}="${escapeHtml(token.id)}"></div>\n`
     },
   }, {
     name: MEDIA,

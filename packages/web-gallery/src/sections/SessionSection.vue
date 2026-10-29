@@ -250,6 +250,9 @@ import GalleryCatchingUp from '../components/GalleryCatchingUp.vue'
 import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
 import { useGalleryView } from '../gallery-views'
 import GallerySharedPage from '../components/GallerySharedPage.vue'
+import { providePageHost } from '@demicodes/web-ui/plugins/page'
+import { galleryPageHost } from '../fixtures/plugins'
+import { WIDGET_PAGES, galleryWidgets, widgetMarkdown } from '../fixtures/widgets'
 
 const { view } = useGalleryView()
 const historyModelBlocks = transcriptDemoBlocks()
@@ -791,6 +794,10 @@ const sessionFiles = {
     panelWork.openIn({ intent: 'attachment', payload: { id, name, size, url } })
     view.value = 'panel'
   }),
+  openReplyBlock: (tag: string, id: string, title: string) => {
+    panelWork.openIn({ intent: 'block', payload: { tag, id, title } })
+    view.value = 'panel'
+  },
   attachmentOrigin: galleryAttachmentOrigin(project.source, () => hostOnline.value),
 }
 // The session's pictures and videos open in the Media tab of the frame's panel, as a conversation's do.
@@ -1047,12 +1054,15 @@ const sessionFlow = useTurnFlow({
   cwd: project.root,
   blocks: [
     ...transcriptDemoBlocks(),
-    { type: 'text', id: 'assistant-media', createdAt: new Date(Date.now() - 500).toISOString(), model: demoModel, text: frameMediaMarkdown },
+    { type: 'text', id: 'assistant-media', createdAt: new Date(Date.now() - 600).toISOString(), model: demoModel, text: frameMediaMarkdown },
+    { type: 'text', id: 'assistant-widgets', createdAt: new Date(Date.now() - 500).toISOString(), model: demoModel, text: widgetMarkdown },
   ],
   subagents: agents,
   terminals,
 })
 const session = sessionFlow.state
+// The replies' widgets reach the widget plugin's gallery fixture.
+providePageHost(galleryPageHost({ widget: galleryWidgets }, { pages: WIDGET_PAGES }))
 /** The conversation's shares and the service that makes them, as the product's header menu and answer footers use them. */
 const { service: shareService } = useGalleryShares()
 session.pendingSteers = [{ id: 'pending-1', content: steerPrompt }]

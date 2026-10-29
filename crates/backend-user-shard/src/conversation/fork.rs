@@ -9,9 +9,18 @@
 //!    destination's namespace.
 //! 4. The outputs of its commands and the conversation's attachments are copied
 //!    into the destination's database.
-//! 5. The agent commits the destination's root in the destination's own
+//! 5. The plugins that keep something of a conversation are told of the
+//!    fork, as its copies are made: what they keep of the source is the
+//!    destination's too.
+//! 6. The agent commits the destination's root in the destination's own
 //!    database.
-//! 6. A control transaction publishes the destination.
+//! 7. A control transaction publishes the destination.
+//!
+//! A committed root is a destination whose plugins were told. A fork holds
+//! the user's lifecycle gate from reading its source until its root
+//! commits, so a deletion of the source reaches the plugins either before
+//! the fork finds its source or after they learned of the fork, never
+//! between.
 //!
 //! Requests for one destination run one at a time, a retry of the same attempt
 //! finds its destination, and startup publishes a destination whose root
@@ -80,6 +89,10 @@ pub enum ForkRefusal {
     Target(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
+    /// A plugin that keeps something of a conversation did not learn of
+    /// the fork.
+    #[error("{0}")]
+    Plugin(String),
     /// The agent could not store the destination's root.
     #[error("{0}")]
     Failed(String),
@@ -102,6 +115,7 @@ impl Shard {
             .forks()
             .acquire(destination.as_str().to_ascii_lowercase())
             .await;
+        let _lifecycle = self.lifecycle().acquire().await;
         let services = self.services();
         let control = &services.control;
         let source = control
@@ -268,6 +282,7 @@ impl Shard {
         if let Some(model) = &operation.metadata.model {
             seed.checkpoint.state.model = model.clone();
         }
+        self.fork_reaches_plugins(&source.id, &destination).await?;
         self.agent()
             .initialize_fork(&root_of(&destination), seed)
             .await
@@ -315,4 +330,20 @@ pub async fn recover_forks(
         }
     }
     Ok(())
+}
+
+impl Shard {
+    /// Tells the plugins that keep something of a conversation that `source`
+    /// is forked into `destination`, whose history names what the source's
+    /// does; telling one again, as a retry does, changes nothing it did.
+    pub(crate) async fn fork_reaches_plugins(
+        &self,
+        source: &ConversationId,
+        destination: &ConversationId,
+    ) -> Result<(), ForkRefusal> {
+        self.plugins().conversation_forked(source, destination).await.map_err(|error| {
+            tracing::error!(event = "conversation_fork.plugins_failed", conversation = %destination, %error, "a plugin did not learn of a fork, which fails");
+            ForkRefusal::Plugin(error.to_string())
+        })
+    }
 }

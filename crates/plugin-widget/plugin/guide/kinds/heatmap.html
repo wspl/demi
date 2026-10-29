@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<title>Orders by hour</title>
+<meta name="demi-frame" content="height: 320px"></head><body class="p-6">
+<div class="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle" id="hl">Busiest hour</div>
+<div class="flex items-baseline gap-2 mt-0.5"><span id="hv" class="text-[34px] leading-none font-bold tracking-tight text-fg-emphasis tabular-nums">Sat 8 pm</span></div>
+<div id="hn" class="text-xs text-fg-subtle mt-1 mb-4">140 orders in an hour</div>
+<div class="grid grid-cols-[28px_repeat(12,1fr)] gap-1 text-[11px] font-semibold text-fg-subtle" id="g"></div>
+<script>
+const head = { label: document.getElementById('hl'), value: document.getElementById('hv'), note: document.getElementById('hn') }
+const rest = { label: head.label.textContent, value: head.value.textContent, note: head.note.textContent }
+const show = (label, value, note) => { head.label.textContent = label; head.value.textContent = value; head.note.textContent = note }
+const reset = () => show(rest.label, rest.value, rest.note)
+</script>
+<script>
+let lit = null, home = null
+const light = (el) => { lit?.classList.remove('ring-2'); lit = el; el.classList.add('ring-2') }
+const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], g = document.getElementById('g')
+const hour = (h) => h === 0 ? '12 am' : h === 12 ? '12 pm' : h < 12 ? h + ' am' : h - 12 + ' pm'
+days.forEach((d, di) => {
+  g.insertAdjacentHTML('beforeend', `<div class="leading-5">${d[0]}</div>`)
+  for (let h = 0; h < 24; h += 2) {
+    const v = Math.min(1, (Math.exp(-((h - 20) ** 2) / 18) + 0.6 * Math.exp(-((h - 12) ** 2) / 8)) * (di >= 5 ? 1.15 : 0.85) + 0.04), n = Math.round(v * 140)
+    const el = document.createElement('div')
+    el.className = 'h-5 rounded-md ring-inset ring-fg-emphasis'
+    el.style.background = `color-mix(in oklch, var(--color-accent-fill) ${Math.round(6 + v * 94)}%, transparent)`
+    el.onmouseenter = () => (light(el), show(days[di].toUpperCase() + ' · ' + hour(h), n + ' orders', `${Math.round(n / 140 * 100)}% of the busiest hour`))
+    if (di === 5 && h === 20) home = el
+    g.append(el)
+  }
+})
+g.insertAdjacentHTML('beforeend', '<div></div>' + Array.from({ length: 12 }, (_, i) => `<div class="text-center pt-1">${i * 2 % 6 ? '' : ['12a', '6a', '12p', '6p'][i / 3]}</div>`).join(''))
+light(home)
+g.addEventListener('mouseleave', () => (light(home), reset()))
+</script></body></html>

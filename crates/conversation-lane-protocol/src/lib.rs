@@ -92,7 +92,7 @@ pub use agents::{AgentEntry, AgentRole, SideQuestion, Subagent};
 pub use cost::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 pub use follow::{Follow, Followed, Held};
 pub use server::{
-    AbortResult, AbortTarget, AgentCode, AttachmentSourceDto, CommandView, ConversationAttachment, EditOutcome,
+    AbortResult, AbortTarget, AgentCode, AttachmentSourceDto, CommandView, ConversationAttachment, EditOutcome, ReplyBlockFacts,
     Failures, JobModel, JobPhase, Refusal,
     RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, TurnSpeed,
 };

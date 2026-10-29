@@ -81,10 +81,14 @@ pub enum PortMessage {
         scope: Scope,
     },
     /// Runs one operation of a package the plugin's commands bind, on the
-    /// request's conversation's primary Host.
+    /// request's conversation's primary Host, with `input` as what it reads:
+    /// bulk content, such as a document, goes there rather than in `args`,
+    /// which the command protocol bounds as metadata.
     PackageCall {
         operation: NativeOperation,
         args: Map<String, Value>,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        input: String,
         kind: CallKind,
     },
     /// What the plugin's package last reported of the request's conversation
@@ -788,9 +792,22 @@ impl PluginPort {
         args: Map<String, Value>,
         kind: CallKind,
     ) -> Result<Value, PortFailure> {
+        self.package_call_reading(operation, args, String::new(), kind).await
+    }
+
+    /// [`Self::package_call`] of an operation that reads `input`, such as a
+    /// document too large for its arguments.
+    pub async fn package_call_reading(
+        &self,
+        operation: NativeOperation,
+        args: Map<String, Value>,
+        input: String,
+        kind: CallKind,
+    ) -> Result<Value, PortFailure> {
         let message = PortMessage::PackageCall {
             operation,
             args,
+            input,
             kind,
         };
         match self.ask(message).await? {

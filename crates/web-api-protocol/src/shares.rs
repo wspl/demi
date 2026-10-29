@@ -128,6 +128,9 @@ pub struct SharedTranscriptPage {
     pub blocks: Vec<SharedEntry>,
     pub instructions: Vec<InstructionEntry>,
     pub summaries: Vec<CompactionSummary>,
+    /// The reply blocks its texts name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reply_blocks: Vec<demi_conversation_lane_protocol::ReplyBlockFacts>,
 }
 
 /// What a share's page holds at an index: a message or a text, as a page sends

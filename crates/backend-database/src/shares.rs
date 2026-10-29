@@ -12,6 +12,7 @@
 //! database.
 
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 use std::ops::Range;
 
 use demi_agent_store::media::block_blobs;
@@ -498,9 +499,33 @@ fn keep_attachments(
 /// a block is a paragraph's line that holds only that word: code, an HTML block or
 /// comment keep it as their text, emphasis wraps it, other words join it.
 pub fn named_attachments(text: &str) -> BTreeSet<AttachmentNumber> {
-    if !text.contains("<attachment") {
+    named_tags(text, "attachment", |id| {
+        let digits = id.strip_prefix('a')?;
+        let number = !digits.is_empty() && !digits.starts_with('0') && digits.bytes().all(|byte| byte.is_ascii_digit());
+        number.then(|| id.parse().ok()).flatten()
+    })
+}
+
+/// The ids a text names in a plugin's reply blocks of `tag`, each a line of
+/// its own that is `<tag id="w1" />`, by the rule attachment blocks follow
+/// ([`named_attachments`]); the web app's renderer follows the same rule
+/// (`packages/web-ui/src/markdown/reply-block.ts`).
+pub fn named_blocks(text: &str, tag: &str) -> BTreeSet<String> {
+    named_tags(text, tag, |id| {
+        let valid = !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-');
+        valid.then(|| id.to_owned())
+    })
+}
+
+/// What a text names in its lines that are the tag `<tag id="..." />`, each
+/// id that `read` takes.
+fn named_tags<T: Ord>(text: &str, tag: &str, read: impl Fn(&str) -> Option<T>) -> BTreeSet<T> {
+    if !text.contains(&format!("<{tag}")) {
         return BTreeSet::new();
     }
+    // Every block's tag is marked, whichever is asked for, so the line of
+    // one never starts an HTML block that takes in the next, as the page's
+    // renderer reads them.
     let marked = mark_tags(text);
     let arena = Arena::new();
     // The page's renderer reads GitHub's tables, strikethrough and autolinks
@@ -521,7 +546,8 @@ pub fn named_attachments(text: &str) -> BTreeSet<AttachmentNumber> {
             let NodeValue::Text(word) = &data.value else {
                 return None;
             };
-            let number = word.strip_prefix(TAG_MARK)?.strip_suffix(TAG_MARK)?.parse().ok()?;
+            let (name, id) = word.strip_prefix(TAG_MARK)?.strip_suffix(TAG_MARK)?.split_once(':')?;
+            let number = (name == tag).then(|| read(id)).flatten()?;
             let line = node.parent()?;
             let line_data = line.data.borrow();
             let placed = match &line_data.value {
@@ -553,35 +579,80 @@ pub fn block_attachments(text: &TextBlock) -> BTreeSet<AttachmentNumber> {
     named
 }
 
+/// The tags of the plugins' reply blocks, which the start registers from the
+/// plugins' pages ([`register_block_tags`]). A text marks these and
+/// `attachment`, and only these, as the page's renderer reads only them as
+/// blocks: any other tag's line is HTML to both.
+static BLOCK_TAGS: OnceLock<BTreeSet<String>> = OnceLock::new();
+
+/// Registers the tags of the plugins' reply blocks. The plugins are built
+/// into the backend, so every start in a process registers the same tags;
+/// the first one's stay.
+pub fn register_block_tags(tags: impl IntoIterator<Item = String>) {
+    let _ = BLOCK_TAGS.set(tags.into_iter().collect());
+}
+
+/// The plugins' reply blocks `text` names by the attachment blocks' rule, as
+/// their tags and IDs.
+pub fn named_reply_blocks(text: &str) -> BTreeSet<(String, String)> {
+    let Some(tags) = BLOCK_TAGS.get() else {
+        return BTreeSet::new();
+    };
+    tags.iter()
+        .flat_map(|tag| named_blocks(text, tag).into_iter().map(move |id| (tag.clone(), id)))
+        .collect()
+}
+
+/// Whether `name` is the tag of a block a reply's line shows.
+fn is_block_tag(name: &str) -> bool {
+    name == "attachment" || BLOCK_TAGS.get().is_some_and(|tags| tags.contains(name))
+}
+
 /// What stands for a tag in the text CommonMark reads: a private-use
 /// character, which no Markdown syntax gives a meaning, on each side of the
 /// number.
 const TAG_MARK: char = '\u{E000}';
 
-/// `text` with each `<attachment id="a3" />` as the number between two
-/// [`TAG_MARK`]s.
+/// `text` with each block's tag, such as `<attachment id="a3" />`, as its
+/// name and id between two [`TAG_MARK`]s.
 fn mark_tags(text: &str) -> String {
     let mut marked = String::with_capacity(text.len());
     let mut rest = text;
-    while let Some(start) = rest.find("<attachment id=\"") {
+    while let Some(start) = rest.find('<') {
         marked.push_str(&rest[..start]);
-        let after = &rest[start + "<attachment id=\"".len()..];
-        let tag = after.split_once('"').and_then(|(id, tail)| {
-            let tail = tail.strip_prefix(' ').unwrap_or(tail).strip_prefix("/>")?;
-            let digits = id.strip_prefix('a')?;
-            let number = !digits.is_empty() && !digits.starts_with('0') && digits.bytes().all(|byte| byte.is_ascii_digit());
-            number.then_some((id, tail))
-        });
+        let after = &rest[start + 1..];
+        let name_end = after
+            .find(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+            .unwrap_or(after.len());
+        let name = &after[..name_end];
+        let tag = is_block_tag(name)
+            .then(|| after[name_end..].strip_prefix(" id=\""))
+            .flatten()
+            .and_then(|tail| {
+                let (id, tail) = tail.split_once('"')?;
+                let tail = tail.strip_prefix(' ').unwrap_or(tail).strip_prefix("/>")?;
+                let plain = if name == "attachment" {
+                    // As the page's renderer reads an attachment's number.
+                    id.strip_prefix('a').is_some_and(|digits| {
+                        digits.bytes().all(|byte| byte.is_ascii_digit()) && !digits.is_empty() && !digits.starts_with('0')
+                    })
+                } else {
+                    !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+                };
+                plain.then_some((id, tail))
+            });
         match tag {
             Some((id, tail)) => {
                 marked.extend([TAG_MARK]);
+                marked.push_str(name);
+                marked.push(':');
                 marked.push_str(id);
                 marked.extend([TAG_MARK]);
                 rest = tail;
             }
             None => {
                 marked.push('<');
-                rest = &rest[start + 1..];
+                rest = after;
             }
         }
     }
@@ -652,6 +723,34 @@ pub fn shows_blob(connection: &Connection, token: &ShareToken, blob: &BlobRef) -
         )
         .optional()?;
     Ok(shown.is_some())
+}
+
+/// Whether a text the share `token`'s list shows names the reply block
+/// `<tag id="id" />` ([`named_blocks`]): a transcript row it names, or its
+/// copy of a text still being written when the list was made.
+pub fn shows_block(connection: &Connection, token: &ShareToken, tag: &str, id: &str) -> Result<bool, StorageError> {
+    let codec = Codec::new(connection);
+    let mut statement = connection.prepare(&format!(
+        "SELECT 'blocks', {} FROM share_entries AS entry
+           JOIN blocks ON blocks.node_id = entry.node_id AND blocks.idx = entry.idx
+         WHERE entry.token = ?1 AND blocks.type = 'text'
+         UNION ALL
+         SELECT 'share_blocks', {} FROM share_blocks WHERE share_blocks.token = ?1 AND share_blocks.type = 'text'",
+        record_of("blocks"),
+        record_of("share_blocks"),
+    ))?;
+    let mut rows = statement.query(params![token.as_str()])?;
+    while let Some(row) = rows.next()? {
+        let source: String = row.get(0)?;
+        let table = if source == "blocks" { "blocks" } else { "share_blocks" };
+        let stored = Stored::of(row, 1)?;
+        if let Block::Text(text) = codec.block(table, &stored)?
+            && named_blocks(&text.text, tag).contains(id)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// The attachment `number` as the share `token` keeps it.

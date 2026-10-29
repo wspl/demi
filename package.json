@@ -15,6 +15,7 @@
     "crates/plugin-file-browser/page",
     "crates/plugin-skills/page",
     "crates/plugin-web/page",
+    "crates/plugin-widget/page",
     "packages/web-gallery",
     "packages/web",
     "packages/site",

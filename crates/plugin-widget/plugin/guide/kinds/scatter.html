@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+<title>Page speed and conversion</title>
+<meta name="demi-frame" content="height: 368px">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script></head><body class="p-6">
+<div class="flex gap-8 mb-4">
+  <div><div class="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Page speed vs. conversion</div>
+  <div class="flex items-baseline gap-2 mt-0.5"><span class="text-[34px] leading-none font-bold tracking-tight text-fg-emphasis tabular-nums">−0.8%</span><span class="text-xs text-fg-subtle">conversion per extra second</span></div></div>
+</div>
+<div class="relative h-[220px]"><canvas id="c"></canvas></div>
+<script>
+const css = getComputedStyle(document.documentElement)
+const token = (name) => css.getPropertyValue(name).trim()
+// The color at `pct`% opacity; a gradient between two of its opacities stays its hue.
+const mix = (color, pct) => `rgb(from ${color} r g b / ${pct / 100})`
+Chart.defaults.font.family = token('--font-sans')
+Chart.defaults.maintainAspectRatio = false
+Chart.defaults.plugins.legend.display = false
+// A reader who prefers less motion, and the screenshots, get the chart drawn at once.
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) Chart.defaults.animation = false
+</script>
+<script>
+const accent = token('--color-accent-fill'); let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+const pts = Array.from({ length: 90 }, () => { const x = 0.8 + r() * 4.2; return { x, y: 6.2 - 0.8 * x + (r() - 0.5) * 1.6 } })
+new Chart(c, { type: 'scatter', data: { datasets: [
+  { data: pts, backgroundColor: pts.map((p) => p.x > 3.5 ? mix(accent, 30) : mix(accent, 75)), pointRadius: 4.5, pointHoverRadius: 6, borderWidth: 0 },
+  { type: 'line', data: [{ x: 0.8, y: 5.56 }, { x: 5, y: 2.2 }], borderColor: token('--color-fg-muted'), borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0 },
+] }, options: { scales: {
+  x: { min: 0.5, max: 5.2, grid: { display: false }, border: { display: false }, ticks: { color: token('--color-fg-subtle'), font: { size: 11, weight: 600 }, callback: (v) => v + 's', stepSize: 1, includeBounds: false } },
+  y: { position: 'right', grid: { color: token('--color-line-subtle') }, border: { display: false }, ticks: { color: token('--color-fg-subtle'), font: { size: 11, weight: 600 }, callback: (v) => v + '%', maxTicksLimit: 4 } } } } })
+</script></body></html>

@@ -17,6 +17,7 @@
     "@demicodes/plugin-sdk": "workspace:^",
     "@demicodes/plugin-skills": "workspace:^",
     "@demicodes/plugin-web": "workspace:^",
+    "@demicodes/plugin-widget": "workspace:^",
     "@demicodes/protocol": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "@demicodes/web-ui": "workspace:^",

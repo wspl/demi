@@ -6,6 +6,7 @@ import { readCommitHash } from '@demicodes/web-ui/files/history'
 import { productWould } from '../product-would'
 import { GALLERY_HOST, galleryAttachment } from './attachments'
 import { LINKED_COMMIT, sharedHistory } from './history'
+import { galleryReplyBlock } from './widgets'
 
 /** Whether `path` is a file of the memory tree `root`, as a Host's stat says. */
 function isFile(root: MemoryDirectory, path: string): boolean {
@@ -46,6 +47,8 @@ export function galleryAttachmentOrigin(
  *   outside a panel says what the product would do.
  * - A subagent's bar reads its branch from `history` and opens it through
  *   `openBranch`, which outside a panel says what the product would do.
+ * - A widget's button opens it through `openReplyBlock`, which outside a
+ *   panel says what the product would do.
  */
 export function galleryConversationFiles(
   source: MemoryFileSource,
@@ -55,8 +58,10 @@ export function galleryConversationFiles(
   openAttachment: NonNullable<ConversationFiles['openAttachment']> = (_id, { name }) => productWould(`Open ${name} in the Work Panel`),
   history: NonNullable<ConversationFiles['history']> = () => sharedHistory.source,
   openBranch: NonNullable<ConversationFiles['openBranch']> = ({ branch }) => productWould(`Open ${branch ?? 'HEAD'} in the Change View’s Commits`),
+  openReplyBlock: NonNullable<ConversationFiles['openReplyBlock']> = (_tag, _id, title) => productWould(`Open ${title} in the Work Panel`),
 ): ConversationFiles {
   return {
+    openReplyBlock,
     history,
     openBranch,
     openCommit,
@@ -65,6 +70,7 @@ export function galleryConversationFiles(
     contents: source.contents,
     device: GALLERY_HOST,
     attachment: galleryAttachment,
+    replyBlock: galleryReplyBlock,
     open,
     showInFiles,
     commitHash: ({ commit }) => readCommitHash(sharedHistory.source, commit),

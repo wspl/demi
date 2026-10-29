@@ -347,6 +347,12 @@ impl Plugin for Instance {
                     Ok(Reply::Exit { code })
                 }
                 Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
+                Request::ReplyBlocks { .. } | Request::ReplyBlockDocument { .. } => {
+                    Err(PluginError::undeclared("reply blocks"))
+                }
+                Request::ConversationDeleted { .. } | Request::ConversationForked { .. } => {
+                    Err(PluginError::undeclared("conversations"))
+                }
                 Request::PackageMessage { .. } | Request::PackageLost { .. } => {
                     Err(PluginError::undeclared("package messages"))
                 }

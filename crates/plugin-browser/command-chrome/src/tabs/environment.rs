@@ -81,7 +81,7 @@ use crate::tabs::{
 
 /// Chrome answers a browser call within this, or chromiumoxide fails the
 /// call.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The environment's one browser connection, which commands share without
 /// taking turns. The environment
@@ -235,7 +235,7 @@ impl DirectoryBases {
 /// - On Unix the profile is a directory of its own with Chrome's user data, the
 ///   downloads and the uploads.
 /// - On Windows the runtime directory is the profile.
-struct EnvironmentDirectories {
+pub(crate) struct EnvironmentDirectories {
     runtime: tempfile::TempDir,
     profile: Option<tempfile::TempDir>,
     /// Held until retirement has removed both, however this resident ends.
@@ -253,7 +253,7 @@ impl EnvironmentDirectories {
     /// 2. On Unix the link comes next.
     /// 3. Then comes the profile the link names, so that a running
     ///    environment's profile always has its runtime directory.
-    fn create(bases: &DirectoryBases) -> Result<Self> {
+    pub(crate) fn create(bases: &DirectoryBases) -> Result<Self> {
         let runtime = private_directory(&bases.runtime, RUNTIME_PREFIX, 6)?;
         let staged = runtime.path().join(STAGED_LOCK);
         let lock = std::fs::File::create_new(&staged)?;
@@ -290,18 +290,18 @@ impl EnvironmentDirectories {
     }
 
     /// Chrome's temporary directory, which names the environment.
-    fn runtime(&self) -> &Path {
+    pub(crate) fn runtime(&self) -> &Path {
         self.runtime.path()
     }
 
     /// Chrome's user data directory, which holds the downloads and uploads.
-    fn profile(&self) -> &Path {
+    pub(crate) fn profile(&self) -> &Path {
         self.profile.as_ref().unwrap_or(&self.runtime).path()
     }
 
     /// From here only retirement removes the directories: Chrome may be
     /// writing into them.
-    fn keep_until_retired(&mut self) {
+    pub(crate) fn keep_until_retired(&mut self) {
         self.runtime.disable_cleanup(true);
         if let Some(profile) = &mut self.profile {
             profile.disable_cleanup(true);
@@ -311,7 +311,7 @@ impl EnvironmentDirectories {
     /// Removes the profile, then the runtime directory, once `retired` says
     /// that Chrome's processes are gone, and then lets the lock go. A
     /// failure keeps what is left, for a later sweep, and names the profile.
-    async fn remove(self, retired: Result<()>) -> Result<()> {
+    pub(crate) async fn remove(self, retired: Result<()>) -> Result<()> {
         let runtime = self.runtime.keep();
         let profile = self.profile.map(tempfile::TempDir::keep);
         let result = async {
@@ -480,7 +480,7 @@ where
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
         result = Browser::launch_with(config, |command| {
-            let command = crate::driver::launch::complete(command, &options.locale, runtime.as_ref());
+            let command = crate::driver::launch::complete(command, Some(&options.locale), runtime.as_ref());
             process.spawn(command, &profile)
         }) => result.map_err(BrowserError::from),
     };

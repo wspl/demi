@@ -32,6 +32,7 @@ mod attachments;
 mod auth;
 mod schedules;
 mod blobs;
+mod blocks;
 mod body;
 mod cloud;
 mod connection;
@@ -72,6 +73,7 @@ mod revalidate;
 mod manage;
 mod runner_socket;
 
+pub use blocks::BlockLinks;
 pub use html_view::HtmlGrants;
 pub use manage::manage_socket;
 mod runners;
@@ -346,6 +348,8 @@ pub struct AppState {
     pub site: Arc<Site>,
     /// The tokens of the HTML files the File view shows.
     pub html: Arc<HtmlGrants>,
+    /// The links of the reply blocks shared pages frame.
+    pub blocks: Arc<BlockLinks>,
     /// The update before this start, which `GET /api/update` says is over.
     pub update: Arc<demi_backend_database::update::Update>,
 }
@@ -554,6 +558,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(plugins::conversation_state),
         )
         .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
+        .route("/plugins/{plugin}/blocks/{tag}/{id}", get(blocks::document))
+        .route("/reply-blocks", post(blocks::facts))
         .route("/plugins/{plugin}/oauth/callback", get(oauth::callback))
         .route("/plugins/{plugin}", put(plugins::switch))
         .route("/instructions", put(instructions::replace))
@@ -695,6 +701,11 @@ fn public_shares() -> Router<AppState> {
             get(shares::block),
         )
         .route("/api/shares/{token}/blobs/{sha256}", get(shares::blob))
+        .route(
+            "/api/shares/{token}/plugins/{plugin}/blocks/{tag}/{id}",
+            get(blocks::shared_document),
+        )
+        .route("/api/blocks/{link}", get(blocks::linked_document))
         .route(
             "/api/shares/{token}/attachments/{attachment}",
             get(shares::attachment),

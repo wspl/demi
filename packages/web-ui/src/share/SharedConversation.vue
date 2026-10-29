@@ -7,7 +7,7 @@ import type { ShownError } from '../infra/errors'
 import type { ListLoad } from '../agent/session-status'
 import { shownWindow, windowEdges } from '../agent/history'
 import { provideMessageFiles } from '../markdown/message-files'
-import type { AttachmentLookup } from '../markdown/types'
+import type { AttachmentLookup, ReplyBlockLookup } from '../markdown/types'
 import { sharedRows, type SharedItem } from './shared-items'
 import { t } from './locales/text'
 
@@ -31,6 +31,8 @@ const props = withDefaults(defineProps<{
   loadError?: ShownError | null
   /** An attachment the share's text names, such as `a3`. */
   attachment: (id: string) => AttachmentLookup
+  /** The facts of a plugin's reply block the share's text names, such as `widget` `w1`. */
+  replyBlock: (tag: string, id: string) => ReplyBlockLookup
 }>(), {
   summaries: () => ({}),
   loadError: null,
@@ -45,7 +47,7 @@ const emit = defineEmits<{
 }>()
 
 // No Host stands behind a share: its paths and commits stay text, its attachments show.
-provideMessageFiles(() => ({ cwd: '', attachment: props.attachment }))
+provideMessageFiles(() => ({ cwd: '', attachment: props.attachment, replyBlock: props.replyBlock }))
 
 const shownTitle = computed(() => props.title?.trim() || t('share.untitled'))
 // A share is read from its latest page back, as a subagent's panel reads it.

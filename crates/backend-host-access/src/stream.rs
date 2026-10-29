@@ -140,12 +140,14 @@ pub enum UserCallKind {
     Looks,
 }
 
-/// A one-shot user call: the operation, its arguments, and the most its
-/// JSON answer may be, so that an answer cannot take memory without end.
+/// A one-shot user call: the operation, its arguments, what it reads as its
+/// input, and the most its JSON answer may be, so that an answer cannot take
+/// memory without end.
 #[derive(Debug, Clone)]
 pub struct ResidentCall {
     pub binding: ResidentBinding,
     pub args: Map<String, Value>,
+    pub input: Bytes,
     pub max_bytes: usize,
 }
 
@@ -240,7 +242,7 @@ impl dyn HostShard + '_ {
                             .await?;
                         let answer = host
                             .host
-                            .call_resident(request, Bytes::new(), call.max_bytes)
+                            .call_resident(request, call.input.clone(), call.max_bytes)
                             .await?;
                         Ok::<_, UserCallError>(answer)
                     })
@@ -266,7 +268,7 @@ impl dyn HostShard + '_ {
                 access
                     .host
                     .host
-                    .call_resident(request, Bytes::new(), call.max_bytes),
+                    .call_resident(request, call.input.clone(), call.max_bytes),
             )
             .await??;
         Ok(answer)

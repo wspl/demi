@@ -224,7 +224,8 @@ fn served(
     };
     let mut commands = Vec::new();
     for tree in &manifest.commands {
-        let operations = native_operations(&tree.tree);
+        let mut operations = native_operations(&tree.tree);
+        operations.extend(&tree.calls);
         if operations.iter().all(|operation| serves(operation)) {
             bound(&operations);
             commands.push(tree.clone());

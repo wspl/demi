@@ -179,6 +179,11 @@ pub fn module(header: &str) -> String {
             count(demi_conversation_lane_protocol::FIRST_BLOCKS),
         ),
         (
+            "REPLY_BLOCKS_PER_READ",
+            "The most reply blocks one read of their facts names (`POST /api/reply-blocks`).",
+            count(demi_web_api_protocol::plugins::REPLY_BLOCKS_PER_READ),
+        ),
+        (
             "TEXT_FILE_BYTES",
             "The most bytes of a file the text route reads; a larger text file shows its first this many.",
             count(demi_command_protocol::EDIT_FILE_BYTES),

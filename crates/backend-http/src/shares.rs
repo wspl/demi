@@ -11,15 +11,17 @@
 //!   the owner's shard, the conversation's history reads (`history.rs`)
 //!   answering it.
 
+use std::collections::BTreeSet;
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::header::{CACHE_CONTROL, REFERRER_POLICY};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::Response;
 use demi_backend_database::shares::ShareRecord;
+use demi_backend_user_shard::conversation::{named_blocks, reply_block_facts};
 use demi_backend_user_shard::conversation::shares::{ShareBlobError, ShareRefusal};
 use demi_backend_user_shard::services::Services;
-use demi_shared_types::{BlobRef, BlockId};
+use demi_shared_types::{BlobRef, Block, BlockId};
 use demi_backend_database::tree::{Entry, PageRead};
 use demi_conversation_lane_protocol::{index_u32, light};
 use demi_web_api_protocol::conversations::{ConversationShares, WholeBlock};
@@ -34,6 +36,7 @@ use demi_backend_database::conversation_attachments::AttachmentNumber;
 use super::AppState;
 use super::blobs::blob_answer;
 use super::body::JsonBody;
+use demi_plugin_host::PageCallError;
 use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
@@ -153,9 +156,45 @@ fn not_found() -> ApiError {
 }
 
 /// The share `token` names.
-async fn found(services: &Services, token: String) -> Result<ShareRecord, ApiError> {
+pub(super) async fn found(services: &Services, token: String) -> Result<ShareRecord, ApiError> {
     let token = ShareToken::try_from(token).map_err(|_| not_found())?;
     services.control.share(token).await?.ok_or_else(not_found)
+}
+
+/// The document of `plugin`'s reply block `id` of `tag`, as the share
+/// `token`'s owner's, for a block a text of the share names; anything else
+/// is not found.
+pub(super) async fn block_document(
+    state: &AppState,
+    token: String,
+    plugin: String,
+    tag: String,
+    id: String,
+) -> Result<Option<String>, ApiError> {
+    let share = found(&state.services, token).await?;
+    let owner = share.owner.clone();
+    let answer = state
+        .shards
+        .of(&owner)
+        .call(move |shard, cancel| async move {
+            if !shard.shows_block(&share, tag.clone(), id.clone()).await.map_err(BlockError::Storage)? {
+                return Ok(None);
+            }
+            shard.plugins().reply_block_document(&plugin, &tag, id, cancel).await.map_err(BlockError::Call)
+        })
+        .await?;
+    match answer {
+        Ok(Some(document)) => Ok(Some(document)),
+        Ok(None) => Err(not_found()),
+        Err(BlockError::Storage(error)) => Err(ApiError::conversation_unreadable(error)),
+        Err(BlockError::Call(error)) => Err(super::plugins::refused(error)),
+    }
+}
+
+/// Why a share's reply block was not answered.
+enum BlockError {
+    Storage(demi_backend_database::StorageError),
+    Call(PageCallError),
 }
 
 /// `GET /shares/:token`: what the shared page shows above the transcript.
@@ -204,9 +243,8 @@ pub(super) async fn transcript(
     // for what the list does not hold.
     let QueryParams(query) = query.map_err(|_| not_found())?;
     let owner = share.owner.clone();
-    let read = state
-        .shards
-        .of(&owner)
+    let shard = state.shards.of(&owner);
+    let read = shard
         .call(move |shard, _| async move { shard.share_page(&share, query).await })
         .await?
         .map_err(ApiError::conversation_unreadable)?;
@@ -227,6 +265,28 @@ pub(super) async fn transcript(
     else {
         return Err(not_found());
     };
+    // The facts of the reply blocks its texts name, as the owner's, for a
+    // plugin the owner has on: a reader cannot turn one on, and a block whose
+    // plugin is off shows as missing.
+    let named = named_blocks(entries.iter().filter_map(Entry::block).filter_map(|block| match block {
+        Block::Text(text) => Some(text),
+        _ => None,
+    }));
+    let reply_blocks = if named.is_empty() {
+        Vec::new()
+    } else {
+        shard
+            .call(move |shard, _| async move {
+                let mut on = BTreeSet::new();
+                for (tag, id) in named {
+                    if shard.plugins().reply_block_on(&tag).await.unwrap_or(false) {
+                        on.insert((tag, id));
+                    }
+                }
+                reply_block_facts(shard.plugins(), on).await
+            })
+            .await?
+    };
     let mut blocks = light(entries.iter().filter_map(Entry::block)).into_iter();
     let entries = entries
         .iter()
@@ -241,6 +301,7 @@ pub(super) async fn transcript(
         blocks: entries,
         instructions,
         summaries,
+        reply_blocks,
     }))
 }
 

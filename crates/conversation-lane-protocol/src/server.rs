@@ -68,6 +68,24 @@ pub struct ConversationAttachment {
     pub source: Option<AttachmentSourceDto>,
 }
 
+/// A plugin's reply block as a reply shows it: what the page's component of
+/// its tag needs before anything loads, such as a widget's frame and name, as
+/// the block's plugin answers it (`ReplyBlocks` in
+/// `crates/plugin-interface/src/request.rs`); null for a block the user does
+/// not have. It never changes.
+///
+/// A frame or a page that carries blocks carries the reply blocks their texts
+/// name, read when it is sent, never stored with the blocks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplyBlockFacts {
+    /// The tag of its line, such as `widget`.
+    pub tag: String,
+    /// Its ID, such as `w1`.
+    pub id: String,
+    pub facts: serde_json::Value,
+}
+
 /// The file of a Host an attachment was uploaded from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -159,6 +177,10 @@ pub enum ServerFrame {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(skip)]
         attachments: Vec<ConversationAttachment>,
+        /// The reply blocks the blocks and the text its patches add name.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(skip)]
+        reply_blocks: Vec<ReplyBlockFacts>,
     },
     /// The conversation's agents at `version`: every one when `since` is
     /// absent, else those changed after the revision `since`, which the page

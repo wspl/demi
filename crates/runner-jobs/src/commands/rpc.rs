@@ -17,6 +17,7 @@ use crate::{
 };
 use bytes::Bytes;
 use demi_command_declarations::Parsed;
+use demi_command_protocol::{MAX_MEDIUM_BYTES, MediumFacts};
 use demi_command_sdk::{Input, ResidentError};
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::wire::{self, PipeRef};
@@ -43,6 +44,8 @@ pub enum CallEvent {
         stdout: PipeRef,
     },
     Stderr(Bytes),
+    /// A medium the call hands its job, its bytes in the pipe.
+    Medium(MediumFacts, PipeRef),
     Pull,
     Exit(u8),
     /// The link's session ended, for this reason, so the call cannot end
@@ -218,6 +221,10 @@ async fn exchange(
     transport: &CallTransport<'_>,
 ) -> Result<u8, ResidentError> {
     let errors = output.errors();
+    let media = output.media();
+    // A medium the call handed its job is kept before the standard output
+    // the call wrote after it reaches the job: the output waits its turn.
+    let turn = tokio::sync::Mutex::new(());
     let &CallTransport {
         id,
         output: connection,
@@ -247,6 +254,15 @@ async fn exchange(
                         .map_err(|_| ResidentError::Cancelled)?;
                 }
                 CallEvent::Stderr(bytes) => errors.stderr(bytes).await?,
+                CallEvent::Medium(facts, reference) => {
+                    let _turn = turn.lock().await;
+                    let kept = match medium_bytes(pipes, stop, &reference).await {
+                        Ok(bytes) => media.medium(facts, bytes).await.map_err(|error| io::Error::other(error.to_string())),
+                        Err(error) => Err(error),
+                    };
+                    report(connection, &reference, &kept)?;
+                    kept.map_err(ResidentError::failed)?;
+                }
                 CallEvent::Pull if request.live => pull
                     .try_send(())
                     .map_err(|_| ResidentError::failed(RpcError::OverlappingDemands))?,
@@ -274,7 +290,7 @@ async fn exchange(
         else {
             return Ok(());
         };
-        download(pipes, connection, stop, output, &reference).await
+        download(pipes, connection, stop, output, &reference, &turn).await
     };
     let input = send_input(
         pipes,
@@ -316,12 +332,15 @@ async fn download(
     stop: &CancellationToken,
     output: &mut CommandOutput<'_>,
     reference: &PipeRef,
+    turn: &tokio::sync::Mutex<()>,
 ) -> Result<(), ResidentError> {
     let mut unwritten = None;
     let result = async {
         let mut stream = pipes.resumed(reference, stop.clone()).await?;
         while let Some(chunk) = stream.next().await {
-            if let Err(error) = output.stdout(chunk?).await {
+            let chunk = chunk?;
+            let _turn = turn.lock().await;
+            if let Err(error) = output.stdout(chunk).await {
                 let reported = io::Error::other(error.to_string());
                 unwritten = Some(error);
                 return Err(reported);
@@ -335,6 +354,21 @@ async fn download(
         Some(error) => Err(ResidentError::failed(io::Error::other(error))),
         None => Ok(()),
     }
+}
+
+/// The bytes of a medium the pipe `reference` carries, at most
+/// [`MAX_MEDIUM_BYTES`]: a medium is held whole in memory.
+async fn medium_bytes(pipes: &PipeClient, stop: &CancellationToken, reference: &PipeRef) -> io::Result<Bytes> {
+    let mut bytes = Vec::new();
+    let mut stream = pipes.resumed(reference, stop.clone()).await?;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if (bytes.len() + chunk.len()) as u64 > MAX_MEDIUM_BYTES {
+            return Err(io::Error::other(format!("a medium is over {MAX_MEDIUM_BYTES} bytes")));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(Bytes::from(bytes))
 }
 
 async fn send_input(

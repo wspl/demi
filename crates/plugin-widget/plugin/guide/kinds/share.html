@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+<title>Orders by platform</title>
+<meta name="demi-frame" content="height: 248px"></head><body class="p-6">
+<div class="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle mb-4">Orders by platform</div>
+<div class="flex items-center gap-10">
+  <svg viewBox="0 0 120 120" class="size-[140px] -rotate-90 shrink-0" id="r"></svg>
+  <div class="grid grid-cols-[auto_auto] gap-x-6 gap-y-2.5 items-baseline" id="l"></div>
+</div>
+<script>
+const parts = [['Web', 48, 1], ['iOS', 34, 2], ['Android', 18, 3]]
+const svg = document.getElementById('r'), legend = document.getElementById('l')
+parts.forEach(([name, v, n], i) => {
+  const rad = 52 - i * 15, len = 2 * Math.PI * rad, color = `var(--color-series-${n})`
+  svg.insertAdjacentHTML('beforeend', `<circle cx="60" cy="60" r="${rad}" fill="none" stroke="color-mix(in oklch, ${color} 18%, transparent)" stroke-width="11"/>
+    <circle cx="60" cy="60" r="${rad}" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${len * v / 100} ${len}"/>`)
+  legend.insertAdjacentHTML('beforeend', `<span class="text-sm font-semibold" style="color:${color}">${name}</span><span class="text-[26px] leading-none font-bold tracking-tight text-fg-emphasis tabular-nums">${v}<span class="text-sm text-fg-subtle font-medium">%</span></span>`)
+})
+</script></body></html>

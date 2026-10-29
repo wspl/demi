@@ -55,7 +55,7 @@ mod web;
 
 pub use manifest::{
     Commands, Constant, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Manifest, Method, OAuth, Page,
-    Placement, PluginId, PluginIdError, Scope, State, Stream,
+    Placement, PluginId, PluginIdError, ReplyBlock, Scope, State, Stream,
 };
 pub use web::{
     SecretName, SecretNameError, StoredSecret, WebFailure, WebHeader, WebMethod, WebRequest,

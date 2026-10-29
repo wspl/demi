@@ -108,6 +108,20 @@
         "typescript": "^6.0.3",
       },
     },
+    "crates/plugin-widget/page": {
+      "name": "@demicodes/plugin-widget",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/browse": {
       "name": "@demicodes/browse",
       "version": "0.0.0",
@@ -185,6 +199,7 @@
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/plugin-web": "workspace:^",
+        "@demicodes/plugin-widget": "workspace:^",
         "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
@@ -217,6 +232,7 @@
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/plugin-web": "workspace:^",
+        "@demicodes/plugin-widget": "workspace:^",
         "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
@@ -476,6 +492,8 @@
     "@demicodes/plugin-skills": ["@demicodes/plugin-skills@workspace:crates/plugin-skills/page"],
 
     "@demicodes/plugin-web": ["@demicodes/plugin-web@workspace:crates/plugin-web/page"],
+
+    "@demicodes/plugin-widget": ["@demicodes/plugin-widget@workspace:crates/plugin-widget/page"],
 
     "@demicodes/protocol": ["@demicodes/protocol@workspace:packages/protocol"],
 

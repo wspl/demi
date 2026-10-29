@@ -100,7 +100,12 @@ export function productPageHost(): PageHost {
     )
   }
   return {
+    pages: () => PLUGIN_PAGES,
+    blockDocument: (plugin, tag, id) => `/api/plugins/${encodeURIComponent(plugin)}/blocks/${encodeURIComponent(tag)}/${encodeURIComponent(id)}`,
     userState: (plugin) => product.snapshot?.pluginStates?.[plugin],
+    // On once the backend has it on, as the page shows a switch at once and
+    // the backend serves its blocks only after; off at once either way.
+    enabled: (plugin) => pluginEnabled(product.snapshot, plugin) && pluginEnabled(product.read, plugin),
     followState: states.follow,
     async call(plugin, method, params, conversation, options) {
       const scope = conversation === null ? '' : `/conversations/${encodeURIComponent(conversation)}`

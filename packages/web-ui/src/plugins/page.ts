@@ -206,8 +206,21 @@ export interface PageWorkspace {
 }
 
 export interface PageHost {
+  /**
+   * The product's pages, whichever plugins the user has on: a reply drawn
+   * while a plugin is off still has its blocks' places, which the plugin's
+   * component tells it is off.
+   */
+  pages(): readonly AnyPluginPage[]
+  /**
+   * Where `plugin`'s reply block `tag` of `id` loads as a page of its own, its
+   * document in a sandboxed frame (`crates/backend-http/src/blocks.rs`).
+   */
+  blockDocument(plugin: string, tag: string, id: string): string
   /** The plugin's user state as the product state holds it, read reactively; undefined while there is none. */
   userState(plugin: string): unknown
+  /** Whether the user has `plugin` on, read reactively. */
+  enabled(plugin: string): boolean
   /** Follows the plugin's state of `conversation`, by its revision, until `stop`. */
   followState(plugin: string, conversation: string): StateFeed
   /**
@@ -331,9 +344,13 @@ export interface PagePlugin {
    * the page's schema. One that does not read is reported to the user.
    */
   state<T>(schema: z.ZodType<T>): ComputedRef<T | null>
+  /** Whether the user has the plugin on, as a reply block that shows while it is off reads. */
+  readonly enabled: ComputedRef<boolean>
   /** Calls a method of the user scope. */
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
   conversation(id: string): ConversationPlugin
+  /** Where the page's reply block `tag` of `id` loads as a page of its own. */
+  blockDocument(tag: string, id: string): string
 }
 
 /** What every component of a page reaches. */
@@ -459,6 +476,7 @@ export interface PanelKind<Data> {
     attachment?(payload: IntentPayloads['attachment'], current: Data | null): Data
     media?(payload: IntentPayloads['media'], current: Data | null): Data
     web?(payload: IntentPayloads['web'], current: Data | null): Data
+    block?(payload: IntentPayloads['block'], current: Data | null): Data
   }
 }
 
@@ -474,6 +492,21 @@ export interface PluginSettingsSection {
   sidebar?: true
 }
 
+/**
+ * A block a page draws in a reply: the reply's line `<tag id="w1" />`
+ * (`markdown/reply-block.ts`) is the place of `component`, with the page's
+ * context, and the props `id`, the line's id, and `facts`, what its plugin
+ * answered for the block and the transcript brought with the reply, null for
+ * a block the user does not have or whose facts did not come; and `open`,
+ * which opens the block whole in the work panel under a title through the
+ * `block` intent, absent where no panel opens it, as on a share.
+ */
+export interface ReplyBlock {
+  /** A lowercase word that no HTML element and no other page's block has, such as `widget`. */
+  tag: string
+  component: Component
+}
+
 /** What a page contributes to the shell. */
 export interface PluginPage {
   /** Its plugin's id, imported from its generated module. */
@@ -482,16 +515,34 @@ export interface PluginPage {
   settings?: PluginSettingsSection
   /** The kinds of tab it shows in the work panel. */
   kinds?: readonly PanelKind<unknown>[]
+  /** The blocks it draws in replies. */
+  blocks?: readonly ReplyBlock[]
 }
 
-/** A page, checked: its kinds' ids are its own once. */
+/** A page, checked: its kinds' ids and its blocks' tags are its own once. */
 export function definePage(page: PluginPage): PluginPage {
-  const ids = (page.kinds ?? []).map((kind) => kind.kind)
-  const repeated = ids.find((id, index) => ids.indexOf(id) !== index)
-  if (repeated !== undefined) {
-    throw new Error(`the page of ${page.plugin} declares the kind ${repeated} twice`)
+  for (const [what, names] of [['kind', (page.kinds ?? []).map((kind) => kind.kind)], ['block', (page.blocks ?? []).map((block) => block.tag)]] as const) {
+    const repeated = names.find((name, index) => names.indexOf(name) !== index)
+    if (repeated !== undefined) {
+      throw new Error(`the page of ${page.plugin} declares the ${what} ${repeated} twice`)
+    }
   }
   return page
+}
+
+/** A reply block and the page it is of. */
+export interface PageBlock {
+  page: AnyPluginPage
+  block: ReplyBlock
+}
+
+/**
+ * The reply blocks of the product's pages, by their tags; none where no page
+ * host is, as in a page without plugins.
+ */
+export function useReplyBlocks(): ComputedRef<ReadonlyMap<string, PageBlock>> {
+  const host = inject(PAGE_HOST, null)
+  return computed(() => new Map((host?.pages() ?? []).flatMap((page) => (page.blocks ?? []).map((block) => [block.tag, { page, block }] as const))))
 }
 
 /** Any page, as the registry lists them. */
@@ -721,9 +772,11 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
         onScopeDispose(() => settle(false))
         return computed(() => state.value.value)
       },
+      enabled: computed(() => host.enabled(page.plugin)),
       call: (method, params, result, options) =>
         validatedCall(host, page.plugin, method, params, result, null, options),
       conversation: (id) => conversationPlugin(host, page.plugin, id),
+      blockDocument: (tag, id) => host.blockDocument(page.plugin, tag, id),
     },
     intents: host.intents,
     panel: {
@@ -871,14 +924,19 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
   }
 }
 
-/** The kind of the first page the user has on that opens `intent`, or null. */
+/**
+ * The kind of the first page the user has on that opens `intent`, or null. A
+ * `block` intent for a block's `tag` opens only in a kind of the page that
+ * draws it.
+ */
 export function intentKind(
   pages: readonly AnyPluginPage[],
   enabled: (plugin: string) => boolean,
   intent: IntentName,
+  tag?: string,
 ): PanelKind<unknown> | null {
   for (const page of pages) {
-    if (!enabled(page.plugin)) {
+    if (!enabled(page.plugin) || (tag !== undefined && !(page.blocks ?? []).some((block) => block.tag === tag))) {
       continue
     }
     const kind = (page.kinds ?? []).find((candidate) => candidate.intents?.[intent])

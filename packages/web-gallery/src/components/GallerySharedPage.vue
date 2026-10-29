@@ -6,6 +6,7 @@ import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 import { galleryAttachment } from '../fixtures/attachments'
+import { galleryReplyBlock } from '../fixtures/widgets'
 import { SHARED_TITLE, sharedAnswerItems, sharedItems } from '../fixtures/shared'
 
 /**
@@ -31,6 +32,7 @@ const answer = whole(sharedAnswerItems())
           :history="conversation"
           load="ready"
           :attachment="galleryAttachment"
+          :reply-block="galleryReplyBlock"
         />
       </div>
     </GallerySpecimen>
@@ -41,6 +43,7 @@ const answer = whole(sharedAnswerItems())
           :history="answer"
           load="ready"
           :attachment="galleryAttachment"
+          :reply-block="galleryReplyBlock"
         />
       </div>
     </GallerySpecimen>

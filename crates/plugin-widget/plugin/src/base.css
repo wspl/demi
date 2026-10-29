@@ -1,0 +1,19 @@
+/* A widget's base sheet: no background, the reply's font and text color. */
+:root {
+  color-scheme: light;
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  color: var(--fg-body);
+  font-size: var(--widget-text, 15px);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}

@@ -36,17 +36,30 @@ struct PackageManifest {
 pub fn modules(repository: &Path, header: &str) -> Result<Vec<Directory>, Error> {
     // Each plugin with a page, as (plugin id, page package), in the
     // backend's order of registration.
-    let registered: Vec<(String, String)> = pages()
-        .into_iter()
-        .map(|(manifest, page)| (manifest.id.as_str().to_owned(), page.package))
+    let all = pages();
+    let registered: Vec<(String, String)> = all
+        .iter()
+        .map(|(manifest, page)| (manifest.id.as_str().to_owned(), page.package.clone()))
+        .collect();
+    // The pages that draw reply blocks, which a shared conversation's page
+    // shows without the product's others.
+    let drawing: Vec<(String, String)> = all
+        .iter()
+        .filter(|(_, page)| !page.blocks.is_empty())
+        .map(|(manifest, page)| (manifest.id.as_str().to_owned(), page.package.clone()))
         .collect();
     APPS.iter()
         .map(|(app, directory)| {
             let pages = pages_of(repository, app, &registered)?;
-            Ok((
-                (*directory).to_owned(),
-                vec![("pages.ts", module(header, &pages))],
-            ))
+            let mut files = vec![("pages.ts", module(header, &pages, "PLUGIN_PAGES", "The plugin pages this app shows"))];
+            if *app == "packages/web" {
+                let blocks = pages_of(repository, app, &drawing)?;
+                files.push(("blocks.ts", module(header, &blocks, "BLOCK_PAGES", "The plugin pages that draw blocks in replies, which a shared conversation's page shows")));
+            }
+            if *app == "packages/web-gallery" {
+                files.push(("widgets.ts", widgets(header)));
+            }
+            Ok(((*directory).to_owned(), files))
         })
         .collect()
 }
@@ -72,17 +85,15 @@ fn pages_of(
 }
 
 /// The module: one import per page, and the list in order.
-fn module(header: &str, pages: &[(String, String)]) -> String {
+fn module(header: &str, pages: &[(String, String)], name: &str, what: &str) -> String {
     let mut source = String::from(header);
     source.push_str("import type { AnyPluginPage } from \"@demicodes/plugin-sdk\"\n");
     for (plugin, package) in pages {
         writeln!(source, "import {} from \"{package}\"", binding(plugin))
             .expect("writing to a string");
     }
-    source.push_str(
-        "\n/** The plugin pages this app shows, in the order the backend registers their plugins. */\n",
-    );
-    source.push_str("export const PLUGIN_PAGES: readonly AnyPluginPage[] = [\n");
+    writeln!(source, "\n/** {what}, in the order the backend registers their plugins. */").expect("writing to a string");
+    writeln!(source, "export const {name}: readonly AnyPluginPage[] = [").expect("writing to a string");
     for (plugin, _) in pages {
         writeln!(source, "  {},", binding(plugin)).expect("writing to a string");
     }
@@ -106,4 +117,18 @@ fn binding(plugin: &str) -> String {
     }
     name.push_str("Page");
     name
+}
+
+/// The gallery's widgets: the guide's pages as a reply draws them, by the IDs
+/// its replies name them by (`demi_plugin_widget::specimens`).
+fn widgets(header: &str) -> String {
+    let mut module = String::from(header);
+    module.push_str("import type { FrameSize } from \"@demicodes/plugin-widget/generated/plugin\"\n\n");
+    module.push_str("/** The guide's pages as a reply draws them, by the IDs the gallery's replies name them by. */\n");
+    module.push_str("export const GALLERY_WIDGETS: Record<string, { frame: FrameSize; name: string; document: string }> = {\n");
+    for (id, widget) in demi_plugin_widget::specimens() {
+        let _ = writeln!(module, "  {id}: {widget},");
+    }
+    module.push_str("}\n");
+    module
 }

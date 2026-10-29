@@ -189,6 +189,12 @@ impl Plugin for Instance {
                     port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }
+                Request::ReplyBlocks { .. } | Request::ReplyBlockDocument { .. } => {
+                    Err(PluginError::undeclared("reply blocks"))
+                }
+                Request::ConversationDeleted { .. } | Request::ConversationForked { .. } => {
+                    Err(PluginError::undeclared("conversations"))
+                }
                 Request::PageState {
                     conversation: Some(_),
                     held: true,

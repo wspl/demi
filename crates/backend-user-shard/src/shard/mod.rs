@@ -128,6 +128,12 @@ pub struct Shard {
     sync_channels: TaskTracker,
     /// Fork requests, one at a time per destination id in lowercase.
     forks: KeyedSerialGate<String>,
+    /// The forks and deletions of the user's conversations, one at a time:
+    /// a fork holds it from reading its source until its plugins learn of
+    /// it, and a deletion from its records' end until its plugins learn of
+    /// that, so a plugin never removes what a fork of the deleted
+    /// conversation keeps.
+    lifecycle: SerialGate,
     /// Workspace deletions, one at a time, so two cannot each find another
     /// workspace left and delete the last's conversations.
     workspace_deletions: SerialGate,
@@ -240,6 +246,7 @@ impl Shard {
             tree_openers: TaskTracker::new(),
             sync_channels: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
+            lifecycle: SerialGate::new(),
             workspace_deletions: SerialGate::new(),
             cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
@@ -371,6 +378,10 @@ impl Shard {
 
     pub fn forks(&self) -> &KeyedSerialGate<String> {
         &self.forks
+    }
+
+    pub(crate) fn lifecycle(&self) -> &SerialGate {
+        &self.lifecycle
     }
 
     pub(crate) fn workspace_deletions(&self) -> &SerialGate {

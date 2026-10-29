@@ -1429,6 +1429,52 @@ pub struct InstallResult {
     pub path: String,
 }
 
+/// The largest document `draw` takes, which it holds whole in memory to load.
+pub const DRAW_HTML_BYTES: usize = 4 * 1024 * 1024;
+
+/// The tallest picture `draw` answers: a document that sizes itself by the
+/// viewport would otherwise grow without end.
+pub const DRAW_MAX_HEIGHT: u32 = 4000;
+
+input! {
+    /// `draw`: draws the HTML document it reads as its input, at most
+    /// `DRAW_HTML_BYTES`, in a browser of its own, which opens no tab of the
+    /// conversation's, and answers where its picture is. The document is no
+    /// argument: an invocation's arguments are metadata, which the command
+    /// protocol bounds well below a page's size.
+    pub struct DrawInput {
+        /// Its width in CSS pixels
+        #[garde(range(min = 120, max = 2400))]
+        pub width: u32,
+        /// Its height in CSS pixels; without it, the document's own, at most
+        /// `DRAW_MAX_HEIGHT`
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "u32")]
+        #[garde(inner(range(min = 1, max = DRAW_MAX_HEIGHT)))]
+        pub height: Option<u32>,
+    }
+}
+
+/// What `draw` answers: where on the Host its picture is, a PNG at twice
+/// the CSS pixels, which its caller reads as a Host file, since bulk bytes
+/// never travel in an answer. The next drawings remove it after
+/// `DRAWING_KEPT`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DrawResult {
+    pub path: String,
+    /// Its size in CSS pixels.
+    pub width: u32,
+    pub height: u32,
+    /// The height of the document's content in CSS pixels, the lowest bottom
+    /// of its body and its elements outside any that clips, which may pass
+    /// the picture's.
+    pub content_height: u32,
+}
+
+/// How long a drawing's picture stays on the Host for its caller to read.
+pub const DRAWING_KEPT: std::time::Duration = std::time::Duration::from_secs(600);
+
 input! {
     tab
     /// `capabilities`: lists what the page supports, such as WebMCP.
@@ -1616,6 +1662,7 @@ operations! {
     "webmcp.list" => WebmcpList(WebmcpListInput),
     "webmcp.call" => WebmcpCall(WebmcpCallInput),
     "install" => Install(InstallInput),
+    "draw" => Draw(DrawInput),
 }
 
 impl BrowserOperation {

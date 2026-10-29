@@ -1,3 +1,4 @@
+import type { ReplyBlockFacts } from '@demicodes/protocol'
 import { oneRunPerKey } from '@demicodes/utils'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { pageBeside, shownWindow } from '@demicodes/web-ui/agent/history'
@@ -47,7 +48,8 @@ export function sharedPage(page: SharedTranscriptPage): { start: number; length:
 /**
  * The reads of share `token`'s pages, from its latest back as the reader
  * scrolls, as a conversation's history reads its pages: `held` is what the page
- * holds, and `hold` takes what a read added. A page one read is fetching already
+ * holds, `hold` takes what a read added, and `describe` the facts of the
+ * reply blocks its texts name. A page one read is fetching already
  * is not fetched twice. Nothing streams to a share, so each page's length stands.
  */
 export function createShareReads(
@@ -55,6 +57,7 @@ export function createShareReads(
   signal: () => AbortSignal,
   held: () => HeldTranscript<SharedItem>,
   hold: (history: HeldTranscript<SharedItem>) => void,
+  describe: (blocks: readonly ReplyBlockFacts[]) => void,
 ) {
   const once = oneRunPerKey<string, void>()
   /** The edges of the window a page is being read for now. */
@@ -63,7 +66,9 @@ export function createShareReads(
   function read(query: URLSearchParams): Promise<void> {
     return once(String(query), async () => {
       const response = await apiRequest(`${sharePath(token)}/transcript?${query}`, { signal: signal() })
-      hold(addWindow(held(), sharedPage(await readResponse(response, sharedTranscriptPageSchema)), false))
+      const page = await readResponse(response, sharedTranscriptPageSchema)
+      describe(page.replyBlocks ?? [])
+      hold(addWindow(held(), sharedPage(page), false))
     })
   }
 

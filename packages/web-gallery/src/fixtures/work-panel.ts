@@ -34,6 +34,7 @@ import { SLOT_ROOT, createSlotChangeSet, type createGalleryProject } from './pro
 import { sharedHistory } from './history'
 import { galleryHistory } from './browser-history'
 import { browserPlugin, galleryPageHost } from './plugins'
+import { galleryWidgets } from './widgets'
 
 /**
  * The gallery project as the work panel's kinds read a conversation's files.
@@ -231,7 +232,7 @@ export function useGalleryWork(
     select(opened.selection)
   }
 
-  const host = galleryPageHost({ browser: browserPlugin(browser, plugin), mobile: mobile.plugin }, {
+  const host = galleryPageHost({ browser: browserPlugin(browser, plugin), mobile: mobile.plugin, widget: galleryWidgets }, {
     files,
     enabled,
     hostStarting: () => browser.hostStarting.value,

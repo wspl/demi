@@ -1,7 +1,7 @@
 //! Conversations as the web app creates, lists and follows them.
 
 use demi_conversation_lane_protocol::{
-    AgentCost, AgentEntry, BlockVersions, CacheChart, ConversationAttachment, Failures, Refusal,
+    AgentCost, AgentEntry, BlockVersions, CacheChart, ConversationAttachment, Failures, Refusal, ReplyBlockFacts,
     RequestOutput, SendMessage, ShellStatus, TurnSpeed, Version,
 };
 use demi_shared_types::{
@@ -566,6 +566,9 @@ pub struct TranscriptPage {
     /// The attachments its blocks name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ConversationAttachment>,
+    /// The reply blocks its blocks name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reply_blocks: Vec<ReplyBlockFacts>,
     /// The transcript's version at the read: the `transcript_patch` frames
     /// of its node that follow have the revision one past it, in the same
     /// epoch; none in a share.

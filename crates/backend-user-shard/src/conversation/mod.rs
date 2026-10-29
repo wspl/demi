@@ -63,7 +63,7 @@ use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
 
 pub use self::deletion::finish_deletions;
-pub use self::attachment_facts::{attachment_facts, reply_blocks};
+pub use self::attachment_facts::{attachment_facts, named_blocks, replies, reply_block_facts};
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub use self::idle_compaction::arm_idle_compactions;

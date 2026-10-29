@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+<title>Orders per week</title>
+<meta name="demi-frame" content="height: 362px">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script></head><body class="p-6">
+<div class="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle" id="hl">Orders · Q3</div>
+<div class="flex items-baseline gap-2 mt-0.5"><span id="hv" class="text-[34px] leading-none font-bold tracking-tight text-fg-emphasis tabular-nums">12,480</span></div>
+<div id="hn" class="text-xs text-fg-subtle mt-1 mb-4">Jul 1 – Sep 30 · vs 10,575 last year</div>
+<div class="relative h-[220px]"><canvas id="c"></canvas></div>
+<script>
+const css = getComputedStyle(document.documentElement)
+const token = (name) => css.getPropertyValue(name).trim()
+// The color at `pct`% opacity; a gradient between two of its opacities stays its hue.
+const mix = (color, pct) => `rgb(from ${color} r g b / ${pct / 100})`
+Chart.defaults.font.family = token('--font-sans')
+Chart.defaults.maintainAspectRatio = false
+Chart.defaults.plugins.legend.display = false
+// A reader who prefers less motion, and the screenshots, get the chart drawn at once.
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) Chart.defaults.animation = false
+const weeks = Array.from({ length: 13 }, (_, i) => `W${i + 27}`)
+const thisYear = [780, 812, 798, 850, 901, 880, 930, 962, 1010, 1104, 1180, 1215, 1240]
+const lastYear = [690, 700, 720, 705, 740, 760, 752, 780, 800, 815, 830, 845, 860]
+</script><script>
+const head = { label: document.getElementById('hl'), value: document.getElementById('hv'), note: document.getElementById('hn') }
+const rest = { label: head.label.textContent, value: head.value.textContent, note: head.note.textContent }
+const show = (label, value, note) => { head.label.textContent = label; head.value.textContent = value; head.note.textContent = note }
+const reset = () => show(rest.label, rest.value, rest.note)
+</script>
+<script>
+const accent = token('--color-accent-fill')
+const cursor = { id: 'cursor', afterDatasetsDraw(chart) {
+  const x = chart.ctx, active = chart.getActiveElements()[0], meta = chart.getDatasetMeta(0)
+  const p = active ? meta.data[active.index] : meta.data.at(-1)
+  x.save()
+  if (active) { x.strokeStyle = token('--color-fg-subtle'); x.lineWidth = 1; x.beginPath(); x.moveTo(p.x, chart.chartArea.top); x.lineTo(p.x, chart.chartArea.bottom); x.stroke() }
+  x.fillStyle = mix(accent, 25); x.beginPath(); x.arc(p.x, p.y, 9, 0, 7); x.fill()
+  x.fillStyle = accent; x.beginPath(); x.arc(p.x, p.y, 4, 0, 7); x.fill(); x.restore()
+} }
+const chart = new Chart(c, { type: 'line', plugins: [cursor],
+  data: { labels: weeks, datasets: [
+    { data: thisYear, borderColor: accent, borderWidth: 2.5, tension: 0.4, pointRadius: 0, pointHoverRadius: 0, fill: 'origin',
+      backgroundColor: (ctx) => { const a = ctx.chart.chartArea; if (!a) return 'transparent'; const g = ctx.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom); g.addColorStop(0, mix(accent, 38)); g.addColorStop(1, mix(accent, 0)); return g } },
+    { data: lastYear, borderColor: mix(token('--color-fg'), 28), borderWidth: 1.5, tension: 0.4, pointRadius: 0, pointHoverRadius: 0 } ] },
+  options: { interaction: { mode: 'index', intersect: false }, plugins: { tooltip: { enabled: false } },
+    onHover: (_, els) => { if (!els.length) return reset(); const i = els[0].index; show(`Week ${i + 27}`, thisYear[i].toLocaleString('en-US'), `${lastYear[i].toLocaleString('en-US')} the same week last year`) },
+    layout: { padding: { right: 10, top: 10 } }, scales: {
+    x: { grid: { display: false }, border: { display: false }, ticks: { color: token('--color-fg-subtle'), font: { size: 11 }, maxTicksLimit: 4 } },
+    y: { position: 'right', min: 600, grid: { color: token('--color-line-subtle') }, border: { display: false }, ticks: { color: token('--color-fg-subtle'), font: { size: 11 }, maxTicksLimit: 4 } } } } })
+c.addEventListener('mouseleave', reset)
+</script></body></html>

@@ -116,6 +116,41 @@ pub enum Request {
         conversation: ConversationId,
         device: DeviceId,
     },
+    /// The user deleted `conversation`, for a plugin that keeps something of
+    /// a conversation ([`crate::Manifest::conversations`]), on or off: it
+    /// lets that go. A deletion an earlier backend left pending is told
+    /// again when it finishes, so a plugin's answer to it is idempotent.
+    ConversationDeleted {
+        user: UserId,
+        conversation: ConversationId,
+    },
+    /// The user forked `from` into `conversation`, whose history names what
+    /// `from`'s did through the fork's point, for a plugin that keeps
+    /// something of a conversation, on or off.
+    ConversationForked {
+        user: UserId,
+        conversation: ConversationId,
+        from: ConversationId,
+    },
+    /// The facts of the reply blocks `ids` of the plugin's `tag`, which a
+    /// reply's data carries for the page's component to draw each with
+    /// before anything loads, such as a widget's frame and name. It reaches
+    /// the plugin on or off, as a block keeps its room while its plugin is
+    /// off; the plugin answers [`Reply::ReplyBlocks`]. A block's facts never
+    /// change: the backend sends them once and keeps none.
+    ReplyBlocks {
+        user: UserId,
+        tag: String,
+        ids: Vec<String>,
+    },
+    /// The HTML document of the reply block `id` of the plugin's `tag`, for
+    /// a tag its manifest says has one; the plugin answers
+    /// [`Reply::ReplyBlockDocument`].
+    ReplyBlockDocument {
+        user: UserId,
+        tag: String,
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -144,6 +179,14 @@ pub enum Reply {
     Project {
         found: Value,
         watch: Vec<WatchSubject>,
+    },
+    /// The facts of the reply blocks asked for by their ids, each null for a
+    /// block the user does not have; an id left out is answered as null.
+    ReplyBlocks { facts: Map<String, Value> },
+    /// A reply block's document; none for a block the user does not have.
+    ReplyBlockDocument {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document: Option<String>,
     },
 }
 

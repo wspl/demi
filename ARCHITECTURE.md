@@ -436,6 +436,7 @@ plugin-video -> plugin-media, plugin-interface, host-interface, shared-types
 plugin-audio -> plugin-media, plugin-interface, host-interface, shared-types
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
+plugin-widget -> plugin-interface, command-declarations, command-package-browser-protocol, command-protocol, host-interface, shared-types
 runner-client -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
 runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
 runner-host -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
@@ -457,7 +458,7 @@ backend-permissions -> command-declarations, shared-types, host-interface, backe
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, runner-client, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-lane-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, plugin-host, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-artifacts, shared-types, shared-gates, plugin-interface, runner-client, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol, provider-registry
 backend-http -> conversation-lane-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, runner-client, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, plugin-host, plugin-interface, provider-registry
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-bytedance, provider-common, provider-elevenlabs, provider-minimax, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video, plugin-audio, provider-registry
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-bytedance, provider-common, provider-elevenlabs, provider-minimax, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video, plugin-audio, plugin-widget, provider-registry
 machine-manager -> shared-artifacts, shared-cli, shared-types, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli, shared-types, web-api-protocol
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
@@ -466,7 +467,7 @@ command-package-fetch -> command-protocol, command-sdk, command-package-fetch-pr
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli, shared-openh264, shared-recording, shared-recording-protocol
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
 command-package-mobile -> command-package-mobile-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-cli, shared-h264, shared-openh264, shared-recording, shared-recording-protocol, shared-types
-xtask -> conversation-lane-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, provider-registry, provider-common, plugin-interface
+xtask -> conversation-lane-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, provider-registry, provider-common, plugin-interface, plugin-widget
 ```
 
 ### TypeScript packages
@@ -484,10 +485,11 @@ plugin-browser -> plugin-sdk, utils
 plugin-mobile -> plugin-sdk, utils
 plugin-changes -> plugin-sdk
 plugin-file-browser -> plugin-sdk
+plugin-widget -> plugin-sdk
 plugin-skills -> plugin-sdk
 plugin-web -> plugin-sdk
-web -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-mobile, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
+web -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-mobile, plugin-sdk, plugin-skills, plugin-web, plugin-widget, protocol, utils, web-ui
 browse -> web
-web-gallery -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-mobile, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
+web-gallery -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-mobile, plugin-sdk, plugin-skills, plugin-web, plugin-widget, protocol, utils, web-ui
 site -> protocol, web-gallery, web-ui
 ```
