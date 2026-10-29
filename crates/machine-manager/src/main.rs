@@ -131,7 +131,7 @@ mod service {
         preflight, recovery,
         sandbox::cgroup,
         server::{self, Socket},
-        storage::{base, durable, state, store::ImageStore},
+        storage::{base, durable, room, state, store::ImageStore},
         tools::Tools,
     };
     use demi_shared_types::LogLine;
@@ -201,6 +201,8 @@ mod service {
             return Ok(());
         }
         preflight::require_root()?;
+        let data = config.data.clone();
+        blocking::run(move |off| room::require_mounted(off, &data)).await?;
         if config.mode == Mode::Import {
             return import(config).await;
         }

@@ -53,7 +53,8 @@
 //!   larger one keeps its size, since shrinking a filesystem risks its data.
 //! - A full filesystem gets `ENOSPC` like any full disk and its working data
 //!   stays as it was.
-//! - The host's own free space is promised by no capacity.
+//! - The host's own free space is promised by no capacity; a large write the
+//!   store makes checks it first (`room`).
 //!
 //! # Checkpoints
 //!
@@ -91,6 +92,8 @@ pub mod base;
 pub mod clone;
 pub mod durable;
 pub mod ext4;
+#[cfg(target_os = "linux")]
+pub mod room;
 #[cfg(target_os = "linux")]
 pub mod skeleton;
 pub mod state;

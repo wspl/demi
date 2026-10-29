@@ -199,7 +199,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     step("Checking the machine");
     let manager = machine()?;
     if !options.no_packages {
-        step("Installing e2fsprogs, bsdtar and nftables");
+        step("Installing e2fsprogs, xfsprogs, bsdtar and nftables");
         manager.install()?;
     }
     require_tools()?;
@@ -215,8 +215,9 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     step("Fetching the gVisor runtime it pins");
     gvisor::of_release(layout, &version)?;
 
+    step("Making the Cloud store");
+    crate::store::make(&options.cloud_data)?;
     step("Checking that this machine can run Cloud");
-    std::fs::create_dir_all(&options.cloud_data)?;
     let release = layout.release(&version);
     let checked = settings
         .command(Path::new("unshare"))
@@ -389,17 +390,17 @@ impl PackageManager {
                 let mut command = Command::new("apt-get");
                 command
                     .env("DEBIAN_FRONTEND", "noninteractive")
-                    .args(["install", "-y", "-q", "e2fsprogs", "libarchive-tools", "nftables"]);
+                    .args(["install", "-y", "-q", "e2fsprogs", "xfsprogs", "libarchive-tools", "nftables"]);
                 command
             }
             Self::Dnf => {
                 let mut command = Command::new("dnf");
-                command.args(["install", "-y", "-q", "e2fsprogs", "bsdtar", "nftables"]);
+                command.args(["install", "-y", "-q", "e2fsprogs", "xfsprogs", "bsdtar", "nftables"]);
                 command
             }
             Self::Pacman => {
                 let mut command = Command::new("pacman");
-                command.args(["-S", "--needed", "--noconfirm", "e2fsprogs", "libarchive", "nftables"]);
+                command.args(["-S", "--needed", "--noconfirm", "e2fsprogs", "xfsprogs", "libarchive", "nftables"]);
                 command
             }
         };
@@ -413,7 +414,7 @@ impl PackageManager {
 
 /// Requires the programs the machine manager runs.
 fn require_tools() -> Result<(), Box<dyn std::error::Error>> {
-    let missing: Vec<&str> = ["mke2fs", "e2fsck", "resize2fs", "bsdtar", "nft"]
+    let missing: Vec<&str> = ["mke2fs", "e2fsck", "resize2fs", "mkfs.xfs", "bsdtar", "nft"]
         .into_iter()
         .filter(|tool| which::which(tool).is_err())
         .collect();

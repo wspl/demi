@@ -257,7 +257,13 @@ impl Sandbox {
     /// The frozen window of a checkpoint, as one blocking job: freeze both
     /// filesystems, copy both working images into `stage` and sync the
     /// copies, then thaw. The guard thaws on every path, a panic included.
-    pub async fn capture(&self, working: &WorkingPair, stage: &Path) -> Capture {
+    /// A copy that shares no extents first asks `room` for its bytes.
+    pub async fn capture(
+        &self,
+        working: &WorkingPair,
+        stage: &Path,
+        mut room: impl FnMut(&OffLoop, u64) -> io::Result<crate::storage::room::Reserved> + Send + 'static,
+    ) -> Capture {
         let directory = self.directory.clone();
         let images = working.images();
         let copies = ImagePair::in_directory(stage);
@@ -268,7 +274,7 @@ impl Sandbox {
                     frozen.freeze(&directory.volume(volume))?;
                 }
                 for volume in Volume::ALL {
-                    clone_sparse(off, images.get(volume), copies.get(volume))?;
+                    clone_sparse(off, images.get(volume), copies.get(volume), &mut room)?;
                     sync(off, copies.get(volume))?;
                 }
                 Ok(())

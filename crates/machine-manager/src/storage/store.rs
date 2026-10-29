@@ -121,6 +121,42 @@ impl ImageStore {
         Self { root }
     }
 
+    /// The store's directory, `<data>/images`.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Removes every generation of `device` but its committed one, as the
+    /// room for a large write asks (`crate::storage::room`); answers whether
+    /// it removed any.
+    pub fn drop_fallback(&self, off: &OffLoop, device: &DeviceId) -> Result<bool, StoreError> {
+        let Some(current) = self.read(off, device)? else {
+            return Ok(false);
+        };
+        let generations = self.root.join(device).join("generations");
+        let mut dropped = false;
+        for entry in fs_err::read_dir(&generations)? {
+            let entry = entry?;
+            if entry.file_name() == current.generation.as_str() || !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let bytes = allocated(&entry.path())?;
+            remove_tree(off, &entry.path())?;
+            dropped = true;
+            tracing::info!(
+                event = "cloud_save.dropped_for_room",
+                device = %device,
+                generation = %entry.file_name().to_string_lossy(),
+                bytes,
+                "a Cloud's previous save was dropped to make room for a large write"
+            );
+        }
+        if dropped {
+            sync(off, &generations)?;
+        }
+        Ok(dropped)
+    }
+
     /// Imported bases: `<data>/images/bases`.
     pub fn bases(&self) -> PathBuf {
         self.root.join("bases")
@@ -228,4 +264,15 @@ fn stage_generation(
     }
     write_json(off, &stage.join("manifest.json"), state)?;
     sync(off, stage)
+}
+
+/// The bytes the files directly in `directory` take on disk; a file that
+/// shares its extents counts them all.
+fn allocated(directory: &Path) -> io::Result<u64> {
+    let mut total = 0u64;
+    for entry in fs_err::read_dir(directory)? {
+        let metadata = entry?.metadata()?;
+        total = total.saturating_add(std::os::unix::fs::MetadataExt::blocks(&metadata).saturating_mul(512));
+    }
+    Ok(total)
 }

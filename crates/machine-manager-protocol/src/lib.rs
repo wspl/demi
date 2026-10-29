@@ -37,6 +37,7 @@
 
 pub mod image;
 pub mod runtime;
+pub mod store;
 mod state;
 mod wire;
 
@@ -67,3 +68,11 @@ pub use wire::{
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
     SandboxMachine, WakeParams, decode_request, decode_response, encode_line,
 };
+
+/// The room a large write to a server's disk leaves free: the backend's
+/// databases and logs keep writing while it runs, and a full disk breaks them,
+/// as the search index and the system log broke on a server whose disk a
+/// checkpoint and an update's preparation filled together. The machine
+/// manager's writes to its store and `demi-server`'s fetch of a release check
+/// for it.
+pub const ROOM_RESERVE: u64 = 2 << 30;

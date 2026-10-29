@@ -9,11 +9,11 @@ use std::{
 };
 
 use linux_raw_sys::loop_device::{
-    LO_FLAGS_AUTOCLEAR, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, loop_config,
+    LO_FLAGS_AUTOCLEAR, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, LOOP_SET_DIRECT_IO, loop_config,
 };
 use rustix::{
     io::Errno,
-    ioctl::{Ioctl, IoctlOutput, Opcode, Setter},
+    ioctl::{IntegerSetter, Ioctl, IoctlOutput, Opcode, Setter},
 };
 
 use super::failed;
@@ -62,6 +62,17 @@ unsafe impl Ioctl for GetFree {
     ) -> rustix::io::Result<u32> {
         u32::try_from(out).map_err(|_| Errno::RANGE)
     }
+}
+
+/// Has the attached loop device `device` read and write its backing file
+/// with direct I/O, so the file's pages are not cached a second time beside
+/// the filesystem's on it.
+pub fn set_direct_io(_: &OffLoop, device: &Path) -> io::Result<()> {
+    let opened = fs_err::OpenOptions::new().read(true).open(device)?;
+    // SAFETY: LOOP_SET_DIRECT_IO takes its argument by value, 1 to turn
+    // direct I/O on.
+    unsafe { rustix::ioctl::ioctl(opened.as_fd(), IntegerSetter::<{ LOOP_SET_DIRECT_IO }>::new_usize(1)) }
+        .map_err(|error| failed("turning direct I/O on for", device, error))
 }
 
 /// Attaches `image` to a free loop device with auto-clear set.

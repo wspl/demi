@@ -123,6 +123,7 @@ pub async fn fetch(
     let archives = [server_asset(version, architecture), image_asset(version, architecture)];
     let names = [SUMS.to_owned(), archives[0].clone(), archives[1].clone()];
     let mut downloads = Downloads::new(source, version, &names).await?;
+    crate::data::ensure_room(&releases, downloads.bytes, &format!("the download of {version}"))?;
     let mut downloaded = |done, total| progress(Fetched::Downloading { done, total });
     let sums = obtain(source, version, SUMS, stage.path(), cancel, &mut downloads, &mut downloaded).await?;
     let mut paths = Vec::new();
@@ -132,6 +133,12 @@ pub async fn fetch(
     progress(Fetched::Downloaded { bytes: downloads.done });
     let sums = std::fs::read_to_string(sums)?;
     let sums = parse_sums(&sums)?;
+    let mut unpacked = 0;
+    for (asset, path) in archives.iter().zip(&paths) {
+        let file = std::fs::File::open(path)?;
+        unpacked += if asset.ends_with(".zst") { unpacked_bytes(zstd::Decoder::new(file)?)? } else { unpacked_bytes(file)? };
+    }
+    crate::data::ensure_room(&releases, unpacked, &format!("unpacking {version}"))?;
     let root = stage.path().join("root");
     std::fs::create_dir(&root)?;
     let total = paths.iter().map(|path| std::fs::metadata(path).map(|metadata| metadata.len())).sum::<io::Result<u64>>()?;
@@ -264,6 +271,18 @@ fn parse_sums(text: &str) -> io::Result<Vec<(&str, String)>> {
             Ok((name, sum.to_ascii_lowercase()))
         })
         .collect()
+}
+
+/// The bytes a tar stream's members take once unpacked, each in whole
+/// blocks of 4 KiB with a block for its own record.
+fn unpacked_bytes(reader: impl Read) -> io::Result<u64> {
+    const BLOCK: u64 = 4096;
+    let mut archive = tar::Archive::new(reader);
+    let mut bytes = 0u64;
+    for entry in archive.entries()? {
+        bytes = bytes.saturating_add(entry?.size().div_ceil(BLOCK).saturating_add(1).saturating_mul(BLOCK));
+    }
+    Ok(bytes)
 }
 
 /// Unpacks a tar stream into `into`, which only regular files, directories

@@ -42,6 +42,7 @@ use rustix::fs::{Mode, OFlags, ResolveFlags};
 use sha2::Digest as _;
 
 use super::{
+    room,
     archive::{self, ArchiveError},
     durable::{create_private, remove_tree, sync, write_json},
     store::{StoreError, read_state},
@@ -86,6 +87,17 @@ pub enum BaseError {
     },
     #[error(transparent)]
     Store(#[from] StoreError),
+    #[error(transparent)]
+    NoRoom(#[from] room::NoRoom),
+}
+
+impl From<room::RoomError> for BaseError {
+    fn from(error: room::RoomError) -> Self {
+        match error {
+            room::RoomError::NoRoom(refused) => Self::NoRoom(refused),
+            room::RoomError::Io(error) => Self::Io(error),
+        }
+    }
 }
 
 /// The release of the runner that the imported base at `base` embeds,
@@ -322,6 +334,9 @@ fn prepare(off: &OffLoop, image: &Path, bases: &Path) -> Result<Prepared, BaseEr
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
+    // An import frees nothing to make its room: the bases a Cloud stands on
+    // stay, and no Cloud's save goes for it.
+    let _reserved = room::ensure(off, bases, manifest.rootfs.size, |_| Ok(false))?;
     let stage = bases.join(format!(".base-{}", uuid::Uuid::new_v4()));
     fs_err::create_dir_all(stage.join("rootfs"))?;
     let copied = copy_verified(&image.join(manifest.rootfs.file.name()), &stage, &manifest);
@@ -375,7 +390,13 @@ fn copy_verified(
 async fn extract(tools: &Tools, release: &Release, stage: &Path) -> Result<(), BaseError> {
     let archive = stage.join(release.manifest.rootfs.file.name());
     let vetted = archive.clone();
-    blocking::run(move |off| archive::vet(off, &vetted)).await?;
+    let root = stage.to_owned();
+    // The unpacked bytes count as taken until the extraction ends.
+    let _reserved = blocking::run(move |off| -> Result<room::Reserved, BaseError> {
+        let bytes = archive::vet(off, &vetted)?;
+        Ok(room::ensure(off, &root, bytes, |_| Ok(false))?)
+    })
+    .await?;
     let root = stage.join("rootfs");
     let args = [
         "-xpf".as_ref(),
