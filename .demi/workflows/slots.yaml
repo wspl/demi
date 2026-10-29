@@ -11,8 +11,9 @@ instructions: |
   - The work waiting to be done is the decision records that are not built yet: a record on an `origin/feat/NNNN-*` branch that `origin/main` does not hold, and that no row of the board names.
 
   Branches
-  - A branch starts from `origin/main` after a `git fetch`. A new decision record takes the next number that neither `origin/main`, nor a branch on origin, nor the board has taken.
-  - Merge on `origin/main` only when the user approves, then delete the branch on origin and run `bun xtask sweep` in your slot.
+  - Your slot works on the long-lived branch `feat/integrations`: every change you make, a fix to main's code included, is a commit on it, and nothing of it merges on `origin/main`. Rebase it on `origin/main` from time to time and push it with `--force-with-lease`.
+  - A new decision record takes the next number that neither `origin/main`, nor a branch on origin, nor the board has taken.
+  - This section holds only on `feat/integrations`: the commit that writes it is dropped before the branch merges on `origin/main`.
 
   Review before a commit
   1. Before you commit code, the review profile reads the change once: the uncommitted diff in your slot against `origin/main`. A commit of documents, styles or UI text alone has no review.
