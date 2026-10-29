@@ -17,6 +17,8 @@ bench = false
 async-compression = { version = "0.4", features = ["tokio", "zstd"] }
 bytes.workspace = true
 futures-util.workspace = true
+# When GitHub published a release (`releases::Published`).
+jiff.workspace = true
 # `zstd`: a command executable arrives in zstd content coding
 # (`crates/backend-runners/src/publication.rs`).
 reqwest = { workspace = true, features = ["rustls", "stream", "zstd"] }

@@ -373,8 +373,8 @@ const sidebarUpdate = computed<SidebarUpdate | null>(() => {
   if (upgrade.run.state === 'updating') {
     return { state: 'running' }
   }
-  const version = updateOffered(upgrade)
-  return version === null ? null : { state: 'available', version }
+  const offered = updateOffered(upgrade)
+  return offered === null ? null : { state: 'available', version: offered.version }
 })
 const account = computed(() => ({
   id: resources.userId,

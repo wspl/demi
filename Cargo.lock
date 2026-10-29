@@ -3429,6 +3429,7 @@ dependencies = [
  "async-compression",
  "bytes",
  "futures-util",
+ "jiff",
  "reqwest",
  "semver",
  "serde",
