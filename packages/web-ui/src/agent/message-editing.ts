@@ -183,9 +183,9 @@ export function lastEditableUserMessageId(blocks: readonly MessageListBlock[]): 
 }
 
 /**
- * The message the page offers to edit, and to regenerate the answer of: the
- * last `user` block, while the conversation is idle and nothing waits to be
- * sent; null when none is offered.
+ * The message the page offers to edit: the last `user` block, while nothing
+ * waits to be sent, and the conversation is idle or runs that message's
+ * turn, which the edit stops; null when none is offered.
  */
 export function offeredEditId(conversation: {
   blocks: readonly MessageListBlock[]
@@ -193,10 +193,29 @@ export function offeredEditId(conversation: {
   queue: readonly unknown[]
   pendingSteers: readonly unknown[]
 }): string | null {
-  if (conversation.phase !== 'idle' || conversation.queue.length || conversation.pendingSteers.length) {
+  if (conversation.queue.length || conversation.pendingSteers.length) {
     return null
   }
-  return lastEditableUserMessageId(conversation.blocks)
+  if (conversation.phase === 'idle') {
+    return lastEditableUserMessageId(conversation.blocks)
+  }
+  return conversation.phase === 'running' ? runningMessageId(conversation.blocks) : null
+}
+
+/**
+ * The last `user` block when the running turn is its own: no message of
+ * another turn, a user's, an agent's or a command's report, comes after it.
+ */
+function runningMessageId(blocks: readonly MessageListBlock[]): string | null {
+  const at = blocks.findLastIndex((block) => block.type === 'user')
+  const message = blocks[at]
+  if (message?.type !== 'user') {
+    return null
+  }
+  const later = blocks.slice(at + 1).some((block) =>
+    (block.type === 'agent_message' || block.type === 'wakeup' || block.type === 'starting_message') &&
+    (!('turnId' in block) || block.turnId !== message.turnId))
+  return later ? null : message.id
 }
 
 const editLastMessageKey: InjectionKey<() => (() => void) | undefined> = Symbol('edit-last-message')
@@ -288,6 +307,8 @@ export interface MessageEditHost {
   get(): MessageEditState | null
   set(state: SentMessageEdit | null): void
   send(request: MessageEditRequest, regenerate: boolean): Promise<void>
+  /** The transcript's version the page shows now, which an edit is sent against. */
+  version?(): Version | null
 }
 
 /**
@@ -299,7 +320,15 @@ export async function submitMessageEdit(host: MessageEditHost): Promise<void> {
     return
   }
   const regenerate = draft.phase === 'uncertain' && draft.regenerate === true
-  await sendMessageEdit(host, plainCopy(draft.request), regenerate ? 'regenerating' : 'sending')
+  const request = plainCopy(draft.request)
+  // An edit opened while its message's turn ran is sent against what the
+  // page shows now, the answer having grown or ended since; a retry keeps
+  // the request it first sent.
+  const now = draft.phase === 'editing' ? host.version?.() : null
+  if (now) {
+    request.version = plainCopy(now)
+  }
+  await sendMessageEdit(host, request, regenerate ? 'regenerating' : 'sending')
 }
 
 /**

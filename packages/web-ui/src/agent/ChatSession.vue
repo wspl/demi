@@ -685,7 +685,8 @@ function regenerate(id: string): void {
 // Up Arrow in an empty composer opens the editor on the offered message.
 provideEditLastMessage(() => {
   const id = offeredId.value
-  return id === null ? undefined : () => editUser(id)
+  // Only the message's own Edit opens the editor while its turn runs.
+  return id === null || props.conversation.phase !== 'idle' ? undefined : () => editUser(id)
 })
 const list = ref<{
   isAtBottom: boolean

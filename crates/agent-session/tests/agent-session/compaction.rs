@@ -889,9 +889,11 @@ async fn stop_during_a_summary_closes_the_copy_and_ends_the_action_as_stopped() 
 
     assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
     assert_eq!(running.await, Ok(ActionEnd::Aborted));
+    // Nothing of the answer showed: the message goes back to the composer.
+    assert_eq!(stopped.given_back.map(|message| message.id), Some(turn("t2")));
     assert_eq!(
         kinds(&session.history().await.unwrap().blocks),
-        ["user", "text", "response", "user", "abort"]
+        ["user", "text", "response"]
     );
     // The turn's own request never went out.
     assert_eq!(provider.requests().len(), 2);
@@ -1214,12 +1216,15 @@ async fn a_send_stopped_while_its_switch_compacts_keeps_its_message_before_the_s
 
     assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
     assert_eq!(running.await, Ok(ActionEnd::Aborted));
+    // Nothing of the answer showed: the message goes back to the composer.
+    let given_back = stopped.given_back.expect("the stop gives the message back");
+    assert_eq!(given_back.id, turn("t3"));
+    assert_eq!(given_back.content, text("short"));
     let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
-        ["user", "text", "response", "user", "text", "response", "user", "abort"]
+        ["user", "text", "response", "user", "text", "response"]
     );
-    assert!(matches!(&blocks[6], Block::User(user) if user.turn_id == turn("t3")));
 }
 
 #[tokio::test(flavor = "local")]

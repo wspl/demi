@@ -1470,6 +1470,8 @@ const editHost: MessageEditHost = {
   get: () => messageEdit.value,
   set: (state) => { messageEdit.value = state },
   send: async (request) => {
+    // An edit of the message whose turn runs stops the turn first.
+    sessionFlow.stopForEdit()
     const blocks = session.blocks
     const index = blocks.findIndex((block) => block.id === request.targetBlockId)
     if (index < 0) {

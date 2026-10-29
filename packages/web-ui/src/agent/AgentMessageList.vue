@@ -277,7 +277,8 @@ const editableUserId = computed(() => props.readOnly || !props.latest ? null : o
  */
 const regenerateId = computed(() => {
   const target = editableUserId.value
-  if (target === null) {
+  // An answer under way has no Regenerate: Edit or Stop stops it.
+  if (target === null || props.phase !== 'idle') {
     return null
   }
   const blocks = visibleBlocks.value

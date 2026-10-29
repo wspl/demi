@@ -1302,18 +1302,34 @@ impl AgentSession {
         operation: &demi_shared_types::OperationId,
         digest: &str,
         version: &Version,
+        target: &BlockId,
     ) -> Result<EditCheck, EditError> {
         self.shared
-            .read(|core| core.check_edit(operation, digest, version))
+            .read(|core| core.check_edit(operation, digest, version, target))
     }
 
     /// Replaces a user message and everything after it; returns at durable
     /// acceptance, and the replacement's turn runs on. An operation
     /// accepted before returns its receipt again.
+    ///
+    /// An edit of the running turn's message stops the turn first, and is
+    /// made against the transcript the stop left, whose change since the
+    /// page's view is all after the message it replaces.
     pub async fn edit_and_send(
         &self,
-        submission: EditSubmission,
+        mut submission: EditSubmission,
     ) -> Result<demi_agent_store::EditReceipt, EditError> {
+        if let Some(cancel) = self.shared.update(|core| core.stop_for_edit(&submission.target)) {
+            cancel.recorded().await;
+            // The stopped turn's closing save ends before an edit is admitted.
+            self.settled().await;
+            // A message that came meanwhile and ran is kept: the edit made
+            // against what the page showed is stale.
+            if !self.shared.read(|core| core.is_last_message(&submission.target)) {
+                return Err(EditError::Stale);
+            }
+            submission.version = self.shared.read(|core| core.transcript.version());
+        }
         match self.shared.update(|core| core.admit_edit(submission))? {
             EditCheck::Accepted(receipt) => Ok(receipt),
             EditCheck::InFlight(acceptance) => accepted(acceptance).await,
@@ -1484,17 +1500,23 @@ impl AgentSession {
     /// `abort` would stop more is read when the stop is recorded.
     pub async fn abort(&self) -> AbortResult {
         match self.shared.update(SessionCore::abort_step) {
-            AbortStep::Running { target, cancel } => AbortResult {
-                target: Some(target),
-                can_abort_again: cancel.recorded().await,
-            },
+            AbortStep::Running { target, cancel } => {
+                let can_abort_again = cancel.recorded().await;
+                AbortResult {
+                    target: Some(target),
+                    can_abort_again,
+                    given_back: cancel.take_given_back(),
+                }
+            }
             AbortStep::Removed(target) => AbortResult {
                 target: Some(target),
                 can_abort_again: self.shared.read(SessionCore::can_abort_again),
+                given_back: None,
             },
             AbortStep::Nothing => AbortResult {
                 target: None,
                 can_abort_again: false,
+                given_back: None,
             },
         }
     }

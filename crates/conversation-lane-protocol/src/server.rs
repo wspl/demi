@@ -487,7 +487,7 @@ serde_plain::derive_display_from_serialize!(AgentCode);
 
 /// What an `abort` stopped, and whether another `abort` would stop more.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
 )]
 #[serde(rename_all = "camelCase")]
 pub struct AbortResult {
@@ -498,6 +498,12 @@ pub struct AbortResult {
     pub target: Option<AbortTarget>,
     #[garde(skip)]
     pub can_abort_again: bool,
+    /// The message of the turn the abort stopped before it wrote anything
+    /// of its answer, which leaves the transcript for the composer of the
+    /// page that stopped it; omitted otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub given_back: Option<demi_shared_types::QueuedMessage>,
 }
 
 /// The one thing an `abort` stops, in the order it looks for one.
