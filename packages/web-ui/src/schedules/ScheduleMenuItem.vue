@@ -22,7 +22,8 @@ import { lastWakeReason, triggerWords, wakeWords } from './words'
  *   skipped stand at the start; the time from now stands before the switch in
  *   the menu's value column, so the times of all rows line up. A row that is
  *   off is faded and has no time. Over the pointer's row, Delete takes the
- *   time's place, as Mail shows a row's actions over its date.
+ *   time's place, as Mail shows a row's actions over its date; a row with no
+ *   time shows Delete over the end of its text.
  * - On a phone the name and the time share the first line, as Mail's rows do;
  *   the trigger is the second line and the reason the third, and the switch
  *   stands at the end. Swiping the row to the left lays a Delete bare.
@@ -85,18 +86,25 @@ const { offset, dragging, start, tap } = useSwipeDelete()
       <span class="flex items-center" :class="phone ? 'pl-2' : 'relative'" @click.stop>
         <!--
           Delete stands over the time's place, just before the switch, over the
-          pointer's row.
+          pointer's row. A row that is off has no time, so Delete stands over the
+          end of its text instead, on the row's own fill that fades in over the
+          text, as a sidebar's row actions do: the menu never widens for it.
         -->
-        <Tooltip v-if="!phone && !archived" :content="t('delete')">
-          <IconButton
-            :icon="Trash2"
-            size="xs"
-            variant="ghost"
-            :aria-label="t('delete')"
-            class="absolute right-full top-1/2 mr-2 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
-            @click="emit('delete')"
-          />
-        </Tooltip>
+        <span
+          v-if="!phone && !archived"
+          class="absolute right-full top-1/2 flex -translate-y-1/2 items-center pr-2 pl-4 opacity-0 transition-opacity group-hover/row:opacity-100 has-focus-visible:opacity-100"
+          style="background: linear-gradient(to right, transparent, var(--surface-current) 1rem)"
+        >
+          <Tooltip :content="t('delete')">
+            <IconButton
+              :icon="Trash2"
+              size="xs"
+              variant="ghost"
+              :aria-label="t('delete')"
+              @click="emit('delete')"
+            />
+          </Tooltip>
+        </span>
         <Switch
           :model-value="!schedule.paused"
           size="sm"
@@ -124,9 +132,9 @@ const { offset, dragging, start, tap } = useSwipeDelete()
 </template>
 
 <style>
-/* Over the pointer's row the time gives way to Delete, and keeps its room. */
+/* Over the pointer's row, or the keyboard's, the time gives way to Delete, and keeps its room. */
 .schedule-menu-row:hover .menu-cell-value,
-.schedule-menu-row:focus-within .menu-cell-value {
+.schedule-menu-row:has(:focus-visible) .menu-cell-value {
   visibility: hidden;
 }
 
