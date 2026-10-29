@@ -144,6 +144,10 @@ async fn revalidated_shared_page(path: PathBuf, policy: String, request: Request
 /// is percent-encoded, so nothing in the address reaches the policy as a
 /// separator or another path.
 ///
+/// A frame may show only the share's routes and the links of the blocks they
+/// send it on to: a plugin's reply block, such as a widget, is a page they
+/// serve with its own sandbox.
+///
 /// Styles may be inline: the transcript's Markdown renders KaTeX and sized
 /// media with `style` attributes, and a style cannot run code. Fonts and
 /// images may be `data:` URLs, as the build inlines its smallest fonts and the
@@ -160,9 +164,15 @@ fn shared_page_policy(token: &str, public: Option<&url::Url>) -> String {
         _ => "'none'".to_owned(),
     };
     let media = routes.as_deref().map(|routes| format!("{routes} ")).unwrap_or_default();
+    // A reply block's document, a page of its own the share's routes serve.
+    let blocks = public.and_then(|public| public.join("api/blocks/").ok());
+    let frames = match (&routes, &blocks) {
+        (Some(routes), Some(blocks)) => format!("{routes} {blocks}"),
+        _ => "'none'".to_owned(),
+    };
     format!(
         "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \
-         img-src {media}blob: data:; media-src {media}blob:; connect-src {connect}; \
+         img-src {media}blob: data:; media-src {media}blob:; frame-src {frames}; connect-src {connect}; \
          base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     )
 }

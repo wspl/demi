@@ -1498,6 +1498,7 @@ export class ConversationClient {
       version: { ...frame.version },
       failures: frame.failures ?? {},
       attachments: frame.attachments ?? [],
+      replyBlocks: frame.replyBlocks ?? [],
     })
     if (root) {
       this.followSends()
@@ -1633,6 +1634,7 @@ export class ConversationClient {
       versions: read.versions ?? [],
       failures: read.failures ?? {},
       attachments: read.attachments ?? [],
+      replyBlocks: read.replyBlocks ?? [],
       instructions: read.instructions ?? [],
       summaries: read.summaries ?? [],
       asked: vouched ? read.start : undefined,

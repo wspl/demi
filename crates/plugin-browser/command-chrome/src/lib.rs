@@ -1,12 +1,13 @@
-//! The conversation browser's Chrome, in five layers, each a module that knows
+//! The conversation browser's Chrome, in six layers, each a module that knows
 //! only the ones beneath it:
 //!
 //! ```text
-//! live    viewers of the browser, capture of the tabs they watch, input
-//! cdp     raw CDP commands and WebMCP
-//! page    what the commands do to a page
-//! tabs    each environment, its tab registry, each tab's state and lock
-//! driver  Chrome, its process and profile, the operation every command runs as
+//! live     viewers of the browser, capture of the tabs they watch, input
+//! cdp      raw CDP commands and WebMCP
+//! page     what the commands do to a page
+//! drawing  a document drawn by a Chrome of its own, which no tab holds
+//! tabs     each environment, its tab registry, each tab's state and lock
+//! driver   Chrome, its process and profile, the operation every command runs as
 //! ```
 //!
 //! The `demi.browser` program (`command-package-browser`) composes them.
@@ -37,6 +38,7 @@
 //!   browser-loss cleanup.
 
 pub mod cdp;
+pub mod drawing;
 pub mod driver;
 pub mod live;
 pub mod page;

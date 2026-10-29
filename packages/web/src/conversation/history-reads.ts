@@ -21,7 +21,7 @@ import {
   type TranscriptPage,
 } from '../api/generated/web-api'
 import type { Block, CacheChart, ConversationAttachment, InstructionEntry, ProviderFailureFacts } from '@demicodes/protocol'
-import { describeAttachments } from './activity'
+import { describeAttachments, describeReplyBlocks } from './activity'
 import { viewRead } from '@demicodes/web-ui/infra/view-timing'
 
 /** The blocks a disk copy holds whole, with the facts of their failures. */
@@ -87,6 +87,8 @@ export interface HistoryHolder {
   sides?: HistoryAgent[]
   /** A conversation's descriptions of the attachments its replies name, which its pages bring (`describeAttachments`); a share has none. */
   attachmentDescriptions?: Record<string, ConversationAttachment>
+  /** The facts of the plugins' reply blocks its replies name, which its pages bring (`describeReplyBlocks`). */
+  replyBlockFacts?: Record<string, unknown>
 }
 
 /**
@@ -249,6 +251,9 @@ export function createHistoryReads<T extends HistoryHolder>(
     const failures = { ...page.failures }
     if (holder.attachmentDescriptions) {
       describeAttachments({ attachmentDescriptions: holder.attachmentDescriptions }, page.attachments ?? [])
+    }
+    if (holder.replyBlockFacts) {
+      describeReplyBlocks({ replyBlockFacts: holder.replyBlockFacts }, page.replyBlocks ?? [])
     }
     if (page.cacheChart && holder.charts) {
       holder.charts[node ?? holder.id] = page.cacheChart

@@ -60,7 +60,7 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
         const conversation = find(id)
         return conversation && transcriptShown(conversation.load)
           ? [conversation.metadata.read.value, conversation.agentsHeld, conversation.history, conversation.failures,
-              conversation.instructions, conversation.summaries,
+              conversation.instructions, conversation.summaries, { ...conversation.replyBlockFacts },
               ...conversation.subagents.map((agent) => agent.history), ...conversation.sides.map((side) => side.history)]
           : null
       },
@@ -319,7 +319,7 @@ function copyOf(conversation: Conversation): ConversationCopy | null {
     ...conversation.subagents.map((agent) => subagentEntry(toRaw(agent))),
     ...conversation.sides.flatMap((side) => sideEntry(toRaw(side))),
   ]
-  return { metadata: toRaw(metadata), run: conversation.metadataRun, agents: { version: toRaw(version), entries }, attachments: toRaw(conversation.attachmentDescriptions) }
+  return { metadata: toRaw(metadata), run: conversation.metadataRun, agents: { version: toRaw(version), entries }, attachments: toRaw(conversation.attachmentDescriptions), replyBlocks: knownBlocks(conversation) }
 }
 
 /** A child as its entry says it. */
@@ -370,4 +370,13 @@ function sideEntry(side: SideRecord): AgentEntry[] {
     pendingSteers: [],
     starting: null,
   }]
+}
+
+/**
+ * The reply blocks' facts the copy keeps: those of blocks the user has. A
+ * block with none, named before it was made or read when its plugin failed,
+ * is asked for again once a page shows it from the copy.
+ */
+function knownBlocks(conversation: Conversation): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(toRaw(conversation.replyBlockFacts)).filter(([, facts]) => facts !== null))
 }

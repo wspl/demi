@@ -35,6 +35,7 @@ demi-plugin-interface = { path = "../plugin-interface" }
 demi-plugin-skills = { path = "../plugin-skills/plugin" }
 demi-plugin-web = { path = "../plugin-web/plugin" }
 demi-plugin-image = { path = "../plugin-image/plugin" }
+demi-plugin-widget = { path = "../plugin-widget/plugin" }
 demi-plugin-video = { path = "../plugin-video/plugin" }
 demi-plugin-audio = { path = "../plugin-audio/plugin" }
 demi-plugin-changes = { path = "../plugin-changes/plugin" }

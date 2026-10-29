@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, type CSSProperties } from 'vue'
 import { useOverlayScrollbars } from 'overlayscrollbars-vue'
-import { scrollbarsOptions, scrollbarsTarget, type ScrollAxis } from './scrollbars'
+import { inPlace, scrollbarsOptions, scrollbarsTarget, type ScrollAxis } from './scrollbars'
 
 /**
  * The app's scroller: its scrollbar floats over the content and takes no room, so
@@ -54,7 +54,9 @@ function start(): void {
   if (started.value || !viewport.value || !root.value)
     return
   started.value = true
-  initialize(scrollbarsTarget(viewport.value, root.value))
+  const scroller = viewport.value
+  const slot = root.value
+  inPlace(scroller, () => initialize(scrollbarsTarget(scroller, slot)))
 }
 
 // On a phone a scroller keeps its scrolling to itself along its axis: at its

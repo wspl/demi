@@ -70,6 +70,7 @@ impl ProductPort for ShardPort {
         conversation: &'a ConversationId,
         operation: &'a NativeOperation,
         args: Map<String, Value>,
+        input: String,
         kind: CallKind,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Value, PortFailure>> {
@@ -87,6 +88,7 @@ impl ProductPort for ShardPort {
                     operation: operation.operation.clone(),
                 },
                 args,
+                input: input.into(),
                 max_bytes: CALL_ANSWER_MAX_BYTES,
             };
             let kind = match kind {

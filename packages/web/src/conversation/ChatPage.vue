@@ -33,6 +33,7 @@ import { useSideQuestions } from './side-questions'
 import { conversationFiles } from './files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import { attachmentOrigin, useMessageAttachments } from './attachments'
+import { useReplyBlockFacts } from './reply-blocks'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import { readCommitHash } from '@demicodes/web-ui/files/history'
@@ -266,6 +267,8 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
 
 /** The attachments the conversation's messages name. */
 const attachments = useMessageAttachments(() => props.id)
+/** The facts of the plugins' reply blocks the conversation's messages name. */
+const replyBlocks = useReplyBlockFacts(() => props.id)
 
 /**
  * The Host files the conversation's messages name:
@@ -313,6 +316,11 @@ const files = computed<ConversationFiles | undefined>(() => {
       return readCommitHash(history, commit)
     },
     ...(attachments.value ? { attachment: attachments.value } : {}),
+    ...(replyBlocks.value ? { replyBlock: replyBlocks.value } : {}),
+    // An archived conversation's panel takes no change, so its blocks open as a share's do.
+    openReplyBlock: work.canOpen('block') && !current.archived
+      ? (tag, id, title) => work.openIn(current.id, { intent: 'block', payload: { tag, id, title } })
+      : undefined,
     attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {
       conversation: current.id,
       device: executionFor(current).deviceId ?? null,

@@ -518,6 +518,11 @@ impl Relay {
             Inbound::RpcOutput { call_id, bytes } => {
                 (call_id, CallEvent::Stderr(bytes.0.clone().into()))
             }
+            Inbound::RpcMedium {
+                call_id,
+                facts,
+                bytes,
+            } => (call_id, CallEvent::Medium(facts.clone(), bytes.clone())),
             Inbound::RpcStdinPull { call_id } => (call_id, CallEvent::Pull),
             Inbound::RpcExit { call_id, exit_code } => (call_id, CallEvent::Exit(*exit_code)),
             Inbound::ArtifactLocation {

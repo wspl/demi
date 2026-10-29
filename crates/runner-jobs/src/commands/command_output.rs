@@ -2,6 +2,7 @@
 //! command returns, which go to its job whatever its stdout is.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bytes::Bytes;
 use demi_command_declarations::Schema;
@@ -21,11 +22,36 @@ const JSON_BYTES: usize = 1024 * 1024;
 pub struct CommandOutput<'a> {
     output: Output,
     json: Option<Capture<'a>>,
-    /// The job its media go to; none when its leaf does not declare
-    /// `media`, so that a medium fails it.
-    media: Option<Arc<JobMedia>>,
-    /// Whether it returned a medium.
-    returned: bool,
+    media: MediaSink,
+}
+
+/// Where a command's media go: its job, or none when its leaf does not
+/// declare `media`, so that a medium fails it. An `rpc` command's call hands
+/// media while its standard output is still downloading, so the sink is
+/// shared with the call.
+#[derive(Clone)]
+pub struct MediaSink {
+    job: Option<Arc<JobMedia>>,
+    /// Whether the command returned a medium.
+    returned: Arc<AtomicBool>,
+}
+
+impl MediaSink {
+    /// A medium the command returned, which `facts` describe: checked, then
+    /// handed to the job.
+    pub async fn medium(&self, facts: MediumFacts, bytes: Bytes) -> Result<(), ResidentError> {
+        let Some(job) = &self.job else {
+            return Err(ResidentError::failed(MediaFailure::Undeclared));
+        };
+        if bytes.len() as u64 > MAX_MEDIUM_BYTES {
+            return Err(ResidentError::failed(MediaFailure::TooLarge(bytes.len())));
+        }
+        if sniff_media_type(&bytes) != Some(facts.media_type.as_str()) {
+            return Err(ResidentError::failed(MediaFailure::NotMedia(facts.media_type)));
+        }
+        self.returned.store(true, Ordering::Relaxed);
+        job.keep(facts, bytes).await.map_err(ResidentError::failed)
+    }
 }
 
 /// A `--json` command's standard output so far, and the schema it must match.
@@ -43,8 +69,10 @@ impl<'a> CommandOutput<'a> {
                 schema,
                 bytes: Vec::new(),
             }),
-            media,
-            returned: false,
+            media: MediaSink {
+                job: media,
+                returned: Arc::new(AtomicBool::new(false)),
+            },
         }
     }
 
@@ -73,18 +101,14 @@ impl<'a> CommandOutput<'a> {
 
     /// A medium the command returned, which `facts` describe: checked, then
     /// handed to the job.
-    pub async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ResidentError> {
-        let Some(job) = &self.media else {
-            return Err(ResidentError::failed(MediaFailure::Undeclared));
-        };
-        if bytes.len() as u64 > MAX_MEDIUM_BYTES {
-            return Err(ResidentError::failed(MediaFailure::TooLarge(bytes.len())));
-        }
-        if sniff_media_type(&bytes) != Some(facts.media_type.as_str()) {
-            return Err(ResidentError::failed(MediaFailure::NotMedia(facts.media_type)));
-        }
-        self.returned = true;
-        job.keep(facts, bytes).await.map_err(ResidentError::failed)
+    pub async fn medium(&self, facts: MediumFacts, bytes: Bytes) -> Result<(), ResidentError> {
+        self.media.medium(facts, bytes).await
+    }
+
+    /// Where the command's media go, for a call that hands them beside its
+    /// standard output.
+    pub fn media(&self) -> MediaSink {
+        self.media.clone()
     }
 
     /// Releases captured output once the command has succeeded; a command
@@ -94,7 +118,7 @@ impl<'a> CommandOutput<'a> {
         let Some(capture) = self.json.take() else {
             return Ok(());
         };
-        if exit_code != 0 || (self.returned && capture.bytes.is_empty()) {
+        if exit_code != 0 || (self.media.returned.load(Ordering::Relaxed) && capture.bytes.is_empty()) {
             return Ok(());
         }
         let value: serde_json::Value = serde_json::from_slice(&capture.bytes)

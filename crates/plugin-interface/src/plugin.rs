@@ -91,6 +91,7 @@ impl CommandPlugin {
             .map(|tree| Commands {
                 placement: self.placement,
                 tree,
+                calls: Vec::new(),
             })
             .collect()
     }
@@ -159,9 +160,14 @@ impl Plugin for CommandPlugin {
                 Request::Command { invocation, .. } => self.command(*invocation, &port).await,
                 Request::PageState { .. }
                 | Request::PageCall { .. }
-                | Request::PanelTab { .. } => Err(PluginError::undeclared("page")),
+                | Request::PanelTab { .. }
+                | Request::ReplyBlocks { .. }
+                | Request::ReplyBlockDocument { .. } => Err(PluginError::undeclared("page")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
                 Request::ProjectSearch { .. } => Err(PluginError::undeclared("project search")),
+                Request::ConversationDeleted { .. } | Request::ConversationForked { .. } => {
+                    Err(PluginError::undeclared("conversations"))
+                }
                 Request::PackageMessage { .. } | Request::PackageLost { .. } => {
                     Err(PluginError::undeclared("package messages"))
                 }
@@ -185,9 +191,12 @@ impl Plugin for NoRequests {
             Request::Command { .. } => "command",
             Request::PageState { .. }
             | Request::PageCall { .. }
-            | Request::PanelTab { .. } => "page",
+            | Request::PanelTab { .. }
+            | Request::ReplyBlocks { .. }
+            | Request::ReplyBlockDocument { .. } => "page",
             Request::Context { .. } => "context source",
             Request::ProjectSearch { .. } => "project search",
+            Request::ConversationDeleted { .. } | Request::ConversationForked { .. } => "conversations",
             Request::PackageMessage { .. } | Request::PackageLost { .. } => "package messages",
         };
         Box::pin(async move { Err(PluginError::undeclared(what)) })

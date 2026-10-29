@@ -5,6 +5,7 @@ import type {
   ConversationAttachment,
   InstructionEntry,
   ProviderFailureFacts,
+  ReplyBlockFacts,
   RequestOutput,
   ShellStatus,
   TranscriptPatch,
@@ -24,6 +25,7 @@ export interface TranscriptRead {
   versions?: BlockVersions[]
   failures?: Record<string, ProviderFailureFacts>
   attachments?: ConversationAttachment[]
+  replyBlocks?: ReplyBlockFacts[]
   instructions?: InstructionEntry[]
   summaries?: { marker: string; summaryTokens: number }[]
   version: Version

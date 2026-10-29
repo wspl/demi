@@ -61,6 +61,7 @@ developer = [
   "dep:resvg",
   "dep:demi-conversation-lane-protocol",
   "dep:demi-plugin-interface",
+  "dep:demi-plugin-widget",
   "dep:demi-web-api-protocol",
   "dep:axum",
   "dep:process-wrap",
@@ -84,6 +85,8 @@ resvg = { version = "0.48", default-features = false, optional = true }
 log = { version = "0.4", optional = true }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol", optional = true }
 demi-plugin-interface = { path = "../plugin-interface", optional = true }
+# The guide's widgets the gallery's replies show (`xtask contracts`).
+demi-plugin-widget = { path = "../plugin-widget/plugin", optional = true }
 demi-web-api-protocol = { path = "../web-api-protocol", optional = true }
 axum = { version = "0.8", optional = true }
 process-wrap = { workspace = true, optional = true }

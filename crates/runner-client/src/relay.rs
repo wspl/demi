@@ -28,6 +28,7 @@ use demi_host_interface::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcInvocation,
     RpcPort,
 };
+use demi_command_protocol::MediumFacts;
 use demi_runner_protocol::wire::{Inbound, STDIN_CHUNK_BYTES, WireBytes};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::B64Bytes;
@@ -122,15 +123,18 @@ pub(crate) struct CallEntry {
     pipes: RefCell<Option<CallPipes>>,
 }
 
-/// The pipes a call relays, once minted.
+/// The pipes a call relays, once minted: its standard streams, and the
+/// media it hands its job while one goes, which its stop fails as it fails
+/// the others.
 struct CallPipes {
     stdout: Pipe,
     stdin: Option<Pipe>,
+    media: Vec<Pipe>,
 }
 
 impl CallPipes {
     fn iter(&self) -> impl Iterator<Item = &Pipe> {
-        std::iter::once(&self.stdout).chain(&self.stdin)
+        std::iter::once(&self.stdout).chain(&self.stdin).chain(&self.media)
     }
 }
 
@@ -439,6 +443,7 @@ async fn run(
     *entry.pipes.borrow_mut() = Some(CallPipes {
         stdout: stdout.clone(),
         stdin: stdin.clone(),
+        media: Vec::new(),
     });
     if let Some(cause) = entry.cause() {
         return Err(cause.text().into());
@@ -604,6 +609,44 @@ impl RelayPort {
         written.map_err(|failure| PortError::Ended(failure.to_string()))
     }
 
+    /// Hands the calling job a medium: its facts in a message, its bytes in
+    /// a pipe of their own, since bulk bytes never travel in a message
+    /// (`crates/runner-protocol/src/wire/mod.rs`). This waits until the
+    /// runner has read the pipe, and the runner keeps the medium before the
+    /// standard output and the exit the handler writes after it
+    /// (`crates/runner-jobs/src/commands/rpc.rs`).
+    async fn write_medium(&self, facts: MediumFacts, bytes: Bytes) -> Result<(), PortError> {
+        let failed = |error: &dyn std::fmt::Display| PortError::Ended(format!("the medium: {error}"));
+        let pipe = self.link.pipes.call_stdout(self.link.device());
+        pipe.hold_source().map_err(|error| failed(&error))?;
+        if let Some(pipes) = self.entry.pipes.borrow_mut().as_mut() {
+            pipes.media.push(pipe.clone());
+        }
+        let handed = self.hand_medium(&pipe, facts, bytes).await;
+        if let Some(pipes) = self.entry.pipes.borrow_mut().as_mut() {
+            pipes.media.retain(|kept| kept.id() != pipe.id());
+        }
+        handed
+    }
+
+    async fn hand_medium(&self, pipe: &Pipe, facts: MediumFacts, bytes: Bytes) -> Result<(), PortError> {
+        let failed = |error: &dyn std::fmt::Display| PortError::Ended(format!("the medium: {error}"));
+        let medium = Inbound::RpcMedium {
+            call_id: self.call_id.clone(),
+            facts,
+            bytes: pipe.call_output_ref(),
+        };
+        self.link.send(&medium).map_err(|error| failed(&error))?;
+        let mut writer = pipe.writer().map_err(|error| failed(&error))?;
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            let chunk = rest.split_to(rest.len().min(STDIN_CHUNK_BYTES));
+            writer.write(chunk).await.map_err(|error| failed(&error))?;
+        }
+        writer.end();
+        pipe.done().await.map_err(|error| failed(&error))
+    }
+
     async fn read_stdin(&self) -> Result<Option<Bytes>, PortError> {
         let _turn = self.stdin_turn.acquire().await;
         let stdin = self.stdin.borrow_mut().replace(Stdin::Busy);
@@ -660,6 +703,10 @@ impl PortTransport for RelayPort {
                 }),
                 PortRequest::AwaitsUser { awaits } => {
                     self.await_user(awaits);
+                    Ok(PortResponse::Written {})
+                }
+                PortRequest::Medium { facts, bytes } => {
+                    self.write_medium(facts, bytes.into_bytes()).await?;
                     Ok(PortResponse::Written {})
                 }
             }

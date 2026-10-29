@@ -166,6 +166,13 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * An attachment never changes, so a description, once held, stands.
    */
   attachmentDescriptions: Record<string, ConversationAttachment>
+  /**
+   * The facts of the plugins' reply blocks its replies name, by `tag:id`,
+   * such as `widget:w1`, null for a block the user does not have: what the
+   * transcript's frames and pages bring. A block's facts never change, so
+   * they stand once held.
+   */
+  replyBlockFacts: Record<string, unknown>
   subagents: SubagentRecord[]
   /** The child the Agents window shows; null when it shows none. */
   shownSubagent: string | null

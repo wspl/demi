@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use demi_command_protocol::{
-    ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor,
+    ArtifactLocation, CommandContext, EditCopies, EditKind, MediumFacts, PackageDescriptor,
     ResidentSequence, Viewable, conversation_name, digest, without_nul,
 };
 use demi_shared_types::{BlobRef, HostLogLine};
@@ -300,6 +300,15 @@ pub enum Inbound {
     RpcOutput {
         call_id: String,
         bytes: WireBytes,
+    },
+    /// A medium the call hands its job (`crates/host-interface/src/rpc.rs`),
+    /// whose bytes the pipe `bytes` carries; the runner reads them before
+    /// the call's next message, so the medium stays in order with its
+    /// standard error and before its exit.
+    RpcMedium {
+        call_id: String,
+        facts: MediumFacts,
+        bytes: PipeRef,
     },
     /// Follows the stdout pipe's drain, so the process has written everything
     /// before it exits with the code.
@@ -965,6 +974,7 @@ impl Inbound {
                 | Self::JobStdin { .. }
                 | Self::JobStdinEnd { .. }
                 | Self::RpcOutput { .. }
+                | Self::RpcMedium { .. }
                 | Self::RpcExit { .. }
         )
     }
@@ -995,6 +1005,7 @@ impl Inbound {
             | Self::RpcStdinPull { .. }
             | Self::RpcPipes { .. }
             | Self::RpcOutput { .. }
+            | Self::RpcMedium { .. }
             | Self::RpcExit { .. } => Carriage::Outlasting,
             Self::ConversationRelease { .. }
             | Self::PackageRelease { .. }

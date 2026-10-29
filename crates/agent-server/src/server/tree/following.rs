@@ -243,6 +243,7 @@ impl<H: HostResolver> Tree<H> {
                 version: batch.version.clone(),
                 failures: None,
                 attachments: Vec::new(),
+                reply_blocks: Vec::new(),
             }));
         }
         // A page that holds no reading, or was behind, may have missed the end

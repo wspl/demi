@@ -2,6 +2,9 @@ import { FileX } from '@lucide/vue'
 import { previewMediaType } from '@demicodes/protocol'
 import { t } from './locales/text'
 
+/** The sandbox of a frame that shows an HTML page in an opaque origin, its scripts reaching nothing of the product's. */
+export { HTML_SANDBOX } from '@demicodes/protocol'
+
 /** What a view shows a file as. */
 export type PreviewKind = 'image' | 'video' | 'audio' | 'pdf' | 'markdown' | 'text'
 

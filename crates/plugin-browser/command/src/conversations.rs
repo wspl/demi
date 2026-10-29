@@ -1255,6 +1255,19 @@ impl Conversations {
             let installed = self.install(context, Lines::Stdout).await?;
             return Ok(CommandOutput::Json(output::value(installed)?));
         }
+        if let BrowserOperation::Draw(input) = command {
+            // A browser of its own draws it; the conversation's does not start.
+            let installation = self.chrome.installation().await?;
+            let html = draw_document(context, cancellation).await?;
+            let drawn = demi_command_package_browser_chrome::drawing::draw(
+                installation,
+                input,
+                html,
+                cancellation,
+            )
+            .await?;
+            return Ok(CommandOutput::Json(output::value(drawn)?));
+        }
         // Only the user's page reads the tab list's number and its tabs closed
         // on purpose, and only it stops a load.
         let user = context.request.context.caller.agent_number().is_none();
@@ -1814,4 +1827,28 @@ async fn start_recording(
         unreachable!("start answers a result")
     };
     Ok(CommandOutput::Json(output::value(result)?))
+}
+
+/// The document `draw` reads as its invocation's input, at most
+/// `DRAW_HTML_BYTES`.
+async fn draw_document(context: &mut InvocationContext, cancellation: &CancellationToken) -> Result<String> {
+    use demi_command_package_browser_protocol::browser::DRAW_HTML_BYTES;
+    let mut bytes = Vec::new();
+    loop {
+        let chunk = tokio::select! {
+            _ = cancellation.cancelled() => return Err(BrowserError::Cancelled),
+            chunk = context.input.next() => chunk.map_err(|error| BrowserError::Connection(error.to_string()))?,
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
+        if bytes.len() + chunk.len() > DRAW_HTML_BYTES {
+            return Err(BrowserError::Configuration(format!("the document is over {DRAW_HTML_BYTES} bytes")));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if bytes.is_empty() {
+        return Err(BrowserError::Configuration("draw reads its document as its input, which was empty".into()));
+    }
+    String::from_utf8(bytes).map_err(|_| BrowserError::Configuration("the document is not UTF-8".into()))
 }

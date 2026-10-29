@@ -150,7 +150,7 @@ async fn page_call(
 }
 
 /// What a call or a state read that did not answer answers.
-fn refused(error: PageCallError) -> ApiError {
+pub(super) fn refused(error: PageCallError) -> ApiError {
     let message = error.to_string();
     match error {
         PageCallError::UnknownPlugin(_) => {

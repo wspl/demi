@@ -115,7 +115,7 @@ import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
-import { applyConversationEvent, describeAttachments, takeAgents, updateLiveStatus } from './activity'
+import { applyConversationEvent, describeAttachments, describeReplyBlocks, takeAgents, updateLiveStatus } from './activity'
 import { composerWriting, createRecordSync, draftFile, editedMessage, newRecord, wholeListed, type Message, type Writing } from './record'
 import { createConversationHistoryReads } from './history'
 import { createConversationCopies } from './offline'
@@ -532,6 +532,7 @@ export const useConversations = defineStore('conversations', () => {
       scroll: null,
       attachedHosts: markRaw(new Slot<AttachedHost[]>([])),
       attachmentDescriptions: {},
+      replyBlockFacts: {},
       subagents: [],
       shownSubagent: null,
       turnStartedAt: null,
@@ -1681,6 +1682,9 @@ export const useConversations = defineStore('conversations', () => {
     }
     if (copy) {
       describeAttachments(conversation, Object.values(copy.attachments))
+      for (const [key, facts] of Object.entries(copy.replyBlocks)) {
+        conversation.replyBlockFacts[key] ??= facts
+      }
     }
     copies.shownFromDisk(conversation.id, conversation.id, root.transcript)
     conversation.history = root.transcript
@@ -1714,6 +1718,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.shownWithin = 0
     conversation.failures = page.failures ?? {}
     describeAttachments(conversation, page.attachments ?? [])
+    describeReplyBlocks(conversation, page.replyBlocks ?? [])
     conversation.instructions = page.instructions
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, shallowRef, watch, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, reactive, shallowRef, watch, watchEffect } from 'vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import UpdatingScreen from '@demicodes/web-ui/ui/UpdatingScreen.vue'
 import SharedConversation from '@demicodes/web-ui/share/SharedConversation.vue'
@@ -10,16 +10,20 @@ import { pageTitle } from '@demicodes/web-ui/sidebar/tab-attention'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideHistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
+import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { errorFields, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
+import type { ReplyBlockLookup } from '@demicodes/web-ui/markdown/types'
 import { lookupAttachment } from '../api/attachments'
 import { update } from '../state/update'
 import type { SharedConversation as Share } from '../api/generated/web-api'
 import { EMPTY_SHARE, createShareReads, readShare, shareBlobUrl, sharePath } from './reads'
+import { sharePageHost } from './page-host'
+import { replyBlockKey } from '../conversation/activity'
 
 /**
  * A share's page at `/s/<token>`: what the share shows above what it holds, and
@@ -31,13 +35,25 @@ const props = defineProps<{ token: string }>()
 const lifetime = new AbortController()
 onBeforeUnmount(() => lifetime.abort())
 const history = shallowRef<HeldTranscript<SharedItem>>(EMPTY_SHARE)
+/** The facts of the reply blocks the share's texts name, by `tag:id`, as its pages bring them. */
+const blockFacts = reactive<Record<string, unknown>>({})
 const reads = createShareReads(props.token, () => lifetime.signal, () => history.value, (held) => {
   history.value = held
+}, (blocks) => {
+  for (const block of blocks) {
+    blockFacts[replyBlockKey(block.tag, block.id)] ??= block.facts
+  }
 })
+function lookupBlock(tag: string, id: string): ReplyBlockLookup {
+  const facts = blockFacts[replyBlockKey(tag, id)]
+  return facts === undefined || facts === null ? { state: 'missing' } : { state: 'found', facts }
+}
 const blobUrl = shareBlobUrl(props.token)
 provideBlobUrl(blobUrl)
 provideHistoryReading(reads.reading)
 const mediaViewer = provideMediaViewer()
+// The replies' widgets, and any plugin's reply blocks, through the share's routes.
+providePageHost(sharePageHost(props.token))
 
 /** What the link names: still asking, no share, the share, or asking failed. */
 const share = shallowRef<{ state: 'loading' } | { state: 'missing' } | { state: 'found'; share: Share } | { state: 'failed'; error: ShownError }>({ state: 'loading' })
@@ -121,6 +137,7 @@ watchEffect(() => {
     :load="listLoad"
     :load-error="loadError"
     :attachment="(id) => lookupAttachment(attachments, id)"
+    :reply-block="lookupBlock"
     @read-before="readBeside('before')"
     @read-after="readBeside('after')"
     @retry-load="retry"

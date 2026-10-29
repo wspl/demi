@@ -10,7 +10,8 @@
 //! 3. Its connected Hosts are told to let go of it, which closes its tabs in
 //!    the conversation browser; the others are told by their next `hello`,
 //!    which names the conversations they hold.
-//! 4. Its database goes.
+//! 4. The plugins that keep something of a conversation are told, and its
+//!    database goes.
 //! 5. The pending record goes last.
 //!
 //! The owner's blob namespace is collected after it (`lifecycle::collection`).
@@ -111,7 +112,10 @@ impl Shard {
         }
         // Its schedules go with its records; the shard forgets them after.
         let schedules = self.conversation_schedule_ids(&record.id).await;
-        // Step 1: from this commit on, no request finds the conversation.
+        // Step 1: from this commit on, no request finds the conversation. A
+        // fork of it under way finishes first, its plugins told
+        // (`fork.rs`).
+        let lifecycle = self.lifecycle().acquire().await;
         let Some(id) = services
             .control
             .delete_conversation(self.user().clone(), record.id, workspace.cloned())
@@ -131,7 +135,9 @@ impl Shard {
         host.tell_release(&id, &devices, true);
         // The conversation is gone for every request already, so a failure
         // of what is left refuses nothing: the deletion stays pending.
-        if let Err(error) = self.finish_deletion(&id).await {
+        let finished = self.finish_deletion(&id).await;
+        drop(lifecycle);
+        if let Err(error) = finished {
             tracing::error!(event = "conversation_deletion.failed", conversation = %id, stage = "step_3", outcome = "pending", error = &error as &dyn std::error::Error, "the deletion stays pending until the next start");
             return Ok(true);
         }
@@ -147,9 +153,26 @@ impl Shard {
     /// (`search.rs`). A start runs them for each deletion it finds pending; a Host
     /// that was not told of the deletion lets go of the conversation at its
     /// next `hello`, which no longer lists it.
-    pub async fn finish_deletion(&self, id: &ConversationId) -> Result<(), StorageError> {
+    pub async fn finish_deletion(&self, id: &ConversationId) -> Result<(), DeletionError> {
+        // What the plugins keep of it goes before the pending record does,
+        // so a plugin that failed is told again at the next start; telling
+        // one again changes nothing it did.
+        self.plugins()
+            .conversation_deleted(id)
+            .await
+            .map_err(|error| DeletionError::Plugin(error.to_string()))?;
         let services = self.services();
         services.conversations.remove(id).await?;
-        services.control.finish_deletion(id.clone()).await
+        Ok(services.control.finish_deletion(id.clone()).await?)
     }
+}
+
+/// Why the end of a deletion did not finish: it stays pending for the next
+/// start.
+#[derive(Debug, thiserror::Error)]
+pub enum DeletionError {
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+    #[error("a plugin could not let go of the conversation: {0}")]
+    Plugin(String),
 }

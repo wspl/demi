@@ -57,6 +57,12 @@ export interface IntentPayloads {
    * Open in Work Panel opens it.
    */
   web: { url: string }
+  /**
+   * A reply block whole, in a tab of its own, as its Open in Work Panel opens
+   * it: its tag and id, as its line names them, and the title its tab shows.
+   * The kind of the page that draws the tag opens it.
+   */
+  block: { tag: string; id: string; title: string }
 }
 
 export type IntentName = keyof IntentPayloads

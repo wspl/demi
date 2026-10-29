@@ -7,6 +7,7 @@ import type {
   PendingSteer,
   ProviderFailureFacts,
   QueuedMessage,
+  ReplyBlockFacts,
   ServerFrame,
   TranscriptPatch,
   Version,
@@ -85,6 +86,8 @@ export type ClientSessionEvent =
       failures: Failures
       /** The descriptions of the attachments `blocks` name. */
       attachments: ConversationAttachment[]
+      /** The facts of the plugins' reply blocks `blocks` name. */
+      replyBlocks: ReplyBlockFacts[]
       /** The entries of the agent's newest instructions block. */
       instructions: InstructionEntry[]
       /** The summary size of each compaction marker's boundary. */
@@ -102,6 +105,8 @@ export type ClientSessionEvent =
       failures: Failures
       /** The descriptions of the attachments the patches name. */
       attachments: ConversationAttachment[]
+      /** The facts of the plugins' reply blocks the patches name. */
+      replyBlocks: ReplyBlockFacts[]
     }
   | {
       type: 'queue'

@@ -51,8 +51,9 @@
 //! # Attachments
 //!
 //! A transcript frame carries the attachments its blocks and its appended
-//! text name, whichever agent stored them (`attachment_facts`), read as it is
-//! sent, as its failure facts are. A reply streams in pieces, so a frame that
+//! text name, whichever agent stored them, and the facts of the plugins'
+//! reply blocks they name (`attachment_facts`), read as it is sent, as its
+//! failure facts are. A reply streams in pieces, so a frame that
 //! completes a tag in the text so far names it, whichever piece it ends in.
 //!
 //! # Frames the lane rewrites
@@ -925,7 +926,7 @@ impl Shard {
 
     /// A server frame as the page receives it: a transcript frame carries
     /// the failure facts of the error blocks it brings, and the attachments
-    /// its blocks and its appended text name.
+    /// and the reply blocks its blocks and its appended text name.
     /// Its blocks hold their media by reference already (§ Media by
     /// reference).
     async fn present(&self, conversation: &ConversationId, streamed: &mut StreamedText, frame: ServerFrame) -> ServerFrame {
@@ -937,24 +938,25 @@ impl Shard {
             } => {
                 let added = blocks_added(&patches);
                 let failures = failure_facts(&services.vault, provider_registry, self.user(), &added).await;
-                let attachments = streamed
-                    .named(&services.conversations, conversation, &node, &patches)
-                    .await
-                    .unwrap_or_else(|error| {
-                        tracing::warn!(
-                            event = "frame_attachments.read_failed",
-                            %conversation,
-                            error = &error as &dyn std::error::Error,
-                            "the attachments a transcript frame names were not read"
-                        );
-                        Vec::new()
-                    });
+                let (attachments, reply_blocks) = streamed
+                    .named(&services.conversations, self.plugins(), conversation, &node, &patches)
+                    .await;
+                let attachments = attachments.unwrap_or_else(|error| {
+                    tracing::warn!(
+                        event = "frame_attachments.read_failed",
+                        %conversation,
+                        error = &error as &dyn std::error::Error,
+                        "the attachments a transcript frame names were not read"
+                    );
+                    Vec::new()
+                });
                 ServerFrame::TranscriptPatch {
                     node,
                     patches,
                     version,
                     failures,
                     attachments,
+                    reply_blocks,
                 }
             }
             other => other,

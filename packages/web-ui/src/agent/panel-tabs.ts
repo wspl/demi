@@ -88,7 +88,7 @@ export function openIntent(
   enabled: (plugin: string) => boolean,
   request: IntentRequest,
 ): IntentOutcome | null {
-  const kind = intentKind(pages, enabled, request.intent)
+  const kind = intentKind(pages, enabled, request.intent, request.intent === 'block' ? request.payload.tag : undefined)
   if (!kind) {
     return null
   }
@@ -161,6 +161,8 @@ function opened(kind: PanelKind<unknown>, request: IntentRequest, current: unkno
       return kind.intents?.attachment?.(request.payload, current)
     case 'media':
       return kind.intents?.media?.(request.payload, current)
+    case 'block':
+      return kind.intents?.block?.(request.payload, current)
   }
 }
 

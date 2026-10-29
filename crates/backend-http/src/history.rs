@@ -19,7 +19,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
-use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, reply_blocks};
+use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, named_blocks, replies, reply_block_facts};
 use demi_conversation_lane_protocol::{PAGE_BLOCKS, STORED_EPOCH, Version, index_u32, light};
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
@@ -133,9 +133,17 @@ pub(super) async fn transcript(
     };
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.vault, &services.provider_registry, &user.id, &page.blocks).await;
-    page.attachments = attachment_facts(&services.conversations, &record.id, reply_blocks(&page.blocks))
+    page.attachments = attachment_facts(&services.conversations, &record.id, replies(&page.blocks))
         .await
         .map_err(ApiError::conversation_unreadable)?;
+    let named = named_blocks(replies(&page.blocks));
+    if !named.is_empty() {
+        page.reply_blocks = state
+            .shards
+            .of(&user.id)
+            .call(move |shard, _| async move { reply_block_facts(shard.plugins(), named).await })
+            .await?;
+    }
     tracing::info!(
         event = "transcript.read",
         conversation = %record.id,
@@ -197,6 +205,7 @@ pub(super) fn page_answer(
             summaries: Vec::new(),
             versions: Vec::new(),
             attachments: Vec::new(),
+            reply_blocks: Vec::new(),
             version: None,
             commands: Vec::new(),
             request_output: None,
@@ -230,6 +239,7 @@ pub(super) fn page_answer(
                 summaries,
                 versions,
                 attachments: Vec::new(),
+                reply_blocks: Vec::new(),
                 version: None,
                 commands: Vec::new(),
                 request_output: None,

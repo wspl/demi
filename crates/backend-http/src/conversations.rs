@@ -389,7 +389,7 @@ fn fork_refused(refusal: ForkRefusal) -> ApiError {
             message,
         ),
         ForkRefusal::Storage(error) => error.into(),
-        ForkRefusal::Failed(_) => ApiError::new(
+        ForkRefusal::Failed(_) | ForkRefusal::Plugin(_) => ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::InternalError,
             message,

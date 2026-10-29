@@ -173,6 +173,12 @@ impl Plugin for Instance {
                 Request::PageState { .. } => Err(PluginError::undeclared("page state")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
                 Request::ProjectSearch { .. } => Err(PluginError::undeclared("project search")),
+                Request::ReplyBlocks { .. } | Request::ReplyBlockDocument { .. } => {
+                    Err(PluginError::undeclared("reply blocks"))
+                }
+                Request::ConversationDeleted { .. } | Request::ConversationForked { .. } => {
+                    Err(PluginError::undeclared("conversations"))
+                }
             }
         })
     }

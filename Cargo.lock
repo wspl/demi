@@ -1862,6 +1862,7 @@ dependencies = [
  "demi-plugin-skills",
  "demi-plugin-video",
  "demi-plugin-web",
+ "demi-plugin-widget",
  "demi-provider-anthropic-api",
  "demi-provider-bytedance",
  "demi-provider-claude-code",
@@ -2893,6 +2894,22 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "url",
+]
+
+[[package]]
+name = "demi-plugin-widget"
+version = "0.1.65"
+dependencies = [
+ "demi-command-declarations",
+ "demi-command-package-browser-protocol",
+ "demi-command-protocol",
+ "demi-host-interface",
+ "demi-plugin-interface",
+ "demi-shared-types",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -12042,6 +12059,7 @@ dependencies = [
  "demi-live-view-protocol",
  "demi-machine-manager-protocol",
  "demi-plugin-interface",
+ "demi-plugin-widget",
  "demi-provider-common",
  "demi-provider-registry",
  "demi-runner-protocol",

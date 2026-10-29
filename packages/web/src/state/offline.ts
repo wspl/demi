@@ -148,6 +148,8 @@ const conversationRecordSchema = z.object({
   agents: z.object({ version: versionSchema, entries: z.array(agentEntrySchema) }),
   /** The descriptions of the attachments its replies name, by id. */
   attachments: z.record(z.string(), conversationAttachmentSchema),
+  /** The facts of the plugins' reply blocks its replies name, by `tag:id`. */
+  replyBlocks: z.record(z.string(), z.unknown()),
 })
 
 /** A run of blocks the disk holds whole, from `start` to before `end`. */
@@ -206,7 +208,7 @@ function hashOf(text: string): string {
 
 /** The account's record's format. */
 const accountFormat = formatOf(accountRecordSchema)
-/** A conversation's record's format: its metadata, its agents and its attachments' descriptions. */
+/** A conversation's record's format: its metadata, its agents, its attachments' descriptions and its reply blocks' facts. */
 const conversationFormat = formatOf(conversationRecordSchema)
 /** A node's record's format, and its blocks', which its runs name: a block of another shape goes with the record. */
 const nodeFormat = formatOf(nodeRecordSchema, blockRecordSchema)

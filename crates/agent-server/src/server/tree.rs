@@ -268,6 +268,7 @@ impl FrameSink {
                 version: version.clone(),
                 failures: None,
                 attachments: Vec::new(),
+                reply_blocks: Vec::new(),
             },
         );
     }

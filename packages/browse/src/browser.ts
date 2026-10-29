@@ -55,6 +55,12 @@ const VISIBILITY_MS = 5_000
  * - A page in the background or a hidden window keeps its timers and paints.
  * - No first-run or update prompt appears.
  * - Colors are those of a screenshot.
+ * - A sandboxed frame of the page's site stays in the page's process
+ *   (`IsolateSandboxedIframes`), so `demi.emulate`'s pixel ratio, which the
+ *   DevTools protocol sets only on a top-level target's process, reaches it: in
+ *   a process of its own it drew at 1x, blurred. A frame of another site keeps
+ *   its own process, and a check of a frame's process isolation needs another
+ *   browser.
  */
 const SWITCHES = [
   '--disable-field-trial-config',
@@ -70,7 +76,7 @@ const SWITCHES = [
   '--disable-default-apps',
   '--disable-dev-shm-usage',
   '--disable-extensions',
-  '--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,OptimizationHints',
+  '--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,OptimizationHints,IsolateSandboxedIframes',
   '--allow-pre-commit-input',
   '--disable-hang-monitor',
   '--disable-ipc-flooding-protection',

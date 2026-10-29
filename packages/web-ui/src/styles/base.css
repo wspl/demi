@@ -2573,6 +2573,13 @@ html[data-theme="light"] .file-pill {
   margin-block-start: -4px;
 }
 
+/* A plugin's reply block, such as a widget, stands on a line of its own, 12px
+   from the text above and below, as an attachment block does
+   (`markdown/reply-block.ts`). */
+.markdown-body .reply-block {
+  margin-block: 12px;
+}
+
 /* A capsule never makes its line taller and never reaches into the next line, at
    every text size, in a sent message as in the composer.
 
