@@ -31,6 +31,8 @@ pub struct Installed {
     adb: Adb,
     /// Where an emulator Demi starts writes what it prints.
     logs: Option<PathBuf>,
+    /// The devices' art.
+    art: art::Store,
     /// Starting the adb server, once.
     adb_started: tokio::sync::OnceCell<()>,
 }
@@ -42,9 +44,13 @@ impl Installed {
 
     /// The SDK in `sdk`, or none.
     pub fn at(sdk: Option<PathBuf>, logs: Option<PathBuf>) -> Self {
+        // Beside the logs, or, for a program without an installation, in
+        // the system's temporary directory.
+        let art = logs.clone().unwrap_or_else(|| std::env::temp_dir().join("demi").join("android")).join("device-art");
         Self {
             sdk,
             adb: Adb::from_environment(),
+            art: art::Store::new(&art),
             logs,
             adb_started: tokio::sync::OnceCell::new(),
         }
@@ -413,8 +419,7 @@ impl Sdk for Installed {
         })
     }
 
-    fn device_art(&self, device: &str) -> Option<art::Folders> {
-        let installations = art::installations(art::System::current(), &art::Places::current());
-        art::find(&installations, device)
+    fn device_art<'a>(&'a self, device: &'a str) -> BoxFuture<'a, Option<art::Folders>> {
+        Box::pin(self.art.device(device))
     }
 }

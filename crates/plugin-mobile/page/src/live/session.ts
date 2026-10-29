@@ -312,6 +312,10 @@ export class DeviceSession {
    * needed while no answer came, if it knew it.
    */
   private asked: { area: FrameArea; orientation: Orientation | null } | null = null
+  /** The orientations whose frame shows from the disk cache, until the Host's replaces it. */
+  private readonly cached = new Set<Orientation>()
+  /** The area of the frame the Host sent last for each orientation, which a frame the cache read later does not replace. */
+  private readonly fromHost = new Map<Orientation, FrameArea>()
   /** The device pixels the view shows the screen at, as it last measured them. */
   private screenSize: { width: number; height: number } | null = null
   /** The device's last orientation, as the disk cache keeps it. */
@@ -632,6 +636,13 @@ export class DeviceSession {
    */
   private ready(frame: DeviceFrame, from: 'host' | 'cache'): void {
     const { orientation } = frame
+    // The Host's frame for the area is newer than the cache's.
+    if (from === 'cache' && sameArea(this.fromHost.get(orientation), frame.area)) {
+      return
+    }
+    if (from === 'host') {
+      this.fromHost.set(orientation, frame.area)
+    }
     this.readying.set(orientation, frame.frame)
     const failed = (error: unknown) => {
       if (this.readying.get(orientation) !== frame.frame || this.state.gone) {
@@ -656,6 +667,9 @@ export class DeviceSession {
       this.readying.delete(orientation)
       if (from === 'host') {
         this.cacheFrame(frame.area, { orientation, pointsWidth: frame.pointsWidth, pointsHeight: frame.pointsHeight, frame: frame.frame })
+        this.cached.delete(orientation)
+      } else {
+        this.cached.add(orientation)
       }
       this.state.frames[orientation] = frame
       const look = this.state.look
@@ -917,6 +931,10 @@ export class DeviceSession {
 
   private seekFrame(orientation: Orientation, area: FrameArea): void {
     if (sameArea(this.state.frames[orientation]?.area, area)) {
+      // A frame from the disk cache shows until the Host's own replaces it.
+      if (this.cached.has(orientation)) {
+        this.askFrame(orientation)
+      }
       return
     }
     const key = this.frameKey(orientation, area)
@@ -937,6 +955,7 @@ export class DeviceSession {
       const kept = bytes && cachedFrameSchema.safeParse(JSON.parse(new TextDecoder().decode(bytes)))
       if (kept?.success && kept.data.orientation === orientation) {
         this.ready({ ...kept.data, area }, 'cache')
+        this.askFrame(orientation)
         return
       }
       // Not kept, or written by another build of the page: the Host draws it.

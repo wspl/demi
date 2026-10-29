@@ -76,6 +76,8 @@
 //! contract crate's type.
 
 mod browser;
+#[cfg(all(unix, feature = "developer"))]
+mod device_art;
 mod cloud_image;
 // Reads the offered vendors as the backend does, which builds only where
 // the backend runs.
@@ -131,6 +133,9 @@ enum Command {
     /// Refreshes the vendors' marks from models.dev.
     #[cfg(all(unix, feature = "developer"))]
     Logos(logos::Options),
+    /// Pins the Android device art a Host downloads from AOSP.
+    #[cfg(all(unix, feature = "developer"))]
+    DeviceArt(device_art::Options),
     /// Removes the build products no current build of the checkout uses.
     #[cfg(unix)]
     Sweep(sweep::Options),
@@ -383,6 +388,14 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask vendor: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        #[cfg(all(unix, feature = "developer"))]
+        Command::DeviceArt(options) => match device_art::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask device-art: {error}");
                 ExitCode::FAILURE
             }
         },

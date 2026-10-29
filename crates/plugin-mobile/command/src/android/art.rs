@@ -1,10 +1,14 @@
-//! Android Studio's device art (`crates/plugin-mobile/command/src/live.rs`).
+//! Android devices' art (`crates/plugin-mobile/command/src/live.rs`), from
+//! the Android Open Source Project, where Android Studio's comes from.
 //!
-//! For each device, such as `pixel_10`, a folder in Android Studio's
-//! installation holds the frame's image, the screen's mask and a `layout` in
-//! the emulator's skin format that places the screen in the frame. A
-//! foldable's folder, such as `pixel_fold`, holds one such folder per
-//! posture: `default` open and `closed` folded.
+//! For each device, such as `pixel_10`, a folder holds the frame's image, the
+//! screen's mask and a `layout` in the emulator's skin format that places the
+//! screen in the frame. A foldable's folder, such as `pixel_fold`, holds one
+//! such folder per posture: `default` open and `closed` folded.
+//!
+//! A Host downloads a device's folder the first time it opens the device, at
+//! the commit the pin names, and keeps it once each file matches the pin's
+//! SHA-256 (`art_pin.rs`).
 //!
 //! The art is drawn as Android Studio's emulator window draws it
 //! (`SkinDefinition` in its `adt-ui`):
@@ -13,176 +17,135 @@
 //! - the mask over the screen's corners;
 //! - the device's buttons;
 //! - the whole turned with the picture.
-//!
-//! Demi reads the art from the Host's installation and carries none.
 
-use std::{
-    cmp::Reverse,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use image::{RgbaImage, imageops};
-use serde::Deserialize;
+use tokio_util::sync::CancellationToken;
 
+use super::art_pin::{COMMIT, DEVICES};
 use crate::driver::{FrameArea, PixelRect};
 
-/// Where an installation keeps its device art.
-const ART: [&str; 4] = ["plugins", "android", "resources", "device-art-resources"];
+/// Where AOSP serves the repository that holds the art.
+const REPOSITORY: &str = "https://android.googlesource.com/platform/tools/adt/idea";
+/// The art's folder in the repository.
+const ROOT: &str = "artwork/resources/device-art-resources";
+/// The most bytes a device's archive may have: a foldable's two postures
+/// are under a megabyte, and the archive is read into memory.
+const ARCHIVE_BYTES: u64 = 16 * 1024 * 1024;
 
-/// The operating systems whose Android Studio installations differ.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum System {
-    MacOs,
-    Windows,
-    Linux,
+/// The devices' art a Host keeps, in a folder per pinned commit.
+pub struct Store {
+    /// The folder of the pinned commit's devices.
+    skins: PathBuf,
+    /// One download of a device's art at a time.
+    downloading: tokio::sync::Mutex<()>,
 }
 
-impl System {
-    pub fn current() -> Self {
-        if cfg!(target_os = "macos") {
-            Self::MacOs
-        } else if cfg!(windows) {
-            Self::Windows
-        } else {
-            Self::Linux
-        }
-    }
-}
-
-/// The places an installation is looked for: the file system's root, the
-/// user's home, and Windows' program folders.
-#[derive(Debug, Clone, Default)]
-pub struct Places {
-    pub root: PathBuf,
-    pub home: Option<PathBuf>,
-    /// `%ProgramFiles%`.
-    pub program_files: Option<PathBuf>,
-    /// `%LOCALAPPDATA%`.
-    pub local_app_data: Option<PathBuf>,
-}
-
-impl Places {
-    /// This Host's.
-    pub fn current() -> Self {
-        let variable = |name: &str| std::env::var_os(name).map(PathBuf::from);
+impl Store {
+    /// The art kept in `directory`.
+    pub fn new(directory: &Path) -> Self {
         Self {
-            root: PathBuf::from(if cfg!(windows) { "C:\\" } else { "/" }),
-            home: variable(if cfg!(windows) { "USERPROFILE" } else { "HOME" }),
-            program_files: variable("ProgramFiles"),
-            local_app_data: variable("LOCALAPPDATA"),
+            skins: directory.join(COMMIT),
+            downloading: tokio::sync::Mutex::new(()),
+        }
+    }
+
+    /// The art of `device`, such as `pixel_10`, downloaded when this Host
+    /// has none; none for a device AOSP has no art for. A download that
+    /// fails is said in the log and tried again the next time.
+    pub async fn device(&self, device: &str) -> Option<Folders> {
+        let (_, files) = DEVICES.iter().find(|(name, _)| *name == device)?;
+        let folder = self.skins.join(device);
+        if let Some(folders) = folders(&folder) {
+            return Some(folders);
+        }
+        let _downloading = self.downloading.lock().await;
+        if let Some(folders) = folders(&folder) {
+            return Some(folders);
+        }
+        match download(&self.skins, device, files).await {
+            Ok(()) => {
+                tracing::info!(event = "android_art.downloaded", device, "an Android device's art was downloaded");
+                folders(&folder)
+            }
+            Err(error) => {
+                tracing::warn!(event = "android_art.unavailable", device, %error, fallback = "drawn", "an Android device's art did not download");
+                None
+            }
         }
     }
 }
 
-/// The entries of `directory` whose names start with `prefix`, the shortest
-/// name first, so that of installations whose releases do not read, a
-/// release (`Android Studio.app`) comes before a preview of it
-/// (`Android Studio Preview.app`).
-fn named(directory: &Path, prefix: &str) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
-    let mut found: Vec<PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with(prefix)))
-        .collect();
-    found.sort_by_key(|path| (path.as_os_str().len(), path.clone()));
-    found
-}
-
-/// What an installation's `product-info.json` says of its release.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProductInfo {
-    /// Such as `262.9437.185.2621.16467767`.
-    build_number: String,
-    /// Such as `AndroidStudio2026.2.1`, or `AndroidStudioPreview2026.3.1`
-    /// for a preview.
-    data_directory_name: String,
-}
-
-/// An installation's rank: a stable release before a preview, then the
-/// newer build first; one whose release does not read last.
-fn rank(installation: &Path) -> (bool, bool, Reverse<Vec<u64>>) {
-    // A Mac's app keeps it in its resources, the others at their top.
-    let info = [installation.join("Resources").join("product-info.json"), installation.join("product-info.json")]
-        .iter()
-        .find_map(|file| std::fs::read(file).ok())
-        .and_then(|bytes| serde_json::from_slice::<ProductInfo>(&bytes).ok());
-    match info {
-        Some(info) => {
-            let preview = info.data_directory_name.starts_with("AndroidStudioPreview");
-            let build = info.build_number.split('.').map_while(|part| part.parse().ok()).collect();
-            (false, preview, Reverse(build))
-        }
-        None => (true, false, Reverse(Vec::new())),
-    }
-}
-
-/// The installations of Android Studio on `system`, in the order they are
-/// tried: where its installer, the user, or JetBrains Toolbox puts it,
-/// ranked by their releases, a stable release before a preview wherever
-/// each is, then the newer before the older.
-pub fn installations(system: System, places: &Places) -> Vec<PathBuf> {
-    let mut found = places_of(system, places);
-    // Stable, so installations alike keep the order of their places.
-    found.sort_by_cached_key(|installation| rank(installation));
-    found
-}
-
-/// The installations of Android Studio on `system`, in the order of their
-/// places.
-fn places_of(system: System, places: &Places) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    match system {
-        System::MacOs => {
-            let mut apps = vec![places.root.join("Applications")];
-            apps.extend(places.home.iter().map(|home| home.join("Applications")));
-            for directory in apps {
-                found.extend(
-                    named(&directory, "Android Studio")
-                        .into_iter()
-                        .filter(|app| app.extension().is_some_and(|extension| extension == "app"))
-                        .map(|app| app.join("Contents")),
-                );
-            }
-        }
-        System::Windows => {
-            if let Some(program_files) = &places.program_files {
-                found.extend(named(&program_files.join("Android"), "Android Studio"));
-            }
-            if let Some(local) = &places.local_app_data {
-                found.extend(named(&local.join("Programs"), "Android Studio"));
-            }
-        }
-        System::Linux => {
-            for directory in [places.root.join("opt"), places.root.join("usr").join("local")] {
-                found.extend(named(&directory, "android-studio"));
-            }
-            found.push(places.root.join("snap").join("android-studio").join("current").join("android-studio"));
-            if let Some(home) = &places.home {
-                found.extend(named(home, "android-studio"));
-                found.extend(named(&home.join(".local").join("share").join("JetBrains").join("Toolbox").join("apps"), "android-studio"));
-            }
-        }
-    }
-    found
-}
-
-/// The art for `device` in the first of `installations` that has it.
-pub fn find(installations: &[PathBuf], device: &str) -> Option<Folders> {
-    // The device's name is a folder's, never a path.
-    if device.is_empty() || device.contains(['/', '\\']) || device.starts_with('.') {
-        return None;
-    }
+/// The folders of `device`'s art in `folder`, once it is kept.
+fn folders(folder: &Path) -> Option<Folders> {
     let art = |folder: PathBuf| folder.join("layout").is_file().then_some(folder);
-    installations.iter().find_map(|installation| {
-        let device = ART.iter().fold(installation.clone(), |path, part| path.join(part)).join(device);
-        // A foldable's art is a folder per posture.
-        match art(device.join("default")) {
-            Some(open) => Some(Folders { open, closed: art(device.join("closed")) }),
-            None => art(device).map(|open| Folders { open, closed: None }),
+    // A foldable's art is a folder per posture.
+    match art(folder.join("default")) {
+        Some(open) => Some(Folders { open, closed: art(folder.join("closed")) }),
+        None => art(folder.to_owned()).map(|open| Folders { open, closed: None }),
+    }
+}
+
+/// Downloads `device`'s archive into `skins`, keeping its folder only once
+/// each of `files` matches its SHA-256.
+async fn download(skins: &Path, device: &str, files: &[(&str, &str)]) -> Result<(), String> {
+    let url = format!("{REPOSITORY}/+archive/{COMMIT}/{ROOT}/{device}.tar.gz");
+    let client = demi_shared_artifacts::download_client().map_err(|error| error.to_string())?;
+    let request = demi_shared_artifacts::Download {
+        limit: ARCHIVE_BYTES,
+        ..demi_shared_artifacts::Download::new(&url)
+    };
+    let (received, archive) = demi_shared_artifacts::download_bytes(&client, request, &CancellationToken::new())
+        .await
+        .map_err(|error| format!("{url}: {error}"))?;
+    received.plain().map_err(|error| format!("{url}: {error}"))?;
+    let skins = skins.to_owned();
+    let device = device.to_owned();
+    let files: Vec<(String, String)> = files.iter().map(|(path, sha256)| ((*path).to_owned(), (*sha256).to_owned())).collect();
+    tokio::task::spawn_blocking(move || keep(&skins, &device, &files, &archive))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Writes the pinned `files` of `archive` into `skins/device`, through a
+/// folder beside it, so a program killed midway leaves no device half kept.
+fn keep(skins: &Path, device: &str, files: &[(String, String)], archive: &[u8]) -> Result<(), String> {
+    let mut found = std::collections::HashMap::new();
+    let mut entries = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    for entry in entries.entries().map_err(|error| error.to_string())? {
+        let mut entry = entry.map_err(|error| error.to_string())?;
+        if !entry.header().entry_type().is_file() {
+            continue;
         }
-    })
+        let path = entry.path().map_err(|error| error.to_string())?.to_string_lossy().into_owned();
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|error| error.to_string())?;
+        found.insert(path, bytes);
+    }
+    std::fs::create_dir_all(skins).map_err(|error| format!("{}: {error}", skins.display()))?;
+    let staging = tempfile::Builder::new()
+        .prefix(&format!(".{device}-"))
+        .tempdir_in(skins)
+        .map_err(|error| format!("{}: {error}", skins.display()))?;
+    for (path, sha256) in files {
+        let bytes = found.get(path).ok_or_else(|| format!("the archive has no {path}"))?;
+        let digest: String = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, bytes)
+            .as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        if digest != *sha256 {
+            return Err(format!("{path} does not match its pinned hash"));
+        }
+        let target = staging.path().join(path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+        }
+        std::fs::write(&target, bytes).map_err(|error| format!("{}: {error}", target.display()))?;
+    }
+    let folder = skins.join(device);
+    std::fs::rename(staging.keep(), &folder).map_err(|error| format!("{}: {error}", folder.display()))
 }
 
 /// The folders of a device's art: open, which is every device's, and
