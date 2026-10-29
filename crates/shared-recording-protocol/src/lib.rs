@@ -333,7 +333,8 @@ pub struct RecordingInfo {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "EndReason")]
     pub ended: Option<EndReason>,
-    /// What went wrong, when it stopped because it failed.
+    /// What went wrong, when it stopped because it failed or its browser quit
+    /// on its own.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     pub note: Option<String>,
