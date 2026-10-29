@@ -709,13 +709,23 @@ final class DeviceSession: @unchecked Sendable {
     try await hid.hid.send(event: event, logger: simulator.logger)
   }
 
+  /// A viewer's finger, which a fold under way takes away: the point it
+  /// was given is on a display that is going dark, so a touch that comes as
+  /// the display changes is dropped, as a finger on a phone being folded
+  /// reaches nothing, rather than failed back to the viewer.
   func touch(phase: String, x: Double, y: Double) async throws {
     let (px, py) = devicePoint(x, y)
+    let event: SimulatorHIDEvent
     switch phase {
     // A finger that moves is a contact still down, at its new place.
-    case "down", "move": try await send(.touch(direction: .down, x: px, y: py))
-    case "up": try await send(.touch(direction: .up, x: px, y: py))
+    case "down", "move": event = .touch(direction: .down, x: px, y: py)
+    case "up": event = .touch(direction: .up, x: px, y: py)
     default: throw HelperError("a touch is down, move or up, not \(phase)")
+    }
+    do {
+      try await send(event)
+    } catch SimulatorDisplayError.changed, SimulatorDisplayError.transitioning {
+      log("\(simulator.name): a touch came as its display changed, and is dropped")
     }
   }
 
