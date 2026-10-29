@@ -1478,7 +1478,8 @@ impl Conversations {
                     _ => None,
                 };
             if let Some(family) = family {
-                return family.await.map(CommandOutput::Json);
+                let recorded = demi_command_package_browser_chrome::page::actions::recorded(tab, command, family, |_| None);
+                return recorded.await.map(CommandOutput::Json);
             }
         }
         if let BrowserOperation::Screenshot(input) = command {
@@ -1729,6 +1730,17 @@ async fn record(
     input: &RecordInput,
 ) -> Result<CommandOutput> {
     let id = match (&input.target, input.action) {
+        (RecordTarget::Tab(tab), RecordAction::List) => {
+            let Answer::Result { result, .. } = browser.recordings.library.listing(tab.as_str()).await? else {
+                unreachable!("list answers a result")
+            };
+            return Ok(CommandOutput::Json(output::value(result)?));
+        }
+        (RecordTarget::Recording(_), RecordAction::List) => {
+            return Err(BrowserError::Configuration(
+                "list names a tab, such as demi browser record t1 list".into(),
+            ));
+        }
         (RecordTarget::Recording(id), _) => id.clone(),
         (RecordTarget::Tab(tab), RecordAction::Stop) => {
             let running = browser.recordings.running.lock().await;
@@ -1775,12 +1787,13 @@ async fn record(
         whole: input.whole == Some(true),
         region: input.region,
         mp4: input.mp4 == Some(true),
+        plain: input.plain == Some(true),
         output: output.as_deref(),
         overwrite: input.overwrite == Some(true),
         scratch: &scratch,
     };
     let answer = match input.action {
-        RecordAction::Start => unreachable!("start was refused above"),
+        RecordAction::Start | RecordAction::List => unreachable!("start and list were answered above"),
         RecordAction::Stop => library.stop(id).await?,
         RecordAction::Frames => library.frames(id, &reading).await?,
         RecordAction::Export => library.export(id, &reading).await?,

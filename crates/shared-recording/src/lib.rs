@@ -27,6 +27,10 @@
 //! - An export decodes the video with OpenH264 (`demi-shared-openh264`),
 //!   the same everywhere, which is why an exported frame is the video's
 //!   decoded picture, not the screen's exact pixels.
+//! - A source also hands over the inputs its screen took, the agent's
+//!   commands among them (`recorder.rs`). An export draws them on the frames
+//!   (`overlay.rs`), and a drawn MP4 is coded again; the captured frames are
+//!   never drawn on, so a frame changes only where the screen did.
 
 mod changed;
 mod export;
@@ -35,6 +39,7 @@ mod held;
 mod library;
 mod mp4;
 mod operate;
+mod overlay;
 mod recorder;
 mod stored;
 

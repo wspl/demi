@@ -54,6 +54,7 @@ const FINISH: Duration = Duration::from_secs(5);
 /// Starts recording `tab` into `live`. The task ends with the recording, and
 /// ends the recording when the tab closes or the duration runs out.
 pub fn start(tab: BrowserTab, captures: CaptureChannel, live: Live, tasks: &TaskTracker) {
+    tab.state().inputs.add(live.sink());
     tasks.spawn_traced(async move {
         let sink = live.sink();
         let handover = live.handover().clone();

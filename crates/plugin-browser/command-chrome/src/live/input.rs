@@ -40,6 +40,7 @@ use crate::tabs::{dialog::InputRelease, tab::BrowserTab};
 use demi_command_package_browser_protocol::live::{LiveModuleMessage, LiveViewerMessage};
 use demi_live_view::input::{self, Deliver};
 use demi_live_view_protocol::{KeyAction, PointerAction, PointerButton, PointerKind, ViewerInput};
+use demi_shared_recording_protocol::{InputBy, InputPhase};
 
 use crate::live::protocol::{TabId, ViewportMode};
 use crate::live::{observers, writer::Writer};
@@ -178,6 +179,12 @@ async fn deliver(
                     _ => return Ok(()),
                 };
                 held.touching = kind != DispatchTouchEventType::TouchEnd;
+                let phase = match kind {
+                    DispatchTouchEventType::TouchStart => InputPhase::Down,
+                    DispatchTouchEventType::TouchEnd => InputPhase::Up,
+                    _ => InputPhase::Move,
+                };
+                super::inputs::touch(tab, x, y, phase, InputBy::User);
                 let points = if held.touching {
                     vec![TouchPoint::new(x, y)]
                 } else {
@@ -214,6 +221,7 @@ async fn deliver(
                 .modifiers(keyboard::click_modifiers(i64::from(modifiers), mac))
                 .build()
                 .map_err(BrowserError::Configuration)?;
+            super::inputs::mouse(tab, &event, InputBy::User);
             dispatch(tab, page.execute(event)).await
         }
         LiveViewerMessage::Input { input: ViewerInput::Wheel {
@@ -235,6 +243,7 @@ async fn deliver(
                 .modifiers(i64::from(modifiers))
                 .build()
                 .map_err(BrowserError::Configuration)?;
+            super::inputs::mouse(tab, &event, InputBy::User);
             dispatch(tab, page.execute(event)).await
         }
         LiveViewerMessage::Input { input: ViewerInput::Key {
@@ -275,10 +284,12 @@ async fn deliver(
                 event.location = pressed.location;
                 event.is_keypad = pressed.is_keypad;
             }
+            super::inputs::key(tab, &event, InputBy::User);
             dispatch(tab, page.execute(event)).await
         }
         LiveViewerMessage::Input { input: ViewerInput::Text { text }, .. } => {
             held.composing = false;
+            super::inputs::typed(tab, &text, InputBy::User);
             dispatch(tab, page.execute(InsertTextParams::new(text))).await
         }
         LiveViewerMessage::Input { input: ViewerInput::Composition { text }, .. } => {
@@ -295,6 +306,7 @@ async fn deliver(
         }
         LiveViewerMessage::Paste { text, html, .. } => {
             held.composing = false;
+            super::inputs::typed(tab, &text, InputBy::User);
             dispatch(tab, paste(tab, &text, &html)).await
         }
         LiveViewerMessage::Choice {
@@ -359,6 +371,16 @@ async fn release(tab: Option<&BrowserTab>, held: Held) {
         {
             releases.push(InputRelease::Mouse(event));
         }
+    }
+    // A recording draws what the page is given: the buttons go up and the
+    // finger lifts here, the moment this viewer let go.
+    for release in &releases {
+        if let InputRelease::Mouse(event) = release {
+            super::inputs::mouse(tab, event, InputBy::User);
+        }
+    }
+    if held.touching {
+        super::inputs::touch(tab, held.point.0, held.point.1, InputPhase::Up, InputBy::User);
     }
     if tab.state().dialog.is_open() {
         tab.state().dialog.defer(releases).await;

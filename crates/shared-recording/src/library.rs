@@ -10,7 +10,10 @@ use std::{
 };
 
 use demi_shared_openh264::Codec;
-use demi_shared_recording_protocol::{EndReason, FrameRow, FrameSet, Gap, KEPT, RecordingId, RecordingInfo};
+use demi_shared_recording_protocol::{EndReason, FrameRow, FrameSet, Gap, Input, InputRow, KEPT, RecordingId, RecordingInfo};
+
+/// How long a pause between keys may be for the keys to be one word typed.
+const TYPING_US: u64 = 1_500_000;
 
 use crate::{
     Error,
@@ -131,6 +134,19 @@ impl Library {
         })
     }
 
+    /// The recordings of `target`, newest first, running or not.
+    pub async fn list(&self, target: &str) -> Result<Vec<RecordingInfo>, Error> {
+        let mut found = Vec::new();
+        for (id, _) in stored::listed(&self.directory).into_iter().rev() {
+            let stored = self.stored(&id).await?;
+            let info = stored.info()?;
+            if info.target == target {
+                found.push(info);
+            }
+        }
+        Ok(found)
+    }
+
     /// Ends this program's recordings, each with every frame it holds kept,
     /// and answers once their files are complete. Keeping the conversation's
     /// recordings is no program's to decide: they go when the conversation is
@@ -148,6 +164,9 @@ pub struct Listing {
     pub frames: Vec<FrameRow>,
     /// Where frames were missed between them.
     pub gaps: Vec<Gap>,
+    /// The inputs `frames` lists from the first frame listed to the next
+    /// frame after the last, or to the end.
+    pub inputs: Vec<InputRow>,
 }
 
 /// A recording to read.
@@ -183,10 +202,39 @@ impl Stored {
             None => 0,
         };
         let recording = contents.info(&self.id, self.live.is_some(), ran);
+        let frames: Vec<FrameRow> = contents.rows().filter(|row| which.is_none_or(|which| which.contains(row.frame))).collect();
+        // A listing of some frames has the inputs from its first frame to
+        // the frame after its last; one of every frame has them all.
+        let from = match which {
+            Some(_) => frames.first().map_or(u64::MAX, |row| row.time_us),
+            None => 0,
+        };
+        let until = match (which, frames.last()) {
+            (Some(_), Some(last)) => contents.frames.get(last.frame as usize).map_or(u64::MAX, |next| next.t),
+            _ => u64::MAX,
+        };
+        let mut inputs: Vec<InputRow> = Vec::new();
+        // When the last key of the text typed last went down.
+        let mut typed_at = 0;
+        for row in contents.inputs.into_iter().filter(|row| row.input.listed() && row.time_us >= from && row.time_us < until) {
+            // Text the user typed key by key is one line, as a word is.
+            if let (Some(InputRow { input: Input::Typed { characters: count, by: last_by, .. }, .. }), Input::Typed { characters, by, .. }) =
+                (inputs.last_mut(), &row.input)
+                && last_by == by
+                && row.time_us.saturating_sub(typed_at) < TYPING_US
+            {
+                *count += characters;
+                typed_at = row.time_us;
+                continue;
+            }
+            typed_at = row.time_us;
+            inputs.push(row);
+        }
         Ok(Listing {
             recording,
-            frames: contents.rows().filter(|row| which.is_none_or(|which| which.contains(row.frame))).collect(),
+            frames,
             gaps: contents.gaps,
+            inputs,
         })
     }
 

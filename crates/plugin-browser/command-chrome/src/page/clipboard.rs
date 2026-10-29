@@ -142,6 +142,7 @@ pub async fn execute(
             // cannot be undone once the browser accepted the clipboard write.
             operation
                 .run(async {
+                    crate::live::inputs::acted(tab);
                     operation.begin_input();
                     let written: bool = tab
                         .page()

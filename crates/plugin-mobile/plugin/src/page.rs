@@ -230,6 +230,7 @@ pub(crate) async fn call(
                 whole: None,
                 region: None,
                 mp4: None,
+                plain: None,
                 output: None,
                 overwrite: None,
             };

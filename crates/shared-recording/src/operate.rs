@@ -22,6 +22,8 @@ pub struct Reading<'a> {
     pub whole: bool,
     pub region: Option<Region>,
     pub mp4: bool,
+    /// Whether the export leaves the inputs off the frames.
+    pub plain: bool,
     /// Where the images go, or with `mp4` the file: a path the program
     /// resolved; none for the default.
     pub output: Option<&'a Path>,
@@ -64,7 +66,25 @@ impl Library {
             RecordResult {
                 frames: Some(listing.frames),
                 gaps: Some(listing.gaps),
+                inputs: Some(listing.inputs),
                 ..RecordResult::of(listing.recording)
+            },
+        ))
+    }
+
+    /// Lists the recordings of `target`, newest first.
+    pub async fn listing(&self, target: &str) -> Result<Answer, Error> {
+        let recordings = self.list(target).await?;
+        let newest = recordings
+            .first()
+            .cloned()
+            .ok_or_else(|| Error::BadRequest(format!("{target} has no recording this conversation keeps")))?;
+        Ok(answer(
+            RecordAction::List,
+            "",
+            RecordResult {
+                recordings: Some(recordings),
+                ..RecordResult::of(newest)
             },
         ))
     }
@@ -83,17 +103,39 @@ impl Library {
                 }
                 None => stored.directory().join(format!("export-{}.mp4", unique())),
             };
-            let written = target.clone();
-            let ran = tokio::task::spawn_blocking(move || stored.write_mp4(&written))
-                .await
-                .map_err(|error| Error::Failed(format!("the export stopped: {error}")))??;
-            let about = format!("{} · {} · {:.1} s MP4", info.id, info.target, ran.as_secs_f64());
+            // Drawing needs the coder, which an export of the plain video does
+            // not: a Host that cannot load it gives the video plain, and says
+            // why.
+            let (drawn, mut undrawn) = match reading.plain {
+                true => (None, None),
+                false => match self.codec.library().await {
+                    Ok(load) => (Some(load), None),
+                    Err(error) => (None, Some(error.to_string())),
+                },
+            };
+            let stored = std::sync::Arc::new(stored);
+            let write = |drawn: Option<demi_shared_openh264::Load>| {
+                let (stored, written) = (stored.clone(), target.clone());
+                tokio::task::spawn_blocking(move || stored.write_mp4(&written, drawn.as_ref()))
+            };
+            let ran = match write(drawn.clone()).await.map_err(|error| Error::Failed(format!("the export stopped: {error}")))? {
+                Err(Error::Unavailable(why)) if drawn.is_some() => {
+                    undrawn = Some(why);
+                    write(None).await.map_err(|error| Error::Failed(format!("the export stopped: {error}")))??
+                }
+                written => written?,
+            };
+            let mut about = format!("{} · {} · {:.1} s MP4", info.id, info.target, ran.as_secs_f64());
+            if let Some(why) = &undrawn {
+                about.push_str(&format!(" · inputs not drawn: {why}"));
+            }
             return Ok(match reading.output {
                 Some(path) => answer(
                     RecordAction::Export,
                     reading.command,
                     RecordResult {
                         path: Some(path.display().to_string()),
+                        undrawn,
                         ..RecordResult::of(info)
                     },
                 ),
@@ -111,6 +153,7 @@ impl Library {
         };
         let frames = reading.frames.cloned();
         let overwrite = reading.overwrite || reading.output.is_none();
+        let plain = reading.plain;
         let load = self.codec.library().await.map_err(|error| Error::Unavailable(error.to_string()))?;
         // A directory the export chose itself is replaced by a later export of
         // the same frames; one the caller named refuses files that are there.
@@ -121,6 +164,7 @@ impl Library {
                 directory: &directory,
                 overwrite,
                 load: &load,
+                plain,
             })
         })
         .await

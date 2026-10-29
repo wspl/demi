@@ -25,6 +25,7 @@ use chromiumoxide::{
     },
     layout::Point,
 };
+use demi_shared_recording_protocol::InputBy;
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -143,8 +144,75 @@ pub async fn command(
     command_admitted(tab, command, cancel, deadline, &mut session.references).await
 }
 
+/// The commands a recording lists among its frames: those that act on the
+/// page or wait for it, not those that only read it.
+const LISTED: &[&str] = &[
+    "open", "back", "forward", "reload", "click", "move", "drag", "scroll", "fill", "type", "key", "check", "select",
+    "select-text", "wait", "upload", "download", "clipboard.write", "viewport.set", "viewport.reset",
+    "dialog.accept", "dialog.dismiss", "cdp.send", "webmcp.call",
+];
+
+/// Runs `work`, the command `command` on `tab`, and hands it to the tab's
+/// recordings that ran as it began, with how it ended, when it is one they
+/// list; `target` names what it acted on, from its result.
+pub async fn recorded<T>(
+    tab: &BrowserTab,
+    command: &BrowserOperation,
+    work: impl std::future::Future<Output = Result<T>>,
+    target: impl FnOnce(&T) -> Option<String>,
+) -> Result<T> {
+    if !LISTED.contains(&command.name()) {
+        return work.await;
+    }
+    let began = tokio::time::Instant::now();
+    let under_way = crate::live::inputs::command_begins(tab);
+    // A command its caller stops waiting for is listed by none.
+    let _forget = crate::live::inputs::Forget(tab, &under_way);
+    let result = work.await;
+    let failed = result.as_ref().err().map(|error| {
+        if demi_shared_recording_protocol::text::keeps_failure(command.name()) {
+            error.to_string()
+        } else {
+            "its message names the text it typed, which a recording does not keep".to_owned()
+        }
+    });
+    let acted_on = result.as_ref().ok().and_then(target);
+    crate::live::inputs::command(
+        tab,
+        &under_way,
+        began,
+        || {
+            let positionals = demi_command_package_browser_protocol::browser::positionals(command.name(), true);
+            let mut text = demi_shared_recording_protocol::text::command(command.name(), &command.arguments(), &positionals);
+            if let Some(acted_on) = acted_on {
+                text.push_str(&format!(" → {acted_on}"));
+            }
+            text
+        },
+        failed,
+    );
+    result
+}
+
 /// Keep one browser-tab admission through a command and its attached artifact capture.
+/// A recording of the tab lists the command with how it ended.
 pub async fn command_admitted(
+    tab: &BrowserTab,
+    command: &BrowserOperation,
+    cancel: &CancellationToken,
+    deadline: tokio::time::Instant,
+    references: &mut crate::tabs::session::References,
+) -> Result<TabResult> {
+    let work = command_run(tab, command, cancel, deadline, references);
+    recorded(tab, command, work, |result| match result {
+        TabResult::Action(ActionResult { target: Some(element), .. }) if element.name.is_empty() => Some(element.role.clone()),
+        TabResult::Action(ActionResult { target: Some(element), .. }) => Some(format!("{} {:?}", element.role, element.name)),
+        _ => None,
+    })
+    .await
+}
+
+async fn command_run(
     tab: &BrowserTab,
     command: &BrowserOperation,
     cancel: &CancellationToken,
@@ -566,17 +634,15 @@ pub async fn command_admitted(
                 operation
                     .run(async {
                         operation.begin_input();
-                        tab.page()
-                            .execute(
-                                DispatchMouseEventParams::builder()
-                                    .r#type(DispatchMouseEventType::MouseMoved)
-                                    .x(point.x)
-                                    .y(point.y)
-                                    .modifiers(keyboard::modifiers(input.modifier.as_deref()))
-                                    .build()
-                                    .map_err(BrowserError::Configuration)?,
-                            )
-                            .await?;
+                        let moved = DispatchMouseEventParams::builder()
+                            .r#type(DispatchMouseEventType::MouseMoved)
+                            .x(point.x)
+                            .y(point.y)
+                            .modifiers(keyboard::modifiers(input.modifier.as_deref()))
+                            .build()
+                            .map_err(BrowserError::Configuration)?;
+                        crate::live::inputs::mouse(tab, &moved, InputBy::Agent);
+                        tab.page().execute(moved).await?;
                         operation.complete_input();
                         Ok(())
                     })
@@ -625,19 +691,17 @@ pub async fn command_admitted(
                 operation
                     .run(async {
                         operation.begin_input();
-                        tab.page()
-                            .execute(
-                                DispatchMouseEventParams::builder()
-                                    .r#type(DispatchMouseEventType::MouseWheel)
-                                    .x(point.x)
-                                    .y(point.y)
-                                    .modifiers(keyboard::modifiers(input.modifier.as_deref()))
-                                    .delta_x(input.dx.unwrap_or(0.0))
-                                    .delta_y(input.dy.unwrap_or(0.0))
-                                    .build()
-                                    .map_err(BrowserError::Configuration)?,
-                            )
-                            .await?;
+                        let wheel = DispatchMouseEventParams::builder()
+                            .r#type(DispatchMouseEventType::MouseWheel)
+                            .x(point.x)
+                            .y(point.y)
+                            .modifiers(keyboard::modifiers(input.modifier.as_deref()))
+                            .delta_x(input.dx.unwrap_or(0.0))
+                            .delta_y(input.dy.unwrap_or(0.0))
+                            .build()
+                            .map_err(BrowserError::Configuration)?;
+                        crate::live::inputs::mouse(tab, &wheel, InputBy::Agent);
+                        tab.page().execute(wheel).await?;
                         operation.complete_input();
                         Ok(())
                     })

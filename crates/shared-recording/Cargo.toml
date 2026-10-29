@@ -15,11 +15,16 @@ bench = false
 demi-shared-h264 = { path = "../shared-h264" }
 demi-shared-openh264 = { path = "../shared-openh264" }
 demi-shared-recording-protocol = { path = "../shared-recording-protocol" }
+# The glyphs of the keys a drawn export shows (`overlay.rs`), from the one
+# font the crate carries.
+ab_glyph = "0.2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 openh264 = { version = "0.9", default-features = false, features = ["libloading"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# The pointer, the presses and the capsules a drawn export draws.
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true

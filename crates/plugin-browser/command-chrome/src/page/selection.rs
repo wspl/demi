@@ -44,6 +44,7 @@ pub(crate) async fn select_text(
                     &mut last_failure,
                 )
                 .await?;
+            crate::live::inputs::acted(tab);
             operation.begin_input();
             let selected: Selection = operation
                 .run(element::call(

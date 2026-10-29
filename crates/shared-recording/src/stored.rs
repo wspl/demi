@@ -4,6 +4,7 @@
 //! <directory>/r<number>/
 //!   recording.json   what it records, and how it ended once it has
 //!   frames.jsonl     one line for each picture or run of frames missed
+//!   inputs.jsonl     one line for each input the screen took, in time order
 //!   video.h264       the pictures' H.264, Annex B, one coded picture each
 //! ```
 //!
@@ -22,7 +23,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_shared_recording_protocol::{Area, EndReason, FrameRow, FrameSize, Gap, RecordingId, RecordingInfo};
+use demi_shared_recording_protocol::{Area, EndReason, FrameRow, FrameSize, Gap, InputRow, RecordingId, RecordingInfo};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -30,6 +31,7 @@ use crate::Error;
 pub(crate) const META: &str = "recording.json";
 pub(crate) const INDEX: &str = "frames.jsonl";
 pub(crate) const VIDEO: &str = "video.h264";
+pub(crate) const INPUTS: &str = "inputs.jsonl";
 /// The file a program holds an exclusive lock on while it writes a
 /// recording, which the system releases when the program ends, however it
 /// does: whether another program still writes a recording is whether the lock
@@ -81,6 +83,10 @@ pub(crate) struct Kept {
     pub o: u64,
     pub l: u32,
     pub key: bool,
+    /// When it arrived, in microseconds from the first frame's arrival;
+    /// none in a recording an earlier release made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub a: Option<u64>,
 }
 
 impl Kept {
@@ -122,6 +128,8 @@ pub(crate) struct Contents {
     /// Every frame of the video, numbered from 1 in this order.
     pub frames: Vec<Kept>,
     pub gaps: Vec<Gap>,
+    /// Every input the screen took, in time order.
+    pub inputs: Vec<InputRow>,
 }
 
 impl Contents {
@@ -144,7 +152,28 @@ impl Contents {
                 Entry::Missed { after, count } => gaps.push(Gap { after, count }),
             }
         }
-        Ok(Self { meta, frames, gaps })
+        let mut inputs = inputs(directory)?;
+        // An input is timed by when it was taken, from when the first frame
+        // arrived; a frame by when it was drawn. A frame arrives the time its
+        // capture and coding take after it was drawn, the first one maybe
+        // later than most, so the input's time moves by how much sooner than
+        // the first any frame arrived: the inputs then sit as far before the
+        // frames as they were taken before the screen was drawn.
+        let sooner = frames
+            .iter()
+            .filter_map(|kept| kept.a.map(|arrived| kept.t.saturating_sub(arrived)))
+            .max()
+            .unwrap_or(0);
+        // One taken before the first frame arrived is at the start, which
+        // stays its time; none is after the recording's end.
+        let end = meta.ended.as_ref().map(|ended| ended.duration_us);
+        for row in inputs.iter_mut().filter(|row| row.time_us > 0) {
+            row.time_us = row.time_us.saturating_add(sooner);
+            if let Some(end) = end {
+                row.time_us = row.time_us.min(end);
+            }
+        }
+        Ok(Self { meta, frames, gaps, inputs })
     }
 
     /// The recording as `start` and `stop` tell it. `running` is whether this
@@ -187,6 +216,26 @@ impl Contents {
             whole: kept.whole(),
         })
     }
+}
+
+/// The inputs of the recording in `directory`; none for one an earlier
+/// release made, which kept no inputs.
+fn inputs(directory: &Path) -> Result<Vec<InputRow>, Error> {
+    let path = directory.join(INPUTS);
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(Error::io(directory, &error)),
+    };
+    // A line a program killed mid-write left unfinished is no input.
+    let finished = text.rfind('\n').map_or(0, |end| end + 1);
+    let mut rows = text[..finished]
+        .lines()
+        .map(|line| serde_json::from_str::<InputRow>(line).map_err(|error| Error::Corrupt(format!("{}: {error}", path.display()))))
+        .collect::<Result<Vec<_>, _>>()?;
+    // A command's line is written when it ends, at the time it began.
+    rows.sort_by_key(|row| row.time_us);
+    Ok(rows)
 }
 
 /// The recordings in `directory`, oldest first.

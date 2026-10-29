@@ -47,6 +47,7 @@ closed_set! {
         Stop = "stop",
         Frames = "frames",
         Export = "export",
+        List = "list",
     }
 }
 
@@ -378,6 +379,97 @@ pub struct FrameRow {
     pub whole: bool,
 }
 
+closed_set! {
+    /// Who gave an input: the agent's command, or the user's hand in the
+    /// work panel's live view.
+    pub enum InputBy {
+        Agent = "agent",
+        User = "user",
+    }
+}
+
+closed_set! {
+    /// A mouse button.
+    pub enum InputButton {
+        Left = "left",
+        Middle = "middle",
+        Right = "right",
+    }
+}
+
+closed_set! {
+    /// Where a pointer or a finger is in a press.
+    pub enum InputPhase {
+        Down = "down",
+        Move = "move",
+        Up = "up",
+    }
+}
+
+/// An input a recording's source took while it ran. A place is in the
+/// frames' pixels, and `scale` is how many of them a point is there, so
+/// that what an export draws for it is as large on every screen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum Input {
+    /// A mouse's move, or a press or release of `button`.
+    Pointer {
+        x: f64,
+        y: f64,
+        scale: f64,
+        phase: InputPhase,
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "InputButton")]
+        button: Option<InputButton>,
+        by: InputBy,
+    },
+    /// A turn of the wheel by `dx` and `dy` pixels, a positive `dy` down.
+    Wheel { x: f64, y: f64, scale: f64, dx: f64, dy: f64, by: InputBy },
+    /// A press of a key that is not plain typing, with its modifiers, as
+    /// `["Meta", ","]` or `["Enter"]`.
+    Keys { keys: Vec<String>, scale: f64, by: InputBy },
+    /// Text typed, inserted or filled: how many characters, never what.
+    Typed { characters: u32, scale: f64, by: InputBy },
+    /// A finger's touch on a device's screen.
+    Touch { x: f64, y: f64, scale: f64, phase: InputPhase, by: InputBy },
+    /// A device's button, as `home` or `volume-up`.
+    Button { name: String, scale: f64, by: InputBy },
+    /// One of the agent's commands, at the time it began, and why it failed
+    /// when it did.
+    Command {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        failed: Option<String>,
+    },
+}
+
+/// An input at its time, in microseconds from the recording's first frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InputRow {
+    #[schemars(range(max = MAX_SAFE_INTEGER))]
+    pub time_us: u64,
+    pub input: Input,
+}
+
+impl Input {
+    /// Whether `frames` lists it: the agent's commands and the user's
+    /// discrete inputs, not the moves of a pointer or a finger, and not the
+    /// low-level inputs a command gave, which its own line stands for.
+    pub fn listed(&self) -> bool {
+        match self {
+            Self::Command { .. } => true,
+            Self::Pointer { phase, by, .. } | Self::Touch { phase, by, .. } => {
+                *by == InputBy::User && *phase == InputPhase::Down
+            }
+            Self::Wheel { by, .. } | Self::Keys { by, .. } | Self::Typed { by, .. } | Self::Button { by, .. } => {
+                *by == InputBy::User
+            }
+        }
+    }
+}
+
 /// Where frames the screen drew were missed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -421,6 +513,21 @@ pub struct RecordResult {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     pub path: Option<String>,
+    /// For `frames`: the agent's commands and the user's inputs among the
+    /// frames listed.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<InputRow>")]
+    pub inputs: Option<Vec<InputRow>>,
+    /// For `export`: why the inputs are not drawn on the frames that were
+    /// to have them, as on a Host that cannot load the video coder.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub undrawn: Option<String>,
+    /// For `list`: the recordings of the tab or device, newest first;
+    /// `recording` is the first of them.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<RecordingInfo>")]
+    pub recordings: Option<Vec<RecordingInfo>>,
 }
 
 impl RecordResult {
@@ -432,6 +539,9 @@ impl RecordResult {
             images: None,
             area: None,
             path: None,
+            inputs: None,
+            undrawn: None,
+            recordings: None,
         }
     }
 }
@@ -458,7 +568,7 @@ macro_rules! record_input {
             #[doc = $target_doc]
             #[garde(skip)]
             pub target: $target,
-            /// start, stop, frames or export
+            /// start, stop, frames, export or list; list names the tab or device, not a recording
             #[garde(skip)]
             pub action: $crate::RecordAction,
             /// For start: stop by itself after this long, such as 30s or 1m30s; at most 2 minutes
@@ -486,6 +596,11 @@ macro_rules! record_input {
             #[schemars(with = "bool")]
             #[garde(skip)]
             pub mp4: Option<bool>,
+            /// For export: the frames as they were captured, without the inputs drawn on them
+            #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "bool")]
+            #[garde(skip)]
+            pub plain: Option<bool>,
             /// For export: the directory for the images, or with --mp4 a new file on this Host
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]

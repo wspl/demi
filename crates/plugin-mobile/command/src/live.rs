@@ -50,6 +50,7 @@ use demi_command_package_mobile_protocol::{
 };
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{InvocationContext, ResidentError};
+use demi_shared_recording_protocol::{Input as RecordedInput, InputBy, InputPhase};
 use demi_live_view::{
     delivery::Delivery,
     frames::Reader,
@@ -422,10 +423,52 @@ impl Deliver for DeviceInput {
             }
             _ => None,
         };
+        // A key that types nothing, with the modifiers held, as a shortcut
+        // names it; a modifier pressed alone is no key of its own.
+        let named = match &message {
+            ViewerInput::Key { action: KeyAction::Down, key, modifiers, .. }
+                if character.is_none() && !matches!(key.as_str(), "Shift" | "Control" | "Alt" | "Meta" | "AltGraph") =>
+            {
+                let mut keys: Vec<String> = [(2, "Control"), (1, "Alt"), (8, "Shift"), (4, "Meta")]
+                    .into_iter()
+                    .filter(|(bit, _)| u32::from(*modifiers) & bit != 0)
+                    .map(|(_, name)| name.to_owned())
+                    .collect();
+                keys.push(key.clone());
+                Some(keys)
+            }
+            _ => None,
+        };
+        let wheel = match &message {
+            ViewerInput::Wheel { x, y, delta_x, delta_y, .. } if scroll.is_some() => Some((*x, *y, *delta_x, *delta_y)),
+            _ => None,
+        };
         let text = match message {
             ViewerInput::Text { text } => Some(text),
             _ => character,
         };
+        // The recording of the device, if one runs, draws what the user did.
+        if let Some((phase, at)) = step {
+            let phase = match phase {
+                TouchPhase::Down => InputPhase::Down,
+                TouchPhase::Up => InputPhase::Up,
+                _ => InputPhase::Move,
+            };
+            target.report_touch(at, phase, InputBy::User);
+        } else if let Some((x, y, dx, dy)) = wheel {
+            target.report(InputBy::User, |scale| RecordedInput::Wheel {
+                x: x * scale,
+                y: y * scale,
+                scale,
+                dx,
+                dy,
+                by: InputBy::User,
+            });
+        } else if let Some(keys) = named {
+            target.report(InputBy::User, |scale| RecordedInput::Keys { keys, scale, by: InputBy::User });
+        } else if let Some(text) = &text {
+            target.report_typed(text, InputBy::User);
+        }
         futures_util::future::Either::Right(async move {
             let delivered = if let Some((phase, at)) = step {
                 device.touch(phase, at).await
@@ -450,6 +493,11 @@ impl Deliver for DeviceInput {
         held: Held,
     ) -> impl std::future::Future<Output = ()> + Send {
         let device = target.map(|open| open.device.clone());
+        // A recording draws the finger lifting here, the moment this viewer
+        // let go.
+        if let (Some(open), Some(at)) = (target, held.finger) {
+            open.report_touch(at, InputPhase::Up, InputBy::User);
+        }
         async move {
             let Some(device) = device else { return };
             if let Some(at) = held.finger {
