@@ -25,9 +25,8 @@
  *   again, once the backend has it on, the widget shows again.
  * - A button in the card's corner, always shown since the frame takes the
  *   pointer's hover from the card, opens the widget whole in a tab of the
- *   work panel, where it has the panel's room; where no panel opens it, as
- *   on a share or in an archived conversation, it opens the widget's page in
- *   a new tab of the web browser.
+ *   work panel, where it has the panel's room; where no panel is, as on a
+ *   share, it opens the widget's page in a new tab of the web browser.
  */
 
 /**

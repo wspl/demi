@@ -317,8 +317,7 @@ const files = computed<ConversationFiles | undefined>(() => {
     },
     ...(attachments.value ? { attachment: attachments.value } : {}),
     ...(replyBlocks.value ? { replyBlock: replyBlocks.value } : {}),
-    // An archived conversation's panel takes no change, so its blocks open as a share's do.
-    openReplyBlock: work.canOpen('block') && !current.archived
+    openReplyBlock: work.canOpen('block')
       ? (tag, id, title) => work.openIn(current.id, { intent: 'block', payload: { tag, id, title } })
       : undefined,
     attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {

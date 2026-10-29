@@ -2,8 +2,6 @@
 //! whole or not at all and answers with the panel's revision; the
 //! conversation's entry in the list carries the tabs.
 //!
-//! An archived conversation refuses every change.
-//!
 //! The backend applies a conversation's panel changes one at a time, the page's
 //! and the plugin's alike. A plugin whose work on one conversation's tabs takes
 //! several port operations, such as reading the browser's tabs and then adding
@@ -20,7 +18,6 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_plugin_host::PanelError;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::{PANEL_BYTES_MAX, PanelAnswer, PanelChanges};
 
 use super::AppState;
@@ -37,7 +34,7 @@ pub(super) async fn change(
     Path(id): Path<String>,
     body: Result<JsonBody<PanelChanges>, ApiError>,
 ) -> Result<Json<PanelAnswer>, ApiError> {
-    let conversation = changeable(&state, &user.id, &id).await?;
+    let conversation = owned(&state.services, &user.id, &id).await?.id;
     let JsonBody(PanelChanges { changes }) = body?;
     let (revision, changed) = state
         .shards
@@ -48,25 +45,6 @@ pub(super) async fn change(
         .await?
         .map_err(refused)?;
     Ok(Json(PanelAnswer { revision, changed }))
-}
-
-/// The caller's conversation `id`, which takes a change: whose
-/// conversation it is and whether it is archived are answered before the
-/// body.
-async fn changeable(state: &AppState, user: &UserId, id: &str) -> Result<ConversationId, ApiError> {
-    let record = owned(&state.services, user, id).await?;
-    if record.archived {
-        return Err(archived());
-    }
-    Ok(record.id)
-}
-
-fn archived() -> ApiError {
-    ApiError::new(
-        StatusCode::CONFLICT,
-        ErrorCode::ConversationArchived,
-        "The conversation is archived",
-    )
 }
 
 fn refused(error: PanelError) -> ApiError {
@@ -82,7 +60,6 @@ fn refused(error: PanelError) -> ApiError {
             ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::TooLarge, message)
                 .with_param("limitBytes", PANEL_BYTES_MAX)
         }
-        PanelError::Archived => archived(),
         PanelError::Missing => ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::ConversationNotFound,

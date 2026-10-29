@@ -15,7 +15,6 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
-use super::drafts::archived;
 
 impl ControlService {
     /// `owner`'s conversations that are not archived and whose panel has
@@ -110,9 +109,6 @@ impl ControlService {
                 .optional()?;
             if exists.is_none() {
                 return Ok(PanelOutcome::Missing);
-            }
-            if archived(&transaction, &conversation)? {
-                return Ok(PanelOutcome::Archived);
             }
             let (revision, mut document) = stored(&transaction, &conversation)?;
             let effects = match document.apply_all(changes) {

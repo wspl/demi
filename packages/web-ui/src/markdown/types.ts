@@ -126,8 +126,7 @@ export interface ConversationFiles {
   /**
    * Opens the reply block `id` of `tag` whole in the work panel, under
    * `title`, through the `block` intent; absent while no plugin the user has
-   * on opens it or the panel takes no change, as on a share or in an
-   * archived conversation.
+   * on opens it, as on a share.
    */
   openReplyBlock?(tag: string, id: string, title: string): void
   /**

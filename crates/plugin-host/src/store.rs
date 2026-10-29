@@ -117,7 +117,6 @@ pub enum PanelOutcome {
     Full,
     /// An update past the most data.
     TooLarge,
-    Archived,
     /// No conversation has that id.
     Missing,
 }
