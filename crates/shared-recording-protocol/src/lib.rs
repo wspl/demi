@@ -47,6 +47,8 @@ closed_set! {
         Stop = "stop",
         Frames = "frames",
         Export = "export",
+        List = "list",
+        Note = "note",
     }
 }
 
@@ -331,7 +333,8 @@ pub struct RecordingInfo {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "EndReason")]
     pub ended: Option<EndReason>,
-    /// What went wrong, when it stopped because it failed.
+    /// What went wrong, when it stopped because it failed or its browser quit
+    /// on its own.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     pub note: Option<String>,
@@ -378,6 +381,101 @@ pub struct FrameRow {
     pub whole: bool,
 }
 
+closed_set! {
+    /// Who gave an input: the agent's command, or the user's hand in the
+    /// work panel's live view.
+    pub enum InputBy {
+        Agent = "agent",
+        User = "user",
+    }
+}
+
+closed_set! {
+    /// A mouse button.
+    pub enum InputButton {
+        Left = "left",
+        Middle = "middle",
+        Right = "right",
+    }
+}
+
+closed_set! {
+    /// Where a pointer or a finger is in a press.
+    pub enum InputPhase {
+        Down = "down",
+        Move = "move",
+        Up = "up",
+    }
+}
+
+/// An input a recording's source took while it ran. A place is in the
+/// frames' pixels, and `scale` is how many of them a point is there, so
+/// that what an export draws for it is as large on every screen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum Input {
+    /// A mouse's move, or a press or release of `button`.
+    Pointer {
+        x: f64,
+        y: f64,
+        scale: f64,
+        phase: InputPhase,
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "InputButton")]
+        button: Option<InputButton>,
+        by: InputBy,
+    },
+    /// A turn of the wheel by `dx` and `dy` pixels, a positive `dy` down.
+    Wheel { x: f64, y: f64, scale: f64, dx: f64, dy: f64, by: InputBy },
+    /// A press of a key that is not plain typing, with its modifiers, as
+    /// `["Meta", ","]` or `["Enter"]`.
+    Keys { keys: Vec<String>, scale: f64, by: InputBy },
+    /// Text typed, inserted or filled: how many characters, never what.
+    Typed { characters: u32, scale: f64, by: InputBy },
+    /// A finger's touch on a device's screen.
+    Touch { x: f64, y: f64, scale: f64, phase: InputPhase, by: InputBy },
+    /// A device's button, as `home` or `volume-up`.
+    Button { name: String, scale: f64, by: InputBy },
+    /// One of the agent's commands, at the time it began, and why it failed
+    /// when it did.
+    Command {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        failed: Option<String>,
+    },
+    /// Text the agent set to show from its time until the next note, or the
+    /// end. Its time is the frames' own, as the agent named it, never moved
+    /// as a taken input's is.
+    Note { text: String },
+}
+
+/// An input at its time, in microseconds from the recording's first frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InputRow {
+    #[schemars(range(max = MAX_SAFE_INTEGER))]
+    pub time_us: u64,
+    pub input: Input,
+}
+
+impl Input {
+    /// Whether `frames` lists it: the agent's commands and the user's
+    /// discrete inputs, not the moves of a pointer or a finger, and not the
+    /// low-level inputs a command gave, which its own line stands for.
+    pub fn listed(&self) -> bool {
+        match self {
+            Self::Command { .. } | Self::Note { .. } => true,
+            Self::Pointer { phase, by, .. } | Self::Touch { phase, by, .. } => {
+                *by == InputBy::User && *phase == InputPhase::Down
+            }
+            Self::Wheel { by, .. } | Self::Keys { by, .. } | Self::Typed { by, .. } | Self::Button { by, .. } => {
+                *by == InputBy::User
+            }
+        }
+    }
+}
+
 /// Where frames the screen drew were missed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -421,6 +519,36 @@ pub struct RecordResult {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     pub path: Option<String>,
+    /// For `frames`: the agent's commands and the user's inputs among the
+    /// frames listed.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<InputRow>")]
+    pub inputs: Option<Vec<InputRow>>,
+    /// For `export`: why the inputs are not drawn on the frames that were
+    /// to have them, as on a Host that cannot load the video coder.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub undrawn: Option<String>,
+    /// For `list`: the recordings of the tab or device, newest first;
+    /// `recording` is the first of them. For `export` of several: the
+    /// recordings, in the order they play; `recording` is the first.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<RecordingInfo>")]
+    pub recordings: Option<Vec<RecordingInfo>>,
+    /// For `export`: what of the notes it could not show as they were set,
+    /// such as a character no font on this Host has, drawn as a box.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<String>")]
+    pub unshown: Option<Vec<String>>,
+    /// For `export --mp4 --fast-waits`: how long the video plays, in
+    /// milliseconds, shorter than the recordings ran.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "u64", range(max = MAX_SAFE_INTEGER))]
+    pub plays_ms: Option<u64>,
+    /// For `export --sheet`: the sheet's image.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub sheet: Option<String>,
 }
 
 impl RecordResult {
@@ -432,6 +560,12 @@ impl RecordResult {
             images: None,
             area: None,
             path: None,
+            inputs: None,
+            undrawn: None,
+            recordings: None,
+            unshown: None,
+            plays_ms: None,
+            sheet: None,
         }
     }
 }
@@ -458,7 +592,7 @@ macro_rules! record_input {
             #[doc = $target_doc]
             #[garde(skip)]
             pub target: $target,
-            /// start, stop, frames or export
+            /// start, stop, frames, export, list or note; list names the tab or device, not a recording; export takes several recordings, such as r1,r2, to play one after another
             #[garde(skip)]
             pub action: $crate::RecordAction,
             /// For start: stop by itself after this long, such as 30s or 1m30s; at most 2 minutes
@@ -486,7 +620,12 @@ macro_rules! record_input {
             #[schemars(with = "bool")]
             #[garde(skip)]
             pub mp4: Option<bool>,
-            /// For export: the directory for the images, or with --mp4 a new file on this Host
+            /// For export: the frames as they were captured, without the inputs drawn on them
+            #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "bool")]
+            #[garde(skip)]
+            pub plain: Option<bool>,
+            /// For export: the directory for the images, or with --mp4 or --sheet a new file on this Host
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
             #[garde(length(chars, min = 1, max = $length))]
@@ -496,13 +635,86 @@ macro_rules! record_input {
             #[schemars(with = "bool")]
             #[garde(skip)]
             pub overwrite: Option<bool>,
+            /// For export --mp4: play each stretch of more than 2 seconds in which nothing changed at 8 times its speed
+            #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "bool")]
+            #[garde(skip)]
+            pub fast_waits: Option<bool>,
+            /// For export: one PNG of the whole recording, a tile at each --every from its start to its end, not images of frames
+            #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "bool")]
+            #[garde(skip)]
+            pub sheet: Option<bool>,
+            /// For export --sheet: the time between tiles, such as 1s or 500ms; by default the one that gives at most 24
+            #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "RecordingDuration")]
+            #[garde(skip)]
+            pub every: Option<$crate::RecordingDuration>,
+            /// For note: the text to show below the picture of a drawn export, from its time until the next note
+            #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
+            #[garde(length(chars, min = 1))]
+            pub text: Option<String>,
+            /// For note: the second of the recording it shows from, such as 31.5; now by default, while it records
+            #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "f64")]
+            #[garde(range(min = 0.0, max = 120.0))]
+            pub at: Option<f64>,
             $($extra)*
+        }
+
+        impl $name {
+            /// Why the flags given do not fit the action, if they do not.
+            pub fn misfit(&self) -> Option<String> {
+                use $crate::RecordAction;
+                let action = self.action;
+                let several = self.target.recordings().len() > 1;
+                let exported = action == RecordAction::Export;
+                let whole = exported && self.mp4 != Some(true) && self.sheet != Some(true);
+                if action == RecordAction::Note && self.text.is_none() {
+                    return Some("note takes its text, such as record r1 note \"Open the menu\"".into());
+                }
+                let wrong = [
+                    ("the text", self.text.is_some() && action != RecordAction::Note),
+                    ("--at", self.at.is_some() && action != RecordAction::Note),
+                    ("--sheet", self.sheet == Some(true) && !exported),
+                    ("--mp4", self.mp4 == Some(true) && !exported),
+                    ("--every", self.every.is_some() && self.sheet != Some(true)),
+                    ("--fast-waits", self.fast_waits == Some(true) && self.mp4 != Some(true)),
+                    ("--duration", self.duration.is_some() && action != RecordAction::Start),
+                    ("--frames", self.frames.is_some() && !(action == RecordAction::Frames || whole)),
+                    ("--region", self.region.is_some() && !whole),
+                    ("--whole", self.whole == Some(true) && !whole),
+                    ("--plain", self.plain == Some(true) && !exported),
+                    ("--output", self.output.is_some() && !exported),
+                    ("--overwrite", self.overwrite == Some(true) && !exported),
+                ];
+                if let Some((flag, _)) = wrong.iter().find(|(_, wrong)| *wrong) {
+                    return Some(match *flag {
+                        "the text" | "--at" => format!("{flag} is for note, such as record r1 note \"Open the menu\" --at 2.5"),
+                        "--every" => "--every is for export --sheet".into(),
+                        "--fast-waits" => "--fast-waits is for export --mp4".into(),
+                        "--duration" => "--duration is for start".into(),
+                        "--frames" => "--frames is for frames, and export of images".into(),
+                        "--region" | "--whole" => format!("{flag} is for export of images, not --mp4 or --sheet"),
+                        flag => format!("{flag} is for export"),
+                    });
+                }
+                if self.sheet == Some(true) && self.mp4 == Some(true) {
+                    return Some("export writes a video with --mp4 or a sheet with --sheet, not both".into());
+                }
+                if several && !(exported && (self.mp4 == Some(true) || self.sheet == Some(true))) {
+                    return Some("several recordings, such as r1,r2, are for export --mp4 or export --sheet".into());
+                }
+                None
+            }
         }
     };
 }
 
 /// Declares the first operand of `record`: the tab or device a `start`
-/// names, or the recording every other action names, told apart by the
+/// names, the recording every other action names, or the recordings, such
+/// as `r1,r2`, an `export` plays one after another, told apart by the
 /// identifier's prefix.
 #[macro_export]
 macro_rules! recording_target {
@@ -514,17 +726,35 @@ macro_rules! recording_target {
         pub enum $name {
             $source($source_type),
             Recording($crate::RecordingId),
+            /// Two or more, in the order named.
+            Recordings(Vec<$crate::RecordingId>),
         }
 
         impl $name {
-            pub const PATTERN: &str = concat!("^(", $prefix, "|r)[1-9][0-9]{0,14}$");
+            pub const PATTERN: &str =
+                concat!("^(", $prefix, "[1-9][0-9]{0,14}|r[1-9][0-9]{0,14}(,r[1-9][0-9]{0,14})*)$");
+
+            /// The recordings it names, none for a tab or a device.
+            pub fn recordings(&self) -> Vec<$crate::RecordingId> {
+                match self {
+                    Self::$source(_) => Vec::new(),
+                    Self::Recording(recording) => vec![recording.clone()],
+                    Self::Recordings(recordings) => recordings.clone(),
+                }
+            }
         }
 
         impl TryFrom<String> for $name {
             type Error = String;
 
             fn try_from(value: String) -> Result<Self, Self::Error> {
-                if value.starts_with('r') {
+                if value.contains(',') {
+                    value
+                        .split(',')
+                        .map(|part| part.trim().parse::<$crate::RecordingId>())
+                        .collect::<Result<Vec<_>, _>>()
+                        .map(Self::Recordings)
+                } else if value.starts_with('r') {
                     value.parse().map(Self::Recording)
                 } else {
                     value.parse().map(Self::$source)
@@ -538,6 +768,9 @@ macro_rules! recording_target {
                 match target {
                     $name::$source(source) => source.to_string(),
                     $name::Recording(recording) => recording.to_string(),
+                    $name::Recordings(recordings) => {
+                        recordings.iter().map(|recording| recording.as_str()).collect::<Vec<_>>().join(",")
+                    }
                 }
             }
         }

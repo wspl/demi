@@ -50,7 +50,7 @@ use demi_command_protocol::ResidentSequence;
 use demi_command_sdk::{Messages, Numbers};
 use demi_live_view_protocol::{LiveActivity, LivePoint};
 use demi_shared_recording::Live;
-use demi_shared_recording_protocol::{EndReason, RecordingId};
+use demi_shared_recording_protocol::{EndReason, Input, InputBy, InputPhase, RecordingId};
 
 use crate::{
     driver::{Device, Driver, DriverError},
@@ -104,6 +104,9 @@ pub struct OpenDevice {
     agent: Mutex<AgentUse>,
     /// The recording of the device under way, if any.
     recording: Mutex<Option<Recording>>,
+    /// The agent's commands under way, which the input and the read queues
+    /// run at once.
+    commands: Mutex<Vec<Arc<UnderWay>>>,
     /// The recording the panel started and has not taken the video of: the
     /// panel's Stop takes it whether the recording still runs or ended by
     /// itself, at its limit.
@@ -159,6 +162,7 @@ impl OpenDevice {
             }),
             agent: Mutex::default(),
             recording: Mutex::new(None),
+            commands: Mutex::new(Vec::new()),
             panel_recording: Mutex::new(None),
             changes: watch::Sender::new(0),
             saved: Mutex::default(),
@@ -225,6 +229,72 @@ impl OpenDevice {
             drop(recording);
             open.changes.send_modify(|changes| *changes += 1);
         });
+    }
+
+    /// Hands the input `input` makes, given how many of the recording's
+    /// pixels a point is, to the recording of the device, if one runs. A
+    /// point is the recording's frame over the screen's points, long side to
+    /// long side, which also holds for one recorded at the screen's logical
+    /// size; the screen's own pixels stand in before the first frame.
+    pub fn report(&self, by: InputBy, input: impl FnOnce(f64) -> Input) {
+        let at = std::time::Instant::now();
+        if by == InputBy::Agent {
+            for command in self.commands.lock().expect("the commands are intact").iter() {
+                command.first.lock().expect("the first input is intact").get_or_insert(at);
+            }
+        }
+        let sink = match self.recording.lock().expect("the recording is intact").as_ref() {
+            Some(recording) => recording.live.sink(),
+            None => return,
+        };
+        let screen = *self.device.screen().borrow();
+        let points = screen.points.x.max(screen.points.y);
+        let pixels = match sink.frame_size() {
+            Some((width, height)) => width.max(height),
+            None => screen.pixels.0.max(screen.pixels.1),
+        };
+        let scale = if points > 0.0 { f64::from(pixels) / points } else { 1.0 };
+        sink.input(at, input(scale));
+    }
+
+    /// Starts one of the agent's commands: the recording running now lists
+    /// it, at the first input it gives. Dropping the answer, as a command
+    /// its caller stops waiting for does, lists it nowhere.
+    pub fn command_begins(self: &Arc<Self>) -> CommandUnderWay {
+        let command = Arc::new(UnderWay {
+            sink: self.recording().map(|live| live.sink()),
+            first: Mutex::new(None),
+            began: std::time::Instant::now(),
+        });
+        self.commands.lock().expect("the commands are intact").push(command.clone());
+        CommandUnderWay { open: self.clone(), command }
+    }
+
+    /// Reports a finger at `at`, in points, in `phase`.
+    pub fn report_touch(&self, at: crate::driver::Points, phase: InputPhase, by: InputBy) {
+        self.report(by, |scale| Input::Touch {
+            x: at.x * scale,
+            y: at.y * scale,
+            scale,
+            phase,
+            by,
+        });
+    }
+
+    /// Reports a finger down at `from`, and, when the answer drops, up at
+    /// `to`: as the input ends, or as its command is stopped, which lifts the
+    /// finger on the device too.
+    pub fn touching(&self, from: crate::driver::Points, to: crate::driver::Points) -> Lift<'_> {
+        self.report_touch(from, InputPhase::Down, InputBy::Agent);
+        Lift { open: self, at: to }
+    }
+
+    /// Reports `text` typed into the device.
+    pub fn report_typed(&self, text: &str, by: InputBy) {
+        let characters = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
+        if characters > 0 {
+            self.report(by, |scale| Input::Typed { characters, scale, by });
+        }
     }
 
     /// The agent uses the device until the guard drops and for
@@ -1477,5 +1547,49 @@ impl crate::driver::Booting for Recorded<'_> {
 
     fn undone(&self) {
         self.kept.unbooted(self.platform, self.native_id);
+    }
+}
+
+/// One of the agent's commands under way on a device: the recording that
+/// ran as it began, which alone lists it, and when it first gave the device
+/// an input, the time it lists it at.
+struct UnderWay {
+    sink: Option<demi_shared_recording::Sink>,
+    first: Mutex<Option<std::time::Instant>>,
+    began: std::time::Instant,
+}
+
+/// A command under way, which its end hands to the recording.
+pub struct CommandUnderWay {
+    open: Arc<OpenDevice>,
+    command: Arc<UnderWay>,
+}
+
+impl CommandUnderWay {
+    /// Hands the command `text` to the recording that ran as it began, at
+    /// the first input it gave, or when it began for one that gave none.
+    pub fn ended(self, text: String, failed: Option<String>) {
+        let at = self.command.first.lock().expect("the first input is intact").unwrap_or(self.command.began);
+        if let Some(sink) = self.command.sink.as_ref().filter(|sink| !sink.ended().is_cancelled()) {
+            sink.input(at, Input::Command { text, failed });
+        }
+    }
+}
+
+impl Drop for CommandUnderWay {
+    fn drop(&mut self) {
+        self.open.commands.lock().expect("the commands are intact").retain(|other| !Arc::ptr_eq(other, &self.command));
+    }
+}
+
+/// A finger the agent put down, which the recording lifts when this drops.
+pub struct Lift<'a> {
+    open: &'a OpenDevice,
+    at: crate::driver::Points,
+}
+
+impl Drop for Lift<'_> {
+    fn drop(&mut self) {
+        self.open.report_touch(self.at, InputPhase::Up, InputBy::Agent);
     }
 }

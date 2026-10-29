@@ -148,7 +148,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
                 "the PNG's bytes on stdout and what it captured on stderr, so pipe it into demi file view to see it or redirect it to save it; with --output, the file saved and what it captured on stdout; --json requires --output"
             }
             "record" => {
-                "start and stop: the recording's ID and state; frames: the changed frames as a table; export: one image path per line, or with --mp4 the video's bytes on stdout, or with --output the file saved; --json requires --output with --mp4"
+                "start and stop: the recording's ID and state; frames: the changed frames as a table; note: the time it shows from; export: one image path per line, or with --sheet the sheet's path, or with --mp4 the video's bytes on stdout, or with --output the file saved; --json requires --output with --mp4"
             }
             _ => SUCCESS,
         })
@@ -176,37 +176,8 @@ fn targeted<I: schemars::JsonSchema>() -> bool {
         .is_some()
 }
 
-/// The operands a command line gives in order: every operation but
-/// `tab.new`, `tab.list`, `content.fetch` and `install` acts on a tab, named
-/// first, and `open`'s URL follows it; a target's reference follows the tab,
-/// and `key`'s key comes last, after an optional reference: `key t1 Enter`,
-/// `key t1 e1 Enter`; `eval`'s expression, which stdin may give instead,
-/// comes last too.
 fn positionals<I: schemars::JsonSchema>(name: &str) -> Vec<&'static str> {
-    let mut fields = operands(name).to_vec();
-    if targeted::<I>() {
-        fields.push("ref");
-    }
-    match name {
-        "key" => fields.push("key"),
-        // A short expression may follow the reference instead of stdin.
-        "eval" => fields.push("expression"),
-        _ => {}
-    }
-    fields
-}
-
-/// The operands before a target's reference.
-fn operands(name: &str) -> &'static [&'static str] {
-    match name {
-        "open" => &["tab", "url"],
-        "cdp.send" => &["tab", "method"],
-        "webmcp.call" => &["tab", "tool"],
-        // The first operand is a tab for start, a recording for the others.
-        "record" => &["target", "action"],
-        "tab.new" | "tab.list" | "content.fetch" | "install" => &[],
-        _ => &["tab"],
-    }
+    demi_command_package_browser_protocol::browser::positionals(name, targeted::<I>())
 }
 
 /// The operand an operation reads from finite standard input.

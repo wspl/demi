@@ -54,6 +54,7 @@ const FINISH: Duration = Duration::from_secs(5);
 /// Starts recording `tab` into `live`. The task ends with the recording, and
 /// ends the recording when the tab closes or the duration runs out.
 pub fn start(tab: BrowserTab, captures: CaptureChannel, live: Live, tasks: &TaskTracker) {
+    tab.state().inputs.add(live.sink());
     tasks.spawn_traced(async move {
         let sink = live.sink();
         let handover = live.handover().clone();
@@ -71,12 +72,23 @@ pub fn start(tab: BrowserTab, captures: CaptureChannel, live: Live, tasks: &Task
             }
             _ = sink.ended().cancelled() => return,
         };
+        // A tab closes with its browser when the browser ends on its own, as
+        // when it crashes, which no command and no person did: the recording
+        // says so, not only that its tab closed.
+        let lost = || {
+            tab.state()
+                .failure
+                .borrow()
+                .as_ref()
+                .map(|why| format!("the browser quit on its own, as when it crashes ({why})"))
+        };
         match end {
             // A stop asked for the handover, and ends the recording itself.
             Ending::Handed => {}
             // A tab that closed took its capture with it.
-            Ending::Failed(_) if tab.ended().is_cancelled() => sink.end(EndReason::Closed, None),
+            Ending::Failed(_) if tab.ended().is_cancelled() => sink.end(EndReason::Closed, lost()),
             Ending::Failed(note) => sink.end(EndReason::Failed, Some(note)),
+            Ending::Over(EndReason::Closed) => sink.end(EndReason::Closed, lost()),
             Ending::Over(reason) => sink.end(reason, None),
         }
         // Whoever stops the recording next has nothing to wait for.

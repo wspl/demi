@@ -78,6 +78,7 @@ pub(crate) async fn select_options(
             if matches!(selected.status, SelectionStatus::Ready) {
                 let mut apply = args.clone();
                 apply.push(json!(true));
+                crate::live::inputs::acted(tab);
                 operation.begin_input();
                 selected = operation
                     .run(element::call_with_states(

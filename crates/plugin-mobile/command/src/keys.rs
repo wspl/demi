@@ -144,10 +144,18 @@ pub fn runs(text: &str) -> Vec<Run> {
     runs
 }
 
+tokio::task_local! {
+    /// What the text `enter` types is told to, while the agent's typing
+    /// runs: the recording of its device.
+    pub static TYPED: Arc<dyn Fn(&str) + Send + Sync>;
+}
+
 /// Enters `text` at the cursor of `device`: typed where a US keyboard has
 /// the keys, the rest as the device's platform allows
 /// (`crates/plugin-mobile/command/src/operations.rs`).
 pub async fn enter(device: &Arc<dyn Device>, text: &str) -> Result<()> {
+    // The agent's typing is drawn as its keys go out, a run at a time.
+    let _told = TYPED.try_with(|told| told(text));
     for run in runs(text) {
         match run {
             Run::Keys(keys) => device.type_keys(&keys).await?,

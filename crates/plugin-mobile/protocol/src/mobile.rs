@@ -399,6 +399,13 @@ macro_rules! operations {
                 }
             }
 
+            /// Its input as its arguments' JSON.
+            pub fn arguments(&self) -> serde_json::Value {
+                match self {
+                    $(Self::$variant(input) => serde_json::to_value(input).unwrap_or_default(),)*
+                }
+            }
+
             /// The device it acts on; `list` and `open` act on none yet.
             pub fn device(&self) -> Option<&DeviceId> {
                 match self {
@@ -1027,4 +1034,30 @@ closed_set! {
 pub struct MobileMessage {
     #[garde(skip)]
     pub devices: DevicesChange,
+}
+
+/// The operands a command line gives in order, before its flags: the device
+/// first, then what each operation acts with.
+pub fn positionals(name: &str) -> &'static [&'static str] {
+    match name {
+        "list" => &[],
+        "open" => &["device"],
+        "close" => &["device"],
+        "screenshot" => &["device"],
+        "inspect" => &["device"],
+        "tap" => &["device", "at"],
+        "swipe" => &["device", "at"],
+        "type" => &["device", "text"],
+        "key" => &["device", "key"],
+        "rotate" => &["device", "orientation"],
+        "fold" => &["device", "to"],
+        "appearance" => &["device", "appearance"],
+        "wait" => &["device"],
+        "record" => &["target", "action", "text"],
+        "install" => &["device", "file"],
+        "launch" => &["device", "app"],
+        "logs" => &["device"],
+        "erase" => &["device"],
+        _ => &[],
+    }
 }

@@ -21,6 +21,7 @@ use demi_command_package_mobile_protocol::mobile::{
 };
 use demi_live_view_protocol::LivePoint;
 use demi_shared_recording::{Answer, Library, Reading, started};
+use demi_shared_recording_protocol::{Input, InputBy};
 
 use crate::{
     devices::{Devices, OpenDevice},
@@ -115,8 +116,10 @@ pub async fn run(
     operation: MobileOperation,
 ) -> Result<Outcome, MobileError> {
     // A close needs no connection: a device being taken back closes at once.
+    // Nor does a list of a device's recordings, which outlast it.
+    let lists = matches!(&operation, MobileOperation::Record(input) if input.action == RecordAction::List);
     let open = match operation.device() {
-        Some(handle) if !matches!(operation, MobileOperation::Close(_)) => {
+        Some(handle) if !matches!(operation, MobileOperation::Close(_)) && !lists => {
             Some(devices.get(call.conversation, handle, call.cancel).await?)
         }
         _ => None,
@@ -131,6 +134,22 @@ pub async fn run(
     let _turn = match &turn_of {
         Some(open) => Some(turn(open, queue_of(&operation)).await),
         None => None,
+    };
+    // A recording of the device lists the agent's commands that act on it or
+    // wait for it, with how each ended.
+    let listed = match &turn_of {
+        Some(open) if call.agent && LISTED.contains(&operation.name()) => {
+            Some((
+                open.command_begins(),
+                demi_shared_recording_protocol::text::command(
+                    operation.name(),
+                    &operation.arguments(),
+                    demi_command_package_mobile_protocol::mobile::positionals(operation.name()),
+                ),
+                operation.name(),
+            ))
+        }
+        _ => None,
     };
     let done = async {
         match (operation, open) {
@@ -234,6 +253,7 @@ pub async fn run(
                     _ => return Err(MobileError::Usage("tap takes an element, or x and y".into())),
                 };
                 let seconds = if input.long == Some(true) { LONG_PRESS_SECONDS } else { 0.0 };
+                let _lift = open.touching(at, at);
                 acting(&open, call, at, open.device.tap(at, seconds)).await?;
                 let point = scale.point(at);
                 let summary = element.map(|(reference, listed)| summary(reference, &listed));
@@ -268,6 +288,7 @@ pub async fn run(
                         ));
                     }
                 };
+                let _lift = open.touching(from, to);
                 acting(&open, call, to, open.device.swipe(from, to)).await?;
                 let (start, end) = (scale.point(from), scale.point(to));
                 let text = match &element {
@@ -304,15 +325,19 @@ pub async fn run(
                 let typed = match &target {
                     Some((_, listed)) if replace => {
                         let at = listed.frame.centre();
+                        open.report_typed(&input.text, InputBy::Agent);
                         acting(&open, call, at, open.device.set_value(at, &input.text)).await?;
                         None
                     }
                     Some((_, listed)) => {
                         let at = listed.frame.centre();
-                        acting(&open, call, at, open.device.tap(at, 0.0)).await?;
-                        Some(typing::type_text(&open.device, &input.text).await?)
+                        {
+                            let _lift = open.touching(at, at);
+                            acting(&open, call, at, open.device.tap(at, 0.0)).await?;
+                        }
+                        Some(typed(&open, &input.text).await?)
                     }
-                    None => Some(typing::type_text(&open.device, &input.text).await?),
+                    None => Some(typed(&open, &input.text).await?),
                 };
                 let (fields, text) = match &typed {
                     Some(typed) => typed_text(&open, characters, typed),
@@ -335,7 +360,7 @@ pub async fn run(
                 )
             }
             (MobileOperation::Key(input), Some(open)) => {
-                press(&open, input.key).await?;
+                press(&open, input.key, if call.agent { InputBy::Agent } else { InputBy::User }).await?;
                 Outcome::result(
                     KeyResult {
                         device: open.handle.clone(),
@@ -516,12 +541,27 @@ pub async fn run(
             (_, None) => unreachable!("an operation on a device found it open"),
         }
     };
-    tokio::select! {
+    let outcome = tokio::select! {
         biased;
         _ = call.cancel.cancelled() => Err(MobileError::Cancelled),
         done = done => done,
+    };
+    if let Some((under_way, text, name)) = listed {
+        let failed = outcome.as_ref().err().map(|error| {
+            if demi_shared_recording_protocol::text::keeps_failure(name) {
+                error.to_string()
+            } else {
+                "its message names the text it typed, which a recording does not keep".to_owned()
+            }
+        });
+        under_way.ended(text, failed);
     }
+    outcome
 }
+
+/// The commands a recording lists among its frames: those that act on the
+/// device or wait for it, not those that only read it.
+const LISTED: &[&str] = &["tap", "swipe", "type", "key", "rotate", "fold", "appearance", "launch", "install", "wait", "erase"];
 
 /// Which of a device's commands an operation takes turns with
 /// (`crates/plugin-mobile/command/src/live.rs`).
@@ -848,7 +888,19 @@ async fn acting<T>(
     Ok(input.await?)
 }
 
-async fn press(open: &OpenDevice, key: Key) -> Result<(), MobileError> {
+async fn press(open: &OpenDevice, key: Key, by: InputBy) -> Result<(), MobileError> {
+    open.report(by, |scale| match key {
+        Key::Enter | Key::Escape | Key::Delete | Key::Tab => Input::Keys {
+            keys: vec![key.to_string()],
+            scale,
+            by,
+        },
+        _ => Input::Button {
+            name: key.to_string(),
+            scale,
+            by,
+        },
+    });
     let button = |button| async move { Ok::<_, MobileError>(open.device.press(button).await?) };
     let usage = match key {
         Key::Home => return button(Button::Home).await,
@@ -1049,6 +1101,9 @@ async fn save(cwd: &str, output: &str, overwrite: bool, bytes: &[u8]) -> Result<
 /// `record`: starts recording a device, stops a recording, lists its frames,
 /// or exports them.
 async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInput) -> Result<Outcome, MobileError> {
+    if let Some(why) = input.misfit() {
+        return Err(MobileError::Usage(why));
+    }
     let output = match &input.output {
         Some(output) => Some(
             demi_command_sdk::paths::resolve(call.cwd, output).map_err(|error| MobileError::Usage(error.to_string()))?,
@@ -1079,7 +1134,7 @@ async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInp
             }
             started(call.command, &live)?
         }
-        (RecordAction::Start, RecordTarget::Recording(_)) => {
+        (RecordAction::Start, RecordTarget::Recording(_) | RecordTarget::Recordings(_)) => {
             return Err(MobileError::Usage(
                 "start records a device, such as demi mobile record m1 start".into(),
             ));
@@ -1108,7 +1163,7 @@ async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInp
                     reading.mp4 = true;
                     reading.output = Some(&saved);
                     reading.overwrite = true;
-                    match call.library.export(&id, &reading).await {
+                    match call.library.export(std::slice::from_ref(&id), &reading).await {
                         Ok(answer) => answer,
                         // A recording that kept no frame has no video to save.
                         Err(demi_shared_recording::Error::BadRequest(_)) => stopped,
@@ -1120,7 +1175,21 @@ async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInp
         }
         (RecordAction::Stop, RecordTarget::Recording(id)) => call.library.stop(id).await?,
         (RecordAction::Frames, RecordTarget::Recording(id)) => call.library.frames(id, &reading()).await?,
-        (RecordAction::Export, RecordTarget::Recording(id)) => call.library.export(id, &reading()).await?,
+        (RecordAction::Export, RecordTarget::Recording(_) | RecordTarget::Recordings(_)) => {
+            call.library.export(&input.target.recordings(), &reading()).await?
+        }
+        (RecordAction::Note, RecordTarget::Recording(id)) => {
+            let at = input.at.map(std::time::Duration::from_secs_f64);
+            call.library.note(id, input.text.as_deref().unwrap_or_default(), at).await?
+        }
+        // Several recordings are for an export alone, which `misfit` said.
+        (RecordAction::Stop | RecordAction::Frames | RecordAction::Note, RecordTarget::Recordings(_)) => {
+            unreachable!("several recordings are only exported")
+        }
+        (RecordAction::List, RecordTarget::Device(device)) => call.library.listing(&device.to_string()).await?,
+        (RecordAction::List, RecordTarget::Recording(_) | RecordTarget::Recordings(_)) => {
+            return Err(MobileError::Usage("list names a device, such as demi mobile record m1 list".into()));
+        }
         (_, RecordTarget::Device(_)) => {
             return Err(MobileError::Usage(format!(
                 "{} works on a recording, such as demi mobile record r1 {}; start returns its ID",
@@ -1144,8 +1213,20 @@ fn reading_of<'a>(call: &'a Call<'_>, input: &'a RecordInput, output: Option<&'a
         whole: input.whole == Some(true),
         region: input.region,
         mp4: input.mp4 == Some(true),
+        plain: input.plain == Some(true),
         output,
         overwrite: input.overwrite == Some(true),
+        fast_waits: input.fast_waits == Some(true),
+        sheet: input.sheet == Some(true),
+        every: input.every.map(|every| every.get()),
         scratch: &call.caller_scratch,
     }
+}
+
+/// Types `text` on the device as the agent, the recording drawing each run
+/// of keys as it goes out.
+async fn typed(open: &Arc<OpenDevice>, text: &str) -> Result<typing::Typed, MobileError> {
+    let device = open.clone();
+    let told: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(move |run: &str| device.report_typed(run, InputBy::Agent));
+    crate::keys::TYPED.scope(told, typing::type_text(&open.device, text)).await
 }

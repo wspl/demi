@@ -95,6 +95,7 @@ pub async fn execute(
                     })
                     .await?;
                 tab.input(&operation, async {
+                    crate::live::inputs::acted(tab);
                     operation.begin_input();
                     let _: Value = element::call_with_user_gesture(
                         &control.page,
@@ -192,6 +193,7 @@ async fn attach(
     }
     operation
         .run(async {
+            crate::live::inputs::acted(tab);
             operation.begin_input();
             input
                 .page

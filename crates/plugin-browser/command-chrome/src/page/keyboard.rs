@@ -6,6 +6,7 @@ use chromiumoxide::{
     },
     keys::get_key_definition,
 };
+use demi_shared_recording_protocol::InputBy;
 use serde_json::json;
 
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup};
@@ -339,9 +340,9 @@ pub(crate) async fn press(tab: &BrowserTab, keys: &[Key], operation: &Operation<
             tab.input(operation, async {
                 pressed.push(key);
                 operation.begin_input();
-                tab.page()
-                    .execute(key.event(DispatchKeyEventType::KeyDown, modifiers))
-                    .await?;
+                let down = key.event(DispatchKeyEventType::KeyDown, modifiers);
+                crate::live::inputs::key(tab, &down, InputBy::Agent);
+                tab.page().execute(down).await?;
                 Ok(())
             })
             .await?;
@@ -553,6 +554,7 @@ pub(crate) async fn fill(
     let mode: FillMode = operation
         .run(async {
             if native {
+                crate::live::inputs::typed(tab, text, InputBy::Agent);
                 operation.begin_input();
             }
             let mode = element::call(
@@ -581,6 +583,7 @@ pub(crate) async fn fill(
             operation
                 .run(async {
                     operation.begin_input();
+                    crate::live::inputs::typed(tab, text, InputBy::Agent);
                     tab.page().execute(InsertTextParams::new(text)).await?;
                     operation.complete_input();
                     Ok(())

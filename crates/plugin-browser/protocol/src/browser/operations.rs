@@ -1586,6 +1586,13 @@ macro_rules! operations {
                 }
             }
 
+            /// The operation's input as its arguments' JSON.
+            pub fn arguments(&self) -> Value {
+                match self {
+                    $(Self::$variant(input) => serde_json::to_value(input).unwrap_or_default(),)*
+                }
+            }
+
             pub fn timeout(&self) -> Duration {
                 match self {
                     $(Self::$variant(input) => input.timeout(),)*
@@ -1694,5 +1701,38 @@ impl demi_shared_types::buffer::Entry for CdpEvent {
 
     fn set_sequence(&mut self, sequence: u64) {
         self.sequence = sequence;
+    }
+}
+
+/// The operands a command line gives in order: every operation but
+/// `tab.new`, `tab.list`, `content.fetch` and `install` acts on a tab, named
+/// first, and `open`'s URL follows it; a target's reference follows the tab,
+/// and `key`'s key comes last, after an optional reference: `key t1 Enter`,
+/// `key t1 e1 Enter`; `eval`'s expression, which stdin may give instead,
+/// comes last too.
+pub fn positionals(name: &str, targeted: bool) -> Vec<&'static str> {
+    let mut fields = operands(name).to_vec();
+    if targeted {
+        fields.push("ref");
+    }
+    match name {
+        "key" => fields.push("key"),
+        // A short expression may follow the reference instead of stdin.
+        "eval" => fields.push("expression"),
+        _ => {}
+    }
+    fields
+}
+
+/// The operands before a target's reference.
+fn operands(name: &str) -> &'static [&'static str] {
+    match name {
+        "open" => &["tab", "url"],
+        "cdp.send" => &["tab", "method"],
+        "webmcp.call" => &["tab", "tool"],
+        // The first operand is a tab for start, a recording for the others.
+        "record" => &["target", "action", "text"],
+        "tab.new" | "tab.list" | "content.fetch" | "install" => &[],
+        _ => &["tab"],
     }
 }

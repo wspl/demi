@@ -1,39 +1,39 @@
 {
-  "version": "153.0.8010.36",
+  "version": "156.0.8078.73",
   "platforms": [
     {
       "target": "aarch64-apple-darwin",
-      "url": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.36/mac-arm64/chrome-mac-arm64.zip",
-      "size": 191016009,
-      "sha256": "1f701ef60757c63c6ccf98afaf28291dd0c8d1457d3d738e81fd62201c230ad0",
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.73/mac-arm64/chrome-mac-arm64.zip",
+      "size": 194963618,
+      "sha256": "a46be48ee2e33b3edc1a98a39668b9f0abb8f23f031bc4df195e2388e6de28d1",
       "executable": "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
     },
     {
       "target": "x86_64-apple-darwin",
-      "url": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.36/mac-x64/chrome-mac-x64.zip",
-      "size": 201449122,
-      "sha256": "cddfd83fadf88808fb036f44282488b1cf3f1b50efacce470225ae41f14b0302",
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.73/mac-x64/chrome-mac-x64.zip",
+      "size": 205755779,
+      "sha256": "06198cb668e451741be787eeefc049e57af6031e5e49f53c989c93d38896a3ac",
       "executable": "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
     },
     {
       "target": "aarch64-unknown-linux-musl",
-      "url": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.36/linux-arm64/chrome-linux-arm64.zip",
-      "size": 195918275,
-      "sha256": "dfc4955719c5d494c8507990506d2d5bed174c31bf89266aa2dc5593c6607e8b",
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.73/linux-arm64/chrome-linux-arm64.zip",
+      "size": 200773255,
+      "sha256": "043ac31ba6ffea06d3c58144f9c602dd8769830de5ad6e13689fd0ce27788c34",
       "executable": "chrome-linux-arm64/chrome"
     },
     {
       "target": "x86_64-unknown-linux-musl",
-      "url": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.36/linux64/chrome-linux64.zip",
-      "size": 195711476,
-      "sha256": "167a098c4fdec156b58a9f678c90a84f9072d789f9c6e7b35496a6987b8b7ef8",
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.73/linux64/chrome-linux64.zip",
+      "size": 201336602,
+      "sha256": "c51c24f0126534aaf6d21d1f85b8e243934b3951989dbb59a1f8aab8e32b20c1",
       "executable": "chrome-linux64/chrome"
     },
     {
       "target": "x86_64-pc-windows-msvc",
-      "url": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.36/win64/chrome-win64.zip",
-      "size": 205134000,
-      "sha256": "8edfaa0923c11a30a9315a5e7e5794c5efb60146edea7e3f749f7fdc2aa026cb",
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.73/win64/chrome-win64.zip",
+      "size": 208195825,
+      "sha256": "5db0ad4c070907a791ec895b9de5ed15334b27f79af2556a131c3c11b3913a2b",
       "executable": "chrome-win64/chrome.exe"
     }
   ],

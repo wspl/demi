@@ -53,6 +53,7 @@
 use demi_command_package_browser_protocol::browser as protocol;
 
 pub mod hub;
+pub mod inputs;
 pub mod record;
 pub mod viewer;
 

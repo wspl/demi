@@ -72,6 +72,8 @@ pub struct TabState {
     /// The environment's tasks, which retirement joins: work for the tab that
     /// no command waits for runs on them and ends with the tab.
     pub tasks: TaskTracker,
+    /// The recordings that take the tab's inputs.
+    pub inputs: crate::live::inputs::Inputs,
 }
 
 impl TabState {
@@ -115,6 +117,7 @@ impl TabState {
             shows: watch::channel(0).0,
             changes,
             tasks: tasks.clone(),
+            inputs: Default::default(),
         }))
     }
 }

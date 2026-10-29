@@ -6,7 +6,10 @@ use chromiumoxide::layout::Point;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use demi_shared_recording_protocol::InputBy;
+
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup};
+use crate::live::inputs;
 use crate::tabs::{
     dialog::InputRelease, navigation::NavigationObservation, session::References,
     tab::BrowserTab,
@@ -38,38 +41,34 @@ pub(crate) async fn drag(
             operation.begin_input();
             for (index, point) in points.iter().enumerate() {
                 release_point = *point;
-                tab.page()
-                    .execute(
-                        DispatchMouseEventParams::builder()
-                            .r#type(DispatchMouseEventType::MouseMoved)
-                            .x(point.x)
-                            .y(point.y)
-                            .button(if index == 0 {
-                                MouseButton::None
-                            } else {
-                                MouseButton::Left
-                            })
-                            .buttons(if index == 0 { 0 } else { 1 })
-                            .modifiers(modifiers)
-                            .build()
-                            .map_err(BrowserError::Configuration)?,
-                    )
-                    .await?;
+                let moved = DispatchMouseEventParams::builder()
+                    .r#type(DispatchMouseEventType::MouseMoved)
+                    .x(point.x)
+                    .y(point.y)
+                    .button(if index == 0 {
+                        MouseButton::None
+                    } else {
+                        MouseButton::Left
+                    })
+                    .buttons(if index == 0 { 0 } else { 1 })
+                    .modifiers(modifiers)
+                    .build()
+                    .map_err(BrowserError::Configuration)?;
+                inputs::mouse(tab, &moved, InputBy::Agent);
+                tab.page().execute(moved).await?;
                 if index == 0 {
-                    tab.page()
-                        .execute(
-                            DispatchMouseEventParams::builder()
-                                .r#type(DispatchMouseEventType::MousePressed)
-                                .x(first.x)
-                                .y(first.y)
-                                .button(MouseButton::Left)
-                                .buttons(1)
-                                .click_count(1)
-                                .modifiers(modifiers)
-                                .build()
-                                .map_err(BrowserError::Configuration)?,
-                        )
-                        .await?;
+                    let pressed = DispatchMouseEventParams::builder()
+                        .r#type(DispatchMouseEventType::MousePressed)
+                        .x(first.x)
+                        .y(first.y)
+                        .button(MouseButton::Left)
+                        .buttons(1)
+                        .click_count(1)
+                        .modifiers(modifiers)
+                        .build()
+                        .map_err(BrowserError::Configuration)?;
+                    inputs::mouse(tab, &pressed, InputBy::Agent);
+                    tab.page().execute(pressed).await?;
                 }
             }
             Ok(())
@@ -99,6 +98,7 @@ pub(crate) async fn release_mouse(
     if tab.ended().is_cancelled() {
         return result;
     }
+    inputs::mouse(tab, &release, InputBy::Agent);
     if tab.state().dialog.is_open() {
         tab.state()
             .dialog
@@ -170,7 +170,7 @@ pub(crate) async fn click_at(
     let result = tab
         .input(operation, async {
             operation.begin_input();
-            dispatch_in_order(tab.page(), &events, &sent).await
+            dispatch_in_order(tab, &events, &sent).await
         })
         .await;
     if result.is_ok() {
@@ -192,13 +192,14 @@ pub(crate) async fn click_at(
 /// counts the events handed to the connection, which reach Chrome whatever
 /// becomes of this future.
 async fn dispatch_in_order(
-    page: &chromiumoxide::Page,
+    tab: &BrowserTab,
     events: &[DispatchMouseEventParams],
     sent: &AtomicUsize,
 ) -> Result<()> {
     let mut answers = Vec::with_capacity(events.len());
     for event in events {
-        let mut answer = Box::pin(page.command_future(event.clone())?);
+        inputs::mouse(tab, event, InputBy::Agent);
+        let mut answer = Box::pin(tab.page().command_future(event.clone())?);
         std::future::poll_fn(|context| answer.as_mut().poll_send(context)).await?;
         sent.fetch_add(1, Ordering::Release);
         answers.push(answer);

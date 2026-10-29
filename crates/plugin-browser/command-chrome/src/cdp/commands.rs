@@ -109,6 +109,11 @@ pub async fn execute(
         }
         BrowserOperation::CdpSend(input) => {
             let params = parameters.expect("send parameters were validated before attachment");
+            // An input sent on the page's own target is the page's input, which
+            // a recording draws as it draws the others.
+            if input.target.as_deref().is_none_or(|target| target == "main") {
+                crate::live::inputs::sent(tab, &input.method, &params);
+            }
             let result = operation
                 .run(connection.send(
                     &input.method,

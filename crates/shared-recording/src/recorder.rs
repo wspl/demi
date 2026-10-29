@@ -17,6 +17,13 @@
 //! queued pictures are kept first, and [`Live::ended`] is cancelled once the
 //! files are complete.
 //!
+//! A source also hands over the inputs its screen took, each with the instant
+//! it took it, which the thread writes to `inputs.jsonl` in the frames' time:
+//! an instant is measured from when the first picture arrived, the frames'
+//! zero, so an input shows a little before the frame that shows its effect,
+//! as the capture and its coding take a moment. One taken before the first
+//! picture waits for it, and is at zero.
+//!
 //! A source with an encoder that works behind its calls, as every hardware
 //! encoder does, holds pictures a stop must not lose, since a loss at the end
 //! is the one a model looks for: [`Live::stop`] asks it, through
@@ -31,12 +38,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use demi_shared_recording_protocol::{Area, EndReason, MAX_BYTES, MAX_DURATION, RecordingId, RecordingInfo};
+use demi_shared_recording_protocol::{
+    Area, EndReason, Input, InputRow, MAX_BYTES, MAX_DURATION, RecordingId, RecordingInfo,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     Error,
-    stored::{Contents, Ended, Entry, INDEX, Kept, META, Meta, VIDEO, WRITING},
+    stored::{Contents, Ended, Entry, INDEX, INPUTS, Kept, META, Meta, VIDEO, WRITING},
 };
 
 /// A picture a source coded: H.264 Annex B, one access unit.
@@ -56,9 +65,22 @@ pub struct Picture {
 /// them, is taken to be failing.
 const PICTURE_BYTES: usize = 64 * 1024 * 1024;
 
+/// A note set while the recording runs: at `at` microseconds of its frames'
+/// time, or when it was set, `taken` after the recording's start. The writer
+/// answers the time it kept it at.
+struct Note {
+    text: String,
+    at: Option<u64>,
+    taken: Duration,
+    kept: tokio::sync::oneshot::Sender<u64>,
+}
+
 /// What the sink handed over, in the order it did.
 enum Item {
     Picture(Picture, Duration),
+    /// An input and when it was taken, from the recording's start.
+    Input(Input, Duration),
+    Note(Note),
     /// Frames the screen drew and the source could not give.
     Missed(u32),
 }
@@ -107,6 +129,9 @@ impl Handover {
 const HANDOVER: Duration = Duration::from_secs(5);
 
 struct Shared {
+    /// The size of the last picture handed over, packed as width and
+    /// height, which an input's place is scaled by; 0 before the first.
+    size: std::sync::atomic::AtomicU64,
     handover: Handover,
     queue: Mutex<Queue>,
     wake: Condvar,
@@ -125,6 +150,10 @@ impl Sink {
     /// failed.
     pub fn push_picture(&self, picture: Picture) -> bool {
         let arrived = self.0.began.elapsed();
+        self.0.size.store(
+            (u64::from(picture.width) << 32) | u64::from(picture.height),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         let mut queue = self.0.queue.lock().expect("the recording's queue is intact");
         if queue.finish.is_some() {
             return false;
@@ -138,6 +167,42 @@ impl Sink {
         queue.items.push_back(Item::Picture(picture, arrived));
         self.0.wake.notify_one();
         true
+    }
+
+    /// The width and height of the last picture handed over: the pixels an
+    /// input's place is in. None before the first.
+    pub fn frame_size(&self) -> Option<(u32, u32)> {
+        let size = self.0.size.load(std::sync::atomic::Ordering::Relaxed);
+        (size != 0).then(|| ((size >> 32) as u32, size as u32))
+    }
+
+    /// Hands over an input the source took at `at`. A recording that ended
+    /// takes none.
+    pub fn input(&self, at: Instant, input: Input) {
+        let taken = at.saturating_duration_since(self.0.began);
+        let mut queue = self.0.queue.lock().expect("the recording's queue is intact");
+        if queue.finish.is_some() {
+            return;
+        }
+        queue.items.push_back(Item::Input(input, taken));
+        self.0.wake.notify_one();
+    }
+
+    /// Keeps a note at `at` microseconds of the frames' time, or now, and
+    /// answers the time it is at; an error once the recording ended.
+    pub(crate) async fn note(&self, text: String, at: Option<u64>) -> Result<u64, Error> {
+        let ended = || Error::BadRequest("the recording ended before the note was kept; give it --at".into());
+        let (kept, time) = tokio::sync::oneshot::channel();
+        {
+            let mut queue = self.0.queue.lock().expect("the recording's queue is intact");
+            if queue.finish.is_some() {
+                return Err(ended());
+            }
+            let taken = self.0.began.elapsed();
+            queue.items.push_back(Item::Note(Note { text, at, taken, kept }));
+            self.0.wake.notify_one();
+        }
+        time.await.map_err(|_| ended())
     }
 
     /// Counts `count` frames the screen drew and the source could not give.
@@ -247,6 +312,7 @@ pub(crate) fn start(
     write_meta(&directory, &meta)?;
     let video = fs::File::create(directory.join(VIDEO)).map_err(|error| Error::io(&directory, &error))?;
     let index = fs::File::create(directory.join(INDEX)).map_err(|error| Error::io(&directory, &error))?;
+    let inputs = fs::File::create(directory.join(INPUTS)).map_err(|error| Error::io(&directory, &error))?;
     // Held until the writer ends, so that no program prunes the recording
     // while it is written.
     let writing = fs::File::create(directory.join(WRITING)).map_err(|error| Error::io(&directory, &error))?;
@@ -256,6 +322,7 @@ pub(crate) fn start(
         _ => (MAX_DURATION, EndReason::TimeLimit),
     };
     let shared = Arc::new(Shared {
+        size: std::sync::atomic::AtomicU64::new(0),
         handover: Handover::default(),
         queue: Mutex::default(),
         wake: Condvar::new(),
@@ -268,11 +335,14 @@ pub(crate) fn start(
         meta,
         video,
         index,
+        inputs,
+        waiting: Vec::new(),
         _writing: writing,
         first_picture: None,
         origin: None,
         kept: 0,
         last_time: 0,
+        lag: 0,
         video_bytes: 0,
         bytes: 0,
         // The source ends its recording at the limit itself, handing over
@@ -305,6 +375,9 @@ struct Writer {
     meta: Meta,
     video: fs::File,
     index: fs::File,
+    inputs: fs::File,
+    /// The inputs taken before the first picture arrived, which wait for it.
+    waiting: Vec<(Input, Duration)>,
     /// The lock that says the recording is being written.
     _writing: fs::File,
     /// The first picture's time on its source's clock.
@@ -314,6 +387,10 @@ struct Writer {
     kept: u32,
     /// The time of the frame kept last, in microseconds.
     last_time: u64,
+    /// How much later the frame kept last was drawn than it arrived, each
+    /// from the first frame's: what turns the time something arrives into
+    /// the frames' time.
+    lag: i64,
     /// How many bytes the video holds.
     video_bytes: u64,
     bytes: u64,
@@ -323,6 +400,8 @@ struct Writer {
 
 enum Work {
     Picture(Picture, Duration),
+    Input(Input, Duration),
+    Note(Note),
     Missed(u32),
     Finish(EndReason, Option<String>),
 }
@@ -344,6 +423,16 @@ impl Writer {
                         break (EndReason::Failed, Some(error.to_string()));
                     }
                 }
+                Work::Input(input, taken) => {
+                    if let Err(error) = self.note_input(input, taken) {
+                        break (EndReason::Failed, Some(error.to_string()));
+                    }
+                }
+                Work::Note(note) => {
+                    if let Err(error) = self.keep_note(note) {
+                        break (EndReason::Failed, Some(error.to_string()));
+                    }
+                }
                 Work::Finish(reason, note) => break (reason, note),
             }
         };
@@ -362,6 +451,8 @@ impl Writer {
                     failure = match item {
                         Item::Picture(picture, arrived) => self.keep(picture, arrived).err(),
                         Item::Missed(count) => self.note_missed(count).err(),
+                        Item::Input(input, taken) => self.note_input(input, taken).err(),
+                        Item::Note(note) => self.keep_note(note).err(),
                     };
                 }
             }
@@ -369,6 +460,14 @@ impl Writer {
                 reason = EndReason::Failed;
                 note = Some(error.to_string());
             }
+        }
+        // Inputs of a recording that kept no picture are at its start.
+        self.origin.get_or_insert(Duration::ZERO);
+        if let Err(error) = self.flush_waiting()
+            && reason != EndReason::Failed
+        {
+            reason = EndReason::Failed;
+            note = Some(error.to_string());
         }
         let ran = self.ran().max(Duration::from_micros(self.last_time));
         self.meta.ended = Some(Ended {
@@ -401,6 +500,8 @@ impl Writer {
                     return Work::Picture(picture, arrived);
                 }
                 Some(Item::Missed(count)) => return Work::Missed(count),
+                Some(Item::Input(input, taken)) => return Work::Input(input, taken),
+                Some(Item::Note(note)) => return Work::Note(note),
                 None => {}
             }
             if let Some((reason, note)) = queue.finish.take() {
@@ -438,13 +539,67 @@ impl Writer {
             .map_err(|error| Error::io(&self.directory, &error))
     }
 
+    /// Writes `input`, taken `taken` after the start, in the frames' time,
+    /// or keeps it until the first picture gives that time its zero.
+    fn note_input(&mut self, input: Input, taken: Duration) -> Result<(), Error> {
+        let Some(origin) = self.origin else {
+            self.waiting.push((input, taken));
+            return Ok(());
+        };
+        self.write_input(&InputRow {
+            time_us: u64::try_from(taken.saturating_sub(origin).as_micros()).unwrap_or(u64::MAX),
+            input,
+        })
+    }
+
+    /// Writes a note at the time it names, or at the frames' time it was
+    /// set at: the start, before the first picture.
+    fn keep_note(&mut self, note: Note) -> Result<(), Error> {
+        let time = match (note.at, self.origin) {
+            (Some(at), _) => at,
+            (None, Some(origin)) => {
+                let arrived = i64::try_from(note.taken.saturating_sub(origin).as_micros()).unwrap_or(i64::MAX);
+                u64::try_from(arrived.saturating_add(self.lag)).unwrap_or(0)
+            }
+            (None, None) => 0,
+        };
+        self.write_input(&InputRow {
+            time_us: time,
+            input: Input::Note { text: note.text },
+        })?;
+        let _ = note.kept.send(time);
+        Ok(())
+    }
+
+    fn write_input(&mut self, row: &InputRow) -> Result<(), Error> {
+        let mut line = serde_json::to_vec(row).expect("an input serializes");
+        line.push(b'\n');
+        self.bytes += line.len() as u64;
+        self.inputs
+            .write_all(&line)
+            .map_err(|error| Error::io(&self.directory, &error))
+    }
+
+    /// Writes the inputs that waited for the first picture.
+    fn flush_waiting(&mut self) -> Result<(), Error> {
+        for (input, taken) in std::mem::take(&mut self.waiting) {
+            self.note_input(input, taken)?;
+        }
+        Ok(())
+    }
+
     /// Keeps a coded picture as it came, and says where it is in the video.
     fn keep(&mut self, picture: Picture, arrived: Duration) -> Result<(), Error> {
-        self.origin.get_or_insert(arrived);
+        if self.origin.is_none() {
+            self.origin = Some(arrived);
+            self.flush_waiting()?;
+        }
         let origin = *self.first_picture.get_or_insert(picture.at_us);
         let time = (picture.at_us - origin).max(0.0) as u64;
         // Time never runs back, whatever the source's clock does.
         self.last_time = self.last_time.max(time);
+        let arrived_us = u64::try_from(arrived.saturating_sub(self.origin.unwrap_or_default()).as_micros()).unwrap_or(u64::MAX);
+        self.lag = i64::try_from(self.last_time).unwrap_or(i64::MAX).saturating_sub(i64::try_from(arrived_us).unwrap_or(i64::MAX));
         let offset = self.video_bytes;
         self.video_bytes += picture.data.len() as u64;
         self.video
@@ -462,6 +617,7 @@ impl Writer {
             o: offset,
             l: picture.data.len() as u32,
             key: picture.key,
+            a: Some(arrived_us),
         }))?;
         self.kept += 1;
         Ok(())

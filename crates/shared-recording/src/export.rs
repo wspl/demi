@@ -1,4 +1,7 @@
-//! The frames of a recording as images, and its video as an MP4.
+//! The frames of a recording as images.
+//!
+//! An image draws the inputs the screen took on its frame (`overlay.rs`),
+//! unless asked for it plain.
 //!
 //! An image is the frame decoded from the video, cut to the area the export
 //! shows, under a strip that names the frame's number and time, so the
@@ -22,8 +25,8 @@ use openh264::decoder::{Decoder, DecoderConfig};
 use crate::{
     Error, font,
     library::Stored,
-    mp4,
-    stored::{Kept, VIDEO},
+    overlay::Overlay,
+    stored::VIDEO,
 };
 
 /// The area of the frames an export shows.
@@ -47,6 +50,8 @@ pub struct Export<'a> {
     pub overwrite: bool,
     /// The video decoder's library.
     pub load: &'a Load,
+    /// Whether the images leave the inputs off the frames.
+    pub plain: bool,
 }
 
 /// What an export wrote.
@@ -112,6 +117,8 @@ impl Stored {
         let api = (export.load)().map_err(|error| Error::Unavailable(error.to_string()))?;
         let mut decoder = Decoder::with_api_config(api, DecoderConfig::new())
             .map_err(|error| Error::Failed(format!("the video decoder did not start: {error}")))?;
+        let overlay = Overlay::new(&contents.inputs);
+        let drawn = !export.plain && !overlay.is_empty();
         let mut images = Vec::new();
         for index in start..=last {
             let kept = &contents.frames[index];
@@ -131,6 +138,9 @@ impl Stored {
                 return Err(Error::Corrupt(format!("{} decoded at another size than it was kept", frame_label(number))));
             }
             decoded.write_rgba8(&mut rgba);
+            if drawn {
+                overlay.draw(kept.t, &mut rgba, kept.fw, kept.fh, crate::caption::margin(crate::caption::em(kept.fw, kept.fh)));
+            }
             let shown = area.within(kept.fw, kept.fh).ok_or_else(|| {
                 Error::BadRequest(format!(
                     "the area {area} is outside {}, which is {}x{} pixels",
@@ -148,41 +158,6 @@ impl Stored {
             images.push((number, path));
         }
         Ok(Exported { area, images })
-    }
-
-    /// Writes the recording's video as an MP4 to `path`.
-    pub fn write_mp4(&self, path: &Path) -> Result<std::time::Duration, Error> {
-        let contents = self.contents()?;
-        if contents.frames.is_empty() {
-            return Err(Error::BadRequest(format!("{} kept no frames", self.id)));
-        }
-        let ran = match (&contents.meta.ended, &self.live) {
-            (Some(ended), _) => ended.duration_us,
-            (None, Some(live)) => live.info()?.duration_ms * 1000,
-            (None, None) => contents.frames.last().map_or(0, |last| last.t),
-        };
-        let mut video = fs::File::open(self.directory.join(VIDEO)).map_err(|error| Error::io(&self.directory, &error))?;
-        let frames = &contents.frames;
-        let mut file = std::io::BufWriter::new(fs::File::create(path).map_err(|error| Error::io(path, &error))?);
-        let mut read = |index: usize| -> Result<mp4::Sample, Error> {
-            let kept: &Kept = &frames[index];
-            let mut data = vec![0; kept.l as usize];
-            video
-                .seek(SeekFrom::Start(kept.o))
-                .and_then(|_| video.read_exact(&mut data))
-                .map_err(|error| Error::io(&self.directory, &error))?;
-            let next = frames.get(index + 1).map_or(ran.max(kept.t + 1000), |next| next.t);
-            Ok(mp4::Sample {
-                data,
-                key: kept.key,
-                duration_us: next.saturating_sub(kept.t).max(1),
-                width: kept.fw,
-                height: kept.fh,
-            })
-        };
-        mp4::write(&mut file, frames.len(), &mut read)?;
-        std::io::Write::flush(&mut file).map_err(|error| Error::io(path, &error))?;
-        Ok(std::time::Duration::from_micros(ran))
     }
 }
 
@@ -202,7 +177,7 @@ impl Stored {
 ///
 /// Baseline also makes OpenH264 output in decoding order, not in display
 /// order. That holds while no source makes B frames, as none does.
-fn decodable(frame: &[u8]) -> Cow<'_, [u8]> {
+pub(crate) fn decodable(frame: &[u8]) -> Cow<'_, [u8]> {
     let units = units(frame);
     let mut changed = false;
     let rewritten: Vec<Cow<'_, [u8]>> = units

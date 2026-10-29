@@ -1277,11 +1277,14 @@ impl Conversations {
                 "stop is the user's: an agent's command waits for its page instead".into(),
             ));
         }
-        // Reading a recording needs no browser: it outlasts its tab.
-        if let BrowserOperation::Record(input) = command
-            && demi_command_package_browser_protocol::browser::BrowserInput::tab(input).is_none()
-        {
-            return record(browser, context, input).await;
+        if let BrowserOperation::Record(input) = command {
+            if let Some(why) = input.misfit() {
+                return Err(BrowserError::Configuration(why));
+            }
+            // Reading a recording needs no browser: it outlasts its tab.
+            if demi_command_package_browser_protocol::browser::BrowserInput::tab(input).is_none() {
+                return record(browser, context, input).await;
+            }
         }
         let starts = matches!(
             command,
@@ -1478,7 +1481,8 @@ impl Conversations {
                     _ => None,
                 };
             if let Some(family) = family {
-                return family.await.map(CommandOutput::Json);
+                let recorded = demi_command_package_browser_chrome::page::actions::recorded(tab, command, family, |_| None);
+                return recorded.await.map(CommandOutput::Json);
             }
         }
         if let BrowserOperation::Screenshot(input) = command {
@@ -1719,21 +1723,32 @@ impl Conversations {
     }
 }
 
-/// `record` of a recording: stops it, lists its frames, or exports them. The
-/// recording is the conversation's on this Host, and outlasts its tab and
-/// its browser. `stop` also takes the tab the recording runs on, as a device's
-/// does.
+/// `record` of a recording: stops it, lists its frames, notes it, or exports
+/// it, or several one after another. The recording is the conversation's on
+/// this Host, and outlasts its tab and its browser. `stop` also takes the tab
+/// the recording runs on, as a device's does.
 async fn record(
     browser: &ConversationBrowser,
     context: &InvocationContext,
     input: &RecordInput,
 ) -> Result<CommandOutput> {
-    let id = match (&input.target, input.action) {
-        (RecordTarget::Recording(id), _) => id.clone(),
+    let ids = match (&input.target, input.action) {
+        (RecordTarget::Tab(tab), RecordAction::List) => {
+            let Answer::Result { result, .. } = browser.recordings.library.listing(tab.as_str()).await? else {
+                unreachable!("list answers a result")
+            };
+            return Ok(CommandOutput::Json(output::value(result)?));
+        }
+        (RecordTarget::Recording(_) | RecordTarget::Recordings(_), RecordAction::List) => {
+            return Err(BrowserError::Configuration(
+                "list names a tab, such as demi browser record t1 list".into(),
+            ));
+        }
+        (RecordTarget::Recording(_) | RecordTarget::Recordings(_), _) => input.target.recordings(),
         (RecordTarget::Tab(tab), RecordAction::Stop) => {
             let running = browser.recordings.running.lock().await;
             match running.get(tab.as_str()).filter(|live| !live.ended().is_cancelled()) {
-                Some(live) => live.id().clone(),
+                Some(live) => vec![live.id().clone()],
                 None => return Err(BrowserError::NoRecording(format!("{tab} is not recording"))),
             }
         }
@@ -1744,7 +1759,7 @@ async fn record(
             )));
         }
     };
-    let id = &id;
+    let id = &ids[0];
     if input.action == RecordAction::Start {
         return Err(BrowserError::Configuration(
             "start records a tab, such as demi browser record t1 start".into(),
@@ -1775,15 +1790,23 @@ async fn record(
         whole: input.whole == Some(true),
         region: input.region,
         mp4: input.mp4 == Some(true),
+        plain: input.plain == Some(true),
         output: output.as_deref(),
         overwrite: input.overwrite == Some(true),
+        fast_waits: input.fast_waits == Some(true),
+        sheet: input.sheet == Some(true),
+        every: input.every.map(|every| every.get()),
         scratch: &scratch,
     };
     let answer = match input.action {
-        RecordAction::Start => unreachable!("start was refused above"),
+        RecordAction::Start | RecordAction::List => unreachable!("start and list were answered above"),
         RecordAction::Stop => library.stop(id).await?,
         RecordAction::Frames => library.frames(id, &reading).await?,
-        RecordAction::Export => library.export(id, &reading).await?,
+        RecordAction::Export => library.export(&ids, &reading).await?,
+        RecordAction::Note => {
+            let at = input.at.map(std::time::Duration::from_secs_f64);
+            library.note(id, input.text.as_deref().unwrap_or_default(), at).await?
+        }
     };
     Ok(match answer {
         Answer::Result { result, .. } => CommandOutput::Json(output::value(result)?),
