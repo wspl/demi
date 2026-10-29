@@ -206,7 +206,7 @@ impl LiveCorners {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveFrame {
-    /// The frame Xcode or Android Studio installs for the model, drawn: a
+    /// The model's own frame, as Xcode installs it or AOSP has it, drawn: a
     /// PNG of `width` × `height` pixels, transparent where `screen` shows
     /// the picture.
     #[serde(rename_all = "camelCase")]

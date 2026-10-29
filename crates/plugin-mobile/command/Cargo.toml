@@ -55,10 +55,13 @@ roxmltree = "0.21"
 # (`crates/plugin-mobile/command/src/live.rs`): the rounded-corner drawable
 # read from its APK, copied to a
 # temporary file and read by its central directory, its path's shape, and
-# Android Studio's device art, decoded and drawn.
+# Android devices' art from AOSP, unpacked from its archive, decoded and
+# drawn.
+flate2 = "1"
 fast_image_resize = "6"
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 kurbo = "0.13"
+tar = { version = "0.4", default-features = false }
 tempfile = "3"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 tonic = { version = "0.14", default-features = false, features = ["codegen", "channel"] }

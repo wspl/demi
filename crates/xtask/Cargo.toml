@@ -36,6 +36,7 @@ reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 similar = "2"
 # Checks an npm package's license against the accepted ones and gives the
 # standard text of one without a license file (`xtask notices`); the

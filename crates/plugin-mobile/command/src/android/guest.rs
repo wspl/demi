@@ -103,6 +103,13 @@ pub trait Guest: Send + Sync + 'static {
     /// as a person does with a tap the first time: Gboard's stylus
     /// handwriting tutorial.
     fn skip_keyboard_tutorials(&self) -> BoxFuture<'_, Result<()>>;
+    /// Turns on the system image's overlays for `device`, such as
+    /// `pixel_10`, its rounded corners and cutout among them, as the
+    /// emulator does as a cold boot with the device's skin completes: a
+    /// virtual device created without the skin, or started from a snapshot
+    /// saved without them, has them off. Waits until Android booted;
+    /// answers the overlays it turned on.
+    fn emulate_device<'a>(&'a self, device: &'a str) -> BoxFuture<'a, Result<Vec<String>>>;
     /// The text on the clipboard, empty when it holds none.
     fn clipboard(&self) -> BoxFuture<'_, Result<String>>;
     fn set_clipboard<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
@@ -397,6 +404,26 @@ impl Guest for U2 {
                 .shell(&self.serial, "settings put secure stylus_handwriting_enabled 0")
                 .await
                 .map(drop)
+        })
+    }
+
+    fn emulate_device<'a>(&'a self, device: &'a str) -> BoxFuture<'a, Result<Vec<String>>> {
+        Box::pin(async move {
+            // Once Android booted, when its overlay service answers.
+            let listed = self
+                .adb
+                .shell(&self.serial, "until [ \"$(getprop sys.boot_completed)\" = 1 ]; do sleep 1; done; cmd overlay list")
+                .await?;
+            if !listed.lines().any(|line| line.trim_start().starts_with('[')) {
+                return Err(DriverError::Failed(format!("the overlay service lists nothing: {}", listed.trim())));
+            }
+            let off = off_overlays(&listed, device);
+            for overlay in &off {
+                self.adb
+                    .shell(&self.serial, &format!("cmd overlay enable-exclusive --category {overlay}"))
+                    .await?;
+            }
+            Ok(off)
         })
     }
 
@@ -841,5 +868,19 @@ pub fn read_apk(apk: &std::fs::File, paths: &[String]) -> Result<Vec<Option<Vec<
             }
             Ok(Some(bytes))
         })
+        .collect()
+}
+
+/// The overlays `cmd overlay list` shows off whose packages end in
+/// `.device`, as the emulator's (`QemuMiscPipe`) are named, such as
+/// `com.android.internal.emulation.pixel_10`.
+fn off_overlays(listed: &str, device: &str) -> Vec<String> {
+    let suffix = format!(".{device}");
+    listed
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("[ ]"))
+        .map(str::trim)
+        .filter(|package| package.ends_with(&suffix) && package.chars().all(|char| char.is_ascii_alphanumeric() || matches!(char, '.' | '_')))
+        .map(str::to_owned)
         .collect()
 }

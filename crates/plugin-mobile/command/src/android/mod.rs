@@ -29,6 +29,7 @@
 
 mod adb;
 pub mod art;
+mod art_pin;
 pub mod axml;
 pub mod capture;
 pub mod corners;
@@ -162,9 +163,10 @@ pub trait Sdk: Send + Sync + 'static {
     fn terminate(&self, process: Process) -> BoxFuture<'_, Result<()>>;
     /// What Demi does inside the emulator adb names `serial`.
     fn guest<'a>(&'a self, serial: &'a str) -> BoxFuture<'a, Result<Arc<dyn Guest>>>;
-    /// The folders of Android Studio's device art for the AVD's `device`,
-    /// such as `pixel_10`, when an installation on the Host has it.
-    fn device_art(&self, device: &str) -> Option<art::Folders>;
+    /// The folders of the art of the AVD's `device`, such as `pixel_10`,
+    /// downloaded first when this Host has none; none for a device without
+    /// art, or art that did not download.
+    fn device_art<'a>(&'a self, device: &'a str) -> BoxFuture<'a, Option<art::Folders>>;
 }
 
 /// The Host's Android emulators.
@@ -357,19 +359,38 @@ impl Driver for Android {
                 .filter(|(width, height)| *width > 0.0 && *height > 0.0);
             // The emulator does not say which device it emulates; its
             // AVD's files do.
-            let art = self
-                .sdk
-                .avds()
-                .await?
-                .into_iter()
-                .find(|avd| avd.name == native_id)
-                .and_then(|avd| self.sdk.device_art(&avd.device));
+            let device = self.sdk.avds().await?.into_iter().find(|avd| avd.name == native_id).map(|avd| avd.device);
+            let art = match &device {
+                Some(device) => self.sdk.device_art(device).await,
+                None => None,
+            };
             let serial = running.discovery.serial();
             let guest = self.sdk.guest(&serial).await?;
             let hardware_keyboard = guest.hardware_keyboard().await.unwrap_or_else(|error| {
                 tracing::info!(event = "android_keyboard.read_failed", %error, "whether the emulator has a hardware keyboard was not read");
                 true
             });
+            // The device's own corners and cutout, which the emulator turns
+            // on only as a cold boot with the device's skin completes.
+            // An emulator still booting answers once it booted; the device
+            // is usable meanwhile.
+            if let Some(device) = device.clone() {
+                let guest = guest.clone();
+                tokio::spawn(async move {
+                    match tokio::time::timeout(BOOTING, guest.emulate_device(&device)).await {
+                        Ok(Ok(on)) if !on.is_empty() => {
+                            tracing::info!(event = "android_overlays.enabled", device, overlays = ?on, "the emulator was given its device's corners and cutout");
+                        }
+                        Ok(Ok(_)) => {}
+                        Ok(Err(error)) => {
+                            tracing::warn!(event = "android_overlays.enable_failed", device, %error, "the device's corners and cutout stay off");
+                        }
+                        Err(_) => {
+                            tracing::warn!(event = "android_overlays.enable_failed", device, error = "Android did not finish booting", "the device's corners and cutout stay off");
+                        }
+                    }
+                });
+            }
             if let Err(error) = guest.skip_keyboard_tutorials().await {
                 tracing::info!(event = "android_tutorials.skip_failed", %error, "the keyboard's tutorials stay on");
             }
@@ -684,7 +705,7 @@ struct AndroidDevice {
     ended: CancellationToken,
     /// Stops following the pictures and the log as the device is let go.
     watching: CancellationToken,
-    /// Android Studio's device art for the device, where the Host has it.
+    /// The device's art, where AOSP has it and it downloaded.
     art_folders: Option<art::Folders>,
     /// The art, read the first time it is drawn; none when it does not read.
     /// The art open and folded, each read the first time it is asked for.
@@ -710,11 +731,11 @@ impl AndroidDevice {
                 match read {
                     Ok(Ok(art)) => Some(Arc::new(art)),
                     Ok(Err((folder, error))) => {
-                        tracing::warn!(event = "android_art.read_failed", folder = %folder.display(), %error, "Android Studio's device art does not read");
+                        tracing::warn!(event = "android_art.read_failed", folder = %folder.display(), %error, "an Android device's art does not read");
                         None
                     }
                     Err(error) => {
-                        tracing::warn!(event = "android_art.read_failed", %error, "reading Android Studio's device art stopped");
+                        tracing::warn!(event = "android_art.read_failed", %error, "reading an Android device's art stopped");
                         None
                     }
                 }
@@ -1502,7 +1523,7 @@ impl Device for AndroidDevice {
             // Drawn for the screen as it is now, which the frame names.
             let screen = *self.screen.borrow();
             let turns = turns(screen.orientation);
-            // Android Studio's frame where the Host has its art; the
+            // The device's own frame where it has art; the
             // frame the view draws otherwise, once the corners it follows
             // are known.
             let folded = matches!(screen.fold, Some(Folded::Twofold { open: false }));
