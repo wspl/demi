@@ -73,7 +73,7 @@ let last = performance.now()
 const yaw = ref(0)
 const look = computed(() => lit.value.state.look?.picture ?? null)
 const screenOff = computed(() => !!look.value && props.session.state.screenOff)
-/** Quarter turns clockwise the device is held from upright, as its picture shows. */
+/** Quarter turns clockwise the device is held from upright, as its pictures show it. */
 const quarters = computed(() => look.value ? quartersBetween('portrait', look.value.orientation) : 0)
 const activity = computed(() => props.shown ? props.session.state.activity : { active: false })
 

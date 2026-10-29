@@ -310,7 +310,6 @@ impl Driver for Ios {
                 displays: screen.fold.as_ref().map(|_| {
                     [FoldDisplay::Outer, FoldDisplay::Inner].map(|display| watch::Sender::new(screen.display_screen(display)))
                 }),
-                held: Mutex::new(Orientation::Portrait),
                 drawn: watch::Sender::new(0),
                 awake: watch::Sender::new(true),
                 ended: session.helper.ended().child_token(),
@@ -354,9 +353,6 @@ struct DeviceState {
     /// A hinged foldable's outer and inner displays, as [`Self::screen`] is
     /// the lit one's; none for a device that does not fold.
     displays: Option<[watch::Sender<Screen>; 2]>,
-    /// The orientation the device was last turned to, which the app in
-    /// front may have refused: portrait once attached.
-    held: Mutex<Orientation>,
     drawn: watch::Sender<u64>,
     /// Whether the screen is on, as the input Demi sent says: a simulator
     /// reports nothing of it.
@@ -412,6 +408,7 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
 #[derive(Debug, Clone, Deserialize)]
 pub struct HelperScreen {
     orientation: HelperOrientation,
+    held: HelperOrientation,
     points: Size,
     pixels: PixelSize,
     #[serde(default)]
@@ -513,6 +510,7 @@ impl HelperScreen {
     fn shown(&self, orientation: HelperOrientation, points: &Size, pixels: &PixelSize) -> Screen {
         Screen {
             orientation: orientation.into(),
+            held: self.held.into(),
             points: Points {
                 x: points.width,
                 y: points.height,
@@ -695,10 +693,6 @@ impl Device for IosDevice {
         Some(displays[usize::from(display == FoldDisplay::Inner)].subscribe())
     }
 
-    fn held(&self) -> Orientation {
-        *self.state.held.lock().expect("the held orientation is intact")
-    }
-
     fn drawn(&self) -> watch::Receiver<u64> {
         self.state.drawn.subscribe()
     }
@@ -828,7 +822,6 @@ impl Device for IosDevice {
                 .await?;
             let turned: HelperScreen = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the turned screen does not read: {error}")))?;
-            *self.state.held.lock().expect("the held orientation is intact") = orientation;
             // The orientation the screen took, which an app may have refused.
             self.state.show(&turned);
             let screen = turned.screen();

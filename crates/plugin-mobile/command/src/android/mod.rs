@@ -589,6 +589,8 @@ impl Geometry {
         let pixels = (width.round() as u32, height.round() as u32);
         Screen {
             orientation: orientation(turns),
+            // Its pictures turn as its sensors say it is held.
+            held: orientation(turns),
             points: Points {
                 x: width / self.density,
                 y: height / self.density,

@@ -261,7 +261,7 @@ export class FoldScene {
     this.yaw = Math.min(MAX_YAW, Math.max(-MAX_YAW, yaw))
   }
 
-  /** Holds the device `quarters` quarter turns clockwise from upright, as its screen reports. */
+  /** Holds the device `quarters` quarter turns clockwise from upright, as it is held. */
   setTurn(quarters: number): void {
     this.quarters = ((quarters % 4) + 4) % 4
     for (const face of Object.values(this.faces)) {

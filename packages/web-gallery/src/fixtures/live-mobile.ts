@@ -408,7 +408,7 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
         changed(id)
         restart(id)
         const size = upright(shown)
-        return { device: id, orientation: shown.orientation, width: size.width * SCALE, height: size.height * SCALE }
+        return { device: id, orientation: shown.orientation, held: shown.orientation, width: size.width * SCALE, height: size.height * SCALE }
       }
       case 'fold': {
         const { device: id, to } = foldDeviceSchema.parse(params)

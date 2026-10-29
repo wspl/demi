@@ -162,7 +162,7 @@ export class MobileDevicesController {
     try {
       switch (call.method) {
         case 'rotate': {
-          // The shown picture turns at once, and back if the device refuses.
+          // The shown device turns at once, and back if the turn fails.
           const { device, turn } = call.params
           const session = this.devices.get(device)
           const press = session?.turning(turn) ?? null
@@ -173,7 +173,7 @@ export class MobileDevicesController {
             session?.turnAnswered(press, null)
             throw error
           }
-          session?.turnAnswered(press, answered.orientation)
+          session?.turnAnswered(press, answered.held)
           return null
         }
         case 'fold':

@@ -100,7 +100,13 @@ impl Rect {
 /// coordinate a command takes or prints is in.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Screen {
+    /// The orientation the screen shows, as the app on it lays it out.
     pub orientation: Orientation,
+    /// How the device is held, which Rotate Left and Right turn from: as
+    /// Simulator.app holds an iPhone, the orientation it was last turned to,
+    /// which its screen may have refused; the screen's own on a device whose
+    /// screen always turns with it.
+    pub held: Orientation,
     pub points: Points,
     pub pixels: (u32, u32),
     /// The screenshot's size: the pixels fitted into
@@ -126,6 +132,67 @@ pub enum Folded {
     /// Open or closed, as an Android foldable folds: its inner display lit
     /// while open.
     Twofold { open: bool },
+}
+
+impl Screen {
+    /// The screen turned upright as the device is held, as the live view
+    /// shows it: an app that did not follow the device lies on its side.
+    pub fn as_held(&self) -> Screen {
+        if self.held.landscape() == self.orientation.landscape() {
+            return Screen { orientation: self.held, ..*self };
+        }
+        Screen {
+            orientation: self.held,
+            points: Points { x: self.points.y, y: self.points.x },
+            pixels: (self.pixels.1, self.pixels.0),
+            screenshot: (self.screenshot.1, self.screenshot.0),
+            ..*self
+        }
+    }
+
+    /// The screen's point that shows at `at` of [`Self::as_held`].
+    pub fn from_held(&self, at: Points) -> Points {
+        self.upright(self.orientation, self.portrait(self.held, at))
+    }
+
+    /// Where the screen's point `at` shows in [`Self::as_held`].
+    pub fn to_held(&self, at: Points) -> Points {
+        self.upright(self.held, self.portrait(self.orientation, at))
+    }
+
+    /// The screen's size upright in portrait, which every way it shows is
+    /// turned from.
+    fn portrait_size(&self) -> (f64, f64) {
+        if self.orientation.landscape() {
+            (self.points.y, self.points.x)
+        } else {
+            (self.points.x, self.points.y)
+        }
+    }
+
+    /// The point in portrait of `at`, a point of the screen shown `turned`.
+    fn portrait(&self, turned: Orientation, at: Points) -> Points {
+        let (width, height) = self.portrait_size();
+        let (x, y) = match turned {
+            Orientation::Portrait => (at.x, at.y),
+            Orientation::LandscapeLeft => (width - at.y, at.x),
+            Orientation::PortraitUpsideDown => (width - at.x, height - at.y),
+            Orientation::LandscapeRight => (at.y, height - at.x),
+        };
+        Points { x, y }
+    }
+
+    /// The point of the screen shown `turned` of `at`, a point in portrait.
+    fn upright(&self, turned: Orientation, at: Points) -> Points {
+        let (width, height) = self.portrait_size();
+        let (x, y) = match turned {
+            Orientation::Portrait => (at.x, at.y),
+            Orientation::LandscapeLeft => (at.y, width - at.x),
+            Orientation::PortraitUpsideDown => (width - at.x, height - at.y),
+            Orientation::LandscapeRight => (height - at.y, at.x),
+        };
+        Points { x, y }
+    }
 }
 
 impl Folded {
@@ -412,13 +479,6 @@ pub trait Device: Send + Sync + 'static {
     /// for; none while what it needs is still being read from the device,
     /// which [`Self::frame_changes`] announces once known.
     fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Framed>>>;
-    /// Which way the device is held, which Rotate Left and Right turn from:
-    /// as Simulator.app holds an iPhone, the last orientation it was turned
-    /// to, which its screen may have refused; the screen's on a device whose
-    /// screen always turns with it.
-    fn held(&self) -> Orientation {
-        self.screen().borrow().orientation
-    }
     /// Changes once each time the frame [`Self::frame`] gives changes other
     /// than by a turn of the screen; a device whose frame is known at once
     /// never announces one, its channel closed.

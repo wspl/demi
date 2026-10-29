@@ -724,6 +724,8 @@ pub struct RotateResult {
     /// The orientation the screen shows after the turn: the one asked for,
     /// unless the app in front refused it.
     pub orientation: Orientation,
+    /// How the device is held after the turn: the one asked for.
+    pub held: Orientation,
     /// The screenshot's size in that orientation.
     pub width: u32,
     pub height: u32,

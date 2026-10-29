@@ -30,9 +30,12 @@
  * - A view shown again asks its stream to answer, which the Host does with
  *   the device's state: a stream that does not answer in time, as one whose
  *   connection was lost silently while nobody looked, opens again.
+ * - Shows the device as it is held, which only a rotation changes: the
+ *   Host turns its pictures and draws its frame that way, an app that did
+ *   not follow lying on its side in them.
  * - Turns what the view shows at once when the viewer rotates the device,
  *   from the orientation it shows, until a picture drawn in the orientation
- *   the device reports replaces it, and back if the device refuses.
+ *   the device reports replaces it, and back if the turn fails.
  * - Sends the viewer's touches and keys, and follows the agent's activity on
  *   the device.
  */
@@ -789,8 +792,8 @@ export class DeviceSession {
   }
 
   /**
-   * The device answered the press `id` with `orientation`, or refused it
-   * (none), which takes the press back. A press whose answer the device has
+   * The device answered the press `id` with how it is held now, or the
+   * press failed (none), which takes the press back. A press whose answer the device has
    * reported since it was pressed is done; an answer to a press already done
    * or never kept changes nothing.
    */
@@ -799,8 +802,8 @@ export class DeviceSession {
     if (!turn) {
       return
     }
-    // A device that answers with the orientation it shows kept it, as when
-    // the app in front refuses the turn: nothing will turn.
+    // A device that answers with the orientation it shows is held so
+    // already: nothing will turn.
     if (orientation === null || turn.reported.includes(orientation) || orientation === this.baseOrientation()) {
       this.state.turning = this.state.turning.filter((each) => each !== turn)
       return
