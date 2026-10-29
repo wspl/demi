@@ -23,7 +23,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_shared_recording_protocol::{Area, EndReason, FrameRow, FrameSize, Gap, InputRow, RecordingId, RecordingInfo};
+use demi_shared_recording_protocol::{Area, EndReason, FrameRow, FrameSize, Gap, Input, InputRow, RecordingId, RecordingInfo};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -165,14 +165,19 @@ impl Contents {
             .max()
             .unwrap_or(0);
         // One taken before the first frame arrived is at the start, which
-        // stays its time; none is after the recording's end.
+        // stays its time, as a note's is the one it was set at; none is
+        // after the recording's end.
         let end = meta.ended.as_ref().map(|ended| ended.duration_us);
-        for row in inputs.iter_mut().filter(|row| row.time_us > 0) {
-            row.time_us = row.time_us.saturating_add(sooner);
+        for row in &mut inputs {
+            if row.time_us > 0 && !matches!(row.input, Input::Note { .. }) {
+                row.time_us = row.time_us.saturating_add(sooner);
+            }
             if let Some(end) = end {
                 row.time_us = row.time_us.min(end);
             }
         }
+        // A note set after the inputs about it is in order with them.
+        inputs.sort_by_key(|row| row.time_us);
         Ok(Self { meta, frames, gaps, inputs })
     }
 
@@ -236,6 +241,28 @@ fn inputs(directory: &Path) -> Result<Vec<InputRow>, Error> {
     // A command's line is written when it ends, at the time it began.
     rows.sort_by_key(|row| row.time_us);
     Ok(rows)
+}
+
+/// Adds `row` to the inputs of the recording in `directory`, which no
+/// program writes: a note set after it ended.
+pub(crate) fn append_input(directory: &Path, row: &InputRow) -> Result<(), Error> {
+    use std::io::{Seek as _, Write as _};
+    let path = directory.join(INPUTS);
+    let mut line = serde_json::to_vec(row).expect("an input serializes");
+    line.push(b'\n');
+    let io = |error: std::io::Error| Error::io(&path, &error);
+    let mut file = fs::OpenOptions::new().create(true).read(true).write(true).truncate(false).open(&path).map_err(io)?;
+    // Held while the file is put right and added to, against a note another
+    // program sets at the same moment; the system lets it go with the file.
+    file.lock().map_err(io)?;
+    let mut text = Vec::new();
+    file.read_to_end(&mut text).map_err(io)?;
+    // A line a program killed mid-write left unfinished, which a reading
+    // skips, would join the note's into one that no reading can.
+    let finished = text.iter().rposition(|byte| *byte == b'\n').map_or(0, |end| end + 1);
+    file.set_len(finished as u64).map_err(io)?;
+    file.seek(std::io::SeekFrom::Start(finished as u64)).map_err(io)?;
+    file.write_all(&line).map_err(io)
 }
 
 /// The recordings in `directory`, oldest first.

@@ -148,7 +148,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
                 "the PNG's bytes on stdout and what it captured on stderr, so pipe it into demi file view to see it or redirect it to save it; with --output, the file saved and what it captured on stdout; --json requires --output"
             }
             "record" => {
-                "start and stop: the recording's ID and state; frames: the changed frames as a table; export: one image path per line, or with --mp4 the video's bytes on stdout, or with --output the file saved; --json requires --output with --mp4"
+                "start and stop: the recording's ID and state; frames: the changed frames as a table; note: the time it shows from; export: one image path per line, or with --sheet the sheet's path, or with --mp4 the video's bytes on stdout, or with --output the file saved; --json requires --output with --mp4"
             }
             _ => SUCCESS,
         })

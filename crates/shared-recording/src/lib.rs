@@ -13,7 +13,8 @@
 //!   one directory         ^ Sink::push_picture, Sink::end         |
 //!   for a conversation    | source                                +-- frames
 //!                                                                 +-- export
-//!                                                                 +-- write_mp4
+//!                                       one or several Stored ----+-- video
+//!                                                                 +-- sheet
 //! ```
 //!
 //! # Boundaries
@@ -31,7 +32,10 @@
 //!   commands among them (`recorder.rs`). An export draws them on the frames
 //!   (`overlay.rs`), and a drawn MP4 is coded again; the captured frames are
 //!   never drawn on, so a frame changes only where the screen did.
+//! - The agent sets notes on a recording, which a drawn export shows over
+//!   the picture as subtitles (`caption.rs`), in the system's fonts.
 
+mod caption;
 mod changed;
 mod export;
 mod font;
@@ -40,8 +44,11 @@ mod library;
 mod mp4;
 mod operate;
 mod overlay;
+mod pace;
 mod recorder;
+mod sheet;
 mod stored;
+mod video;
 
 pub use export::{Crop, Export, Exported};
 pub use changed::changed;

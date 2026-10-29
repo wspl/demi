@@ -22,7 +22,7 @@ use tiny_skia::{Color, FillRule, LineCap, LineJoin, Paint, PathBuilder, PixmapMu
 /// The one font a drawn export uses: the glyphs of key names and of the
 /// symbols macOS names modifiers by, cut from DejaVu Sans Bold
 /// (`LICENSE-DejaVu`).
-const FONT: &[u8] = include_bytes!("../fonts/DejaVuSans-Bold-keys.ttf");
+pub(crate) const FONT: &[u8] = include_bytes!("../fonts/DejaVuSans-Bold-keys.ttf");
 
 /// How long the pointer takes to reach a place it jumps to: an agent's
 /// pointer jumps, and the eye loses one it cannot follow. It arrives when
@@ -190,7 +190,8 @@ impl Overlay {
                         _ => overlay.capsule(t, *scale as f32, Shows::Typed(vec![(t, u64::from(*characters))])),
                     }
                 }
-                Input::Command { .. } => {}
+                // A note is the band's, below the picture (`band.rs`).
+                Input::Command { .. } | Input::Note { .. } => {}
             }
         }
         if let Some(from) = down {
@@ -262,8 +263,9 @@ impl Overlay {
         times
     }
 
-    /// Draws what shows at `t` on the opaque RGBA frame `rgba`.
-    pub(crate) fn draw(&self, t: u64, rgba: &mut [u8], width: u32, height: u32) {
+    /// Draws what shows at `t` on the opaque RGBA frame `rgba`, the key
+    /// capsule in the bottom right corner, `margin` pixels from its edges.
+    pub(crate) fn draw(&self, t: u64, rgba: &mut [u8], width: u32, height: u32, margin: f32) {
         let Some(mut pixmap) = PixmapMut::from_bytes(rgba, width, height) else {
             return;
         };
@@ -299,7 +301,7 @@ impl Overlay {
                 Shows::Keys(named) => named.clone(),
                 Shows::Typed(runs) => format!("⌨ {}", runs.iter().filter(|(at, _)| *at <= t).map(|(_, count)| count).sum::<u64>()),
             };
-            self.draw_capsule(&mut pixmap, &text, capsule.scale, width, height);
+            self.draw_capsule(&mut pixmap, &text, capsule.scale, width, height, margin);
         }
     }
 
@@ -481,13 +483,13 @@ impl Overlay {
         }
     }
 
-    fn draw_capsule(&self, pixmap: &mut PixmapMut<'_>, text: &str, scale: f32, width: u32, height: u32) {
+    fn draw_capsule(&self, pixmap: &mut PixmapMut<'_>, text: &str, scale: f32, width: u32, height: u32, margin: f32) {
         let s = scale;
         let size = 22.0 * s;
         let pad = 18.0 * s;
         let box_height = size + 18.0 * s;
         let box_width = self.text_width(text, size) + 2.0 * pad;
-        let (x, y) = (width as f32 - 36.0 * s - box_width, height as f32 - 36.0 * s - box_height);
+        let (x, y) = (width as f32 - margin - box_width, height as f32 - margin - box_height);
         if let Some(path) = rounded(x, y, box_width, box_height, box_height / 2.0) {
             pixmap.fill_path(&path, &paint([28, 28, 30], 0.85), FillRule::Winding, Transform::identity(), None);
         }
@@ -504,8 +506,6 @@ impl Overlay {
     fn text(&self, pixmap: &mut PixmapMut<'_>, text: &str, x: f32, y: f32, size: f32, color: [u8; 3], alpha: f32) {
         let font = self.font.as_scaled(PxScale::from(size));
         let baseline = y + font.ascent();
-        let (width, height) = (pixmap.width() as i32, pixmap.height() as i32);
-        let pixels = pixmap.data_mut();
         let mut caret = x;
         for character in text.chars() {
             let id = font.glyph_id(character);
@@ -514,19 +514,7 @@ impl Overlay {
             let Some(outline) = self.font.outline_glyph(glyph) else {
                 continue;
             };
-            let bounds = outline.px_bounds();
-            outline.draw(|gx, gy, coverage| {
-                let (px, py) = (bounds.min.x as i32 + gx as i32, bounds.min.y as i32 + gy as i32);
-                if px < 0 || py < 0 || px >= width || py >= height {
-                    return;
-                }
-                let a = (coverage * alpha).clamp(0.0, 1.0);
-                let at = (py as usize * width as usize + px as usize) * 4;
-                for (channel, value) in color.iter().enumerate() {
-                    let under = f32::from(pixels[at + channel]);
-                    pixels[at + channel] = (under + (f32::from(*value) - under) * a).round() as u8;
-                }
-            });
+            blend(pixmap, &outline, color, alpha);
         }
     }
 }
@@ -617,14 +605,14 @@ fn draw_arrow(pixmap: &mut PixmapMut<'_>, place: &Place, size: f32, fill: [u8; 3
     pixmap.stroke_path(&head, &paint(fill, 1.0), &edge, Transform::identity(), None);
 }
 
-fn paint(color: [u8; 3], alpha: f32) -> Paint<'static> {
+pub(crate) fn paint(color: [u8; 3], alpha: f32) -> Paint<'static> {
     let mut paint = Paint::default();
     paint.set_color(Color::from_rgba8(color[0], color[1], color[2], (alpha.clamp(0.0, 1.0) * 255.0) as u8));
     paint.anti_alias = true;
     paint
 }
 
-fn rounded(x: f32, y: f32, width: f32, height: f32, radius: f32) -> Option<tiny_skia::Path> {
+pub(crate) fn rounded(x: f32, y: f32, width: f32, height: f32, radius: f32) -> Option<tiny_skia::Path> {
     let radius = radius.min(width / 2.0).min(height / 2.0);
     let mut path = PathBuilder::new();
     path.move_to(x + radius, y);
@@ -679,4 +667,23 @@ fn button_name(name: &str) -> String {
         "volume-down" => "Volume -".into(),
         other => other.to_owned(),
     }
+}
+
+/// Blends a glyph's coverage over the picture.
+pub(crate) fn blend(pixmap: &mut PixmapMut<'_>, outline: &ab_glyph::OutlinedGlyph, color: [u8; 3], alpha: f32) {
+    let bounds = outline.px_bounds();
+    let (width, height) = (pixmap.width() as i32, pixmap.height() as i32);
+    let pixels = pixmap.data_mut();
+    outline.draw(|gx, gy, coverage| {
+        let (px, py) = (bounds.min.x as i32 + gx as i32, bounds.min.y as i32 + gy as i32);
+        if px < 0 || py < 0 || px >= width || py >= height {
+            return;
+        }
+        let a = (coverage * alpha).clamp(0.0, 1.0);
+        let at = (py as usize * width as usize + px as usize) * 4;
+        for (channel, value) in color.iter().enumerate() {
+            let under = f32::from(pixels[at + channel]);
+            pixels[at + channel] = (under + (f32::from(*value) - under) * a).round() as u8;
+        }
+    });
 }

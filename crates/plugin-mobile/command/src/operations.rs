@@ -1101,6 +1101,9 @@ async fn save(cwd: &str, output: &str, overwrite: bool, bytes: &[u8]) -> Result<
 /// `record`: starts recording a device, stops a recording, lists its frames,
 /// or exports them.
 async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInput) -> Result<Outcome, MobileError> {
+    if let Some(why) = input.misfit() {
+        return Err(MobileError::Usage(why));
+    }
     let output = match &input.output {
         Some(output) => Some(
             demi_command_sdk::paths::resolve(call.cwd, output).map_err(|error| MobileError::Usage(error.to_string()))?,
@@ -1131,7 +1134,7 @@ async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInp
             }
             started(call.command, &live)?
         }
-        (RecordAction::Start, RecordTarget::Recording(_)) => {
+        (RecordAction::Start, RecordTarget::Recording(_) | RecordTarget::Recordings(_)) => {
             return Err(MobileError::Usage(
                 "start records a device, such as demi mobile record m1 start".into(),
             ));
@@ -1160,7 +1163,7 @@ async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInp
                     reading.mp4 = true;
                     reading.output = Some(&saved);
                     reading.overwrite = true;
-                    match call.library.export(&id, &reading).await {
+                    match call.library.export(std::slice::from_ref(&id), &reading).await {
                         Ok(answer) => answer,
                         // A recording that kept no frame has no video to save.
                         Err(demi_shared_recording::Error::BadRequest(_)) => stopped,
@@ -1172,9 +1175,19 @@ async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInp
         }
         (RecordAction::Stop, RecordTarget::Recording(id)) => call.library.stop(id).await?,
         (RecordAction::Frames, RecordTarget::Recording(id)) => call.library.frames(id, &reading()).await?,
-        (RecordAction::Export, RecordTarget::Recording(id)) => call.library.export(id, &reading()).await?,
+        (RecordAction::Export, RecordTarget::Recording(_) | RecordTarget::Recordings(_)) => {
+            call.library.export(&input.target.recordings(), &reading()).await?
+        }
+        (RecordAction::Note, RecordTarget::Recording(id)) => {
+            let at = input.at.map(std::time::Duration::from_secs_f64);
+            call.library.note(id, input.text.as_deref().unwrap_or_default(), at).await?
+        }
+        // Several recordings are for an export alone, which `misfit` said.
+        (RecordAction::Stop | RecordAction::Frames | RecordAction::Note, RecordTarget::Recordings(_)) => {
+            unreachable!("several recordings are only exported")
+        }
         (RecordAction::List, RecordTarget::Device(device)) => call.library.listing(&device.to_string()).await?,
-        (RecordAction::List, RecordTarget::Recording(_)) => {
+        (RecordAction::List, RecordTarget::Recording(_) | RecordTarget::Recordings(_)) => {
             return Err(MobileError::Usage("list names a device, such as demi mobile record m1 list".into()));
         }
         (_, RecordTarget::Device(_)) => {
@@ -1203,6 +1216,9 @@ fn reading_of<'a>(call: &'a Call<'_>, input: &'a RecordInput, output: Option<&'a
         plain: input.plain == Some(true),
         output,
         overwrite: input.overwrite == Some(true),
+        fast_waits: input.fast_waits == Some(true),
+        sheet: input.sheet == Some(true),
+        every: input.every.map(|every| every.get()),
         scratch: &call.caller_scratch,
     }
 }

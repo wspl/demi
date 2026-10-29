@@ -1731,7 +1731,7 @@ fn operands(name: &str) -> &'static [&'static str] {
         "cdp.send" => &["tab", "method"],
         "webmcp.call" => &["tab", "tool"],
         // The first operand is a tab for start, a recording for the others.
-        "record" => &["target", "action"],
+        "record" => &["target", "action", "text"],
         "tab.new" | "tab.list" | "content.fetch" | "install" => &[],
         _ => &["tab"],
     }

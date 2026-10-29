@@ -1,9 +1,7 @@
-//! The frames of a recording as images, and its video as an MP4.
+//! The frames of a recording as images.
 //!
-//! Both draw the inputs the screen took on its frames (`overlay.rs`), unless
-//! asked for them plain. A plain MP4 is the video as it was kept; a drawn one
-//! is decoded, drawn on and coded again, at the recording's own frames and,
-//! while something drawn moves, 30 times a second between them.
+//! An image draws the inputs the screen took on its frame (`overlay.rs`),
+//! unless asked for it plain.
 //!
 //! An image is the frame decoded from the video, cut to the area the export
 //! shows, under a strip that names the frame's number and time, so the
@@ -27,9 +25,8 @@ use openh264::decoder::{Decoder, DecoderConfig};
 use crate::{
     Error, font,
     library::Stored,
-    mp4,
     overlay::Overlay,
-    stored::{Kept, VIDEO},
+    stored::VIDEO,
 };
 
 /// The area of the frames an export shows.
@@ -142,7 +139,7 @@ impl Stored {
             }
             decoded.write_rgba8(&mut rgba);
             if drawn {
-                overlay.draw(kept.t, &mut rgba, kept.fw, kept.fh);
+                overlay.draw(kept.t, &mut rgba, kept.fw, kept.fh, crate::caption::margin(crate::caption::em(kept.fw, kept.fh)));
             }
             let shown = area.within(kept.fw, kept.fh).ok_or_else(|| {
                 Error::BadRequest(format!(
@@ -162,153 +159,6 @@ impl Stored {
         }
         Ok(Exported { area, images })
     }
-
-    /// Writes the recording's video as an MP4 to `path`, with its inputs
-    /// drawn on it when `drawn` gives the coder's library, and as it was kept
-    /// when it does not or the recording took no input.
-    pub fn write_mp4(&self, path: &Path, drawn: Option<&Load>) -> Result<std::time::Duration, Error> {
-        let contents = self.contents()?;
-        if contents.frames.is_empty() {
-            return Err(Error::BadRequest(format!("{} kept no frames", self.id)));
-        }
-        let ran = match (&contents.meta.ended, &self.live) {
-            (Some(ended), _) => ended.duration_us,
-            (None, Some(live)) => live.info()?.duration_ms * 1000,
-            (None, None) => contents.frames.last().map_or(0, |last| last.t),
-        };
-        let overlay = Overlay::new(&contents.inputs);
-        if let Some(load) = drawn
-            && !overlay.is_empty()
-        {
-            return self.write_drawn(path, &contents, &overlay, ran, load);
-        }
-        let mut video = fs::File::open(self.directory.join(VIDEO)).map_err(|error| Error::io(&self.directory, &error))?;
-        let frames = &contents.frames;
-        let mut file = std::io::BufWriter::new(fs::File::create(path).map_err(|error| Error::io(path, &error))?);
-        let mut read = |index: usize| -> Result<mp4::Sample, Error> {
-            let kept: &Kept = &frames[index];
-            let mut data = vec![0; kept.l as usize];
-            video
-                .seek(SeekFrom::Start(kept.o))
-                .and_then(|_| video.read_exact(&mut data))
-                .map_err(|error| Error::io(&self.directory, &error))?;
-            let next = frames.get(index + 1).map_or(ran.max(kept.t + 1000), |next| next.t);
-            Ok(mp4::Sample {
-                data,
-                key: kept.key,
-                duration_us: next.saturating_sub(kept.t).max(1),
-                width: kept.fw,
-                height: kept.fh,
-            })
-        };
-        mp4::write(&mut file, frames.len(), &mut read)?;
-        std::io::Write::flush(&mut file).map_err(|error| Error::io(path, &error))?;
-        Ok(std::time::Duration::from_micros(ran))
-    }
-}
-
-impl Stored {
-    /// Writes the video decoded, drawn on by `overlay` and coded again: a
-    /// frame at each of the recording's own frames, and at each time the
-    /// overlay changes, each lasting until the next.
-    fn write_drawn(
-        &self,
-        path: &Path,
-        contents: &crate::stored::Contents,
-        overlay: &Overlay,
-        ran: u64,
-        load: &Load,
-    ) -> Result<std::time::Duration, Error> {
-        let frames = &contents.frames;
-        let bytes = fs::read(self.directory.join(VIDEO)).map_err(|error| Error::io(&self.directory, &error))?;
-        let mut times: Vec<u64> = frames.iter().map(|kept| kept.t).chain(overlay.changes(ran)).collect();
-        times.sort_unstable();
-        times.dedup();
-        let api = load().map_err(|error| Error::Unavailable(error.to_string()))?;
-        let mut decoder = Decoder::with_api_config(api, DecoderConfig::new())
-            .map_err(|error| Error::Failed(format!("the video decoder did not start: {error}")))?;
-        let mut encoder: Option<(Box<dyn demi_shared_h264::Encoder>, (u32, u32))> = None;
-        let mut screen: Vec<u8> = Vec::new();
-        let mut size = (0, 0);
-        let mut drawn = Vec::new();
-        let mut coded: Vec<demi_shared_h264::Picture> = Vec::new();
-        let mut sizes = std::collections::BTreeMap::new();
-        let mut next = 0;
-        let coding = |error: demi_shared_h264::Error| Error::Failed(format!("the drawn video did not code: {error}"));
-        for (index, &t) in times.iter().enumerate() {
-            while next < frames.len() && frames[next].t <= t {
-                let kept = &frames[next];
-                let at = kept.o as usize;
-                if let Some(decoded) = decoder
-                    .decode(&decodable(&bytes[at..at + kept.l as usize]))
-                    .map_err(|error| Error::Corrupt(format!("{} of {} did not decode: {error}", frame_label(next as u32 + 1), self.id)))?
-                {
-                    size = (kept.fw, kept.fh);
-                    screen.resize((kept.fw * kept.fh * 4) as usize, 0);
-                    decoded.write_rgba8(&mut screen);
-                }
-                next += 1;
-            }
-            if screen.is_empty() {
-                continue;
-            }
-            drawn.clear();
-            drawn.extend_from_slice(&screen);
-            overlay.draw(t, &mut drawn, size.0, size.1);
-            // A frame of another size starts a coder of its own, at a key frame.
-            let restart = encoder.as_ref().is_none_or(|(_, at)| *at != size);
-            if restart {
-                if let Some((mut old, _)) = encoder.take() {
-                    coded.extend(old.finish().map_err(coding)?);
-                }
-                let settings = demi_shared_h264::Settings {
-                    width: size.0,
-                    height: size.1,
-                    rate: demi_shared_h264::Rate::Quality,
-                };
-                // OpenH264 codes each picture before it answers, where a
-                // hardware coder works behind its calls and may drop one it
-                // has no room for: an export keeps every frame.
-                encoder = Some((Box::new(demi_shared_h264::software(settings, load).map_err(coding)?), size));
-            }
-            let (coder, _) = encoder.as_mut().expect("a coder was started");
-            sizes.insert(t, size);
-            let raw = demi_shared_h264::Raw {
-                width: size.0,
-                height: size.1,
-                format: demi_shared_h264::PixelFormat::Rgba,
-                pixels: &drawn,
-            };
-            let key = restart || index as u32 % crate::KEY_INTERVAL == 0;
-            coded.extend(coder.encode(raw, t, key).map_err(coding)?);
-            if !coder.take_dropped().is_empty() {
-                return Err(Error::Failed("the drawn video's coder dropped a frame".into()));
-            }
-        }
-        if let Some((mut coder, _)) = encoder.take() {
-            coded.extend(coder.finish().map_err(coding)?);
-        }
-        coded.sort_by_key(|picture| picture.time_us);
-        if coded.is_empty() {
-            return Err(Error::Failed("the drawn video's coder gave no picture".into()));
-        }
-        let mut file = std::io::BufWriter::new(fs::File::create(path).map_err(|error| Error::io(path, &error))?);
-        let mut read = |index: usize| -> Result<mp4::Sample, Error> {
-            let picture = &coded[index];
-            let next = coded.get(index + 1).map_or(ran.max(picture.time_us + 1000), |next| next.time_us);
-            let (width, height) = sizes.range(..=picture.time_us).next_back().map_or(size, |(_, size)| *size);
-            Ok(mp4::Sample {
-                data: picture.data.clone(),
-                key: picture.key,
-                duration_us: next.saturating_sub(picture.time_us).max(1),
-                width,
-                height,
-            })
-        };
-        mp4::write(&mut file, coded.len(), &mut read)?;
-        std::io::Write::flush(&mut file).map_err(|error| Error::io(path, &error))?;
-        Ok(std::time::Duration::from_micros(ran))
-    }
 }
 
 /// The frame's Annex B bytes, with the SPS rewritten so that OpenH264 2.6.0
@@ -327,7 +177,7 @@ impl Stored {
 ///
 /// Baseline also makes OpenH264 output in decoding order, not in display
 /// order. That holds while no source makes B frames, as none does.
-fn decodable(frame: &[u8]) -> Cow<'_, [u8]> {
+pub(crate) fn decodable(frame: &[u8]) -> Cow<'_, [u8]> {
     let units = units(frame);
     let mut changed = false;
     let rewritten: Vec<Cow<'_, [u8]>> = units

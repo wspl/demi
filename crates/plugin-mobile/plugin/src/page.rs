@@ -233,6 +233,11 @@ pub(crate) async fn call(
                 plain: None,
                 output: None,
                 overwrite: None,
+                fast_waits: None,
+                sheet: None,
+                every: None,
+                text: None,
+                at: None,
             };
             to_value(operate::<RecordResult, _>(port, MobileOperation::Record, input).await?)
         }

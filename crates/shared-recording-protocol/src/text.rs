@@ -18,8 +18,12 @@ pub fn about(source: &str, example: &str) -> String {
          and the area that changed; record r1 export writes frames as images labelled with frame number and time, one path \
          per line, so record r1 export --frames f005-f010 | xargs demi file view shows them. --mp4 gives the video itself. \
          Exported frames and videos draw the inputs the {source} took, the pointer, clicks, wheel turns, keys and touches; \
-         --plain leaves them out. frames lists your commands among the frames, each with how it ended, and what the user \
-         did by hand. record {example} list lists the {source}'s recordings. A conversation keeps its five newest recordings."
+         --plain leaves them out. record r1 note \"text\" shows the text below the picture of a drawn export from now, or \
+         from --at seconds, until the next note. record r1,r2 export --mp4 plays several recordings one after another; \
+         --fast-waits plays each stretch of more than 2 seconds in which nothing changed 8 times faster. record r1 export \
+         --sheet writes one PNG of the whole recording, a tile at each --every from its start to its end. frames lists your \
+         commands and notes among the frames, each command with how it ended, and what the user did by hand. record \
+         {example} list lists the {source}'s recordings. A conversation keeps its five newest recordings."
     )
 }
 
@@ -38,11 +42,32 @@ pub fn record(action: RecordAction, command: &str, result: &RecordResult) -> Str
             result.inputs.as_deref().unwrap_or_default(),
         ),
         RecordAction::List => listed(result.recordings.as_deref().unwrap_or_default()),
+        RecordAction::Note => match result.inputs.as_deref() {
+            Some([row]) => format!("Noted at {} s of {}.\n", seconds(row.time_us), info.id),
+            _ => summary(info),
+        },
+        // A sheet's path alone, so that it pipes to demi file view; what it
+        // could not show of the notes is in the --json answer, and shows on
+        // the sheet.
+        RecordAction::Export if result.sheet.is_some() => format!("{}\n", result.sheet.as_deref().unwrap_or_default()),
         RecordAction::Export => match (&result.path, &result.images, result.area) {
             (Some(path), _, _) => {
-                let mut text = format!("Saved the video of {} ({} s) to {path}.\n", info.id, seconds(info.duration_ms * 1000));
+                let joined = result.recordings.as_deref().unwrap_or(std::slice::from_ref(info));
+                let ids = joined.iter().map(|info| info.id.as_str()).collect::<Vec<_>>().join(", ");
+                let ran: u64 = joined.iter().map(|info| info.duration_ms).sum();
+                let mut text = match result.plays_ms {
+                    Some(plays) => format!(
+                        "Saved the video of {ids} ({} s, played in {} s) to {path}.\n",
+                        seconds(ran * 1000),
+                        seconds(plays * 1000)
+                    ),
+                    None => format!("Saved the video of {ids} ({} s) to {path}.\n", seconds(ran * 1000)),
+                };
                 if let Some(why) = &result.undrawn {
                     text.push_str(&format!("The inputs are not drawn on it: {why}.\n"));
+                }
+                for unshown in result.unshown.as_deref().unwrap_or_default() {
+                    text.push_str(&format!("{unshown}.\n"));
                 }
                 text
             }
@@ -171,6 +196,7 @@ fn described(input: &Input) -> String {
         Input::Typed { characters: 1, by: who, .. } => format!("{}typed 1 character", by(who)),
         Input::Typed { characters, by: who, .. } => format!("{}typed {characters} characters", by(who)),
         Input::Button { name, by: who, .. } => format!("{}button {name}", by(who)),
+        Input::Note { text } => format!("note {text:?}"),
     }
 }
 

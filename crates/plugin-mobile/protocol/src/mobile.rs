@@ -1053,7 +1053,7 @@ pub fn positionals(name: &str) -> &'static [&'static str] {
         "fold" => &["device", "to"],
         "appearance" => &["device", "appearance"],
         "wait" => &["device"],
-        "record" => &["target", "action"],
+        "record" => &["target", "action", "text"],
         "install" => &["device", "file"],
         "launch" => &["device", "app"],
         "logs" => &["device"],

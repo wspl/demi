@@ -65,11 +65,22 @@ pub struct Picture {
 /// them, is taken to be failing.
 const PICTURE_BYTES: usize = 64 * 1024 * 1024;
 
+/// A note set while the recording runs: at `at` microseconds of its frames'
+/// time, or when it was set, `taken` after the recording's start. The writer
+/// answers the time it kept it at.
+struct Note {
+    text: String,
+    at: Option<u64>,
+    taken: Duration,
+    kept: tokio::sync::oneshot::Sender<u64>,
+}
+
 /// What the sink handed over, in the order it did.
 enum Item {
     Picture(Picture, Duration),
     /// An input and when it was taken, from the recording's start.
     Input(Input, Duration),
+    Note(Note),
     /// Frames the screen drew and the source could not give.
     Missed(u32),
 }
@@ -175,6 +186,23 @@ impl Sink {
         }
         queue.items.push_back(Item::Input(input, taken));
         self.0.wake.notify_one();
+    }
+
+    /// Keeps a note at `at` microseconds of the frames' time, or now, and
+    /// answers the time it is at; an error once the recording ended.
+    pub(crate) async fn note(&self, text: String, at: Option<u64>) -> Result<u64, Error> {
+        let ended = || Error::BadRequest("the recording ended before the note was kept; give it --at".into());
+        let (kept, time) = tokio::sync::oneshot::channel();
+        {
+            let mut queue = self.0.queue.lock().expect("the recording's queue is intact");
+            if queue.finish.is_some() {
+                return Err(ended());
+            }
+            let taken = self.0.began.elapsed();
+            queue.items.push_back(Item::Note(Note { text, at, taken, kept }));
+            self.0.wake.notify_one();
+        }
+        time.await.map_err(|_| ended())
     }
 
     /// Counts `count` frames the screen drew and the source could not give.
@@ -314,6 +342,7 @@ pub(crate) fn start(
         origin: None,
         kept: 0,
         last_time: 0,
+        lag: 0,
         video_bytes: 0,
         bytes: 0,
         // The source ends its recording at the limit itself, handing over
@@ -358,6 +387,10 @@ struct Writer {
     kept: u32,
     /// The time of the frame kept last, in microseconds.
     last_time: u64,
+    /// How much later the frame kept last was drawn than it arrived, each
+    /// from the first frame's: what turns the time something arrives into
+    /// the frames' time.
+    lag: i64,
     /// How many bytes the video holds.
     video_bytes: u64,
     bytes: u64,
@@ -368,6 +401,7 @@ struct Writer {
 enum Work {
     Picture(Picture, Duration),
     Input(Input, Duration),
+    Note(Note),
     Missed(u32),
     Finish(EndReason, Option<String>),
 }
@@ -394,6 +428,11 @@ impl Writer {
                         break (EndReason::Failed, Some(error.to_string()));
                     }
                 }
+                Work::Note(note) => {
+                    if let Err(error) = self.keep_note(note) {
+                        break (EndReason::Failed, Some(error.to_string()));
+                    }
+                }
                 Work::Finish(reason, note) => break (reason, note),
             }
         };
@@ -413,6 +452,7 @@ impl Writer {
                         Item::Picture(picture, arrived) => self.keep(picture, arrived).err(),
                         Item::Missed(count) => self.note_missed(count).err(),
                         Item::Input(input, taken) => self.note_input(input, taken).err(),
+                        Item::Note(note) => self.keep_note(note).err(),
                     };
                 }
             }
@@ -461,6 +501,7 @@ impl Writer {
                 }
                 Some(Item::Missed(count)) => return Work::Missed(count),
                 Some(Item::Input(input, taken)) => return Work::Input(input, taken),
+                Some(Item::Note(note)) => return Work::Note(note),
                 None => {}
             }
             if let Some((reason, note)) = queue.finish.take() {
@@ -505,11 +546,33 @@ impl Writer {
             self.waiting.push((input, taken));
             return Ok(());
         };
-        let row = InputRow {
+        self.write_input(&InputRow {
             time_us: u64::try_from(taken.saturating_sub(origin).as_micros()).unwrap_or(u64::MAX),
             input,
+        })
+    }
+
+    /// Writes a note at the time it names, or at the frames' time it was
+    /// set at: the start, before the first picture.
+    fn keep_note(&mut self, note: Note) -> Result<(), Error> {
+        let time = match (note.at, self.origin) {
+            (Some(at), _) => at,
+            (None, Some(origin)) => {
+                let arrived = i64::try_from(note.taken.saturating_sub(origin).as_micros()).unwrap_or(i64::MAX);
+                u64::try_from(arrived.saturating_add(self.lag)).unwrap_or(0)
+            }
+            (None, None) => 0,
         };
-        let mut line = serde_json::to_vec(&row).expect("an input serializes");
+        self.write_input(&InputRow {
+            time_us: time,
+            input: Input::Note { text: note.text },
+        })?;
+        let _ = note.kept.send(time);
+        Ok(())
+    }
+
+    fn write_input(&mut self, row: &InputRow) -> Result<(), Error> {
+        let mut line = serde_json::to_vec(row).expect("an input serializes");
         line.push(b'\n');
         self.bytes += line.len() as u64;
         self.inputs
@@ -535,6 +598,8 @@ impl Writer {
         let time = (picture.at_us - origin).max(0.0) as u64;
         // Time never runs back, whatever the source's clock does.
         self.last_time = self.last_time.max(time);
+        let arrived_us = u64::try_from(arrived.saturating_sub(self.origin.unwrap_or_default()).as_micros()).unwrap_or(u64::MAX);
+        self.lag = i64::try_from(self.last_time).unwrap_or(i64::MAX).saturating_sub(i64::try_from(arrived_us).unwrap_or(i64::MAX));
         let offset = self.video_bytes;
         self.video_bytes += picture.data.len() as u64;
         self.video
@@ -552,7 +617,7 @@ impl Writer {
             o: offset,
             l: picture.data.len() as u32,
             key: picture.key,
-            a: Some(u64::try_from(arrived.saturating_sub(self.origin.unwrap_or_default()).as_micros()).unwrap_or(u64::MAX)),
+            a: Some(arrived_us),
         }))?;
         self.kept += 1;
         Ok(())
