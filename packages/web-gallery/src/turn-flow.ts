@@ -1125,7 +1125,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * Abort a running turn: the transcript ends with an abort record to resume
    * from. A compaction stops with nothing to resume. The steers that waited
    * open the next turn, as the product's session does: Stop stops the work,
-   * not what the user sent.
+   * not what the user sent. A turn that showed nothing of its answer gives
+   * its message back instead, as the product's session does.
    */
   function stop(): void {
     if (state.phase === 'idle') {
@@ -1136,6 +1137,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     confirmMessage()
     const stopped = state.phase
     state.phase = 'idle'
+    const at = state.blocks.findLastIndex((block) => block.type === 'user')
+    const message = state.blocks[at]
+    if (stopped === 'running' && state.pendingSteers.length === 0 && message?.type === 'user' &&
+      state.blocks.slice(at + 1).every((block) => block.type === 'context')) {
+      state.blocks = state.blocks.slice(0, at)
+      giveBack(message.content, 'queue')
+      return
+    }
     if (stopped !== 'compacting') {
       append({
         type: 'abort',
@@ -1146,6 +1155,20 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       })
     }
     openTurnWithSteers()
+  }
+
+  /**
+   * Stops the running turn for an edit of its message, as the product's
+   * session does before it replaces the message: nothing is given back,
+   * and the edit replaces what the turn wrote.
+   */
+  function stopForEdit(): void {
+    if (state.phase !== 'running') {
+      return
+    }
+    cancel()
+    confirmMessage()
+    state.phase = 'idle'
   }
 
   /**
@@ -1555,6 +1578,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     undelivered,
     resume,
     stop,
+    stopForEdit,
     compact,
     steer,
     queue,

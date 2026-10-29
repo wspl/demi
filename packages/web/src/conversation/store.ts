@@ -1229,6 +1229,7 @@ export const useConversations = defineStore('conversations', () => {
     return {
       get: () => conversation.messageEdit,
       set: (state) => { conversation.messageEdit = state },
+      version: () => cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
       send: async (request, regenerate) => {
         if (regenerate) {
           const { operationId, targetBlockId, version } = request
@@ -4348,7 +4349,14 @@ export const useConversations = defineStore('conversations', () => {
     if (starting !== undefined && conversation.pendingSends.some((pending) => pending.id === starting && pending.error !== null)) {
       return true
     }
-    return attempt(conversation, (runtime) => runtime.abort())
+    return attempt(conversation, async (runtime) => {
+      // A turn stopped before its answer began gives its message back, as
+      // Recall gives back a waiting one.
+      const given = await runtime.abort()
+      if (given) {
+        takeBack(conversation, { copy: contentCopy(given.content), comments: given.comments ?? [] }, 'queue', Promise.resolve())
+      }
+    })
   }
 
   /**

@@ -290,6 +290,11 @@ pub(super) struct ActionRun {
     /// clients show it as the turn's starting message, so the state holds
     /// every message the session accepted, and its held bytes stay.
     unwritten: Option<QueuedMessage>,
+    /// The action is a send, of a message the session just took.
+    sends: bool,
+    /// The user's Stop came before the turn wrote anything of its answer:
+    /// its message goes back to the page that stopped it.
+    giving_back: bool,
     /// What the user sent now, which the turn takes at its next boundary.
     send_now: Option<SendNow>,
     /// Taken by the worker when it starts the action.
@@ -739,12 +744,14 @@ impl SessionCore {
     /// digest matches.
     ///
     /// Otherwise the edit needs a settled session with nothing waiting and a
-    /// current snapshot.
+    /// current snapshot, or a `target` that is the running turn's message,
+    /// which the edit stops the turn for.
     pub(super) fn check_edit(
         &self,
         operation: &demi_shared_types::OperationId,
         digest: &str,
         version: &demi_conversation_lane_protocol::Version,
+        target: &BlockId,
     ) -> Result<EditCheck, EditError> {
         if let Some(receipt) = self
             .edits
@@ -766,8 +773,68 @@ impl SessionCore {
             }
             return Ok(EditCheck::InFlight(edit.acceptance()));
         }
+        if self.running_message() == Some(target) {
+            return Ok(EditCheck::Proceed);
+        }
         self.check_settled(version)?;
         Ok(EditCheck::Proceed)
+    }
+
+    /// The running turn's message, which an edit may replace while the turn
+    /// runs: the last `user` block, its turn running and not stopped, with
+    /// nothing else waiting to run.
+    fn running_message(&self) -> Option<&BlockId> {
+        let Activity::Running(run) = &self.activity else {
+            return None;
+        };
+        let waiting = self.inputs.has_agent_input()
+            || self.inputs.has_report()
+            || !self.inputs.pending_steers().is_empty()
+            || !self.pending.is_empty()
+            || self.editing.as_ref().is_some_and(|edit| !edit.accepted);
+        if run.cancel.is_cancelled() || waiting {
+            return None;
+        }
+        match self.transcript.blocks().iter().rfind(|block| matches!(block, Block::User(_))) {
+            Some(Block::User(user)) if user.turn_id == run.turn => Some(&user.id),
+            _ => None,
+        }
+    }
+
+    /// Whether `target` is the path's last `user` block, which an edit that
+    /// stopped its turn replaces only when no later message came meanwhile.
+    pub(super) fn is_last_message(&self, target: &BlockId) -> bool {
+        matches!(
+            self.transcript.blocks().iter().rfind(|block| matches!(block, Block::User(_))),
+            Some(Block::User(user)) if &user.id == target
+        )
+    }
+
+    /// Stops the running turn for an edit of its message `target`, as the
+    /// user's Stop does but giving nothing back; answers the stop to wait
+    /// for, or none when `target` is not the running turn's message.
+    pub(super) fn stop_for_edit(&mut self, target: &BlockId) -> Option<Rc<TurnCancel>> {
+        if self.running_message() != Some(target) {
+            return None;
+        }
+        let now = self.clock.now();
+        let Activity::Running(run) = &mut self.activity else {
+            return None;
+        };
+        run.cancel.cancel(CancelReason::Stop);
+        run.stop_at = Some(now);
+        let cancel = run.cancel.clone();
+        let turn = run.turn.clone();
+        session_log!(
+            self,
+            info,
+            event = "stop.requested",
+            node = %self.id,
+            turn = %turn,
+            stage = "edit",
+            "an edit of the running turn's message stopped the turn"
+        );
+        Some(cancel)
     }
 
     /// Whether the session admits a rewrite of its path made against the
@@ -856,6 +923,7 @@ impl SessionCore {
             &submission.operation_id,
             &submission.digest,
             &submission.version,
+            &submission.target,
         )?;
         let EditCheck::Proceed = check else {
             return Ok(check);
@@ -1061,7 +1129,9 @@ impl SessionCore {
             stage: TurnStage::Preparing,
             idle_compaction: matches!(kind, ActionKind::Compact { idle: true }),
             started_at: self.transcript.version().revision,
+            sends: matches!(kind, ActionKind::Send { .. }),
             unwritten,
+            giving_back: false,
             send_now: None,
             began: self.clock.now(),
             queued_ms,
@@ -1394,9 +1464,11 @@ impl SessionCore {
             return AbortStep::Nothing;
         }
         let now = self.clock.now();
+        let giving_back = self.would_give_back();
         if let Activity::Running(run) = &mut self.activity
             && !run.cancel.is_cancelled()
         {
+            run.giving_back = giving_back;
             let (target, stage) = match run.stage {
                 TurnStage::Preparing => (AbortTarget::ActiveTurn, "preparing"),
                 TurnStage::Streaming => (AbortTarget::ActiveProviderStream, "streaming"),
@@ -1489,6 +1561,11 @@ impl SessionCore {
     ///
     /// The Stop holds nothing afterwards.
     pub(super) fn record_stop(&mut self, reason: CancelReason) {
+        let giving_back = reason == CancelReason::Stop
+            && matches!(&self.activity, Activity::Running(run) if run.giving_back);
+        if giving_back {
+            self.give_back();
+        }
         let unwritten = match &mut self.activity {
             Activity::Running(run) => run.unwritten.take().map(|message| (run.turn.clone(), message)),
             _ => None,
@@ -1516,6 +1593,7 @@ impl SessionCore {
         };
         let calls_aborted = self.abort_executing_calls(&end);
         let marker_written = match reason {
+            CancelReason::Stop if giving_back => false,
             CancelReason::Stop | CancelReason::Hold(_) if self.action_began() => {
                 self.transcript.push_abort(&self.model);
                 true
@@ -1546,8 +1624,72 @@ impl SessionCore {
             calls_aborted,
             commands_left_running = self.watched.commands().len(),
             marker_written,
+            given_back = giving_back,
             "a stopped action recorded its stop"
         );
+    }
+
+    /// The message the running turn started with, when a Stop now would give
+    /// it back: the turn is a send, not a retry or a resume of an earlier
+    /// one, the user wrote it, no steer waits, and the turn wrote
+    /// nothing of its answer, only, maybe, the message itself and the
+    /// context the session gives the model.
+    fn would_give_back(&self) -> bool {
+        let Activity::Running(run) = &self.activity else {
+            return false;
+        };
+        // A call the model is writing shows as the answer before its block.
+        if !run.sends || run.cancel.is_cancelled() || !self.inputs.pending_steers().is_empty() || !self.writing.is_empty() {
+            return false;
+        }
+        if let Some(message) = &run.unwritten {
+            return message.schedule.is_none();
+        }
+        let blocks = self.transcript.blocks();
+        let Some(at) = blocks
+            .iter()
+            .rposition(|block| matches!(block, Block::User(user) if user.turn_id == run.turn))
+        else {
+            return false;
+        };
+        let Block::User(user) = &blocks[at] else {
+            return false;
+        };
+        user.schedule.is_none() && blocks[at + 1..].iter().all(|block| matches!(block, Block::Context(_)))
+    }
+
+    /// Gives the stopped turn's message back: it was never written, or it
+    /// leaves the transcript with whatever the turn wrote after it since the
+    /// Stop, and the stop's answer carries it.
+    fn give_back(&mut self) {
+        let Activity::Running(run) = &mut self.activity else {
+            return;
+        };
+        let cancel = run.cancel.clone();
+        if let Some(message) = run.unwritten.take() {
+            cancel.give_back(message);
+            return;
+        }
+        let turn = run.turn.clone();
+        let blocks = self.transcript.blocks();
+        let Some(at) = blocks
+            .iter()
+            .rposition(|block| matches!(block, Block::User(user) if user.turn_id == turn))
+        else {
+            return;
+        };
+        let Block::User(user) = &blocks[at] else {
+            return;
+        };
+        let message = QueuedMessage {
+            id: turn,
+            content: user.content.clone(),
+            comments: user.comments.clone(),
+            schedule: None,
+        };
+        let position = self.transcript.start() + at;
+        self.transcript.withdraw_from(position);
+        cancel.give_back(message);
     }
 
     /// A failed action writes the agent messages and the command reports

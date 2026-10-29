@@ -15,6 +15,10 @@
 //! the transcript. An action that was saving a history rewrite records it after
 //! the rewrite is published, so a rewrite never loses a stop.
 //!
+//! A Stop of a turn that wrote nothing of its answer gives its message back:
+//! the message leaves the transcript, and `abort()` answers with it for the
+//! page that stopped it.
+//!
 //! A Stop stops only what the node does at that moment and holds nothing
 //! afterwards:
 //!
@@ -26,6 +30,8 @@ use std::{cell::RefCell, future::Future, rc::Rc};
 
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
+
+use demi_shared_types::QueuedMessage;
 
 use super::TurnError;
 
@@ -50,6 +56,8 @@ pub(crate) struct TurnCancel {
     /// Set once the action recorded how it ended: whether another `abort`
     /// would stop something then.
     recorded: watch::Sender<Option<bool>>,
+    /// The message the stop gave back, once it recorded the stop.
+    given_back: RefCell<Option<QueuedMessage>>,
 }
 
 impl TurnCancel {
@@ -58,6 +66,7 @@ impl TurnCancel {
             token: CancellationToken::new(),
             reason: RefCell::new(None),
             recorded: watch::Sender::new(None),
+            given_back: RefCell::new(None),
         })
     }
 
@@ -95,6 +104,16 @@ impl TurnCancel {
     /// A token that a provider run or a tool call observes.
     pub(crate) fn child_token(&self) -> CancellationToken {
         self.token.child_token()
+    }
+
+    /// The stop gave `message` back to whoever stopped the action.
+    pub(crate) fn give_back(&self, message: QueuedMessage) {
+        *self.given_back.borrow_mut() = Some(message);
+    }
+
+    /// The message the stop gave back, taken once.
+    pub(crate) fn take_given_back(&self) -> Option<QueuedMessage> {
+        self.given_back.borrow_mut().take()
     }
 
     /// The action recorded how it ended; `can_abort_again` says whether

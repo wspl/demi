@@ -522,6 +522,22 @@ impl TranscriptLog {
         }));
     }
 
+    /// Takes the blocks from `position` on off the path, as a Stop gives back
+    /// a message whose turn wrote nothing of its answer. The place keeps its
+    /// versions for the block that comes there next, as after Regenerate
+    /// cut an answer; the save makes the cut a branch that stands in for
+    /// what it took, not a version.
+    pub fn withdraw_from(&mut self, position: usize) {
+        if position < self.start || position >= self.len() {
+            return;
+        }
+        self.blocks.truncate(position - self.start);
+        self.versions.split_off(&(position + 1));
+        self.journal.truncate(position);
+        self.asking = self.held_turn();
+        self.asked_end = None;
+    }
+
     /// The stopped marker a Stop leaves.
     pub fn push_abort(&mut self, model: &ModelSelection) {
         let (id, created_at) = self.stamp();

@@ -795,7 +795,7 @@ impl<H: HostResolver> Connection<H> {
     async fn edit(&self, session: &AgentSession, request: EditRequest) -> Result<TurnId, Refusal> {
         let digest = edit_digest(&request);
         let check = session
-            .check_edit(&request.operation_id, &digest, &request.version)
+            .check_edit(&request.operation_id, &digest, &request.version, &request.target_block_id)
             .map_err(|error| error.refusal())?;
         let receipt = match check {
             EditCheck::Accepted(receipt) => receipt,

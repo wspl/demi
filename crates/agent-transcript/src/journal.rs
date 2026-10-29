@@ -101,6 +101,14 @@ impl Journal {
         });
     }
 
+    /// The path ends before `index`: the stored rows from there leave it.
+    pub(super) fn truncate(&mut self, index: usize) {
+        self.rows.move_from(index);
+        self.patches.push(TranscriptPatch::Truncate {
+            length: patch_index(index),
+        });
+    }
+
     /// Consecutive appends to one block merge into one patch.
     pub(super) fn append_text(&mut self, index: usize, delta: &str) {
         self.rows.change(index);

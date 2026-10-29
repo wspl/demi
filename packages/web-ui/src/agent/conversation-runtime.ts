@@ -24,6 +24,7 @@ import type {
   RegenerateRequest,
   SavedDelivery,
   Version,
+  QueuedMessage,
 } from '@demicodes/protocol'
 import { ConversationLaneError } from '../transport/conversation-lane'
 import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
@@ -469,8 +470,10 @@ export class ConversationRuntime {
     client.steerNow(id)
   }
 
-  async abort(): Promise<void> {
-    await (await this.ensureOpen()).abort()
+  /** Stops one thing; answers the message the stop gave back, if any. */
+  async abort(): Promise<QueuedMessage | null> {
+    const result = await (await this.ensureOpen()).abort()
+    return result.givenBack ?? null
   }
 
   /**
