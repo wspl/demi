@@ -292,14 +292,12 @@ journal, `/opt/demi/server/upgrade.json`, before it takes the step:
    waits for the stop.
 3. Keep the databases that the new release changes in
    `<DEMI_BACKEND_DATA>/snapshots/<old version>/`, and sync them: a copy of
-   each that it migrates in place, cloned where the file system can, and a
-   hard link to each that it converts into a new file and leaves as it is,
-   which costs no space. With both services stopped, the files are
-   consistent.
+   each, cloned where the file system can. With both services stopped, the
+   files are consistent.
 4. Point `current` at the new release and copy its units into place.
 5. Start the manager, then the backend, and wait for each to report ready.
-   The backend listens at once, migrates the control database and migrates
-   or converts every conversation database, and only then reports ready
+   The backend listens at once, migrates the control database and every
+   conversation database, and only then reports ready
    (`crates/backend-http/src/update.rs`). Until then it answers every page
    with the update's progress, which each page shows over the app, and
    `demi-server` prints it, `Updating conversations: 41 of 73 (2.7 GB of
@@ -537,18 +535,13 @@ the other directory under `releases/`. It refuses when that release is the
 newer one, as after a rollback, because going forward is an upgrade.
 
 The earlier release's own `demi-server` carries out the return, as each release
-carries out the move to itself. Before it hands the return over, the installed
-`demi-server` gives each database that the snapshot still shares with the data
-directory, by a hard link to one not converted yet, a copy of its own: an
-earlier release may copy the snapshot back onto the database, which would empty
-a file the two share.
+carries out the move to itself.
 
 1. It stops both services.
 2. It restores the databases from that release's snapshot, when the upgrade
    took one: it renames each database the snapshot replaces into
-   `snapshots/abandoned-<new version>/`, and puts the snapshot's in its
-   place, by a hard link for one that converts and a copy for one that
-   migrates in place. The snapshot stays whole, so a return taken again
+   `snapshots/abandoned-<new version>/`, and puts a copy of the snapshot's
+   in its place. The snapshot stays whole, so a return taken again
    after an interrupted one puts back the same databases. A return to 0.1.65
    or earlier copies every database both ways, as those releases did.
 3. It points `current` back and copies the old units.
