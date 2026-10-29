@@ -182,8 +182,10 @@ A server upgrades from any release in the history to any later one directly.
 
 The newest release is the highest version among the repository's releases
 tagged `v<version>`. `releases/latest` gives it for published releases, and
-the list of releases gives it for all. A release of another tag, such as the
-gVisor build's, is no Demi release.
+the releases feed (`releases.atom`), which lists the ten published last, gives
+it for all: versions are published in their order, as `release.yml` refuses a
+version below the highest published one. A release of another tag, such as
+the gVisor build's, is no Demi release.
 
 `--from <directory>` takes the assets from a directory instead of the
 repository's GitHub releases, as a developer's build or a server without

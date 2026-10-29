@@ -3413,6 +3413,7 @@ dependencies = [
  "futures-util",
  "jiff",
  "reqwest",
+ "roxmltree",
  "semver",
  "serde",
  "serde_json",
