@@ -359,13 +359,13 @@ fn previous_saves(store: &Path) -> io::Result<Vec<(PathBuf, u64)>> {
         return Ok(saves);
     }
     for device in children(&images)? {
-        let Some(current) = committed(&device)? else {
-            continue;
-        };
         let generations = device.join("generations");
         if !generations.is_dir() {
             continue;
         }
+        let Some(current) = committed(&device)? else {
+            continue;
+        };
         for save in children(&generations)? {
             if save.file_name() != Some(current.as_ref()) {
                 let bytes = allocated(&save)?;
