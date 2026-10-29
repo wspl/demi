@@ -24,7 +24,12 @@
 // front decides: turning the device asks for a turn, and an app that does
 // not allow it, as most iPhone apps refuse upside down, keeps the screen as
 // it was. The session follows the display and tells demi-mobile of each turn
-// it takes, whoever asked for it.
+// it takes, whoever asked for it. How the device is held is apart from it:
+// the orientation it was last turned to, which only a turn changes. The
+// screenshots, the tree and the points the caller gives are the screen's;
+// the live captures and the frame are the device's as it is held, so the
+// view turns the device only when it is turned, and shows an app that did
+// not follow on its side, as Simulator.app does.
 
 import CoreImage
 import FBControlCore
@@ -239,6 +244,9 @@ final class DeviceSession: @unchecked Sendable {
   /// The quarter turns clockwise the lit display shows while the device is
   /// upright, which the orientation the screen reports leaves out.
   private var natural = 0
+  /// How the device is held: the orientation it was last turned to, which
+  /// the app on either display may have refused.
+  private var held = Turn.portrait
   /// A foldable's hinge, opened at its first fold.
   private var hinge: Hinge?
   /// The hinge's angle as Demi last moved it, or as the lit display says
@@ -360,6 +368,7 @@ final class DeviceSession: @unchecked Sendable {
     let face = faces[display ?? ""]
     var json = Self.shownJSON(
       surface: face?.surface, turn: face?.turn ?? .portrait, natural: natural, points: portraitPoints)
+    json["held"] = held.rawValue
     if let layout, let fold = layout.fold {
       let outer = layout.uprightPoints(fold.outer)
       let inner = layout.uprightPoints(fold.inner)
@@ -531,6 +540,18 @@ final class DeviceSession: @unchecked Sendable {
     return CIImage(ioSurface: surface).oriented(face?.turn.picture ?? .up)
   }
 
+  /// The lit display's picture now, or that of a foldable's `display`, as
+  /// the device is held: what the live captures show; nil while it shows
+  /// none.
+  func asHeld(_ display: FoldDisplay? = nil) -> CIImage? {
+    let (face, turn) = lock.withLock { () -> (Face?, Turn) in
+      let id = faceID(display)
+      return (faces[id], Turn(quarters: held.quarters + (layout?.natural[id] ?? 0)))
+    }
+    guard let surface = face?.surface else { return nil }
+    return CIImage(ioSurface: surface).oriented(turn.picture)
+  }
+
   /// The ID of the face of a foldable's `display`, or of the lit display's.
   private func faceID(_ display: FoldDisplay?) -> String {
     guard let display, let fold = layout?.fold else { return self.display ?? "" }
@@ -590,8 +611,9 @@ final class DeviceSession: @unchecked Sendable {
   }
 
   /// The display shows `turn`, or another display was `relit`: the
-  /// pictures, the points the caller gives and the frame turn with it,
-  /// demi-mobile hears of it, and those waiting for the orientation go on.
+  /// screenshots and the points the caller gives turn with it, the live
+  /// captures show it as the device is held, demi-mobile hears of it, and
+  /// those waiting for the orientation go on.
   private func turned(_ turn: Turn, relit: Bool = false) {
     let (changed, screen, waiting) = lock.withLock { () -> (Bool, [String: Any], [CheckedContinuation<Void, Never>]) in
       let id = display ?? ""
@@ -604,8 +626,7 @@ final class DeviceSession: @unchecked Sendable {
     }
     if changed {
       output.control(["event": "screen", "udid": udid, "screen": screen])
-      // The captures follow the new size; the picture they draw next is
-      // turned the new way.
+      // The captures draw the display's new picture.
       drawnLit()
     }
     for waiter in waiting { waiter.resume() }
@@ -652,8 +673,12 @@ final class DeviceSession: @unchecked Sendable {
   /// size, read with what it is drawn from, so a turn meanwhile never pairs
   /// a frame with another orientation.
   func frame(area: CGSize, backing: Double) throws -> ([String: Any], Data?) {
+    // The frame of the device as it is held, which the live captures show.
     let (turn, surface, screen, portraitPoints) = lock.withLock {
-      (faces[display ?? ""]?.turn ?? .portrait, faces[display ?? ""]?.surface, screenJSONLocked(), self.portraitPoints)
+      (
+        Turn(quarters: held.quarters + natural), faces[display ?? ""]?.surface, screenJSONLocked(),
+        self.portraitPoints
+      )
     }
     let looks = DeviceLooks(simulator: simulator)
     if let drawn = try drawFrame(looks: looks, screenPoints: portraitPoints, quarterTurns: turn.frameTurns, area: area, backing: backing) {
@@ -790,6 +815,17 @@ final class DeviceSession: @unchecked Sendable {
 
   private func orient(_ turn: Turn) async throws {
     try await simulator.orientation.set(turn.device)
+    // The captures show the device turned at once, whatever its displays do:
+    // demi-mobile hears of it now, and lays them out anew.
+    let (changed, screen, ids) = lock.withLock { () -> (Bool, [String: Any], [String]) in
+      let changed = held != turn
+      held = turn
+      return (changed, screenJSONLocked(), Array(faces.keys))
+    }
+    if changed {
+      output.control(["event": "screen", "udid": udid, "screen": screen])
+      for id in ids { drawn(id) }
+    }
     // The display turns about half a second after the device; one that has
     // not turned within twice that keeps its orientation.
     await screenShows(turn, within: 1.5)

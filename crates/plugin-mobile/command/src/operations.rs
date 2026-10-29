@@ -372,7 +372,7 @@ pub async fn run(
             (MobileOperation::Rotate(input), Some(open)) => {
                 // Turned from how the device is held, as Simulator.app turns
                 // it, so a turn the app refused is passed by the next.
-                let current = open.device.held();
+                let current = open.device.screen().borrow().held;
                 let next = match input.orientation {
                     Rotation::Portrait => Orientation::Portrait,
                     Rotation::Landscape if current.landscape() => current,
@@ -406,6 +406,7 @@ pub async fn run(
                     RotateResult {
                         device: open.handle.clone(),
                         orientation: screen.orientation,
+                        held: next,
                         width: scale.width,
                         height: scale.height,
                     },

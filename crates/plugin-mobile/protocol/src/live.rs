@@ -303,7 +303,9 @@ pub struct LiveDevice {
     /// Whether a recording of it runs, whoever started it.
     #[garde(skip)]
     pub recording: bool,
-    /// Its orientation as its screen reports it when the state is sent.
+    /// How it is held when the state is sent, which its pictures and frame
+    /// show: the orientation it was last rotated to, which the app on its
+    /// screen may have refused.
     #[garde(skip)]
     pub orientation: Orientation,
     /// How it folds, and how it is folded; none for a device that does not

@@ -181,7 +181,10 @@ final class Encoder: @unchecked Sendable {
 
   /// Encodes the picture as it is now, on the encoder's queue.
   private func encode() {
-    guard let session, let image = session.upright(display), let pool,
+    guard let session, let image = session.asHeld(display), let pool,
+      // A picture turned the other way than the capture is laid out waits
+      // for the capture of its orientation, which demi-mobile starts.
+      (image.extent.width > image.extent.height) == (width > height),
       let (compression, key, repeated) = lock.withLock({ () -> (VTCompressionSession, Bool, Bool)? in
         guard !stopped, let compression else { return nil }
         let key = forceKey

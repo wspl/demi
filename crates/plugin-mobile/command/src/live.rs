@@ -20,11 +20,16 @@
 //! A device is a source of the shared live view:
 //!
 //! - Viewers of one device share its capture.
-//! - Its pictures are the screen turned upright: its lit display's, or, on a
-//!   stream whose hello names one, a hinged foldable's outer or inner
-//!   display's, lit or not, as its 3D view shows each on its own face. Each
-//!   display is a source of its own, `m1.outer` and `m1.inner` beside the lit
-//!   display's `m1`, with its own capture.
+//! - Its pictures, its frame and the orientation its state names are the
+//!   device's as it is held, which only a rotation changes, so the page
+//!   turns the device only when it is rotated: an app that did not follow
+//!   lies on its side in them (`Screen::as_held`). The viewer's points are
+//!   turned back into the screen's before they reach the device.
+//! - Its pictures are the screen turned upright as the device is held: its
+//!   lit display's, or, on a stream whose hello names one, a hinged
+//!   foldable's outer or inner display's, lit or not, as its 3D view shows
+//!   each on its own face. Each display is a source of its own, `m1.outer`
+//!   and `m1.inner` beside the lit display's `m1`, with its own capture.
 //! - The viewer's input reaches it as touches and keys in the order it arrives,
 //!   beside the agent's, whose activity the view shows. A move of the hinge
 //!   goes at once, outside that order, so it turns a fold under way.
@@ -251,7 +256,7 @@ impl Source for DeviceSource {
     }
 
     fn layout(&mut self, scale: f64) -> (Layout, (u32, u32)) {
-        let screen = *self.shows.screen.borrow();
+        let screen = self.shows.screen.borrow().as_held();
         let (width, height) = screen.pixels;
         // Scaled to the largest panel's size before it is encoded.
         let share = self.fit.borrow().values().copied().reduce(f64::max).unwrap_or(1.0);
@@ -378,7 +383,9 @@ impl Deliver for DeviceInput {
         message: ViewerInput,
     ) -> impl std::future::Future<Output = ()> + Send {
         let device = target.device.clone();
-        let step = finger(held, &message);
+        // The viewer's points are the screen's as the device is held.
+        let screen = *device.screen().borrow();
+        let step = finger(held, &message, &screen);
         // A key that types a character, in whatever layout the viewer's
         // keyboard has, enters that character, as the viewer's text does;
         // the others, Enter, the arrows, the modifiers and the shortcuts,
@@ -419,7 +426,8 @@ impl Deliver for DeviceInput {
         }
         let scroll = match &message {
             ViewerInput::Wheel { x, y, delta_x, delta_y, .. } if held.finger.is_none() => {
-                scroll(*device.screen().borrow(), Points { x: *x, y: *y }, *delta_x, *delta_y)
+                scroll(screen.as_held(), Points { x: *x, y: *y }, *delta_x, *delta_y)
+                    .map(|(from, to)| (screen.from_held(from), screen.from_held(to)))
             }
             _ => None,
         };
@@ -440,7 +448,11 @@ impl Deliver for DeviceInput {
             _ => None,
         };
         let wheel = match &message {
-            ViewerInput::Wheel { x, y, delta_x, delta_y, .. } if scroll.is_some() => Some((*x, *y, *delta_x, *delta_y)),
+            ViewerInput::Wheel { x, y, delta_x, delta_y, .. } if scroll.is_some() => {
+                let at = screen.from_held(Points { x: *x, y: *y });
+                let to = screen.from_held(Points { x: x + delta_x, y: y + delta_y });
+                Some((at.x, at.y, to.x - at.x, to.y - at.y))
+            }
             _ => None,
         };
         let text = match message {
@@ -511,7 +523,8 @@ impl Deliver for DeviceInput {
     }
 }
 
-/// The finger's step a touch or a mouse's press, drag and release makes, noting
+/// The finger's step a touch or a mouse's press, drag and release makes, in
+/// the points of `screen`, which the viewer gives as the device is held, noting
 /// where it is in `held`: the first contact is the finger, as a simulator takes
 /// one.
 ///
@@ -526,12 +539,14 @@ fn scroll(screen: Screen, at: Points, delta_x: f64, delta_y: f64) -> Option<(Poi
     (to != at).then_some((at, to))
 }
 
-fn finger(held: &mut Held, message: &ViewerInput) -> Option<(TouchPhase, Points)> {
+fn finger(held: &mut Held, message: &ViewerInput, screen: &Screen) -> Option<(TouchPhase, Points)> {
     let (phase, at) = match message {
         ViewerInput::Touch { action, contacts } => {
-            let at = contacts.first().map(|contact| Points {
-                x: contact.x,
-                y: contact.y,
+            let at = contacts.first().map(|contact| {
+                screen.from_held(Points {
+                    x: contact.x,
+                    y: contact.y,
+                })
             });
             match action {
                 TouchAction::Start => (TouchPhase::Down, at?),
@@ -542,7 +557,7 @@ fn finger(held: &mut Held, message: &ViewerInput) -> Option<(TouchPhase, Points)
         ViewerInput::Pointer {
             action, x, y, buttons, ..
         } => {
-            let at = Points { x: *x, y: *y };
+            let at = screen.from_held(Points { x: *x, y: *y });
             match action {
                 PointerAction::Down => (TouchPhase::Down, at),
                 PointerAction::Move if *buttons & 1 == 1 && held.finger.is_some() => (TouchPhase::Move, at),
@@ -634,7 +649,8 @@ struct Drawn {
 type Shown = (Orientation, (u32, u32));
 
 fn shown(screen: &crate::driver::Screen) -> Shown {
-    (screen.orientation, screen.pixels)
+    let held = screen.as_held();
+    (held.orientation, held.pixels)
 }
 
 /// Serves one device's stream of a conversation's page.
@@ -946,7 +962,7 @@ async fn view(
                 }
                 FromDevice::Activity(true) => {
                     if let Some(watched) = &watched {
-                        let activity = *watched.activity.borrow();
+                        let activity = held_activity(*watched.activity.borrow(), &watched.screen.borrow());
                         writer.control(&LiveModuleMessage::Activity { activity }).await;
                     }
                 }
@@ -1052,10 +1068,20 @@ async fn state(open: &OpenDevice, writer: &Writer<LiveModuleMessage>) {
         os: open.os.clone(),
         model: (!open.model.is_empty()).then(|| open.model.clone()),
         recording: open.recording().is_some(),
-        orientation: open.device.screen().borrow().orientation,
+        orientation: open.device.screen().borrow().held,
         fold: open.device.screen().borrow().fold.map(|fold| live_fold(fold, open.device.body())),
     };
     writer.control(&LiveModuleMessage::State { device }).await;
+}
+
+/// The agent's activity as the page shows it: its point, the screen's, where
+/// it shows on the device as it is held.
+fn held_activity(activity: demi_live_view_protocol::LiveActivity, screen: &Screen) -> demi_live_view_protocol::LiveActivity {
+    let point = activity.point.map(|point| {
+        let at = screen.to_held(Points { x: point.x, y: point.y });
+        demi_live_view_protocol::LivePoint { x: at.x, y: at.y }
+    });
+    demi_live_view_protocol::LiveActivity { point, ..activity }
 }
 
 /// How the page hears of a fold.
@@ -1108,7 +1134,7 @@ async fn look(
         })
         .await;
     let activity = open.activity.subscribe();
-    let current = *activity.borrow();
+    let current = held_activity(*activity.borrow(), &open.device.screen().borrow());
     writer.control(&LiveModuleMessage::Activity { activity: current }).await;
     let mut awake = open.device.awake();
     awake.borrow_and_update();
@@ -1165,7 +1191,7 @@ fn draw(
         let started = std::time::Instant::now();
         let (frame, screen) = match open.device.frame(area).await {
             Ok(Some(Framed { frame, screen })) => {
-                (Some(crate::frame::live(frame, open.platform, &open.model, screen.orientation)), screen)
+                (Some(crate::frame::live(frame, open.platform, &open.model, screen.held)), screen)
             }
             // The view shows the device once the device announces its frame.
             Ok(None) => (None, *open.device.screen().borrow()),
@@ -1173,10 +1199,11 @@ fn draw(
                 // The drawn frame stands in for a frame the driver could not draw.
                 tracing::warn!(event = "live_frame.draw_failed", name = %open.name, %error, "a frame was not drawn");
                 let screen = *open.device.screen().borrow();
-                let frame = crate::frame::drawn(LiveCorners::round(0.0), open.platform, &open.model, screen.orientation);
+                let frame = crate::frame::drawn(LiveCorners::round(0.0), open.platform, &open.model, screen.held);
                 (Some(frame), screen)
             }
         };
+        let screen = screen.as_held();
         let orientation = screen.orientation;
         tracing::debug!(event = "live_frame.drawn", name = %open.name, ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX), "a frame was drawn");
         Drawn {
