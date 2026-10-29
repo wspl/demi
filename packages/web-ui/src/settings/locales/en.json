@@ -653,10 +653,10 @@
       "title": "Rotation",
       "manual": "Manual",
       "inOrder": "In Order",
-      "balanced": "Balanced",
+      "smart": "Smart",
       "manualHint": "Every agent uses the active account.",
       "inOrderHint": "Agents use the first account in the list that has not reached its limit.",
-      "balancedHint": "Each agent takes the account with the most room left."
+      "smartHint": "Each agent takes the account whose quota resets soonest with room left."
     },
     "account": {
       "active": "Active",

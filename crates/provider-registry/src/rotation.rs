@@ -1,5 +1,5 @@
 //! Account rotation: which of an entry's accounts an agent takes under In Order
-//! and Balanced.
+//! and Smart.
 //!
 //! The module tracks:
 //!
@@ -16,10 +16,16 @@
 //! - A compaction ran, whose next request writes its prefix anew in any case.
 //! - Its account is removed, or the rotation changes.
 //!
-//! For example, Balanced compares a Max account whose 5-hour window is 80% used
-//! with 3 hours to go (room 0.2 / 0.6 = 0.33) and a Pro account at 10% of the
-//! same window with 4 hours to go (room 0.9 / 0.8 = 1.1): the agent takes the
-//! Pro account.
+//! Smart spends first the quota a reset would take soonest, since what is
+//! left at a reset is paid for and lost. Each account's longest window, its
+//! week on a Claude or Codex plan, has an urgency: the share left divided by
+//! the share of its period left. The most urgent account wins, unless one of
+//! its shorter windows is nearly full while another account's is not.
+//!
+//! For example, Smart compares an account at 70% of its week with one day to
+//! go (urgency 0.3 / (1/7) = 2.1) and one at 10% with six days to go
+//! (0.9 / (6/7) = 1.05): the agent takes the first, whose 30% would be gone
+//! tomorrow. With its 5-hour window 85% used, the agent takes the second.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -30,13 +36,16 @@ use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 /// How long an account whose failure and quota name no moment stays used up.
 pub const USED_UP_FOR_MS: i64 = 30 * 60 * 1000;
 
-/// A window used beyond this share leaves its account out while another
-/// account has room.
-const NEARLY_USED_UP: f64 = 0.9;
+/// A short window used this much leaves its account out while another
+/// account's short windows are below it: an agent that takes the account
+/// would soon meet its limit in the middle of a turn and move, writing its
+/// prompt cache anew on the next account.
+const SHORT_WINDOW_FULL: f64 = 0.8;
 
-/// Accounts whose room is within this share of the best are equal, and the
-/// one fewer agents run a turn on is taken.
-const EQUAL_ROOM: f64 = 0.1;
+/// Accounts whose urgency is within this share of the best are equal, and
+/// the one fewer agents run a turn on is taken, so that agents started
+/// together spread before their snapshots change.
+const EQUAL_URGENCY: f64 = 0.3;
 
 type Account = (ProviderId, CredentialId);
 
@@ -76,7 +85,7 @@ struct State {
 }
 
 /// An agent counted among those running a turn on an account, until it
-/// drops: Balanced spreads agents of equal room by these counts.
+/// drops: Smart spreads agents of equal urgency by these counts.
 #[derive(Debug)]
 pub struct Running {
     rotation: Arc<AccountRotation>,
@@ -128,12 +137,12 @@ impl AccountRotation {
         let (mode, picked) = match rotation {
             Rotation::Manual => return None,
             Rotation::InOrder => ("order", rooms.iter().position(|room| room.usable()).map(|index| (index, 1))),
-            Rotation::Balanced => {
+            Rotation::Smart => {
                 let running = |index: usize| {
                     let key = (entry.clone(), candidates[index].id.clone());
                     state.running.get(&key).copied().unwrap_or(0)
                 };
-                ("balance", most_room(&rooms, running))
+                ("smart", most_urgent(&rooms, running))
             }
         };
         let usable = rooms.iter().filter(|room| room.usable()).count();
@@ -161,15 +170,15 @@ impl AccountRotation {
             mode,
             candidates = candidates.len(),
             usable,
-            room_pct = match rooms[index] {
-                Room::Left { room, .. } => Some((room * 100.0).round().clamp(0.0, 10_000.0) as u64),
+            urgency_pct = match rooms[index] {
+                Room::Left { urgency, .. } => Some((urgency * 100.0).round().clamp(0.0, 10_000.0) as u64),
                 Room::UsedUp(_) => None,
             },
             running = *running as u64,
             reason = match (rotation, tied) {
                 (Rotation::InOrder, _) => "first_usable",
-                (_, 1) => "most_room",
-                _ => "fewest_running_among_equal_room",
+                (_, 1) => "most_urgent",
+                _ => "fewest_running_among_equal_urgency",
             },
             "an account was chosen for an agent"
         );
@@ -191,10 +200,10 @@ impl AccountRotation {
         }
     }
 
-    /// The account with the most room among `candidates` for `model`, by
-    /// Balanced's rule; none when every one is used up. It counts nothing:
-    /// *Continue with* offers it to a Manual entry.
-    pub fn most_room(
+    /// The account Smart takes among `candidates` for `model`; none when
+    /// every one is used up. It counts nothing: *Continue with* offers it to
+    /// a Manual entry.
+    pub fn most_urgent(
         &self,
         entry: &ProviderId,
         candidates: &[Candidate],
@@ -207,7 +216,7 @@ impl AccountRotation {
             let key = (entry.clone(), candidates[index].id.clone());
             state.running.get(&key).copied().unwrap_or(0)
         };
-        most_room(&rooms, running).map(|(index, _)| candidates[index].id.clone())
+        most_urgent(&rooms, running).map(|(index, _)| candidates[index].id.clone())
     }
 
     /// When every account among `candidates` is used up for `model`, the
@@ -246,14 +255,14 @@ impl AccountRotation {
     }
 }
 
-/// An account's room for one model.
+/// An account's standing for one model.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Room {
     /// Used up until the moment, when known.
     UsedUp(Option<Timestamp>),
-    /// Its tightest window's room, and the largest share any of its windows
-    /// has used.
-    Left { room: f64, most_used: f64 },
+    /// The urgency of its longest window, and whether a shorter window is
+    /// nearly full.
+    Left { urgency: f64, short_full: bool },
 }
 
 impl Room {
@@ -284,34 +293,45 @@ fn rooms(
         .collect()
 }
 
-/// The room of an account whose snapshot is `snapshot`, for `model`, now: its
-/// smallest window's, each window's being the share left divided by the share
-/// of its period left.
+/// The standing of an account whose snapshot is `snapshot`, for `model`,
+/// now.
 ///
-/// - A window not yet started, past its reset, or without a reset time or a
-///   period has a room of 1.
-/// - A window whose share is unknown says nothing.
+/// - A window whose share is unknown says nothing of the account's room, but
+///   its period still decides which windows are short. One past its reset
+///   is unused.
 /// - A window used up before its reset uses the account up until the latest
 ///   such reset.
+/// - The urgency is that of the windows with the longest period, the
+///   smallest when several have it: the share left divided by the share of
+///   its period left. A window not yet started, or without a reset time or a
+///   period, has an urgency of 1, as has an account without a snapshot.
+/// - A window with a shorter period is short; one used `SHORT_WINDOW_FULL`
+///   or more is nearly full. A window without a period beside one with a
+///   period only says whether the account is used up.
 fn account_room(snapshot: Option<&QuotaSnapshot>, model: &Model, now: Timestamp) -> Room {
-    let windows = snapshot
+    let windows: Vec<&QuotaWindow> = snapshot
         .into_iter()
         .flat_map(|snapshot| &snapshot.windows)
-        .filter(|window| applies(window, model));
-    let mut room = f64::INFINITY;
-    let mut most_used: f64 = 0.0;
+        .filter(|window| applies(window, model))
+        .collect();
+    let longest = windows
+        .iter()
+        .filter_map(|window| window.period_seconds.filter(|period| *period > 0))
+        .max();
+    let mut urgency = f64::INFINITY;
+    let mut short_full = false;
     let mut used_up: Option<Option<Timestamp>> = None;
     for window in windows {
         let Some(percent) = window.used_percent else {
             continue;
         };
-        let used = (percent / 100.0).clamp(0.0, 1.0);
         let reset = window.resets_at.filter(|reset| *reset > now);
-        if window.resets_at.is_some() && reset.is_none() {
+        let used = if window.resets_at.is_some() && reset.is_none() {
             // Its period ended: what it showed was used is free again.
-            room = room.min(1.0);
-            continue;
-        }
+            0.0
+        } else {
+            (percent / 100.0).clamp(0.0, 1.0)
+        };
         if used >= 1.0 {
             used_up = Some(match used_up {
                 Some(Some(latest)) => reset.map(|reset| reset.max(latest)),
@@ -319,22 +339,29 @@ fn account_room(snapshot: Option<&QuotaSnapshot>, model: &Model, now: Timestamp)
             });
             continue;
         }
-        most_used = most_used.max(used);
-        let window_room = match (reset, window.period_seconds) {
-            (Some(reset), Some(period)) if period > 0 => {
-                let left_ms = (reset.as_millisecond() - now.as_millisecond()) as f64;
-                let period_left = (left_ms / (period as f64 * 1000.0)).min(1.0);
-                (1.0 - used) / period_left
+        let period = window.period_seconds.filter(|period| *period > 0);
+        match (period, longest) {
+            (Some(period), Some(longest)) if period < longest => {
+                short_full |= used >= SHORT_WINDOW_FULL;
             }
-            _ => 1.0,
-        };
-        room = room.min(window_room);
+            _ if period == longest => {
+                let window_urgency = match (reset, period) {
+                    (Some(reset), Some(period)) => {
+                        let left_ms = (reset.as_millisecond() - now.as_millisecond()) as f64;
+                        (1.0 - used) / (left_ms / (period as f64 * 1000.0)).min(1.0)
+                    }
+                    _ => 1.0,
+                };
+                urgency = urgency.min(window_urgency);
+            }
+            _ => {}
+        }
     }
     match used_up {
         Some(until) => Room::UsedUp(until),
         None => Room::Left {
-            room: if room.is_finite() { room } else { 1.0 },
-            most_used,
+            urgency: if urgency.is_finite() { urgency } else { 1.0 },
+            short_full,
         },
     }
 }
@@ -353,32 +380,32 @@ fn applies(window: &QuotaWindow, model: &Model) -> bool {
     model.name.to_lowercase().contains(&name) || model.id.to_lowercase().contains(&name)
 }
 
-/// The index of the account with the most room, and how many accounts were
-/// equal in room to it.
+/// The index of the account Smart takes, and how many accounts were equal
+/// in urgency to it.
 ///
-/// - A window over 90% used leaves its account out while another account has
-///   room.
-/// - Among the accounts within a tenth of the best room, the one `running` says
-///   fewest agents run a turn on wins.
+/// - An account with a nearly full short window is left out while another
+///   account has none.
+/// - Among the accounts within `EQUAL_URGENCY` of the best urgency, the one
+///   `running` says fewest agents run a turn on wins.
 /// - Then the first in the list wins.
-fn most_room(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<(usize, usize)> {
-    let left: Vec<(usize, f64, f64)> = rooms
+fn most_urgent(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<(usize, usize)> {
+    let left: Vec<(usize, f64, bool)> = rooms
         .iter()
         .enumerate()
         .filter_map(|(index, room)| match room {
-            Room::Left { room, most_used } => Some((index, *room, *most_used)),
+            Room::Left { urgency, short_full } => Some((index, *urgency, *short_full)),
             Room::UsedUp(_) => None,
         })
         .collect();
-    let roomy = left.iter().any(|(_, _, most_used)| *most_used <= NEARLY_USED_UP);
-    let eligible: Vec<&(usize, f64, f64)> = left
+    let open = left.iter().any(|(_, _, short_full)| !short_full);
+    let eligible: Vec<&(usize, f64, bool)> = left
         .iter()
-        .filter(|(_, _, most_used)| !roomy || *most_used <= NEARLY_USED_UP)
+        .filter(|(_, _, short_full)| !open || !short_full)
         .collect();
-    let best = eligible.iter().map(|(_, room, _)| *room).fold(f64::NAN, f64::max);
-    let equal: Vec<&(usize, f64, f64)> = eligible
+    let best = eligible.iter().map(|(_, urgency, _)| *urgency).fold(f64::NAN, f64::max);
+    let equal: Vec<&(usize, f64, bool)> = eligible
         .into_iter()
-        .filter(|(_, room, _)| *room >= best * (1.0 - EQUAL_ROOM))
+        .filter(|(_, urgency, _)| *urgency >= best * (1.0 - EQUAL_URGENCY))
         .collect();
     let tied = equal.len();
     equal

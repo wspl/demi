@@ -653,10 +653,10 @@
       "title": "輪換",
       "manual": "手動",
       "inOrder": "依序",
-      "balanced": "平衡",
+      "smart": "智慧",
       "manualHint": "每個智慧體都使用目前選用的帳號。",
       "inOrderHint": "智慧體使用清單中第一個未達上限的帳號。",
-      "balancedHint": "每個智慧體使用剩餘額度最多的帳號。"
+      "smartHint": "每個智慧體優先使用即將重置、仍有餘量的帳號。"
     },
     "account": {
       "active": "使用中",

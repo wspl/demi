@@ -623,7 +623,7 @@ function recover(): void {
 }
 /**
  * The account that a usage limit of an entry without rotation offers to go on
- * with, beside Resume. It is the account with the most room, as the failure's
+ * with, beside Resume. It is the account Smart rotation would take, as the failure's
  * facts name it. None for any other failure.
  */
 const continueWith = computed(() =>
