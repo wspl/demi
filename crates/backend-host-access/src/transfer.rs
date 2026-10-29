@@ -47,7 +47,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use bytes::Bytes;
-use demi_runner_client::{OpenedRead, PipeReader, PipeWriter};
+use demi_runner_client::{ConditionalRead, OpenedRead, PipeReader, PipeWriter};
 use demi_host_interface::{ByteRange, FileStat, Host as _, HostError, WhenExists, WriteOptions};
 use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::ReadAt;
@@ -163,7 +163,8 @@ impl dyn HostShard + '_ {
         // The read answers the file's metadata with its first bytes, so it
         // is the one request (`crates/runner-host/src/lib.rs`): it asks for
         // the part the request names, read to the file's end when that
-        // comes first. A HEAD reads nothing.
+        // comes first. A HEAD reads nothing. The versions the request holds
+        // go with it, and a file that still has one sends no byte.
         let header = request.range.as_deref();
         let asked = if request.head {
             None
@@ -174,10 +175,24 @@ impl dyn HostShard + '_ {
             offset: 0,
             length: Some(0),
         });
-        let opened = match waits.wait(host.read_pipe(&path, read)).await? {
+        let opened = waits
+            .wait(async {
+                match request.if_none_match.as_deref() {
+                    Some(held) => host.read_pipe_unless(&path, read, held).await,
+                    None => host.read_pipe(&path, read).await.map(ConditionalRead::Opened),
+                }
+            })
+            .await?;
+        let opened = match opened {
             Ok(opened) => opened,
             Err(error) if error.code() == Some("EISDIR") => return Ok(Download::NotAFile),
             Err(error) => return Err(error.into()),
+        };
+        let changed = |version: &str| {
+            request
+                .version
+                .as_ref()
+                .is_some_and(|expected| expected != version)
         };
         // A description of the file is read at the first read's number.
         let OpenedRead {
@@ -185,17 +200,20 @@ impl dyn HostShard + '_ {
             version,
             body,
             read_at,
-        } = opened;
+        } = match opened {
+            ConditionalRead::Unchanged {
+                version, read_at, ..
+            } => {
+                if changed(&version) {
+                    return Ok(Download::Changed);
+                }
+                return Ok(Download::NotModified { version, read_at });
+            }
+            ConditionalRead::Opened(opened) => opened,
+        };
         let mut body = body;
-        if request
-            .version
-            .as_ref()
-            .is_some_and(|expected| *expected != version)
-        {
+        if changed(&version) {
             return Ok(Download::Changed);
-        }
-        if not_modified(request.if_none_match.as_deref(), &version) {
-            return Ok(Download::NotModified { version, read_at });
         }
         let part = RangeAnswer::of(header, stat.size);
         let range = match part.range() {
@@ -521,17 +539,6 @@ impl Drop for TransfersClosed {
     fn drop(&mut self) {
         self.0.closings.set(self.0.closings.get() - 1);
     }
-}
-
-/// Whether `If-None-Match` names `etag`, compared weakly (RFC 9110 § 13.1.2):
-/// the tags are equal once a `W/` prefix is set aside, and `*` names every
-/// version.
-pub(crate) fn not_modified(if_none_match: Option<&str>, etag: &str) -> bool {
-    let strip = |tag: &str| tag.trim().trim_start_matches("W/").to_owned();
-    let Some(header) = if_none_match else {
-        return false;
-    };
-    header.trim() == "*" || header.split(',').any(|tag| strip(tag) == strip(etag))
 }
 
 /// The part of a file of `size` bytes an answer sends (RFC 9110 § 14).

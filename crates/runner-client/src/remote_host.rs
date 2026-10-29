@@ -342,8 +342,9 @@ impl RemoteHost {
         }
     }
 
-    /// [`RemoteHost::read_pipe`], except that a file that still has the
-    /// version `held` streams nothing (`crates/runner-host/src/files.rs`).
+    /// [`RemoteHost::read_pipe`], except that a file that still has a
+    /// version `held` names, as an `If-None-Match` header names them,
+    /// streams nothing (`crates/runner-host/src/files.rs`).
     pub async fn read_pipe_unless(
         &self,
         path: &str,
