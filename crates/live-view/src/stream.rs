@@ -2,6 +2,23 @@
 //! and one encoding. The capture follows the source's size, and its pace and
 //! encoding follow the viewer with the least room.
 //!
+//! # A viewer that falls behind
+//!
+//! A viewer whose window holds the capture back for [`HOLD`] while another
+//! viewer's has room falls behind: it gets no pictures and no longer paces
+//! the capture, so the others go on at theirs. Once its window has room, it
+//! catches up as a viewer that joins does, from a key frame. It still
+//! steers the encoding, since a new scale starts the capture again for
+//! everyone. A forwarding server does the same for a subscriber that cannot
+//! keep up: it stops forwarding to it and resumes at a key frame.
+//!
+//! ```text
+//!           window held the capture back, for HOLD
+//! following ─────────────────────────────────────▶ behind
+//!     ▲                                               │
+//!     └── its window has room: a restart, a key frame ┘
+//! ```
+//!
 //! Nothing reaches a stream through a queue. Its owner publishes who watches
 //! the source and when the source is ready to be captured. Each viewer
 //! publishes its latest pacing, which supersedes the one before, and wakes the
@@ -58,6 +75,10 @@ const KEY_FRAME_SPACING: Duration = Duration::from_millis(500);
 /// of text from 37 to 42 dB within 15 repeats and to its best within 30, at
 /// 30 frames a second. Longer only sends repeats that change nothing.
 const REFINE_SPAN: Duration = Duration::from_secs(1);
+/// How long a viewer may hold the capture back while another viewer has
+/// room: the spacing of key frames, so a viewer that falls behind again and
+/// again costs the others no more key frames than the stream allows anyway.
+const HOLD: Duration = KEY_FRAME_SPACING;
 /// How long a repeat may go unanswered before the stream logs it: a source
 /// answers within a frame interval while the viewers' windows have room, so
 /// a longer silence is a capture or a viewer that stopped.
@@ -324,10 +345,34 @@ struct Viewer<L> {
     key_frames: u64,
     floor: u32,
     window: u32,
+    following: Following,
     /// None until the viewer measured its path.
     bitrate: Option<u32>,
     fps: u32,
     scale: f64,
+}
+
+/// Whether a viewer paces the capture (module docs § A viewer that falls
+/// behind).
+#[derive(Clone, Copy)]
+enum Following {
+    /// It paces the capture; `held` is since when its window has held the
+    /// capture back while another viewer's had room.
+    Yes { held: Option<Instant> },
+    /// It gets no pictures and does not pace the capture until its window
+    /// has room.
+    Behind { since: Instant },
+}
+
+impl<L> Viewer<L> {
+    fn follows(&self) -> bool {
+        matches!(self.following, Following::Yes { .. })
+    }
+
+    /// Whether its window lets the capture go no further than `sequence`.
+    fn holds(&self, sequence: u32) -> bool {
+        sequence.wrapping_sub(self.floor.min(sequence)) >= self.window
+    }
 }
 
 /// How long a stream took to its first picture, in steps from its start:
@@ -593,6 +638,21 @@ async fn run<S: Source>(
             .filter(|refine| !refine.logged)
             .and_then(|refine| refine.asked)
             .map(|asked| asked + UNANSWERED);
+        if catch_up(&mut viewers, running.as_ref(), &ending.source) {
+            key_frames.ask(Instant::now(), running.as_ref().map(|running| &running.capture));
+        }
+        // When the first viewer that holds the capture back falls behind.
+        let behind = running.as_ref().and_then(|running| {
+            hold(&mut viewers, running.sequence, Instant::now());
+            viewers
+                .values()
+                .filter_map(|viewer| match viewer.following {
+                    Following::Yes { held } => held,
+                    Following::Behind { .. } => None,
+                })
+                .min()
+                .map(|held| held + HOLD)
+        });
         let event = async {
             match running.as_mut() {
                 Some(running) => running.capture.next().await,
@@ -654,6 +714,7 @@ async fn run<S: Source>(
                         key_frames: 0,
                         floor: running.as_ref().map_or(0, |running| running.sequence),
                         window: 1,
+                        following: Following::Yes { held: None },
                         bitrate: None,
                         fps: FRAME_RATES[0],
                         scale: SCALES[0],
@@ -670,6 +731,9 @@ async fn run<S: Source>(
                     key_frames.ask(Instant::now(), running.as_ref().map(|running| &running.capture));
                 }
 
+            }
+            _ = tokio::time::sleep_until(behind.unwrap_or_else(Instant::now)), if behind.is_some() => {
+                fall_behind(&mut viewers, running.as_ref(), &ending.source);
             }
             _ = tokio::time::sleep_until(refine.unwrap_or_else(Instant::now)), if refine.is_some() => {
                 if let Some(running) = &mut running
@@ -696,8 +760,9 @@ async fn run<S: Source>(
                         source = ending.source.as_str(),
                         ms = asked.elapsed().as_millis() as u64,
                         sequence = running.sequence,
-                        floor = viewers.values().map(|viewer| viewer.floor).min(),
-                        window = viewers.values().map(|viewer| viewer.window).min(),
+                        floor = viewers.values().filter(|viewer| viewer.follows()).map(|viewer| viewer.floor).min(),
+                        window = viewers.values().filter(|viewer| viewer.follows()).map(|viewer| viewer.window).min(),
+                        behind = viewers.values().filter(|viewer| !viewer.follows()).count(),
                         "a live view capture did not answer a repeat"
                     );
                 }
@@ -724,7 +789,7 @@ async fn run<S: Source>(
                             running.epoch = epoch;
                             running.shown = Some(sides);
                             let restart = running.restart().expect("the generation has its size");
-                            for viewer in viewers.values_mut() {
+                            for viewer in viewers.values_mut().filter(|viewer| viewer.follows()) {
                                 viewer.floor = running.sequence;
                                 let _behind = viewer.events.try_send(restart.clone());
                             }
@@ -761,7 +826,7 @@ async fn run<S: Source>(
                     }
                     ending.frames += 1;
                     ending.bytes += frame.data.len() as u64;
-                    for viewer in viewers.values() {
+                    for viewer in viewers.values().filter(|viewer| viewer.follows()) {
                         if viewer.events.try_send(Event::Frame(frame.clone())).is_err() {
                             ending.dropped += 1;
                         }
@@ -851,7 +916,13 @@ fn paced<C: Capture, L>(viewers: &mut HashMap<u64, Viewer<L>>, running: Option<&
             continue;
         }
         let pacing = *viewer.pacing.borrow_and_update();
-        if let Some((epoch, floor, window)) = pacing.pace
+        if !viewer.follows() {
+            // Whether its window has room, whatever generation it last had:
+            // the stream catches it up while it does.
+            if let Some((_, _, window)) = pacing.pace {
+                viewer.window = window;
+            }
+        } else if let Some((epoch, floor, window)) = pacing.pace
             && running.is_some_and(|running| running.epoch == epoch)
         {
             (viewer.floor, viewer.window) = (floor, window);
@@ -862,7 +933,7 @@ fn paced<C: Capture, L>(viewers: &mut HashMap<u64, Viewer<L>>, running: Option<&
         }
         if pacing.key_frames != viewer.key_frames {
             viewer.key_frames = pacing.key_frames;
-            key_frame = true;
+            key_frame |= viewer.follows();
         }
     }
     if acknowledged {
@@ -871,14 +942,101 @@ fn paced<C: Capture, L>(viewers: &mut HashMap<u64, Viewer<L>>, running: Option<&
     key_frame
 }
 
-/// Tells the capture how far its viewers let it go: past the least of their
-/// frames, as many as the least of their windows has room for.
+/// Has each viewer that fell behind and whose window has room follow the
+/// capture again from its newest frame, as one that joins does; answers
+/// whether one did, which asks for a key frame. Between generations, or
+/// captures, it hears of the next as it comes. One whose queue has no room
+/// for the restart tries again as the stream next wakes.
+fn catch_up<C: Capture, L: Clone>(
+    viewers: &mut HashMap<u64, Viewer<L>>,
+    running: Option<&Running<C, L>>,
+    source: &str,
+) -> bool {
+    let mut caught_up = false;
+    for viewer in viewers.values_mut() {
+        let Following::Behind { since } = viewer.following else {
+            continue;
+        };
+        if viewer.window == 0 {
+            continue;
+        }
+        if let Some(restart) = running.and_then(Running::restart)
+            && viewer.events.try_send(restart).is_err()
+        {
+            continue;
+        }
+        tracing::info!(
+            event = "live_view_viewer.caught_up",
+            source,
+            ms = since.elapsed().as_millis() as u64,
+            "a live view viewer that fell behind caught up"
+        );
+        viewer.following = Following::Yes { held: None };
+        viewer.floor = running.map_or(0, |running| running.sequence);
+        viewer.window = 1;
+        caught_up = true;
+    }
+    if caught_up {
+        allow(viewers, running);
+    }
+    caught_up
+}
+
+/// Notes since when each following viewer holds the capture at `sequence`
+/// back while another following viewer has room.
+fn hold<L>(viewers: &mut HashMap<u64, Viewer<L>>, sequence: u32, now: Instant) {
+    let roomy = viewers
+        .values()
+        .filter(|viewer| viewer.follows() && !viewer.holds(sequence))
+        .count();
+    for viewer in viewers.values_mut() {
+        let holds = viewer.holds(sequence);
+        if let Following::Yes { held } = &mut viewer.following {
+            if holds && roomy > 0 {
+                held.get_or_insert(now);
+            } else {
+                *held = None;
+            }
+        }
+    }
+}
+
+/// Has each viewer that held the capture back for [`HOLD`] fall behind, and
+/// lets the capture go as far as the others allow.
+fn fall_behind<C: Capture, L>(viewers: &mut HashMap<u64, Viewer<L>>, running: Option<&Running<C, L>>, source: &str) {
+    let now = Instant::now();
+    let mut fell = false;
+    for viewer in viewers.values_mut() {
+        if let Following::Yes { held: Some(held) } = viewer.following
+            && now >= held + HOLD
+        {
+            tracing::info!(
+                event = "live_view_viewer.behind",
+                source,
+                held_ms = now.duration_since(held).as_millis() as u64,
+                "a live view viewer fell behind"
+            );
+            viewer.following = Following::Behind { since: now };
+            // Its window has room again once its pace says so.
+            viewer.window = 0;
+            fell = true;
+        }
+    }
+    if fell {
+        allow(viewers, running);
+    }
+}
+
+/// Tells the capture how far its viewers let it go: past the least of the
+/// following viewers' frames, as many as the least of their windows has
+/// room for.
 fn allow<C: Capture, L>(viewers: &HashMap<u64, Viewer<L>>, running: Option<&Running<C, L>>) {
     let Some(running) = running else {
         return;
     };
-    let floor = viewers.values().map(|viewer| viewer.floor).min();
-    let window = viewers.values().map(|viewer| viewer.window).min();
+    let following = || viewers.values().filter(|viewer| viewer.follows());
+    let floor = following().map(|viewer| viewer.floor).min();
+    let window = following().map(|viewer| viewer.window).min();
     if let (Some(floor), Some(window)) = (floor, window) {
         running.capture.ack(floor, window);
     }
