@@ -163,13 +163,14 @@ impl dyn HostShard + '_ {
         // The read answers the file's metadata with its first bytes, so it
         // is the one request (`crates/runner-host/src/lib.rs`): it asks for
         // the part the request names, read to the file's end when that
-        // comes first. A HEAD reads nothing. The versions the request holds
+        // comes first. A HEAD reads nothing, and neither does a part counted
+        // from the end, which waits for the size. The versions the request holds
         // go with it, and a file that still has one sends no byte.
         let header = request.range.as_deref();
         let asked = if request.head {
             None
         } else {
-            RangeAnswer::of(header, u64::MAX).range()
+            RangeAnswer::before_size(header)
         };
         let read = asked.unwrap_or(ByteRange {
             offset: 0,
@@ -228,9 +229,13 @@ impl dyn HostShard + '_ {
             }
         };
         // A part counted from the end, which the size decides, is read once
-        // the size is known.
+        // the size is known, of the version that size is of.
         if asked.map(|asked| asked.offset) != Some(range.offset) {
-            body = waits.wait(host.read_pipe(&path, range)).await??.body;
+            let part = waits.wait(host.read_pipe(&path, range)).await??;
+            if part.version != version {
+                return Ok(Download::Changed);
+            }
+            body = part.body;
         }
         // The bytes move at the edge; the shard only holds the admission.
         let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
@@ -600,6 +605,18 @@ impl RangeAnswer {
             },
             _ => Self::Unsatisfiable { size },
         }
+    }
+
+    /// The bytes a request asks for before the file's size is known: none
+    /// for a part counted from the end, which the size decides.
+    pub fn before_size(header: Option<&str>) -> Option<ByteRange> {
+        let from_end = header
+            .and_then(|header| header.trim().strip_prefix("bytes="))
+            .is_some_and(|spec| spec.starts_with('-'));
+        if from_end {
+            return None;
+        }
+        Self::of(header, u64::MAX).range()
     }
 
     pub fn status(&self) -> StatusCode {
