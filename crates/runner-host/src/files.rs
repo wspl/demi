@@ -533,10 +533,11 @@ pub async fn open_read(
     Ok(OpenedRead { opened, body })
 }
 
-/// What a read of the version `held` answers of a file of `stat`.
+/// What a read that holds the versions `held` names answers of a file of
+/// `stat`.
 fn opened_file(stat: wire::FileStat, held: Option<&str>) -> wire::OpenedFile {
     let version = wire::file_version(stat.size, stat.mtime.0);
-    let unchanged = held == Some(version.as_str());
+    let unchanged = held.is_some_and(|held| wire::names_version(held, &version));
     wire::OpenedFile {
         stat,
         version,

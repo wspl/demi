@@ -391,8 +391,9 @@ pub enum Inbound {
         error: Option<String>,
     },
     /// Stream `length` bytes from `offset`, or to the end, into `output`.
-    /// A request that names the `version` it holds streams nothing while
-    /// the file still has it: the reply says it is unchanged
+    /// A request whose `version` names the versions it holds, as an
+    /// `If-None-Match` header names them, streams nothing while the file
+    /// still has one of them: the reply says it is unchanged
     /// (`crates/runner-host/src/files.rs`).
     #[serde(rename = "fs_readFile")]
     FsReadFile {
@@ -2131,6 +2132,14 @@ pub fn file_version(size: u64, modified_ms: i64) -> String {
         format!("{modified_ms:x}")
     };
     format!("W/\"{size:x}-{time}\"")
+}
+
+/// Whether `held`, an `If-None-Match` header's value, names `version`,
+/// compared weakly (RFC 9110 § 13.1.2): the tags are equal once a `W/`
+/// prefix is set aside, and `*` names every version.
+pub fn names_version(held: &str, version: &str) -> bool {
+    let strip = |tag: &str| tag.trim().trim_start_matches("W/").to_owned();
+    held.trim() == "*" || held.split(',').any(|tag| strip(tag) == strip(version))
 }
 
 /// One entry of a directory listing, with its type, size and modification

@@ -113,7 +113,7 @@ pub use kept::{
     encode_record,
 };
 pub use messages::{
-    ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitBranches, GitChange, GitChanges,
+    ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, names_version, GitBranches, GitChange, GitChanges,
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
     HelloErrorCode, HostArtifact, HostDownload, HostIdentity, Inbound, JobArtifactOwner, ProgramsArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LinkedWorktree,
     LookPath, Looked, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
