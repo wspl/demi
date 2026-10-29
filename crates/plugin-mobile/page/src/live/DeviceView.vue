@@ -13,10 +13,11 @@ import {
   touchInput,
   wheelInput,
   type HostDownload,
+  prefersReducedMotion,
 } from '@demicodes/plugin-sdk'
-import type { DeviceSession } from './session'
+import { quartersBetween, type DeviceSession } from './session'
 import type { LiveFrame } from '../generated/plugin'
-import { areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, turnedBox, turnedFrame, type Placement, type Size } from './view'
+import { RESTING, areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, poseAt, poseBetween, poseTransform, turnedBox, turnedFrame, unposed, type Placement, type Size, type TurnPose } from './view'
 import DeviceKeys from './DeviceKeys.vue'
 import DeviceStatus from './DeviceStatus.vue'
 import { deviceStatus } from './status'
@@ -38,6 +39,9 @@ import { t } from '../locales/text'
  *   The view stays mounted while its tab is hidden, and the canvas is the
  *   session's, so a return shows the device at once, and so does the next
  *   view of the device after this one unmounts.
+ * - A device that changes the orientation it shows turns there, as a phone
+ *   turned in the hand, so the moment Android takes to turn its windows
+ *   shows as part of the turn.
  * - Until the first picture, it says what it waits for; a frame that could
  *   not be shown is a failure the viewer can retry. A stream that waits for
  *   the Host to download the plugin's program says how far the download came.
@@ -50,6 +54,8 @@ const props = defineProps<{
 }>()
 
 const area = ref<HTMLDivElement | null>(null)
+/** The device, whole, which a change of orientation turns. */
+const turnBox = ref<HTMLDivElement | null>(null)
 const screenBox = ref<HTMLDivElement | null>(null)
 const keys = ref<InstanceType<typeof DeviceKeys> | null>(null)
 const size = ref<Size>({ width: 0, height: 0 })
@@ -130,6 +136,66 @@ const shown = computed<Shown | null>(() => {
 })
 const layout = computed(() => shown.value?.layout ?? null)
 const placement = computed(() => layout.value?.screen ?? null)
+
+/** How long a turn takes, as a phone turned in the hand, and the iOS Simulator's window. */
+const TURN_MS = 300
+/** The steps a turn's animation is drawn at, each one's pose computed here, so the device stays inside the area at every angle. */
+const TURN_STEPS = 18
+/** The turn under way: its pose at its start relative to the layout it turns into, and when it started. */
+let turn: { start: TurnPose; began: number; duration: number; screen: Placement; device: Size; animation: Animation } | null = null
+
+/** Where the turn under way shows the device now; none once it ended. */
+function currentPose(): TurnPose | null {
+  if (!turn) {
+    return null
+  }
+  const progress = (performance.now() - turn.began) / turn.duration
+  return progress >= 1 ? null : poseAt(turn.start, progress, turn.device, size.value)
+}
+
+/**
+ * Turns the device from where it shows to where its layout puts it once the
+ * orientation it shows changes, about its screen's center; a layout that
+ * changes during a turn, as when the new orientation's frame arrives, or
+ * another turn, continues from where the device shows.
+ */
+watch(
+  () => {
+    // Where the screen shows, a device turned whole included.
+    const placed = placement.value
+    const device = shown.value?.device ?? 0
+    return { orientation: props.session.shownOrientation(), screen: placed && device ? turnedBox(placed, size.value, device) : placed }
+  },
+  (now, before) => {
+    const box = turnBox.value
+    const pose = currentPose()
+    if (!box || !props.shown || !now.orientation || !before.orientation || !now.screen || !before.screen || prefersReducedMotion()) {
+      return
+    }
+    const quarters = quartersBetween(before.orientation, now.orientation)
+    if (quarters === 0 && !pose) {
+      return
+    }
+    const start = poseBetween(before.screen, pose ?? RESTING, now.screen, quarters)
+    // A new turn takes its whole time; a layout that changed during one, the rest of it.
+    const duration = quarters !== 0 || !turn ? TURN_MS : Math.max(1, turn.duration - (performance.now() - turn.began))
+    const frameBox = layout.value?.image?.box ?? now.screen
+    const device = { width: frameBox.width, height: frameBox.height }
+    const screen = now.screen
+    const keyframes = Array.from({ length: TURN_STEPS + 1 }, (_, step) => ({
+      transform: poseTransform(poseAt(start, step / TURN_STEPS, device, size.value), screen),
+    }))
+    turn?.animation.cancel()
+    const animation = box.animate(keyframes, { duration, easing: 'linear' })
+    turn = { start, began: performance.now(), duration, screen, device, animation }
+    animation.onfinish = () => {
+      if (turn?.animation === animation) {
+        turn = null
+      }
+    }
+  },
+  { flush: 'post' },
+)
 /** The frame the view draws itself when none is drawn for the device. */
 const drawnFrame = computed(() => {
   const drawn = shown.value?.frame
@@ -305,7 +371,11 @@ function point(event: MouseEvent): { x: number; y: number } | null {
   if (!bounds || !screen.value || !placement.value) {
     return null
   }
-  return devicePoint({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, screen.value, placement.value)
+  // During a turn, the point of the layout the turning device shows there.
+  const inArea = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+  const pose = currentPose()
+  const at = pose && turn ? unposed(inArea, pose, turn.screen) : inArea
+  return devicePoint(at, screen.value, placement.value)
 }
 
 function down(event: PointerEvent): void {
@@ -369,6 +439,8 @@ function wheel(event: WheelEvent): void {
 
 <template>
   <div ref="area" class="relative min-h-0 flex-1 overflow-hidden bg-sunken">
+    <!-- The device, whole, turning when its orientation changes. -->
+    <div ref="turnBox" class="absolute inset-0 origin-top-left">
     <!-- The device, whole, turned at once for a rotation its pictures do not show yet. -->
     <div v-if="layout" class="absolute inset-0" :style="deviceTurn">
       <!-- The screen, bounded under the frame, and the picture in it. -->
@@ -433,6 +505,7 @@ function wheel(event: WheelEvent): void {
           height: `${layout.image.box.height}px`,
         }"
       >
+    </div>
     </div>
     <DeviceKeys ref="keys" :session="session" :screen-off="screenOff" />
     <LiveActivityOverlay :active="activity.active" :label="t('activity')" :mark="mark" />

@@ -178,6 +178,8 @@ export {
 } from '@demicodes/web-ui/live/drawn-frame'
 export { default as LiveDrawnFrame } from '@demicodes/web-ui/live/LiveDrawnFrame.vue'
 export { default as LiveActivityOverlay } from '@demicodes/web-ui/live/LiveActivityOverlay.vue'
+// Whether the person asked for less motion, as the system's Reduce Motion does.
+export { prefersReducedMotion } from '@demicodes/web-ui/ui/stream-reveal'
 // Composables.
 // A field that takes the focus as its surface opens, as a phone allows.
 export { useAutofocus } from '@demicodes/web-ui/ui/autofocus'
