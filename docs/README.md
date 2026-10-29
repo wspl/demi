@@ -39,5 +39,7 @@ The documents here cover only what is not about one module.
   user sees, a protocol or a module's boundaries, in [their template](decisions/template.md)
 - [Add a provider](guides/add-a-provider.md): writing a provider crate for a
   new vendor
+- [Build on Demi with an integration](guides/integrations.md): a program that
+  builds an agent product on Demi through its API
 - [Develop on a Mac with Lima](guides/mac-development.md): the machine manager
   and Clouds in a Lima VM beside a backend on the Mac
