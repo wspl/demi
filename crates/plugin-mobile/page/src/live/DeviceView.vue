@@ -56,6 +56,8 @@ const props = defineProps<{
 const area = ref<HTMLDivElement | null>(null)
 /** The device, whole, which a change of orientation turns. */
 const turnBox = ref<HTMLDivElement | null>(null)
+/** Where the frame's image lies. */
+const frameHost = ref<HTMLDivElement | null>(null)
 const screenBox = ref<HTMLDivElement | null>(null)
 const keys = ref<InstanceType<typeof DeviceKeys> | null>(null)
 const size = ref<Size>({ width: 0, height: 0 })
@@ -179,7 +181,10 @@ watch(
     const start = poseBetween(before.screen, pose ?? RESTING, now.screen, quarters)
     // A new turn takes its whole time; a layout that changed during one, the rest of it.
     const duration = quarters !== 0 || !turn ? TURN_MS : Math.max(1, turn.duration - (performance.now() - turn.began))
-    const frameBox = layout.value?.image?.box ?? now.screen
+    // The device's box as it shows, its frame's when it has one, a device turned whole included.
+    const image = layout.value?.image?.box
+    const turned = shown.value?.device ?? 0
+    const frameBox = image ? (turned ? turnedBox(image, size.value, turned) : image) : now.screen
     const device = { width: frameBox.width, height: frameBox.height }
     const screen = now.screen
     const keyframes = Array.from({ length: TURN_STEPS + 1 }, (_, step) => ({
@@ -307,6 +312,20 @@ watch(screenBox, (box, previous) => {
 watchEffect(() => {
   Object.assign(props.session.canvas.style, pictureBox.value)
 })
+// The frame's image is the session's own decoded element, so a new frame
+// shows its image in the same paint as its layout.
+watch([frameHost, () => layout.value?.image?.src], ([host, src]) => {
+  if (!host || !src) {
+    return
+  }
+  const image = props.session.frameImage(src)
+  if (image.parentElement !== host) {
+    image.alt = ''
+    image.draggable = false
+    image.className = 'block size-full'
+    host.replaceChildren(image)
+  }
+}, { flush: 'post' })
 
 /** The frame is drawn for the room the area has, in device pixels. */
 function askFrame(sized: Size): void {
@@ -364,6 +383,8 @@ onBeforeUnmount(() => {
   if (canvas.parentElement === screenBox.value) {
     canvas.remove()
   }
+  // The frame's image is the session's too, and outlives this view.
+  frameHost.value?.replaceChildren()
 })
 
 function point(event: MouseEvent): { x: number; y: number } | null {
@@ -493,18 +514,17 @@ function wheel(event: WheelEvent): void {
         :corners="drawnFrame.corners"
         :buttons="drawnFrame.buttons"
       />
-      <img
+      <div
         v-if="layout.image"
+        ref="frameHost"
         class="pointer-events-none absolute select-none"
-        :src="layout.image.src"
-        alt=""
         :style="{
           left: `${layout.image.box.left}px`,
           top: `${layout.image.box.top}px`,
           width: `${layout.image.box.width}px`,
           height: `${layout.image.box.height}px`,
         }"
-      >
+      />
     </div>
     </div>
     <DeviceKeys ref="keys" :session="session" :screen-off="screenOff" />
