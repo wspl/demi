@@ -264,7 +264,7 @@ struct ConversationRuntime {
     /// keeps while idle; none under Manual (`crates/provider-registry/src/rotation.rs`).
     account: Option<CredentialId>,
     /// The agent counted as running a turn on `account`, from a request
-    /// until the session's action ends; Balanced spreads agents by these
+    /// until the session's action ends; Smart spreads agents by these
     /// counts, and an idle agent is not among them.
     running: Option<Running>,
     /// Whether the account was taken ahead of a request, so the next
@@ -352,7 +352,7 @@ impl ConversationRuntime {
                 let announce = request.account.is_some().then_some(None);
                 (entry.active().cloned(), announce)
             }
-            Rotation::InOrder | Rotation::Balanced => {
+            Rotation::InOrder | Rotation::Smart => {
                 let (account, announce) = self
                     .agent_account(&entry, &selection.model, request.account.as_ref(), runs)
                     .await?;

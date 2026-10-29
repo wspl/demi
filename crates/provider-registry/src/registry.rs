@@ -75,7 +75,7 @@ type Built = (ProviderEntry, Arc<dyn Provider>);
 /// that an agent took under the entry's rotation.
 type BuiltKey = (ProviderId, Option<CredentialId>);
 
-/// How old a snapshot Balanced compares may be before it is read again.
+/// How old a snapshot Smart compares may be before it is read again.
 const SNAPSHOT_FRESH_MS: i64 = 5 * 60 * 1000;
 
 /// The account operations a login runs: its family's own over the machine
@@ -402,7 +402,7 @@ impl ProviderRegistry {
     }
 
     /// Takes an account of `entry` under its rotation for an agent of
-    /// `model`, reading stale snapshots first for Balanced; none for a
+    /// `model`, reading stale snapshots first for Smart; none for a
     /// Manual entry.
     pub async fn take_account(
         &self,
@@ -411,7 +411,7 @@ impl ProviderRegistry {
     ) -> Result<(Option<Choice>, Vec<Candidate>), RegistryError> {
         let rotation = entry.rotation();
         let candidates = self
-            .candidates(entry, rotation == Rotation::Balanced)
+            .candidates(entry, rotation == Rotation::Smart)
             .await?;
         let choice = self
             .rotation

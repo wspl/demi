@@ -653,10 +653,10 @@
       "title": "轮换",
       "manual": "手动",
       "inOrder": "按顺序",
-      "balanced": "均衡",
+      "smart": "智能",
       "manualHint": "每个智能体都使用当前账户。",
       "inOrderHint": "智能体使用列表中第一个未达限额的账户。",
-      "balancedHint": "每个智能体使用剩余额度最多的账户。"
+      "smartHint": "每个智能体优先使用即将重置、仍有余量的账户。"
     },
     "account": {
       "active": "当前",

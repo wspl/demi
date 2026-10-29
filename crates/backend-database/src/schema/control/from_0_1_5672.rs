@@ -1,4 +1,4 @@
-//! From 0.1.5672's control schema to the current one: a push
+//! From 0.1.5672's control schema to 0.1.5738's: a push
 //! subscription's `quiet_while_elsewhere` has no default. The step that
 //! added the column gave it one, which only a database migrated through
 //! that step kept, so the table is made anew without it.

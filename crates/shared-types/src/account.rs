@@ -13,8 +13,9 @@ pub enum Rotation {
     Manual,
     /// The first account in the list's order that is not used up.
     InOrder,
-    /// The account with the most room.
-    Balanced,
+    /// The account whose quota a reset would take soonest, while its short
+    /// windows have room.
+    Smart,
 }
 
 serde_plain::derive_display_from_serialize!(Rotation);

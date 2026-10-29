@@ -229,7 +229,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Usage limit · Continue with another account',
-    note: 'The entry has more accounts and no rotation: beside Resume, the dock offers to continue with the account that has the most room now, which becomes the active account in Settings and resumes the turn there.',
+    note: 'The entry has more accounts and no rotation: beside Resume, the dock offers to continue with the account Smart rotation would take now, which becomes the active account in Settings and resumes the turn there.',
     session: state('usage-limit-other', {
       blocks: [...shortTranscriptBlocks(), usageLimitErrorBlock('usage-limit-other-error', limitResets)],
       failures: {
@@ -280,7 +280,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Account rotation · the agent moved to another account',
-    note: 'Not a failure. With In Order or Balanced, the agent’s account reached its limit before anything of the answer showed: the same request went at once to the next account, the transcript says so in a neutral line, with the reset in the viewer’s time zone, and the answer follows. Nothing to click.',
+    note: 'Not a failure. With In Order or Smart, the agent’s account reached its limit before anything of the answer showed: the same request went at once to the next account, the transcript says so in a neutral line, with the reset in the viewer’s time zone, and the answer follows. Nothing to click.',
     session: state('account-switch', {
       blocks: [...shortTranscriptBlocks(), ...accountSwitchBlocks(limitResets)],
     }),

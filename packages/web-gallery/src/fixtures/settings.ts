@@ -530,8 +530,8 @@ export function mockProviders(): MockProvider[] {
   return [
     provider({
       id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code',
-      // Its three accounts share the work: each agent takes the one with the most room.
-      rotation: 'balanced',
+      // Its three accounts share the work: each agent takes the one whose quota resets soonest.
+      rotation: 'smart',
       // Claude Code's machine answered; its install after the last account failed, which is the
       // one state here that asks the user for anything.
       cli: {

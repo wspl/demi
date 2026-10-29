@@ -811,7 +811,7 @@ CREATE TABLE providers (
   -- Which account each agent uses (providers.md § Account rotation); an
   -- API-key entry's is always manual.
   rotation             TEXT NOT NULL DEFAULT 'manual'
-    CHECK (rotation IN ('manual', 'in_order', 'balanced')
+    CHECK (rotation IN ('manual', 'in_order', 'smart')
       AND (credential_kind = 'subscription' OR rotation = 'manual')),
   -- Whether the entry makes images when its provider can (providers.md
   -- § Provider management); on from the start.

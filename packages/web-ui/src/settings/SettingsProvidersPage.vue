@@ -11,12 +11,12 @@ import {
   GripVertical,
   Image,
   Hand,
+  Hourglass,
   Info,
   ListOrdered,
   Plug,
   Plus,
   RefreshCw,
-  Scale,
   SlidersHorizontal,
   TextCursorInput,
   Trash2,
@@ -116,14 +116,14 @@ import type { TitleText } from '../ui/ui-text'
  *
  * A subscription with several accounts offers its rotation and orders its
  * accounts by dragging. Adding its second account and choosing In Order or
- * Balanced first warn, once, that several accounts or their rotation may
+ * Smart first warn, once, that several accounts or their rotation may
  * violate the provider's terms, at the user's own risk
  * (`crates/provider-registry/src/rotation.rs`).
  *
  * The list has no Subscriptions group while the instance offers none.
  */
-/** Each rotation's mark: the one by hand, the one down the list, the one weighed by room. */
-const ROTATION_ICONS: Record<SettingsRotation, Component> = { manual: Hand, in_order: ListOrdered, balanced: Scale }
+/** Each rotation's mark: the one by hand, the one down the list, the one for quota that runs out with time. */
+const ROTATION_ICONS: Record<SettingsRotation, Component> = { manual: Hand, in_order: ListOrdered, smart: Hourglass }
 
 const props = defineProps<{
   /**

@@ -10,8 +10,8 @@
 //! - A usage limit of a subscription entry with several accounts is read
 //!   against them too (`crates/provider-registry/src/rotation.rs`). Under
 //!   rotation its moment is the earliest one among the accounts once every one
-//!   is used up. Without rotation the dock offers the account with the most room
-//!   now.
+//!   is used up. Without rotation the dock offers the account Smart would
+//!   take now.
 //! - A request to a port its device had not exposed names the port, which the
 //!   page offers to expose or to try again.
 //! - A request to an offline device names the device.
@@ -140,7 +140,7 @@ async fn quota_moment(
 /// What a usage limit of `entry` adds from its accounts.
 ///
 /// - Under rotation, the earliest moment among them once every one is used up.
-/// - Without rotation, the account with the most room now, other than the active
+/// - Without rotation, the account Smart would take now, other than the active
 ///   one that failed.
 ///
 /// A read that fails adds nothing: the facts only add to the failure.
@@ -168,14 +168,14 @@ async fn account_facts(
                 .filter(|candidate| Some(&candidate.id) != entry.active())
                 .collect();
             facts.continue_with = rotation
-                .most_room(&entry.id, &others, model, now)
+                .most_urgent(&entry.id, &others, model, now)
                 .and_then(|id| others.into_iter().find(|candidate| candidate.id == id))
                 .map(|candidate| ContinueWith {
                     credential_id: candidate.id.to_string(),
                     label: candidate.label,
                 });
         }
-        Rotation::InOrder | Rotation::Balanced => {
+        Rotation::InOrder | Rotation::Smart => {
             if let Some(earliest) = rotation.all_used_up(&entry.id, &candidates, model, now) {
                 facts.retry_at = earliest.or(facts.retry_at);
             }

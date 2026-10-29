@@ -1468,7 +1468,7 @@ impl Making<'_> {
                     let active = entry.active().cloned();
                     (active.ok_or_else(|| refused(MediaRefusal::NoProvider))?, None)
                 }
-                Rotation::InOrder | Rotation::Balanced => {
+                Rotation::InOrder | Rotation::Smart => {
                     let (choice, _) = provider_registry.take_account(entry, &self.model).await.map_err(failed)?;
                     match choice {
                         Some(Choice::Account(running)) if tried.contains(running.account()) => {

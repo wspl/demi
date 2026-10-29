@@ -252,11 +252,12 @@ export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
  *
  * - the active one,
  * - the first in the list that is not used up, or
- * - the one with the most room.
+ * - the one whose quota a reset would take soonest, while its short windows
+ *   have room.
  */
-export type SettingsRotation = 'manual' | 'in_order' | 'balanced'
+export type SettingsRotation = 'manual' | 'in_order' | 'smart'
 
-export const ROTATIONS: readonly SettingsRotation[] = ['manual', 'in_order', 'balanced']
+export const ROTATIONS: readonly SettingsRotation[] = ['manual', 'in_order', 'smart']
 
 export const ROTATION_LABELS: Record<SettingsRotation, TitleText> = {
   get manual() {
@@ -265,8 +266,8 @@ export const ROTATION_LABELS: Record<SettingsRotation, TitleText> = {
   get in_order() {
     return t('providers.rotation.inOrder')
   },
-  get balanced() {
-    return t('providers.rotation.balanced')
+  get smart() {
+    return t('providers.rotation.smart')
   },
 }
 
@@ -278,8 +279,8 @@ export const ROTATION_HINTS: Record<SettingsRotation, SentenceText> = {
   get in_order() {
     return t('providers.rotation.inOrderHint')
   },
-  get balanced() {
-    return t('providers.rotation.balancedHint')
+  get smart() {
+    return t('providers.rotation.smartHint')
   },
 }
 
