@@ -16,6 +16,7 @@
 //!   finishes with its own.
 
 use demi_provider_common::media_catalog::MediaCatalog;
+use demi_provider_common::Searches;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
@@ -510,7 +511,13 @@ impl ProviderRegistry {
             .and_then(|family| family.default_endpoint())
             // A family's default is a constant that parses.
             .map(|url| EndpointUrl::try_from(url.to_owned()).expect("a default endpoint parses"));
-        entry.dto(default, self.media_shapes(entry), self.media.current().updated, self.cache_ttl_presets(entry))
+        entry.dto(
+            default,
+            self.media_shapes(entry),
+            self.offered_searches(entry),
+            self.media.current().updated,
+            self.cache_ttl_presets(entry),
+        )
     }
 
     /// The prompt cache lifetimes `entry`'s protocol knows, as its family and
@@ -525,6 +532,11 @@ impl ProviderRegistry {
 
     /// The shapes in which `entry` makes media: a compatible entry's, its
     /// user's choice; a vendor entry's, its family's for its vendor.
+    /// The searches `entry`'s vendor has, which its switches turn on.
+    pub fn offered_searches(&self, entry: &ProviderEntry) -> Searches {
+        self.families.get(&entry.family).map(|family| family.searches()).unwrap_or_default()
+    }
+
     pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) if config.is_compatible() => {
@@ -690,6 +702,7 @@ impl ProviderRegistry {
             credential,
         );
         args.cache_ttl = entry.cache_ttl.clone();
+        args.searches = entry.searches(self.offered_searches(entry));
         Ok(args)
     }
 
@@ -699,6 +712,7 @@ impl ProviderRegistry {
             label,
             credential,
             cache_ttl: None,
+            searches: Searches::default(),
             http: self.http_of(owner, self.http.clone()),
             services_http: self.http.clone(),
             clock: self.clock.clone(),

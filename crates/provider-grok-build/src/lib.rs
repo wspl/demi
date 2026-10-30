@@ -32,7 +32,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError,
+    RequestLimits, Searches, ToolResultKinds, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
     images::ImageMaker,
     videos::VideoMaker,
@@ -68,6 +68,8 @@ pub struct GrokConfig {
     pub issuer_url: Url,
     /// The newest stable Grok CLI release, the backend's one.
     pub releases: GrokReleases,
+    /// The xAI searches the entry turned on.
+    pub searches: Searches,
 }
 
 impl GrokConfig {
@@ -82,6 +84,7 @@ impl GrokConfig {
             proxy_url: Url::parse(Self::PROXY_URL).expect("the proxy URL parses"),
             issuer_url: Url::parse(Self::ISSUER_URL).expect("the issuer URL parses"),
             releases,
+            searches: Searches::default(),
         }
     }
 }
@@ -97,6 +100,7 @@ pub struct GrokProvider {
 /// What the provider and all its runtimes share.
 struct Shared {
     responses_url: Url,
+    searches: Searches,
     models_url: Url,
     image_generations_url: Url,
     image_edits_url: Url,
@@ -145,6 +149,7 @@ impl GrokProvider {
         };
         let shared = Arc::new(Shared {
                 responses_url: endpoint_url(&config.proxy_url, "/responses"),
+                searches: config.searches,
                 models_url: endpoint_url(&config.proxy_url, "/models"),
                 image_generations_url: endpoint_url(&config.proxy_url, "/images/generations"),
                 image_edits_url: endpoint_url(&config.proxy_url, "/images/edits"),

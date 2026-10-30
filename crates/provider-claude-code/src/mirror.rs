@@ -75,6 +75,13 @@ pub(crate) struct Mirror {
     contents: Vec<(Option<String>, Value, Option<Spot>)>,
     /// The block of each tool use, by its id.
     tools: HashMap<String, Spot>,
+    /// The block of each of the CLI's own web searches, by its tool use's id:
+    /// a step of Anthropic's, which holds both its call's line and its
+    /// result's, and which its end updates rather than writes.
+    searches: HashMap<String, Spot>,
+    /// Every web search the process started, whose later events update its
+    /// step whenever its lines were placed.
+    started: HashSet<String>,
     /// The items of the user messages written to the process, oldest
     /// first, whose entries the CLI has not printed yet.
     given: VecDeque<usize>,
@@ -111,6 +118,10 @@ impl Mirror {
             *spot = spot.and_then(moved);
         }
         self.tools = std::mem::take(&mut self.tools)
+            .into_iter()
+            .filter_map(|(id, spot)| Some((id, moved(spot)?)))
+            .collect();
+        self.searches = std::mem::take(&mut self.searches)
             .into_iter()
             .filter_map(|(id, spot)| Some((id, moved(spot)?)))
             .collect();
@@ -185,7 +196,21 @@ impl Mirror {
                     *signed = true;
                 }
             }
-            ProviderEvent::Opaque(_) => self.redacted = Some(self.write(Last::Other)),
+            // An update of a step the run wrote writes no block. A step with a
+            // call id, the CLI's own web search, is its tool use's block, as a
+            // call's is, and its result's.
+            ProviderEvent::Opaque(step) => match &step.call_id {
+                Some(id) if !self.started.insert(id.clone()) => {}
+                Some(id) => {
+                    let index = self.write(Last::Other);
+                    let spot = Spot::Output {
+                        run: self.run,
+                        index,
+                    };
+                    self.searches.insert(id.clone(), spot);
+                }
+                None => self.redacted = Some(self.write(Last::Other)),
+            },
             ProviderEvent::TextDelta(_) if self.last != Some(Last::Text { open: true }) => {
                 self.text = Some(self.write(Last::Text { open: true }));
             }
@@ -287,6 +312,7 @@ impl Mirror {
                     entry,
                     request,
                     &mut self.tools,
+                    &mut self.searches,
                     &mut self.contents,
                     &mut self.given,
                 )
@@ -338,6 +364,7 @@ fn placing(
     entry: &Value,
     request: &InferenceRequest,
     tools: &mut HashMap<String, Spot>,
+    searches: &mut HashMap<String, Spot>,
     contents: &mut Vec<(Option<String>, Value, Option<Spot>)>,
     given: &mut VecDeque<usize>,
 ) -> Placing {
@@ -346,9 +373,10 @@ fn placing(
     match entry["type"].as_str() {
         // A content block's one entry is placed once, so what printed it
         // is let go.
+        // A web search's call keeps its block for its result.
         Some("assistant") if first["type"] == "tool_use" => first["id"]
             .as_str()
-            .and_then(|id| tools.remove(id))
+            .and_then(|id| tools.remove(id).or_else(|| searches.get(id).copied()))
             .map_or(Placing::Later, Placing::Block),
         Some("assistant") => {
             let id = message["id"].as_str();
@@ -369,6 +397,10 @@ fn placing(
                 .filter(|block| block["type"] == "tool_result")
                 .find_map(|block| block["tool_use_id"].as_str());
             if let Some(id) = results {
+                // A web search's result is its step's, and its last line.
+                if let Some(spot) = searches.remove(id) {
+                    return Placing::Block(spot);
+                }
                 return result_item(request, id).map_or(Placing::Next, |index| {
                     Placing::Block(Spot::Item(index))
                 });

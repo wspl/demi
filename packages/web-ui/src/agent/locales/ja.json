@@ -142,7 +142,17 @@
     "notExposed": "{device} のポート {port} は公開されていません。",
     "deviceOffline": "{device} はオフラインです。",
     "opaque": {
-      "other": "{vendor} の {name}"
+      "other": "{vendor} の {name}",
+      "search": {
+        "web": "ウェブ検索",
+        "open_page": "ページを開く",
+        "find_in_page": "ページ内検索",
+        "x": "X 検索",
+        "x_people": "X ユーザー検索",
+        "x_post": "X の投稿",
+        "image": "画像を見る",
+        "x_video": "X の動画"
+      }
     },
     "work": {
       "ran": "{count} 件のコマンドを実行",
@@ -162,7 +172,11 @@
         "failed": "{count} 個のエージェントが失敗",
         "stopped": "{count} 個のエージェントが停止"
       },
-      "heard": "{count} 個のエージェントから連絡"
+      "heard": "{count} 個のエージェントから連絡",
+      "searchedWeb": "ウェブを {count} 回検索",
+      "openedPages": "{count} ページを開く",
+      "searchedX": "X を {count} 回検索",
+      "viewedMedia": "画像・動画を {count} 件確認"
     },
     "copyMessage": "メッセージをコピー",
     "sendToConversation": "チャットに送る",

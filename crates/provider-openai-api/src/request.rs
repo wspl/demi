@@ -36,6 +36,7 @@ pub(crate) fn responses(
         },
         reasoning: ReasoningReplay::Replayable,
         tool_media: ToolMedia::FollowUp,
+        searches: None,
     };
     let has_tools = !request.tools.is_empty();
     // The key routes a session's requests together, and the vendor caches by

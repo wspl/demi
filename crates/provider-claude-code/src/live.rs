@@ -23,10 +23,11 @@ use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Si
 use demi_provider_common::quota::Observation;
 use demi_provider_common::wire::Tagged;
 use demi_provider_common::{
+    OpaqueStep,
     CallEvent, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ResultPart,
     ToolCall, UserPart, encode_body,
 };
-use demi_shared_types::{StreamKind, ThinkingConfig, Timestamp};
+use demi_shared_types::{OpaqueStatus, StreamKind, ThinkingConfig, Timestamp};
 use futures_channel::mpsc;
 use futures_util::future::{LocalBoxFuture, Shared as SharedFuture};
 use futures_util::stream::LocalBoxStream;
@@ -45,7 +46,7 @@ use crate::mcp::{self, Mcp, McpEvent};
 use crate::mirror::Mirror;
 use crate::output::{ControlRequestLine, LastCall, Line, Replaced, Streaming};
 use crate::placement::{CliSite, CliWork, ConfigDir, Placed, Placement};
-use crate::session::SessionFile;
+use crate::session::{self, SessionFile};
 use crate::timing::{StartTiming, Took};
 use crate::{FAMILY, Shared, cli};
 
@@ -296,6 +297,9 @@ pub(crate) struct LiveCli {
     pub(crate) mcp: Option<Mcp>,
     /// Which block each entry the process mirrors belongs to.
     pub(crate) mirror: Mirror,
+    /// The CLI's own web searches still running, by their tool use's id:
+    /// the message that called each, and its step.
+    pub(crate) searching: HashMap<String, (Option<String>, OpaqueStep)>,
     /// How the process's start went, until the first run that takes it
     /// reports it.
     pub(crate) started: Option<StartTiming>,
@@ -329,8 +333,13 @@ impl Written {
         let session = request.session_id.clone();
         let items = request.items.clone();
         let blocks = request.blocks.clone();
+        let searches = shared.searches;
         let timestamp = shared.clock.now().to_jiff().to_string();
         let file = encode_body(FAMILY, move || {
+            let blocks = match searches.web {
+                true => blocks.to_vec(),
+                false => session::without_web_searches(&blocks),
+            };
             SessionFile::new(&session, &items, &blocks, timestamp)
         })
         .await?;
@@ -369,7 +378,7 @@ impl LiveCli {
             CliWork::Account { account, .. } => Some(account.clone()),
             CliWork::Login => None,
         };
-        let args = cli::args(request, &file.id.to_string());
+        let args = cli::args(request, &file.id.to_string(), shared.searches);
         let start = Arc::new(move |site: &CliSite| {
             // The spawn request, its environment and arguments, is never
             // logged: the machine's own environment may hold anything.
@@ -449,6 +458,7 @@ impl LiveCli {
             written_lifetime: None,
             mcp,
             mirror: Mirror::default(),
+            searching: HashMap::new(),
             started: Some(StartTiming {
                 steps,
                 session_build,
@@ -901,6 +911,31 @@ impl LiveCli {
     /// Abandons the response being streamed, whose calls never run and
     /// whose entries belong to no block: what it showed, which the caller
     /// keeps out of the session where nothing repeats it.
+    /// The ends of the web searches the streamed message called, as failed:
+    /// the CLI abandons the stream and never runs its calls. Taken before
+    /// [`Self::abandon_streaming`].
+    pub(crate) fn abandoned_searches(&mut self) -> Vec<ProviderEvent> {
+        let Some(message) = self.streaming.as_ref().and_then(|streaming| streaming.id().map(str::to_owned)) else {
+            return Vec::new();
+        };
+        let ended: Vec<String> = self
+            .searching
+            .iter()
+            .filter(|(_, (called_by, _))| called_by.as_deref() == Some(message.as_str()))
+            .map(|(id, _)| id.clone())
+            .collect();
+        ended
+            .into_iter()
+            .filter_map(|id| self.searching.remove(&id))
+            .map(|(_, step)| {
+                ProviderEvent::Opaque(OpaqueStep {
+                    status: OpaqueStatus::Failed,
+                    ..step
+                })
+            })
+            .collect()
+    }
+
     pub(crate) fn abandon_streaming(&mut self) -> Replaced {
         self.collecting.clear();
         self.writing.clear();

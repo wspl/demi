@@ -623,6 +623,17 @@
     "saving": "正在儲存…",
     "addAccount": "新增帳號",
     "showInMenu": "在模型選單中顯示",
+    "search": {
+      "title": "內建工具",
+      "web": "網頁搜尋",
+      "webDescription": "模型使用廠商自己的搜尋查找網頁。",
+      "x": "X 搜尋",
+      "xDescription": "模型搜尋 X 上的貼文和用戶。",
+      "images": "圖片理解",
+      "imagesDescription": "模型查看搜到的網頁和貼文裡的圖片。",
+      "videos": "影片理解",
+      "videosDescription": "模型觀看在 X 上搜到的貼文裡的影片。"
+    },
     "media": {
       "imageGeneration": "影像生成",
       "images": "影像",

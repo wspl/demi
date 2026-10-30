@@ -30,7 +30,7 @@ use std::{
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError,
+    RequestLimits, Searches, ToolResultKinds, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
     images::ImageMaker,
     quota::{ProviderQuota, QuotaSnapshotStore},
@@ -89,6 +89,8 @@ pub struct CodexConfig {
     pub connect_timeout: Duration,
     /// How long a WebSocket may go without a message; `None` for no limit.
     pub stream_idle_timeout: Option<Duration>,
+    /// The OpenAI searches the entry turned on.
+    pub searches: Searches,
 }
 
 impl CodexConfig {
@@ -112,6 +114,7 @@ impl CodexConfig {
             header_timeout: Duration::from_secs(20),
             connect_timeout: Duration::from_secs(10),
             stream_idle_timeout: None,
+            searches: Searches::default(),
         }
     }
 }
@@ -125,6 +128,7 @@ pub struct CodexProvider {
 /// What the provider and all its runtimes share.
 struct Shared {
     responses_url: Url,
+    searches: Searches,
     websocket_url: Url,
     /// The catalog's address, without the client version.
     models_url: Url,
@@ -189,6 +193,7 @@ impl CodexProvider {
             shared: Arc::new(Shared {
                 websocket_url: websocket_url(&responses_url),
                 responses_url,
+                searches: config.searches,
                 models_url: codex_url(&config.backend_url, "/models"),
                 image_generations_url: codex_url(&config.backend_url, "/images/generations"),
                 image_edits_url: codex_url(&config.backend_url, "/images/edits"),

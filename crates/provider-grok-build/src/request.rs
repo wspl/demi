@@ -3,7 +3,7 @@
 //! (`crates/shared-types/src/model.rs`).
 
 use demi_provider_common::{
-    InferenceRequest, json_body,
+    InferenceRequest, Searches, json_body,
     openai_request::{
         AssistantReplay, InputItem, Reasoning, ReasoningReplay, ResponsesDialect, ResponsesTool,
         SummaryOff, ToolMedia, responses_input, responses_reasoning,
@@ -21,14 +21,18 @@ use crate::{SIGNATURE_TAG, auth::Credentials, releases::GrokReleases};
 /// The JSON body of `request`. The proxy reads images, in a message and in a
 /// tool's output, but no PDFs or video, and takes no output limit or service
 /// tier.
-pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
+/// xAI's own searches go with every request while the entry turns them on,
+/// beside Demi's tools, and run at xAI (`crates/provider-common/src/wire/responses.rs`).
+pub(crate) fn encode(request: &InferenceRequest, searches: Searches) -> Vec<u8> {
     let dialect = ResponsesDialect {
         signature_tag: SIGNATURE_TAG,
         assistant: AssistantReplay::Minimal,
         reasoning: ReasoningReplay::Replayable,
         tool_media: ToolMedia::Inline,
+        searches: Some(searches),
     };
-    let has_tools = !request.tools.is_empty();
+    let hosted = HostedTool::of(searches);
+    let has_tools = !request.tools.is_empty() || !hosted.is_empty();
     let body = Body {
         model: &request.model_id,
         input: responses_input(&request.items, &dialect),
@@ -39,7 +43,8 @@ pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
         tools: request
             .tools
             .iter()
-            .map(|tool| ResponsesTool::new(tool, false))
+            .map(|tool| Tool::Function(ResponsesTool::new(tool, false)))
+            .chain(hosted.into_iter().map(Tool::Hosted))
             .collect(),
         tool_choice: has_tools.then_some("auto"),
         reasoning: responses_reasoning(request.thinking.as_ref(), SummaryOff::Omitted),
@@ -58,11 +63,47 @@ struct Body<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<&'a str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ResponsesTool<'a>>,
+    tools: Vec<Tool<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<Reasoning<'a>>,
+}
+
+/// A tool of a request: one of Demi's, or a search xAI runs.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum Tool<'a> {
+    Function(ResponsesTool<'a>),
+    Hosted(HostedTool),
+}
+
+/// A search xAI runs on its side, looking at the images and watching the
+/// videos it finds when the entry lets it.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum HostedTool {
+    WebSearch {
+        enable_image_understanding: bool,
+    },
+    XSearch {
+        enable_image_understanding: bool,
+        enable_video_understanding: bool,
+    },
+}
+
+impl HostedTool {
+    /// The searches `searches` turns on.
+    fn of(searches: Searches) -> Vec<Self> {
+        let web = searches.web.then_some(Self::WebSearch {
+            enable_image_understanding: searches.images,
+        });
+        let x = searches.x.then_some(Self::XSearch {
+            enable_image_understanding: searches.images,
+            enable_video_understanding: searches.videos,
+        });
+        web.into_iter().chain(x).collect()
+    }
 }
 
 /// The headers every request of the account carries: its session and the

@@ -1,11 +1,11 @@
 //! A provider entry, read and decoded: what its family builds its provider
 //! from, and how it authenticates.
 
-use demi_provider_common::Secret;
+use demi_provider_common::{Searches, Secret};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
-    AudioMedia, ConfiguredModels, CredentialKind, EntryMedia, ImageMedia, ProviderDto, Rotation, SetupPart, VideoMedia,
+    AudioMedia, ConfiguredModels, CredentialKind, EntryMedia, EntrySearch, ImageMedia, ProviderDto, Rotation, SetupPart, VideoMedia,
 };
 use demi_web_api_protocol::text::EndpointUrl;
 use garde::Validate;
@@ -31,6 +31,16 @@ pub struct ProviderEntry {
     /// Whether the entry makes audio when its provider can: its Audio
     /// Generation switch.
     pub audio_generation: bool,
+    /// Whether its models use its vendor's web search, when the vendor has
+    /// one: its Web Search switch, on from the start.
+    pub web_search: bool,
+    /// Whether they use its vendor's X search, when it has one: its X Search
+    /// switch.
+    pub x_search: bool,
+    /// Whether those searches look at images and watch videos, when the
+    /// vendor's can: its Images and Videos switches, on from the start.
+    pub search_images: bool,
+    pub search_videos: bool,
     /// The prompt cache lifetime its requests ask for; none to send none.
     pub cache_ttl: Option<CacheTtl>,
 }
@@ -200,6 +210,19 @@ impl ProviderEntry {
         }
     }
 
+    /// The vendor's searches its models use: those `offered` that the user
+    /// turned on.
+    pub fn searches(&self, offered: Searches) -> Searches {
+        let web = offered.web && self.web_search;
+        let x = offered.x && self.x_search;
+        Searches {
+            web,
+            x,
+            images: offered.images && self.search_images && (web || x),
+            videos: offered.videos && self.search_videos && x,
+        }
+    }
+
     /// The switch of `kind`.
     pub fn generates(&self, kind: MediaKind) -> bool {
         match kind {
@@ -216,10 +239,13 @@ impl ProviderEntry {
     ///   goes nowhere yet.
     /// - `shapes` are the ones it makes media in.
     /// - `catalog` is when the media catalog in use was published.
+    /// - `offered` are the searches its vendor has.
+    #[allow(clippy::too_many_arguments)]
     pub fn dto(
         &self,
         default_endpoint: Option<EndpointUrl>,
         shapes: MediaShapes,
+        offered: Searches,
         catalog: Timestamp,
         cache_ttl_presets: Option<Vec<CacheTtl>>,
     ) -> ProviderDto {
@@ -256,6 +282,12 @@ impl ProviderEntry {
                     enabled: self.audio_generation,
                 },
                 catalog,
+            },
+            search: EntrySearch {
+                web: offered.web.then_some(self.web_search),
+                x: offered.x.then_some(self.x_search),
+                images: offered.images.then_some(self.search_images),
+                videos: offered.videos.then_some(self.search_videos),
             },
             cache_ttl: self.cache_ttl.clone(),
             cache_ttl_presets,

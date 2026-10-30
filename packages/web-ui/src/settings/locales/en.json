@@ -623,6 +623,17 @@
     "saving": "Saving…",
     "addAccount": "Add Account",
     "showInMenu": "Show in model menu",
+    "search": {
+      "title": "Built-in Tools",
+      "web": "Web Search",
+      "webDescription": "The model searches the web with its vendor’s own search.",
+      "x": "X Search",
+      "xDescription": "The model searches posts and people on X.",
+      "images": "Image Understanding",
+      "imagesDescription": "The model looks at the images in the pages and posts it finds.",
+      "videos": "Video Understanding",
+      "videosDescription": "The model watches the videos in the posts it finds on X."
+    },
     "media": {
       "imageGeneration": "Image Generation",
       "images": "Images",

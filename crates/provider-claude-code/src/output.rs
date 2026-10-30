@@ -13,7 +13,7 @@ use demi_provider_common::wire::{
 use demi_provider_common::{CallEvent, CallOutcome, ErrorCode, OpaqueStep, ProviderEvent, ToolCall, tagged_wire};
 use std::collections::HashMap;
 
-use demi_shared_types::{OpaqueStatus, OpaqueView, TokenUsage};
+use demi_shared_types::{OpaqueStatus, OpaqueView, SearchAction, SearchSource, TokenUsage};
 use serde::Deserialize;
 
 use crate::failure::USAGE_LIMIT;
@@ -94,9 +94,82 @@ pub(crate) struct MirrorLine {
 }
 
 /// A user message the CLI printed: the results of tool calls, which it
-/// prints as it sends them. They count for nothing.
+/// prints as it sends them. Only the result of its own web search is read,
+/// which ends the search's step.
 #[derive(Deserialize)]
-pub(crate) struct UserLine {}
+pub(crate) struct UserLine {
+    #[serde(default)]
+    message: Option<UserMessage>,
+    /// What the CLI's own tool returned, for its WebSearch the query and
+    /// each result's title and URL.
+    #[serde(default)]
+    tool_use_result: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct UserMessage {
+    #[serde(default)]
+    content: Vec<serde_json::Value>,
+}
+
+impl UserLine {
+    /// The end of a web search of `searching` this line gives the result of,
+    /// with the pages it found; it leaves `searching`.
+    pub(crate) fn web_search_ended(&self, searching: &mut HashMap<String, (Option<String>, OpaqueStep)>) -> Option<OpaqueStep> {
+        let result = self
+            .message
+            .as_ref()?
+            .content
+            .iter()
+            .find(|part| {
+                part["type"] == "tool_result"
+                    && part["tool_use_id"].as_str().is_some_and(|id| searching.contains_key(id))
+            })?;
+        let id = result["tool_use_id"].as_str()?.to_owned();
+        searching.remove(&id);
+        let found = self.tool_use_result.as_ref();
+        let query = found
+            .and_then(|found| found["query"].as_str())
+            .map(str::to_owned);
+        let sources = found
+            .and_then(|found| found["results"].as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|result| result["content"].as_array())
+            .flatten()
+            .filter_map(|page| {
+                Some(SearchSource {
+                    url: page["url"].as_str()?.to_owned(),
+                    title: page["title"].as_str().map(str::to_owned),
+                })
+            })
+            .collect();
+        let failed = result["is_error"].as_bool().unwrap_or(false);
+        Some(OpaqueStep {
+            call_id: Some(id),
+            status: if failed { OpaqueStatus::Failed } else { OpaqueStatus::Completed },
+            view: OpaqueView::Search {
+                action: SearchAction::Web { queries: query.into_iter().collect() },
+                sources,
+            },
+            entries: Vec::new(),
+        })
+    }
+}
+
+/// The start of the CLI's own web search `call`, by its query.
+pub(crate) fn web_search_started(call: &ToolCall) -> OpaqueStep {
+    let query = call.input["query"].as_str().map(str::to_owned);
+    OpaqueStep {
+        call_id: Some(call.tool_use_id.clone()),
+        status: OpaqueStatus::Running,
+        view: OpaqueView::Search {
+            action: SearchAction::Web { queries: query.into_iter().collect() },
+            sources: Vec::new(),
+        },
+        entries: Vec::new(),
+    }
+}
 
 /// A whole assistant message. With partial messages the CLI streams the
 /// message first; its tool uses are read from here, since here their input

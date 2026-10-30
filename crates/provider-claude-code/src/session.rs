@@ -46,7 +46,7 @@ use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::input::{MCP_SERVER, Message};
-use crate::{RECORD_OWNER, mcp};
+use crate::{RECORD_OWNER, WEB_SEARCH, mcp};
 use crate::placement::CliSystem;
 
 /// The key of a reference to a block's medium in an entry kept on the
@@ -305,6 +305,39 @@ fn message_id(written: &[Value], pending: &[Value]) -> String {
         None => None,
     }
     .unwrap_or_else(|| format!("msg_demi_{}", written.len() + pending.len()))
+}
+
+/// `blocks` without the CLI's own web searches, their call's line and their
+/// result's, for a process started without WebSearch: a vendor may refuse a
+/// call of a tool it was not given. The search's step then gives the session
+/// nothing, as another vendor's step does.
+pub(crate) fn without_web_searches(blocks: &[RequestBlock]) -> Vec<RequestBlock> {
+    let decoded = |entry: &demi_shared_types::Entry| entry.decode::<Value>().ok();
+    let searches: std::collections::HashSet<String> = blocks
+        .iter()
+        .flat_map(|block| &block.entries)
+        .filter(|entry| entry.owner() == RECORD_OWNER)
+        .filter_map(decoded)
+        .filter(|entry| entry["type"] == "assistant")
+        .flat_map(|entry| entry["message"]["content"].as_array().cloned().unwrap_or_default())
+        .filter(|part| part["type"] == "tool_use" && part["name"] == WEB_SEARCH)
+        .filter_map(|part| part["id"].as_str().map(str::to_owned))
+        .collect();
+    let of_search = |entry: &demi_shared_types::Entry| {
+        entry.owner() == RECORD_OWNER
+            && decoded(entry).is_some_and(|entry| {
+                entry["message"]["content"].as_array().into_iter().flatten().any(|part| {
+                    part["id"].as_str().or(part["tool_use_id"].as_str()).is_some_and(|id| searches.contains(id))
+                })
+            })
+    };
+    blocks
+        .iter()
+        .map(|block| RequestBlock {
+            items: block.items.clone(),
+            entries: block.entries.iter().filter(|entry| !of_search(entry)).cloned().collect(),
+        })
+        .collect()
 }
 
 /// What `block` gives the session: its entries with their media restored, then

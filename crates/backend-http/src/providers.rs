@@ -73,6 +73,7 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         ProviderRefusal::Wire { .. }
         | ProviderRefusal::Key(_)
         | ProviderRefusal::MakesNo(..)
+        | ProviderRefusal::SearchesNo(..)
         | ProviderRefusal::UnmadeKind { .. }
         | ProviderRefusal::CacheTtl { .. }
         | ProviderRefusal::Order => {

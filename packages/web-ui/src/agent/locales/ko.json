@@ -142,7 +142,17 @@
     "notExposed": "{device}의 포트 {port}이(가) 공개되어 있지 않습니다.",
     "deviceOffline": "{device}이(가) 오프라인 상태입니다.",
     "opaque": {
-      "other": "{vendor}의 {name}"
+      "other": "{vendor}의 {name}",
+      "search": {
+        "web": "웹 검색",
+        "open_page": "페이지 열기",
+        "find_in_page": "페이지 내 찾기",
+        "x": "X 검색",
+        "x_people": "X 사용자 검색",
+        "x_post": "X 게시물",
+        "image": "이미지 보기",
+        "x_video": "X 동영상"
+      }
     },
     "work": {
       "ran": "명령 {count}개 실행",
@@ -162,7 +172,11 @@
         "failed": "에이전트 {count}개 실패함",
         "stopped": "에이전트 {count}개 중지됨"
       },
-      "heard": "에이전트 {count}개로부터 메시지 받음"
+      "heard": "에이전트 {count}개로부터 메시지 받음",
+      "searchedWeb": "웹 {count}회 검색",
+      "openedPages": "페이지 {count}개 열기",
+      "searchedX": "X {count}회 검색",
+      "viewedMedia": "이미지·동영상 {count}개 확인"
     },
     "copyMessage": "메시지 복사",
     "sendToConversation": "대화로 보내기",

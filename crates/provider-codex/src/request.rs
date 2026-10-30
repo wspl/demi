@@ -6,7 +6,7 @@ use std::borrow::Cow;
 
 use bytes::Bytes;
 use demi_provider_common::{
-    InferenceRequest, json_body,
+    InferenceRequest, Searches, json_body,
     openai_request::{
         AssistantReplay, InputItem, Reasoning, ReasoningReplay, ResponsesDialect, ResponsesTool,
         SummaryOff, ToolMedia, prompt_cache_key, responses_input, responses_reasoning,
@@ -35,12 +35,16 @@ pub(crate) struct Encoded {
 }
 
 /// The body of `request`, and its WebSocket message when `websocket`.
-pub(crate) fn encode(request: &InferenceRequest, websocket: bool) -> Encoded {
+/// OpenAI's web search goes with every request while the entry turns it on,
+/// beside Demi's tools, live, as the Codex CLI's `--search` sends it, and with
+/// the sources of each search (`crates/provider-common/src/wire/responses.rs`).
+pub(crate) fn encode(request: &InferenceRequest, websocket: bool, searches: Searches) -> Encoded {
     let dialect = ResponsesDialect {
         signature_tag: SIGNATURE_TAG,
         assistant: AssistantReplay::Identified,
         reasoning: ReasoningReplay::Whole,
         tool_media: ToolMedia::Inline,
+        searches: Some(searches),
     };
     let body = Body {
         model: &request.model_id,
@@ -49,13 +53,16 @@ pub(crate) fn encode(request: &InferenceRequest, websocket: bool) -> Encoded {
         tools: request
             .tools
             .iter()
-            .map(|tool| ResponsesTool::new(tool, true))
+            .map(|tool| Tool::Function(ResponsesTool::new(tool, true)))
+            .chain(searches.web.then_some(Tool::Hosted(HostedTool::WebSearch {
+                external_web_access: true,
+            })))
             .collect(),
         tool_choice: "auto",
         parallel_tool_calls: true,
         store: false,
         stream: true,
-        include: ["reasoning.encrypted_content"],
+        include: if searches.web { &INCLUDE_SEARCH } else { &INCLUDE },
         prompt_cache_key: prompt_cache_key(request.cache_session()),
         text: Text { verbosity: "low" },
         reasoning: responses_reasoning(request.thinking.as_ref(), SummaryOff::Auto),
@@ -87,19 +94,39 @@ struct Body<'a> {
     /// Sent even when empty: the backend requires the field.
     instructions: &'a str,
     input: Vec<InputItem<'a>>,
-    tools: Vec<ResponsesTool<'a>>,
+    tools: Vec<Tool<'a>>,
     tool_choice: &'static str,
     parallel_tool_calls: bool,
     /// Stateless: every request carries its whole transcript.
     store: bool,
     stream: bool,
-    include: [&'static str; 1],
+    include: &'static [&'static str],
     prompt_cache_key: Cow<'a, str>,
     text: Text,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<Reasoning<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     service_tier: Option<&'a str>,
+}
+
+/// What a response includes: its reasoning's ciphertext, and each web search's
+/// sources while the entry searches.
+const INCLUDE: [&str; 1] = ["reasoning.encrypted_content"];
+const INCLUDE_SEARCH: [&str; 2] = ["reasoning.encrypted_content", "web_search_call.action.sources"];
+
+/// A tool of a request: one of Demi's, or a search OpenAI runs.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum Tool<'a> {
+    Function(ResponsesTool<'a>),
+    Hosted(HostedTool),
+}
+
+/// A search OpenAI runs on its side.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum HostedTool {
+    WebSearch { external_web_access: bool },
 }
 
 #[derive(Serialize)]

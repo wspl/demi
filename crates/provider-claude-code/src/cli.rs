@@ -27,12 +27,13 @@
 use std::collections::BTreeMap;
 
 use demi_host_interface::{SpawnEnv, SpawnRequest};
-use demi_provider_common::InferenceRequest;
+use demi_provider_common::{InferenceRequest, Searches};
 use demi_provider_common::openai_request::reasoning_effort;
 use demi_shared_types::ThinkingConfig;
 
 use crate::placement::{CliSite, CliStart};
 use crate::session::SessionFile;
+use crate::WEB_SEARCH;
 
 /// What starts a CLI process at `site` with `args`, a request's.
 ///
@@ -121,8 +122,9 @@ pub(crate) fn login_request(site: &CliSite) -> CliStart {
 }
 
 /// The CLI's arguments for `request`'s model, system prompt, effort and
-/// thinking display, to resume the session `session`.
-pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
+/// thinking display, to resume the session `session`, with the CLI's own
+/// WebSearch when `searches` turns Anthropic's search on.
+pub(crate) fn args(request: &InferenceRequest, session: &str, searches: Searches) -> Vec<String> {
     let mut args: Vec<String> = [
         "--print",
         "--output-format",
@@ -147,8 +149,11 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         // mode`).
         "--safe-mode",
         "--disable-slash-commands",
+        // The CLI's own tools are off, but for WebSearch, Anthropic's search,
+        // which it runs itself when the entry turns it on
+        // (`crates/provider-claude-code/src/run.rs`).
         "--tools",
-        "",
+        if searches.web { WEB_SEARCH } else { "" },
         "--permission-mode",
         "bypassPermissions",
         "--allow-dangerously-skip-permissions",

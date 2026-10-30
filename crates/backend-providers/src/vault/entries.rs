@@ -40,7 +40,7 @@ use std::sync::Arc;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::providers::{
-    CredentialRow, CredentialWrite, MediaSwitches, NewProvider, ProviderRow, ResealSealed,
+    CredentialRow, CredentialWrite, EntrySwitches, NewProvider, ProviderRow, ResealSealed,
 };
 use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_common::credentials::{
@@ -585,7 +585,7 @@ impl Vault {
         family: Option<String>,
         config: Option<ApiKeyConfig>,
         rotation: Option<Rotation>,
-        switches: MediaSwitches,
+        switches: EntrySwitches,
         cache_ttl: Option<Option<CacheTtl>>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
@@ -694,6 +694,10 @@ impl Vault {
             image_generation: row.image_generation,
             video_generation: row.video_generation,
             audio_generation: row.audio_generation,
+            web_search: row.web_search,
+            x_search: row.x_search,
+            search_images: row.search_images,
+            search_videos: row.search_videos,
             cache_ttl: row.cache_ttl,
         })
     }

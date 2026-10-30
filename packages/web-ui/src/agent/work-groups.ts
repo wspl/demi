@@ -45,6 +45,7 @@ import { shellRowTime } from './terminals'
 import { reportMark, reportShown } from './command-reports'
 import { receiptRow } from './agent-receipts'
 import { shellStatusLooks, toolRenderKind } from './tool-rendering'
+import { searchKind } from './opaque-steps'
 
 /**
  * A step of the agent's work: a thinking block, a tool call, a call the model
@@ -457,6 +458,7 @@ type CallKind =
   | { kind: 'run' }
   | { kind: 'check', commands: string[] }
   | { kind: 'generic', tool: string }
+  | { kind: 'web' | 'page' | 'x' | 'media' }
 
 function callKind(step: CallStep): CallKind {
   const tool = step.type === 'tool_call' ? step.toolName : step.call.toolName
@@ -468,11 +470,19 @@ function callKind(step: CallStep): CallKind {
 }
 
 /**
- * What a vendor's step did, as a group's row counts it: one of a kind Demi
- * does not know uses that tool, at its vendor.
+ * What a vendor's step did, as a group's row counts it: a search of the web,
+ * a page read, a search of X, or, of a kind Demi does not know, a use of that
+ * tool at its vendor.
  */
 function opaqueKind(step: Extract<WorkStep, { type: 'opaque' }>): CallKind {
-  return { kind: 'generic', tool: step.view.kind === 'other' ? step.view.name : '' }
+  switch (step.view.kind) {
+    case 'search':
+      return { kind: searchKind(step.view.action) }
+    case 'other':
+      return { kind: 'generic', tool: step.view.name }
+    case 'reasoning':
+      return { kind: 'generic', tool: '' }
+  }
 }
 
 /**
@@ -513,6 +523,10 @@ const WORDS = {
   run: (count: number) => t('transcript.work.ran', { count }, count),
   check: (count: number) => t('transcript.work.checked', { count }, count),
   generic: (_count: number, tool: string) => t('transcript.work.used', { tool }),
+  web: (count: number) => t('transcript.work.searchedWeb', { count }, count),
+  page: (count: number) => t('transcript.work.openedPages', { count }, count),
+  x: (count: number) => t('transcript.work.searchedX', { count }, count),
+  media: (count: number) => t('transcript.work.viewedMedia', { count }, count),
 } satisfies Record<CallKind['kind'], (count: number, tool: string) => string>
 
 /** The phrases of a row joined, as the language lists clauses. */

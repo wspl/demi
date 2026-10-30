@@ -142,7 +142,17 @@
     "notExposed": "{device} 的連接埠 {port} 未公開。",
     "deviceOffline": "{device} 處於離線狀態。",
     "opaque": {
-      "other": "{vendor} 的 {name}"
+      "other": "{vendor} 的 {name}",
+      "search": {
+        "web": "網頁搜尋",
+        "open_page": "開啟網頁",
+        "find_in_page": "頁內尋找",
+        "x": "X 搜尋",
+        "x_people": "X 用戶搜尋",
+        "x_post": "X 貼文",
+        "image": "查看圖片",
+        "x_video": "X 影片"
+      }
     },
     "work": {
       "ran": "執行了 {count} 個指令",
@@ -162,7 +172,11 @@
         "failed": "{count} 個智慧體失敗",
         "stopped": "{count} 個智慧體已停止"
       },
-      "heard": "收到 {count} 個智慧體的訊息"
+      "heard": "收到 {count} 個智慧體的訊息",
+      "searchedWeb": "搜尋了 {count} 次網頁",
+      "openedPages": "開啟了 {count} 個網頁",
+      "searchedX": "搜尋了 {count} 次 X",
+      "viewedMedia": "查看了 {count} 個圖片或影片"
     },
     "copyMessage": "複製訊息",
     "sendToConversation": "傳送到對話",

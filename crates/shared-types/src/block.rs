@@ -1084,6 +1084,44 @@ pub struct OpaqueBlock {
     pub entries: Vec<Entry>,
 }
 
+/// What a vendor's search did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum SearchAction {
+    /// Searched the web for these queries.
+    Web { queries: Vec<String> },
+    /// Opened a page.
+    OpenPage { url: String },
+    /// Looked for `pattern` in a page.
+    FindInPage { url: String, pattern: String },
+    /// Searched posts on X.
+    X { query: String },
+    /// Searched people on X.
+    XPeople { query: String },
+    /// Read a post on X, with its thread.
+    XPost { url: String },
+    /// Looked at an image the search found.
+    Image { url: String },
+    /// Watched a video of a post on X.
+    XVideo { url: String },
+}
+
+/// A page a vendor's search returned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SearchSource {
+    pub url: String,
+    /// The page's title; null when the vendor gave none.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub title: Option<String>,
+}
+
 /// Where a vendor's step is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1106,6 +1144,13 @@ pub enum OpaqueView {
     /// Reasoning the vendor sends only encrypted, which a page draws as
     /// thinking without text.
     Reasoning,
+    /// A search the vendor ran: what it did, and the sources it returned.
+    Search {
+        #[garde(skip)]
+        action: SearchAction,
+        #[garde(skip)]
+        sources: Vec<SearchSource>,
+    },
     /// A step of a kind Demi does not know: the vendor's name, such as `xAI`,
     /// and the step's, such as `code_interpreter`.
     Other {
