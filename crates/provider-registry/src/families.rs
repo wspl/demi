@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
-use demi_provider_common::{RuntimeEnv, VendorPolicy};
+use demi_provider_common::{RuntimeEnv, Searches, VendorPolicy};
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::MediaModelInfo;
@@ -80,6 +80,12 @@ pub trait ProviderFamily: Send + Sync + 'static {
     /// and are never in the model menu (`crates/backend/src/families.rs`).
     fn makes_text(&self) -> bool {
         true
+    }
+
+    /// The vendor's own searches an entry of the family can turn on: none
+    /// but a subscription's whose vendor searches.
+    fn searches(&self) -> Searches {
+        Searches::default()
     }
 
     /// How a vendor entry of the family makes images, by the models.dev id
@@ -149,6 +155,8 @@ pub struct FamilyArgs {
     pub machine: Option<Arc<dyn AccountMachine>>,
     /// The prompt cache lifetime the entry asks for; none to send none.
     pub cache_ttl: Option<CacheTtl>,
+    /// The vendor's searches the entry turned on.
+    pub searches: Searches,
 }
 
 /// The credential a provider stands for.

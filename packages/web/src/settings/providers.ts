@@ -36,6 +36,7 @@ import {
   type ConfiguredModel,
   type CreateProvider,
   type MediaPatch,
+  type SearchPatch,
   type ProviderOrder,
   type ProviderPatch,
   type ListedLogin,
@@ -232,6 +233,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       state: 'setup',
       enabled: true,
       media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
+      // Its switches come with the entry the backend answers.
+      search: { web: null, x: null, images: null, videos: null },
       models: [],
       accounts: [],
       // A subscription not yet configured goes by its type; an added vendor's draft takes its mark below.
@@ -353,6 +356,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         // as Activate does; a typed field keeps its text for the next try.
         const kept = { ...edits.value[provider.id] }
         delete kept.media
+        delete kept.search
         edits.value[provider.id] = kept
         throw error
       }
@@ -372,6 +376,16 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }))
     }
 
+    /** The search switches the user changed. */
+    function searchPatch(search: SettingsProviderEntry['search']): SearchPatch {
+      return {
+        ...(search.web !== provider.search.web && search.web !== null ? { web: search.web } : {}),
+        ...(search.x !== provider.search.x && search.x !== null ? { x: search.x } : {}),
+        ...(search.images !== provider.search.images && search.images !== null ? { images: search.images } : {}),
+        ...(search.videos !== provider.search.videos && search.videos !== null ? { videos: search.videos } : {}),
+      }
+    }
+
     function save(changes: Partial<SettingsProviderEntry>): Promise<void> {
       return patch(provider, {
         ...(changes.name !== undefined ? { label: changes.name } : {}),
@@ -383,6 +397,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
         ...(changes.cacheTtl !== undefined ? { cacheTtl: changes.cacheTtl.value } : {}),
         ...(changes.media !== undefined ? { media: mediaPatch(changes.media) } : {}),
+        ...(changes.search !== undefined ? { search: searchPatch(changes.search) } : {}),
         ...(changes.modelSource
           ? {
               models:

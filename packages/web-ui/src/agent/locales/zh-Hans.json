@@ -142,7 +142,17 @@
     "notExposed": "{device} 的端口 {port} 未公开。",
     "deviceOffline": "{device} 处于离线状态。",
     "opaque": {
-      "other": "{vendor} 的 {name}"
+      "other": "{vendor} 的 {name}",
+      "search": {
+        "web": "网页搜索",
+        "open_page": "打开网页",
+        "find_in_page": "页内查找",
+        "x": "X 搜索",
+        "x_people": "X 用户搜索",
+        "x_post": "X 帖子",
+        "image": "查看图片",
+        "x_video": "X 视频"
+      }
     },
     "work": {
       "ran": "运行了 {count} 条命令",
@@ -162,7 +172,11 @@
         "failed": "{count} 个智能体失败",
         "stopped": "{count} 个智能体已停止"
       },
-      "heard": "收到 {count} 个智能体的消息"
+      "heard": "收到 {count} 个智能体的消息",
+      "searchedWeb": "搜索了 {count} 次网页",
+      "openedPages": "打开了 {count} 个网页",
+      "searchedX": "搜索了 {count} 次 X",
+      "viewedMedia": "查看了 {count} 个图片或视频"
     },
     "copyMessage": "复制消息",
     "sendToConversation": "发送到对话",

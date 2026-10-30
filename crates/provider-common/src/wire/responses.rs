@@ -19,7 +19,7 @@ use futures_util::{Stream, StreamExt, future};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use demi_shared_types::{Entry, OpaqueStatus, OpaqueView};
+use demi_shared_types::{Entry, OpaqueStatus, OpaqueView, SearchAction, SearchSource};
 
 use crate::{
     EarlyEnd, ErrorCode, OpaqueStep, ProviderEvent, ProviderFailure, ToolCall, VendorCall, tagged_wire,
@@ -379,6 +379,91 @@ where
         })
 }
 
+/// The part of a step's id that the encrypted output xAI writes for it shares:
+/// after its kind's prefix, `ws_` or `ctc_`, as the output's comes after
+/// `tco_`.
+fn step_key(id: &str) -> Option<&str> {
+    id.split_once('_').map(|(_, rest)| rest)
+}
+
+/// The view of a search the vendor ran: OpenAI's and xAI's `web_search_call`,
+/// with the sources it names, and xAI's X search calls; none for any other
+/// item. An item that just started has no action yet, and is a web search
+/// with no query.
+fn search_view(item: &serde_json::Value) -> Option<OpaqueView> {
+    use serde_json::Value;
+    let text = |value: &Value, key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
+    let action = match item.get("type").and_then(Value::as_str)? {
+        "web_search_call" => {
+            let action = item.get("action").cloned().unwrap_or(Value::Null);
+            let sources = action
+                .get("sources")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|source| {
+                    Some(SearchSource {
+                        url: text(source, "url")?,
+                        title: text(source, "title"),
+                    })
+                })
+                .collect();
+            let action = match action.get("type").and_then(Value::as_str) {
+                Some("open_page") => SearchAction::OpenPage {
+                    url: text(&action, "url").unwrap_or_default(),
+                },
+                Some("find_in_page") => SearchAction::FindInPage {
+                    url: text(&action, "url").unwrap_or_default(),
+                    pattern: text(&action, "pattern").unwrap_or_default(),
+                },
+                _ => {
+                    let mut queries: Vec<String> = action
+                        .get("queries")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|query| query.as_str().map(str::to_owned))
+                        .collect();
+                    if queries.is_empty() {
+                        queries.extend(text(&action, "query"));
+                    }
+                    SearchAction::Web { queries }
+                }
+            };
+            return Some(OpaqueView::Search { action, sources });
+        }
+        "custom_tool_call" => {
+            let input: Value = item
+                .get("input")
+                .and_then(Value::as_str)
+                .and_then(|input| serde_json::from_str(input).ok())
+                .unwrap_or(Value::Null);
+            let query = || text(&input, "query").unwrap_or_default();
+            match item.get("name").and_then(Value::as_str)? {
+                "x_keyword_search" | "x_semantic_search" => SearchAction::X { query: query() },
+                "x_user_search" => SearchAction::XPeople { query: query() },
+                "x_thread_fetch" => SearchAction::XPost {
+                    url: text(&input, "post_id")
+                        .map(|post| format!("https://x.com/i/status/{post}"))
+                        .unwrap_or_default(),
+                },
+                "view_image" => SearchAction::Image {
+                    url: text(&input, "image_url").or_else(|| text(&input, "url")).unwrap_or_default(),
+                },
+                "view_x_video" => SearchAction::XVideo {
+                    url: text(&input, "video_url").or_else(|| text(&input, "url")).unwrap_or_default(),
+                },
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+    Some(OpaqueView::Search {
+        action,
+        sources: Vec::new(),
+    })
+}
+
 /// The item an `output_item` event carries, as the vendor sent it: Demi keeps
 /// an item it does not map whole and sends it back as it came.
 fn unknown_item(event: &str) -> Option<serde_json::Value> {
@@ -467,6 +552,11 @@ struct Mapper {
     /// named them.
     vendor_id: Option<String>,
     usage: Option<TokenUsage>,
+    /// The steps the vendor ran in this response, by their id's part after
+    /// its kind's prefix, which the encrypted output xAI writes for each as a
+    /// reasoning item shares ([`server_output`]): their call id, view and
+    /// status, which the output's update keeps.
+    steps: HashMap<String, (Option<String>, OpaqueView, OpaqueStatus)>,
 }
 
 impl Mapper {
@@ -481,6 +571,7 @@ impl Mapper {
             text_streamed: false,
             vendor_id: None,
             usage: None,
+            steps: HashMap::new(),
         }
     }
 
@@ -490,6 +581,9 @@ impl Mapper {
         match received.event {
             ResponsesEvent::ItemAdded(added) => {
                 match added.item.and_then(|item| item.0) {
+                    // A server call's encrypted output is its step's, and no
+                    // reasoning of the model's.
+                    Some(ResponsesItem::Reasoning(item)) if self.output_of(&item).is_some() => {}
                     Some(ResponsesItem::Reasoning(_)) => out.push(ProviderEvent::ThinkingStart),
                     Some(ResponsesItem::FunctionCall(call)) => {
                         if let Some(id) = call.id {
@@ -638,26 +732,50 @@ impl Mapper {
     /// item's: a call's name, else its type. Its id names the step, else its
     /// place in the response's output, which its start and its end share.
     fn opaque(
-        &self,
+        &mut self,
         item: &serde_json::Value,
         output_index: Option<u64>,
         status: OpaqueStatus,
         entries: Vec<Entry>,
     ) -> ProviderEvent {
         let text = |key: &str| item.get(key).and_then(serde_json::Value::as_str).map(str::to_owned);
+        let call_id = text("id").or_else(|| output_index.map(|index| format!("output-{index}")));
+        let view = search_view(item).unwrap_or_else(|| OpaqueView::Other {
+            vendor: self.owner.name.to_string(),
+            name: text("name").or_else(|| text("type")).unwrap_or_default(),
+        });
+        if let Some(key) = text("id").as_deref().and_then(step_key) {
+            self.steps.insert(key.to_owned(), (call_id.clone(), view.clone(), status));
+        }
         ProviderEvent::Opaque(OpaqueStep {
-            call_id: text("id").or_else(|| output_index.map(|index| format!("output-{index}"))),
+            call_id,
             status,
-            view: OpaqueView::Other {
-                vendor: self.owner.name.to_string(),
-                name: text("name").or_else(|| text("type")).unwrap_or_default(),
-            },
+            view,
             entries,
         })
     }
 
+    /// The step a reasoning item is the encrypted output of, when it is one.
+    fn output_of(&self, item: &ReasoningItem) -> Option<&(Option<String>, OpaqueView, OpaqueStatus)> {
+        let id = item.id.as_deref()?.strip_prefix("tco_")?;
+        self.steps.get(id)
+    }
+
     fn item_done(&mut self, done: ItemDone, out: &mut Vec<ProviderEvent>) {
         match done.item.and_then(|item| item.0) {
+            Some(ResponsesItem::Reasoning(item)) if self.output_of(&item).is_some() => {
+                let (call_id, view, status) = self.output_of(&item).cloned().expect("it was just found");
+                let value = serde_json::to_value(&item).expect("a reasoning item serializes");
+                match Entry::new(&self.owner.tag, &value) {
+                    Ok(entry) => out.push(ProviderEvent::Opaque(OpaqueStep {
+                        call_id,
+                        status,
+                        view,
+                        entries: vec![entry],
+                    })),
+                    Err(error) => tracing::warn!(error = %error, "a vendor's item did not serialize"),
+                }
+            }
             Some(ResponsesItem::Reasoning(item)) => {
                 // The finished text only when no delta carried it (a
                 // response that did not stream), or it would arrive twice.

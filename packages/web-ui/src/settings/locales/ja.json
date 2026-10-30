@@ -623,6 +623,17 @@
     "saving": "保存中…",
     "addAccount": "アカウントを追加",
     "showInMenu": "モデルメニューに表示",
+    "search": {
+      "title": "組み込みツール",
+      "web": "ウェブ検索",
+      "webDescription": "モデルがベンダー独自の検索でウェブを検索します。",
+      "x": "X 検索",
+      "xDescription": "モデルが X の投稿とユーザーを検索します。",
+      "images": "画像の理解",
+      "imagesDescription": "見つけたページや投稿の画像をモデルが確認します。",
+      "videos": "動画の理解",
+      "videosDescription": "X で見つけた投稿の動画をモデルが視聴します。"
+    },
     "media": {
       "imageGeneration": "画像生成",
       "images": "画像",

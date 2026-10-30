@@ -69,7 +69,7 @@ use demi_provider_common::credentials::{Accounts, CredentialPool, SubscriptionAc
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::quota::{ProviderQuota, QuotaSnapshotStore};
 use demi_provider_common::{
-    Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
+    Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError, Searches,
 };
 use demi_shared_types::{
     AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
@@ -92,6 +92,9 @@ use crate::run::ClaudeCodeRuntime;
 /// How messages name the family.
 const FAMILY: &str = "Claude Code";
 
+/// The CLI's own tool that runs Anthropic's web search.
+const WEB_SEARCH: &str = "WebSearch";
+
 /// The owner of the entries the provider keeps, the CLI's own session lines
 /// (`crates/provider-claude-code/src/session.rs`).
 const RECORD_OWNER: &str = "claude-code:";
@@ -109,6 +112,8 @@ pub struct ClaudeCodeConfig {
     /// The Claude Code machine, which the account's usage probe runs on;
     /// none for a provider that cannot reach it, which cannot probe.
     pub machine: Option<Arc<dyn AccountMachine>>,
+    /// The Anthropic search the entry turned on, which the CLI runs.
+    pub searches: Searches,
 }
 
 impl ClaudeCodeConfig {
@@ -124,6 +129,7 @@ impl ClaudeCodeConfig {
             display_name: display_name.into(),
             account,
             machine,
+            searches: Searches::default(),
         }
     }
 }
@@ -143,6 +149,7 @@ pub struct ClaudeCodeProvider {
 struct Shared {
     id: String,
     display_name: String,
+    searches: Searches,
     pool: Arc<dyn CredentialPool>,
     clock: Arc<dyn Clock>,
     auth: Arc<ClaudeAuth>,
@@ -215,6 +222,7 @@ impl ClaudeCodeProvider {
             shared: Arc::new(Shared {
                 id: config.id,
                 display_name: config.display_name,
+                searches: config.searches,
                 pool: pool.clone(),
                 clock: clock.clone(),
                 auth,

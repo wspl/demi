@@ -75,6 +75,7 @@ import {
   ROTATION_LABELS,
   WIRE_API_LABELS,
   type SettingsEntryMedia,
+  type SettingsEntrySearch,
   type SettingsMediaShape,
   type SettingsMediaKind,
   type SettingsAudioKind,
@@ -518,6 +519,10 @@ function changeMedia(
   change: Partial<SettingsEntryMedia>,
 ): void {
   emit('change', provider, { media: { ...provider.media, [kind]: { ...provider.media[kind], ...change } } })
+}
+
+function changeSearch(provider: SettingsProviderEntry, change: Partial<SettingsEntrySearch>): void {
+  emit('change', provider, { search: { ...provider.search, ...change } })
 }
 
 function chooseShape(provider: SettingsProviderEntry, kind: SettingsMediaKind, shape: SettingsMediaShape | null): void {
@@ -1370,6 +1375,66 @@ function endpointCheck(value: string) {
               </SettingsRow>
             </SettingsGroup>
 
+            <!-- The vendor's own searches, one switch each, above the models they search for. -->
+            <SettingsGroup
+              v-if="selected.search.web !== null || selected.search.x !== null"
+              :title="t('providers.search.title')"
+            >
+              <SettingsRow
+                v-if="selected.search.web !== null"
+                :label="t('providers.search.web')"
+                :description="t('providers.search.webDescription')"
+              >
+                <Switch
+                  :model-value="selected.search.web"
+                  size="sm"
+                  :aria-label="t('providers.search.web')"
+                  :disabled="fieldsLocked(selected)"
+                  @update:model-value="changeSearch(selected, { web: $event })"
+                />
+              </SettingsRow>
+              <SettingsRow
+                v-if="selected.search.x !== null"
+                :label="t('providers.search.x')"
+                :description="t('providers.search.xDescription')"
+              >
+                <Switch
+                  :model-value="selected.search.x"
+                  size="sm"
+                  :aria-label="t('providers.search.x')"
+                  :disabled="fieldsLocked(selected)"
+                  @update:model-value="changeSearch(selected, { x: $event })"
+                />
+              </SettingsRow>
+              <!-- What the searches look at: a switch the searches it serves leave
+                   disabled while they are off, where it keeps its place. -->
+              <SettingsRow
+                v-if="selected.search.images !== null"
+                :label="t('providers.search.images')"
+                :description="t('providers.search.imagesDescription')"
+              >
+                <Switch
+                  :model-value="selected.search.images"
+                  size="sm"
+                  :aria-label="t('providers.search.images')"
+                  :disabled="fieldsLocked(selected) || (selected.search.web !== true && selected.search.x !== true)"
+                  @update:model-value="changeSearch(selected, { images: $event })"
+                />
+              </SettingsRow>
+              <SettingsRow
+                v-if="selected.search.videos !== null"
+                :label="t('providers.search.videos')"
+                :description="t('providers.search.videosDescription')"
+              >
+                <Switch
+                  :model-value="selected.search.videos"
+                  size="sm"
+                  :aria-label="t('providers.search.videos')"
+                  :disabled="fieldsLocked(selected) || selected.search.x !== true"
+                  @update:model-value="changeSearch(selected, { videos: $event })"
+                />
+              </SettingsRow>
+            </SettingsGroup>
             <!-- Models. A subscription's list is whatever the vendor serves, so it is refreshed, never
                edited; a vendor key chooses between the catalog and a manual list; a bare endpoint only
                has the manual list. Every kind chooses which of its models the pickers offer. An entry

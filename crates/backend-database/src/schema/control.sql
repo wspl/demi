@@ -828,6 +828,14 @@ CREATE TABLE providers (
   -- The prompt cache lifetime its requests ask for, whole minutes or hours
   -- such as '5m' or '1h'; null asks for none.
   cache_ttl            TEXT,
+  -- Whether the entry's models use its vendor's own web search and X search
+  -- when the vendor has them; on from the start.
+  web_search           INTEGER NOT NULL DEFAULT 1 CHECK (web_search IN (0, 1)),
+  x_search             INTEGER NOT NULL DEFAULT 1 CHECK (x_search IN (0, 1)),
+  -- Whether those searches look at the images and watch the videos they
+  -- find, when the vendor's can; on from the start.
+  search_images        INTEGER NOT NULL DEFAULT 1 CHECK (search_images IN (0, 1)),
+  search_videos        INTEGER NOT NULL DEFAULT 1 CHECK (search_videos IN (0, 1)),
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;

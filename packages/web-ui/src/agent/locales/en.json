@@ -142,7 +142,17 @@
     "notExposed": "Port {port} of {device} isn’t exposed.",
     "deviceOffline": "{device} is offline.",
     "opaque": {
-      "other": "{name} at {vendor}"
+      "other": "{name} at {vendor}",
+      "search": {
+        "web": "Web search",
+        "open_page": "Open page",
+        "find_in_page": "Find in page",
+        "x": "X search",
+        "x_people": "X people search",
+        "x_post": "X post",
+        "image": "View image",
+        "x_video": "X video"
+      }
     },
     "work": {
       "ran": "ran {count} command | ran {count} commands",
@@ -162,7 +172,11 @@
         "failed": "{count} agent failed | {count} agents failed",
         "stopped": "{count} agent stopped | {count} agents stopped"
       },
-      "heard": "heard from {count} agent | heard from {count} agents"
+      "heard": "heard from {count} agent | heard from {count} agents",
+      "searchedWeb": "searched the web {count} time | searched the web {count} times",
+      "openedPages": "opened {count} page | opened {count} pages",
+      "searchedX": "searched X {count} time | searched X {count} times",
+      "viewedMedia": "viewed {count} image or video | viewed {count} images or videos"
     },
     "copyMessage": "Copy Message",
     "sendToConversation": "Send to Conversation",

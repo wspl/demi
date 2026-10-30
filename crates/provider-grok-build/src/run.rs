@@ -39,7 +39,8 @@ pub(crate) fn run(
         }
         let ids = RequestIds::of(&request);
         let model = request.model_id.clone();
-        let body = encode_body(LABEL, move || request::encode(&request));
+        let searches = shared.searches;
+        let body = encode_body(LABEL, move || request::encode(&request, searches));
         let body = tokio::select! {
             biased;
             () = cancel.cancelled() => None,

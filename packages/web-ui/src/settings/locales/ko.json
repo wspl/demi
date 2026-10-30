@@ -623,6 +623,17 @@
     "saving": "저장 중…",
     "addAccount": "계정 추가",
     "showInMenu": "모델 메뉴에 표시",
+    "search": {
+      "title": "기본 제공 도구",
+      "web": "웹 검색",
+      "webDescription": "모델이 공급업체 자체 검색으로 웹을 검색합니다.",
+      "x": "X 검색",
+      "xDescription": "모델이 X의 게시물과 사용자를 검색합니다.",
+      "images": "이미지 이해",
+      "imagesDescription": "찾은 페이지와 게시물의 이미지를 모델이 확인합니다.",
+      "videos": "동영상 이해",
+      "videosDescription": "X에서 찾은 게시물의 동영상을 모델이 시청합니다."
+    },
     "media": {
       "imageGeneration": "이미지 생성",
       "images": "이미지",

@@ -623,6 +623,17 @@
     "saving": "正在保存…",
     "addAccount": "添加账户",
     "showInMenu": "在模型菜单中显示",
+    "search": {
+      "title": "内置工具",
+      "web": "网页搜索",
+      "webDescription": "模型使用厂商自己的搜索查找网页。",
+      "x": "X 搜索",
+      "xDescription": "模型搜索 X 上的帖子和用户。",
+      "images": "图片理解",
+      "imagesDescription": "模型查看搜到的网页和帖子里的图片。",
+      "videos": "视频理解",
+      "videosDescription": "模型观看在 X 上搜到的帖子里的视频。"
+    },
     "media": {
       "imageGeneration": "图像生成",
       "images": "图像",

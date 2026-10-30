@@ -240,6 +240,7 @@ export function providerView(
       video: { ...entry.media.video, models: entry.compatible ? undefined : catalog?.videoModels ?? [] },
       audio: { ...entry.media.audio, models: entry.compatible ? undefined : catalog?.audioModels ?? [] },
     },
+    search: entry.search,
     logo: providerLogo(entry),
   }
 }

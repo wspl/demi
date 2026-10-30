@@ -54,11 +54,11 @@ use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
 use futures_util::stream::{self, Stream};
 
-use crate::Shared;
+use crate::{Shared, WEB_SEARCH};
 use crate::failure::read_failure;
 use crate::idle::Kept;
 use crate::live::{LiveCli, Next, Written};
-use crate::output::{Answered, ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
+use crate::output::{self, Answered, ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
 use crate::placement::{Placement, WorkLease};
 use crate::prepared::Prepared;
 use crate::timing::{self, RunTiming, Took};
@@ -397,7 +397,15 @@ fn run(
                 };
                 match line {
                     // The results of calls, printed as the CLI sends them.
-                    None | Some(Line::ControlResponse(_)) | Some(Line::User(_)) => {}
+                    // The result of the CLI's own web search ends its step.
+                    Some(Line::User(line)) => {
+                        if let Some(step) = line.web_search_ended(&mut live.searching) {
+                            let event = ProviderEvent::Opaque(step);
+                            live.mirror.observe(&event);
+                            yield event;
+                        }
+                    }
+                    None | Some(Line::ControlResponse(_)) => {}
                     // A status line: what matters of it is logged.
                     Some(Line::System(line)) => live.note_system(&line),
                     // The quota the vendor reported is the call's open now,
@@ -446,6 +454,10 @@ fn run(
                             if live.streaming.is_some() {
                                 yield live.last_call.ended(CallOutcome::Refused(None));
                             }
+                            for event in live.abandoned_searches() {
+                                live.mirror.observe(&event);
+                                yield event;
+                            }
                             complete = Some(live.abandon_streaming());
                             yield live.call_started();
                             live.last_call.answered(id.clone(), message.usage());
@@ -458,6 +470,15 @@ fn run(
                                     // offer is the CLI's to answer, which it
                                     // does with an error, and the model goes
                                     // on in this run (`crates/provider-claude-code/src/mcp.rs`).
+                                    // The CLI's own web search runs there and is a step
+                                    // of Anthropic's, which its result ends.
+                                    Ok(call) if call.tool_name == WEB_SEARCH && !offers(&request.tools, WEB_SEARCH) => {
+                                        let step = output::web_search_started(&call);
+                                        live.searching.insert(call.tool_use_id, (id.clone(), step.clone()));
+                                        let event = ProviderEvent::Opaque(step);
+                                        live.mirror.observe(&event);
+                                        yield event;
+                                    }
                                     Ok(call) if !offers(&request.tools, &call.tool_name) => {}
                                     Ok(call) => live.collect(call),
                                     Err(error) => {
@@ -537,6 +558,10 @@ fn run(
                             // A new message abandons one whose stream never
                             // stopped, and the calls it collected.
                             StreamEvent::MessageStart(start) => {
+                                for event in live.abandoned_searches() {
+                                    live.mirror.observe(&event);
+                                    yield event;
+                                }
                                 let abandoned = live.abandon_streaming();
                                 for event in live.mirror.left_out(abandoned.unrepeated()) {
                                     yield event;

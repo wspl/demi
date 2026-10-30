@@ -18,7 +18,7 @@ use demi_shared_types::{ThinkingConfig, ThinkingSummary};
 use serde::Serialize;
 
 use crate::{
-    InferenceItem, InferenceRequest, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
+    InferenceItem, InferenceRequest, MediaBytes, Medium, ResultPart, Searches, ToolDefinition, UserPart,
     wire::responses::{ReasoningItem, split_tool_use_id},
 };
 
@@ -161,6 +161,10 @@ pub struct ResponsesDialect<'a> {
     pub assistant: AssistantReplay,
     pub reasoning: ReasoningReplay,
     pub tool_media: ToolMedia,
+    /// The vendor's searches the request declares, whose recorded steps it
+    /// sends back: a vendor may refuse a search's record without its tool.
+    /// None for a provider that declares none and sends back every record.
+    pub searches: Option<Searches>,
 }
 
 /// How a replayed assistant message is written.
@@ -342,12 +346,12 @@ pub fn responses_input<'a>(
                     }));
                 }
             }
-            InferenceItem::Opaque { entries, .. } => input.extend(
-                entries
-                    .iter()
-                    .filter(|entry| entry.owner() == dialect.signature_tag)
-                    .map(|entry| InputItem::Recorded(Recorded(entry.value()))),
-            ),
+            InferenceItem::Opaque { entries, .. } => {
+                let own = || entries.iter().filter(|entry| entry.owner() == dialect.signature_tag);
+                if dialect.searches.is_none_or(|searches| own().all(|entry| declared(entry, searches))) {
+                    input.extend(own().map(|entry| InputItem::Recorded(Recorded(entry.value()))));
+                }
+            }
             InferenceItem::ToolUse {
                 tool_use_id,
                 tool_name,
@@ -374,6 +378,29 @@ pub fn responses_input<'a>(
         }
     }
     input
+}
+
+/// Whether a recorded item is no search, or one of `searches`: OpenAI's and
+/// xAI's web search call, xAI's X search calls, and its looks at an image or
+/// a video.
+fn declared(entry: &demi_shared_types::Entry, searches: Searches) -> bool {
+    #[derive(serde::Deserialize)]
+    struct Item<'a> {
+        #[serde(rename = "type", borrow)]
+        kind: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        name: Option<Cow<'a, str>>,
+    }
+    let Ok(item) = entry.decode::<Item>() else {
+        return true;
+    };
+    match (item.kind.as_deref(), item.name.as_deref()) {
+        (Some("web_search_call"), _) => searches.web,
+        (Some("custom_tool_call"), Some(name)) if name.starts_with("x_") => searches.x,
+        (Some("custom_tool_call"), Some("view_x_video")) => searches.videos,
+        (Some("custom_tool_call"), Some("view_image")) => searches.images,
+        _ => true,
+    }
 }
 
 fn push_tool_result<'a>(

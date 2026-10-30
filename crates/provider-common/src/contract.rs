@@ -827,6 +827,18 @@ pub enum EntriesOf {
     Output(usize),
 }
 
+/// The vendor's own searches an entry's models use: those its vendor has
+/// and the user turned on (`crates/provider-registry/src/entry.rs`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Searches {
+    pub web: bool,
+    pub x: bool,
+    /// The searches look at the images they find.
+    pub images: bool,
+    /// The X search watches the videos it finds.
+    pub videos: bool,
+}
+
 /// A vendor's step as a run reports it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpaqueStep {

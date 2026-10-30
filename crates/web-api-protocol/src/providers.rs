@@ -259,6 +259,10 @@ pub struct ProviderPatch {
     #[serde(default)]
     #[garde(skip)]
     pub media: Option<MediaPatch>,
+    /// The switches of the vendor's searches.
+    #[serde(default)]
+    #[garde(skip)]
+    pub search: Option<SearchPatch>,
     /// The prompt cache lifetime its requests ask for, null for none; only
     /// an entry with presets takes one, and any lifetime besides them.
     #[serde(default, with = "double_option")]
@@ -327,6 +331,43 @@ impl MediaPatch {
             MediaKind::Audio => self.audio.as_ref().and_then(|audio| audio.enabled),
         }
     }
+}
+
+/// The switches of the vendor's own searches, each null when the entry's
+/// vendor has no such search, and on from the start: Web Search
+/// for Codex, Claude Code and Grok Build, X Search for Grok Build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EntrySearch {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<bool>")]
+    pub web: Option<bool>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<bool>")]
+    pub x: Option<bool>,
+    /// Whether the searches look at the images they find: Grok Build's.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<bool>")]
+    pub images: Option<bool>,
+    /// Whether the X search watches the videos it finds: Grok Build's.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<bool>")]
+    pub videos: Option<bool>,
+}
+
+/// A change of an entry's search switches; each only for a search its
+/// vendor has.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SearchPatch {
+    #[serde(default)]
+    pub web: Option<bool>,
+    #[serde(default)]
+    pub x: Option<bool>,
+    #[serde(default)]
+    pub images: Option<bool>,
+    #[serde(default)]
+    pub videos: Option<bool>,
 }
 
 /// How an entry makes each kind of media.
@@ -425,6 +466,8 @@ pub struct ProviderDto {
     pub rotation: Rotation,
     /// How it makes each kind of media.
     pub media: EntryMedia,
+    /// The vendor's own searches its models may run.
+    pub search: EntrySearch,
     /// The prompt cache lifetime its requests ask for; null when they name
     /// none and the vendor keeps its default.
     #[serde(deserialize_with = "Option::deserialize")]

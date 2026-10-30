@@ -236,6 +236,22 @@ export function galleryCacheTtl(
   }
 }
 
+/**
+ * The searches a family's vendor has, as the backend answers them: on, as
+ * they start, but Grok Build's X Search, which this user turned off.
+ */
+function gallerySearch(family: string): MockProvider['search'] {
+  switch (family) {
+    case 'grok-build':
+      return { web: true, x: false, images: true, videos: true }
+    case 'codex':
+    case 'claude-code':
+      return { web: true, x: null, images: null, videos: null }
+    default:
+      return { web: null, x: null, images: null, videos: null }
+  }
+}
+
 export function provider(
   partial: Partial<MockProvider> & Pick<MockProvider, 'id' | 'name' | 'kind' | 'family'>
 ): MockProvider {
@@ -252,6 +268,7 @@ export function provider(
     models: [],
     accounts: [],
     media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
+    search: gallerySearch(partial.family),
     logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
     ...partial,
   }

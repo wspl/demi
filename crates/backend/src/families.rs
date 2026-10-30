@@ -18,7 +18,7 @@ use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
 use demi_provider_common::media::MediaVendor;
-use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
+use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv, Searches};
 use demi_provider_bytedance::{Ark, ArkConfig, ArkProvider, Speech, SpeechConfig, SpeechProvider};
 use demi_provider_elevenlabs::{ElevenLabsConfig, ElevenLabsProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
@@ -350,6 +350,10 @@ impl Default for CodexFamily {
 }
 
 impl ProviderFamily for CodexFamily {
+    fn searches(&self) -> Searches {
+        Searches { web: true, ..Searches::default() }
+    }
+
     fn credential(&self) -> CredentialKind {
         CredentialKind::Subscription
     }
@@ -362,7 +366,8 @@ impl ProviderFamily for CodexFamily {
         let releases = self.releases.get_or_init(|| {
             CodexReleases::new(self.releases_url.clone(), args.services_http.clone(), args.clock.clone())
         });
-        let config = CodexConfig::new(account, releases.clone());
+        let mut config = CodexConfig::new(account, releases.clone());
+        config.searches = args.searches;
         let provider = CodexProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }
@@ -390,6 +395,10 @@ impl GrokBuildFamily {
 }
 
 impl ProviderFamily for GrokBuildFamily {
+    fn searches(&self) -> Searches {
+        Searches { web: true, x: true, images: true, videos: true }
+    }
+
     fn credential(&self) -> CredentialKind {
         CredentialKind::Subscription
     }
@@ -403,7 +412,8 @@ impl ProviderFamily for GrokBuildFamily {
             let url = GrokReleases::URL.parse().expect("the pointer URL parses");
             GrokReleases::new(url, args.services_http.clone(), args.clock.clone())
         });
-        let config = GrokConfig::new(account, releases.clone());
+        let mut config = GrokConfig::new(account, releases.clone());
+        config.searches = args.searches;
         let provider = GrokProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }
@@ -428,7 +438,8 @@ impl ClaudeCodeFamily {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let config = ClaudeCodeConfig::new(args.entry_id, args.label, account, args.machine);
+        let mut config = ClaudeCodeConfig::new(args.entry_id, args.label, account, args.machine);
+        config.searches = args.searches;
         Ok(ClaudeCodeProvider::new(
             config,
             subscription.pool,
@@ -440,6 +451,10 @@ impl ClaudeCodeFamily {
 }
 
 impl ProviderFamily for ClaudeCodeFamily {
+    fn searches(&self) -> Searches {
+        Searches { web: true, ..Searches::default() }
+    }
+
     fn credential(&self) -> CredentialKind {
         CredentialKind::Subscription
     }

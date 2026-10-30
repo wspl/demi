@@ -43,7 +43,8 @@ pub(crate) fn run(
         let model = request.model_id.clone();
         let websocket = shared.transport != TransportMode::Sse;
         let session = matches!(request.prompt_cache, PromptCache::Session { .. });
-        let body = encode_body(LABEL, move || request::encode(&request, websocket));
+        let searches = shared.searches;
+        let body = encode_body(LABEL, move || request::encode(&request, websocket, searches));
         let body = tokio::select! {
             biased;
             () = cancel.cancelled() => None,

@@ -656,20 +656,23 @@ impl TranscriptLog {
         self.record_replace(self.start + at);
     }
 
-    /// Where the running request's output starts: after the last input or
-    /// response.
-    fn request_start(&self) -> usize {
+    /// Where the running turn's output starts: after its input. A vendor's
+    /// step can end in a later request of the turn than the one it started
+    /// in, as the Claude Code CLI's own web search does when the model called
+    /// Demi's tools beside it; a vendor's call ids are its own, so one names
+    /// one step.
+    fn turn_start(&self) -> usize {
         self.blocks
             .iter()
-            .rposition(|block| matches!(block, Block::User(_) | Block::Response(_)))
+            .rposition(|block| matches!(block, Block::User(_)))
             .map_or(0, |at| at + 1)
     }
 
-    /// Ends the running request's vendor steps that still run, as failed: the
-    /// request ended without its response, so none of them will end.
+    /// Ends the turn's vendor steps that still run, as failed: a request ended
+    /// without its response, so none of them will end.
     pub fn settle_opaque(&mut self) {
         let now = self.clock.now();
-        for at in self.request_start()..self.blocks.len() {
+        for at in self.turn_start()..self.blocks.len() {
             if let Block::Opaque(step) = &mut self.blocks[at]
                 && step.status == OpaqueStatus::Running
             {
@@ -680,18 +683,18 @@ impl TranscriptLog {
         }
     }
 
-    /// Starts a vendor's step, or updates the one of this request that has
+    /// Starts a vendor's step, or updates the one of this turn that has
     /// its call id: its status, view and end, and its entries after those it
     /// holds.
     pub fn apply_opaque(&mut self, model: &ModelSelection, step: OpaqueStep) {
         let now = self.clock.now();
         let ended_at = (step.status != OpaqueStatus::Running).then_some(now);
-        let request_start = self.request_start();
+        let turn_start = self.turn_start();
         let started = step.call_id.as_ref().and_then(|call_id| {
-            self.blocks[request_start..]
+            self.blocks[turn_start..]
                 .iter()
                 .rposition(|block| matches!(block, Block::Opaque(open) if open.call_id.as_ref() == Some(call_id)))
-                .map(|at| request_start + at)
+                .map(|at| turn_start + at)
         });
         if let Some(at) = started {
             if let Block::Opaque(open) = &mut self.blocks[at] {

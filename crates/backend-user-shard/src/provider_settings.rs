@@ -26,7 +26,7 @@
 //! - A model added with a taken id takes the first free `-2`, `-3` suffix.
 
 use demi_backend_database::StorageError;
-use demi_backend_database::providers::MediaSwitches;
+use demi_backend_database::providers::EntrySwitches;
 use demi_provider_registry::families::{ProviderFamily, family_name};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::entries::Vault;
@@ -91,6 +91,10 @@ pub enum ProviderRefusal {
     /// entry and the kind.
     #[error("{0} doesn’t make {1}.")]
     MakesNo(String, &'static str),
+    /// A switch of a search the entry's vendor does not have; it names the
+    /// entry and what the search would search.
+    #[error("{0} can’t search {1}.")]
+    SearchesNo(String, &'static str),
     /// A shape for a vendor entry, whose shapes are its vendor's; it names
     /// the entry.
     #[error("{0} makes media as its vendor does; its shapes can’t be changed.")]
@@ -428,11 +432,30 @@ impl Services {
         // A switch belongs to a kind the entry makes, with the shape this
         // change gives it.
         let switch = |kind| patch.media.as_ref().and_then(|media| media.enabled(kind));
-        let switches = MediaSwitches {
+        let search = patch.search.clone().unwrap_or_default();
+        let switches = EntrySwitches {
             image: switch(MediaKind::Image),
             video: switch(MediaKind::Video),
             audio: switch(MediaKind::Audio),
+            web_search: search.web,
+            x_search: search.x,
+            search_images: search.images,
+            search_videos: search.videos,
         };
+        // A search switch belongs to a search the entry's vendor has.
+        let offered = self.provider_registry.offered_searches(&entry);
+        if search.web.is_some() && !offered.web {
+            return Err(ProviderRefusal::SearchesNo(entry.label.clone(), "the web"));
+        }
+        if search.x.is_some() && !offered.x {
+            return Err(ProviderRefusal::SearchesNo(entry.label.clone(), "X"));
+        }
+        if search.images.is_some() && !offered.images {
+            return Err(ProviderRefusal::SearchesNo(entry.label.clone(), "images"));
+        }
+        if search.videos.is_some() && !offered.videos {
+            return Err(ProviderRefusal::SearchesNo(entry.label.clone(), "videos"));
+        }
         let shapes = match &config {
             Some(config) if config.is_compatible() => MediaShapes {
                 image: config.image_shape,

@@ -71,18 +71,31 @@ pub struct ProviderRow {
     pub video_generation: bool,
     /// Whether the entry makes audio when its provider can.
     pub audio_generation: bool,
+    /// Whether the entry's models use its vendor's web search, when it has
+    /// one.
+    pub web_search: bool,
+    /// Whether they use its vendor's X search, when it has one.
+    pub x_search: bool,
+    /// Whether those searches look at images, and watch videos, when the
+    /// vendor's can.
+    pub search_images: bool,
+    pub search_videos: bool,
     /// The prompt cache lifetime the entry's requests ask for; none asks for
     /// none.
     pub cache_ttl: Option<CacheTtl>,
 }
 
-/// The media switches a change of an entry sets, each kind's when
-/// given.
+/// The switches a change of an entry sets, each when given: each kind of
+/// media's, and its vendor's searches'.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct MediaSwitches {
+pub struct EntrySwitches {
     pub image: Option<bool>,
     pub video: Option<bool>,
     pub audio: Option<bool>,
+    pub web_search: Option<bool>,
+    pub x_search: Option<bool>,
+    pub search_images: Option<bool>,
+    pub search_videos: Option<bool>,
 }
 
 /// An entry as it is first stored, with manual rotation.
@@ -129,7 +142,7 @@ pub struct CredentialWrite {
     pub secret: Option<Vec<u8>>,
 }
 
-const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation, cache_ttl";
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation, cache_ttl, web_search, x_search, search_images, search_videos";
 /// The columns a new entry stores; its rotation is the default, manual, its
 /// Image Generation is on, and it joins the end of its owner's list.
 const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, cache_ttl, position";
@@ -218,7 +231,7 @@ impl ControlService {
     }
 
     /// Replaces the entry's label, family, sealed configuration, rotation,
-    /// media switches or prompt cache lifetime, and answers the entry as it
+    /// switches or prompt cache lifetime, and answers the entry as it
     /// now is; `None` for an entry that no longer exists.
     #[allow(clippy::too_many_arguments)]
     pub async fn update_provider(
@@ -228,7 +241,7 @@ impl ControlService {
         family: Option<String>,
         config: Option<Vec<u8>>,
         rotation: Option<Rotation>,
-        switches: MediaSwitches,
+        switches: EntrySwitches,
         cache_ttl: Option<Option<CacheTtl>>,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
@@ -272,6 +285,30 @@ impl ControlService {
             if let Some(on) = switches.audio {
                 transaction.execute(
                     "UPDATE providers SET audio_generation = ?1 WHERE id = ?2",
+                    params![on, id.as_str()],
+                )?;
+            }
+            if let Some(on) = switches.web_search {
+                transaction.execute(
+                    "UPDATE providers SET web_search = ?1 WHERE id = ?2",
+                    params![on, id.as_str()],
+                )?;
+            }
+            if let Some(on) = switches.x_search {
+                transaction.execute(
+                    "UPDATE providers SET x_search = ?1 WHERE id = ?2",
+                    params![on, id.as_str()],
+                )?;
+            }
+            if let Some(on) = switches.search_images {
+                transaction.execute(
+                    "UPDATE providers SET search_images = ?1 WHERE id = ?2",
+                    params![on, id.as_str()],
+                )?;
+            }
+            if let Some(on) = switches.search_videos {
+                transaction.execute(
+                    "UPDATE providers SET search_videos = ?1 WHERE id = ?2",
                     params![on, id.as_str()],
                 )?;
             }
@@ -693,6 +730,10 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
         image_generation: row.get("image_generation")?,
         video_generation: row.get("video_generation")?,
         audio_generation: row.get("audio_generation")?,
+        web_search: row.get("web_search")?,
+        x_search: row.get("x_search")?,
+        search_images: row.get("search_images")?,
+        search_videos: row.get("search_videos")?,
         cache_ttl: row
             .get::<_, Option<String>>("cache_ttl")?
             .map(|ttl| decode("providers", "cache_ttl", CacheTtl::try_from(ttl)))

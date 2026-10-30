@@ -1,4 +1,4 @@
-import type { AgentMessage, Block, ChangedFile, CommandReport, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, ChangedFile, CommandReport, EditedFile, ModelSelection, SearchAction, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { ToolPicture } from '@demicodes/web-ui/agent/tool-media'
@@ -1773,6 +1773,58 @@ export function vendorStepBlocks(): Block[] {
     reply('vendor-drawn', 670_000, 'The vendor’s interpreter failed, so I drew the chart here: chart.png.'),
     user('vendor-again', 300_000, 'Check the mean once more.'),
     ...inRun(step('vendor-running', 290_000, 'running', 'code_interpreter')),
+  ])
+}
+
+/**
+ * Searches a vendor ran: a run that searched X and the web and opened a page,
+ * one whose X search failed, and one still searching.
+ */
+export function vendorSearchBlocks(): Block[] {
+  const user = (id: string, at: number, text: string): Block => ({
+    type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,
+    content: [{ type: 'text', text }], preamble: null,
+  })
+  const reply = (id: string, at: number, text: string): Block => ({
+    type: 'text', id, createdAt: iso(at), endedAt: iso(at), model: demoModel, text,
+  })
+  const search = (
+    id: string,
+    at: number,
+    status: 'running' | 'completed' | 'failed',
+    action: SearchAction,
+    sources: { url: string, title: string | null }[] = [],
+  ): Block => ({
+    type: 'opaque', id, createdAt: iso(at), model: demoModel, callId: `${id}-call`, status,
+    view: { kind: 'search', action, sources },
+    endedAt: status === 'running' ? null : iso(at - 3_000),
+  })
+  return inRequests([
+    user('search-ask', 900_000, 'What do people say about the new release of Example DB?'),
+    ...inRun(
+      search('search-x', 890_000, 'completed', { type: 'x', query: 'Example DB 5.0' }, [
+        { url: 'https://x.com/alex/status/1849000000000000001', title: null },
+        { url: 'https://x.com/sam/status/1849000000000000002', title: null },
+      ]),
+      search('search-web', 885_000, 'completed', { type: 'web', queries: ['Example DB 5.0 release review'] }, [
+        { url: 'https://blog.example.com/example-db-5', title: 'Example DB 5.0 is out' },
+        { url: 'https://news.example.org/databases/example-db-5-review', title: 'A week with Example DB 5.0' },
+        { url: 'https://forum.example.net/t/upgrading-to-5-0/412', title: 'Upgrading to 5.0: what broke' },
+      ]),
+      search('search-open', 880_000, 'completed', { type: 'open_page', url: 'https://blog.example.com/example-db-5' }),
+    ),
+    reply('search-answer', 870_000, 'Most posts praise the faster joins ([Example DB 5.0 is out](https://blog.example.com/example-db-5)); a few report a broken migration on upgrade ([Upgrading to 5.0](https://forum.example.net/t/upgrading-to-5-0/412)).'),
+    user('search-again', 700_000, 'Look for posts by @alex about it.'),
+    ...inRun(
+      search('search-x-failed', 690_000, 'failed', { type: 'x', query: 'from:alex Example DB' }),
+      search('search-x-post', 685_000, 'completed', { type: 'x_post', url: 'https://x.com/alex/status/1849000000000000001' }, [
+        { url: 'https://x.com/alex/status/1849000000000000001', title: null },
+      ]),
+      search('search-x-video', 682_000, 'completed', { type: 'x_video', url: 'https://x.com/alex/status/1849000000000000001/video/1' }),
+    ),
+    reply('search-alex', 675_000, 'One post: alex says the 5.0 joins halved a report’s time.'),
+    user('search-more', 300_000, 'And what do the docs say about the migration?'),
+    ...inRun(search('search-running', 290_000, 'running', { type: 'web', queries: ['Example DB 5.0 migration guide'] })),
   ])
 }
 

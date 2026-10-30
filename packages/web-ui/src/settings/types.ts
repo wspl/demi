@@ -373,6 +373,16 @@ export interface SettingsProviderCli {
     | null
 }
 
+/** An entry's search switches, each null for a search its vendor does not have. */
+export interface SettingsEntrySearch {
+  web: boolean | null
+  x: boolean | null
+  /** The searches look at the images they find. */
+  images: boolean | null
+  /** The X search watches the videos it finds. */
+  videos: boolean | null
+}
+
 /**
  * A provider as the settings page shows and edits it. The page emits field changes and actions for the host: adding, removing, signing in, testing, refreshing, saving a model.
  */
@@ -442,6 +452,12 @@ export interface SettingsProviderEntry {
    * Generation, on its page.
    */
   media: { [K in SettingsMediaKind]: SettingsEntryMedia<K> }
+  /**
+   * The switches of its vendor's own searches, each null when the vendor has
+   * no such search: Web Search for Codex, Claude Code and Grok Build, X Search
+   * for Grok Build.
+   */
+  search: SettingsEntrySearch
   /** The vendor mark (`providerLogo`); null falls back to an initial. */
   logo: string | null
   /**
