@@ -1,7 +1,13 @@
 {
   "settings": {
-    "title": "Web Search",
-    "keywords": "web, search, Exa, API key, sign in"
+    "title": "Search",
+    "keywords": "web, search, fetch, Exa, API key, sign in"
+  },
+  "features": {
+    "search": "Web Search",
+    "searchDescription": "The model searches the web with Exa, with your account or key, or within a limit every user shares.",
+    "fetch": "Web Fetch",
+    "fetchDescription": "The model reads a page or downloads a file from the conversation’s Host."
   },
   "account": {
     "label": "Exa account",

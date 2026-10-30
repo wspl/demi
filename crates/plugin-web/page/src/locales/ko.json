@@ -1,7 +1,13 @@
 {
   "settings": {
-    "title": "웹 검색",
-    "keywords": "웹, 검색, Exa, API 키, 로그인"
+    "title": "검색",
+    "keywords": "웹, 검색, 가져오기, Exa, API 키, 로그인"
+  },
+  "features": {
+    "search": "웹 검색",
+    "searchDescription": "모델이 Exa로 웹을 검색합니다. 사용자의 계정이나 키를 쓰거나, 모든 사용자가 함께 쓰는 한도 안에서 검색합니다.",
+    "fetch": "웹 가져오기",
+    "fetchDescription": "모델이 대화의 Host에서 페이지를 읽거나 파일을 다운로드합니다."
   },
   "account": {
     "label": "Exa 계정",

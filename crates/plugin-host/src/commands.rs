@@ -23,10 +23,11 @@ use std::rc::Rc;
 use demi_host_interface::{
     CommandSet, Declared, GroupBuilder, RpcError, RpcHandler, RpcInvocation, RpcPort,
 };
-use demi_plugin_interface::{DEMI_ROOT, DEMI_SUMMARY, Placement, Reply, Request};
+use demi_plugin_interface::{DEMI_ROOT, DEMI_SUMMARY, Feature, Placement, Reply, Request};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 
+use crate::features::narrow;
 use crate::user::Shared;
 use crate::{Registry, RegistryError};
 
@@ -34,13 +35,15 @@ use crate::{Registry, RegistryError};
 pub(crate) const TAKEN_GROUPS: &[&str] = &["agent", "shell", "host", "attachment", "conversation"];
 
 /// The command set of the plugins of `registry` that `include` takes, by
-/// their index, whose `rpc` leaves `user`'s instances serve; without them,
-/// as the startup check composes it, a call is refused.
+/// their index, narrowed to the features of each that `on` takes
+/// (`crate::features`), whose `rpc` leaves `user`'s instances serve;
+/// without them, as the startup check composes it, a call is refused.
 pub(crate) fn compose(
     registry: &Registry,
     user: Option<&Rc<Shared>>,
     product: Vec<GroupBuilder>,
     include: impl Fn(usize) -> bool,
+    on: impl Fn(usize, &Feature) -> bool,
 ) -> Result<CommandSet, RegistryError> {
     let mut set = CommandSet::new();
     let mut demi = !product.is_empty();
@@ -56,7 +59,11 @@ pub(crate) fn compose(
         if !include(index) {
             continue;
         }
+        let features = &registered.factory.manifest().features;
         for commands in &registered.commands {
+            let Some(tree) = narrow(&commands.tree, features, |feature| on(index, feature)) else {
+                continue;
+            };
             let strip = match commands.placement {
                 Placement::Demi => 1,
                 Placement::Root => 0,
@@ -66,7 +73,7 @@ pub(crate) fn compose(
                 plugin: index,
                 strip,
             });
-            let served = Declared::served(commands.tree.clone(), handler);
+            let served = Declared::served(tree, handler);
             let registered_tree = match commands.placement {
                 Placement::Root => set.register(served),
                 Placement::Demi if demi => set.graft(&[DEMI_ROOT], served),

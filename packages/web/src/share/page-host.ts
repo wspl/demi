@@ -21,6 +21,8 @@ export function sharePageHost(token: string): PageHost {
       `/api/shares/${encodeURIComponent(token)}/plugins/${encodeURIComponent(plugin)}/blocks/${encodeURIComponent(tag)}/${encodeURIComponent(id)}`,
     userState: () => undefined,
     enabled: () => true,
+    features: () => ({}),
+    setFeature: async () => none('settings'),
     followState: () => none('conversation state'),
     call: async () => none('plugin calls'),
     stream: () => none('streams'),

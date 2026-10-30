@@ -22,7 +22,9 @@
   },
   "plugins": {
     "turnOnFailed": "プラグインをオンにできませんでした",
-    "turnOffFailed": "プラグインをオフにできませんでした"
+    "turnOffFailed": "プラグインをオフにできませんでした",
+    "featureOnFailed": "機能をオンにできませんでした",
+    "featureOffFailed": "機能をオフにできませんでした"
   },
   "providers": {
     "saveFailed": "プロバイダーを保存できませんでした",

@@ -12,6 +12,7 @@ use demi_plugin_interface::{
 };
 
 use crate::commands::{TAKEN_GROUPS, compose};
+use crate::features::{self, FeatureError};
 
 /// Why the backend cannot start with its plugins; the error names the
 /// plugin.
@@ -36,6 +37,8 @@ pub enum RegistryError {
     OAuthIssuer { plugin: PluginId, issuer: String },
     #[error("plugin \"{plugin}\"'s OAuth sign-in names no vendor")]
     OAuthVendor { plugin: PluginId },
+    #[error("plugin \"{plugin}\"'s features are refused: {error}")]
+    Features { plugin: PluginId, error: FeatureError },
 }
 
 /// One registered plugin, and what of its manifest the catalog serves.
@@ -115,6 +118,12 @@ impl Registry {
                     });
                 }
             }
+            features::check(&manifest.commands, &manifest.features).map_err(|error| {
+                RegistryError::Features {
+                    plugin: manifest.id.clone(),
+                    error,
+                }
+            })?;
             for stream in &manifest.streams {
                 if !stream_names.insert(stream.name.clone()) {
                     return Err(RegistryError::Stream {
@@ -170,7 +179,7 @@ impl Registry {
                 }
             }
         }
-        compose(self, None, Vec::new(), |_| true).map(|_| ())
+        compose(self, None, Vec::new(), |_| true, |_, _| true).map(|_| ())
     }
 
     /// The plugin that declares the user stream `name`, by its index.

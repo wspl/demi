@@ -129,6 +129,13 @@ pub trait PluginStore {
 
     fn set_switch(&self, user: UserId, plugin: String, enabled: bool) -> Stored<'_, ()>;
 
+    /// Whether the user turned each plugin's feature on, by the plugin's id
+    /// and the feature's; a feature the user never switched takes its
+    /// default.
+    fn feature_switches(&self, user: UserId) -> Stored<'_, BTreeMap<(String, String), bool>>;
+
+    fn set_feature_switch(&self, user: UserId, plugin: String, feature: String, enabled: bool) -> Stored<'_, ()>;
+
     fn value(&self, user: UserId, plugin: String, key: String) -> Stored<'_, Option<PluginValue>>;
 
     fn values(&self, user: UserId, plugin: String) -> Stored<'_, BTreeMap<String, PluginValue>>;

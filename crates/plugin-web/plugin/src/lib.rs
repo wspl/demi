@@ -6,7 +6,9 @@
 //!   `fetch` is bound to the `demi.fetch` command package on the Host;
 //! - the user's Exa account, signed in through the plugin host's OAuth sign-in
 //!   or as an API key kept as a secret;
-//! - the Settings › Web Search page's state and methods.
+//! - the switches of search and fetch, which the user turns on and off
+//!   apart;
+//! - the Settings › Search page's state and methods.
 //!
 //! The plugin holds no HTTP client of its own, stores no search result, and
 //! puts no token or key in page state or a log.
@@ -45,6 +47,7 @@ impl Web {
             "Searches the web with Exa and reads pages from the conversation's Host with demi web.",
         );
         manifest.commands = web::commands().manifest_commands();
+        manifest.features = web::features();
         manifest.page = Some(settings::page());
         manifest.oauth = Some(OAuth {
             vendor: "Exa".into(),

@@ -1,6 +1,8 @@
 //! A user's plugins: the backend's plugins as the settings page lists them, the
-//! switch that turns one on or off for the user, and a plugin's state for one
-//! conversation.
+//! switch that turns one or one of its features on or off for the user, and a
+//! plugin's state for one conversation.
+
+use std::collections::BTreeMap;
 
 use demi_shared_types::MAX_SAFE_INTEGER;
 use schemars::JsonSchema;
@@ -16,12 +18,16 @@ pub struct PluginEntry {
     pub description: String,
     /// Whether the user has it on.
     pub enabled: bool,
+    /// Whether the user has each of its features on, by the feature's id
+    /// (`crates/plugin-host/src/features.rs`).
+    pub features: BTreeMap<String, bool>,
     /// The command packages its commands, user streams and page methods
     /// bind that the backend's catalog serves, such as `demi.browser`.
     pub packages: Vec<String>,
 }
 
-/// `PUT /plugins/:plugin { enabled }`.
+/// `PUT /plugins/:plugin { enabled }` and `PUT
+/// /plugins/:plugin/features/:feature { enabled }`.
 #[derive(Debug, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PluginSwitch {

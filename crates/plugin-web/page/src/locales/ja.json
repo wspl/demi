@@ -1,7 +1,13 @@
 {
   "settings": {
-    "title": "Web 検索",
-    "keywords": "Web, 検索, Exa, API キー, サインイン"
+    "title": "検索",
+    "keywords": "ウェブ, Web, 検索, 取得, Exa, API キー, サインイン"
+  },
+  "features": {
+    "search": "ウェブ検索",
+    "searchDescription": "モデルが Exa でウェブを検索します。あなたのアカウントやキー、または全ユーザー共通の上限内で検索します。",
+    "fetch": "ウェブ取得",
+    "fetchDescription": "モデルが会話の Host からページを読んだりファイルをダウンロードしたりします。"
   },
   "account": {
     "label": "Exa アカウント",

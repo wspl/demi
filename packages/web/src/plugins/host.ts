@@ -22,6 +22,7 @@ import { pluginEnabled } from './enabled'
 import { callFailure } from './errors'
 import { PLUGIN_PAGES } from './generated/pages'
 import { usePluginStates } from './states'
+import { usePluginSettings } from '../settings/plugins'
 
 /**
  * The plugin pages' host in the product. It supplies:
@@ -106,6 +107,8 @@ export function productPageHost(): PageHost {
     // On once the backend has it on, as the page shows a switch at once and
     // the backend serves its blocks only after; off at once either way.
     enabled: (plugin) => pluginEnabled(product.snapshot, plugin) && pluginEnabled(product.read, plugin),
+    features: (plugin) => product.snapshot?.plugins?.find((entry) => entry.id === plugin)?.features ?? {},
+    setFeature: (plugin, feature, enabled) => usePluginSettings().switchFeature(plugin, feature, enabled),
     followState: states.follow,
     async call(plugin, method, params, conversation, options) {
       const scope = conversation === null ? '' : `/conversations/${encodeURIComponent(conversation)}`

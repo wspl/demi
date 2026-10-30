@@ -123,9 +123,9 @@ impl Filters {
 /// Why a search failed, in the words the command prints after its name.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Failure {
-    #[error("{option} is not offered when searching {}; save an Exa API key in Settings › Web Search to use it", .kind.searching())]
+    #[error("{option} is not offered when searching {}; save an Exa API key in Settings › Search to use it", .kind.searching())]
     NotOffered { option: &'static str, kind: Kind },
-    #[error("the anonymous search limit is reached; sign in to Exa in Settings › Web Search to search with your own account")]
+    #[error("the anonymous search limit is reached; sign in to Exa in Settings › Search to search with your own account")]
     AnonymousLimit,
     #[error("Exa's rate limit is reached; try again in {0} s")]
     RateLimit(u64),
@@ -133,9 +133,9 @@ pub(crate) enum Failure {
     RateLimitUnknown,
     #[error("your Exa account has no credit left")]
     NoCredit,
-    #[error("the Exa sign-in has expired; sign in again in Settings › Web Search")]
+    #[error("the Exa sign-in has expired; sign in again in Settings › Search")]
     Expired,
-    #[error("Exa refused the saved API key; save another in Settings › Web Search")]
+    #[error("Exa refused the saved API key; save another in Settings › Search")]
     KeyRefused,
     #[error("Exa did not answer: {0}")]
     Vendor(String),

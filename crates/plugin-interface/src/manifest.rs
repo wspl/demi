@@ -102,6 +102,10 @@ pub struct Manifest {
     /// Its command groups and roots (`crates/plugin-host/src/commands.rs`).
     #[serde(default)]
     pub commands: Vec<Commands>,
+    /// The parts of its commands each user turns on and off apart, while
+    /// the plugin is on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<Feature>,
     /// Whether the plugin is a context source, asked before each provider
     /// request of a node while its user has it on.
     ///
@@ -139,6 +143,7 @@ impl Manifest {
             name: name.into(),
             description: description.into(),
             commands: Vec::new(),
+            features: Vec::new(),
             context: false,
             project_search: false,
             conversations: false,
@@ -450,6 +455,35 @@ fn schema_of<T: JsonSchema>(direction: Direction) -> Schema {
         unreachable!("a root schema is an object")
     };
     Schema::new(object.into_iter().collect()).expect("schemars writes a schema that compiles")
+}
+
+/// Some leaves of one of a plugin's command groups that each user turns on
+/// and off apart from the rest, such as `demi web search` beside `demi web
+/// fetch`. Its plugin's page shows its switch; a feature off takes its
+/// leaves out of the user's command set.
+///
+/// A feature's id is lowercase letters, digits and hyphens. A group with
+/// features holds only leaves, all of them its features', so what the group
+/// says is always theirs: with every feature on, the group's own summary and index
+/// entry; with some off, the sentences of those on, joined in the order
+/// the manifest lists them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Feature {
+    /// Its name in the plugin, such as `search`, which its page and the
+    /// user's choice name it by.
+    pub id: String,
+    /// Whether a user who never switched it has it on.
+    pub on_by_default: bool,
+    /// The group, by its path from the plugin's tree, such as `["web"]`,
+    /// which one tree of the plugin declares.
+    pub group: Vec<String>,
+    /// The leaves of the group it holds, by name: one or more.
+    pub leaves: Vec<String>,
+    /// Its sentence of the group's summary, such as `Search the web.`
+    pub summary: String,
+    /// Its sentence of the group's index entry, such as `Searches the web.`
+    pub index_entry: String,
 }
 
 /// One command tree of a plugin, and where it goes in the command set every

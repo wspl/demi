@@ -112,6 +112,21 @@ fn page_module(manifest: &Manifest, page: &Page) -> Result<String, Error> {
         quote(manifest.id.as_str())
     )
     .expect("writing to a string");
+    if !manifest.features.is_empty() {
+        push_doc(
+            &mut text,
+            Some("The plugin's features, each with whether a user who never switched it has it on."),
+            0,
+        );
+        let defaults: Map<String, Value> = manifest
+            .features
+            .iter()
+            .map(|feature| (feature.id.clone(), Value::Bool(feature.on_by_default)))
+            .collect();
+        let defaults = serde_json::to_string(&defaults).expect("a JSON value serializes");
+        writeln!(text, "export const FEATURES = {defaults} as const").expect("writing to a string");
+        writeln!(text, "export type Feature = keyof typeof FEATURES").expect("writing to a string");
+    }
     for constant in manifest.streams.iter().flat_map(|stream| &stream.constants) {
         push_doc(&mut text, Some(&constant.description), 0);
         let value = serde_json::to_string(&constant.value).expect("a JSON value serializes");

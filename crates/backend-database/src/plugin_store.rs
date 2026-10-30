@@ -38,6 +38,19 @@ impl PluginStore for ControlService {
         async move { self.set_user_plugin(user, plugin, enabled).await.map_err(StoreError::new) }.boxed_local()
     }
 
+    fn feature_switches(&self, user: UserId) -> Stored<'_, BTreeMap<(String, String), bool>> {
+        async move { self.user_plugin_features(user).await.map_err(StoreError::new) }.boxed_local()
+    }
+
+    fn set_feature_switch(&self, user: UserId, plugin: String, feature: String, enabled: bool) -> Stored<'_, ()> {
+        async move {
+            self.set_user_plugin_feature(user, plugin, feature, enabled)
+                .await
+                .map_err(StoreError::new)
+        }
+        .boxed_local()
+    }
+
     fn value(&self, user: UserId, plugin: String, key: String) -> Stored<'_, Option<PluginValue>> {
         async move { self.plugin_value(user, plugin, key).await.map_err(StoreError::new) }.boxed_local()
     }

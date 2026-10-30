@@ -562,6 +562,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/reply-blocks", post(blocks::facts))
         .route("/plugins/{plugin}/oauth/callback", get(oauth::callback))
         .route("/plugins/{plugin}", put(plugins::switch))
+        .route("/plugins/{plugin}/features/{feature}", put(plugins::switch_feature))
         .route("/instructions", put(instructions::replace))
         .route("/push/key", get(push::key))
         .route(
