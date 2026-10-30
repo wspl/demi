@@ -71,3 +71,22 @@ pub fn decode_records(bytes: &[u8]) -> Result<Vec<KeptRecord>, WireError> {
     }
     Ok(records)
 }
+
+/// The whole records at the start of `bytes`, and where the last of them
+/// ends: a writer that stopped in the middle of a record, as a runner that
+/// crashed does, left the rest.
+pub fn decode_whole_records(bytes: &[u8]) -> (Vec<KeptRecord>, usize) {
+    let mut decoder = rmp_serde::Deserializer::new(std::io::Cursor::new(bytes));
+    let mut records = Vec::new();
+    let mut end = 0;
+    while decoder.position() < bytes.len() as u64 {
+        match KeptRecord::deserialize(&mut decoder) {
+            Ok(record) => {
+                end = decoder.position() as usize;
+                records.push(record);
+            }
+            Err(_) => break,
+        }
+    }
+    (records, end)
+}

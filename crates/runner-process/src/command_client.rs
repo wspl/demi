@@ -10,6 +10,8 @@ use demi_command_sdk::{
 use serde::{Deserialize, Serialize};
 use std::{io, time::Duration};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+use crate::local_socket::connect_returning;
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 pub const ENDPOINT_ENV: &str = "DEMI_RUNNER_ENDPOINT";
@@ -91,18 +93,21 @@ pub struct Stdio<I, O, E> {
 
 /// Input is read only after an explicit pull. Output and connection processing
 /// continue while that read waits, including when the user never types anything.
+/// A runner that is gone is waited for up to `patience`, as a job's command
+/// waits for one that starts again ([`crate::local_socket::RUNNER_RETURN`]).
 pub async fn forward<I, O, E>(
     endpoint: &str,
     request: &LocalInvocation,
     stdio: Stdio<I, O, E>,
     cancel: CancellationToken,
+    patience: Duration,
 ) -> io::Result<Completion>
 where
     I: AsyncRead + Unpin,
     O: AsyncWrite + Unpin,
     E: AsyncWrite + Unpin,
 {
-    let socket = connect(endpoint, &cancel).await?;
+    let socket = connect_returning(endpoint, &cancel, patience).await?;
     let (client, connection) = Client::connect(socket).await.map_err(io::Error::other)?;
     let stop = CancellationToken::new();
     let _stop_guard = stop.clone().drop_guard();
@@ -209,105 +214,3 @@ fn cancelled() -> io::Error {
     io::Error::new(io::ErrorKind::Interrupted, "command cancelled")
 }
 
-/// Either end of a local endpoint's connection.
-pub trait Duplex: AsyncRead + AsyncWrite + Unpin + Send {}
-impl<T: AsyncRead + AsyncWrite + Unpin + Send> Duplex for T {}
-pub type Stream = Box<dyn Duplex>;
-
-/// Waits for as long as the runner runs; a runner that is gone fails at once.
-pub async fn connect(endpoint: &str, cancel: &CancellationToken) -> io::Result<Stream> {
-    tokio::select! {
-        _ = cancel.cancelled() => Err(io::Error::new(io::ErrorKind::Interrupted, "local connection cancelled")),
-        result = connect_inner(endpoint) => result,
-    }
-}
-
-async fn connect_inner(endpoint: &str) -> io::Result<Stream> {
-    #[cfg(unix)]
-    {
-        if !std::path::Path::new(endpoint).is_absolute() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "local socket path must be absolute",
-            ));
-        }
-        let mut backoff = demi_command_sdk::descriptors::Backoff::default();
-        loop {
-            match tokio::net::UnixStream::connect(endpoint).await {
-                Ok(socket) => return Ok(Box::new(socket)),
-                // A full queue of waiting connections refuses the connection
-                // (macOS) or defers it (Linux), and a runner that is gone
-                // refuses it too. Out of open files here, the client waits as
-                // well.
-                Err(error)
-                    if (matches!(
-                        error.kind(),
-                        io::ErrorKind::ConnectionRefused | io::ErrorKind::WouldBlock
-                    ) || demi_command_sdk::descriptors::exhausted(&error))
-                        && liveness(endpoint) != Liveness::Gone =>
-                {
-                    backoff.wait().await;
-                }
-                Err(error) => return Err(error),
-            }
-        }
-    }
-    #[cfg(windows)]
-    {
-        if !endpoint.starts_with(r"\\.\pipe\demi-") {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "invalid local named pipe endpoint",
-            ));
-        }
-        loop {
-            match tokio::net::windows::named_pipe::ClientOptions::new().open(endpoint) {
-                Ok(socket) => return Ok(Box::new(socket)),
-                // ERROR_PIPE_BUSY means the server is preparing another instance.
-                Err(error) if error.raw_os_error() == Some(231) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                }
-                Err(error) => return Err(error),
-            }
-        }
-    }
-}
-
-/// The file beside the socket that the runner keeps locked while it runs.
-///
-/// A refused connection looks the same whether the runner is busy or gone. A
-/// client that is refused therefore checks the lock: it waits while the lock is
-/// held, and fails at once otherwise. The system releases the lock when the
-/// runner exits, even by crashing.
-#[cfg(unix)]
-pub const ALIVE: &str = "ipc.alive";
-
-/// What the runner's lock says about it.
-#[cfg(unix)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Liveness {
-    /// It holds its lock: it runs, and may be too busy to accept.
-    Running,
-    /// Nothing holds the lock, or there is none: it stopped or crashed.
-    Gone,
-    /// The lock cannot be read without an open file; the client waits and
-    /// looks again (`crates/command-sdk/src/descriptors.rs`).
-    Unknown,
-}
-
-/// A refused connection looks the same whether the runner is busy or gone;
-/// only its lock tells them apart.
-#[cfg(unix)]
-fn liveness(endpoint: &str) -> Liveness {
-    let path = std::path::Path::new(endpoint).with_file_name(ALIVE);
-    match std::fs::File::open(path) {
-        Ok(file) => match file.try_lock_shared() {
-            Err(std::fs::TryLockError::WouldBlock) => Liveness::Running,
-            // An unlocked file, or one the system cannot lock, is a crashed
-            // runner's leftover.
-            Ok(()) | Err(std::fs::TryLockError::Error(_)) => Liveness::Gone,
-        },
-        Err(error) if demi_command_sdk::descriptors::exhausted(&error) => Liveness::Unknown,
-        Err(_) => Liveness::Gone,
-    }
-}

@@ -8,14 +8,12 @@
 //! same `kill` signals only the subshell's process and the dev server runs on,
 //! holding its port.
 //!
-//! A background task runs in the runner, so no operating-system process stands
-//! for it:
+//! A background task runs in the job's shell process, so no operating-system
+//! process stands for it:
 //!
 //! - `$!` names it with an id no process ID takes ([`ABOVE_PROCESSES`]), no
-//!   other task of the runner takes and, but by chance, no other runner's,
-//!   and `kill`, `wait` and `jobs -p` take it wherever bash takes a process
-//!   ID. The id is the runner's, so a later command's `kill` reaches a task
-//!   the command that started it left running.
+//!   other task of the job takes and, but by chance, no other job's, and
+//!   `kill`, `wait` and `jobs -p` take it wherever bash takes a process ID.
 //! - `kill` on a task's id stops its shell work at its next step and sends
 //!   `SIGTERM` to every process group it started (`KILL` kills them and the
 //!   rest of its work).
@@ -46,13 +44,13 @@ use tokio_util::sync::CancellationToken;
 
 /// One more than Linux's largest process ID, so that no process takes an id
 /// from here up.
-const ABOVE_PROCESSES: i32 = 4_194_305;
+pub(crate) const ABOVE_PROCESSES: i32 = 4_194_305;
 
-/// The id of this runner's first background task. Every runner of a machine
+/// The id of this process's first background task. Every job's shell process
 /// numbers its tasks, and a script names a file by `$$`, as `/tmp/x.$$`, so
-/// the runners start at places of their own, chosen at random among two
-/// million, a thousand tasks apart; two runners share an id only when they
-/// draw the same place.
+/// the processes start at places of their own, chosen at random among two
+/// million, a thousand tasks apart; two jobs share an id only when they draw
+/// the same place.
 static FIRST_TASK: LazyLock<i32> = LazyLock::new(|| {
     use std::hash::{BuildHasher as _, Hasher as _};
     let place = std::collections::hash_map::RandomState::new().build_hasher().finish() % 2_000_000;
@@ -158,7 +156,7 @@ impl Stop {
     }
 }
 
-/// A background task's entry in the runner's table, which ends it when it
+/// A background task's entry in the process's table, which ends it when it
 /// drops: the task has ended, and `done` says so.
 pub(crate) struct TaskEnd {
     pub(crate) id: i32,
@@ -402,6 +400,13 @@ impl Work {
 
     /// The background task `id` names, if one of the runner's jobs has it, and
     /// the job's work, which a signal to it goes through.
+    /// Signals background task `id` of this process, as `kill` does: none
+    /// when no task of that id runs here.
+    pub(crate) fn signal_task(id: i32, signal: i32) -> Option<io::Result<()>> {
+        let (work, task) = Self::task(id).filter(|(_, task)| !task.done.is_cancelled())?;
+        Some(work.signal(&task, signal, false))
+    }
+
     pub(crate) fn task(id: i32) -> Option<(Arc<Work>, Arc<Stop>)> {
         let tasks = TASKS.lock().expect("the runner's task table is intact");
         let task = tasks.get(&id)?;

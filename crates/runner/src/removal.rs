@@ -229,6 +229,6 @@ pub fn remove(directory: &Path) -> io::Result<Removed> {
             .creation_flags(flags)
             .spawn()
     };
-    crate::detached::start(start)?;
+    demi_runner_process::detached::start(start)?;
     Ok(removed)
 }

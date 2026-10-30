@@ -138,7 +138,7 @@ pub(crate) fn job_builtins(
 }
 
 /// The builtins every job's shell has: brush's, the runner's own in place of
-/// those that would act on the runner's process (`process_builtins`), and
+/// those that would act on the shell's process (`process_builtins`), and
 /// the standard utilities.
 pub(crate) fn registrations()
 -> HashMap<String, builtins::Registration<brush_core::extensions::DefaultShellExtensions>> {

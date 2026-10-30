@@ -1,9 +1,10 @@
-//! The embedded brush shell and the standard utilities, which run in the
-//! runner's process.
+//! The embedded brush shell and the standard utilities, which run in each
+//! job's shell process (`remote`).
 //!
 //! The crate holds:
 //!
 //! - a fresh shell per job;
+//! - the job's shell process, and the runner's end of it (`remote`);
 //! - the builtins that act on a process;
 //! - the declared commands' builtins, which hand each invocation to the handler
 //!   the job supplies;
@@ -11,23 +12,23 @@
 //!
 //! A shell job owns its working directory, environment, IO and asynchronous
 //! work, and carries the command context the backend built for it (the runner
-//! never derives that from the job's environment). Brush runs inside the runner
-//! on a runtime of its own, apart from the control thread. Every in-process
-//! file write passes through the job's scope, which reports what the job
-//! created or modified when it exits (edit tracking).
+//! never derives that from the job's environment). Brush runs in the job's
+//! shell process, on a runtime of its own. Every in-process file write passes
+//! through the job's scope, which reports what the job created or modified
+//! when it exits (edit tracking).
 //!
-//! Cancelling job A releases its work and preserves the runner and job B:
+//! Each job has a process of its own, which outlives the runner, so a runner
+//! that updates or crashes leaves it running, and one shell that fails ends
+//! its own job alone:
 //!
 //! ```text
-//! Runner process
-//! +--------------------------------------------------+
-//! | Job A                    Job B                   |
-//! | +--------------------+   +--------------------+  |
-//! | | Brush execution    |   | Brush execution    |  |
-//! | | Background tasks   |   | Background tasks   |  |
-//! | | IO and child work  |   | IO and child work  |  |
-//! | +--------------------+   +--------------------+  |
-//! +--------------------------------------------------+
+//! Runner process          Job A's shell process   Job B's shell process
+//! +----------------+      +--------------------+  +--------------------+
+//! | Job table      |<---->| Brush execution    |  | Brush execution    |
+//! | RemoteShell    |<--+  | Background tasks   |  | Background tasks   |
+//! +----------------+   |  | IO and child work  |  | IO and child work  |
+//!                      |  +--------------------+  +--------------------+
+//!                      +-------------------------------------^
 //! ```
 //!
 //! # Environment
@@ -43,7 +44,7 @@
 //!
 //! # Utilities
 //!
-//! A utility that writes files or starts programs runs in the runner, so that
+//! A utility that writes files or starts programs runs in the job's shell, so that
 //! its changes are the job's edits, and so do `sh` and `bash`, which are the
 //! job's own shell on every Host (`nested.rs`) so that what they run is
 //! recorded too. Every other utility is the system's own: GNU's on Linux,
@@ -70,6 +71,7 @@ mod job;
 mod nested;
 mod nohup;
 mod process_builtins;
+pub mod remote;
 mod scope;
 mod shebang;
 mod signals;

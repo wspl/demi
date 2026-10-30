@@ -57,7 +57,7 @@ pub use asking::{Answered, Asked, Pending, Reporter, RequestStream};
 pub use client::{Client, CommandInput, CommandOutput};
 pub use exchange::{Exchange, ExchangeError, InputSource, OutputSink};
 pub use launch::{COMMAND_RESIDENT, Launch};
-pub use log::log_to_stderr;
+pub use log::{log_lines_to, log_to_stderr};
 pub use messages::{Messages, MessagesAsk, Told};
 pub use numbers::{Draw, Numbers, NumbersAsk};
 pub use server::{

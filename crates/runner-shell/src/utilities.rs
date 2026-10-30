@@ -1,4 +1,4 @@
-//! The utilities a job runs in the runner, from uutils and the
+//! The utilities a job runs in its shell's process, from uutils and the
 //! GNU-compatible tools vendored beside it ([`UTILITIES`]), and the `sh` and
 //! `bash` that start them (`nested.rs`).
 //!
@@ -7,12 +7,12 @@
 //! 1. Demi's own, on every system: the job's shell, `sh` and `bash`, and every
 //!    utility that can write files or start programs, so that what it writes,
 //!    and what the programs it starts write, are the command's edits, which
-//!    only the runner's own utilities record. [`UTILITIES`] lists them.
+//!    only Demi's own utilities record. [`UTILITIES`] lists them.
 //! 2. Every other utility is the system's own: GNU's on Linux, macOS's on a
 //!    Mac, Git for Windows' on Windows (`crates/runner/src/git.rs`). One the
 //!    Host lacks is missing, as it is on the machine itself.
 //!
-//! A utility that runs in the runner takes macOS's forms on a Mac where GNU's
+//! A utility that runs in the shell's process takes macOS's forms on a Mac where GNU's
 //! refuses them or reads them otherwise (`sed -i ''`, `cp -c`), so that a model
 //! that writes macOS's gets what it meant; elsewhere options, output, messages
 //! and exit statuses are GNU's, in English. Every path is resolved against the
@@ -41,7 +41,7 @@ mod windows;
 /// One utility's entry point: its arguments, the utility's own name first.
 type Entry = fn(Vec<std::ffi::OsString>) -> i32;
 
-/// Every utility a job runs in the runner, by the name a script calls it.
+/// Every utility a job runs in its shell's process, by the name a script calls it.
 pub const UTILITIES: &[(&str, Entry)] = &[
     ("cp", |args| uu_cp::uumain(args.into_iter())),
     ("mv", |args| uu_mv::uumain(args.into_iter())),

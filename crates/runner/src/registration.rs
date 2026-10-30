@@ -231,10 +231,13 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         residents: registry.handle(),
         pipes: pipes.clone(),
     });
-    let server = Server::start(Arc::new(Endpoint {
-        dispatcher: dispatcher.clone(),
-        management: management.clone(),
-    }))
+    let server = Server::start(
+        Arc::new(Endpoint {
+            dispatcher: dispatcher.clone(),
+            management: management.clone(),
+        }),
+        &state.root,
+    )
     .await?;
     // A root command of the runner's name would run the runner, and one of a
     // builtin's name the builtin.
@@ -281,8 +284,13 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         outcome = reconnect(&registered, &mut kept) => outcome,
         never = revocation_window(&registered) => match never {},
     };
-    // A runner that ends loses its jobs (`crates/runner/src/connection/kept.rs`).
-    kept.close().await;
+    // A runner that updates leaves its jobs to its successor; one that ends
+    // otherwise stops them (`crates/runner/src/connection/kept.rs`).
+    if matches!(outcome, Ok(Ending::Replaced(_))) {
+        kept.leave().await;
+    } else {
+        kept.close().await;
+    }
     let management = &registered.management;
     // A drain, and a removal's answer to its `uninstall`, end before the
     // local endpoint does.
@@ -375,9 +383,8 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
                     .update(registered.backend.url(), token.as_ref(), &update, &management.stop)
                     .await
                 {
-                    // The new runner cannot take the jobs over: they are
-                    // stopped, and the backend learns from its hello that
-                    // they were lost to the update (`crates/runner/src/update.rs`).
+                    // The new runner takes the jobs over, which run on
+                    // meanwhile (`crates/runner/src/update.rs`).
                     Ok(successor) => {
                         tracing::info!(
                             event = "runner_update.ended",
@@ -387,7 +394,6 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
                             ms = updating.elapsed().as_millis() as u64,
                             "the runner's update is in place"
                         );
-                        kept.stop_jobs(registered).await;
                         return Ok(Ending::Replaced(successor));
                     }
                     Err(error) => {

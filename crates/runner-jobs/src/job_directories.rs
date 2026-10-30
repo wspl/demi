@@ -15,8 +15,10 @@
 //! - A connection loss keeps every directory for the next connection, with the
 //!   job's exit once it ended. A directory whose job the backend has no command
 //!   for is removed with the job.
-//! - A runner removes every directory in its job root when it starts: what a
-//!   runner that ended without cleanup left.
+//! - A runner that starts takes over the directories of the jobs whose
+//!   shells still run (`crate::tasks::JobTable::reattach`), and removes every
+//!   other directory in its job root: what a runner that ended without
+//!   cleanup left.
 //!
 //! So the Host keeps nothing of a command once it has ended, which is why a
 //! conversation release has no files to remove.
@@ -32,7 +34,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::job_media::MEDIA_DIRECTORY;
-use crate::kept_output::{KeptOutput, KeptReader};
+use crate::kept_output::{KeptOutput, KeptReader, Reopened};
 
 /// The job directories under one installation's job root.
 pub struct JobDirectories {
@@ -115,17 +117,66 @@ impl Drop for Running {
 }
 
 impl JobDirectories {
-    /// The directories under `root`, the installation's job root, which
-    /// holds none when this returns: a directory there is what a connection
-    /// or a runner that ended without its cleanup left, and nothing reads it
-    /// any more.
-    pub async fn open(root: PathBuf) -> Arc<Self> {
+    /// The directories under `root`, the installation's job root, and the
+    /// directories there of the jobs a runner before this one started,
+    /// which a runner that takes them over reopens ([`Self::reattach`]) or
+    /// removes ([`Self::remove_left`]). Every other directory there is what
+    /// a connection or a runner that ended without its cleanup left, and
+    /// goes.
+    pub async fn open(root: PathBuf) -> (Arc<Self>, Vec<PathBuf>) {
         let directories = Arc::new(Self {
             root,
             jobs: Mutex::new(HashMap::new()),
         });
-        directories.clear().await;
-        directories
+        let left = directories.clear().await;
+        (directories, left)
+    }
+
+    /// Takes over `job`'s directory at `path`, which a runner before this
+    /// one made, with its kept output reopened to write on; it answers each
+    /// stream's length and last `tail` bytes.
+    pub async fn reattach(
+        self: &Arc<Self>,
+        job: &str,
+        path: PathBuf,
+        tail: usize,
+    ) -> io::Result<(JobDirectory, Reopened)> {
+        let (output, reopened) = KeptOutput::open(path.join("output"), tail).await?;
+        let lengths = Arc::new(StreamLengths::default());
+        lengths.set(wire::OutputLengths {
+            stdout_bytes: reopened.lengths[0],
+            stderr_bytes: reopened.lengths[1],
+        });
+        let media = Arc::new(Mutex::new(Vec::new()));
+        self.lock().insert(
+            job.to_owned(),
+            Held {
+                path: path.clone(),
+                output: output.reader(),
+                lengths: lengths.clone(),
+                running: true,
+                media: media.clone(),
+                exit: None,
+                outliving: None,
+            },
+        );
+        let directory = JobDirectory {
+            running: Running {
+                directories: self.clone(),
+                job: job.to_owned(),
+            },
+            path,
+            output,
+            lengths,
+            media,
+        };
+        Ok((directory, reopened))
+    }
+
+    /// Removes the directory at `path` a runner before this one left, whose
+    /// job no runner takes over.
+    pub async fn remove_left(&self, path: PathBuf) {
+        remove(path).await;
     }
 
     /// The installation's job root, where the edit lock lives too.
@@ -294,8 +345,10 @@ impl JobDirectories {
     }
 
     /// Removes every directory under the root but those of the jobs that
-    /// run: at the runner's start, what an earlier runner left.
-    async fn clear(&self) {
+    /// run, and those of the jobs whose start a runner recorded
+    /// (`crate::tasks::START_RECORD`), which it answers: at the runner's
+    /// start, what an earlier runner left.
+    async fn clear(&self) -> Vec<PathBuf> {
         let running: Vec<PathBuf> = {
             let mut jobs = self.lock();
             jobs.retain(|_, held| held.running);
@@ -303,28 +356,33 @@ impl JobDirectories {
         };
         let root = self.root.clone();
         let cleared = tokio::task::spawn_blocking(move || {
+            let mut left = Vec::new();
             let entries = match std::fs::read_dir(&root) {
                 Ok(entries) => entries,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => return,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => return left,
                 Err(error) => {
                     tracing::warn!(event = "job_directories.failed", step = "list", directory = %root.display(), %error, "the job directories could not be listed");
-                    return;
+                    return left;
                 }
             };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if entry.file_type().is_ok_and(|kind| kind.is_dir())
-                    && !running.contains(&path)
-                    && let Err(error) = std::fs::remove_dir_all(&path)
-                {
+                if !entry.file_type().is_ok_and(|kind| kind.is_dir()) || running.contains(&path) {
+                    continue;
+                }
+                if path.join(crate::tasks::START_RECORD).is_file() {
+                    left.push(path);
+                } else if let Err(error) = std::fs::remove_dir_all(&path) {
                     tracing::warn!(event = "job_directories.failed", step = "remove", directory = %path.display(), %error, "a job directory was not removed");
                 }
             }
+            left
         })
         .await;
-        if let Err(error) = cleared {
+        cleared.unwrap_or_else(|error| {
             tracing::warn!(event = "job_directories.failed", step = "clear", %error, "the job directories were not cleared");
-        }
+            Vec::new()
+        })
     }
 }
 

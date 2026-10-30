@@ -26,6 +26,8 @@ process-wrap.workspace = true
 reqwest = { workspace = true, features = ["http2", "rustls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
+# A private local socket's directory (`src/local_socket.rs`).
+tempfile = "3"
 tokio.workspace = true
 tokio-util.workspace = true
 # Stream pipes, which the runner sends over a WebSocket (`crates/runner-host/src/lib.rs`).
@@ -57,4 +59,6 @@ procfs = "0.18"
 mach2 = "0.7"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+# A private local socket's pipe, which only its account opens (`src/local_socket.rs`).
+uuid = { version = "1", features = ["v4"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }

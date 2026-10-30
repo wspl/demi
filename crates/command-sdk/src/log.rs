@@ -18,15 +18,30 @@ use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt as _, util::S
 /// become lines on standard error, each naming `resident` in its fields. Every
 /// resident's `main` calls it once, before it serves.
 pub fn log_to_stderr(resident: &'static str) {
+    log_lines_to("resident", resident.to_owned(), |bytes| {
+        // A line that cannot be written has nowhere to say so: the standard
+        // error is the log's only way out. One write under the lock, so that
+        // threads' lines never interleave.
+        let _ = std::io::stderr().lock().write_all(bytes);
+    });
+}
+
+/// Installs a `tracing` subscriber whose events of `info` and above become
+/// lines for the runner, each with `field` set to `value`, handed to `write`
+/// as bytes with their newline. A process the runner reads other than by its
+/// standard error, as a job's shell does
+/// (`crates/runner-shell/src/remote/mod.rs`), sends them its own way.
+pub fn log_lines_to(
+    field: &'static str,
+    value: String,
+    write: impl Fn(&[u8]) + Send + Sync + 'static,
+) {
     let layer = LineLayer::new(LogOrigin::Runner, move |mut line| {
-        line.fields.insert("resident".into(), resident.into());
-        // A line that cannot be encoded or written has nowhere to say so: the
-        // standard error is the log's only way out.
-        let Some(bytes) = encode(&mut line) else {
-            return;
-        };
-        // One write under the lock, so that threads' lines never interleave.
-        let _ = std::io::stderr().lock().write_all(&bytes);
+        line.fields.insert(field.into(), value.clone().into());
+        // A line that cannot be encoded has nowhere to say so.
+        if let Some(bytes) = encode(&mut line) {
+            write(&bytes);
+        }
     });
     tracing_subscriber::registry()
         .with(layer.with_filter(LevelFilter::INFO))

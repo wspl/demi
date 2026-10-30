@@ -80,6 +80,38 @@ impl JobMedia {
         }
     }
 
+    /// The media of a job a runner before this one started, which keep their
+    /// numbers in `directory`: the next takes the number after the highest,
+    /// and counts against the bounds with those kept
+    /// (`crates/runner-shell/src/remote/mod.rs`).
+    pub fn restore(
+        job_id: String,
+        directory: PathBuf,
+        arrivals: mpsc::UnboundedSender<Arrival>,
+    ) -> io::Result<Self> {
+        let mut counts = Counts::default();
+        match std::fs::read_dir(&directory) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    let Some(number) = entry.file_name().to_str().and_then(|name| name.parse::<u32>().ok()) else {
+                        continue;
+                    };
+                    counts.arrived = counts.arrived.max(number);
+                    counts.kept += 1;
+                    counts.bytes += entry.metadata()?.len();
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        Ok(Self {
+            job_id,
+            directory,
+            arrivals,
+            counts: Mutex::new(counts),
+        })
+    }
+
     /// Takes `bytes`, a checked medium that `facts` describe, as the job's next
     /// medium.
     ///

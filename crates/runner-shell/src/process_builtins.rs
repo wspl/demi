@@ -24,10 +24,10 @@
 //! mask of the shell the user ran it in, so a file the agent makes gets the
 //! mode the user's own programs would give it.
 //!
-//! That mask still applies beneath a job's `umask` inside the runner: there a
-//! job's mask can only take permissions away. A job's limits apply to its
-//! processes only; its builtins and utilities run in the runner with the
-//! runner's limits.
+//! That mask still applies beneath a job's `umask` inside its shell's process,
+//! which has the runner's: there a job's mask can only take permissions away.
+//! A job's limits apply to its processes only; its builtins and utilities run
+//! in the shell's process with the runner's limits.
 //!
 //! # Windows
 //!
@@ -620,13 +620,22 @@ fn kill(
                     writeln!(stderr, "kill: `{target}': not a pid or valid job spec")?;
                     return Ok(ExecutionResult::general_error());
                 };
-                if runner(pid) {
-                    return refused(&context, "a job cannot signal the runner it runs in");
+                if own_shell(pid) {
+                    return refused(&context, "a job cannot signal the shell it runs in");
                 }
                 // A task's id stands for the task with a minus sign too,
                 // as a process group's does.
                 if Work::task(pid.saturating_abs()).is_some() {
                     Some(pid.saturating_abs())
+                } else if pid.saturating_abs() >= crate::work::ABOVE_PROCESSES {
+                    // A task another command started runs in that job's
+                    // shell, which the runner finds.
+                    let id = pid.saturating_abs();
+                    if crate::remote::signal_peer_task(id, signal).await != Some(true) {
+                        writeln!(stderr, "kill: ({id}) - No such process")?;
+                        return Ok(ExecutionResult::general_error());
+                    }
+                    None
                 } else {
                     let sent = demi_runner_process::process::signal_target(pid, signal);
                     if let Err(error) = sent {
@@ -682,20 +691,20 @@ fn kill(
     })
 }
 
-/// Whether `kill`'s `pid` reaches the runner: `$$` is its process, 0 and
-/// -1 its process group and every process, and the negative of its
-/// group ID its group.
+/// Whether `kill`'s `pid` reaches the job's own shell process: 0 and -1
+/// stand for its process group and every process, and the negative of its
+/// group ID for its group.
 #[cfg(unix)]
-fn runner(pid: i32) -> bool {
+fn own_shell(pid: i32) -> bool {
     let process = rustix::process::getpid().as_raw_nonzero().get();
     let group = rustix::process::getpgrp().as_raw_nonzero().get();
     pid == 0 || pid == -1 || pid == process || pid == -group
 }
 
-/// Whether `kill`'s `pid` reaches the runner: `$$` is its process, and 0
-/// and -1 stand for its process group and every process, as on Unix.
+/// Whether `kill`'s `pid` reaches the job's own shell process: 0 and -1
+/// stand for its process group and every process, as on Unix.
 #[cfg(windows)]
-fn runner(pid: i32) -> bool {
+fn own_shell(pid: i32) -> bool {
     pid == 0 || pid == -1 || u32::try_from(pid).is_ok_and(|pid| pid == std::process::id())
 }
 

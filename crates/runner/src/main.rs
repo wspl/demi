@@ -24,10 +24,10 @@
 //!   control thread: reads the backend connection, routes each message,
 //!   drives pipes and streams; only waits on the network, never blocks
 //!       |                      |                       |
-//!   blocking threads       shell runtime            peers thread
-//!   (runner-host: files,   (runner-shell: a thread  (runner-direct)
-//!   git, hashing; a few    per interpreter unit
-//!   at a time)             and utility)
+//!   blocking threads       jobs' shell processes    peers thread
+//!   (runner-host: files,   (runner-shell: one per   (runner-direct)
+//!   git, hashing; a few    job, a thread per
+//!   at a time)             interpreter unit)
 //! ```
 //!
 //! The control runtime is single-threaded because its state belongs to one
@@ -40,11 +40,12 @@
 //! CPU and blocking work leave the thread through `Admission`, whose semaphores
 //! are the load limits.
 //!
-//! Shell work has its own runtime because each interpreter unit and utility
-//! needs an OS thread: builtins and utilities do synchronous IO, utilities keep
-//! state in thread-locals, and pipeline stages run at once. A stage blocked
-//! writing a full pipe waits for a sibling, so in one bounded pool shared with
-//! short control work a full pool would deadlock them.
+//! Shell work runs in a process per job, `demi-runner shell`, which outlives
+//! the runner (`crates/runner-shell/src/remote/mod.rs`). There each interpreter
+//! unit and utility has an OS thread: builtins and utilities do synchronous IO,
+//! utilities keep state in thread-locals, and pipeline stages run at once. A
+//! stage blocked writing a full pipe waits for a sibling, so in one bounded
+//! pool a full pool would deadlock them.
 //!
 //! A command alias serves one invocation on a current-thread runtime.
 //!
@@ -98,8 +99,6 @@ mod autostart;
 mod connection;
 mod console;
 mod environment;
-#[cfg(windows)]
-mod detached;
 mod direct;
 mod exposure;
 mod forward;
@@ -118,6 +117,7 @@ use demi_runner_jobs::scratch::Scratch;
 use demi_command_protocol::{LocalInvocation, host_target};
 use demi_runner_process::{
     command_client::{self, RAW, RawCommand, Stdio},
+    local_socket,
     stdio::{self, standard_file},
 };
 use demi_runner_process::backend::Backend;
@@ -126,7 +126,7 @@ use demi_runner_protocol::{
     values::BackendUrl,
     wire::{self, RunnerPlatform},
 };
-use demi_runner_shell::ShellRuntime;
+use demi_runner_shell::remote::RemoteShell;
 use management::Revocation;
 use registration::{Ending, Options};
 use state::RunnerState;
@@ -171,7 +171,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
             stdin: tokio::fs::File::from_std(stdin),
             stdout: tokio::fs::File::from_std(standard_file(1)?),
             stderr: tokio::fs::File::from_std(standard_file(2)?),
-        }, stop.clone()) => result.map(|result| result.exit_code),
+        }, stop.clone(), local_socket::RUNNER_RETURN) => result.map(|result| result.exit_code),
         result = signal() => {
             result?;
             stop.cancel();
@@ -209,6 +209,9 @@ async fn manage(
             stderr: tokio::fs::File::from_std(standard_file(2)?),
         },
         CancellationToken::new(),
+        // An installer asks whether a runner runs, which one that is gone
+        // answers at once.
+        std::time::Duration::ZERO,
     )
     .await?;
     if completion.exit_code != 0 {
@@ -337,6 +340,14 @@ enum Action {
     /// the login shell a starting runner reads the device environment from.
     #[command(name = environment::PRINT, hide = true)]
     Environment { mark: String },
+    /// Runs one job's shell, which the runner starts for each job and which
+    /// outlives it (`crates/runner-shell/src/remote/mod.rs`).
+    #[command(hide = true)]
+    Shell {
+        /// The job's id, which the shell's log lines name.
+        #[arg(long)]
+        job: String,
+    },
 }
 
 /// Which installation a command acts on.
@@ -354,7 +365,7 @@ struct Installation {
     release: Option<String>,
 }
 
-async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
+async fn runner(cli: Cli) -> io::Result<u8> {
     let (installation, boot_path, name, managed, artifacts, log, removing) = match cli.action {
         Action::Run {
             installation,
@@ -405,6 +416,8 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             environment::print(&mark)?;
             return Ok(0);
         }
+        // `main` serves a shell before it builds the runner's runtimes.
+        Action::Shell { .. } => return Err(io::Error::other("a shell runs on its own runtime")),
         #[cfg(windows)]
         Action::Git => {
             return Ok(match git::find() {
@@ -590,6 +603,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     } else {
         (directory.join("log"), directory.join("jobs"))
     };
+    // The records of the jobs' shells lie beside the job root, which a Cloud
+    // keeps on its system layer too.
+    let shell = Arc::new(RemoteShell::new(executable.clone(), jobs.with_file_name("shells")));
     let (log, layer) = host_log::open(log_directory).await?;
     tracing_subscriber::registry()
         .with(layer.with_filter(LevelFilter::INFO))
@@ -649,7 +665,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         }),
         directory,
         jobs,
-        executable,
+        executable: executable.clone(),
         cwd: std::env::current_dir()?,
         env,
         runner,
@@ -659,7 +675,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         } else {
             vec![]
         },
-        shell: Arc::new(shell),
+        shell,
         // One that `uninstall` runs only asks for the revocation, and never
         // updates itself.
         installed: installed.filter(|_| !removing),
@@ -921,17 +937,20 @@ fn main() {
     let cli = (name == PROGRAM).then(<Cli as clap::Parser>::parse);
     // Shutdown leaves the runtimes' remaining threads to the process exit
     // below; runner shutdown has joined its owned jobs and residents already.
-    let result = if let Some(cli) = cli {
+    let result = if let Some(Cli {
+        action: Action::Shell { job },
+    }) = cli
+    {
+        demi_runner_shell::remote::serve(job, demi_shared_artifacts::BUILD_VERSION.to_owned())
+    } else if let Some(cli) = cli {
         // The control thread's state belongs to one registration, so it runs
-        // alone; shell jobs have a runtime of their own.
-        let shell = ShellRuntime::build().expect("shell runtime");
+        // alone; each job's shell runs in a process of its own.
         let control = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build_local(tokio::runtime::LocalOptions::default())
             .expect("control runtime");
-        let result = control.block_on(runner(cli, ShellRuntime::new(&shell)));
+        let result = control.block_on(runner(cli));
         control.shutdown_background();
-        shell.shutdown_background();
         result
     } else {
         // A command alias serves one invocation

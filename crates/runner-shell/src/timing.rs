@@ -7,7 +7,7 @@ use brush_core::execution_host::{ProcessorTime, Timing};
 
 /// The line a report adds when the pipeline ran a builtin or a standard
 /// utility, whose work the measure leaves out.
-const UNCOUNTED: &str = "(work inside the runner not counted)";
+const UNCOUNTED: &str = "(work inside the shell not counted)";
 
 /// What one timed pipeline has run so far.
 #[derive(Default)]
@@ -48,7 +48,7 @@ impl Timings {
         }
     }
 
-    /// Notes a builtin or standard utility, which runs inside the runner.
+    /// Notes a builtin or standard utility, which runs inside the shell's process.
     pub(crate) fn builtin_started(&self) {
         for totals in self.0.lock().unwrap_or_else(PoisonError::into_inner).iter() {
             totals.lock().unwrap_or_else(PoisonError::into_inner).in_runner = true;
