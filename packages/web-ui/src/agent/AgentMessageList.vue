@@ -676,10 +676,13 @@ function blocksWithinReach(anchor: string): number {
 
 // Composer or task-control growth covers the tail, and a reader at the bottom
 // stays there. `bottomOffset` includes the permanent control row, even when its
-// scroll button is hidden.
+// scroll button is hidden. A list not placed yet places itself, at its end or
+// where the reader left it, by the clearance it then has.
 watch(
   () => props.bottomOffset,
   () => {
+    if (!placed.value)
+      return
     const wasAtBottom = isAtBottom.value
     nextTick(() => {
       scrollOffset.value = viewTop()

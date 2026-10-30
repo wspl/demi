@@ -117,12 +117,15 @@ export const draftSchema = z.object({
   files: z.array(z.union([fileSchema, remoteSchema])),
   scroll: z
     .object({
-      anchor: z.object({
-        blockId: z.string(),
-        anchorIndex: z.number(),
-        offsetPx: z.number(),
-        scrollTop: z.number(),
-      }),
+      /** Null when the reader followed the end. */
+      anchor: z
+        .object({
+          blockId: z.string(),
+          anchorIndex: z.number(),
+          offsetPx: z.number(),
+          scrollTop: z.number(),
+        })
+        .nullable(),
       heightCache: z.map(z.string(), z.number()),
     })
     .nullable(),
