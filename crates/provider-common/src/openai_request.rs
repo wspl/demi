@@ -5,8 +5,7 @@
 //!
 //! - the Responses input, as the OpenAI API and the Codex backend each want a
 //!   transcript replayed;
-//! - the Chat Completions messages of OpenAI-compatible endpoints and the Grok
-//!   Build proxy;
+//! - the Chat Completions messages of OpenAI-compatible endpoints;
 //! - the fields both formats spell alike.
 //!
 //! Each vendor's differences are a dialect, stated where the vendor's provider
@@ -577,19 +576,6 @@ pub struct ChatDialect {
     ///
     /// DeepSeek's thinking mode requires it; OpenAI refuses the field.
     pub reasoning_content: bool,
-    pub media: ChatMedia,
-}
-
-/// What the endpoint reads besides text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChatMedia {
-    /// Images and videos as image URLs, PDFs as files, and media a tool
-    /// returned in a user message after the tool's output.
-    Native,
-    /// Images only: a video becomes a placeholder that names it, a PDF is
-    /// left to its attachment tag, and a tool's media to its output's
-    /// placeholders.
-    Images,
 }
 
 /// The transcript as Chat Completions messages, in `dialect`: a system
@@ -612,7 +598,7 @@ pub fn chat_messages<'a>(
             InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
                 turn.flush(&mut messages, dialect);
                 messages.push(ChatMessage::User {
-                    content: chat_user_content(content, dialect.media),
+                    content: chat_user_content(content),
                 });
             }
             InferenceItem::AssistantText { text, .. } => {
@@ -643,9 +629,7 @@ pub fn chat_messages<'a>(
                     tool_call_id: tool_use_id,
                     content: tool_output_text(output),
                 });
-                if dialect.media == ChatMedia::Native {
-                    push_tool_media(&mut messages, tool_use_id, output);
-                }
+                push_tool_media(&mut messages, tool_use_id, output);
             }
             InferenceItem::AssistantThinking { text, .. } => {
                 if dialect.reasoning_content {
@@ -712,32 +696,19 @@ impl<'a> AssistantTurn<'a> {
 
 /// A user message's content as Chat Completions parts, as plain text when
 /// every part is text.
-fn chat_user_content(content: &[UserPart], media: ChatMedia) -> ChatContent<'_> {
+fn chat_user_content(content: &[UserPart]) -> ChatContent<'_> {
     let mut parts = Vec::new();
     for part in content {
         match part {
             UserPart::Text(text) => parts.push(ChatPart::Text {
                 text: Cow::Borrowed(text),
             }),
-            UserPart::Document { bytes, file_name } => {
-                if media == ChatMedia::Native {
-                    parts.push(ChatPart::File {
-                        file: FileData {
-                            filename: file_name,
-                            file_data: data_url(bytes),
-                        },
-                    });
-                }
-            }
-            UserPart::Video(medium) if media == ChatMedia::Images => {
-                let named = match medium {
-                    Medium::Url(url) => url,
-                    Medium::Bytes(bytes) => &bytes.media_type,
-                };
-                parts.push(ChatPart::Text {
-                    text: Cow::Owned(format!("[video:{named}]")),
-                });
-            }
+            UserPart::Document { bytes, file_name } => parts.push(ChatPart::File {
+                file: FileData {
+                    filename: file_name,
+                    file_data: data_url(bytes),
+                },
+            }),
             UserPart::Image(medium) | UserPart::Video(medium) => {
                 parts.push(ChatPart::ImageUrl {
                     image_url: ImageUrl {

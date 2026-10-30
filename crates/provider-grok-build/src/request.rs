@@ -1,38 +1,48 @@
-//! What a Grok Build request sends: the Chat Completions body as the chat
-//! proxy takes it, and the headers the Grok CLI identifies itself and its
-//! session with (`crates/shared-types/src/model.rs`).
+//! What a Grok Build request sends: the Responses body as the chat proxy takes
+//! it, and the headers the Grok CLI identifies itself and its session with
+//! (`crates/shared-types/src/model.rs`).
 
 use demi_provider_common::{
     InferenceRequest, json_body,
     openai_request::{
-        ChatDialect, ChatMedia, ChatMessage, ChatTool, chat_messages, reasoning_effort,
+        AssistantReplay, InputItem, Reasoning, ReasoningReplay, ResponsesDialect, ResponsesTool,
+        SummaryOff, ToolMedia, responses_input, responses_reasoning,
     },
 };
+use demi_shared_types::is_blank;
 use http::{
     HeaderMap, HeaderValue,
     header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
 };
 use serde::Serialize;
 
-use crate::{auth::Credentials, releases::GrokReleases};
+use crate::{SIGNATURE_TAG, auth::Credentials, releases::GrokReleases};
 
-/// The JSON body of `request`. The proxy reads images but no PDFs or
-/// video, and takes no output limit or service tier.
+/// The JSON body of `request`. The proxy reads images, in a message and in a
+/// tool's output, but no PDFs or video, and takes no output limit or service
+/// tier.
 pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
-    let dialect = ChatDialect {
-        reasoning_content: false,
-        media: ChatMedia::Images,
+    let dialect = ResponsesDialect {
+        signature_tag: SIGNATURE_TAG,
+        assistant: AssistantReplay::Minimal,
+        reasoning: ReasoningReplay::Replayable,
+        tool_media: ToolMedia::Inline,
     };
+    let has_tools = !request.tools.is_empty();
     let body = Body {
         model: &request.model_id,
-        messages: chat_messages(&request.system_prompt, &request.items, dialect),
+        input: responses_input(&request.items, &dialect),
         stream: true,
-        stream_options: StreamOptions {
-            include_usage: true,
-        },
-        tools: request.tools.iter().map(ChatTool::from).collect(),
-        tool_choice: (!request.tools.is_empty()).then_some("auto"),
-        reasoning_effort: reasoning_effort(request.thinking.as_ref()),
+        store: false,
+        include: ["reasoning.encrypted_content"],
+        instructions: (!is_blank(&request.system_prompt)).then_some(request.system_prompt.as_str()),
+        tools: request
+            .tools
+            .iter()
+            .map(|tool| ResponsesTool::new(tool, false))
+            .collect(),
+        tool_choice: has_tools.then_some("auto"),
+        reasoning: responses_reasoning(request.thinking.as_ref(), SummaryOff::Omitted),
     };
     json_body(&body)
 }
@@ -40,21 +50,19 @@ pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
 #[derive(Serialize)]
 struct Body<'a> {
     model: &'a str,
-    messages: Vec<ChatMessage<'a>>,
+    input: Vec<InputItem<'a>>,
     stream: bool,
-    /// The last chunk carries the request's usage.
-    stream_options: StreamOptions,
+    /// Stateless: every request carries its whole transcript.
+    store: bool,
+    include: [&'static str; 1],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instructions: Option<&'a str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ChatTool<'a>>,
+    tools: Vec<ResponsesTool<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct StreamOptions {
-    include_usage: bool,
+    reasoning: Option<Reasoning<'a>>,
 }
 
 /// The headers every request of the account carries: its session and the

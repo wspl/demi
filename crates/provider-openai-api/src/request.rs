@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use demi_provider_common::{
     InferenceRequest, json_body,
     openai_request::{
-        AssistantReplay, ChatDialect, ChatMedia, ChatMessage, ChatTool, InputItem, Reasoning,
+        AssistantReplay, ChatDialect, ChatMessage, ChatTool, InputItem, Reasoning,
         ReasoningReplay, ResponsesDialect, ResponsesTool, SummaryOff, ToolMedia, chat_messages,
         PromptCacheOptions, prompt_cache_key, reasoning_effort, responses_input, responses_reasoning,
     },
@@ -110,7 +110,6 @@ pub(crate) fn chat_completions<'a>(
 ) -> Vec<u8> {
     let dialect = ChatDialect {
         reasoning_content: policy.pass_back_reasoning_content,
-        media: ChatMedia::Native,
     };
     let body = ChatBody {
         model: &request.model_id,

@@ -1,6 +1,6 @@
 //! The OpenAI Chat Completions stream as Demi reads it, shared by every
-//! provider that speaks it (OpenAI-compatible endpoints and the Grok Build
-//! proxy), and its mapping onto a run's events.
+//! provider that speaks it (OpenAI-compatible endpoints), and its mapping onto
+//! a run's events.
 //!
 //! A chunk carries no `type` tag, so there is nothing to skip: a malformed
 //! chunk is a protocol failure that names the field.
@@ -51,8 +51,8 @@ pub struct Choice {
 pub struct ChoiceDelta {
     #[serde(default)]
     pub content: Option<String>,
-    /// Reasoning that compatible vendors, such as DeepSeek and Grok Build,
-    /// stream beside the answer.
+    /// Reasoning that compatible vendors, such as DeepSeek, stream beside the
+    /// answer.
     #[serde(default)]
     pub reasoning_content: Option<String>,
     #[serde(default)]
