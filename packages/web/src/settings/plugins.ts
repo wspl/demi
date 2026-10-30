@@ -45,19 +45,11 @@ export const usePluginSettings = defineStore('plugin-settings', () => {
   }
 
   function switchFeature(id: string, feature: string, enabled: boolean): Promise<void> {
-    // A state that already has the choice is answered as it is, so the change
-    // leaves once a read shows it, whichever came first, the read or the answer.
-    const change = product.change('plugins', (state) => {
-      const plugins = known(state.plugins, 'plugins')
-      if (plugins.find((plugin) => plugin.id === id)?.features[feature] === enabled) {
-        return state
-      }
-      return withPart(state, {
-        type: 'plugins',
-        plugins: plugins.map((plugin) =>
-          plugin.id === id ? { ...plugin, features: { ...plugin.features, [feature]: enabled } } : plugin),
-      })
-    })
+    const change = product.change('plugins', (state) => withPart(state, {
+      type: 'plugins',
+      plugins: known(state.plugins, 'plugins').map((plugin) =>
+        plugin.id === id ? { ...plugin, features: { ...plugin.features, [feature]: enabled } } : plugin),
+    }))
     return writes
       .run(id, async () => {
         change.send()
