@@ -15,7 +15,7 @@ use futures_util::{StreamExt, stream::FuturesUnordered};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -42,7 +42,7 @@ pub struct ExecutionContext {
     /// The media types the job may show the model, as the backend gave
     /// them; none for a job whose media reach no model.
     pub viewable: Option<Viewable>,
-    aliases: tempfile::TempDir,
+    aliases: Aliases,
     /// How many leases of the context are held (`ContextLease`).
     leased: AtomicUsize,
     /// Whether the job has ended and only what it left running holds the
@@ -86,13 +86,55 @@ impl ExecutionContext {
         })
     }
 
+    /// The context a runner before this one made for `job_id`, whose id and
+    /// alias directory the job's processes still name, taken over with the
+    /// job (`crates/runner-shell/src/remote/mod.rs`).
+    pub fn restore(
+        id: String,
+        job_id: String,
+        command: CommandContext,
+        manifest: Arc<Manifest>,
+        edits: EditContext,
+        media: Arc<JobMedia>,
+        viewable: Option<Viewable>,
+        connection: ConnectionHandle,
+        aliases: PathBuf,
+    ) -> Self {
+        Self {
+            id,
+            job_id,
+            command,
+            manifest,
+            cancel: CancellationToken::new(),
+            edits,
+            connection,
+            media,
+            viewable,
+            aliases: Aliases::new(aliases),
+            leased: AtomicUsize::new(0),
+            ended: AtomicBool::new(false),
+        }
+    }
+
+    /// The directory of the context's aliases, which the job's `PATH` names
+    /// first.
+    pub fn aliases(&self) -> &Path {
+        &self.aliases.path
+    }
+
+    /// The runner leaves the context's job to the runner that starts next,
+    /// which makes the context again: its alias directory stays.
+    pub fn leave(&self) {
+        self.aliases.kept.store(true, Ordering::SeqCst);
+    }
+
     pub fn environment(
         &self,
         endpoint: &str,
         home: &str,
         path: Option<&str>,
     ) -> io::Result<BTreeMap<String, String>> {
-        let mut paths = vec![self.aliases.path().to_owned()];
+        let mut paths = vec![self.aliases.path.clone()];
         if let Some(path) = path {
             paths.extend(std::env::split_paths(path));
         }
@@ -231,6 +273,14 @@ impl ContextTable {
     }
 
     /// Makes `context` live; a job has at most one.
+    /// The runner leaves every context's job to the next runner: each keeps
+    /// what its job's processes still name.
+    pub fn leave(&self) {
+        for context in self.index.borrow().values() {
+            context.leave();
+        }
+    }
+
     pub fn insert(
         &mut self,
         context: Arc<ExecutionContext>,
@@ -485,11 +535,35 @@ pub async fn leases(manifest: &Manifest, residents: &ResidentHandle) -> PackageL
 
 /// A private directory with one alias of the runner per root command, made
 /// in one blocking call, off the control thread.
+/// A context's directory of aliases, which goes with the context unless the
+/// runner left the context's job to the next.
+struct Aliases {
+    path: PathBuf,
+    kept: AtomicBool,
+}
+
+impl Aliases {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            kept: AtomicBool::new(false),
+        }
+    }
+}
+
+impl Drop for Aliases {
+    fn drop(&mut self) {
+        if !self.kept.load(Ordering::SeqCst) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
 async fn aliases(
     directory: PathBuf,
     executable: PathBuf,
     roots: Vec<String>,
-) -> io::Result<tempfile::TempDir> {
+) -> io::Result<Aliases> {
     tokio::task::spawn_blocking(move || {
         let mut builder = tempfile::Builder::new();
         builder.prefix("client-");
@@ -498,13 +572,15 @@ async fn aliases(
             use std::os::unix::fs::PermissionsExt;
             builder.permissions(std::fs::Permissions::from_mode(0o700));
         }
-        let aliases = builder.tempdir_in(&directory)?;
+        // Kept until the context's own drop, which a runner that takes the
+        // job over makes again (`ExecutionContext::restore`).
+        let aliases = Aliases::new(builder.tempdir_in(&directory)?.keep());
         for root in roots {
             #[cfg(unix)]
-            std::os::unix::fs::symlink(&executable, aliases.path().join(root))?;
+            std::os::unix::fs::symlink(&executable, aliases.path.join(root))?;
             #[cfg(windows)]
             {
-                let destination = aliases.path().join(format!("{root}.exe"));
+                let destination = aliases.path.join(format!("{root}.exe"));
                 match std::fs::hard_link(&executable, &destination) {
                     Ok(()) => {}
                     // Windows hard links cannot cross volumes. A job-owned copy

@@ -29,19 +29,21 @@
 //! waits for work that does not read, and nothing is cancelled for not
 //! reading.
 
-use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
+use crate::job_directories::{JobDirectories, JobDirectory, Running, StreamLengths};
 use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
-use crate::kept_output::KeptOutput;
+use crate::kept_output::{KeptOutput, Reopened};
 use crate::scratch::{SCRATCH_ENV, Scratch};
 use crate::{
     commands::{
-        contexts::{self, ContextLease, ContextPaths, ExecutionContext, PinnedManifest},
+        contexts::{self, ContextLease, ContextPaths, ContextTable, ExecutionContext, PinnedManifest},
         dispatch::Dispatcher,
     },
     connection::ConnectionHandle,
 };
 use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, CommandContext, Viewable};
+use demi_runner_protocol::manifest::Manifest;
+use serde::{Deserialize, Serialize};
 use demi_runner_command_packages::ResidentHandle;
 use demi_runner_process::{
     job_shell::{JobCommands, JobShell, JobStart, ShellJob},
@@ -69,6 +71,33 @@ pub enum WorkId {
     Job(String),
     Spawn(String),
 }
+
+/// What a shell job's directory says of the job, which its start writes, for
+/// a runner that takes the job over (`JobTable::reattach`).
+#[derive(Serialize, Deserialize)]
+struct StartRecord {
+    job: String,
+    conversation: String,
+    edits: demi_command_protocol::EditContext,
+    /// A job with declared commands' execution context.
+    #[serde(default)]
+    context: Option<ContextRecord>,
+}
+
+/// An execution context as a [`StartRecord`] keeps it: its id and alias
+/// directory, which the job's processes name, and what the backend gave it.
+#[derive(Serialize, Deserialize)]
+struct ContextRecord {
+    id: String,
+    command: CommandContext,
+    manifest: Manifest,
+    #[serde(default)]
+    viewable: Option<Viewable>,
+    aliases: PathBuf,
+}
+
+/// The file of a job's [`StartRecord`] in its directory.
+pub const START_RECORD: &str = "start.json";
 
 /// How long a task's pipe transfers may run on after its process ended.
 const PIPE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
@@ -101,6 +130,8 @@ pub struct JobConfig {
     /// For jobs whose manifest declares commands; absent where nothing makes
     /// execution contexts live.
     pub commands: Option<Commands>,
+    /// Set once the runner leaves its jobs to the next (`JobTable::leave`).
+    pub leaving: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// What a job needs to make its execution context and run declared commands.
@@ -135,6 +166,38 @@ struct Controls {
     input: mpsc::UnboundedReceiver<TaskInput>,
     signals: mpsc::UnboundedReceiver<Signal>,
     following: watch::Receiver<bool>,
+}
+
+fn controls_receivers(
+    input: mpsc::UnboundedReceiver<TaskInput>,
+    signals: mpsc::UnboundedReceiver<Signal>,
+    following: watch::Receiver<bool>,
+) -> Controls {
+    Controls {
+        input,
+        signals,
+        following,
+    }
+}
+
+/// A task that runs, as its start or a takeover leaves it to
+/// [`JobConfig::carry`].
+struct Work {
+    id: String,
+    life: Life,
+    child: Execution,
+    stdin: Option<wire::PipeRef>,
+    stdout: Option<wire::PipeRef>,
+    /// A job's logs, edit recorder and hold on its directory; a raw process
+    /// has none.
+    job: Option<(Logs, Option<demi_command_sdk::edits::Recorder>, Running)>,
+    /// A job's execution context, held until the job has ended.
+    execution: Option<Arc<ExecutionContext>>,
+    /// The media its commands hand to it, as they arrive.
+    arrivals: Option<mpsc::UnboundedReceiver<Arrival>>,
+    /// The background tasks that keep a job running once its script has
+    /// ended.
+    outliving: Option<watch::Receiver<Vec<String>>>,
 }
 
 pub enum TaskCommand {
@@ -238,13 +301,22 @@ impl JobTable {
             },
         );
         let config = self.config.clone();
+        self.spawn(key, controls_receivers(receiver, signal_receiver, following), move |controls| {
+            async move { config.run(spec, controls, cancel).await }
+        });
+        Ok(())
+    }
+
+    /// Runs task `key`'s work in a task of its own, and sends its end: a
+    /// job's stays with its directory too.
+    fn spawn<F, W>(&mut self, key: WorkId, controls: Controls, work: W)
+    where
+        W: FnOnce(Controls) -> F + Send + 'static,
+        F: std::future::Future<Output = io::Result<Terminal>> + Send + 'static,
+    {
+        let config = self.config.clone();
         self.running.spawn(async move {
-            let controls = Controls {
-                input: receiver,
-                signals: signal_receiver,
-                following,
-            };
-            let run = config.run(spec, controls, cancel);
+            let run = work(controls);
             let outcome = std::panic::AssertUnwindSafe(run).catch_unwind().await;
             let terminal = match outcome {
                 Ok(Ok(terminal)) => Ok(terminal),
@@ -279,7 +351,125 @@ impl JobTable {
             }
             key
         });
-        Ok(())
+    }
+
+    /// Takes over the job a runner before this one started, whose directory
+    /// is `path` and whose shell still runs: its execution context goes into
+    /// `contexts`, and its directory and kept output into the table's
+    /// directories, so the next hello lists it. Answers the job's id; a job
+    /// it cannot take over is left as it is.
+    pub async fn reattach(&mut self, path: PathBuf, contexts: &mut ContextTable) -> io::Result<String> {
+        let bytes = tokio::fs::read(path.join(START_RECORD)).await?;
+        let record: StartRecord = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
+        let id = record.job.clone();
+        let key = WorkId::Job(id.clone());
+        if self.entries.contains_key(&key) {
+            return Err(io::Error::other("duplicate live task id"));
+        }
+        let (arrival, arrivals) = mpsc::unbounded_channel();
+        let mut execution = None;
+        if let (Some(context), Some(commands)) = (record.context, &self.config.commands) {
+            let media = Arc::new(JobMedia::restore(id.clone(), path.join(MEDIA_DIRECTORY), arrival)?);
+            let context = Arc::new(ExecutionContext::restore(
+                context.id,
+                id.clone(),
+                context.command,
+                Arc::new(context.manifest),
+                record.edits.clone(),
+                media,
+                context.viewable,
+                commands.connection.clone(),
+                context.aliases,
+            ));
+            let leases = contexts::leases(&context.manifest, &commands.residents).await;
+            contexts.insert(context.clone(), leases)?;
+            execution = Some(context);
+        }
+        let lease = execution
+            .clone()
+            .map(|context| Box::new(ContextLease::new(context)) as Box<dyn Send + Sync>);
+        let child = match self.config.shell.reattach(&id, lease).await {
+            Ok(Some(child)) => child,
+            Ok(None) => {
+                contexts.remove(&id);
+                return Err(io::Error::other("the job's directory records no shell"));
+            }
+            Err(error) => {
+                contexts.remove(&id);
+                return Err(error);
+            }
+        };
+        let (directory, reopened) = match self.config.directories.reattach(&id, path, TAIL_BYTES).await {
+            Ok(directory) => directory,
+            Err(error) => {
+                child.cancel();
+                contexts.remove(&id);
+                return Err(error);
+            }
+        };
+        let JobDirectory {
+            path: _,
+            output,
+            lengths,
+            media: announced,
+            running,
+        } = directory;
+        let recording = record.edits.clone();
+        let recorder = tokio::task::spawn_blocking(move || demi_command_sdk::edits::Recorder::new(recording))
+            .await
+            .map_err(io::Error::other)?
+            .ok();
+        let logs = Logs::reopened(output, lengths, announced, reopened);
+        running.outlived_by(child.outliving());
+        let outliving = Some(child.outliving());
+        let life = Life::reattached(&id, record.conversation, self.config.leaving.clone());
+        self.started.insert(id.clone());
+        let (input, receiver) = mpsc::unbounded_channel();
+        let (signals, signal_receiver) = mpsc::unbounded_channel();
+        let (follow, following) = watch::channel(false);
+        let cancel = CancellationToken::new();
+        self.entries.insert(
+            key.clone(),
+            Entry {
+                input,
+                signals,
+                follow,
+                cancel: cancel.clone(),
+            },
+        );
+        let work = Work {
+            id: id.clone(),
+            life,
+            child: Execution::shell(child),
+            stdin: None,
+            stdout: None,
+            job: Some((logs, recorder, running)),
+            execution,
+            arrivals: Some(arrivals),
+            outliving,
+        };
+        let config = self.config.clone();
+        self.spawn(key, controls_receivers(receiver, signal_receiver, following), move |controls| {
+            async move { config.carry(work, controls, cancel).await }
+        });
+        Ok(id)
+    }
+
+    /// Leaves every job to the runner that starts next, which takes them
+    /// over: the table lets go of them without stopping one. Raw processes
+    /// end with the runner, as they do with a connection.
+    pub async fn leave(&mut self) {
+        self.config.leaving.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.config.shell.leave();
+        self.closed.cancel();
+        for (id, entry) in &self.entries {
+            if matches!(id, WorkId::Spawn(_)) {
+                entry.cancel.cancel();
+            }
+        }
+        self.entries.clear();
+        self.running.abort_all();
+        while self.running.join_next().await.is_some() {}
     }
 
     /// Live stdin goes in chunks of at most `STDIN_CHUNK_BYTES`; bulk streams
@@ -336,12 +526,14 @@ impl JobTable {
     }
 
     /// Cancels every task and waits for each to end; results are no longer sent.
+    /// Then every job's shell ends, also one that runs on for an ended job.
     pub async fn close(&mut self) {
         self.closed.cancel();
         for entry in self.entries.values() {
             entry.cancel.cancel();
         }
         while self.finished().await.is_some() {}
+        self.config.shell.close();
     }
 
     /// Ends every raw process, which lasts as long as the connection that
@@ -349,32 +541,6 @@ impl JobTable {
     pub fn end_spawns(&self) {
         for (id, entry) in &self.entries {
             if matches!(id, WorkId::Spawn(_)) {
-                entry.cancel.cancel();
-            }
-        }
-    }
-
-    /// Stops every job as a stop does, first with `TERM`
-    /// (`crates/runner-shell/src/job.rs`).
-    ///
-    /// [`kill_jobs`] ends what remains.
-    ///
-    /// [`kill_jobs`]: Self::kill_jobs
-    pub fn stop_jobs(&self) {
-        for (id, entry) in &self.entries {
-            if let WorkId::Job(_) = id {
-                if entry.signals.send(Signal::Terminate).is_err() {
-                    // A job that no longer takes signals is ended at once.
-                    entry.cancel.cancel();
-                }
-            }
-        }
-    }
-
-    /// Kills every job that still runs.
-    pub fn kill_jobs(&self) {
-        for (id, entry) in &self.entries {
-            if let WorkId::Job(_) = id {
                 entry.cancel.cancel();
             }
         }
@@ -455,11 +621,6 @@ impl JobConfig {
         controls: Controls,
         cancel: CancellationToken,
     ) -> io::Result<Terminal> {
-        let Controls {
-            mut input,
-            mut signals,
-            mut following,
-        } = controls;
         let id = spec.id;
         let mut life = Life::new(
             &id,
@@ -468,6 +629,7 @@ impl JobConfig {
                 TaskCommand::Shell { conversation, .. } => Some(conversation.clone()),
                 TaskCommand::Process { .. } => None,
             },
+            self.leaving.clone(),
         );
         let mut env = spec.env;
         let mut job = None;
@@ -479,7 +641,7 @@ impl JobConfig {
         // The background tasks that keep a job running once its script has
         // ended (`crates/agent-tools/src/result.rs`); a raw process has none.
         let mut outliving: Option<watch::Receiver<Vec<String>>> = None;
-        let (mut child, stdin, stdout) = match spec.command {
+        let (child, stdin, stdout) = match spec.command {
             TaskCommand::Process {
                 command,
                 args,
@@ -540,6 +702,7 @@ impl JobConfig {
                         .into_owned(),
                 };
                 let recording = edit_context.clone();
+                let edits_recorded = edit_context.clone();
                 let recorder = tokio::task::spawn_blocking(move || {
                     demi_command_sdk::edits::Recorder::new(recording)
                 })
@@ -583,6 +746,22 @@ impl JobConfig {
                     }
                     None => None,
                 };
+                let record = StartRecord {
+                    job: id.clone(),
+                    conversation: conversation.clone(),
+                    edits: edits_recorded,
+                    context: execution.as_ref().map(|context| ContextRecord {
+                        id: context.id.clone(),
+                        command: context.command.clone(),
+                        manifest: Manifest::clone(&context.manifest),
+                        viewable: context.viewable.clone(),
+                        aliases: context.aliases().to_owned(),
+                    }),
+                };
+                // A runner that starts next takes the job over by what the
+                // record says (`JobTable::reattach`).
+                let bytes = serde_json::to_vec(&record).map_err(io::Error::other)?;
+                tokio::fs::write(path.join(START_RECORD), bytes).await?;
                 let child = self
                     .shell
                     .start(JobStart {
@@ -605,6 +784,49 @@ impl JobConfig {
                 (Execution::shell(child), stdin, stdout)
             }
         };
+        self.carry(
+            Work {
+                id,
+                life,
+                child,
+                stdin,
+                stdout,
+                job,
+                execution,
+                arrivals,
+                outliving,
+            },
+            controls,
+            cancel,
+        )
+        .await
+    }
+
+    /// Follows a job or process that runs, from its start or from a runner
+    /// before this one (`JobTable::reattach`), until it ends: its input,
+    /// signals, output and media, then its end.
+    async fn carry(
+        self: &Arc<Self>,
+        work: Work,
+        controls: Controls,
+        cancel: CancellationToken,
+    ) -> io::Result<Terminal> {
+        let Work {
+            id,
+            mut life,
+            mut child,
+            stdin,
+            stdout,
+            mut job,
+            execution,
+            mut arrivals,
+            mut outliving,
+        } = work;
+        let Controls {
+            mut input,
+            mut signals,
+            mut following,
+        } = controls;
         let io_cancel = cancel.child_token();
         let _io_guard = io_cancel.clone().drop_guard();
         let input_cancel = io_cancel.child_token();
@@ -803,7 +1025,10 @@ impl JobConfig {
                     drained = None;
                     while let Ok(chunk) = child.output.try_recv() {
                         let logs = job.as_mut().map(|(logs, ..)| logs);
-                        if take_chunk(chunk, logs, &id, &self.output, &paced, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                        let (stream, length) = (chunk.stream, chunk.bytes.len());
+                        let cancelled = take_chunk(chunk, logs, &id, &self.output, &paced, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await?;
+                        child.kept(stream, length);
+                        if cancelled {
                             child.cancel();
                         }
                     }
@@ -820,7 +1045,10 @@ impl JobConfig {
                         break;
                     };
                     let logs = job.as_mut().map(|(logs, ..)| logs);
-                    if take_chunk(chunk, logs, &id, &self.output, &paced, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                    let (stream, length) = (chunk.stream, chunk.bytes.len());
+                    let cancelled = take_chunk(chunk, logs, &id, &self.output, &paced, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await?;
+                    child.kept(stream, length);
+                    if cancelled {
                         child.cancel();
                     }
                 }
@@ -996,6 +1224,13 @@ impl Execution {
         match &mut self.owner {
             ExecutionOwner::Process(child) => child.wait().await,
             ExecutionOwner::Shell(child) => child.wait().await,
+        }
+    }
+    /// The runner has kept a chunk of the job's output, which its shell
+    /// may let go of; a raw process holds nothing.
+    fn kept(&self, stream: OutputStream, bytes: usize) {
+        if let ExecutionOwner::Shell(child) = &self.owner {
+            child.kept(stream, bytes as u64);
         }
     }
     /// Reads what the stdout pipe holds now into the output channel; a raw
@@ -1179,6 +1414,8 @@ struct Life {
     conversation: Option<String>,
     began: Instant,
     end: Option<Ending>,
+    /// The runner's: a job it leaves to the next runner has not ended.
+    leaving: Arc<std::sync::atomic::AtomicBool>,
 }
 
 struct Ending {
@@ -1190,7 +1427,30 @@ struct Ending {
 }
 
 impl Life {
-    fn new(id: &str, shell: bool, conversation: Option<String>) -> Self {
+    /// The life of a job a runner before this one started, from its
+    /// takeover on.
+    fn reattached(id: &str, conversation: String, leaving: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        tracing::info!(
+            event = "job.reattached",
+            job_id = id,
+            conversation = conversation.as_str(),
+            "a job a runner before this one started was taken over"
+        );
+        Self {
+            id: id.to_owned(),
+            conversation: Some(conversation),
+            began: Instant::now(),
+            end: None,
+            leaving,
+        }
+    }
+
+    fn new(
+        id: &str,
+        shell: bool,
+        conversation: Option<String>,
+        leaving: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
         tracing::info!(
             event = "job.started",
             job_id = id,
@@ -1203,6 +1463,7 @@ impl Life {
             conversation,
             began: Instant::now(),
             end: None,
+            leaving,
         }
     }
 
@@ -1226,6 +1487,16 @@ impl Life {
 
 impl Drop for Life {
     fn drop(&mut self) {
+        if self.end.is_none() && self.leaving.load(std::sync::atomic::Ordering::SeqCst) {
+            tracing::info!(
+                event = "job.left",
+                job_id = self.id.as_str(),
+                conversation = self.conversation.as_deref(),
+                ms = self.began.elapsed().as_millis() as u64,
+                "a job runs on for the runner that starts next"
+            );
+            return;
+        }
         let end = self.end.take().unwrap_or(Ending {
             exit: None,
             signal: None,
@@ -1438,6 +1709,39 @@ impl Logs {
             stdout: Log::new(OutputStream::Stdout),
             stderr: Log::new(OutputStream::Stderr),
         }
+    }
+
+    /// The logs of a job a runner before this one kept in `kept`, which this
+    /// one writes on: each stream goes on from its length, and the backend
+    /// is taken to hold what it was sent, as the next hello's lengths let it
+    /// read what it missed (`crates/runner-client/src/device_jobs.rs`).
+    fn reopened(
+        kept: KeptOutput,
+        lengths: Arc<StreamLengths>,
+        announced: Arc<std::sync::Mutex<Vec<wire::Frame>>>,
+        reopened: Reopened,
+    ) -> Self {
+        let Reopened {
+            lengths: counts,
+            tails: [stdout_tail, stderr_tail],
+        } = reopened;
+        let log = |stream, bytes: u64, tail: Vec<u8>| {
+            let mut log = Log::new(stream);
+            log.bytes = bytes;
+            log.tail = tail;
+            log.held = bytes;
+            log.reported = bytes;
+            log
+        };
+        let logs = Self {
+            kept,
+            lengths,
+            announced,
+            stdout: log(OutputStream::Stdout, counts[0], stdout_tail),
+            stderr: log(OutputStream::Stderr, counts[1], stderr_tail),
+        };
+        logs.lengths.set(logs.lengths());
+        logs
     }
 
     /// Writes a medium's line into the job's stdout, on a line of its own,

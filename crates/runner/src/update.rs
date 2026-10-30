@@ -4,9 +4,9 @@
 //! It puts the backend's executable in the installation's `releases/` as the
 //! installers do, under their lock, moves it over the installation's runner,
 //! `<installation>/demi-runner`, names it in `release-id`, and starts it in its
-//! own place once the registration has ended. The new runner cannot take the
-//! jobs over, so the old one stops them first; the backend learns of them from
-//! the new runner's hello as lost to the update.
+//! own place once the registration has ended. The jobs run on in their shells'
+//! processes meanwhile, and the new runner takes them over and lists them in its
+//! hello (`crates/runner-shell/src/remote/mod.rs`).
 //!
 //! # One path
 //!

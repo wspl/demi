@@ -110,6 +110,7 @@ mod write_watch;
 pub use encoding::{Timestamp, WireBytes};
 pub use kept::{
     JOB_KEPT_BYTES, JOB_KEPT_PART_BYTES, JOB_KEPT_READ_BYTES, KeptRecord, decode_records,
+    decode_whole_records,
     encode_record,
 };
 pub use messages::{

@@ -11,7 +11,7 @@ use std::{
 
 use demi_command_protocol::LocalInvocation;
 use demi_command_sdk::{Handler, edits::Recorder};
-use demi_runner_protocol::wire::Signal;
+use demi_runner_protocol::wire::{OutputStream, Signal};
 use futures_util::future::BoxFuture;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
@@ -58,6 +58,33 @@ pub trait JobShell: Send + Sync {
     /// The names the shell's own builtins take, which no declared root
     /// command may take.
     fn builtin_names(&self) -> BTreeSet<String>;
+    /// Job `job`, which a runner before this one started, when it still runs
+    /// and this runner can take it over with `lease` held until what it left
+    /// running is gone; none when the shell does not outlive its runner.
+    fn reattach(
+        &self,
+        _job: &str,
+        _lease: Option<Box<dyn Send + Sync>>,
+    ) -> BoxFuture<'_, io::Result<Option<Box<dyn ShellJob>>>> {
+        Box::pin(async { Ok(None) })
+    }
+    /// Takes over the shells a runner before this one left that run on for
+    /// jobs that have ended, for what they left running: their log lines,
+    /// and a `kill` of their background tasks from another job. Called once
+    /// the jobs that run are taken over.
+    fn reattach_left(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+    /// The runner leaves its jobs to the runner that starts next: from now
+    /// on neither a job's cancellation nor its drop stops it.
+    fn leave(&self) {}
+    /// The backend has job `job`'s end, and released its directory: a shell
+    /// that held the end for a runner that starts next lets it go.
+    fn released(&self, _job: &str) {}
+    /// The runner stops, drains or is removed: every shell it reaches ends,
+    /// with the work of an ended job that still runs in it, as that work
+    /// ended with a runner that ran it in its own process.
+    fn close(&self) {}
 }
 
 /// One running job. Dropping it cancels the job, unless it has ended by itself:
@@ -92,4 +119,10 @@ pub trait ShellJob: Send + Sync {
 
     /// The job's exit, once everything it ran has finished.
     fn wait(&mut self) -> BoxFuture<'_, ProcessExit>;
+    /// The runner has kept `bytes` more of the job's `stream` from
+    /// [`ShellJob::output`] in the job's kept output. A shell in a process of
+    /// its own holds what the runner has not kept, so that a runner that
+    /// starts again reads none twice and misses none
+    /// (`crates/runner-shell/src/remote/mod.rs`).
+    fn kept(&self, _stream: OutputStream, _bytes: u64) {}
 }

@@ -322,7 +322,7 @@ fn spawn(directory: &Path, arguments: Vec<String>) -> io::Result<tokio::process:
         command.as_std_mut().inherit_handles(false);
     }
     #[cfg(windows)]
-    return crate::detached::start(|flags| command.creation_flags(flags).spawn());
+    return demi_runner_process::detached::start(|flags| command.creation_flags(flags).spawn());
     #[cfg(unix)]
     command.spawn()
 }

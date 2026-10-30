@@ -23,6 +23,7 @@ clap = { version = "4", features = ["derive"] }
 futures-util.workspace = true
 # `std` for the utilities' child programs (uucore's `context::Control::spawn`).
 process-wrap = { workspace = true, features = ["std"] }
+serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
 thiserror.workspace = true

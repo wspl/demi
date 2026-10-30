@@ -4,7 +4,7 @@
 //! names one, would otherwise start the system's program: dash, macOS's
 //! bash 3.2, Git's MSYS2 shell or the WSL launcher, whose utilities are the
 //! system's and whose writes no edit records. Here the command runs a new
-//! shell inside the runner, built as the job's own is:
+//! shell inside the job's shell process, built as the job's own is:
 //!
 //! ```text
 //! sh / bash / /bin/bash / #!/bin/sh ──┬─ a builtin of the job's shell

@@ -31,9 +31,12 @@ the following happens:
   itself when the new backend runs. When the user turned that off, its
   conversation offers **Resume** instead
   (`packages/web-ui/src/agent/dock-cards.ts`).
-- Commands running on Hosts end:
-  - A paired device's runner replaces itself, and a Cloud restarts. The shell
-    work of a command runs in its runner.
+- Commands running on a paired device run on. Its runner replaces itself, and
+  the new runner takes each command over from the shell process the command
+  runs in (`crates/runner-shell/src/remote/mod.rs`). A runner of a release
+  that ran commands inside its own process still stops them as it replaces
+  itself, the last time it does.
+- Commands running on a Cloud end, since the Cloud restarts:
   - The report of each node that ran a command says that the upgrade lost the
     command. A command the node might be waiting for gets the report at once.
     A service gets it at the node's next turn

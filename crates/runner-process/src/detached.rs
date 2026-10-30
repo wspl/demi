@@ -1,6 +1,7 @@
-//! Starting a process on Windows that outlives the session its starter
-//! runs in (`crates/runner/src/console.rs`: closing the
-//! terminal does not stop the runner).
+//! Starting a process on Windows that outlives the session its starter runs
+//! in: a runner a terminal started outlives the terminal
+//! (`crates/runner/src/console.rs`), and a job's shell outlives the runner
+//! (`crates/runner-shell/src/remote/mod.rs`).
 
 use std::io;
 

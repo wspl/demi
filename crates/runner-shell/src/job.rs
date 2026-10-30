@@ -39,9 +39,9 @@
 //! double fork, escapes. The job ends once every process of those groups and
 //! every process a signal reached has exited.
 //!
-//! # Work inside the runner
+//! # Work inside the shell's process
 //!
-//! Work inside the runner (an embedded utility, an interpreter unit) cannot be
+//! Work inside the shell's process (an embedded utility, an interpreter unit) cannot be
 //! killed. It stops at its next check of the job's cancellation, which each
 //! utility makes at least once per entry or block it reads, so even a quiet
 //! `find /` stops.
@@ -110,7 +110,7 @@ const OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
 
 /// How long a killed job waits for its in-process work before it ends
 /// without it. A killed job has to end whatever its in-process work is
-/// doing, which no kill reaches (§ Work inside the runner); no wait can be
+/// doing, which no kill reaches (§ Work inside the shell's process); no wait can be
 /// without an end.
 const KILLED_WORK: std::time::Duration = std::time::Duration::from_secs(1);
 
@@ -252,7 +252,7 @@ impl Job {
             outcome
         });
         let owner = tokio::spawn(async move {
-            // Work in the runner's process cannot be killed: a thread can sit
+            // Work in the shell's process cannot be killed: a thread can sit
             // in a system call no cancellation reaches, such as an `open()`
             // the kernel holds while macOS asks the user for access. Once
             // killed, the job ends a second later without what is left,
@@ -442,10 +442,7 @@ impl ShellJob for Job {
                 }
                 self.scope.signal(number(signal), false)
             }
-            Signal::User1 | Signal::User2 | Signal::Stop | Signal::Continue => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "unsupported shell job signal",
-            )),
+            Signal::User1 | Signal::User2 | Signal::Stop | Signal::Continue => stops(signal),
         }
     }
 
@@ -460,6 +457,20 @@ impl ShellJob for Job {
             }
             self.exited.clone().expect("the owner left the exit")
         })
+    }
+}
+
+/// Whether `signal` is one that stops a job: `KILL`, `INT`, `TERM`, `HUP` and
+/// `QUIT` are; the others are refused.
+pub(crate) fn stops(signal: Signal) -> io::Result<()> {
+    match signal {
+        Signal::Kill | Signal::Interrupt | Signal::Terminate | Signal::Hangup | Signal::Quit => {
+            Ok(())
+        }
+        Signal::User1 | Signal::User2 | Signal::Stop | Signal::Continue => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "unsupported shell job signal",
+        )),
     }
 }
 
@@ -511,6 +522,20 @@ async fn stop_strays(
         }
     }
     let strays = find(known).await;
+    demi_runner_process::process::strays_ended(reach(&job, strays, number(Signal::Kill))).await;
+}
+
+/// Kills every process of job `job` the system finds by the job's id in its
+/// environment, as a stop's last step does: the processes of a job whose
+/// shell no runner can reach any more.
+#[cfg(unix)]
+pub(crate) async fn kill_lost(job: String) {
+    let found = job.clone();
+    let strays = tokio::task::spawn_blocking(move || {
+        demi_runner_process::process::job_strays(&found, &std::collections::HashSet::new(), &[])
+    })
+    .await
+    .unwrap_or_default();
     demi_runner_process::process::strays_ended(reach(&job, strays, number(Signal::Kill))).await;
 }
 

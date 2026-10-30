@@ -160,7 +160,9 @@ needs another domain's state follows these rules:
 The runner is one executable of several crates, so a change recompiles only
 its part. `runner-protocol` and `runner-client` hold the runner's wire, not the
 executable. Only `runner-shell` links the shell and its utilities, and nothing
-below the executable depends on it.
+below the executable depends on it. Each job's shell runs in a process of its
+own, the runner's executable as `demi-runner shell`, which outlives the runner
+and speaks the job shell contract to it over a local socket.
 
 ### Graphs and manifests
 

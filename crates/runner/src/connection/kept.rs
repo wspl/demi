@@ -22,8 +22,11 @@
 //!
 //! - A backend that refuses the runner (the device was revoked or removed) has
 //!   them stopped as a stop does, since nobody will read them again.
-//! - A runner that ends (a crash, an update, a Cloud's stop) loses its jobs,
-//!   whose shell work runs in its process.
+//! - A runner that is stopped, drained or removed stops them. One that
+//!   crashes or updates leaves them running in their shells' processes, and
+//!   the runner that starts next takes them over
+//!   (`crates/runner-shell/src/remote/mod.rs`). A Cloud's stop ends them with
+//!   the Cloud.
 //!
 //! The hello lists the jobs with the runner's instance, a number each start
 //! draws, so that the backend tells a runner that kept its jobs from one that
@@ -45,7 +48,6 @@ use demi_runner_protocol::wire;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,
-    time::Instant,
 };
 use tokio_util::task::AbortOnDropHandle;
 
@@ -84,10 +86,12 @@ pub enum Event {
 }
 
 impl Kept {
-    /// The registration's jobs, none yet, under its job root, whose
-    /// directories a runner that ended left are removed.
+    /// The registration's jobs under its job root: those a runner before
+    /// this one left whose shells still run, which it takes over, and no
+    /// other. The directories a runner that ended left of any other job are
+    /// removed.
     pub async fn open(registered: &Registered) -> Self {
-        let directories = JobDirectories::open(registered.jobs.clone()).await;
+        let (directories, left) = JobDirectories::open(registered.jobs.clone()).await;
         let (reach, reaching) = watch::channel(Reach::Away);
         let link = LinkState::default();
         let worktrees = Worktrees::default();
@@ -112,11 +116,28 @@ impl Kept {
                 endpoint: registered.endpoint.clone(),
                 home: registered.state.root.to_string_lossy().into_owned(),
             }),
+            leaving: Arc::default(),
         });
+        let mut jobs = jobs;
+        let mut contexts = ContextTable::new(registered.index.clone());
+        for path in left {
+            match jobs.reattach(path.clone(), &mut contexts).await {
+                // The job's life logs its takeover.
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(event = "job.reattach_failed", directory = %path.display(), %error, "a job a runner before this one started was not taken over");
+                    directories.remove_left(path).await;
+                }
+            }
+        }
+        // Then the shells of jobs that have ended, which run on for what
+        // their jobs left running.
+        registered.shell.reattach_left().await;
+        registered.management.set_jobs(jobs.job_count());
         Self {
             jobs,
             directories,
-            contexts: ContextTable::new(registered.index.clone()),
+            contexts,
             relay: Relay::default(),
             watches: JoinSet::new(),
             link,
@@ -244,40 +265,18 @@ impl Kept {
         }
     }
 
-    /// Stops every job as a stop does and waits for each to end, as a
-    /// runner that replaces itself does (`update`). A
-    /// killed job ends a second later whatever its in-process work does
-    /// (§ Cancellation and completion), so the update never waits on one.
-    pub async fn stop_jobs(&mut self, registered: &Registered) {
-        self.jobs.stop_jobs();
-        // `KILL` goes once: a deadline that has passed would be ready again
-        // at every turn of the loop.
-        let mut kill_at = Some(Instant::now() + wire::STOP_GRACE);
-        while !self.jobs.running_jobs().is_empty() {
-            tokio::select! {
-                () = sleep_until(kill_at) => {
-                    kill_at = None;
-                    self.jobs.kill_jobs();
-                }
-                Some(id) = self.jobs.finished() => {
-                    self.handle(Event::Finished(id), None, registered).await;
-                }
-            }
-        }
+    /// Leaves every job to the runner that starts next, which takes it over
+    /// (`crates/runner-shell/src/remote/mod.rs`); the registration ends.
+    pub async fn leave(&mut self) {
+        self.reach.send_replace(Reach::Unreached);
+        self.contexts.leave();
+        self.jobs.leave().await;
     }
 
     /// Ends every job and waits for each; the registration ends.
     pub async fn close(&mut self) {
         self.reach.send_replace(Reach::Unreached);
         self.jobs.close().await;
-    }
-}
-
-/// Sleeps until `at`; never without one.
-async fn sleep_until(at: Option<Instant>) {
-    match at {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
     }
 }
 

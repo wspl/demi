@@ -769,6 +769,7 @@ impl Owner<'_> {
                 });
             }
             Inbound::JobRelease { job_id } => {
+                self.registered.shell.released(&job_id);
                 let directories = self.kept.directories.clone();
                 self.work.spawn(async move {
                     directories.release(&job_id).await;
