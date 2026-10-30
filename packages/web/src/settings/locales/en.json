@@ -22,7 +22,9 @@
   },
   "plugins": {
     "turnOnFailed": "Could Not Turn the Plugin On",
-    "turnOffFailed": "Could Not Turn the Plugin Off"
+    "turnOffFailed": "Could Not Turn the Plugin Off",
+    "featureOnFailed": "Could Not Turn the Feature On",
+    "featureOffFailed": "Could Not Turn the Feature Off"
   },
   "providers": {
     "saveFailed": "Could Not Save the Provider",

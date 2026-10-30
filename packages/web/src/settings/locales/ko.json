@@ -22,7 +22,9 @@
   },
   "plugins": {
     "turnOnFailed": "플러그인을 켤 수 없습니다",
-    "turnOffFailed": "플러그인을 끌 수 없습니다"
+    "turnOffFailed": "플러그인을 끌 수 없습니다",
+    "featureOnFailed": "기능을 켤 수 없습니다",
+    "featureOffFailed": "기능을 끌 수 없습니다"
   },
   "providers": {
     "saveFailed": "제공업체를 저장할 수 없습니다",

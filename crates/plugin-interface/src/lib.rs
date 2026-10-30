@@ -54,7 +54,7 @@ mod request;
 mod web;
 
 pub use manifest::{
-    Commands, Constant, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Manifest, Method, OAuth, Page,
+    Commands, Constant, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Feature, Manifest, Method, OAuth, Page,
     Placement, PluginId, PluginIdError, ReplyBlock, Scope, State, Stream,
 };
 pub use web::{

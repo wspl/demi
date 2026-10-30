@@ -328,6 +328,17 @@ CREATE TABLE user_plugins (
   PRIMARY KEY (user_id, plugin)
 ) STRICT, WITHOUT ROWID;
 
+-- Each choice a user made about a feature of a plugin
+-- (`crates/plugin-host/src/user.rs`): a feature with no row takes its
+-- manifest's default.
+CREATE TABLE user_plugin_features (
+  user_id TEXT NOT NULL REFERENCES users (id),
+  plugin  TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  PRIMARY KEY (user_id, plugin, feature)
+) STRICT, WITHOUT ROWID;
+
 -- Each plugin's values for a user (`plugins.md` § The contract): a JSON
 -- document its plugin decodes, the revision a conditional write names, and
 -- the blobs the value names, a JSON array of their SHA-256s.

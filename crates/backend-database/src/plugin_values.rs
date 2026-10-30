@@ -3,7 +3,8 @@
 //!
 //! The module stores:
 //!
-//! - whether a user has each plugin on, a plugin with no row being on;
+//! - whether a user has each plugin on, a plugin with no row being on, and
+//!   each of its features, one with no row taking its default;
 //! - each plugin's JSON documents for a user, by key, each with the revision a
 //!   conditional write names and the blobs it names;
 //! - each plugin's Host directories for a user.
@@ -55,6 +56,45 @@ impl ControlService {
                 "INSERT INTO user_plugins (user_id, plugin, enabled) VALUES (?1, ?2, ?3)
                  ON CONFLICT (user_id, plugin) DO UPDATE SET enabled = excluded.enabled",
                 params![user.as_str(), plugin, enabled],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Each plugin's feature `user` turned on or off, by the plugin's id and
+    /// the feature's.
+    pub async fn user_plugin_features(
+        &self,
+        user: UserId,
+    ) -> Result<BTreeMap<(String, String), bool>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT plugin, feature, enabled FROM user_plugin_features WHERE user_id = ?1",
+            )?;
+            let mut rows = statement.query([user.as_str()])?;
+            let mut choices = BTreeMap::new();
+            while let Some(row) = rows.next()? {
+                choices.insert((row.get::<_, String>(0)?, row.get::<_, String>(1)?), row.get::<_, bool>(2)?);
+            }
+            Ok(choices)
+        })
+        .await
+    }
+
+    /// Records that `user` has `plugin`'s `feature` on or off.
+    pub async fn set_user_plugin_feature(
+        &self,
+        user: UserId,
+        plugin: String,
+        feature: String,
+        enabled: bool,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "INSERT INTO user_plugin_features (user_id, plugin, feature, enabled) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (user_id, plugin, feature) DO UPDATE SET enabled = excluded.enabled",
+                params![user.as_str(), plugin, feature, enabled],
             )?;
             Ok(())
         })

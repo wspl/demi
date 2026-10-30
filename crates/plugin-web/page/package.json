@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/plugin-web",
-  "description": "The web plugin's page: its Web Search settings section.",
+  "description": "The web plugin's page: its Search settings section.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

@@ -221,6 +221,16 @@ export interface PageHost {
   userState(plugin: string): unknown
   /** Whether the user has `plugin` on, read reactively. */
   enabled(plugin: string): boolean
+  /**
+   * Whether the user has each of `plugin`'s features on, by its id, read
+   * reactively; none until the product state names the plugin.
+   */
+  features(plugin: string): Readonly<Record<string, boolean>>
+  /**
+   * Turns `plugin`'s `feature` on or off: the switch shows the choice at
+   * once, and a refusal turns it back and says so in a toast.
+   */
+  setFeature(plugin: string, feature: string, enabled: boolean): Promise<void>
   /** Follows the plugin's state of `conversation`, by its revision, until `stop`. */
   followState(plugin: string, conversation: string): StateFeed
   /**
@@ -346,6 +356,10 @@ export interface PagePlugin {
   state<T>(schema: z.ZodType<T>): ComputedRef<T | null>
   /** Whether the user has the plugin on, as a reply block that shows while it is off reads. */
   readonly enabled: ComputedRef<boolean>
+  /** Whether the user has each of the plugin's features on, by its id; none until they arrive. */
+  readonly features: ComputedRef<Readonly<Record<string, boolean>>>
+  /** Turns one of the plugin's features on or off, as {@link PageHost.setFeature} does. */
+  setFeature(feature: string, enabled: boolean): Promise<void>
   /** Calls a method of the user scope. */
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
   conversation(id: string): ConversationPlugin
@@ -773,6 +787,8 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
         return computed(() => state.value.value)
       },
       enabled: computed(() => host.enabled(page.plugin)),
+      features: computed(() => host.features(page.plugin)),
+      setFeature: (feature, enabled) => host.setFeature(page.plugin, feature, enabled),
       call: (method, params, result, options) =>
         validatedCall(host, page.plugin, method, params, result, null, options),
       conversation: (id) => conversationPlugin(host, page.plugin, id),

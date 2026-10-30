@@ -41,6 +41,7 @@
 //! - Hold the logic of one plugin.
 
 mod commands;
+mod features;
 mod oauth;
 mod registry;
 mod secrets;
@@ -50,6 +51,7 @@ mod web;
 
 pub use oauth::{Callback, CallbackError};
 pub use web::client as web_client;
+pub use features::FeatureError;
 pub use registry::{Registry, RegistryError};
 pub use user::{
     ReadOn,

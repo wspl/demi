@@ -7,9 +7,9 @@ import type { PluginSwitch } from '../api/generated/web-api'
 import { known, useProduct, withPart } from '../state/product'
 
 /**
- * The user's plugin switches. A switch shows at once, and a plugin turned off leaves the pages with
- * its state; its write follows the earlier ones of the same plugin, and a refusal turns the switch
- * back with a toast.
+ * The user's plugin switches, and those of the plugins' features. A switch shows at once, and a
+ * plugin turned off leaves the pages with its state; its write follows the earlier ones of the same
+ * plugin, and a refusal turns the switch back with a toast.
  */
 export const usePluginSettings = defineStore('plugin-settings', () => {
   const product = useProduct()
@@ -44,5 +44,37 @@ export const usePluginSettings = defineStore('plugin-settings', () => {
       })
   }
 
-  return { switchPlugin }
+  function switchFeature(id: string, feature: string, enabled: boolean): Promise<void> {
+    // A state that already has the choice is answered as it is, so the change
+    // leaves once a read shows it, whichever came first, the read or the answer.
+    const change = product.change('plugins', (state) => {
+      const plugins = known(state.plugins, 'plugins')
+      if (plugins.find((plugin) => plugin.id === id)?.features[feature] === enabled) {
+        return state
+      }
+      return withPart(state, {
+        type: 'plugins',
+        plugins: plugins.map((plugin) =>
+          plugin.id === id ? { ...plugin, features: { ...plugin.features, [feature]: enabled } } : plugin),
+      })
+    })
+    return writes
+      .run(id, async () => {
+        change.send()
+        await apiRequest(`/plugins/${encodeURIComponent(id)}/features/${encodeURIComponent(feature)}`, {
+          method: 'PUT',
+          ...jsonBody({ enabled } satisfies PluginSwitch),
+        })
+        change.land()
+      })
+      .catch((error) => {
+        change.drop()
+        reportError(enabled ? t('plugins.featureOnFailed') : t('plugins.featureOffFailed'), error, {
+          site: enabled ? 'plugins.featureOnFailed' : 'plugins.featureOffFailed',
+          userVisible: true,
+        })
+      })
+  }
+
+  return { switchPlugin, switchFeature }
 })

@@ -126,8 +126,8 @@ const anatomy: [string, string][] = [
     'A plugin’s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. Git sources are packs of SKILL.md files; a source’s state is one status label after its name, and a skill’s labels say why it is off or never offered. The showcase below pins every state at once.'
   ],
   [
-    'Web Search',
-    'A plugin’s section, under Agent in the settings dialog only, while the Web plugin is on; the app’s sidebar has no entry for it, as for Providers. It holds the user’s Exa account, signed in or not, the API key, typed and checked or saved and shown by its last four characters, and which of them searches use. The specimens below pin each state and run the calls.'
+    'Search',
+    'A plugin’s section, under Agent in the settings dialog only, while the Web plugin is on; the app’s sidebar has no entry for it, as for Providers. It opens with the switches of Web Search, off until the user turns it on, and Web Fetch, on, each taking its command out of the agent’s while off. Below, it holds the user’s Exa account, signed in or not, the API key, typed and checked or saved and shown by its last four characters, and which of them searches use. The specimens below pin each state and run the calls.'
   ],
   [
     'Users',
@@ -690,17 +690,20 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       </GallerySection>
 
       <GallerySection
-        title="Web Search · Every State"
-        note="Each state, pinned: nothing connected, so searches go anonymously; signed in with an email; signed in where Exa names none, with a key saved, which searches use; a key saved while Exa’s rate limit kept it from being checked, which the next search decides; a key Exa refused, the typed key kept in the field; and a key typed for Exa to check, whose Save works until Exa answers. Every control acts on its own specimen’s state, and Sign In says what the product would open."
+        title="Search · Every State"
+        note="Each state, pinned: search off and fetch on, as a new user finds them, nothing connected, so searches would go anonymously; both on; signed in with an email; signed in where Exa names none, with a key saved, which searches use; a key saved while Exa’s rate limit kept it from being checked, which the next search decides; a key Exa refused, the typed key kept in the field; and a key typed for Exa to check, whose Save works until Exa answers. Every control acts on its own specimen’s state, and Sign In says what the product would open."
       >
         <GallerySpecimen variant="Not Connected" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
             <GalleryWebSearchShowcase :state="{ account: null, key: null, inUse: 'anonymous' }" />
           </div>
         </GallerySpecimen>
-        <GallerySpecimen variant="Signed In" wide>
+        <GallerySpecimen variant="Signed In, Search On" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
-            <GalleryWebSearchShowcase :state="{ account: { email: 'alex@example.com' }, key: null, inUse: 'account' }" />
+            <GalleryWebSearchShowcase
+              :state="{ account: { email: 'alex@example.com' }, key: null, inUse: 'account' }"
+              :features="{ search: true, fetch: true }"
+            />
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="Signed In, Key Saved" wide>
@@ -741,8 +744,8 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       </GallerySection>
 
       <GallerySection
-        title="Web Search · Calls"
-        note="The page over a web plugin of its own. Sign In waits for the plugin, says the product would open Exa’s sign-in page in a new tab, and the account is signed in a moment later, as Exa’s callback would. Save checks the key with one search: one shorter than 16 characters is refused under the field, keeping what was typed; a longer one is saved and shown by its last four characters, and In Use follows. Sign Out and Remove each wait for their call."
+        title="Search · Calls"
+        note="The page over a web plugin of its own. Web Search and Web Fetch switch at once, from their defaults, search off and fetch on. Sign In waits for the plugin, says the product would open Exa’s sign-in page in a new tab, and the account is signed in a moment later, as Exa’s callback would. Save checks the key with one search: one shorter than 16 characters is refused under the field, keeping what was typed; a longer one is saved and shown by its last four characters, and In Use follows. Sign Out and Remove each wait for their call."
       >
         <GallerySpecimen variant="Wide" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">

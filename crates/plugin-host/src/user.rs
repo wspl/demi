@@ -3,7 +3,9 @@
 //! The module holds:
 //!
 //! - Which plugins the user has on, which decides the toolset of the user's
-//!   conversations and which page states, page calls and user streams exist.
+//!   conversations and which page states, page calls and user streams exist,
+//!   and which of their features, which narrows the toolset
+//!   (`crate::features`).
 //! - An instance of each plugin on, made at its first request after the shard
 //!   started or the plugin was turned on, and dropped, with every task it
 //!   started, when it is turned off. A conversation's deletion or fork reaches
@@ -31,7 +33,7 @@ use crate::store::{PluginChanges, PluginStore, ValueWrite, Written};
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
-    AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk,
+    AskedVideo, AudioAsk, AudioVoices, Feature, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk,
     VideoStep, CallKind, DirectoryPath, HostDirectory, Plugin, PluginError, PluginId, PluginPort,
     PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope, StoredReport,
     StoredValue, Workspaces, DeviceName, GitTree,
@@ -270,6 +272,8 @@ impl PanelError {
 pub enum SwitchError {
     #[error("No plugin \"{0}\"")]
     UnknownPlugin(String),
+    #[error("The plugin \"{plugin}\" has no feature \"{feature}\"")]
+    UnknownFeature { plugin: String, feature: String },
     #[error(transparent)]
     Storage(#[from] StoreError),
 }
@@ -316,6 +320,9 @@ pub(crate) struct Shared {
     /// Whether the user has each plugin on, by its index, once read: every
     /// switch goes through this shard, so the copy stays current.
     enabled: RefCell<Option<Vec<bool>>>,
+    /// Whether the user has each feature of each plugin on, by the
+    /// plugin's index and the feature's, once read, as `enabled` is.
+    features: RefCell<Option<Vec<Vec<bool>>>>,
     /// Cancelled when the user next turns a plugin on or off, which makes
     /// what a direct channel's introduction told of the user's streams out
     /// of date (`crates/runner-direct/src/lib.rs`).
@@ -444,6 +451,37 @@ impl Shared {
             .collect();
         self.enabled.replace(Some(enabled.clone()));
         Ok(enabled)
+    }
+
+    /// Whether the user has each feature of each plugin on, by the plugin's
+    /// index and the feature's.
+    async fn features(&self) -> Result<Vec<Vec<bool>>, StoreError> {
+        if let Some(features) = &*self.features.borrow() {
+            return Ok(features.clone());
+        }
+        let choices = self.store.feature_switches(self.user.clone()).await?;
+        let features: Vec<Vec<bool>> = self
+            .registry
+            .plugins
+            .iter()
+            .map(|registered| {
+                let plugin = registered.id().as_str();
+                registered
+                    .factory
+                    .manifest()
+                    .features
+                    .iter()
+                    .map(|feature| {
+                        choices
+                            .get(&(plugin.to_owned(), feature.id.clone()))
+                            .copied()
+                            .unwrap_or(feature.on_by_default)
+                    })
+                    .collect()
+            })
+            .collect();
+        self.features.replace(Some(features.clone()));
+        Ok(features)
     }
 
     pub(crate) fn plugin_id(&self, plugin: usize) -> String {
@@ -645,6 +683,7 @@ impl UserPlugins {
             sign_ins,
             changes,
             enabled: RefCell::new(None),
+            features: RefCell::new(None),
             switched: RefCell::default(),
             directories: RefCell::new(None),
             revisions: RefCell::new(HashMap::new()),
@@ -660,19 +699,27 @@ impl UserPlugins {
     /// settings page.
     pub async fn entries(&self) -> Result<Vec<PluginEntry>, StoreError> {
         let enabled = self.enabled().await?;
+        let features = self.0.features().await?;
         Ok(self
             .0
             .registry
             .plugins
             .iter()
             .zip(enabled)
-            .map(|(registered, enabled)| {
+            .zip(features)
+            .map(|((registered, enabled), features)| {
                 let manifest = registered.factory.manifest();
                 PluginEntry {
                     id: manifest.id.to_string(),
                     name: manifest.name.clone(),
                     description: manifest.description.clone(),
                     enabled,
+                    features: manifest
+                        .features
+                        .iter()
+                        .zip(features)
+                        .map(|(feature, on)| (feature.id.clone(), on))
+                        .collect(),
                     packages: registered.packages.iter().cloned().collect(),
                 }
             })
@@ -716,6 +763,45 @@ impl UserPlugins {
         self.0
             .changes.plugin_changed(registered.id().as_str().to_owned());
         Ok(Some(Switched { released }))
+    }
+
+    /// Turns `plugin`'s `feature` on or off for the user, and marks the
+    /// plugin list as changed; any change ends what [`Self::next_switch`]
+    /// gave. Answers whether the choice changed. A feature turned off only
+    /// takes its leaves out of the command set: the plugin's instance, its
+    /// tabs and its packages stay.
+    pub async fn switch_feature(&self, plugin: &str, feature: &str, enabled: bool) -> Result<bool, SwitchError> {
+        let Some((index, registered)) = self.0.registry.plugin(plugin) else {
+            return Err(SwitchError::UnknownPlugin(plugin.to_owned()));
+        };
+        let Some(position) = registered
+            .factory
+            .manifest()
+            .features
+            .iter()
+            .position(|declared| declared.id == feature)
+        else {
+            return Err(SwitchError::UnknownFeature {
+                plugin: plugin.to_owned(),
+                feature: feature.to_owned(),
+            });
+        };
+        if self.0.features().await?[index][position] == enabled {
+            return Ok(false);
+        }
+        self.0
+            .store
+            .set_feature_switch(self.0.user.clone(), plugin.to_owned(), feature.to_owned(), enabled)
+            .await?;
+        // Set in the copy as it is now, which another switch may have
+        // changed while this one was stored.
+        if let Some(features) = self.0.features.borrow_mut().as_mut() {
+            features[index][position] = enabled;
+        }
+        let switched = std::mem::take(&mut *self.0.switched.borrow_mut());
+        switched.cancel();
+        self.0.changes.plugins_changed();
+        Ok(true)
     }
 
     /// The packages whose residents a Host is to hold none of: those of every
@@ -779,33 +865,52 @@ impl UserPlugins {
     /// product's `product` groups under `demi`.
     pub async fn toolset(&self, product: Vec<GroupBuilder>) -> Result<PluginToolset, StoreError> {
         let enabled = self.enabled().await?;
-        let commands = compose(&self.0.registry, Some(&self.0), product, |index| {
-            enabled[index]
-        })
-        .expect("the plugins' commands were checked at startup");
+        let features = self.0.features().await?;
+        let on = |index: usize, feature: &Feature| {
+            let declared = &self.0.registry.plugins[index].factory.manifest().features;
+            declared
+                .iter()
+                .position(|candidate| candidate.id == feature.id)
+                .is_some_and(|position| features[index][position])
+        };
+        let commands = compose(&self.0.registry, Some(&self.0), product, |index| enabled[index], on)
+            .expect("the plugins' commands were checked at startup");
         Ok(PluginToolset {
             commands,
-            revision: self.revision_of(&enabled),
+            revision: self.revision_of(&enabled, &features),
         })
     }
 
     /// The revision of the toolset the user's plugins give now.
     pub async fn revision(&self) -> Result<String, StoreError> {
         let enabled = self.enabled().await?;
-        Ok(self.revision_of(&enabled))
+        let features = self.0.features().await?;
+        Ok(self.revision_of(&enabled, &features))
     }
 
-    fn revision_of(&self, enabled: &[bool]) -> String {
-        let ids: Vec<&str> = self
+    /// The plugins on that have commands, each with the features it has
+    /// off, such as `web!search`.
+    fn revision_of(&self, enabled: &[bool], features: &[Vec<bool>]) -> String {
+        let parts: Vec<String> = self
             .0
             .registry
             .plugins
             .iter()
             .zip(enabled)
-            .filter(|(registered, enabled)| **enabled && !registered.commands.is_empty())
-            .map(|(registered, _)| registered.id().as_str())
+            .zip(features)
+            .filter(|((registered, enabled), _)| **enabled && !registered.commands.is_empty())
+            .map(|((registered, _), on)| {
+                let mut part = registered.id().as_str().to_owned();
+                for (feature, on) in registered.factory.manifest().features.iter().zip(on) {
+                    if !on {
+                        part.push('!');
+                        part.push_str(&feature.id);
+                    }
+                }
+                part
+            })
             .collect();
-        ids.join(",")
+        parts.join(",")
     }
 
     /// Asks the context source `plugin` for a node's new context block;

@@ -1,4 +1,4 @@
-// The `web` plugin's page (`packages/plugin-sdk/src/index.ts`): its Web Search
+// The `web` plugin's page (`packages/plugin-sdk/src/index.ts`): its Search
 // settings section, under Agent in the settings dialog only, with no entry in
 // the app's sidebar, and the types of its state, parameters and results,
 // generated from the plugin's manifest.

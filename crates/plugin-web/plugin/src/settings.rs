@@ -1,4 +1,4 @@
-//! Settings › Web Search: the plugin's user state, which says how the user
+//! Settings › Search: the plugin's user state, which says how the user
 //! is connected to Exa, and the methods that sign in and out and save and
 //! remove the API key.
 

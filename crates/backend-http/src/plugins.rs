@@ -39,9 +39,30 @@ pub(super) async fn switch(
         .of(&user.id)
         .call(move |shard, _| async move { shard.switch_plugin(&plugin, enabled).await })
         .await?;
+    switch_answer(switched)
+}
+
+/// `PUT /plugins/:plugin/features/:feature { enabled }`: turns the
+/// plugin's feature on or off for the caller.
+pub(super) async fn switch_feature(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((plugin, feature)): Path<(String, String)>,
+    JsonBody(PluginSwitch { enabled }): JsonBody<PluginSwitch>,
+) -> Result<StatusCode, ApiError> {
+    let switched = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.switch_plugin_feature(&plugin, &feature, enabled).await })
+        .await?;
+    switch_answer(switched)
+}
+
+/// The answer to a switch of a plugin or of one of its features.
+fn switch_answer(switched: Result<(), SwitchError>) -> Result<StatusCode, ApiError> {
     match switched {
         Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(error @ SwitchError::UnknownPlugin(_)) => Err(ApiError::new(
+        Err(error @ (SwitchError::UnknownPlugin(_) | SwitchError::UnknownFeature { .. })) => Err(ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::UnknownPlugin,
             error.to_string(),

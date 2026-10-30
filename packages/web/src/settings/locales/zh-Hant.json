@@ -22,7 +22,9 @@
   },
   "plugins": {
     "turnOnFailed": "無法開啟外掛程式",
-    "turnOffFailed": "無法關閉外掛程式"
+    "turnOffFailed": "無法關閉外掛程式",
+    "featureOnFailed": "無法開啟該功能",
+    "featureOffFailed": "無法關閉該功能"
   },
   "providers": {
     "saveFailed": "無法儲存供應商",

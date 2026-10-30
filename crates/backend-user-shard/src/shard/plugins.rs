@@ -411,6 +411,30 @@ impl Shard {
         Ok(())
     }
 
+    /// Turns `plugin`'s `feature` on or off for the user: every live tree
+    /// takes the narrowed commands, and its summary is marked, as
+    /// [`Self::switch_plugin`] does.
+    pub async fn switch_plugin_feature(
+        &self,
+        plugin: &str,
+        feature: &str,
+        enabled: bool,
+    ) -> Result<(), demi_plugin_host::SwitchError> {
+        if !self.plugins().switch_feature(plugin, feature, enabled).await? {
+            return Ok(());
+        }
+        if let Err(error) = self.agent().adopt_toolset().await {
+            tracing::error!(event = "plugin_commands.switch_failed", plugin, feature, %error, "the open conversations could not take the plugins' commands");
+        }
+        let marks = self.services().sync.of(self.user());
+        for root in self.agent().live_roots() {
+            marks.mark(Part::Metadata(
+                demi_backend_host_access::conversation_of(&root),
+            ));
+        }
+        Ok(())
+    }
+
     /// Closes the conversation's live tree so that it opens again with the
     /// user's current plugins; a tree that works or an archived
     /// conversation is refused, and one with no live tree has nothing to do.

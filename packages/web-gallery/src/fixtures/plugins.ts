@@ -1,3 +1,4 @@
+import { reactive } from 'vue'
 import { createPinia } from 'pinia'
 import { httpStatusLine } from '@demicodes/utils'
 import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
@@ -24,7 +25,14 @@ import {
   type SkillsState,
   type SourceState,
 } from '@demicodes/plugin-skills'
-import { removeKeySchema, saveKeySchema, signInSchema, signOutSchema, type WebState } from '@demicodes/plugin-web'
+import {
+  FEATURES as WEB_FEATURES,
+  removeKeySchema,
+  saveKeySchema,
+  signInSchema,
+  signOutSchema,
+  type WebState,
+} from '@demicodes/plugin-web'
 import { productWould } from '../product-would'
 import { galleryWorkspaces } from './workspaces'
 import { galleryDevices } from './devices'
@@ -39,6 +47,8 @@ import type { GalleryBrowserPlugin } from './panel'
 export interface GalleryPlugin {
   /** The plugin's user state, read reactively. */
   state?(): unknown
+  /** Whether the specimen's user has each of its features on, which a switch changes at once. */
+  features?: Record<string, boolean>
   /** Follows the plugin's state of a conversation, as the product follows it by revision. */
   followState?(conversation: string): StateFeed
   call(method: string, params: object, conversation: string | null): Promise<unknown>
@@ -102,6 +112,14 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     blockDocument: (plugin, tag, id) => plugins[plugin]?.blockDocument?.(tag, id) ?? 'about:blank',
     userState: (plugin) => (enabled(plugin) ? plugins[plugin]?.state?.() : undefined),
     enabled,
+    features: (plugin) => plugins[plugin]?.features ?? {},
+    setFeature: async (plugin, feature, on) => {
+      const features = fixture(plugin).features
+      if (!features || !(feature in features)) {
+        throw new PluginCallError('unknown_plugin', `The plugin "${plugin}" has no feature "${feature}"`)
+      }
+      features[feature] = on
+    },
     followState: (plugin, conversation) => {
       const follow = fixture(plugin).followState
       if (!follow) {
@@ -308,12 +326,14 @@ export const GALLERY_EXA_KEY_LENGTH = 16
  * - A key is checked with one search, a beat long: one shorter than {@link
  *   GALLERY_EXA_KEY_LENGTH} is refused, as Exa refuses a key copied in part.
  * - The key in use follows: the key over the sign-in over neither.
+ * - Search and fetch switch as the backend would, from their defaults.
  */
 export function webPlugin(state: WebState): GalleryPlugin {
   const inUse = (): void => {
     state.inUse = state.key ? 'key' : state.account ? 'account' : 'anonymous'
   }
   return {
+    features: reactive({ ...WEB_FEATURES }),
     // A new object at each change, as the backend sends the state anew.
     state: () => ({
       account: state.account ? { ...state.account } : null,

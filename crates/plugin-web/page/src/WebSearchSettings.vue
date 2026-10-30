@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { z } from 'zod'
 import { PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import SettingsWebSearch from './SettingsWebSearch.vue'
 import {
+  FEATURES,
+  type Feature,
   signInStartedSchema,
   webReasonSchema,
   webStateSchema,
@@ -25,6 +27,9 @@ import { t } from './locales/text'
 const page = usePage()
 const plugin = page.plugin
 const state = plugin.state(webStateSchema)
+
+/** The user's choices over the defaults, which show until the choices arrive. */
+const features = computed<Record<Feature, boolean>>(() => ({ ...FEATURES, ...plugin.features.value }))
 
 const keyDraft = ref('')
 /** Why the key typed was not saved, which the row says under the field. */
@@ -78,8 +83,10 @@ function removeKey(): Promise<void> {
   <SettingsWebSearch
     v-model:key-draft="keyDraft"
     :state="state"
+    :features="features"
     :key-problem="keyProblem"
     :operation="page.operation"
+    @set-feature="plugin.setFeature"
     @sign-in="signIn"
     @sign-out="signOut"
     @save-key="saveKey"

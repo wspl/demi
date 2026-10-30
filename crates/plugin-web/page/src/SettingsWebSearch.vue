@@ -8,15 +8,17 @@ import {
   SettingsGroup,
   SettingsPage,
   SettingsRow,
+  Switch,
   TextInput,
   type SentenceText,
 } from '@demicodes/plugin-sdk'
-import type { InUse, WebState } from './generated/plugin'
+import type { Feature, InUse, WebState } from './generated/plugin'
 import { t } from './locales/text'
 
 /**
- * Settings › Web Search shows:
+ * Settings › Search shows:
  *
+ * - A switch for each of the plugin's commands, search and fetch.
  * - The user's Exa account, signed in or not.
  * - The API key, typed and checked, or saved and shown by its last four
  *   characters.
@@ -25,6 +27,8 @@ import { t } from './locales/text'
 const props = defineProps<{
   /** The plugin's state; null until it arrives, shown as nothing connected. */
   state: WebState | null
+  /** Whether the user has search and fetch on. */
+  features: Record<Feature, boolean>
   /** Why the key typed was not saved, under the field. */
   keyProblem?: SentenceText
   /**
@@ -35,6 +39,7 @@ const props = defineProps<{
    */
   operation?: PageContext['operation']
   /** What each button does; it returns the call's promise, and the button works until it settles. */
+  onSetFeature?: Action<[feature: Feature, on: boolean]>
   onSignIn?: Action
   onSignOut?: Action
   onSaveKey?: Action<[key: string]>
@@ -43,6 +48,12 @@ const props = defineProps<{
 
 /** The key being typed, kept by the caller so a refusal leaves it in the field. */
 const keyDraft = defineModel<string>('keyDraft', { default: '' })
+
+/** Each switch the page shows, in its order. */
+const SWITCHES: { id: Feature; label: () => string; description: () => SentenceText }[] = [
+  { id: 'search', label: () => t('features.search'), description: () => t('features.searchDescription') },
+  { id: 'fetch', label: () => t('features.fetch'), description: () => t('features.fetchDescription') },
+]
 
 const IN_USE: Record<InUse, () => SentenceText> = {
   key: () => t('inUse.key'),
@@ -63,6 +74,21 @@ function save(): unknown {
 
 <template>
   <SettingsPage :title="t('settings.title')">
+    <SettingsGroup>
+      <SettingsRow
+        v-for="feature in SWITCHES"
+        :key="feature.id"
+        :label="feature.label()"
+        :description="feature.description()"
+      >
+        <Switch
+          :model-value="features[feature.id]"
+          size="sm"
+          :aria-label="feature.label()"
+          @update:model-value="onSetFeature?.(feature.id, $event)"
+        />
+      </SettingsRow>
+    </SettingsGroup>
     <SettingsGroup title="Exa">
       <SettingsRow :label="t('account.label')">
         <span class="text-chrome text-fg-muted">{{

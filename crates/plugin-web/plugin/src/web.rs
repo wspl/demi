@@ -17,6 +17,10 @@
 //! capability. A deployment without the `demi.fetch` package leaves the whole
 //! group out.
 //!
+//! Each is a feature the user turns on and off apart: search off until the
+//! user turns it on, since a subscription's model searches with its vendor's
+//! own search, and fetch on, since every model reads pages with it.
+//!
 //! # Permissions and reading
 //!
 //! Neither asks the user for permission: a search spends the user's own search
@@ -32,7 +36,7 @@ use demi_command_package_fetch_protocol::{
     PACKAGE,
 };
 use demi_host_interface::{GroupBuilder, LeafBuilder};
-use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
+use demi_plugin_interface::{CommandPlugin, Feature, Placement, PortHandled};
 
 use crate::search::{DEFAULT_COUNT, SearchArgs, SearchedPage};
 
@@ -45,13 +49,30 @@ pub(crate) fn commands() -> CommandPlugin {
         .expect("the web group is a valid declaration")
 }
 
+/// The plugin's features: `search` and `fetch`, each saying its part of the
+/// group's summary and index entry.
+pub(crate) fn features() -> Vec<Feature> {
+    let feature = |id: &str, on_by_default, summary: &str, index_entry: &str| Feature {
+        id: id.into(),
+        on_by_default,
+        group: vec!["web".into()],
+        leaves: vec![id.into()],
+        summary: summary.into(),
+        index_entry: index_entry.into(),
+    };
+    vec![
+        feature("search", false, "Search the web.", "Searches the web."),
+        feature("fetch", true, "Read pages from this Host.", "Fetches a page as Markdown, or a file."),
+    ]
+}
+
 fn web_group() -> GroupBuilder {
     GroupBuilder::new("web", "Search the web and read pages from this Host.")
         .index_entry(ENTRY)
         .leaf(
             LeafBuilder::rpc(
                 "search",
-                "Search the web for one to four queries, run at once, and list the pages found, merged in turn: each page's title, domain, date, URL and up to three lines that matter. Cite the pages you use as Markdown links. Searches with the user's Exa account or API key from Settings › Web Search, or anonymously within a shared limit.",
+                "Search the web for one to four queries, run at once, and list the pages found, merged in turn: each page's title, domain, date, URL and up to three lines that matter. Cite the pages you use as Markdown links. Searches with the user's Exa account or API key from Settings › Search, or anonymously within a shared limit.",
             )
             .input::<SearchArgs>()
             .positionals(["query"])
