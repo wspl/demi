@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowDown } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { usePreferredReducedMotion } from '@vueuse/core'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
 import type { TurnSpeed } from '@demicodes/protocol'
@@ -27,7 +27,23 @@ const { shown, count, speed, turnSpeed } = useRequestOutput({
   reducedMotion: () => motion.value === 'reduce',
 })
 
-const FADE = { leaveActiveClass: 'transition-opacity duration-200 ease-out', leaveToClass: 'opacity-0' }
+/**
+ * The reading fades as its request or turn ends, never as the row starts
+ * showing another conversation: what fades then is the last one's, over the
+ * conversation now shown.
+ */
+const switching = ref(false)
+watch(() => props.scope, () => {
+  switching.value = true
+}, { flush: 'sync' })
+watch(switching, () => {
+  switching.value = false
+}, { flush: 'post' })
+const FADE = computed(() => ({
+  css: !switching.value,
+  leaveActiveClass: 'transition-opacity duration-200 ease-out',
+  leaveToClass: 'opacity-0',
+}))
 
 /** The speed the row shows: the reading's while one shows, then the last turn's. */
 const rate = computed(() => (shown.value ? speed.value : turnSpeed.value))

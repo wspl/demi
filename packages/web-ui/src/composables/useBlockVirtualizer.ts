@@ -111,7 +111,12 @@ interface ViewAnchor extends ScrollAnchor {
 }
 
 export interface PersistedScrollState {
-  anchor: ScrollAnchor
+  /**
+   * The row the reader left in view, where the list opens again; null when
+   * the reader followed the end, where it opens again with what arrived
+   * meanwhile, as a chat app reopens a conversation left at its latest.
+   */
+  anchor: ScrollAnchor | null
   heightCache: Map<string, number>
 }
 
@@ -1003,16 +1008,17 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       return
     isRestored.value = true
 
-    if (!persistedState) {
+    const anchor = persistedState?.anchor
+    if (!anchor) {
       scrollToBottom()
       scrollOffset.value = el.scrollTop
       lastScrollTop = el.scrollTop
-      logList('info', 'list.placed', { how: 'end', saved: false, scroll_top_px: Math.round(el.scrollTop) })
+      logList('info', 'list.placed', { how: 'end', saved: persistedState !== undefined, scroll_top_px: Math.round(el.scrollTop) })
       nextTick(() => updateAnchor())
       return
     }
 
-    const anchorIndex = blocks.value.findIndex((b) => b.id === persistedState.anchor.blockId)
+    const anchorIndex = blocks.value.findIndex((b) => b.id === anchor.blockId)
     if (anchorIndex < 0) {
       scrollToBottom()
       scrollOffset.value = el.scrollTop
@@ -1022,10 +1028,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       return
     }
 
-    el.scrollTop = persistedState.anchor.scrollTop
+    el.scrollTop = anchor.scrollTop
     lastScrollTop = el.scrollTop
+    // The reader left the end: the list does not follow it, whether or not
+    // the restored position moves the scroller and says so by a scroll event.
+    endDistance.value = distanceFromBottom(el)
+    follow(false, 'saved_place')
     logList('info', 'list.placed', { how: 'saved_place', saved: true, saved_row_held: true, row: anchorIndex, scroll_top_px: Math.round(el.scrollTop) })
-    correctUntilConverged(el, anchorIndex, persistedState.anchor.offsetPx, 3)
+    correctUntilConverged(el, anchorIndex, anchor.offsetPx, 3)
   }
 
   function correctUntilConverged(
@@ -1109,10 +1119,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   )
 
   function getPersistedState(): PersistedScrollState | undefined {
-    if (!lastAnchor)
+    const following = isRestored.value && shouldAutoScroll.value
+    if (!lastAnchor && !following)
       return undefined
     return {
-      anchor: {
+      anchor: following || !lastAnchor ? null : {
         blockId: lastAnchor.blockId,
         anchorIndex: lastAnchor.anchorIndex,
         offsetPx: lastAnchor.offsetPx,
