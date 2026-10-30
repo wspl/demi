@@ -56,7 +56,9 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     ? tabOf(message.target).then(async tabId => ({ tabId, streamId: await streamId(tabId) }))
     : message.type === 'released'
       ? released(message.tabId).then(() => ({}))
-      : null;
+      : message.type === 'captured'
+        ? chrome.tabCapture.getCapturedTabs().then(tabs => ({ tabs: tabs.map(({ tabId, status }) => ({ tabId, status })) }))
+        : null;
   if (!work) return false;
   work.then(respond, error => respond({ error: String(error?.message ?? error) }));
   return true;

@@ -115,6 +115,18 @@ fn sme_without_sve(hwcap: u64, hwcap2: u64) -> bool {
     hwcap2 & HWCAP2_SME != 0 && hwcap & HWCAP_SVE == 0
 }
 
+/// Why a tab's capture did not open, as its viewer and its recording say it.
+/// Chrome's `NotReadableError` has been seen to fail every capture of one
+/// browser, whichever the tab, until that browser was started again.
+fn opening_failed(name: Option<&str>, message: &str) -> String {
+    match name {
+        Some("NotReadableError") => format!(
+            "Chrome could not start capturing the tab ({message}); closing every tab of this browser ends it, and the next tab starts a new one"
+        ),
+        _ => message.to_owned(),
+    }
+}
+
 /// One encoded picture of a capture, and what a capture reports: the live
 /// view's (`demi_live_view::stream`), which every source of pictures shares.
 pub use demi_live_view::stream::{CaptureEvent, EncodedFrame as Frame};
@@ -838,11 +850,28 @@ impl Owner {
                 extension::CaptureEvent::Stalled { capture } => {
                     self.deliver(capture, CaptureEvent::Stalled, RecordEvent::Stalled)
                 }
-                extension::CaptureEvent::Error { capture, message } => self.deliver(
+                extension::CaptureEvent::Error {
                     capture,
-                    CaptureEvent::Failed(message.clone()),
-                    RecordEvent::Failed(message),
-                ),
+                    message,
+                    name,
+                    opening,
+                    captured,
+                } => {
+                    let note = if opening {
+                        tracing::warn!(
+                            event = "capture.open_failed",
+                            capture,
+                            name = name.as_deref().unwrap_or(""),
+                            %message,
+                            ?captured,
+                            "a tab's capture did not open"
+                        );
+                        opening_failed(name.as_deref(), &message)
+                    } else {
+                        message
+                    };
+                    self.deliver(capture, CaptureEvent::Failed(note.clone()), RecordEvent::Failed(note))
+                }
                 extension::CaptureEvent::Recreate {} => {
                     self.recreate("Chrome keeps a capture it cannot release")
                 }

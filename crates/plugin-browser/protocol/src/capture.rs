@@ -87,10 +87,32 @@ pub enum CaptureEvent {
     /// many frames the tab drew.
     Missed { capture: u32, count: u32 },
     /// The capture failed and the extension released it.
-    Error { capture: u32, message: String },
+    Error {
+        capture: u32,
+        message: String,
+        /// The error's name, such as `NotReadableError`, when it has one.
+        name: Option<String>,
+        /// Whether the tab's capture did not open, rather than failing
+        /// once it ran.
+        opening: bool,
+        /// Chrome's captures of its tabs when the capture did not open,
+        /// which the log keeps to tell why; none for another failure, or
+        /// when Chrome did not tell them in time.
+        captured: Option<Vec<CapturedTab>>,
+    },
     /// Chrome keeps a capture request the extension cannot release, which
     /// fails every later capture until the Host recreates the extension.
     Recreate {},
+}
+
+/// One of Chrome's captures of a tab (`chrome.tabCapture.CaptureInfo`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapturedTab {
+    #[serde(rename = "tabId")]
+    pub tab_id: i64,
+    /// `pending`, `active`, `stopped` or `error`.
+    pub status: String,
 }
 
 impl CaptureEvent {
