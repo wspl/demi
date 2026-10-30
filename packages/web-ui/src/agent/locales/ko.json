@@ -141,6 +141,9 @@
     "signedOut": "{provider}에서 {account} 계정을 로그아웃했습니다. 설정 › 제공업체에서 다시 로그인하세요.",
     "notExposed": "{device}의 포트 {port}이(가) 공개되어 있지 않습니다.",
     "deviceOffline": "{device}이(가) 오프라인 상태입니다.",
+    "opaque": {
+      "other": "{vendor}의 {name}"
+    },
     "work": {
       "ran": "명령 {count}개 실행",
       "checked": "명령 {count}개 확인",

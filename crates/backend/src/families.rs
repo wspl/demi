@@ -150,6 +150,8 @@ impl ProviderFamily for OpenAiFamily {
             wire: settings.wire_api.unwrap_or_default(),
             policy: settings.vendor,
             vendor_id: settings.vendor_id,
+            entry_id: args.entry_id.clone(),
+            label: args.label.clone(),
             makes_images: settings.image_shape == Some(ImageShape::OpenaiImages),
             makes_videos: settings.video_shape == Some(VideoShape::XaiVideos),
             makes_audio: settings.audio_shape == Some(AudioShape::OpenaiSpeech),

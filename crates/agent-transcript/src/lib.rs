@@ -92,7 +92,7 @@ pub(crate) fn is_compaction(block: &Block) -> bool {
 pub(crate) fn is_answer(block: &Block) -> bool {
     matches!(
         block,
-        Block::Thinking(_) | Block::RedactedThinking(_) | Block::Text(_) | Block::ToolCall(_)
+        Block::Thinking(_) | Block::Opaque(_) | Block::Text(_) | Block::ToolCall(_)
     )
 }
 

@@ -518,10 +518,13 @@ pub enum InferenceItem {
         /// it out (`crates/provider-anthropic-api/src/request.rs`).
         kept_past_summary: bool,
     },
-    /// Opaque reasoning data, replayed as received.
-    AssistantRedactedThinking {
+    /// A step the vendor ran on its side
+    /// (`demi_shared_types::OpaqueBlock`), with every entry of its record.
+    /// A provider sends only the entries it owns, as they came, and nothing
+    /// of the step when it owns none.
+    Opaque {
         model_id: String,
-        data: String,
+        entries: Vec<demi_shared_types::Entry>,
         /// As for [`Self::AssistantThinking`].
         kept_past_summary: bool,
     },
@@ -614,9 +617,10 @@ pub enum ProviderEvent {
     ThinkingDelta(String),
     /// The vendor's signature over the reasoning, sent back with it later.
     ThinkingSignature(String),
-    /// Reasoning the vendor sends only in encrypted form, sent back as
-    /// received.
-    RedactedThinking(String),
+    /// A step the vendor runs on its side, such as reasoning it sends only
+    /// encrypted or a search at the vendor. An event that names the call id
+    /// of a step of this run updates it; any other starts one.
+    Opaque(OpaqueStep),
     TextDelta(String),
     /// The model opened a tool call. With its input pieces it is for
     /// display only: the agent runs a call only from its `ToolCall`, which
@@ -781,7 +785,7 @@ impl ProviderEvent {
             Self::ThinkingStart
             | Self::ThinkingDelta(_)
             | Self::ThinkingSignature(_)
-            | Self::RedactedThinking(_)
+            | Self::Opaque(_)
             | Self::TextDelta(_)
             | Self::ToolCallStart { .. }
             | Self::ToolCallInput { .. }
@@ -815,11 +819,25 @@ pub enum EntriesOf {
     Item(usize),
     /// The block the run's events wrote at this position, counting from 0.
     ///
-    /// - A thinking start or redacted reasoning writes a block.
+    /// - A thinking start writes a block, and so does a vendor's step that
+    ///   starts.
     /// - A text piece writes one unless text was the last block written.
     /// - A reasoning piece writes one unless open reasoning was.
     /// - A tool call writes one.
     Output(usize),
+}
+
+/// A vendor's step as a run reports it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpaqueStep {
+    /// The vendor's id of the step, which its later events name; none for a
+    /// step the vendor gives whole.
+    pub call_id: Option<String>,
+    pub status: demi_shared_types::OpaqueStatus,
+    pub view: demi_shared_types::OpaqueView,
+    /// Entries of the vendor's record of the step, owned by the provider;
+    /// an update adds its own after those the step holds.
+    pub entries: Vec<demi_shared_types::Entry>,
 }
 
 /// A tool call the model requested.

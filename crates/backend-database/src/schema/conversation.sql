@@ -115,7 +115,7 @@ CREATE TABLE blocks (
   -- it is then of that row's version. Null for every other row.
   replaces       INTEGER CHECK (replaces < idx),
   -- The block's format; a release reads each format it knows.
-  -- blocks.body: transcript block format 17
+  -- blocks.body: transcript block format 18
   format         INTEGER NOT NULL,
   type           TEXT NOT NULL,
   id             TEXT NOT NULL,
@@ -226,7 +226,7 @@ CREATE TABLE share_blocks (
   copy       INTEGER PRIMARY KEY,
   token      TEXT NOT NULL,
   idx        INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.body: transcript block format 17
+  -- share_blocks.body: transcript block format 18
   format     INTEGER NOT NULL,
   type       TEXT NOT NULL,
   id         TEXT NOT NULL,

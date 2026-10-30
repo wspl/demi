@@ -19,7 +19,7 @@ use demi_shared_types::Entry;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::session;
+use crate::{RECORD_OWNER, session};
 
 /// Where a block is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +138,7 @@ impl Mirror {
             .into_iter()
             .map(|index| ProviderEvent::Entries {
                 of: EntriesOf::Output(index),
-                entries: vec![session::left_out().into()],
+                entries: vec![Entry::new(RECORD_OWNER, &session::left_out()).expect("a JSON value serializes")],
             })
             .collect()
     }
@@ -185,7 +185,7 @@ impl Mirror {
                     *signed = true;
                 }
             }
-            ProviderEvent::RedactedThinking(_) => self.redacted = Some(self.write(Last::Other)),
+            ProviderEvent::Opaque(_) => self.redacted = Some(self.write(Last::Other)),
             ProviderEvent::TextDelta(_) if self.last != Some(Last::Text { open: true }) => {
                 self.text = Some(self.write(Last::Text { open: true }));
             }
@@ -318,7 +318,7 @@ impl Mirror {
                 EntriesOf::Output(_) => entries,
             }
             .into_iter()
-            .map(Entry::from)
+            .map(|value| Entry::new(RECORD_OWNER, &value).expect("a JSON value serializes"))
             .collect();
             match events.last_mut() {
                 Some(ProviderEvent::Entries { of: last, entries: held }) if *last == of => {

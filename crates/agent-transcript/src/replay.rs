@@ -144,10 +144,10 @@ pub fn replay(request: &RequestView) -> Replay {
                     kept_past_summary,
                 });
             }
-            Block::RedactedThinking(redacted) => {
-                items.push(InferenceItem::AssistantRedactedThinking {
-                    model_id: redacted.model.model.id.clone(),
-                    data: redacted.data.clone(),
+            Block::Opaque(step) => {
+                items.push(InferenceItem::Opaque {
+                    model_id: step.model.model.id.clone(),
+                    entries: step.entries.clone(),
                     kept_past_summary,
                 });
             }

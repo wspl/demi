@@ -45,6 +45,7 @@ export function drawnAsFunctionalBlock(row: MessageListBlock): boolean {
     case 'thinking':
     case 'tool_call':
     case 'pending_call':
+    case 'opaque':
     case 'work_group':
     case 'abort':
     case 'activity_slot':

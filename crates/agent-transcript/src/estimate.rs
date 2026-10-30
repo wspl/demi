@@ -252,7 +252,7 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
             Some(_) => thinking.text.clone(),
             None => bound_text(&thinking.text).into_owned(),
         },
-        Block::RedactedThinking(redacted) => redacted.data.clone(),
+        Block::Opaque(step) => step.entries.iter().map(|entry| entry.json()).collect::<Vec<_>>().join("\n"),
         Block::Text(text) => bound_text(&text.text).into_owned(),
         Block::Response(response) => {
             serde_json::to_string(&response.usage).expect("token usage serializes to JSON")

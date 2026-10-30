@@ -48,11 +48,11 @@ import { shellStatusLooks, toolRenderKind } from './tool-rendering'
 
 /**
  * A step of the agent's work: a thinking block, a tool call, a call the model
- * is still writing, a command's notice (a `wakeup` that shows), or an agent's
- * receipt: an update or a child's end. The receipts of the user's own
+ * is still writing, a step its vendor ran, a command's notice (a `wakeup`
+ * that shows), or an agent's receipt: an update or a child's end. The receipts of the user's own
  * decisions are not steps: like the user's words, they end a run.
  */
-export type WorkStep = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' | 'wakeup' | 'agent_message' }>
+export type WorkStep = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' | 'opaque' | 'wakeup' | 'agent_message' }>
 
 /**
  * A step that tells of work done elsewhere: a command's notice or another
@@ -310,6 +310,8 @@ function stepRuns(step: WorkStep, live: boolean, newest: boolean): boolean {
       return live
     case 'thinking':
       return live && newest
+    case 'opaque':
+      return step.status === 'running'
     default:
       return false
   }
@@ -400,7 +402,7 @@ export function runTime(group: WorkGroupBlock, liveCalls: LiveCallLookup = () =>
     const command = step.type === 'tool_call' ? shellRowTime(step, liveCalls(step.toolUseId)) : null
     const end = command?.kind === 'ran'
       ? start + command.ms
-      : step.type === 'tool_call' ? parseEnd(step.endedAt) : step.type === 'thinking' ? parseEnd(step.endedAt) : null
+      : step.type === 'tool_call' || step.type === 'thinking' || step.type === 'opaque' ? parseEnd(step.endedAt) : null
     if (end !== null && end > start)
       spans.push([start, end])
   })
@@ -466,6 +468,14 @@ function callKind(step: CallStep): CallKind {
 }
 
 /**
+ * What a vendor's step did, as a group's row counts it: one of a kind Demi
+ * does not know uses that tool, at its vendor.
+ */
+function opaqueKind(step: Extract<WorkStep, { type: 'opaque' }>): CallKind {
+  return { kind: 'generic', tool: step.view.kind === 'other' ? step.view.name : '' }
+}
+
+/**
  * A run's calls by what they did, in the order the run first did each, with the
  * commands each kind touched.
  */
@@ -486,7 +496,7 @@ function callGroups(steps: readonly WorkStep[]): CallGroup[] {
   for (const step of steps) {
     if (step.type === 'thinking' || isNoticeStep(step))
       continue
-    const call = callKind(step)
+    const call = step.type === 'opaque' ? opaqueKind(step) : callKind(step)
     const key = call.kind === 'generic' ? `tool:${call.tool}` : call.kind
     const group = groups.get(key) ?? { kind: call.kind, tool: call.kind === 'generic' ? call.tool : '', touched: new Set<string>() }
     if (call.kind === 'check')

@@ -66,7 +66,7 @@ enum Place {
 /// child or any descendant of one; no other block reads it.
 fn place(block: &Block, sender_below: bool) -> Place {
     match block {
-        Block::Thinking(_) | Block::RedactedThinking(_) | Block::ToolCall(_) => Place::Step,
+        Block::Thinking(_) | Block::Opaque(_) | Block::ToolCall(_) => Place::Step,
         // A block of progress reports alone shows nothing.
         Block::Wakeup(wakeup) => {
             if wakeup

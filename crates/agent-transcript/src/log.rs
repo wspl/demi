@@ -8,11 +8,11 @@
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
 use demi_conversation_lane_protocol::{TranscriptPatch, Version, Versions};
-use demi_provider_common::{AccountSwitch, ToolCall};
+use demi_provider_common::{AccountSwitch, OpaqueStep, ToolCall};
 use demi_shared_types::{ScheduleMark, CodeFile, MessageComment, PictureCopy, ReplyPicture, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, Entry, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
-    RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
+    OpaqueBlock, OpaqueStatus, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement, CommandReport,
 };
@@ -656,16 +656,65 @@ impl TranscriptLog {
         self.record_replace(self.start + at);
     }
 
-    pub fn push_redacted_thinking(&mut self, model: &ModelSelection, data: String) {
+    /// Where the running request's output starts: after the last input or
+    /// response.
+    fn request_start(&self) -> usize {
+        self.blocks
+            .iter()
+            .rposition(|block| matches!(block, Block::User(_) | Block::Response(_)))
+            .map_or(0, |at| at + 1)
+    }
+
+    /// Ends the running request's vendor steps that still run, as failed: the
+    /// request ended without its response, so none of them will end.
+    pub fn settle_opaque(&mut self) {
+        let now = self.clock.now();
+        for at in self.request_start()..self.blocks.len() {
+            if let Block::Opaque(step) = &mut self.blocks[at]
+                && step.status == OpaqueStatus::Running
+            {
+                step.status = OpaqueStatus::Failed;
+                step.ended_at = Some(now);
+                self.record_replace(self.start + at);
+            }
+        }
+    }
+
+    /// Starts a vendor's step, or updates the one of this request that has
+    /// its call id: its status, view and end, and its entries after those it
+    /// holds.
+    pub fn apply_opaque(&mut self, model: &ModelSelection, step: OpaqueStep) {
+        let now = self.clock.now();
+        let ended_at = (step.status != OpaqueStatus::Running).then_some(now);
+        let request_start = self.request_start();
+        let started = step.call_id.as_ref().and_then(|call_id| {
+            self.blocks[request_start..]
+                .iter()
+                .rposition(|block| matches!(block, Block::Opaque(open) if open.call_id.as_ref() == Some(call_id)))
+                .map(|at| request_start + at)
+        });
+        if let Some(at) = started {
+            if let Block::Opaque(open) = &mut self.blocks[at] {
+                open.status = step.status;
+                open.view = step.view;
+                open.ended_at = ended_at;
+                open.entries.extend(step.entries);
+            }
+            self.record_replace(self.start + at);
+            return;
+        }
         let (id, created_at) = self.stamp();
-        self.append(Block::RedactedThinking(RedactedThinkingBlock {
+        self.append(Block::Opaque(OpaqueBlock {
             id,
             created_at,
             request: None,
             model: model.clone(),
-            data,
+            call_id: step.call_id,
+            status: step.status,
+            view: step.view,
+            ended_at,
             run: None,
-            entries: Vec::new(),
+            entries: step.entries,
         }));
     }
 

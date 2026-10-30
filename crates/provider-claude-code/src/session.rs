@@ -46,7 +46,7 @@ use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::input::{MCP_SERVER, Message};
-use crate::mcp;
+use crate::{RECORD_OWNER, mcp};
 use crate::placement::CliSystem;
 
 /// The key of a reference to a block's medium in an entry kept on the
@@ -289,6 +289,7 @@ fn call_message(block: &RequestBlock) -> Option<String> {
     block
         .entries
         .iter()
+        .filter(|entry| entry.owner() == RECORD_OWNER)
         .filter_map(|entry| entry.decode::<Recorded>().ok())
         .find(|entry| entry.kind.as_deref() == Some("assistant"))
         .and_then(|entry| entry.message?.id)
@@ -327,6 +328,7 @@ fn block_entries(
     let (marks, entries): (Vec<Value>, Vec<Value>) = block
         .entries
         .iter()
+        .filter(|entry| entry.owner() == RECORD_OWNER)
         .map(|entry| entry.decode::<Value>().expect("a held entry is JSON"))
         .partition(|entry| entry["type"] == LEFT_OUT);
     let mut kept = restored(&entries, &media(block_items)).unwrap_or_default();
@@ -336,7 +338,7 @@ fn block_entries(
             InferenceItem::AssistantThinking {
                 kept_past_summary: true,
                 ..
-            } | InferenceItem::AssistantRedactedThinking {
+            } | InferenceItem::Opaque {
                 kept_past_summary: true,
                 ..
             }
@@ -475,7 +477,7 @@ fn covered<'a>(
         InferenceItem::AssistantThinking { .. } => {
             entries.any(|entry| assistant_kind(entry) == Some("thinking"))
         }
-        InferenceItem::AssistantRedactedThinking { .. } => {
+        InferenceItem::Opaque { .. } => {
             entries.any(|entry| assistant_kind(entry) == Some("redacted_thinking"))
         }
         InferenceItem::ToolUse { tool_use_id, .. } => entries.any(|entry| {
@@ -569,7 +571,7 @@ fn written_as(item: &InferenceItem, written: &[Value], pending: &[Value]) -> Opt
         }
         InferenceItem::AssistantText { .. }
         | InferenceItem::AssistantThinking { .. }
-        | InferenceItem::AssistantRedactedThinking { .. } => None,
+        | InferenceItem::Opaque { .. } => None,
     }
 }
 

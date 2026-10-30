@@ -3,7 +3,7 @@
 //! blocks; the window compaction summarizes is [`crate::compaction`]'s.
 
 use demi_shared_types::{
-    AgentMessageBlock, Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank,
+    AgentMessageBlock, Block, BlockId, ErrorBlock, OpaqueView, TextBlock, ToolCallStatus, TurnId, is_blank,
 };
 
 use demi_agent_store::Kind;
@@ -86,7 +86,10 @@ pub fn unwind(blocks: &[Block], cut: usize) -> Vec<Block> {
 /// Whether a block is a leftover of an attempt that nobody can have acted on.
 fn is_leftover(block: &Block) -> bool {
     match block {
-        Block::Thinking(_) | Block::RedactedThinking(_) | Block::Error(_) => true,
+        Block::Thinking(_) | Block::Error(_) => true,
+        // Reasoning; a step the vendor ran is work done, which the next
+        // attempt reads rather than runs again.
+        Block::Opaque(step) => step.view == OpaqueView::Reasoning,
         Block::Text(text) => is_blank(&text.text),
         _ => false,
     }

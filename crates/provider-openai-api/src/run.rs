@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, encode_body, http_failure, read_http_failure,
-    wire::{Vendor, chat_completions, responses},
+    wire::{Vendor, chat_completions, responses::{self, RecordOwner}},
 };
 use demi_shared_types::{CacheTtl, WireApi};
 use futures_util::{Stream, StreamExt};
@@ -106,7 +106,7 @@ pub(crate) fn run(
         let events = match wire {
             WireApi::Responses => {
                 let received = responses::sse_events(body, LABEL, cancel.clone());
-                responses::map_events(received, vendor, shared.signature_tag.clone(), cancel).boxed_local()
+                responses::map_events(received, vendor, RecordOwner { tag: shared.signature_tag.clone(), name: shared.label.clone() }, cancel).boxed_local()
             }
             WireApi::ChatCompletions => chat_completions::map_sse(body, vendor, cancel).boxed_local(),
         };

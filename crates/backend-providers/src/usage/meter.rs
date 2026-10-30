@@ -189,7 +189,7 @@ impl Calls {
             event,
             ProviderEvent::ThinkingStart
                 | ProviderEvent::ThinkingDelta(_)
-                | ProviderEvent::RedactedThinking(_)
+                | ProviderEvent::Opaque(_)
                 | ProviderEvent::TextDelta(_)
                 | ProviderEvent::ToolCallStart { .. }
         );

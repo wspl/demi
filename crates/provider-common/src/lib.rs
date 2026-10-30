@@ -73,7 +73,7 @@ pub use client::{
 };
 pub use contract::{
     AccountSwitch, Ahead, CallEvent, CallOutcome, Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest,
-    MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestBlock, RequestLimits,
+    MediaBytes, Medium, OpaqueStep, PromptCache, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestBlock, RequestLimits,
     RequestPurpose, ResultPart, RuntimeEnv, RuntimeError, ToolCall, ToolDefinition, ToolResultKinds, UserPart, VendorCall,
     offers,
 };

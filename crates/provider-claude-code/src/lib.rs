@@ -92,6 +92,10 @@ use crate::run::ClaudeCodeRuntime;
 /// How messages name the family.
 const FAMILY: &str = "Claude Code";
 
+/// The owner of the entries the provider keeps, the CLI's own session lines
+/// (`crates/provider-claude-code/src/session.rs`).
+const RECORD_OWNER: &str = "claude-code:";
+
 /// The configuration of a `claude-code` entry's provider for one account.
 #[derive(Clone)]
 pub struct ClaudeCodeConfig {

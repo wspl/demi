@@ -619,7 +619,7 @@ fn item_kinds(items: &[InferenceItem]) -> Vec<&'static str> {
             InferenceItem::UserSteer { .. } => "user_steer",
             InferenceItem::AssistantText { .. } => "assistant_text",
             InferenceItem::AssistantThinking { .. } => "assistant_thinking",
-            InferenceItem::AssistantRedactedThinking { .. } => "assistant_redacted_thinking",
+            InferenceItem::Opaque { .. } => "opaque",
             InferenceItem::ToolUse { .. } => "tool_use",
             InferenceItem::ToolResult { .. } => "tool_result",
         })

@@ -1739,6 +1739,43 @@ export function commandLookBlocks(): Block[] {
   ])
 }
 
+/**
+ * Steps a vendor ran on its side, of a kind Demi does not know: one that
+ * ended, one that failed beside a command, and one still running.
+ */
+export function vendorStepBlocks(): Block[] {
+  const user = (id: string, at: number, text: string): Block => ({
+    type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,
+    content: [{ type: 'text', text }], preamble: null,
+  })
+  const reply = (id: string, at: number, text: string): Block => ({
+    type: 'text', id, createdAt: iso(at), endedAt: iso(at), model: demoModel, text,
+  })
+  const step = (id: string, at: number, status: 'running' | 'completed' | 'failed', name: string): Block => ({
+    type: 'opaque', id, createdAt: iso(at), model: demoModel, callId: `${id}-call`, status,
+    view: { kind: 'other', vendor: 'Example AI', name },
+    endedAt: status === 'running' ? null : iso(at - 4_000),
+  })
+  const run = (id: string, at: number): Block => toolCall({
+    id,
+    createdAt: iso(at),
+    toolName: 'shell',
+    status: 'completed',
+    input: JSON.stringify({ script: 'python3 chart.py', description: 'Draw the chart' }),
+    view: shellView({ commandId: '71', status: 'exited', exitCode: 0, chunks: [{ stream: 'stdout', text: 'chart.png\n' }] }),
+  })
+  return inRequests([
+    user('vendor-ask', 900_000, 'What is the mean of the numbers in data.csv?'),
+    ...inRun(step('vendor-done', 890_000, 'completed', 'code_interpreter')),
+    reply('vendor-answer', 880_000, 'The mean is 42.7.'),
+    user('vendor-chart', 700_000, 'Draw them as a chart.'),
+    ...inRun(step('vendor-failed', 690_000, 'failed', 'code_interpreter'), run('vendor-run', 680_000)),
+    reply('vendor-drawn', 670_000, 'The vendor’s interpreter failed, so I drew the chart here: chart.png.'),
+    user('vendor-again', 300_000, 'Check the mean once more.'),
+    ...inRun(step('vendor-running', 290_000, 'running', 'code_interpreter')),
+  ])
+}
+
 /** The call whose command the running run's specimen runs (`runningRunBlocks`). */
 export const RUNNING_RUN_CALL = 'running-run-merge'
 

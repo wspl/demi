@@ -12,15 +12,16 @@ import { reportShown } from './command-reports'
  * end when the pass finished. Its boundary, which the pass inserted earlier,
  * where the kept history begins, shows only when an edit removed the marker.
  *
- * Redacted reasoning shows as thinking without text, which it is to the
- * reader: one rule then shows both while they are the newest block of a
- * running turn, and neither once anything follows.
+ * Redacted reasoning, a vendor's step with the `reasoning` view, shows as
+ * thinking without text, which it is to the reader: one rule then shows both
+ * while they are the newest block of a running turn, and neither once
+ * anything follows.
  */
 export function getVisibleBlocks(blocks: readonly Block[]): Block[] {
   const marked = markedBoundaries(blocks)
   const visible: Block[] = []
   for (const block of blocks) {
-    if (block.type === 'redacted_thinking') {
+    if (block.type === 'opaque' && block.view.kind === 'reasoning') {
       const { id, createdAt, model, run } = block
       visible.push({ type: 'thinking', id, createdAt, model, text: '', signature: null, endedAt: null, ...(run === undefined ? {} : { run }) })
       continue

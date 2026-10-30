@@ -57,10 +57,16 @@ pub struct OpenAiConfig {
     /// The models.dev vendor the entry was added from, such as `openai` or
     /// `xai`; none for a compatible API.
     ///
-    /// It prefixes the reasoning items the provider receives, so that each
-    /// vendor replays only its own ciphertext, and an xAI entry's images are
-    /// xAI's requests.
+    /// It names the owner of the reasoning items and other records the
+    /// provider receives, so that each vendor replays only its own
+    /// ciphertext, and an xAI entry's images are xAI's requests. A compatible
+    /// API's records are its entry's alone, `entry_id`'s, since two such
+    /// endpoints are two vendors.
     pub vendor_id: Option<String>,
+    /// The entry's id.
+    pub entry_id: String,
+    /// The entry's name, which a step its vendor ran shows under.
+    pub label: String,
     /// Whether the entry's key makes images, as its vendor's image shape
     /// says: an OpenAI or xAI key's does.
     pub makes_images: bool,
@@ -104,6 +110,8 @@ struct Shared {
     authorization: Option<HeaderValue>,
     /// `<vendor>:`, the prefix of the reasoning items it receives.
     signature_tag: Arc<str>,
+    /// The entry's name, which a step its vendor ran shows under.
+    label: Arc<str>,
     url: Url,
     wire: WireApi,
     policy: VendorPolicy,
@@ -140,11 +148,16 @@ impl OpenAiProvider {
             .clone()
             .filter(|_| config.makes_audio)
             .map(|key| audio::KeyAudio::openai(key, &base, clock.clone()));
-        let signature_tag = Arc::from(format!("{}:", vendor.unwrap_or(COMPATIBLE)));
+        let signature_tag = Arc::from(match vendor {
+            Some(vendor) => format!("{vendor}:"),
+            None => format!("{COMPATIBLE}:{}:", config.entry_id),
+        });
+        let label = Arc::from(config.label.as_str());
         Self {
             shared: Arc::new(Shared {
                 authorization: config.api_key.as_ref().map(Secret::bearer),
                 signature_tag,
+                label,
                 url: endpoint_url(&base, path),
                 wire: config.wire,
                 policy: config.policy,

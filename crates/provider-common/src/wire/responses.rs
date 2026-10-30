@@ -19,8 +19,10 @@ use futures_util::{Stream, StreamExt, future};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
+use demi_shared_types::{Entry, OpaqueStatus, OpaqueView};
+
 use crate::{
-    EarlyEnd, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, VendorCall, tagged_wire,
+    EarlyEnd, ErrorCode, OpaqueStep, ProviderEvent, ProviderFailure, ToolCall, VendorCall, tagged_wire,
     wire::{
         ReportedString, Tagged, Vendor, WireError, decode_tagged, sse_data, tool_input,
         undecodable, usage_with_cached_input,
@@ -72,12 +74,16 @@ pub fn decode_frame(data: &str) -> Result<Option<Received>, WireError> {
 pub struct ItemAdded {
     #[serde(default)]
     pub item: Option<Tagged<ResponsesItem>>,
+    #[serde(default)]
+    pub output_index: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ItemDone {
     #[serde(default)]
     pub item: Option<Tagged<ResponsesItem>>,
+    #[serde(default)]
+    pub output_index: Option<u64>,
     #[serde(default)]
     pub item_id: Option<String>,
     #[serde(default)]
@@ -216,7 +222,8 @@ pub struct VendorError {
 
 tagged_wire! {
     /// The output items Demi maps; any other, such as a web search call, is
-    /// `None` inside [`Tagged`].
+    /// `None` inside [`Tagged`], and a step the vendor ran on its side
+    /// ([`unknown_item`]).
     #[derive(Debug, Clone, PartialEq)]
     pub enum ResponsesItem {
         "reasoning" => Reasoning(ReasoningItem),
@@ -372,6 +379,22 @@ where
         })
 }
 
+/// The item an `output_item` event carries, as the vendor sent it: Demi keeps
+/// an item it does not map whole and sends it back as it came.
+fn unknown_item(event: &str) -> Option<serde_json::Value> {
+    let mut event: serde_json::Value = serde_json::from_str(event).ok()?;
+    let item = event.get_mut("item")?.take();
+    item.is_object().then_some(item)
+}
+
+/// The provider whose records a run's items are: the tag that owns them, and
+/// the name a step its vendor ran shows under, its entry's.
+#[derive(Debug, Clone)]
+pub struct RecordOwner {
+    pub tag: Arc<str>,
+    pub name: Arc<str>,
+}
+
 /// Maps a Responses stream onto a run's events
 /// (`crates/provider-common/src/contract.rs`,
 /// `crates/provider-common/src/wire/mod.rs`).
@@ -379,13 +402,13 @@ where
 /// The run ends with a response after the completion event, and with a failure
 /// after a failed or incomplete response, an error, or a stream that ends
 /// without its completion event. `events` ends when `cancel` fires, and then
-/// the run ends without a further event. `signature_tag` is the prefix the
-/// provider puts on the reasoning items it receives, so that it replays only
-/// its own vendor's.
+/// the run ends without a further event. `owner` names the provider, whose
+/// tag prefixes the reasoning items and owns the other records it receives, so
+/// that it replays only its own vendor's.
 pub fn map_events<'a, S>(
     events: S,
     vendor: Vendor,
-    signature_tag: Arc<str>,
+    owner: RecordOwner,
     cancel: CancellationToken,
 ) -> impl Stream<Item = ProviderEvent> + 'a
 where
@@ -393,7 +416,7 @@ where
 {
     async_stream::stream! {
         let mut events = std::pin::pin!(events);
-        let mut mapper = Mapper::new(vendor, signature_tag);
+        let mut mapper = Mapper::new(vendor, owner);
         let mut out = Vec::new();
         while let Some(next) = events.next().await {
             let received = match next {
@@ -430,7 +453,7 @@ where
 /// no delta carried it.
 struct Mapper {
     vendor: Vendor,
-    signature_tag: Arc<str>,
+    owner: RecordOwner,
     /// The function call in flight, for argument deltas without an item id.
     current_call: Option<String>,
     /// Streamed arguments, by item id.
@@ -447,10 +470,10 @@ struct Mapper {
 }
 
 impl Mapper {
-    fn new(vendor: Vendor, signature_tag: Arc<str>) -> Self {
+    fn new(vendor: Vendor, owner: RecordOwner) -> Self {
         Self {
             vendor,
-            signature_tag,
+            owner,
             current_call: None,
             arguments: HashMap::new(),
             writing: HashMap::new(),
@@ -485,7 +508,12 @@ impl Mapper {
                             self.current_call = Some(id);
                         }
                     }
-                    Some(ResponsesItem::Message(_)) | None => {}
+                    Some(ResponsesItem::Message(_)) => {}
+                    None => {
+                        if let Some(item) = unknown_item(&received.text) {
+                            out.push(self.opaque(&item, added.output_index, OpaqueStatus::Running, Vec::new()));
+                        }
+                    }
                 }
                 false
             }
@@ -525,6 +553,19 @@ impl Mapper {
                 false
             }
             ResponsesEvent::ItemDone(done) => {
+                if done.item.as_ref().is_some_and(|item| item.0.is_none())
+                    && let Some(item) = unknown_item(&received.text)
+                {
+                    let status = match item.get("status").and_then(serde_json::Value::as_str) {
+                        Some("failed" | "incomplete") => OpaqueStatus::Failed,
+                        _ => OpaqueStatus::Completed,
+                    };
+                    match Entry::new(&self.owner.tag, &item) {
+                        Ok(entry) => out.push(self.opaque(&item, done.output_index, status, vec![entry])),
+                        Err(error) => tracing::warn!(error = %error, "a vendor's item did not serialize"),
+                    }
+                    return false;
+                }
                 self.item_done(done, out);
                 false
             }
@@ -593,6 +634,28 @@ impl Mapper {
         }
     }
 
+    /// The step of an item Demi does not map, under its owner's name and the
+    /// item's: a call's name, else its type. Its id names the step, else its
+    /// place in the response's output, which its start and its end share.
+    fn opaque(
+        &self,
+        item: &serde_json::Value,
+        output_index: Option<u64>,
+        status: OpaqueStatus,
+        entries: Vec<Entry>,
+    ) -> ProviderEvent {
+        let text = |key: &str| item.get(key).and_then(serde_json::Value::as_str).map(str::to_owned);
+        ProviderEvent::Opaque(OpaqueStep {
+            call_id: text("id").or_else(|| output_index.map(|index| format!("output-{index}"))),
+            status,
+            view: OpaqueView::Other {
+                vendor: self.owner.name.to_string(),
+                name: text("name").or_else(|| text("type")).unwrap_or_default(),
+            },
+            entries,
+        })
+    }
+
     fn item_done(&mut self, done: ItemDone, out: &mut Vec<ProviderEvent>) {
         match done.item.and_then(|item| item.0) {
             Some(ResponsesItem::Reasoning(item)) => {
@@ -609,7 +672,7 @@ impl Mapper {
                 let json = serde_json::to_string(&item).expect("a reasoning item serializes");
                 out.push(ProviderEvent::ThinkingSignature(format!(
                     "{}{json}",
-                    &*self.signature_tag
+                    &*self.owner.tag
                 )));
                 self.reasoning_streamed = false;
             }

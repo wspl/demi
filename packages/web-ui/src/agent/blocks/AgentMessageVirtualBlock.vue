@@ -18,6 +18,7 @@ import CommandReportBlock from './CommandReportBlock.vue'
 import AssistantTextBlock from './AssistantTextBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
+import OpaqueStepBlock from './OpaqueStepBlock.vue'
 import WorkGroupBlock from './WorkGroupBlock.vue'
 import StepsNotSharedBlock from './StepsNotSharedBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
@@ -292,6 +293,12 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
           v-model:open="runOpen"
           :block="block"
         />
+      </div>
+      <div
+        v-else-if="block.type === 'opaque'"
+        class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+      >
+        <OpaqueStepBlock v-model:open="runOpen" :block="block" />
       </div>
       <div
         v-else-if="block.type === 'pending_call'"

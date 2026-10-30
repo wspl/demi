@@ -26,7 +26,7 @@ use demi_agent_transcript::{
 };
 use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits, testing::TokioClock};
 use demi_shared_types::{
-    BlockId, EditCopies, EditKind, EditSegment, EditedFile, MediaSource, PathChange, QueuedMessage, TokenUsage,
+    BlockId, EditCopies, EditKind, EditSegment, EditedFile, Entry, MediaSource, PathChange, QueuedMessage, TokenUsage,
 };
 
 use super::*;
@@ -2798,7 +2798,9 @@ async fn a_summary_request_gives_the_claude_code_cli_its_instruction_inside_the_
         Turn::Events(vec![
             ProviderEvent::Entries {
                 of: EntriesOf::Item(2),
-                entries: vec![date.clone().into(), meta.clone().into(), recorded.into()],
+                entries: [&date, &meta, &recorded]
+                    .map(|value| Entry::new("claude-code:", value).expect("a JSON value serializes"))
+                    .to_vec(),
             },
             ProviderEvent::Error(ProviderFailure {
                 message: "prompt is too long".into(),

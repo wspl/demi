@@ -223,7 +223,6 @@ fn light_block(block: &Block) -> Block {
             thinking.text.clear();
             thinking.signature = None;
         }
-        Block::RedactedThinking(redacted) => redacted.data.clear(),
         // An agent's message outside a run came from above or beside its
         // receiver and shows as a bubble with its words
         // (`crates/agent-store/src/changes.rs`); any other shows as a row,
@@ -244,6 +243,7 @@ fn light_block(block: &Block) -> Block {
         | Block::Steer(_)
         | Block::Resume(_)
         | Block::Abort(_)
+        | Block::Opaque(_)
         | Block::Text(_)
         | Block::Response(_)
         | Block::Error(_)
