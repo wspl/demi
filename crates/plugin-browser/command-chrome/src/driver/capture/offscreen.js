@@ -59,8 +59,43 @@ function send(message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
-function fail(capture, error) {
-  send({ type: 'error', capture, message: String(error?.message ?? error) });
+// A tab's capture that did not open: the error, and Chrome's captures of its
+// tabs then, or null when they could not be read.
+class OpenFailed {
+  constructor(error, captured) {
+    this.error = error;
+    this.captured = captured;
+  }
+}
+
+function fail(capture, failure) {
+  const opening = failure instanceof OpenFailed;
+  const error = opening ? failure.error : failure;
+  send({
+    type: 'error',
+    capture,
+    message: String(error?.message ?? error),
+    name: typeof error?.name === 'string' ? error.name : null,
+    opening,
+    captured: opening ? failure.captured : null,
+  });
+}
+
+// How long reading Chrome's captures may take: a failure is reported then
+// without them, and the commands behind it wait no longer.
+const CAPTURED_MS = 1000;
+
+// Chrome's captures of its tabs, or null when they cannot be read in time.
+async function capturedTabs() {
+  try {
+    const answer = await Promise.race([
+      ask({ type: 'captured' }),
+      new Promise(resolve => setTimeout(resolve, CAPTURED_MS)),
+    ]);
+    return Array.isArray(answer?.tabs) ? answer.tabs : null;
+  } catch {
+    return null;
+  }
 }
 
 function ask(message) {
@@ -134,6 +169,15 @@ async function corrected(frame) {
 // Opens the capture of the tab of CDP target `target` at exactly these pixels,
 // the tab's own: a recording keeps them whatever a viewer is sent.
 async function openSource(target, width, height) {
+  try {
+    return await open(target, width, height);
+  } catch (error) {
+    // With Chrome's captures of its tabs then, which the Host logs to tell why.
+    throw new OpenFailed(error, await capturedTabs());
+  }
+}
+
+async function open(target, width, height) {
   const { tabId, streamId } = await ask({ type: 'grant', target });
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: false,
