@@ -5,7 +5,7 @@
 
 use std::{io, path::Path, time::Duration};
 
-use demi_machine_manager_protocol::{SandboxMachine, Volume};
+use demi_machine_manager_protocol::{BaseVersion, SandboxMachine, Volume};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::task::JoinHandle;
 
@@ -72,6 +72,10 @@ pub struct Sandbox {
     directory: RuntimeDirectory,
     /// `runsc wait`, which ends when the sandbox exits.
     waiter: Option<JoinHandle<Result<(), ToolError>>>,
+    /// The base whose `/opt/demi` the sandbox mounts, which a manager that
+    /// leaves it records for the next (`crates/machine-manager/src/handover.rs`);
+    /// none for a boot recovery found.
+    programs: Option<BaseVersion>,
 }
 
 /// What a checkpoint's frozen window produced: whether the copies were
@@ -94,7 +98,37 @@ impl Sandbox {
             _lease: Some(lease),
             record,
             waiter: None,
+            programs: None,
         }
+    }
+
+    /// The running boot `record` names, which a manager before this one left
+    /// on `lease`'s slot with Demi's programs from base `programs`: it is
+    /// waited for from now on, as one this manager started.
+    pub fn adopted(core: &Core, record: SandboxRecord, lease: SlotLease, programs: BaseVersion) -> Self {
+        let runsc = core.runsc.clone();
+        let id = record.id.clone();
+        Self {
+            directory: RuntimeDirectory::new(core.config.runtime(), record.id.as_str()),
+            slot: lease.slot().clone(),
+            _lease: Some(lease),
+            record,
+            waiter: Some(tokio::task::spawn_local(async move { runsc.wait(&id).await })),
+            programs: Some(programs),
+        }
+    }
+
+    /// What a manager that leaves the running sandbox records of it: its
+    /// boot, its slot and the base of its programs. The sandbox runs on: no
+    /// resource of it is released.
+    pub fn leave(self) -> Option<(SandboxRecord, BaseVersion)> {
+        let programs = self.programs.clone()?;
+        Some((self.record.clone(), programs))
+    }
+
+    /// The directory of the boot's bundle, which its Sentry and Gofer name.
+    pub fn bundle(&self) -> &Path {
+        self.directory.root()
     }
 
     /// The boot `record` names, as recovery finds it after a crash.
@@ -105,6 +139,7 @@ impl Sandbox {
             _lease: None,
             record,
             waiter: None,
+            programs: None,
         }
     }
 
@@ -118,19 +153,21 @@ impl Sandbox {
     }
 
     /// Starts the boot on the working pair with the base at `base` and
-    /// Demi's programs from `programs`, the configured base's, whose runner
-    /// is of `runner_release`. On an error the caller closes the sandbox,
-    /// which releases what it holds.
+    /// Demi's programs from `programs`, of base `programs_base`, the
+    /// configured base's, whose runner is of `runner_release`. On an error
+    /// the caller closes the sandbox, which releases what it holds.
     pub async fn start(
         &mut self,
         core: &Core,
         working: &WorkingPair,
         base: &Path,
         programs: &Path,
+        programs_base: &BaseVersion,
         runner_release: &str,
         boot: &ManagedBoot,
         machine: SandboxMachine,
     ) -> Result<(), SandboxError> {
+        self.programs = Some(programs_base.clone());
         if boot.backend_url.url() != &core.config.backend_url {
             return Err(SandboxError::Allowlist);
         }

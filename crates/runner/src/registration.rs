@@ -22,7 +22,7 @@
 use crate::autostart::Supervision;
 use crate::connection::{self, Connected, End, Kept, Registered, Transport};
 use demi_runner_protocol::console::HANDED_OVER;
-use crate::update::{Installed, Successor};
+use crate::update::{Installed, Managed, Successor};
 use crate::{
     host_log::HostLogFollower,
     management::{Endpoint, Management, Phase, Revocation},
@@ -77,6 +77,9 @@ pub struct Options {
     /// The installation an installer made, which updates itself to its
     /// backend's runner release; none for a runner started otherwise.
     pub installed: Option<Installed>,
+    /// A managed guest's runner, which replaces itself with its backend's
+    /// runner release for the rest of the boot; none on a paired device.
+    pub managed: Option<Managed>,
     /// The command that removes this runner, which it tells its console once
     /// paired; none for a managed guest's, and for one that `uninstall` runs.
     pub removal: Option<String>,
@@ -255,6 +258,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         .await?;
     let registered = Registered {
         installed: options.installed.map(Arc::new),
+        managed: options.managed,
         scratch: Scratch::new(&state.root),
         backend: options.backend,
         runner,
@@ -369,20 +373,30 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
         }
         let result = match result {
             Ok(Attempt::Update(update)) => {
-                let Some(installed) = &registered.installed else {
+                if registered.installed.is_none() && registered.managed.is_none() {
                     return Err(io::Error::other(format!(
                         "this runner is release {}, and its backend runs release {}: install the backend's runner",
                         registered.runner.version, update.release
                     )));
-                };
+                }
                 tracing::info!(event = "runner.updating", release = update.release.as_str(), "the runner is updating to its backend's release");
                 let updating = std::time::Instant::now();
                 let _placing = demi_runner_process::steps::step("update_place", update.release.as_str());
                 let token = registered.token.borrow().clone();
-                match installed
-                    .update(registered.backend.url(), token.as_ref(), &update, &management.stop)
-                    .await
-                {
+                let placed = match (&registered.installed, &registered.managed) {
+                    (Some(installed), _) => {
+                        installed
+                            .update(registered.backend.url(), token.as_ref(), &update, &management.stop)
+                            .await
+                    }
+                    (None, Some(managed)) => {
+                        managed
+                            .update(&registered.backend, token.as_ref(), &update, &management.stop)
+                            .await
+                    }
+                    (None, None) => unreachable!("checked above"),
+                };
+                match placed {
                     // The new runner takes the jobs over, which run on
                     // meanwhile (`crates/runner/src/update.rs`).
                     Ok(successor) => {

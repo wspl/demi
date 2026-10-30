@@ -1366,12 +1366,19 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Updating Demi"
-        note="Over the whole app from the moment Demi restarts for an update until the user opens Demi again, for everyone, signed in or not. It lists every step of the rest of the update, the same eight in every update: stop Demi, save the running Clouds, keep a copy of the databases, switch, start the Cloud manager, start Demi, update the accounts and settings, update the conversations. A done step says how long it took, the running one how far it is (Clouds saved, bytes copied, conversations and bytes with the time left), a step the update does not need says so; a bar shows the whole. It shows counts and sizes, never a name. When the new version does not start, the failed step says so and the title says Demi returns to the version it left. Until Demi first says how far it is the bar moves and the list's room stays empty; while Demi cannot be reached the screen keeps what it last read. Once the update ended, every step done or the server back on the version it left, Open Demi loads the page; nothing loads it by itself, so every step is seen to end. The line under the list and the button keep their room in every state."
+        note="Over the whole app from the moment Demi restarts for an update until the user opens Demi again, for everyone, signed in or not. It lists every step of the rest of the update, the same eight in every update: stop Demi, save the running Clouds (or keep them running, in an update whose Cloud manager takes them over), keep a copy of the databases, switch, start the Cloud manager, start Demi, update the accounts and settings, update the conversations. A done step says how long it took, the running one how far it is (Clouds saved, bytes copied, conversations and bytes with the time left), a step the update does not need says so; a bar shows the whole, each step's share of it the time the step usually takes, so kept Clouds count as little as stopping Demi. It shows counts and sizes, never a name. When the new version does not start, the failed step says so and the title says Demi returns to the version it left. Until Demi first says how far it is the bar moves and the list's room stays empty; while Demi cannot be reached the screen keeps what it last read. Once the update ended, every step done or the server back on the version it left, Open Demi loads the page; nothing loads it by itself, so every step is seen to end. The line under the list and the button keep their room in every state."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GalleryOverlayWell size="tall" style="min-width: 42rem">
             <GallerySpecimen variant="saving the Clouds">
               <UpdatingScreen :progress="updatingMoments.saving" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GalleryOverlayWell size="tall" style="min-width: 42rem">
+            <GallerySpecimen variant="keeping the Clouds running">
+              <UpdatingScreen :progress="updatingMoments.keeping" />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>

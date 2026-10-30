@@ -101,6 +101,19 @@ pub fn require_tools(store: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Whether the store `store` is where [`move_in`] would leave it: in its XFS
+/// file, mounted, or on a filesystem that needs none. An update keeps the
+/// running Clouds only over a settled store, since a move needs every Cloud
+/// saved.
+pub fn settled(store: &Path) -> io::Result<bool> {
+    let store = fs::canonicalize(store)?;
+    let file = store_file(&store);
+    if file.exists() {
+        return mounted_from(&store, &file);
+    }
+    Ok(!partial_file(&store).exists() && (own_filesystem(&store)? || shares_extents(&store)?))
+}
+
 /// Moves the store `store`, which no manager runs on, into its XFS file
 /// unless it needs no move; `progress` hears the bytes moved of all left.
 pub fn move_in(store: &Path, progress: &mut dyn FnMut(u64, u64)) -> io::Result<Moved> {

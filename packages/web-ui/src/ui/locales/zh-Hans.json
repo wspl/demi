@@ -48,6 +48,7 @@
     "steps": {
       "stopDemi": "停止 Demi",
       "saveClouds": "保存正在运行的 Cloud",
+      "keepClouds": "保留正在运行的 Cloud",
       "keepDatabases": "备份数据库",
       "switch": "切换到新版本",
       "startManager": "启动 Cloud 管理服务",

@@ -81,6 +81,20 @@ impl SlotPool {
         index < self.count
     }
 
+    /// Takes slot `index` again for a sandbox a manager before this one
+    /// left running on it; a slot already taken or outside the pool is
+    /// refused.
+    pub fn reserve(&self, index: u16) -> Result<SlotLease, Exhausted> {
+        let mut taken = self.taken.borrow_mut();
+        if !self.contains(index) || !taken.insert(index) {
+            return Err(Exhausted);
+        }
+        Ok(SlotLease {
+            slot: self.slot(index),
+            taken: self.taken.clone(),
+        })
+    }
+
     /// Takes the lowest free slot.
     pub fn take(&self) -> Result<SlotLease, Exhausted> {
         let mut taken = self.taken.borrow_mut();

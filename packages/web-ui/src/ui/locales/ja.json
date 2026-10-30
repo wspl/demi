@@ -48,6 +48,7 @@
     "steps": {
       "stopDemi": "Demi を停止",
       "saveClouds": "実行中の Cloud を保存",
+      "keepClouds": "実行中の Cloud を維持",
       "keepDatabases": "データベースのコピーを保存",
       "switch": "新しいバージョンに切り替え",
       "startManager": "Cloud マネージャを起動",

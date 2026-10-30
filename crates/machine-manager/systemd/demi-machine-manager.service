@@ -5,8 +5,12 @@
 # - Type=notify: the manager reports readiness once it has recovered, installed
 #   its network policy, imported its base and opened its socket. None of that,
 #   nor a stop's drain and its recovery, has a deadline.
-# - KillMode=mixed signals the manager alone, which stops its own children while
-#   it drains.
+# - KillMode=process signals the manager alone and ends nothing else of the
+#   unit, as containerd's unit does: a manager an upgrade asks to leave its
+#   running Clouds exits with their sandboxes running, which the next manager
+#   takes over (crates/machine-manager/src/handover.rs). A manager that stops
+#   otherwise stops and saves its sandboxes itself, and the next one ends what
+#   the unit still holds that no sandbox owns.
 [Unit]
 Description=Demi Cloud machine manager
 After=network-online.target
@@ -18,7 +22,7 @@ User=root
 Group=demi-cloud
 PrivateMounts=yes
 UMask=0077
-KillMode=mixed
+KillMode=process
 TimeoutStartSec=infinity
 TimeoutStopSec=infinity
 Restart=on-failure

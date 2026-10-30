@@ -175,6 +175,15 @@ impl Notices {
         }
     }
 
+    /// Whether the update keeps the running Clouds running rather than
+    /// saving them, which their step says.
+    pub fn clouds_kept(&mut self, kept: bool) {
+        if let Some(record) = &mut self.record {
+            record.clouds_kept(kept);
+            self.changed();
+        }
+    }
+
     /// Starts the step `kind` from the restart on.
     pub fn start_restart(&mut self, kind: RestartStepKind) {
         self.restart(kind, StepState::running());

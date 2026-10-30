@@ -58,6 +58,34 @@ pub struct DrainRecord {
     pub saving: u32,
 }
 
+/// What an upgrade writes before it stops the manager when the release it
+/// moves to keeps [`STATE_FORMAT`]: the manager that stops then leaves its
+/// running sandboxes to the next one, which takes them over, rather than
+/// saving them (`crates/machine-manager/src/handover.rs`). A manager that
+/// knows no such request saves them, as before.
+pub const LEAVE_REQUEST: &str = "/run/demi-machine-manager/leave";
+
+/// Where a manager that left its sandboxes records them for the next one,
+/// in its runtime directory, which a reboot empties as it ends them.
+pub const LEFT_RECORD: &str = "/run/demi-machine-manager/left.json";
+
+/// What [`LEFT_RECORD`] holds: each sandbox the manager left running.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LeftRecord {
+    pub sandboxes: Vec<LeftSandbox>,
+}
+
+/// A sandbox a manager left running: its device, the boot its working pair
+/// records, and the base whose `/opt/demi` it mounts, which the next manager
+/// keeps while the sandbox runs.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LeftSandbox {
+    pub device: DeviceId,
+    pub id: String,
+    pub slot: u16,
+    pub programs: BaseVersion,
+}
+
 pub use state::{
     BaseVersion, DeviceId, GenerationId, IdError, MachineImageState, RuntimeState, Volume,
     is_image_name,

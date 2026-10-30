@@ -24,7 +24,7 @@ use super::{
 use crate::{
     blocking,
     network::slots::Slot,
-    sandbox::Sandbox,
+    sandbox::{Sandbox, files::SandboxRecord},
     server::chain,
     storage::{
         clone::clone_sparse,
@@ -45,6 +45,13 @@ pub enum DeviceCommand {
     /// The slot of the device's running sandbox; none when it is stopped.
     Running {
         reply: oneshot::Sender<Option<Slot>>,
+    },
+    /// The manager leaves its sandboxes to the next one
+    /// (`crates/machine-manager/src/handover.rs`): the worker hands its
+    /// running sandbox's boot and programs' base over, releases nothing of
+    /// it, and serves no more.
+    Leave {
+        reply: oneshot::Sender<Option<(SandboxRecord, BaseVersion)>>,
     },
 }
 
@@ -129,7 +136,22 @@ impl DeviceWorker {
         }
     }
 
-    /// Serves the device until its manager drops the queue.
+    /// A worker of `device` whose sandbox a manager before this one left
+    /// running, which it took over.
+    pub fn adopted(
+        device: DeviceId,
+        core: Rc<Core>,
+        base: BaseVersion,
+        deaths: mpsc::Sender<DeviceId>,
+        changes: mpsc::Sender<DeviceId>,
+        sandbox: Sandbox,
+    ) -> Self {
+        let mut worker = Self::new(device, core, base, deaths, changes);
+        worker.runtime = Some(sandbox);
+        worker
+    }
+
+    /// Serves the device until its manager drops the queue, or leaves it.
     pub async fn run(mut self, mut inbox: mpsc::Receiver<DeviceCommand>) {
         loop {
             // The sandbox's exit is not queued behind requests: stopping a
@@ -156,6 +178,12 @@ impl DeviceWorker {
                     let slot = self.runtime.as_ref().map(|sandbox| sandbox.slot().clone());
                     // As above: no one may be waiting any more.
                     let _ = reply.send(slot);
+                }
+                DeviceCommand::Leave { reply } => {
+                    let left = self.runtime.take().and_then(Sandbox::leave);
+                    // As above: no one may be waiting any more.
+                    let _ = reply.send(left);
+                    break;
                 }
             }
         }
@@ -282,6 +310,7 @@ impl DeviceWorker {
                 &self.working,
                 &base.join("rootfs"),
                 &programs,
+                &self.base,
                 &runner_release,
                 boot,
                 machine,

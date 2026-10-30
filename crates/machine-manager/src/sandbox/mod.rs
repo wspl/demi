@@ -47,7 +47,8 @@
 //! process of the sandbox, and the Gofer. A runtime that `runsc` was killed
 //! while creating, before it recorded that runtime, is then invisible to a
 //! later stop or recovery, where the cgroup kill finds it. Under systemd the
-//! service's own cgroup still ends such a leftover when the service stops.
+//! next manager's start ends such a leftover, as every process of its unit
+//! that no sandbox it took over owns (`handover`).
 
 #[cfg(target_os = "linux")]
 mod boot;

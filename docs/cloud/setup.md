@@ -235,7 +235,9 @@ becomes an argument of a privileged program.
 - The backend runs as the system user `demi`, a member of the `demi-cloud`
   group, which lets it use the manager's socket.
 - A server gets a new image, manager and runsc only by moving to a new
-  release ([Upgrades](../delivery/upgrades.md)).
+  release ([Upgrades](../delivery/upgrades.md)). The running Clouds run on
+  through the move, with their commands, unless the new release changes the
+  manager's state format.
 - A Cloud's system moves to the new image when its user resets it.
 
 ## Acceptance before use
