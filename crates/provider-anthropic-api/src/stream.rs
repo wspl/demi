@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use demi_provider_common::{
-    CallEvent, CallOutcome, EarlyEnd, ErrorCode, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ToolCall, encode_body,
+    CallEvent, CallOutcome, EarlyEnd, ErrorCode, InferenceRequest, OpaqueStep, PromptCache, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure, tagged_wire,
     wire::{
         NonEmpty, ReportedString, Tagged, decode_tagged,
@@ -12,7 +12,7 @@ use demi_provider_common::{
         sse_data,
     },
 };
-use demi_shared_types::{CacheTtl, Clock, FailureSource, ProviderErrorDiagnostics};
+use demi_shared_types::{CacheTtl, Clock, Entry, FailureSource, OpaqueStatus, OpaqueView, ProviderErrorDiagnostics};
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde::Deserialize;
@@ -265,7 +265,14 @@ impl Mapper {
             }
             ContentBlock::Thinking(_) => Next::Event(ProviderEvent::ThinkingStart),
             ContentBlock::RedactedThinking(block) => {
-                Next::Event(ProviderEvent::RedactedThinking(tagged(&block.data)))
+                let value = serde_json::json!({ "type": "redacted_thinking", "data": block.data });
+                let entry = Entry::new(SIGNATURE_TAG, &value).expect("a JSON value serializes");
+                Next::Event(ProviderEvent::Opaque(OpaqueStep {
+                    call_id: None,
+                    status: OpaqueStatus::Completed,
+                    view: OpaqueView::Reasoning,
+                    entries: vec![entry],
+                }))
             }
             // A text block usually opens empty and fills through deltas.
             ContentBlock::Text(block) if block.text.is_empty() => Next::Nothing,
@@ -354,7 +361,7 @@ impl ToolBlock {
     }
 }
 
-/// A signature or redacted data as the transcript keeps it.
+/// A signature as the transcript keeps it.
 fn tagged(value: &str) -> String {
     format!("{SIGNATURE_TAG}{value}")
 }

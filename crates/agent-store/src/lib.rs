@@ -812,7 +812,7 @@ impl Kind {
             Self::Error => &["error"],
             Self::Response => &["response"],
             Self::Record => &[
-                "user", "context", "wakeup", "steer", "resume", "abort", "thinking", "redacted_thinking", "text",
+                "user", "context", "wakeup", "steer", "resume", "abort", "thinking", "opaque", "text",
                 "tool_call", "response", "error", "account_switch",
             ],
         }

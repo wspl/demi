@@ -141,6 +141,9 @@
     "signedOut": "{provider} 已将 {account} 退出登录。请在“设置 › 供应商”中重新登录。",
     "notExposed": "{device} 的端口 {port} 未公开。",
     "deviceOffline": "{device} 处于离线状态。",
+    "opaque": {
+      "other": "{vendor} 的 {name}"
+    },
     "work": {
       "ran": "运行了 {count} 条命令",
       "checked": "检查了 {count} 条命令",

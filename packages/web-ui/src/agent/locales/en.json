@@ -141,6 +141,9 @@
     "signedOut": "{provider} signed {account} out. Sign it in again in Settings › Providers.",
     "notExposed": "Port {port} of {device} isn’t exposed.",
     "deviceOffline": "{device} is offline.",
+    "opaque": {
+      "other": "{name} at {vendor}"
+    },
     "work": {
       "ran": "ran {count} command | ran {count} commands",
       "checked": "checked {count} command | checked {count} commands",

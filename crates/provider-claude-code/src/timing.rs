@@ -145,7 +145,7 @@ impl RunTiming {
         if !self.first_thinking
             && matches!(
                 event,
-                ProviderEvent::ThinkingStart | ProviderEvent::ThinkingDelta(_) | ProviderEvent::RedactedThinking(_)
+                ProviderEvent::ThinkingStart | ProviderEvent::ThinkingDelta(_) | ProviderEvent::Opaque(_)
             )
         {
             self.first_thinking = true;

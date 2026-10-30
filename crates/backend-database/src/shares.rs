@@ -305,7 +305,7 @@ const SAID: &str = "('user', 'steer', 'text')";
 /// The block types a share counts as steps not shared: thinking and calls, a
 /// command's or a subagent's start among them. Every other block shows nothing
 /// and counts nothing.
-const STEPS: &str = "('thinking', 'redacted_thinking', 'tool_call')";
+const STEPS: &str = "('thinking', 'opaque', 'tool_call')";
 
 /// Lists under `token` the rows of the root's current path numbered within `rows`,
 /// the one place a share's list is made.

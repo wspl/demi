@@ -14,7 +14,7 @@ use demi_provider_common::{
     http_failure,
     quota::Observation,
     read_http_failure,
-    wire::{Vendor, responses},
+    wire::{Vendor, responses::{self, RecordOwner}},
 };
 use futures_util::{Stream, StreamExt};
 use http::StatusCode;
@@ -123,7 +123,7 @@ pub(crate) fn run(
             model,
         };
         let received = responses::sse_events(response.bytes_stream(), LABEL, cancel.clone());
-        let mut events = std::pin::pin!(responses::map_events(received, vendor, SIGNATURE_TAG.into(), cancel));
+        let mut events = std::pin::pin!(responses::map_events(received, vendor, RecordOwner { tag: SIGNATURE_TAG.into(), name: LABEL.into() }, cancel));
         while let Some(event) = events.next().await {
             yield event;
         }

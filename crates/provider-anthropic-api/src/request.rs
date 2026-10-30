@@ -90,7 +90,7 @@ impl Content<'_> {
     fn can_mark(&self) -> bool {
         !matches!(
             self.block,
-            Block::Thinking { .. } | Block::RedactedThinking { .. }
+            Block::Thinking { .. } | Block::Recorded(_)
         )
     }
 }
@@ -138,9 +138,10 @@ enum Block<'a> {
         thinking: &'a str,
         signature: &'a str,
     },
-    RedactedThinking {
-        data: &'a str,
-    },
+    /// A block the vendor sent that Demi keeps whole, such as redacted
+    /// reasoning, sent back as it came.
+    #[serde(untagged)]
+    Recorded(&'a serde_json::value::RawValue),
 }
 
 #[derive(Serialize)]
@@ -410,13 +411,22 @@ fn item_content(item: &InferenceItem) -> Option<(Role, Vec<Content<'_>>)> {
                 }],
             )
         }
-        InferenceItem::AssistantRedactedThinking {
-            data,
+        // The vendor's steps are its redacted reasoning, which is left out
+        // past a summary as signed reasoning is.
+        InferenceItem::Opaque {
+            entries,
             kept_past_summary,
             ..
         } => {
-            let data = own(data).filter(|_| !kept_past_summary)?;
-            (Role::Assistant, vec![Block::RedactedThinking { data }])
+            if *kept_past_summary {
+                return None;
+            }
+            let blocks: Vec<_> = entries
+                .iter()
+                .filter(|entry| entry.owner() == SIGNATURE_TAG)
+                .map(|entry| Block::Recorded(entry.value()))
+                .collect();
+            (Role::Assistant, blocks)
         }
         InferenceItem::ToolUse {
             tool_use_id,
@@ -466,7 +476,7 @@ fn append<'a>(messages: &mut Vec<Message<'a>>, role: Role, mut content: Vec<Cont
     }
 }
 
-/// A signature or redacted data this provider received, without its tag.
+/// A signature this provider received, without its tag.
 fn own(tagged: &str) -> Option<&str> {
     tagged.strip_prefix(SIGNATURE_TAG)
 }

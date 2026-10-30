@@ -1,6 +1,8 @@
 import type { Block, ToolView } from '@demicodes/protocol'
 
 export type ToolCallBlock = Extract<Block, { type: 'tool_call' }>
+/** A step its vendor ran on its side, drawn by its view. */
+export type OpaqueBlock = Extract<Block, { type: 'opaque' }>
 /**
  * An agent's move to another account after a usage limit
  * (`crates/provider-registry/src/rotation.rs`).

@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import type { AgentMessage } from '@demicodes/protocol'
-import { Bell, Bot, Brain, MoveRight, ShieldCheck, SquareTerminal, Zap } from '@lucide/vue'
+import { Bell, Bot, Brain, Cloud, MoveRight, ShieldCheck, SquareTerminal, Zap } from '@lucide/vue'
 import { toolRenderKind } from '../tool-rendering'
 import type { WorkStep } from '../work-groups'
 
@@ -8,6 +8,9 @@ export const THINKING_ICON: Component = Brain
 
 /** The icon of a command's notice row. */
 export const NOTICE_ICON: Component = Bell
+
+/** The icon of a step its vendor ran on its side. */
+export const OPAQUE_ICON: Component = Cloud
 
 /**
  * The icon of a tool's row: a `shell` call, or a tool the runtime does not
@@ -54,6 +57,8 @@ export function stepIcon(step: WorkStep): { icon: Component, key: string } {
       const tool = step.type === 'tool_call' ? step.toolName : step.call.toolName
       return { icon: toolRowIcon(tool), key: toolRenderKind(tool) }
     }
+    case 'opaque':
+      return { icon: OPAQUE_ICON, key: 'opaque' }
     case 'wakeup':
       return { icon: NOTICE_ICON, key: 'notice' }
     case 'agent_message':

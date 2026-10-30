@@ -10,10 +10,10 @@ use demi_provider_common::wire::{
     Reported, ReportedString, Tagged,
     messages::{CallUsage, MessagesUsage},
 };
-use demi_provider_common::{CallEvent, CallOutcome, ErrorCode, ProviderEvent, ToolCall, tagged_wire};
+use demi_provider_common::{CallEvent, CallOutcome, ErrorCode, OpaqueStep, ProviderEvent, ToolCall, tagged_wire};
 use std::collections::HashMap;
 
-use demi_shared_types::TokenUsage;
+use demi_shared_types::{OpaqueStatus, OpaqueView, TokenUsage};
 use serde::Deserialize;
 
 use crate::failure::USAGE_LIMIT;
@@ -201,11 +201,9 @@ pub(crate) struct ThinkingBlock {
     signature: Option<String>,
 }
 
+/// Redacted reasoning, whose data the CLI's own lines keep.
 #[derive(Deserialize)]
-pub(crate) struct RedactedThinkingBlock {
-    #[serde(default)]
-    data: String,
-}
+pub(crate) struct RedactedThinkingBlock {}
 
 #[derive(Deserialize)]
 pub(crate) struct ToolUseBlock {
@@ -503,7 +501,14 @@ impl ContentBlock {
                 }
                 events
             }
-            Self::RedactedThinking(block) => vec![ProviderEvent::RedactedThinking(block.data)],
+            // The reasoning itself stays in the CLI's lines, which the mirror keeps
+            // on the step's block.
+            Self::RedactedThinking(_) => vec![ProviderEvent::Opaque(OpaqueStep {
+                call_id: None,
+                status: OpaqueStatus::Completed,
+                view: OpaqueView::Reasoning,
+                entries: Vec::new(),
+            })],
             Self::ToolUse(_) => Vec::new(),
         }
     }
@@ -586,7 +591,7 @@ impl Streaming {
                 signed: true,
             },
             (ProviderEvent::TextDelta(piece), None) => ShownKind::Text(piece.clone()),
-            (ProviderEvent::RedactedThinking(_), _) => ShownKind::Redacted,
+            (ProviderEvent::Opaque(_), _) => ShownKind::Redacted,
             _ => return,
         };
         self.shown.push(Shown { at, kind });

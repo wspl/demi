@@ -243,7 +243,7 @@ fn contents(items: &[InferenceItem]) -> Vec<Content<'_>> {
                 pending_signature = signature.as_deref().and_then(own_signature);
                 continue;
             }
-            InferenceItem::AssistantRedactedThinking { .. } => continue,
+            InferenceItem::Opaque { .. } => continue,
             InferenceItem::ToolUse {
                 tool_use_id,
                 tool_name,

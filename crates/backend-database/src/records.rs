@@ -46,10 +46,14 @@ use super::columns::{json, to_json};
 use super::contents::{self, Hash, LEVEL};
 
 /// The format of the blocks records hold (`blocks.body: transcript block
-/// format 17` in the schema). A release reads each format it knows: format
-/// 16 is format 17 without the times a block's parts started and ended,
-/// which read as null ([`times_unkept`]).
-pub(crate) const FORMAT: i64 = 17;
+/// format 18` in the schema). A release reads each format it knows:
+///
+/// - format 17 is format 18 with entries that name no owner, all the Claude
+///   Code CLI's, and redacted reasoning as a block of its own
+///   ([`entries_owned`]);
+/// - format 16 is format 17 without the times a block's parts started and
+///   ended, which read as null ([`times_unkept`]).
+pub(crate) const FORMAT: i64 = 18;
 
 /// A value of at least this many bytes is a content. A shorter one costs
 /// less inline than its marker and the lookup of its bytes.
@@ -333,7 +337,7 @@ impl<'c> Codec<'c> {
 
     /// The JSON document `stored` holds, joined with its contents.
     pub(crate) fn document(&self, stored: &Stored) -> Result<Value, StorageError> {
-        if stored.format != FORMAT && stored.format != 16 {
+        if !(16..=FORMAT).contains(&stored.format) {
             return Err(corrupt(format!("a record of block format {} is not one this release reads", stored.format)));
         }
         let plain = {
@@ -359,6 +363,9 @@ impl<'c> Codec<'c> {
         if stored.format == 16 {
             times_unkept(&mut value);
         }
+        if stored.format <= 17 {
+            entries_owned(&mut value);
+        }
         Ok(value)
     }
 
@@ -381,6 +388,44 @@ fn times_unkept(block: &mut Value) {
         for field in unkept {
             fields.insert((*field).to_owned(), Value::Null);
         }
+    }
+}
+
+/// A block of format 17 as format 18 reads it.
+///
+/// - Each entry is owned by `claude-code:`, the only provider that wrote
+///   entries.
+/// - A `redacted_thinking` block is an `opaque` one with the `reasoning` view.
+///   Its data becomes an entry of the Anthropic API provider's when it carries
+///   that provider's tag; any other is the Claude Code CLI's, whose own lines
+///   on the block keep it.
+fn entries_owned(block: &mut Value) {
+    let Value::Object(fields) = block else {
+        return;
+    };
+    let mut entries: Vec<Value> = match fields.remove("entries") {
+        Some(Value::Array(entries)) => entries
+            .into_iter()
+            .map(|entry| serde_json::json!({ "owner": "claude-code:", "value": entry }))
+            .collect(),
+        _ => Vec::new(),
+    };
+    if fields.get("type").and_then(Value::as_str) == Some("redacted_thinking") {
+        let data = fields.remove("data");
+        if let Some(data) = data.as_ref().and_then(Value::as_str).and_then(|data| data.strip_prefix("anthropic:")) {
+            entries.push(serde_json::json!({
+                "owner": "anthropic:",
+                "value": { "type": "redacted_thinking", "data": data },
+            }));
+        }
+        fields.insert("type".to_owned(), Value::String("opaque".to_owned()));
+        fields.insert("callId".to_owned(), Value::Null);
+        fields.insert("status".to_owned(), Value::String("completed".to_owned()));
+        fields.insert("view".to_owned(), serde_json::json!({ "kind": "reasoning" }));
+        fields.insert("endedAt".to_owned(), Value::Null);
+    }
+    if !entries.is_empty() {
+        fields.insert("entries".to_owned(), Value::Array(entries));
     }
 }
 

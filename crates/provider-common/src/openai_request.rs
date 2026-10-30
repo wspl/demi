@@ -207,6 +207,20 @@ pub enum InputItem<'a> {
     Reasoning(ReasoningItem),
     FunctionCall(FunctionCallInput<'a>),
     FunctionCallOutput(FunctionCallOutputInput<'a>),
+    /// An item the vendor sent that Demi keeps whole, sent back as it came.
+    Recorded(Recorded<'a>),
+}
+
+/// An item kept whole, written as its JSON text; two are one when their texts
+/// are.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(transparent)]
+pub struct Recorded<'a>(&'a serde_json::value::RawValue);
+
+impl PartialEq for Recorded<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.get() == other.0.get()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -328,7 +342,12 @@ pub fn responses_input<'a>(
                     }));
                 }
             }
-            InferenceItem::AssistantRedactedThinking { .. } => {}
+            InferenceItem::Opaque { entries, .. } => input.extend(
+                entries
+                    .iter()
+                    .filter(|entry| entry.owner() == dialect.signature_tag)
+                    .map(|entry| InputItem::Recorded(Recorded(entry.value()))),
+            ),
             InferenceItem::ToolUse {
                 tool_use_id,
                 tool_name,
@@ -636,7 +655,7 @@ pub fn chat_messages<'a>(
                     turn.think(text);
                 }
             }
-            InferenceItem::AssistantRedactedThinking { .. } => {}
+            InferenceItem::Opaque { .. } => {}
         }
     }
     turn.flush(&mut messages, dialect);

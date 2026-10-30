@@ -32,7 +32,8 @@ pub enum Block {
     /// The stopped marker a Stop leaves.
     Abort(AbortBlock),
     Thinking(ThinkingBlock),
-    RedactedThinking(RedactedThinkingBlock),
+    /// A step its vendor ran on its side, such as redacted reasoning.
+    Opaque(OpaqueBlock),
     Text(TextBlock),
     ToolCall(ToolCallBlock),
     /// The usage of one completed provider request.
@@ -61,7 +62,7 @@ macro_rules! on_block {
             Block::Resume($inner) => $body,
             Block::Abort($inner) => $body,
             Block::Thinking($inner) => $body,
-            Block::RedactedThinking($inner) => $body,
+            Block::Opaque($inner) => $body,
             Block::Text($inner) => $body,
             Block::ToolCall($inner) => $body,
             Block::Response($inner) => $body,
@@ -94,7 +95,7 @@ impl Block {
             Block::AgentMessage(block) => &block.entries,
             Block::Resume(block) => &block.entries,
             Block::Thinking(block) => &block.entries,
-            Block::RedactedThinking(block) => &block.entries,
+            Block::Opaque(block) => &block.entries,
             Block::Text(block) => &block.entries,
             Block::ToolCall(block) => &block.entries,
             Block::CompactionBoundary(block) => &block.entries,
@@ -118,7 +119,7 @@ impl Block {
             Block::AgentMessage(block) => Some(&mut block.entries),
             Block::Resume(block) => Some(&mut block.entries),
             Block::Thinking(block) => Some(&mut block.entries),
-            Block::RedactedThinking(block) => Some(&mut block.entries),
+            Block::Opaque(block) => Some(&mut block.entries),
             Block::Text(block) => Some(&mut block.entries),
             Block::ToolCall(block) => Some(&mut block.entries),
             Block::CompactionBoundary(block) => Some(&mut block.entries),
@@ -137,7 +138,7 @@ impl Block {
     pub fn run(&self) -> Option<&BlockId> {
         match self {
             Block::Thinking(block) => block.run.as_ref(),
-            Block::RedactedThinking(block) => block.run.as_ref(),
+            Block::Opaque(block) => block.run.as_ref(),
             Block::ToolCall(block) => block.run.as_ref(),
             Block::Wakeup(block) => block.run.as_ref(),
             Block::AgentMessage(block) => block.run.as_ref(),
@@ -149,7 +150,7 @@ impl Block {
     pub fn set_run(&mut self, run: Option<BlockId>) {
         match self {
             Block::Thinking(block) => block.run = run,
-            Block::RedactedThinking(block) => block.run = run,
+            Block::Opaque(block) => block.run = run,
             Block::ToolCall(block) => block.run = run,
             Block::Wakeup(block) => block.run = run,
             Block::AgentMessage(block) => block.run = run,
@@ -174,60 +175,95 @@ impl Block {
     }
 }
 
-/// One entry of a vendor's own record of the session, kept on a block
-/// (`crates/provider-claude-code/src/session.rs`), held as its JSON
-/// text: a session replays a block's entries as they came and reads a
-/// field of them seldom, so it holds the text, a third of the decoded
-/// value's size, and decodes an entry only where a field of it is read.
+/// One entry of a vendor's own record of the session, kept on a block, with
+/// its owner: the tag of the provider that wrote it and alone reads it, such
+/// as `claude-code:` for a line of the Claude Code CLI's session
+/// (`crates/provider-claude-code/src/session.rs`) or `grok-build:` for an
+/// output item of xAI's. A request gives a provider only the entries it owns.
+///
+/// The value is held as its JSON text: a session replays a block's entries as
+/// they came and reads a field of them seldom, so it holds the text, a third
+/// of the decoded value's size, and decodes an entry only where a field of it
+/// is read.
 #[derive(Debug, Clone)]
-pub struct Entry(Box<serde_json::value::RawValue>);
+pub struct Entry {
+    owner: Box<str>,
+    value: Box<serde_json::value::RawValue>,
+}
 
 impl Entry {
-    /// The entry `value` is.
-    pub fn new(value: &impl Serialize) -> serde_json::Result<Self> {
-        serde_json::value::to_raw_value(value).map(Self)
+    /// The entry `value` is, owned by the provider tagged `owner`.
+    pub fn new(owner: &str, value: &impl Serialize) -> serde_json::Result<Self> {
+        Ok(Self {
+            owner: owner.into(),
+            value: serde_json::value::to_raw_value(value)?,
+        })
     }
 
-    /// The entry as its JSON text.
+    /// The tag of the provider that owns the entry.
+    pub fn owner(&self) -> &str {
+        &self.owner
+    }
+
+    /// The entry's value as its JSON text.
     pub fn json(&self) -> &str {
-        self.0.get()
+        self.value.get()
     }
 
-    /// The entry decoded as `T`, such as only the fields a reader needs.
+    /// The entry's value, to write as it is.
+    pub fn value(&self) -> &serde_json::value::RawValue {
+        &self.value
+    }
+
+    /// The entry's value decoded as `T`, such as only the fields a reader
+    /// needs.
     pub fn decode<'a, T: Deserialize<'a>>(&'a self) -> serde_json::Result<T> {
-        serde_json::from_str(self.0.get())
+        serde_json::from_str(self.value.get())
     }
 }
 
-impl From<serde_json::Value> for Entry {
-    fn from(value: serde_json::Value) -> Self {
-        Self::new(&value).expect("a JSON value serializes")
-    }
-}
-
-/// Two entries are one when their texts are: an entry is always written
-/// by the same serializer, compact and in its own key order.
+/// Two entries are one when their owners and texts are: an entry is always
+/// written by the same serializer, compact and in its own key order.
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
-        self.json() == other.json()
+        self.owner == other.owner && self.json() == other.json()
     }
 }
 
 impl Eq for Entry {}
 
+/// The stored form of an entry.
+#[derive(Serialize)]
+struct EntryOut<'a> {
+    owner: &'a str,
+    value: &'a serde_json::value::RawValue,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EntryIn {
+    owner: String,
+    value: serde_json::Value,
+}
+
 impl Serialize for Entry {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0.serialize(serializer)
+        EntryOut {
+            owner: &self.owner,
+            value: &self.value,
+        }
+        .serialize(serializer)
     }
 }
 
 /// A block is a tagged enum, which serde reads through its own buffer
 /// rather than serde_json's reader, and serde_json reads a raw value only
-/// from its own: an entry is read as a value and written back as text.
+/// from its own: an entry's value is read as a value and written back as
+/// text.
 impl<'de> Deserialize<'de> for Entry {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        Self::new(&value).map_err(serde::de::Error::custom)
+        let entry = EntryIn::deserialize(deserializer)?;
+        Self::new(&entry.owner, &entry.value).map_err(serde::de::Error::custom)
     }
 }
 
@@ -988,11 +1024,12 @@ pub struct ThinkingBlock {
     pub entries: Vec<Entry>,
 }
 
-/// Opaque reasoning data, replayed whole; a page shows it as thinking
-/// without text while it is the newest block of a running turn.
+/// A step its vendor ran on its side, such as redacted reasoning or a search
+/// at the vendor: Demi keeps the vendor's record of it as entries, which only
+/// their owner reads, and draws it by its view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RedactedThinkingBlock {
+pub struct OpaqueBlock {
     #[garde(skip)]
     pub id: BlockId,
     #[garde(skip)]
@@ -1011,8 +1048,21 @@ pub struct RedactedThinkingBlock {
     pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
+    /// The vendor's id of the step, which its later events name; null for a
+    /// step the vendor gives whole, such as redacted reasoning.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
-    pub data: String,
+    pub call_id: Option<String>,
+    #[garde(skip)]
+    pub status: OpaqueStatus,
+    #[garde(dive)]
+    pub view: OpaqueView,
+    /// When the step ended; null while it runs.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub ended_at: Option<Timestamp>,
     /// The run of steps the block belongs to: the id of the run's first
     /// block, which the backend sets as it stores the block and never
     /// changes.
@@ -1025,15 +1075,45 @@ pub struct RedactedThinkingBlock {
     #[garde(skip)]
     pub run: Option<BlockId>,
     /// The entries of the vendor's own record of the session that belong to
-    /// this block, as its provider gave them
-    /// (`crates/provider-claude-code/src/session.rs`); omitted when there are
-    /// none. They never leave
-    /// the backend: a block a client receives is serialized without them
-    /// ([`client_block`]), so the web contract leaves them out.
+    /// this block, as its provider gave them; omitted when there are none.
+    /// They never leave the backend: a block a client receives is serialized
+    /// without them ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<Entry>,
+}
+
+/// Where a vendor's step is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OpaqueStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
+/// How a page draws a vendor's step: each kind has its own look, and a step
+/// of a kind Demi does not know is `other`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum OpaqueView {
+    /// Reasoning the vendor sends only encrypted, which a page draws as
+    /// thinking without text.
+    Reasoning,
+    /// A step of a kind Demi does not know: the vendor's name, such as `xAI`,
+    /// and the step's, such as `code_interpreter`.
+    Other {
+        #[garde(skip)]
+        vendor: String,
+        #[garde(skip)]
+        name: String,
+    },
 }
 
 /// Assistant text.

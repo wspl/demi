@@ -4,6 +4,7 @@ import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
 import CommandReportBlock from './CommandReportBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
+import OpaqueStepBlock from './OpaqueStepBlock.vue'
 import BlockScope from './BlockScope.vue'
 import type { WorkStep } from '../work-groups'
 
@@ -30,6 +31,9 @@ const isOpen = defineModel<boolean>('open', { default: false })
   </BlockScope>
   <BlockScope v-else-if="step.type === 'tool_call'" :block="step">
     <ToolCallBlock v-model:open="isOpen" :block="step" />
+  </BlockScope>
+  <BlockScope v-else-if="step.type === 'opaque'" :block="step">
+    <OpaqueStepBlock v-model:open="isOpen" :block="step" />
   </BlockScope>
   <PendingCallBlock v-else-if="step.type === 'pending_call'" :step="step" />
   <CommandReportBlock v-else-if="step.type === 'wakeup'" :reports="step.reports" />

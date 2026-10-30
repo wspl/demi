@@ -2528,7 +2528,7 @@ impl SessionCore {
             .filter(|block| {
                 matches!(
                     block,
-                    Block::Thinking(_) | Block::RedactedThinking(_) | Block::Text(_) | Block::ToolCall(_)
+                    Block::Thinking(_) | Block::Opaque(_) | Block::Text(_) | Block::ToolCall(_)
                 )
             })
             .map(|block| block.id().clone());
@@ -2612,6 +2612,8 @@ impl SessionCore {
         if let Some(output) = self.output.as_mut().filter(|output| output.ended_at.is_none()) {
             output.ended_at = Some(now);
         }
+        self.transcript.settle_opaque();
+        self.commit();
     }
 
     /// Adds what `event` streamed to the running request's output.
@@ -2748,9 +2750,7 @@ impl SessionCore {
             ProviderEvent::ThinkingSignature(signature) => {
                 self.transcript.sign_thinking(signature)
             }
-            ProviderEvent::RedactedThinking(data) => {
-                self.transcript.push_redacted_thinking(&self.model, data);
-            }
+            ProviderEvent::Opaque(step) => self.transcript.apply_opaque(&self.model, step),
             ProviderEvent::TextDelta(text) => {
                 self.transcript.append_text(&self.model, &text)
             }

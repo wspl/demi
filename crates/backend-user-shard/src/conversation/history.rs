@@ -921,7 +921,7 @@ fn item(reader: &Reader, at: usize, block: &Block) -> Option<Shown> {
         )),
         Block::Text(_)
         | Block::Thinking(_)
-        | Block::RedactedThinking(_)
+        | Block::Opaque(_)
         | Block::Context(_)
         | Block::Wakeup(_)
         | Block::Response(_)

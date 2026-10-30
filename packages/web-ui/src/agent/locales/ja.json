@@ -141,6 +141,9 @@
     "signedOut": "{provider} が {account} をサインアウトしました。設定 › プロバイダーでもう一度サインインしてください。",
     "notExposed": "{device} のポート {port} は公開されていません。",
     "deviceOffline": "{device} はオフラインです。",
+    "opaque": {
+      "other": "{vendor} の {name}"
+    },
     "work": {
       "ran": "{count} 件のコマンドを実行",
       "checked": "{count} 件のコマンドを確認",

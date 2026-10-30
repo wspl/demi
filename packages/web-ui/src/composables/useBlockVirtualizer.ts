@@ -78,7 +78,7 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   queued_message: 40,
   resume: 0,
   thinking: 20,
-  redacted_thinking: 0,
+  opaque: 28,
   text: 40,
   response: 24,
   tool_call: 28,

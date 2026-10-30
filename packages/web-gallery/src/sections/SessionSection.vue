@@ -10,7 +10,7 @@ import { Layers, Play } from '@lucide/vue'
 import { countOf } from '@demicodes/utils'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { callBeingWrittenBlocks, commandLookBlocks, editedFile, viewedMediaBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
+import { callBeingWrittenBlocks, commandLookBlocks, vendorStepBlocks, editedFile, viewedMediaBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import {
   SUBAGENT,
   subagentBlocks,
@@ -1183,6 +1183,7 @@ const signInRunningSince = Date.now() - 6_000
 const writingBlocks = callBeingWrittenBlocks()
 // Runs that only check a command, and ones that run one too: their rows name what they did, never a count of steps.
 const lookBlocks = commandLookBlocks()
+const vendorBlocks = vendorStepBlocks()
 // A run that viewed screenshots, folded with them under its row, and a report that carried some.
 const viewedBlocks = viewedMediaBlocks()
 const screenshotRun = screenshotRunBlocks()
@@ -2979,6 +2980,22 @@ onBeforeUnmount(() => {
               :pending-steers="[]"
               :queue="[]"
               phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="steps a vendor ran: one ended, one failed beside a command, one running" wide>
+          <div class="gallery-frame h-[28rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-vendor-steps"
+              :blocks="vendorBlocks"
+              :activity="AT_REST"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="running"
               :bottom-offset="0"
               :persisted-scroll-state="undefined"
               read-only
