@@ -323,6 +323,10 @@ pub(crate) struct Shared {
     /// Whether the user has each feature of each plugin on, by the
     /// plugin's index and the feature's, once read, as `enabled` is.
     features: RefCell<Option<Vec<Vec<bool>>>>,
+    /// Held by a switch of a plugin or of a feature from its read of the
+    /// choices until it applied its own, so two switches at once never
+    /// apply one over the other.
+    switching: tokio::sync::Mutex<()>,
     /// Cancelled when the user next turns a plugin on or off, which makes
     /// what a direct channel's introduction told of the user's streams out
     /// of date (`crates/runner-direct/src/lib.rs`).
@@ -684,6 +688,7 @@ impl UserPlugins {
             changes,
             enabled: RefCell::new(None),
             features: RefCell::new(None),
+            switching: tokio::sync::Mutex::new(()),
             switched: RefCell::default(),
             directories: RefCell::new(None),
             revisions: RefCell::new(HashMap::new()),
@@ -739,6 +744,7 @@ impl UserPlugins {
         let Some((index, registered)) = self.0.registry.plugin(plugin) else {
             return Err(SwitchError::UnknownPlugin(plugin.to_owned()));
         };
+        let _switching = self.0.switching.lock().await;
         let mut current = self.enabled().await?;
         if current[index] == enabled {
             return Ok(None);
@@ -786,18 +792,17 @@ impl UserPlugins {
                 feature: feature.to_owned(),
             });
         };
-        if self.0.features().await?[index][position] == enabled {
+        let _switching = self.0.switching.lock().await;
+        let mut current = self.0.features().await?;
+        if current[index][position] == enabled {
             return Ok(false);
         }
         self.0
             .store
             .set_feature_switch(self.0.user.clone(), plugin.to_owned(), feature.to_owned(), enabled)
             .await?;
-        // Set in the copy as it is now, which another switch may have
-        // changed while this one was stored.
-        if let Some(features) = self.0.features.borrow_mut().as_mut() {
-            features[index][position] = enabled;
-        }
+        current[index][position] = enabled;
+        self.0.features.replace(Some(current));
         let switched = std::mem::take(&mut *self.0.switched.borrow_mut());
         switched.cancel();
         self.0.changes.plugins_changed();
