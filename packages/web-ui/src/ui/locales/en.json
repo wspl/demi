@@ -48,6 +48,7 @@
     "steps": {
       "stopDemi": "Stop Demi",
       "saveClouds": "Save the running Clouds",
+      "keepClouds": "Keep the running Clouds",
       "keepDatabases": "Keep a copy of the databases",
       "switch": "Switch to the new version",
       "startManager": "Start the Cloud manager",

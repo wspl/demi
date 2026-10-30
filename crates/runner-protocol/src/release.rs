@@ -273,7 +273,7 @@ impl UpdateRecord {
                 .collect(),
             restart: RestartStepKind::ALL
                 .iter()
-                .map(|&kind| RestartStep { kind, state: StepState::Waiting })
+                .map(|&kind| RestartStep { kind, state: StepState::Waiting, kept: false })
                 .collect(),
             returning: false,
         }
@@ -287,6 +287,14 @@ impl UpdateRecord {
             .find(|step| step.kind == kind)
             .expect("a record holds every step")
             .state
+    }
+
+    /// Whether the update keeps the running Clouds running rather than
+    /// saving them.
+    pub fn clouds_kept(&mut self, kept: bool) {
+        if let Some(step) = self.restart.iter_mut().find(|step| step.kind == RestartStepKind::SaveClouds) {
+            step.kept = kept;
+        }
     }
 
     /// The state of the step `kind` from the restart on.
@@ -369,6 +377,12 @@ pub struct UpgradeStep {
 pub struct RestartStep {
     pub kind: RestartStepKind,
     pub state: StepState,
+    /// Set on the running Clouds' step of an update that keeps them running
+    /// for the new release rather than saving them
+    /// (`crates/machine-manager/src/handover.rs`). The step keeps its kind, so
+    /// a page of the release before, which knows no other, still shows it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub kept: bool,
 }
 
 /// How far one step is.

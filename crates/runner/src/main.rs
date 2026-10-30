@@ -72,7 +72,10 @@
 //!
 //! - It decodes the boot file the machine manager wrote, fails on missing or
 //!   invalid credentials and never falls back to pairing.
-//! - It never updates itself, since its release is the image's.
+//! - It starts as the image's release, and replaces itself in its own
+//!   process when its backend runs another, as after a server upgrade that
+//!   kept the Cloud running (`update`). The next boot starts the image's
+//!   again.
 //! - Boot, mounts and network are the manager's, and the runner never boots as
 //!   PID 1, since init belongs to the image.
 //!
@@ -644,8 +647,16 @@ async fn runner(cli: Cli) -> io::Result<u8> {
     // A Cloud's temporary directory, which its runner's `TMPDIR` names,
     // starts each boot empty
     // (`crates/machine-manager/src/storage/mod.rs`).
-    if boot.is_some() {
-        prepare_temporary(Path::new(TEMPORARY_DIRECTORY)).await;
+    // A runner that replaced itself in this boot runs beside the jobs its
+    // predecessor started, which keep their temporary files.
+    let managed = boot
+        .as_ref()
+        .map(|_| update::Managed::new(Path::new(update::MANAGED_ROOT), &executable));
+    if let Some(managed) = &managed {
+        if !managed.replaced() {
+            prepare_temporary(Path::new(TEMPORARY_DIRECTORY)).await;
+        }
+        managed.prune().await;
     }
     let installation_directory = directory.clone();
     // A Cloud's runner reaches its backend through the socket the machine
@@ -679,6 +690,7 @@ async fn runner(cli: Cli) -> io::Result<u8> {
         // One that `uninstall` runs only asks for the revocation, and never
         // updates itself.
         installed: installed.filter(|_| !removing),
+        managed,
         removal,
         removing,
         autostart,

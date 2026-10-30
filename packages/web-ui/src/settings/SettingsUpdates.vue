@@ -163,7 +163,7 @@ const lines = computed<StepLine[]>(() => {
   }))
 })
 
-const overall = computed(() => overallDone(steps.value, WEIGHTS))
+const overall = computed(() => overallDone(steps.value, (step) => WEIGHTS[step.kind]))
 
 /**
  * The status row's words: what runs, what was found, or what failed. Every

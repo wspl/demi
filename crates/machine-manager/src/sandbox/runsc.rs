@@ -69,17 +69,33 @@ pub enum Status {
 struct Container {
     id: String,
     status: Status,
+    /// The host process id of the sandbox's Sentry; none, or 0, before it
+    /// started.
+    #[serde(default)]
+    pid: Option<i32>,
 }
 
 /// The status of container `id` in `runsc list --format=json` output, which
 /// is `null` when there are no containers.
 pub fn status_in(listing: &str, id: &SandboxId) -> Result<Option<Status>, serde_json::Error> {
+    Ok(container_in(listing, id)?.map(|container| container.status))
+}
+
+/// The Sentry's host process id of container `id` when it runs, in `runsc
+/// list --format=json` output.
+pub fn sentry_in(listing: &str, id: &SandboxId) -> Result<Option<i32>, serde_json::Error> {
+    Ok(container_in(listing, id)?
+        .filter(|container| container.status == Status::Running)
+        .and_then(|container| container.pid)
+        .filter(|&pid| pid > 0))
+}
+
+fn container_in(listing: &str, id: &SandboxId) -> Result<Option<Container>, serde_json::Error> {
     let containers: Option<Vec<Container>> = serde_json::from_str(listing)?;
     Ok(containers
         .unwrap_or_default()
         .into_iter()
-        .find(|container| container.id == id.as_str())
-        .map(|container| container.status))
+        .find(|container| container.id == id.as_str()))
 }
 
 /// runsc, with its state under the manager's runtime directory.
@@ -156,6 +172,15 @@ impl Runsc {
             .run(&[OsStr::new("list"), OsStr::new("--format=json")])
             .await?;
         status_in(&output.stdout, id).map_err(|error| RunscError::List(error.to_string()))
+    }
+
+    /// The host process id of running container `id`'s Sentry; none when it
+    /// does not run.
+    pub async fn sentry(&self, id: &SandboxId) -> Result<Option<i32>, RunscError> {
+        let output = self
+            .run(&[OsStr::new("list"), OsStr::new("--format=json")])
+            .await?;
+        sentry_in(&output.stdout, id).map_err(|error| RunscError::List(error.to_string()))
     }
 
     /// Starts container `id` from `bundle`, detached. runsc and the sandbox

@@ -139,9 +139,17 @@ fn read_record<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>,
 
 /// Records `base` as the configured base of the store at `images`, and the
 /// one configured before it as the previous, then removes every base that
-/// neither names, that was not imported ahead, and that no committed
-/// generation or working pair, under `images` and `working`, is pinned to.
-pub async fn retain(images: &Path, working: &Path, base: &BaseVersion) -> Result<(), BaseError> {
+/// neither names, that was not imported ahead, that no committed
+/// generation or working pair, under `images` and `working`, is pinned to,
+/// and that is not among `running`, the bases whose programs the sandboxes
+/// taken over mount (`crate::handover`).
+pub async fn retain(
+    images: &Path,
+    working: &Path,
+    base: &BaseVersion,
+    running: &[BaseVersion],
+) -> Result<(), BaseError> {
+    let running = running.to_vec();
     let images = images.to_owned();
     let working = working.to_owned();
     let base = base.clone();
@@ -168,6 +176,7 @@ pub async fn retain(images: &Path, working: &Path, base: &BaseVersion) -> Result
         sync(off, &images)?;
         let mut kept: Vec<BaseVersion> = pinned(off, &images, &working)?;
         kept.push(configured.current);
+        kept.extend(running);
         kept.extend(configured.previous);
         kept.extend(ahead);
         let bases = images.join("bases");

@@ -35,7 +35,7 @@ use std::{
     ffi::OsString,
     io,
     os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use rustix::{
@@ -168,6 +168,39 @@ impl SavedNamespace {
             data: config.data.clone(),
             runtime,
         }
+    }
+
+    /// Where the handle of the saved namespace lies, in the host's namespace.
+    pub fn handle(&self) -> &Path {
+        &self.handle
+    }
+
+    /// Whether the saved namespace holds this manager's state directory, as
+    /// its owner record says; not when there is no record.
+    pub fn owned(&self) -> io::Result<bool> {
+        Ok(self.owner()?.is_some_and(|owner| owner == self.data))
+    }
+
+    /// Refuses a saved namespace that holds another state directory's
+    /// sandboxes, before anything ends their processes: a manager with
+    /// another configuration leaves them for one with theirs.
+    pub fn refuse_other(&self) -> Result<(), NamespaceError> {
+        match self.owner()? {
+            Some(owner) if owner != self.data => Err(NamespaceError::OtherOwner(owner)),
+            _ => Ok(()),
+        }
+    }
+
+    /// The state directory the owner record names; none without a record.
+    fn owner(&self) -> io::Result<Option<PathBuf>> {
+        let bytes = match fs_err::read(&self.owner) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let owner: Owner = serde_json::from_slice(&bytes)
+            .map_err(|error| io::Error::other(NamespaceError::Owner(self.owner.display().to_string(), error)))?;
+        Ok(Some(owner.data_dir))
     }
 
     /// Recovers a namespace an earlier manager left: a process of this

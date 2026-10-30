@@ -34,26 +34,26 @@ export interface StepLine {
 }
 
 /**
- * The share of the whole done, 0 to 1: each step counts by `weights`, the
+ * The share of the whole done, 0 to 1: each step counts by `weight`, the
  * time it usually takes, and a running step with numbers moves inside its
  * share.
  */
-export function overallDone<K extends string>(steps: readonly { kind: K, state: StepState }[], weights: Record<K, number>): number {
+export function overallDone<S extends { state: StepState }>(steps: readonly S[], weight: (step: S) => number): number {
   let all = 0
   let done = 0
   for (const step of steps) {
-    const weight = weights[step.kind]
-    all += weight
+    const share = weight(step)
+    all += share
     const state = step.state
     if (state.state === 'done' || state.state === 'skipped')
-      done += weight
+      done += share
     else if (state.state === 'running' && state.progress)
-      done += weight * share(state.progress)
+      done += share * progressShare(state.progress)
   }
   return all === 0 ? 0 : done / all
 }
 
-function share(progress: StepProgress): number {
+function progressShare(progress: StepProgress): number {
   switch (progress.kind) {
     case 'bytes':
       return progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0

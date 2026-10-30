@@ -36,7 +36,16 @@ the following happens:
   runs in (`crates/runner-shell/src/remote/mod.rs`). A runner of a release
   that ran commands inside its own process still stops them as it replaces
   itself, the last time it does.
-- Commands running on a Cloud end, since the Cloud restarts:
+- Commands running on a Cloud run on. The machine manager leaves the running
+  Clouds to the next manager, which takes them over
+  (`crates/machine-manager/src/handover.rs`), and each Cloud's runner replaces
+  itself in its own process, as a paired device's does
+  (`crates/runner/src/update.rs`).
+- An upgrade to a release that changes the manager's state format, one that
+  moves the manager's store, one from a release whose manager cannot leave its
+  Clouds, and one whose new release does not start, which returns to the
+  release it left, save and restart the running Clouds instead. Their commands
+  end:
   - The report of each node that ran a command says that the upgrade lost the
     command. A command the node might be waiting for gets the report at once.
     A service gets it at the node's next turn
@@ -46,8 +55,11 @@ the following happens:
 - Each paired device's runner reconnects and finds that the backend serves
   another runner release. It replaces itself with that release and connects
   again, without its user doing anything (`crates/runner/src/update.rs`).
-- The new backend restarts each Cloud that the shutdown left running, with
-  0.2.0's runner and command programs. A Cloud's system, which holds the
+- The new backend takes over each Cloud that runs, and restarts each one that
+  the upgrade saved, with 0.2.0's runner and command programs. A Cloud the
+  upgrade kept running has 0.2.0's runner, which it downloaded, and downloads
+  each command program the first time it needs it; its next boot starts from
+  the image. A Cloud's system, which holds the
   packages the user installed, stays on the image the Cloud was created or last
   reset with, until the user resets it
   (`crates/machine-manager/src/sandbox/mod.rs`).
@@ -137,9 +149,9 @@ The following table shows how each part reaches the new release, and when:
 | Part | How it reaches the new release | When |
 | --- | --- | --- |
 | Backend and web app | The backend restarts from `current`. An open page shows a spinner over its conversation's end, above the composer, meanwhile and then loads the new build (`packages/web-ui/src/infra/build-reload.ts`) | During the upgrade |
-| Machine manager and `runsc` | The manager restarts from `current`, with the `runsc` version it pins, which the preparation fetched ([Prepare](#prepare)) | During the upgrade |
+| Machine manager and `runsc` | The manager restarts from `current`, with the `runsc` version it pins, which the preparation fetched ([Prepare](#prepare)). That `runsc` manages the sandboxes the upgrade kept running too | During the upgrade |
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
-| A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot (`crates/machine-manager/src/sandbox/mod.rs`) | The Cloud's next wake |
+| A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot (`crates/machine-manager/src/sandbox/mod.rs`). A Cloud the upgrade kept running downloads the release's runner and replaces its own, and each program the first time it needs it (`crates/runner/src/update.rs`) | The Cloud's next wake, or at once for a Cloud the upgrade kept running |
 | A Cloud's system | Stays on the image it is pinned to. Cloud settings says when a newer one is available, and a reset moves to it (`packages/web-ui/src/cloud/CloudSettings.vue`) | When the user resets |
 | A paired device's runner | The runner updates itself when the backend names another runner release (`crates/runner/src/update.rs`) | Its next connection |
 | A paired device's command programs | The backend's catalog names the new packages, and the runner downloads each the first time it needs it (`crates/runner-command-packages/src/cache.rs`) | Each program's next use |
@@ -290,9 +302,14 @@ journal, `/opt/demi/server/upgrade.json`, before it takes the step:
 1. Stop the backend. Its shutdown ends every turn with the shutdown record
    and closes every runner connection
    (`crates/backend/src/backend.rs`).
-2. Stop the machine manager. Its stop saves and stops every device that is
-   still running, so each Cloud boots with the new release's programs. The
-   manager writes how many of the running Clouds it has saved to
+2. Stop the machine manager. When the new release reads the manager's state
+   as it stands and the store needs no move, `demi-server` first writes the
+   leave request `/run/demi-machine-manager/leave`, and removes it once the
+   manager stopped. A manager that finds it records the sandboxes that run in
+   `/run/demi-machine-manager/left.json` and leaves them running for the new
+   manager. Otherwise its stop saves and stops every device that is still
+   running, so each Cloud boots with the new release's programs. The manager
+   writes how many of the running Clouds it has saved to
    `/run/demi-machine-manager/drain.json`, which `demi-server` reads while it
    waits for the stop.
 3. Keep the databases that the new release changes in
@@ -415,7 +432,8 @@ newer one removes the earlier one's.
    than the current one, and upgrades as above.
 4. While it runs, `demi-server` tells the backend every step of the update
    over the backend's management socket, each with its state and its
-   progress: the bytes downloaded, the Clouds saved, the databases copied.
+   progress: the bytes downloaded, the Clouds saved or kept running, the
+   databases copied.
    The administrators' pages list the steps of [Fetch](#fetch) and
    [Prepare](#prepare) in Settings › Updates. From the stop on, every page
    shows the update's screen, which lists the steps of [Switch](#switch) and

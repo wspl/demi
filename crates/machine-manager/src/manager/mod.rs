@@ -18,7 +18,7 @@ mod linux {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, LeftRecord, LeftSandbox, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
         ResetParams, RuntimeState, RuntimeStateParams, WakeParams,
     };
     use tokio::{
@@ -127,6 +127,54 @@ mod linux {
             self.workers.borrow_mut().spawn_local(worker.run(inbox));
             devices.insert(device.clone(), sender.clone());
             sender
+        }
+
+        /// Gives `device` a worker that runs `sandbox`, which a manager
+        /// before this one left running (`crate::handover`).
+        pub fn adopt(&self, device: DeviceId, sandbox: crate::sandbox::Sandbox) {
+            let (sender, inbox) = mpsc::channel(DEVICE_QUEUE);
+            let worker = DeviceWorker::adopted(
+                device.clone(),
+                self.core.clone(),
+                self.base.clone(),
+                self.deaths.clone(),
+                self.changes.clone(),
+                sandbox,
+            );
+            self.workers.borrow_mut().spawn_local(worker.run(inbox));
+            self.devices.borrow_mut().insert(device, sender);
+        }
+
+        /// Leaves every running sandbox to the next manager: waits for the
+        /// operations in flight, then takes each sandbox from its worker
+        /// without stopping it, and refuses every request still waiting, as
+        /// a shutdown does. Answers what the next manager takes over.
+        pub async fn leave(&self) -> Result<LeftRecord, OpError> {
+            let _whole = self.admission.exclusive().await?;
+            let workers: Vec<_> = self
+                .devices
+                .borrow()
+                .iter()
+                .map(|(device, worker)| (device.clone(), worker.clone()))
+                .collect();
+            let mut sandboxes = Vec::new();
+            for (device, worker) in workers {
+                let (reply, answer) = oneshot::channel();
+                // A worker that stopped runs no sandbox.
+                if worker.send(DeviceCommand::Leave { reply }).await.is_err() {
+                    continue;
+                }
+                if let Ok(Some((record, programs))) = answer.await {
+                    sandboxes.push(LeftSandbox {
+                        device,
+                        id: record.id.as_str().to_owned(),
+                        slot: record.slot,
+                        programs,
+                    });
+                }
+            }
+            self.admission.close();
+            Ok(LeftRecord { sandboxes })
         }
 
         /// Runs `op` on `device`'s worker, admitted beside other device

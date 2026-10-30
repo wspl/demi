@@ -1,5 +1,5 @@
-//! A paired device's runner replacing itself with the runner release of its
-//! backend.
+//! A runner replacing itself with the runner release of its backend: a
+//! paired device's in its installation, a Cloud's for the rest of its boot.
 //!
 //! It puts the backend's executable in the installation's `releases/` as the
 //! installers do, under their lock, moves it over the installation's runner,
@@ -54,9 +54,23 @@
 //!   next connection attempt.
 //! - A 409 without an executable (no runner for the target) is logged and
 //!   retried, since a later release may have one.
-//! - A managed guest's runner never updates itself: a 409 for it means the
-//!   backend and the machine manager run different releases, so it exits naming
-//!   both and the Cloud's boot fails.
+//!
+//! # On a Cloud
+//!
+//! A Cloud's runner comes with the image the manager boots it from, of the
+//! server's release. It meets another release only when a server upgrade kept
+//! the Cloud running (`crates/machine-manager/src/handover.rs`), and then
+//! replaces itself as a paired device's does, with three differences:
+//!
+//! - It downloads through the backend's runner socket, its only way to the
+//!   backend, onto the system image, and moves the release to one path there,
+//!   `/var/lib/demi/runner/demi-runner`, as an installation's: the image's
+//!   `/opt/demi` is read-only, and `/run` and `/tmp` are small and in memory.
+//! - The successor runs from there in this process, which keeps its id, so the
+//!   sandbox's init sees no exit and stops nothing. It keeps the temporary
+//!   directory, which its predecessor's jobs use.
+//! - It downloads nothing ahead. A successor removes the downloads; the next
+//!   boot runs the image's runner, which removes the one path too.
 
 use std::{
     ffi::OsString,
@@ -71,6 +85,7 @@ use demi_runner_protocol::{
     release::{COMPRESSED_SUFFIX, RELEASE_ENV, RUNNER, RunnerUpdate, TOKEN_HEADER},
     values::{BackendUrl, DeviceToken},
 };
+use demi_runner_process::backend::Backend;
 use demi_shared_artifacts::{Digest, Mode, Permissions, Publication};
 use tokio_util::sync::CancellationToken;
 
@@ -150,7 +165,8 @@ impl Installed {
         cancel: &CancellationToken,
     ) -> io::Result<()> {
         let _lock = InstallerLock::take(&self.root)?;
-        self.place(backend, token, release, expected, cancel).await?;
+        let http = demi_shared_artifacts::download_client_allowing_http().map_err(io::Error::other)?;
+        place(&self.root.join("releases"), &http, backend.url(), token, release, expected, cancel).await?;
         self.prune_ahead(release).await;
         Ok(())
     }
@@ -196,21 +212,10 @@ impl Installed {
         update: &RunnerUpdate,
         cancel: &CancellationToken,
     ) -> io::Result<Successor> {
-        let Some(executable) = &update.executable else {
-            return Err(io::Error::other(format!(
-                "the backend's runner release {} has no runner for {}",
-                update.release,
-                host_target()
-            )));
-        };
-        let expected = Digest {
-            size: executable.size,
-            sha256: executable.sha256.clone(),
-        };
+        let expected = expected(update)?;
         let _lock = InstallerLock::take(&self.root)?;
-        let path = self
-            .place(backend, token, &update.release, &expected, cancel)
-            .await?;
+        let http = demi_shared_artifacts::download_client_allowing_http().map_err(io::Error::other)?;
+        let path = place(&self.root.join("releases"), &http, backend.url(), token, &update.release, &expected, cancel).await?;
         let executable = self.executable();
         // Windows renames the running executable aside, which it cannot
         // replace; a runner that runs from its release's directory leaves
@@ -264,98 +269,6 @@ impl Installed {
         .map_err(io::Error::other)
     }
 
-    /// The executable of `release` in place in `releases/<release>/`, checked
-    /// against `expected`: the one there, or one downloaded from `backend` as
-    /// its compressed copy (`crates/backend-http/src/install.rs`). A directory
-    /// whose executable is missing or differs, such as one an update that
-    /// failed midway emptied, is downloaded again.
-    ///
-    /// The download keeps its bytes in `releases/.download-<release>/` across
-    /// attempts and resumes from them. It is decompressed and checked once
-    /// complete, and bytes that fail the check are removed. The caller holds
-    /// the install lock.
-    async fn place(
-        &self,
-        backend: &BackendUrl,
-        token: Option<&DeviceToken>,
-        release: &str,
-        expected: &Digest,
-        cancel: &CancellationToken,
-    ) -> io::Result<PathBuf> {
-        let releases = self.root.join("releases");
-        let directory = releases.join(release);
-        let name = file_name();
-        let path = directory.join(&name);
-        if path.exists() {
-            let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
-                .await
-                .map_err(io::Error::other)?;
-            if found == *expected {
-                return Ok(path);
-            }
-        }
-        match tokio::fs::remove_dir_all(&directory).await {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-            _ => {}
-        }
-        let url = backend
-            .url()
-            .join(&format!(
-                "/runner-artifacts/{release}/{}/{name}{COMPRESSED_SUFFIX}",
-                host_target()
-            ))
-            .map_err(io::Error::other)?;
-        let download = releases.join(format!(".download-{release}"));
-        tokio::fs::create_dir_all(&download).await?;
-        let compressed = download.join(format!("{name}{COMPRESSED_SUFFIX}"));
-        // The digest came from the backend this runner trusts, as an
-        // installer's does, so the transport cannot change what is kept; the
-        // token lets the backend count the device's progress. Connections
-        // that deliver nothing for the default patience fail it.
-        let client = demi_shared_artifacts::download_client_allowing_http().map_err(io::Error::other)?;
-        let headers = |_: &reqwest::Url| {
-            let mut headers = reqwest::header::HeaderMap::new();
-            if let Some(value) = token.and_then(|token| {
-                reqwest::header::HeaderValue::from_str(token.expose()).ok()
-            }) {
-                headers.insert(TOKEN_HEADER, value);
-            }
-            headers
-        };
-        let request = demi_shared_artifacts::Download {
-            headers: &headers,
-            ..demi_shared_artifacts::Download::new(url.as_str())
-        };
-        // The backend counts the bytes it serves to the device itself, and
-        // serves the compressed file without a content coding, which the
-        // check below decodes.
-        demi_shared_artifacts::download(&client, request, &compressed, cancel, |_, _| {})
-            .await
-            .map_err(io::Error::other)?;
-        let stage = download.join("release");
-        match tokio::fs::remove_dir_all(&stage).await {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-            _ => {}
-        }
-        tokio::fs::create_dir(&stage).await?;
-        if let Err(error) = decode(&compressed, &stage.join(&name), expected, cancel).await {
-            // Bytes that fail the check are no start for the next attempt;
-            // a cancelled check says nothing of them.
-            if !matches!(error, demi_shared_artifacts::Error::Cancelled) {
-                tokio::fs::remove_file(&compressed).await?;
-            }
-            return Err(io::Error::other(error));
-        }
-        demi_shared_artifacts::publish_directory(&stage, &directory)
-            .await
-            .map_err(io::Error::other)?;
-        // The release is in place; its download holds nothing anyone needs.
-        if let Err(error) = tokio::fs::remove_dir_all(&download).await {
-            tracing::warn!(event = "runner_update.download_kept", file = %download.display(), %error, "a finished download stays");
-        }
-        Ok(path)
-    }
-
     /// Removes every release in `releases/`, the one path holding the
     /// installation's runner; what the system still holds open, such as the
     /// running executable Windows renamed aside, goes at the next update.
@@ -378,6 +291,196 @@ impl Installed {
             }
         }
     }
+}
+
+/// A managed guest's runner, which its Cloud's image brings at each boot: it
+/// replaces itself in its own process with its backend's runner release,
+/// downloaded through the backend's runner socket into `<root>/releases/` on
+/// the system image and moved to the one path `<root>/demi-runner`. Every
+/// later release goes to the same path, so the command aliases of a job that
+/// a successor started name a file that stays. The next boot runs the
+/// image's runner again, which removes all of it.
+pub struct Managed {
+    root: PathBuf,
+    /// This process's executable, canonical.
+    running: PathBuf,
+}
+
+/// Where a managed guest's runner keeps the release it replaced itself
+/// with, on the system image beside its job root
+/// (`crates/machine-manager/src/storage/mod.rs`).
+pub const MANAGED_ROOT: &str = "/var/lib/demi/runner";
+
+impl Managed {
+    /// The managed runner that `executable` is, keeping its successor in
+    /// `root`.
+    pub fn new(root: &Path, executable: &Path) -> Self {
+        Self {
+            root: root.to_owned(),
+            running: executable.canonicalize().unwrap_or_else(|_| executable.to_owned()),
+        }
+    }
+
+    /// The one path every release a runner of this boot replaces itself
+    /// with runs from.
+    fn executable(&self) -> PathBuf {
+        self.root.join(file_name())
+    }
+
+    /// Whether this process is a release an earlier runner of this boot
+    /// replaced itself with, rather than the image's.
+    pub fn replaced(&self) -> bool {
+        self.executable().canonicalize().is_ok_and(|path| path == self.running)
+    }
+
+    /// Removes what earlier updates left: the downloads, and at a boot,
+    /// which runs the image's runner, the earlier boot's successor too.
+    /// What cannot go is logged, since it only takes space.
+    pub async fn prune(&self) {
+        let removed = if self.replaced() {
+            tokio::fs::remove_dir_all(self.root.join("releases")).await
+        } else {
+            tokio::fs::remove_dir_all(&self.root).await
+        };
+        match removed {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => {
+                tracing::warn!(event = "runner_update.prune_failed", %error, "a runner release downloaded earlier stays");
+            }
+            _ => {}
+        }
+    }
+
+    /// Puts the executable `update` names at the one path, downloaded from
+    /// `backend`, which a Cloud reaches through its runner socket only, and
+    /// renamed over the release there, whose process keeps its own file. The
+    /// successor runs from there, in this process, so the sandbox's init sees
+    /// no exit.
+    pub async fn update(
+        &self,
+        backend: &Backend,
+        token: Option<&DeviceToken>,
+        update: &RunnerUpdate,
+        cancel: &CancellationToken,
+    ) -> io::Result<Successor> {
+        let expected = expected(update)?;
+        let releases = self.root.join("releases");
+        tokio::fs::create_dir_all(&releases).await?;
+        let http = demi_shared_artifacts::download_client_through(|builder| backend.http(builder))
+            .map_err(io::Error::other)?;
+        let placed = place(&releases, &http, &backend.origin()?, token, &update.release, &expected, cancel).await?;
+        let executable = self.executable();
+        tokio::fs::rename(&placed, &executable).await?;
+        Ok(Successor {
+            executable,
+            release: update.release.clone(),
+        })
+    }
+}
+
+/// What the executable `update` names decompresses to.
+fn expected(update: &RunnerUpdate) -> io::Result<Digest> {
+    let Some(executable) = &update.executable else {
+        return Err(io::Error::other(format!(
+            "the backend's runner release {} has no runner for {}",
+            update.release,
+            host_target()
+        )));
+    };
+    Ok(Digest {
+        size: executable.size,
+        sha256: executable.sha256.clone(),
+    })
+}
+
+/// The executable of `release` in place in `<releases>/<release>/`, checked
+/// against `expected`: the one there, or one downloaded with `http` from the
+/// backend at `origin` as its compressed copy (`crates/backend-http/src/install.rs`). A directory
+/// whose executable is missing or differs, such as one an update that
+/// failed midway emptied, is downloaded again.
+///
+/// The download keeps its bytes in `<releases>/.download-<release>/` across
+/// attempts and resumes from them. It is decompressed and checked once
+/// complete, and bytes that fail the check are removed. The caller keeps
+/// any other writer of `releases` away, as an installation's install lock
+/// does.
+async fn place(
+    releases: &Path,
+    http: &reqwest::Client,
+    origin: &reqwest::Url,
+    token: Option<&DeviceToken>,
+    release: &str,
+    expected: &Digest,
+    cancel: &CancellationToken,
+) -> io::Result<PathBuf> {
+    let directory = releases.join(release);
+    let name = file_name();
+    let path = directory.join(&name);
+    if path.exists() {
+        let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
+            .await
+            .map_err(io::Error::other)?;
+        if found == *expected {
+            return Ok(path);
+        }
+    }
+    match tokio::fs::remove_dir_all(&directory).await {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    let url = origin
+        .join(&format!(
+            "/runner-artifacts/{release}/{}/{name}{COMPRESSED_SUFFIX}",
+            host_target()
+        ))
+        .map_err(io::Error::other)?;
+    let download = releases.join(format!(".download-{release}"));
+    tokio::fs::create_dir_all(&download).await?;
+    let compressed = download.join(format!("{name}{COMPRESSED_SUFFIX}"));
+    // The digest came from the backend this runner trusts, as an
+    // installer's does, so the transport cannot change what is kept; the
+    // token lets the backend count the device's progress. Connections
+    // that deliver nothing for the default patience fail it.
+    let headers = |_: &reqwest::Url| {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(value) = token.and_then(|token| {
+            reqwest::header::HeaderValue::from_str(token.expose()).ok()
+        }) {
+            headers.insert(TOKEN_HEADER, value);
+        }
+        headers
+    };
+    let request = demi_shared_artifacts::Download {
+        headers: &headers,
+        ..demi_shared_artifacts::Download::new(url.as_str())
+    };
+    // The backend counts the bytes it serves to the device itself, and
+    // serves the compressed file without a content coding, which the
+    // check below decodes.
+    demi_shared_artifacts::download(http, request, &compressed, cancel, |_, _| {})
+        .await
+        .map_err(io::Error::other)?;
+    let stage = download.join("release");
+    match tokio::fs::remove_dir_all(&stage).await {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    tokio::fs::create_dir(&stage).await?;
+    if let Err(error) = decode(&compressed, &stage.join(&name), expected, cancel).await {
+        // Bytes that fail the check are no start for the next attempt;
+        // a cancelled check says nothing of them.
+        if !matches!(error, demi_shared_artifacts::Error::Cancelled) {
+            tokio::fs::remove_file(&compressed).await?;
+        }
+        return Err(io::Error::other(error));
+    }
+    demi_shared_artifacts::publish_directory(&stage, &directory)
+        .await
+        .map_err(io::Error::other)?;
+    // The release is in place; its download holds nothing anyone needs.
+    if let Err(error) = tokio::fs::remove_dir_all(&download).await {
+        tracing::warn!(event = "runner_update.download_kept", file = %download.display(), %error, "a finished download stays");
+    }
+    Ok(path)
 }
 
 impl Successor {

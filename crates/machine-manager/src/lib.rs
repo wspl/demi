@@ -76,7 +76,9 @@
 //!
 //! The manager never cancels a device operation: shutdown drains the device
 //! queues, and a checkpoint's frozen window is one synchronous job whose guard
-//! always thaws the filesystem.
+//! always thaws the filesystem. The shutdown of an upgrade that asks leaves
+//! the running sandboxes to the next manager instead, once their operations
+//! end (`handover`).
 //!
 //! The manager listens on no TCP socket, links no backend and executes no image
 //! content on the host. Workload credentials use `runner-protocol`'s
@@ -86,6 +88,8 @@
 
 pub mod blocking;
 pub mod config;
+#[cfg(target_os = "linux")]
+pub mod handover;
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "linux")]

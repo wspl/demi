@@ -23,7 +23,7 @@
 
 use std::{fmt, io, process::Command};
 
-use demi_machine_manager_protocol::{DRAIN_RECORD, DrainRecord, STATE_FORMAT, runtime::RuntimeRelease};
+use demi_machine_manager_protocol::{DRAIN_RECORD, DrainRecord, LEAVE_REQUEST, LEFT_RECORD, STATE_FORMAT, runtime::RuntimeRelease};
 use demi_runner_protocol::release::{
     RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind,
 };
@@ -303,7 +303,8 @@ fn take_steps(
                 *stopped = true;
                 notices.done_restart(RestartStepKind::StopDemi, StepSummary::None);
                 screen.up(services);
-                save_clouds(services, notices)?;
+                let keep = keeps_clouds(&settings.manager_data()?)?;
+                save_clouds(services, notices, keep)?;
             }
             Step::Data => {
                 notices.start_restart(RestartStepKind::KeepDatabases);
@@ -406,12 +407,39 @@ fn take_steps(
     Ok(())
 }
 
-/// Stops the manager, which saves every running Cloud, telling how many it
-/// has saved of how many as its record of the drain says.
-fn save_clouds(services: &dyn Services, notices: &mut Notices) -> io::Result<()> {
+/// Whether this move keeps the running Clouds running, for the manager of
+/// the release it moves to, which takes them over
+/// (`crates/machine-manager/src/handover.rs`), rather than saving them: when
+/// that manager reads the state as it stands, with no migration, which runs
+/// with no sandbox running, and no move of the store is due, which needs
+/// every Cloud saved.
+fn keeps_clouds(state: &std::path::Path) -> io::Result<bool> {
+    Ok(manager_format(state)? == Some(STATE_FORMAT) && store::settled(state)?)
+}
+
+/// Stops the manager: one that `keep` asks leaves the running Clouds to the
+/// next manager, and one that does not, or knows no such request, saves
+/// every running Cloud, telling how many it has saved of how many as its
+/// record of the drain says.
+///
+/// The step says the Clouds are kept while the manager is asked to, and
+/// once it stopped only when it recorded what it left. A drain's record says
+/// it saves them instead, as a manager of a release before the request does,
+/// and so does a missing record of what it left after a leave that failed,
+/// whose stop-post recovery saved them.
+fn save_clouds(services: &dyn Services, notices: &mut Notices, keep: bool) -> io::Result<()> {
     /// How often the drain's record is read.
     const EVERY: std::time::Duration = std::time::Duration::from_millis(500);
     let _ = std::fs::remove_file(DRAIN_RECORD);
+    // Without the manager's runtime directory no manager ran since the
+    // machine started, and no Cloud runs to keep.
+    let keep = keep
+        && match std::fs::write(LEAVE_REQUEST, b"") {
+            Ok(()) => true,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error),
+        };
+    notices.clouds_kept(keep);
     notices.start_restart(RestartStepKind::SaveClouds);
     let mut saving = 0;
     let stopped = std::thread::scope(|scope| {
@@ -424,6 +452,9 @@ fn save_clouds(services: &dyn Services, notices: &mut Notices) -> io::Result<()>
             if let Some(record) = read
                 && last != Some(record)
             {
+                if last.is_none() && keep {
+                    notices.clouds_kept(false);
+                }
                 saving = record.saving;
                 notices.progress_restart(
                     RestartStepKind::SaveClouds,
@@ -438,8 +469,25 @@ fn save_clouds(services: &dyn Services, notices: &mut Notices) -> io::Result<()>
         }
         stopping.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic))
     });
+    // A manager that knew no request left it, and saved its Clouds: no
+    // later stop takes it for one.
+    if keep {
+        match std::fs::remove_file(LEAVE_REQUEST) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+    }
     stopped?;
-    notices.done_restart(RestartStepKind::SaveClouds, StepSummary::Count { count: saving });
+    let kept = keep && std::path::Path::new(LEFT_RECORD).exists();
+    if keep && !kept {
+        notices.clouds_kept(false);
+    }
+    let summary = if kept {
+        StepSummary::None
+    } else {
+        StepSummary::Count { count: saving }
+    };
+    notices.done_restart(RestartStepKind::SaveClouds, summary);
     Ok(())
 }
 

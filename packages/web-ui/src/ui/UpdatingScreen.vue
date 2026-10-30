@@ -23,6 +23,11 @@ export type RestartStepKind =
 export interface RestartStep {
   kind: RestartStepKind
   state: StepState
+  /**
+   * Set on the running Clouds' step of an update that keeps them running for
+   * the new version rather than saving them, which its title then says.
+   */
+  kept?: boolean
 }
 
 /** How far an update is, as `GET /api/update` says. */
@@ -56,6 +61,12 @@ const WEIGHTS: Record<RestartStepKind, number> = {
   updateControl: 5,
   updateConversations: 48,
 }
+
+/**
+ * Kept Clouds take as long as stopping Demi: the manager only records the
+ * Clouds it leaves running, while saving them stops each one.
+ */
+const KEPT_WEIGHT = WEIGHTS.stopDemi
 
 /**
  * The screen over the whole app from the moment Demi restarts for an update
@@ -128,7 +139,7 @@ const lines = computed<StepLine[]>(() => (props.progress?.steps ?? []).map((step
   const ended = shownMark(step.state)
   return {
     key: step.kind,
-    title: t(`updating.steps.${step.kind}`),
+    title: step.kept ? t('updating.steps.keepClouds') : t(`updating.steps.${step.kind}`),
     mark: ended ?? step.state.state,
     detail: ended ? '' : detail(step.state),
   }
@@ -154,7 +165,7 @@ const title = computed(() => {
 const overall = computed(() => {
   if (props.ended === 'updated')
     return 1
-  return props.progress ? overallDone(props.progress.steps, WEIGHTS) : 0
+  return props.progress ? overallDone(props.progress.steps, (step) => step.kept ? KEPT_WEIGHT : WEIGHTS[step.kind]) : 0
 })
 
 const body = computed(() => {

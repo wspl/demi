@@ -48,6 +48,7 @@
     "steps": {
       "stopDemi": "Demi 중지",
       "saveClouds": "실행 중인 Cloud 저장",
+      "keepClouds": "실행 중인 Cloud 유지",
       "keepDatabases": "데이터베이스 사본 보관",
       "switch": "새 버전으로 전환",
       "startManager": "Cloud 관리자 시작",

@@ -74,6 +74,9 @@ pub struct Registered {
     /// next runner release ahead and updates itself to it; none for a
     /// runner started otherwise.
     pub installed: Option<Arc<update::Installed>>,
+    /// A managed guest's runner, which replaces itself with its backend's
+    /// runner release, never ahead; none on a paired device.
+    pub managed: Option<update::Managed>,
     pub runner: wire::RunnerInfo,
     pub state: Arc<RunnerState>,
     pub token: watch::Sender<Option<DeviceToken>>,
