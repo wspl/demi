@@ -1,6 +1,6 @@
 //! The Grok Build provider: a `grok-build` subscription entry's account, signed
-//! in by OAuth device authorization at `auth.x.ai`, inferring over Chat
-//! Completions through the chat proxy Grok's own CLI uses.
+//! in by OAuth device authorization at `auth.x.ai`, inferring over the
+//! Responses API through the chat proxy Grok's own CLI uses.
 //!
 //! The provider:
 //!
@@ -8,7 +8,7 @@
 //!   `crates/provider-grok-build/src/auth.rs`;
 //! - reads the model catalog from `/v1/models`;
 //! - keeps the account's quota from a free billing and subscription probe and
-//!   the rate-limit headers of every chat response;
+//!   the rate-limit headers of every response;
 //! - makes images and videos through the proxy's image and video endpoints.
 
 mod auth;
@@ -22,6 +22,11 @@ mod run;
 mod videos;
 
 pub use releases::GrokReleases;
+
+/// The prefix of the reasoning items the provider receives, so that it
+/// replays only Grok Build's: an xAI API key entry's endpoint is another
+/// product, and neither is known to take the other's ciphertext.
+const SIGNATURE_TAG: &str = "grok-build:";
 
 use std::sync::Arc;
 
@@ -91,7 +96,7 @@ pub struct GrokProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    chat_url: Url,
+    responses_url: Url,
     models_url: Url,
     image_generations_url: Url,
     image_edits_url: Url,
@@ -139,7 +144,7 @@ impl GrokProvider {
             billing_url,
         };
         let shared = Arc::new(Shared {
-                chat_url: endpoint_url(&config.proxy_url, "/chat/completions"),
+                responses_url: endpoint_url(&config.proxy_url, "/responses"),
                 models_url: endpoint_url(&config.proxy_url, "/models"),
                 image_generations_url: endpoint_url(&config.proxy_url, "/images/generations"),
                 image_edits_url: endpoint_url(&config.proxy_url, "/images/edits"),
@@ -242,12 +247,11 @@ impl ProviderRuntime for GrokRuntime {
         Box::pin(async {})
     }
 
-    /// The Grok Build proxy documents none.
-    /// The proxy takes no media in a tool message and documents no
-    /// follow-up, so a tool result carries none (`crates/provider-common/src/contract.rs`).
+    /// The Grok Build proxy documents none. A tool's output carries images,
+    /// and no video or PDF, which the proxy reads nowhere.
     fn request_limits(&self, _model: &Model) -> RequestLimits {
         RequestLimits {
-            tool_results: ToolResultKinds::NONE,
+            tool_results: ToolResultKinds::IMAGES,
             ..RequestLimits::default()
         }
     }

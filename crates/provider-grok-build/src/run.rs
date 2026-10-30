@@ -1,7 +1,7 @@
 //! One run (`crates/provider-common/src/contract.rs`).
 //!
 //! 1. Resolve the account's credentials.
-//! 2. Post the Chat Completions request to the chat proxy.
+//! 2. Post the Responses request to the chat proxy.
 //! 3. Map its stream.
 //!
 //! A request refused with HTTP 401 before any event refreshes the token that
@@ -14,13 +14,13 @@ use demi_provider_common::{
     http_failure,
     quota::Observation,
     read_http_failure,
-    wire::{Vendor, chat_completions},
+    wire::{Vendor, responses},
 };
 use futures_util::{Stream, StreamExt};
 use http::StatusCode;
 
 use crate::{
-    LABEL, Shared,
+    LABEL, SIGNATURE_TAG, Shared,
     request::{self, RequestIds},
 };
 
@@ -72,7 +72,7 @@ pub(crate) fn run(
             };
             let requested_at = shared.clock.now();
             let send = http
-                .post(shared.chat_url.clone())
+                .post(shared.responses_url.clone())
                 .headers(request::inference_headers(&credentials, &shared.releases, &ids))
                 .body(body.clone())
                 .send();
@@ -122,7 +122,8 @@ pub(crate) fn run(
             clock: shared.clock.clone(),
             model,
         };
-        let mut events = std::pin::pin!(chat_completions::map_sse(response.bytes_stream(), vendor, cancel));
+        let received = responses::sse_events(response.bytes_stream(), LABEL, cancel.clone());
+        let mut events = std::pin::pin!(responses::map_events(received, vendor, SIGNATURE_TAG.into(), cancel));
         while let Some(event) = events.next().await {
             yield event;
         }
