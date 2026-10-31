@@ -1,4 +1,7 @@
-import type { Block, MediaSource, ProviderFailureFacts, ReplyPicture } from '@demicodes/protocol'
+import type { Block, MediaSource, ProviderFailureFacts, ReplyPicture, UserContentBlock } from '@demicodes/protocol'
+import type { DraftMessage } from './comments'
+import { contentMessage, type MessageCapsule } from '../message-editor/capsules'
+import { ATTACHMENT_MARK } from '../../markdown/user-markdown'
 import type { HeldTranscript } from '../../transport/protocol'
 import { toolCallTitle } from '../block-helpers'
 import { latestWindow } from '@demicodes/conversation-client'
@@ -26,8 +29,16 @@ export interface ShownSideQuestion {
    * the block's pictures `start` and `end` are; absent for words.
    */
   picture?: MediaSource | null
-  /** The first question; a follow-up is a `user` block of its transcript. */
-  question: string
+  /**
+   * The first question, a message's content as the backend holds it; empty
+   * while it is on its way. A follow-up is a `user` block of its transcript.
+   */
+  question: UserContentBlock[]
+  /**
+   * The first question the page sent, as its card shows it until the backend
+   * holds it, its files the page's own; absent once it does.
+   */
+  sending?: ShownMessage | null
   /** The small model's title; null until it has one, when the card says Ask. */
   title: string | null
   folded: boolean
@@ -57,7 +68,8 @@ export interface NewSideQuestion {
   end: number
   quote: string
   picture?: MediaSource | null
-  question: string
+  /** What is asked, written as a message is. */
+  question: DraftMessage
 }
 
 /**
@@ -71,7 +83,7 @@ export interface ReplyAsking {
    */
   questions: readonly ShownSideQuestion[]
   ask: (question: NewSideQuestion) => void
-  followUp: (id: string, text: string) => void
+  followUp: (id: string, message: DraftMessage) => void
   retry: (id: string) => void
   /**
    * Stop ends the working turn of the side question and its commands.
@@ -113,7 +125,7 @@ export function unanswered(question: ShownSideQuestion): boolean {
 
 /** One question and its answer as the card shows them. */
 export interface CardTurn {
-  question: string
+  question: ShownMessage
   /**
    * The one status line while the answer is being made; null once it answers.
    */
@@ -129,13 +141,32 @@ export interface CardTurn {
 type ErrorBlock = Extract<Block, { type: 'error' }>
 
 /** What a card shows: each turn, and the failure the last one ended with. */
+/** A question as its card shows it: its Markdown and a capsule for each file. */
+export interface ShownMessage {
+  markdown: string
+  attachments: readonly MessageCapsule[]
+}
+
+/** A message's content as a card shows it. */
+export function shownMessage(content: readonly UserContentBlock[]): ShownMessage {
+  const { markdown, capsules } = contentMessage(content)
+  return { markdown, attachments: capsules }
+}
+
 export interface CardContent {
   turns: CardTurn[]
   failure: ErrorBlock | null
 }
 
-function userText(block: Extract<Block, { type: 'user' }>): string {
-  return block.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
+/** The first question's words alone, as a card's title names it before the small model's. */
+export function questionText(question: ShownSideQuestion): string {
+  const markdown = question.sending?.markdown ?? contentMessage(question.question).markdown
+  return markdown.replaceAll(ATTACHMENT_MARK, '').trim()
+}
+
+/** The first question as its card shows it. */
+function firstQuestion(question: ShownSideQuestion): ShownMessage {
+  return question.sending ?? shownMessage(question.question)
 }
 
 /**
@@ -183,15 +214,15 @@ export function readKey(question: ShownSideQuestion): string | null {
  */
 export function cardContent(question: ShownSideQuestion): CardContent {
   const own = (ownBlocks(question) ?? []).filter((block) => block.type !== 'response')
-  const turns: { question: string; blocks: Block[] }[] = []
+  const turns: { question: ShownMessage; blocks: Block[] }[] = []
   for (const block of own) {
     if (block.type === 'user')
-      turns.push({ question: turns.length === 0 ? question.question : userText(block), blocks: [] })
+      turns.push({ question: turns.length === 0 ? firstQuestion(question) : shownMessage(block.content), blocks: [] })
     else
       turns.at(-1)?.blocks.push(block)
   }
   if (turns.length === 0)
-    turns.push({ question: question.question, blocks: [] })
+    turns.push({ question: firstQuestion(question), blocks: [] })
   const last = turns.at(-1)!
   const ended = last.blocks.at(-1)
   const failure = !question.working && ended?.type === 'error' ? ended : null
@@ -223,8 +254,8 @@ export function cardContent(question: ShownSideQuestion): CardContent {
  *   picture for one about a picture.
  * - Neither the instruction the model reads nor the history before it, which is
  *   the conversation's own, is shown.
- * - The questions were typed in a plain field and show as typed, as a comment's
- *   words do, never read as Markdown.
+ * - The questions show as typed, their Markdown highlighted, as every message's
+ *   does.
  */
 export function shownTurns(question: ShownSideQuestion): HeldBlock[] {
   // The first shows as a comment does: the quoted words or a small copy of the
@@ -234,7 +265,7 @@ export function shownTurns(question: ShownSideQuestion): HeldBlock[] {
     content: [],
     comments: [{
       id: `${block.id}-quote`, blockId: question.blockId, start: question.start, end: question.end, at: 0,
-      quote: question.quote, ...(question.picture ? { picture: question.picture } : {}), text: question.question,
+      quote: question.quote, ...(question.picture ? { picture: question.picture } : {}), content: question.question,
     }],
   })
   // A follow-up's text is shown as typed, as every message's is.

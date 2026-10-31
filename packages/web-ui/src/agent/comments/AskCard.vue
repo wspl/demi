@@ -5,7 +5,9 @@ import type { Block, ProviderFailureFacts } from '@demicodes/protocol'
 import Button from '../../ui/Button.vue'
 import { ICON_PX } from '../../ui/icon-metrics'
 import IconButton from '../../ui/IconButton.vue'
-import SendField from '../../ui/SendField.vue'
+import MessageSendField from '../message-editor/MessageSendField.vue'
+import SentMessage from '../message-editor/SentMessage.vue'
+import type { DraftMessage, MessageFiles } from './comments'
 import Shimmer from '../../ui/Shimmer.vue'
 import StreamedMarkdown from '../../ui/StreamedMarkdown.vue'
 import Tooltip from '../../ui/Tooltip.vue'
@@ -33,6 +35,8 @@ import type { CardTurn } from './asks'
  * Only the header's icon is purple.
  */
 const props = defineProps<{
+  /** The files of the conversation its follow-up is written in. */
+  files: MessageFiles
   /** The small model's title; null until it has one, when the card says Ask. */
   title: string | null
   turns: readonly CardTurn[]
@@ -50,10 +54,10 @@ const props = defineProps<{
  * specimen can open it.
  */
 const replying = defineModel<boolean>('replying', { default: false })
-const reply = defineModel<string>('reply', { default: '' })
+const reply = defineModel<DraftMessage>('reply', { default: () => ({ text: '', fileIds: [] }) })
 
 const emit = defineEmits<{
-  ask: [question: string]
+  ask: [question: DraftMessage]
   retry: []
   stop: []
   collapse: []
@@ -90,14 +94,14 @@ watch(working, async (now) => {
   root.value?.querySelector<HTMLElement>('[data-ask-reply]')?.focus()
 })
 
-function send(text: string): void {
+function send(message: DraftMessage): void {
   replying.value = false
-  emit('ask', text)
+  emit('ask', message)
 }
 
 function cancel(): void {
   replying.value = false
-  reply.value = ''
+  reply.value = { text: '', fileIds: [] }
 }
 
 /**
@@ -107,7 +111,7 @@ function cancel(): void {
  * it would undo.
  */
 function onPointerDown(event: PointerEvent): void {
-  if (replying.value && reply.value.trim() === '' && !root.value?.contains(event.target as Node))
+  if (replying.value && reply.value.text.trim() === '' && reply.value.fileIds.length === 0 && !root.value?.contains(event.target as Node))
     replying.value = false
 }
 onMounted(() => document.addEventListener('pointerdown', onPointerDown, { capture: true }))
@@ -177,7 +181,9 @@ defineExpose({ element: root, failed: () => props.failure != null })
         <!--
           A div, not a p: the reply around the card spaces its own paragraphs.
         -->
-        <div class="whitespace-pre-wrap font-semibold text-fg-emphasis">{{ turn.question }}</div>
+        <div class="font-semibold text-fg-emphasis">
+          <SentMessage :markdown="turn.question.markdown" :attachments="turn.question.attachments" />
+        </div>
         <Shimmer v-if="turn.status !== null" active class="truncate text-fg-muted">{{ turn.status }}</Shimmer>
         <StreamedMarkdown v-else-if="turn.answer !== ''" :content="turn.answer" :pictures="turn.pictures" :streaming="turn.streaming" class="text-fg-body" />
         <span v-if="turn.stopped" class="text-fg-muted">{{ t('transcript.stopped') }}</span>
@@ -196,9 +202,10 @@ defineExpose({ element: root, failed: () => props.failure != null })
         />
         <Button size="xs" @click="emit('retry')">{{ t('ask.retry') }}</Button>
       </div>
-      <SendField
+      <MessageSendField
         v-if="replying"
         v-model="reply"
+        :files="files"
         :placeholder="t('ask.followUpPlaceholder')"
         :send-label="t('ask.reply')"
         focus

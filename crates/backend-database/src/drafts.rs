@@ -4,10 +4,9 @@
 //! Every change reads the row and writes it in one transaction, so two saves
 //! never build on the same revision.
 
-use demi_agent_store::media::comment_references;
-use demi_shared_types::{BlobRef, MessageComment};
+use demi_shared_types::{BlobRef, Comment, CommentStage, MediaSource};
 use demi_web_api_protocol::drafts::{
-    ConversationDraft, DraftFile, DraftWritten, Revisions,
+    ConversationDraft, Draft, DraftComment, DraftFile, DraftMessage, DraftWritten, Revisions,
 };
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -26,6 +25,14 @@ const TABLE: &str = "conversation_drafts";
 pub enum StagedFile {
     Upload { id: AttachmentId, file_name: String },
     Remote { device_id: String, path: String },
+}
+
+/// The stage of a message a save names, its files as the page names them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Staged;
+
+impl CommentStage for Staged {
+    type Content = DraftMessage<StagedFile>;
 }
 
 /// Why a draft was left as it was.
@@ -50,7 +57,7 @@ pub(super) struct Version {
     pub(super) files: Vec<DraftFile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(skip)]
-    pub(super) comments: Vec<MessageComment>,
+    pub(super) comments: Vec<DraftComment>,
 }
 
 impl Version {
@@ -140,7 +147,7 @@ impl ControlService {
         owner: UserId,
         text: String,
         files: Vec<StagedFile>,
-        comments: Vec<MessageComment>,
+        comments: Vec<Comment<Staged>>,
     ) -> Result<Result<DraftWritten, DraftRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -148,9 +155,19 @@ impl ControlService {
                 return Ok(Err(DraftRefusal::Archived));
             }
             let version = match staged_version(&transaction, &owner, text, files)? {
-                Ok(version) => Version { comments, ..version },
+                Ok(version) => version,
                 Err(missing) => return Ok(Err(DraftRefusal::UploadNotFound(missing))),
             };
+            let mut presented = Vec::with_capacity(comments.len());
+            for comment in comments {
+                let DraftMessage { text, files } = comment.content.clone();
+                let files = match present_files(&transaction, &owner, files)? {
+                    Ok(files) => files,
+                    Err(missing) => return Ok(Err(DraftRefusal::UploadNotFound(missing))),
+                };
+                presented.push(comment.with_content::<Draft>(DraftMessage { text, files }));
+            }
+            let version = Version { comments: presented, ..version };
             let next = Stored::written(stored(&transaction, &conversation)?, version);
             write(&transaction, &conversation, &next, now.as_millisecond())?;
             transaction.commit()?;
@@ -168,30 +185,56 @@ pub(super) fn staged_version(
     text: String,
     files: Vec<StagedFile>,
 ) -> Result<Result<Version, AttachmentId>, StorageError> {
-    let mut presented = Vec::with_capacity(files.len());
-    for file in files {
-        presented.push(match file {
-            StagedFile::Upload { id, file_name } => {
-                let upload =
-                    attachment_by_id(connection, &id)?.filter(|upload| upload.owner == *owner);
-                let Some(upload) = upload else {
-                    return Ok(Err(id));
-                };
-                DraftFile::Upload {
-                    r#ref: id,
-                    file_name,
-                    media_type: upload.media_type,
-                    sha256: upload.sha256,
-                    snippet: upload.snippet,
-                }
-            }
-            StagedFile::Remote { device_id, path } => DraftFile::RemoteFile { device_id, path },
-        });
-    }
+    let presented = match present_files(connection, owner, files)? {
+        Ok(files) => files,
+        Err(missing) => return Ok(Err(missing)),
+    };
     Ok(Ok(Version {
         text,
         files: presented,
         comments: Vec::new(),
+    }))
+}
+
+/// The files a save names as a draft shows them, the composer's or a
+/// waiting comment's; the id of an upload `owner` has none of.
+fn present_files(
+    connection: &Connection,
+    owner: &UserId,
+    files: Vec<StagedFile>,
+) -> Result<Result<Vec<DraftFile>, AttachmentId>, StorageError> {
+    let mut presented = Vec::with_capacity(files.len());
+    for file in files {
+        match present(connection, owner, file)? {
+            Ok(file) => presented.push(file),
+            Err(missing) => return Ok(Err(missing)),
+        }
+    }
+    Ok(Ok(presented))
+}
+
+/// A file a save names as a draft shows it, an upload with what its record
+/// holds; the id of an upload `owner` has none of.
+fn present(
+    connection: &Connection,
+    owner: &UserId,
+    file: StagedFile,
+) -> Result<Result<DraftFile, AttachmentId>, StorageError> {
+    Ok(Ok(match file {
+        StagedFile::Upload { id, file_name } => {
+            let upload = attachment_by_id(connection, &id)?.filter(|upload| upload.owner == *owner);
+            let Some(upload) = upload else {
+                return Ok(Err(id));
+            };
+            DraftFile::Upload {
+                r#ref: id,
+                file_name,
+                media_type: upload.media_type,
+                sha256: upload.sha256,
+                snippet: upload.snippet,
+            }
+        }
+        StagedFile::Remote { device_id, path } => DraftFile::RemoteFile { device_id, path },
     }))
 }
 
@@ -230,19 +273,27 @@ pub(crate) fn draft_blobs(
             &row.get::<_, String>(0)?,
         )?);
     }
-    // A file the draft holds, or a picture one of its waiting comments quotes.
+    // A file the draft holds, or one of its waiting comments', or a picture
+    // one of them quotes.
+    let upload = |file: &DraftFile| match file {
+        DraftFile::Upload { sha256, .. } => Some(sha256.clone()),
+        DraftFile::RemoteFile { .. } => None,
+    };
     Ok(versions
         .into_iter()
         .flat_map(|version| {
-            let pictures: Vec<BlobRef> = comment_references(&version.comments).cloned().collect();
-            version
-                .files
-                .into_iter()
-                .filter_map(|file| match file {
-                    DraftFile::Upload { sha256, .. } => Some(sha256),
-                    DraftFile::RemoteFile { .. } => None,
+            let comments: Vec<BlobRef> = version
+                .comments
+                .iter()
+                .flat_map(|comment| {
+                    let picture = match &comment.picture {
+                        Some(MediaSource::Ref { r#ref, .. }) => Some(r#ref.clone()),
+                        _ => None,
+                    };
+                    picture.into_iter().chain(comment.content.files.iter().filter_map(upload))
                 })
-                .chain(pictures)
+                .collect();
+            version.files.iter().filter_map(upload).collect::<Vec<_>>().into_iter().chain(comments)
         })
         .collect())
 }

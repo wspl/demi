@@ -8,7 +8,7 @@ import TabItem from '../TabItem.vue'
 import { useFocusReturn } from '../../overlay/focusReturn'
 import { focusByPage } from '../../ui/focus-by-page'
 import type { PersistedScrollState } from '../../composables/useBlockVirtualizer'
-import { pageToRead, readKey, shownTurns, type ShownSideQuestion } from './asks'
+import { questionText, pageToRead, readKey, shownTurns, type ShownSideQuestion } from './asks'
 
 /**
  * A side question's conversation, its steps included, in the window a
@@ -81,7 +81,7 @@ watch(
 <template>
   <SessionOverlay :open="question !== null" @close="emit('close')">
     <template #tabs>
-      <TabItem v-if="question" :title="question.title ?? question.question" is-active :closable="false">
+      <TabItem v-if="question" :title="question.title ?? questionText(question)" is-active :closable="false">
         <template #mark>
           <MessageCircleQuestionMark :size="ICON_PX.in28" class="text-[var(--ask-ink)]" aria-hidden="true" />
         </template>

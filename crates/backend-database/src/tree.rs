@@ -351,7 +351,7 @@ fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &Che
                 integer(side.end),
                 side.quote,
                 side.picture.as_ref().map(|picture| serde_json::to_string(picture).expect("a media source serializes")),
-                side.question,
+                serde_json::to_string(&side.question).expect("content serializes"),
                 side.asked_at.as_millisecond(),
             ],
         )?;
@@ -1575,7 +1575,7 @@ fn side_of(row: &Row<'_>) -> Result<Option<SideOf>, StorageError> {
         end: decode(TABLE, "end_offset", u64::try_from(row.get::<_, i64>("end_offset")?))?,
         quote: row.get("quote")?,
         picture: super::side_questions::picture(row, TABLE)?,
-        question: row.get("question")?,
+        question: super::side_questions::question_content(row, TABLE)?,
         asked_at: instant(row, TABLE, "asked_at")?,
     }))
 }

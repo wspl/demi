@@ -13,6 +13,7 @@ import {
 } from '../../ui/context-menu'
 import { heldSelection } from '../../ui/drawn-selection'
 import SelectionField from './SelectionField.vue'
+import type { DraftMessage } from './comments'
 import { chosenWay, closePictureField, pictureField, type FieldWay } from './selection-field'
 
 /**
@@ -73,7 +74,7 @@ let dismissed: Range | null = null
 
 const floating = ref<HTMLElement>()
 const box = ref<InstanceType<typeof SelectionField>>()
-const text = ref('')
+const message = ref<DraftMessage>({ text: '', fileIds: [] })
 
 /** What the field stands by: a picture a menu chose, or else the selection. */
 const current = computed<{ actions: SelectionFieldActions; element: Element; rect: () => DOMRect } | null>(() => {
@@ -95,7 +96,7 @@ function open(): void {
   opening.value += 1
   waiting.value ||= pressing.value
   way.value = pictureField.value?.way ?? 'comment'
-  text.value = ''
+  message.value = { text: '', fileIds: [] }
   focused.value = false
   busy.value = false
   focusWanted.value = true
@@ -143,12 +144,12 @@ function closeAll(): void {
   busy.value = false
 }
 
-async function done(action: 'comment' | 'ask' | 'send', words: string): Promise<void> {
+async function done(action: 'comment' | 'ask' | 'send', written: DraftMessage): Promise<void> {
   const taken = current.value
   if (!taken || busy.value)
     return
   const at = opening.value
-  const result = taken.actions[action]?.(words)
+  const result = taken.actions[action]?.(written)
   if (result) {
     busy.value = true
     try {
@@ -300,16 +301,17 @@ const placement = computed(() => ({ ...floatingStyles.value, visibility: isPosit
 
 /** What the field takes, wherever it stands. */
 const fieldBindings = computed(() => ({
-  'modelValue': text.value,
-  'onUpdate:modelValue': (words: string) => (text.value = words),
+  'modelValue': message.value,
+  'onUpdate:modelValue': (written: DraftMessage) => (message.value = written),
+  'files': current.value!.actions.files,
   'ask': !!current.value?.actions.ask,
   'send': !!current.value?.actions.send,
   'way': way.value,
   'unavailable': current.value?.actions.unavailable,
   'busy': busy.value,
-  'onComment': (words: string) => done('comment', words),
-  'onAsk': (words: string) => done('ask', words),
-  'onSend': (words: string) => done('send', words),
+  'onComment': (written: DraftMessage) => done('comment', written),
+  'onAsk': (written: DraftMessage) => done('ask', written),
+  'onSend': (written: DraftMessage) => done('send', written),
   'pageKeys': !pictureField.value && selection.value !== null,
   'onClose': closeAll,
 }))

@@ -13,7 +13,7 @@
 
 use demi_shared_types::{
     BlockId, ContextUsage, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, PendingCall, PendingSteer, QueuedMessage,
-    SessionPhase, Timestamp,
+    SessionPhase, Timestamp, UserContentBlock,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -162,9 +162,10 @@ pub struct SideQuestion {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(skip)]
     pub picture: Option<MediaSource>,
-    /// The first question; a follow-up is a `user` block of its transcript.
+    /// The first question, a message's content; a follow-up is a `user`
+    /// block of its transcript.
     #[garde(skip)]
-    pub question: String,
+    pub question: Vec<UserContentBlock>,
     /// The small model's title; null until it wrote one, when the card says
     /// *Ask*.
     #[serde(deserialize_with = "Option::deserialize")]

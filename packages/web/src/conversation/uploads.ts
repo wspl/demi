@@ -14,11 +14,33 @@ import { t } from './locales/text'
 import { coded, errorFields, errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { blobUrl, claimStoredFile, uploadAttachment } from '../api/uploads'
-import type { Conversation, ProductAttachment } from '../state/types'
+import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 
 /** The files of the messages sent and not yet confirmed, which the composer carries until they are. */
 export function sendingFileIds(conversation: Pick<Conversation, 'pendingSends'>): Set<string> {
-  return new Set(conversation.pendingSends.flatMap((pending) => pending.fileIds))
+  return new Set(conversation.pendingSends.flatMap(pendingFileIds))
+}
+
+/** The files a message on its way holds: its own, then its comments'. */
+export function pendingFileIds(pending: Pick<PendingSend, 'fileIds' | 'comments'>): string[] {
+  return [...pending.fileIds, ...pending.comments.flatMap((comment) => comment.content.fileIds)]
+}
+
+/**
+ * A file of the conversation with where it is once a message can name it
+ * without its bytes, which a copy of the message carries: its blob once
+ * uploaded, or its device.
+ */
+export function referenced(file: ProductAttachment): ProductAttachment {
+  if (file.kind === 'reference') {
+    return { ...file, reference: { type: 'device', deviceId: file.deviceId } }
+  }
+  return file.upload ? { ...file, reference: { type: 'stored', sha256: file.upload.sha256, mediaType: file.upload.mediaType } } : file
+}
+
+/** The files of the comments waiting in the draft. */
+export function commentFileIds(conversation: Pick<Conversation, 'comments'>): string[] {
+  return conversation.comments.flatMap((comment) => comment.content.fileIds)
 }
 
 type ComposerFile = Extract<ProductAttachment, { kind: 'file' }>
@@ -39,6 +61,78 @@ export function createConversationUploads(
   const uploads = new AttachmentUploadQueue()
   /** Each file's upload under way, by its id, which a message sent meanwhile waits for. */
   const running = new Map<string, Promise<void>>()
+  /**
+   * The files each open editor beside the composer holds, by conversation
+   * and editor (`MessageFiles.hold`): those its message has now, and every
+   * one it took, which an undo can bring back while it is open.
+   */
+  const editors = new Map<string, Map<string, { now: readonly string[]; took: Set<string> }>>()
+
+  /**
+   * The files the open editors of `conversation` hold: those their messages
+   * have, and those an undo can bring back into them.
+   */
+  function editorFileIds(conversation: Conversation): string[] {
+    return [...(editors.get(conversation.id)?.values() ?? [])].flatMap((held) => [...held.took])
+  }
+
+  /**
+   * The files of the conversation that are not the composer's: its waiting
+   * comments', its open editors' and those of the messages on their way.
+   */
+  function besideComposer(conversation: Conversation): Set<string> {
+    return new Set([...commentFileIds(conversation), ...editorFileIds(conversation), ...sendingFileIds(conversation)])
+  }
+
+  /**
+   * Every file a message of the conversation holds: the composer's, its
+   * waiting comments', those of its open editors, and those of the messages
+   * on their way.
+   */
+  function heldFileIds(conversation: Conversation): Set<string> {
+    return new Set([
+      ...conversation.attachmentIds,
+      ...commentFileIds(conversation),
+      ...editorFileIds(conversation),
+      ...sendingFileIds(conversation),
+    ])
+  }
+
+  /**
+   * The editor `editor` of the conversation, or a message on its way, holds
+   * `ids` from now on; null once it is closed or sent, when each file it took
+   * that no message holds goes.
+   */
+  function hold(conversation: Conversation, editor: string, ids: readonly string[] | null): void {
+    const open = editors.get(conversation.id) ?? new Map<string, { now: readonly string[]; took: Set<string> }>()
+    editors.set(conversation.id, open)
+    const held = open.get(editor) ?? { now: [], took: new Set<string>() }
+    if (ids !== null) {
+      open.set(editor, { now: [...ids], took: new Set([...held.took, ...ids]) })
+      return
+    }
+    open.delete(editor)
+    if (open.size === 0) {
+      editors.delete(conversation.id)
+    }
+    letGo(conversation, [...held.took])
+  }
+
+  /** Lets each file of `ids` go that no message of the conversation holds. */
+  function letGo(conversation: Conversation, ids: readonly string[]): void {
+    const kept = heldFileIds(conversation)
+    const gone = new Set(ids.filter((id) => !kept.has(id)))
+    if (gone.size === 0) {
+      return
+    }
+    for (const file of conversation.files) {
+      if (gone.has(file.id)) {
+        releaseFile(file)
+      }
+    }
+    conversation.files = conversation.files.filter((file) => !gone.has(file.id))
+    onChange()
+  }
 
   /**
    * Uploads a file's bytes, or attaches the stored file a pasted message
@@ -251,10 +345,11 @@ export function createConversationUploads(
 
   /**
    * Lets go of the files no capsule stands for, which nothing can bring back
-   * now; those of the messages still on their way stay with them.
+   * now; those of the messages still on their way stay with them, and so do
+   * the comments' and the open editors'.
    */
   function releaseSpare(conversation: Conversation): void {
-    const has = new Set([...conversation.attachmentIds, ...sendingFileIds(conversation)])
+    const has = heldFileIds(conversation)
     for (const file of conversation.files) {
       if (!has.has(file.id)) {
         releaseFile(file)
@@ -265,21 +360,23 @@ export function createConversationUploads(
   }
 
   /**
-   * Makes `files` the message's, in their order, beside the files of a send
-   * not yet accepted, and lets every other file go: a draft shown from
-   * outside takes the place of what the composer held, its undo included.
+   * Makes `files` the message's, in their order, and `commentFiles` its
+   * comments', beside the files of a send not yet accepted and those of the
+   * open editors, and lets every other file go: a draft shown from outside
+   * takes the place of what the composer held, its undo included.
    */
-  function showFiles(conversation: Conversation, files: ProductAttachment[]): void {
-    const sending = sendingFileIds(conversation)
-    const shown = new Set(files.map((file) => file.id))
+  function showFiles(conversation: Conversation, files: ProductAttachment[], commentFiles: ProductAttachment[] = []): void {
+    const staying = new Set([...sendingFileIds(conversation), ...editorFileIds(conversation)])
+    const shown = new Set([...files, ...commentFiles].map((file) => file.id))
     for (const file of conversation.files) {
-      if (!shown.has(file.id) && !sending.has(file.id)) {
+      if (!shown.has(file.id) && !staying.has(file.id)) {
         releaseFile(file)
       }
     }
     conversation.files = [
       ...files,
-      ...conversation.files.filter((file) => sending.has(file.id) && !shown.has(file.id)),
+      ...commentFiles.filter((file) => !files.some((each) => each.id === file.id)),
+      ...conversation.files.filter((file) => staying.has(file.id) && !shown.has(file.id)),
     ]
     conversation.attachmentIds = files.map((file) => file.id)
     onChange()
@@ -306,6 +403,9 @@ export function createConversationUploads(
     releaseSpare,
     arrangeFiles,
     showFiles,
+    hold,
+    letGo,
+    besideComposer,
     dispose,
   }
 }

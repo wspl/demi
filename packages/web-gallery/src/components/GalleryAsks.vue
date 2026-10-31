@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { Block, MessageComment } from '@demicodes/protocol'
+import type { Block, UserContentBlock } from '@demicodes/protocol'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import { anchorOfText } from '@demicodes/web-ui/agent/comments/anchors'
 import type { NewSideQuestion, ReplyAsking, ShownSideQuestion } from '@demicodes/web-ui/agent/comments/asks'
-import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
+import type { DraftMessage, ReplyCommenting, WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
+import { showToast } from '@demicodes/web-ui/infra/toast'
+import { galleryMessageFiles } from '../fixtures/written-files'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { heldTranscript } from '@demicodes/web-ui/transport/protocol'
 import { askAnswer, askFailure, askHistory, askMessage, askScript, askStep, askStopped, type AskScript } from '../fixtures/asks'
@@ -44,19 +46,36 @@ const session = flow.state
 const messageFiles = useMessageFiles()
 const root = ref<HTMLElement>()
 
+/** The files of the comments and the questions, as the conversation's are in the product. */
+const page = galleryMessageFiles()
+
+/** `message`'s content once its files are uploaded; a toast says why when one is not. */
+async function written(message: DraftMessage): Promise<UserContentBlock[] | null> {
+  try {
+    return await page.content(message)
+  } catch (error) {
+    showToast({ title: error instanceof Error ? error.message : String(error), tone: 'danger' })
+    return null
+  }
+}
+
 // The replies take comments too, as the product's do.
-const comments = ref<MessageComment[]>([])
+const comments = ref<WaitingComment[]>([])
 const commenting: ReplyCommenting = {
   get waiting() {
     return comments.value
   },
+  files: page.files,
   add: (comment) => (comments.value = [...comments.value, comment]),
-  edit: (id, text) => (comments.value = comments.value.map((each) => (each.id === id ? { ...each, text } : each))),
+  edit: (id, content) => (comments.value = comments.value.map((each) => (each.id === id ? { ...each, content } : each))),
   remove: (id) => (comments.value = comments.value.filter((each) => each.id !== id)),
   // A message holding this comment alone, as the product's composer would send it.
-  sendNow: (comment) => {
+  sendNow: async ({ content, ...comment }) => {
+    const sent = await written(content)
+    if (!sent)
+      return
     const running = session.phase === 'running' || flow.startingTurn.value
-    ;(running ? flow.steer : flow.turn)([], { text: '', attachments: [] }, [comment])
+    ;(running ? flow.steer : flow.turn)([], { text: '', attachments: [] }, [{ ...comment, content: sent }])
   },
 }
 
@@ -185,18 +204,39 @@ function remove(id: string): void {
   sides.value = sides.value.filter((side) => side.question.id !== id)
 }
 
-function start(question: NewSideQuestion): GallerySide {
+/** A side question asked, its card at once; its first message once `question` is known. */
+function open(asked: Omit<NewSideQuestion, 'question'>, sending: GallerySide['question']['sending']): GallerySide {
   const side: GallerySide = {
-    question: { ...question, title: null, folded: false, askedAt: new Date().toISOString() },
+    question: { ...asked, question: [], sending, title: null, folded: false, askedAt: new Date().toISOString() },
     blocks: [...askHistory()],
     working: false,
     waitingSince: null,
-    script: askScript(question.question, asked++),
+    script: askScript('', 0),
     turns: 1,
   }
-  side.blocks.push(askMessage(question.id, 0, question.quote, question.question, question.picture ?? null))
   sides.value = [...sides.value, side]
-  return sideOf(question.id)!
+  return sideOf(asked.id)!
+}
+
+/** The side question's first message reached its conversation: `question`, as the backend holds it. */
+function reached(side: GallerySide, question: UserContentBlock[]): void {
+  const { id, quote, picture } = side.question
+  side.question.question = question
+  side.question.sending = null
+  side.script = askScript(textOf(question), asked++)
+  side.blocks.push(askMessage(id, 0, quote, question, picture ?? null))
+}
+
+/** A seed's side question, asked of `question`'s words. */
+function start(asked: Omit<NewSideQuestion, 'question'>, question: string): GallerySide {
+  const side = open(asked, null)
+  reached(side, [{ type: 'text', text: question }])
+  return side
+}
+
+/** A message's words alone. */
+function textOf(content: readonly UserContentBlock[]): string {
+  return content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
 }
 
 const asking: ReplyAsking = {
@@ -213,17 +253,26 @@ const asking: ReplyAsking = {
       },
     }))
   },
-  ask: (question) => {
-    start(question)
-    work(question.id)
-  },
-  followUp: (id, text) => {
-    const side = sideOf(id)
-    if (!side)
+  // The card shows at once, working while its files upload, as the product's does.
+  ask: async ({ question: message, ...asked }) => {
+    const side = open(asked, { markdown: message.text, attachments: page.files.capsules(message.fileIds) })
+    side.working = true
+    const question = await written(message)
+    if (!question) {
+      remove(side.question.id)
       return
-    side.blocks.push(askMessage(id, side.turns, side.question.quote, text))
+    }
+    reached(side, question)
+    work(side.question.id)
+  },
+  followUp: async (id, message) => {
+    const side = sideOf(id)
+    const question = side && await written(message)
+    if (!side || !question)
+      return
+    side.blocks.push(askMessage(id, side.turns, side.question.quote, question))
     side.turns += 1
-    side.script = askScript(text, asked++)
+    side.script = askScript(textOf(question), asked++)
     work(id)
   },
   retry: (id) => {
@@ -248,8 +297,8 @@ const asking: ReplyAsking = {
 function applySeed(anchor: { start: number; end: number }): void {
   const quote = 'the same 30-second timeout'
   const side = props.seed === 'picture'
-    ? start({ id: 'ask-picture', blockId: COMMENTED_REPLY_ID, ...REPLY_PICTURE, picture: REPLY_PICTURE_SOURCE, question: 'Which connection was this measured on?' })
-    : start({ id: `ask-${props.seed}`, blockId: COMMENTED_REPLY_ID, ...anchor, quote, question: 'Why is the timeout the same for uploads?' })
+    ? start({ id: 'ask-picture', blockId: COMMENTED_REPLY_ID, ...REPLY_PICTURE, picture: REPLY_PICTURE_SOURCE }, 'Which connection was this measured on?')
+    : start({ id: `ask-${props.seed}`, blockId: COMMENTED_REPLY_ID, ...anchor, quote }, 'Why is the timeout the same for uploads?')
   const id = side.question.id
   if (props.seed === 'asking') {
     side.working = true
@@ -301,15 +350,15 @@ onMounted(async () => {
     const card = root.value?.querySelector<HTMLElement>('[data-ask-card]')
     if (!card)
       return
+    card.querySelector<HTMLElement>('[data-ask-reply]')?.click()
+    const field = card.querySelector<HTMLElement>('[contenteditable="true"]')
+    if (!field)
+      return
     opened?.disconnect()
-    ;[...card.querySelectorAll<HTMLElement>('[role="button"]')].at(-1)?.click()
-    void nextTick(() => {
-      const field = card.querySelector('textarea')
-      if (field) {
-        field.value = 'Would a longer timeout alone fix it?'
-        field.dispatchEvent(new Event('input'))
-      }
-    })
+    // Pasted into the field's editor, which takes it as typed.
+    const words = new DataTransfer()
+    words.setData('text/plain', 'Would a longer timeout alone fix it?')
+    field.dispatchEvent(new ClipboardEvent('paste', { clipboardData: words, bubbles: true, cancelable: true }))
   })
   opened.observe(root.value!, { childList: true, subtree: true })
 })

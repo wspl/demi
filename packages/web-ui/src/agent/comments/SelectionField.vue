@@ -2,9 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { ArrowUp, MessageCircleMore, MessageCircleQuestionMark } from '@lucide/vue'
-import { useFieldScrollbars } from '../../composables/useFieldScrollbars'
-import FramedTextArea from '../../ui/FramedTextArea.vue'
+import FramedField from '../../ui/FramedField.vue'
 import IconButton from '../../ui/IconButton.vue'
+import MessageField from '../message-editor/MessageField.vue'
+import { saysSomething, type DraftMessage, type MessageFiles } from './comments'
 import { answerForPage } from '../../ui/page-keys'
 import { withCommandKey } from '../../ui/shortcut'
 import Tooltip from '../../ui/Tooltip.vue'
@@ -15,7 +16,10 @@ import type { FieldWay } from './selection-field'
 
 /**
  * The one field a remark on a part of a reply is written in: a capsule of one
- * line holding the words, a gray round button and a blue one.
+ * line holding the Add Files button, the message, a gray round button and a
+ * blue one. The message is written as the composer's is (`MessageField.vue`):
+ * its Markdown kept as typed and highlighted, its files pasted, dropped or
+ * added as the composer takes them.
  *
  * - The blue button is the chosen way, Comment unless a menu's Ask chose it,
  *   and Return presses it; the gray one is the other way. An Ask the page does
@@ -24,22 +28,24 @@ import type { FieldWay } from './selection-field'
  *   blue button sends the quote and the words to the main agent now, and
  *   ⌘Return (Control-Return) does, where the page offers Send. Its tooltip
  *   names that key, as the message field's send button names its other way.
- * - Shift-Return starts a new line. Words that outgrow the line, or hold a
- *   new line, open the capsule into a box: the words above, the buttons under
- *   them at the right, as the message field does.
- * - With no words, Return and the buttons shake the field once.
+ * - Shift-Return starts a new line. A message that outgrows the line, or
+ *   holds a new line, opens the capsule into a box: the message above, the
+ *   buttons under it, as the composer does.
+ * - With no words and no file, Return and the buttons shake the field once.
  * - Escape closes it (`close`); its owner also closes it when the selection
  *   it stands for is gone.
  *
  * The owner takes the focus into it (`focus`), so a key typed after the
  * selection, an input method's composition included, starts in the field. The
- * words are typed in a frame of their own (`FramedTextArea.vue`), so the
+ * message is written in a frame of its own (`FramedField.vue`), so the
  * focus there leaves the page's selection the browser's. Until a field that
- * stands for that selection (`pageKeys`) holds a word, the keys the page
- * answers act on the page (`answerForPage`), and Copy copies the page's
+ * stands for that selection (`pageKeys`) holds a word or a file, the keys the
+ * page answers act on the page (`answerForPage`), and Copy copies the page's
  * selection while the field selects none of its own.
  */
 const props = defineProps<{
+  /** The files of the conversation the field's message is written in. */
+  files: MessageFiles
   /** Whether the page offers Ask; without it the field has no Ask button. */
   ask?: boolean
   /** Whether the page offers Send, which the held command key turns the blue button into. */
@@ -56,23 +62,23 @@ const props = defineProps<{
   pageKeys?: boolean
 }>()
 
-const text = defineModel<string>({ default: '' })
+const message = defineModel<DraftMessage>({ default: () => ({ text: '', fileIds: [] }) })
 
 const emit = defineEmits<{
-  comment: [text: string]
-  ask: [text: string]
-  send: [text: string]
+  comment: [message: DraftMessage]
+  ask: [message: DraftMessage]
+  send: [message: DraftMessage]
   close: []
 }>()
 
 const root = ref<HTMLElement>()
-const area = ref<InstanceType<typeof FramedTextArea>>()
-const field = computed(() => area.value?.field ?? undefined)
-const frame = ref<HTMLElement>()
+const framed = ref<InstanceType<typeof FramedField>>()
+const field = ref<InstanceType<typeof MessageField>>()
 const buttons = ref<HTMLElement>()
-const ruler = ref<HTMLElement>()
 const shaking = ref(false)
-const empty = computed(() => text.value.trim() === '')
+const empty = computed(() => !saysSomething(message.value))
+/** The message needs more than the line the buttons leave it. */
+const open = ref(false)
 const blocked = computed(() => !!props.unavailable || props.busy === true)
 /** The blue button's way; the gray one is the other. */
 const chosen = computed<FieldWay>(() => props.way === 'ask' && props.ask ? 'ask' : 'comment')
@@ -100,37 +106,29 @@ onBeforeUnmount(() => {
 
 const { width } = useElementSize(root)
 /**
- * The words outgrow the line the buttons leave them, or hold a line break. The
- * line is measured at the one-line shape's width in both shapes: the field's
- * width less the buttons', which stand in the field either way, so the shape
- * does not flip as it changes.
+ * How wide the message's line is in the one-line shape: the field's width less
+ * the buttons', which stand in the field either way, so the shape does not
+ * flip as it changes.
  */
-const open = computed(() => {
+const lineWidth = computed(() => {
   void width.value
-  const words = text.value
-  if (words.includes('\n'))
-    return true
   const box = root.value
-  if (!box || !buttons.value || !ruler.value)
-    return false
+  if (!box || !buttons.value)
+    return 0
   const style = getComputedStyle(box)
-  const line = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+  return box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
     - buttons.value.offsetWidth - (parseFloat(style.columnGap) || 0)
-  ruler.value.textContent = words
-  return ruler.value.offsetWidth > line
 })
 
-// It grows to a few lines and scrolls past them with the app's scrollbar.
-useFieldScrollbars(field, frame, () => text.value)
-
 defineExpose({
-  /** Takes the focus, the caret at the end of what is typed. */
+  /** Takes the focus, the caret at the end of what is written. */
   focus(): void {
-    area.value?.focus({ preventScroll: true })
+    framed.value?.focusFrame()
+    field.value?.takeFocus()
   },
   /** Whether the focus is in the field. */
   get focused(): boolean {
-    return area.value?.focused ?? false
+    return framed.value?.focused ?? false
   },
 })
 
@@ -144,17 +142,26 @@ async function shake(): Promise<void> {
 function act(way: 'comment' | 'ask' | 'send'): void {
   if (blocked.value)
     return
-  const words = text.value.trim()
-  if (words === '') {
+  if (empty.value) {
     void shake()
     return
   }
+  const written = { text: message.value.text.trim(), fileIds: [...message.value.fileIds] }
   if (way === 'comment')
-    emit('comment', words)
+    emit('comment', written)
   else if (way === 'ask')
-    emit('ask', words)
+    emit('ask', written)
   else
-    emit('send', words)
+    emit('send', written)
+}
+
+/** Return, or ⌘Return (Control-Return) for the other way: Send where the page offers it. */
+function submit(otherWay: boolean): void {
+  if (otherWay || sending.value) {
+    if (props.send)
+      act('send')
+  } else
+    act(chosen.value)
 }
 
 /** The blue button: the chosen way, or Send while the command key is held. */
@@ -162,6 +169,11 @@ function primary(event?: MouseEvent): void {
   act(props.send && (sending.value || (event && withCommandKey(event))) ? 'send' : chosen.value)
 }
 
+/**
+ * The keys that reach the field before its editor: the command key's state,
+ * Copy of the page's selection while the field selects nothing of its own,
+ * and, while it holds nothing, the keys the page answers.
+ */
 function onKeydown(event: KeyboardEvent): void {
   // The frame's keys reach no listener of the page's window.
   track(event)
@@ -169,30 +181,19 @@ function onKeydown(event: KeyboardEvent): void {
   // and whose key code is 229: it confirms the words, and sends nothing.
   if (event.isComposing || event.keyCode === 229)
     return
-  const own = field.value
-  if (own && own.selectionStart === own.selectionEnd && withCommandKey(event) && event.key.toLowerCase() === 'c' && !event.shiftKey && !event.altKey) {
+  const own = framed.value?.document?.getSelection()
+  if ((!own || own.isCollapsed) && withCommandKey(event) && event.key.toLowerCase() === 'c' && !event.shiftKey && !event.altKey) {
     // Copy with nothing of the field's selected copies the page's selection, as the page would.
     if (!window.getSelection()?.isCollapsed) {
       event.preventDefault()
+      event.stopPropagation()
       document.execCommand('copy')
     }
     return
   }
-  if (props.pageKeys && text.value === '' && root.value && answerForPage(event, root.value)) {
-    event.preventDefault()
-    return
-  }
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    if (withCommandKey(event) || sending.value) {
-      if (props.send)
-        act('send')
-    } else
-      act(chosen.value)
-  } else if (event.key === 'Escape') {
+  if (props.pageKeys && empty.value && root.value && answerForPage(event, root.value)) {
     event.preventDefault()
     event.stopPropagation()
-    emit('close')
   }
 }
 
@@ -220,20 +221,29 @@ const otherIcon = computed(() => other.value === 'ask' ? MessageCircleQuestionMa
     :class="[open ? 'selection-field-open gap-y-1 rounded-[20px] pt-2' : 'rounded-full', { 'selection-field-shake': shaking }]"
     @animationend="shaking = false"
   >
-    <span ref="ruler" aria-hidden="true" class="pointer-events-none invisible absolute whitespace-pre text-chrome leading-5" />
-    <div ref="frame" class="relative flex min-w-0 [grid-area:words]">
-      <FramedTextArea
-        ref="area"
-        v-model="text"
-        data-overlayscrollbars-initialize
-        rows="1"
-        :placeholder="t('comments.placeholder')"
-        :aria-label="t('comments.placeholder')"
-        class="block max-h-32 min-h-7 resize-none bg-transparent py-1 text-chrome leading-5 text-fg outline-none [field-sizing:content] placeholder:text-fg-subtle"
-        @keydown="onKeydown"
-        @keyup="track"
-        @blur="release"
-      />
+    <div class="relative min-w-0 [grid-area:words]">
+      <FramedField ref="framed" v-slot="{ document: frameDocument }">
+        <div
+          class="max-h-32 overflow-y-auto py-1 text-chrome leading-5 text-fg"
+          @keydown.capture="onKeydown"
+          @keyup="track"
+        >
+          <MessageField
+            ref="field"
+            v-model="message"
+            v-model:multiline="open"
+            :files="files"
+            :document="frameDocument"
+            :line-width="lineWidth"
+            :placeholder="t('comments.placeholder')"
+            :label="t('comments.placeholder')"
+            cancelable
+            @submit="submit"
+            @cancel="emit('close')"
+            @blur="release"
+          />
+        </div>
+      </FramedField>
     </div>
     <div ref="buttons" class="flex items-center gap-1.5 justify-self-end [grid-area:buttons]">
       <Tooltip v-if="ask" :content="blocked ? unavailable ?? label(other) : label(other)">

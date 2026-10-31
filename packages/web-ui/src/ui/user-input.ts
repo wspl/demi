@@ -3,7 +3,7 @@
  * click, a scroll or a pointer's move. All of it but the pointer's move acts
  * on the page; the pointer passes over the page on its way back to it.
  *
- * A frame of the page's own, such as the text area of `FramedTextArea.vue`,
+ * A frame of the page's own, such as the field of `FramedField.vue`,
  * keeps its input to itself, so it tells the page's window of each with
  * `FRAME_INPUT`, whose detail is the input's event type.
  */

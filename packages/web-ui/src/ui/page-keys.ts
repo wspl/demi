@@ -3,7 +3,7 @@ import { shortcutSet, withCommandKey } from './shortcut'
 /**
  * The keys the page answers while it has a selection and the focus, acted on
  * for a field that stands for the selection from a frame of its own
- * (`FramedTextArea.vue`) and holds no words yet: with them the field is as if
+ * (`FramedField.vue`) and holds no words yet: with them the field is as if
  * it were not there, until the user types in it.
  *
  * - Shift with an arrow extends the selection, as the system's keys for a word

@@ -6,7 +6,8 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
-import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
+import { shownComment, type ReplyCommenting, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
+import { galleryMessageFiles } from '../fixtures/written-files'
 import GalleryComposer from './GalleryComposer.vue'
 import {
   EditRejectedError,
@@ -80,7 +81,9 @@ const messageEdit = ref<MessageEditState | null>(null)
  * The comments waiting in the draft, made on the replies' words, which the
  * replies show beside the ones the messages sent.
  */
-const waiting = ref<MessageComment[]>([])
+const waiting = ref<WaitingComment[]>([])
+/** The files of the comments, as the conversation's are in the product. */
+const page = galleryMessageFiles()
 type Outcome = 'accept' | 'hold' | 'reject' | 'disconnect'
 
 const outcome = ref<Outcome>('accept')
@@ -106,8 +109,8 @@ function userBlock(id: string, content: UserContentBlock[], comments: MessageCom
 /** Two comments on the words of `reply`, as the message an edit opens sent them with its text. */
 function testComments(reply: string): MessageComment[] {
   return [
-    { id: `${reply}-c2`, blockId: reply, start: 0, end: 15, at: 0, quote: 'The test checks', text: 'Name the test after the request it checks.' },
-    { id: `${reply}-c1`, blockId: reply, start: 16, end: 49, at: 16, quote: 'the request received by the model', text: 'Check the system prompt too.' },
+    { id: `${reply}-c2`, blockId: reply, start: 0, end: 15, at: 0, quote: 'The test checks', content: [{ type: 'text', text: 'Name the test after the request it checks.' }] },
+    { id: `${reply}-c1`, blockId: reply, start: 16, end: 49, at: 16, quote: 'the request received by the model', content: [{ type: 'text', text: 'Check the system prompt too.' }] },
   ]
 }
 
@@ -219,14 +222,23 @@ const commenting: ReplyCommenting = {
   get waiting() {
     return waiting.value
   },
+  files: page.files,
   add: (comment) => (waiting.value = [...waiting.value, comment]),
-  edit: (id, text) => (waiting.value = waiting.value.map((each) => (each.id === id ? { ...each, text } : each))),
+  edit: (id, content) => (waiting.value = waiting.value.map((each) => (each.id === id ? { ...each, content } : each))),
   remove: (id) => (waiting.value = waiting.value.filter((each) => each.id !== id)),
 }
 
 /** The comments the pill lists: the shown edit's, else the draft's, as the product's composer chooses. */
 const sentEdit = computed(() => messageEdit.value?.kind === 'message' && messageEdit.value.phase !== 'regenerating' ? messageEdit.value : null)
-const carried = computed(() => (sentEdit.value ? editComments(sentEdit.value) : waiting.value))
+const carried = computed(() => sentEdit.value
+  ? editComments(sentEdit.value).map(shownComment)
+  : waiting.value.map((comment) => ({
+      id: comment.id,
+      quote: comment.quote,
+      markdown: comment.content.text,
+      attachments: page.files.capsules(comment.content.fileIds),
+      message: comment.content,
+    })))
 
 /** Changes the shown edit's comments by `change`, as the product's composer does. */
 function changeComments(change: Parameters<typeof changeEditComments>[1]): void {
@@ -276,13 +288,13 @@ onBeforeUnmount(() => {
                 v-if="sentEdit"
                 :comments="carried"
                 :readonly="sentEdit.phase !== 'editing'"
-                @edit="(id, text) => changeComments((comments) => comments.map((each) => (each.id === id ? { ...each, text } : each)))"
                 @remove="(id) => changeComments((comments) => comments.filter((each) => each.id !== id))"
                 @clear="changeComments(() => [])"
               />
               <WaitingComments
                 v-else
                 :comments="carried"
+                :files="page.files"
                 @edit="commenting.edit"
                 @remove="commenting.remove"
                 @clear="waiting = []"

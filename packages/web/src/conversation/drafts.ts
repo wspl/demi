@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { messageCommentSchema, schemaRefusal, workflowChoiceSchema } from '@demicodes/protocol'
+import { schemaRefusal, workflowChoiceSchema } from '@demicodes/protocol'
+import { waitingCommentSchema } from '@demicodes/web-ui/agent/comments/comments'
 import { conversationSummarySchema, draftFileSchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
@@ -51,8 +52,8 @@ export const draftSchema = z.object({
       id: z.uuid(),
       text: z.string(),
       fileIds: z.array(z.string()),
-      /** The comments it carries. */
-      comments: z.array(messageCommentSchema),
+      /** The comments it carries, each with its words and the ids of its files among the record's. */
+      comments: z.array(waitingCommentSchema),
       error: z.string().nullable(),
       /** The request ID of the refusal that left it undelivered, shown beside `error`; absent with none. */
       requestId: z.string().optional(),
@@ -105,7 +106,7 @@ export const draftSchema = z.object({
   /** The composer's text, when the backend does not have it. */
   text: z.string(),
   /** The comments waiting with that text, when the backend does not have them. */
-  comments: z.array(messageCommentSchema),
+  comments: z.array(waitingCommentSchema),
   /** The model settings of a conversation without a record; null for one with a record, which holds them. */
   model: modelSettingsSchema.nullable(),
   /**
@@ -140,7 +141,7 @@ export type SavedFile = z.infer<typeof fileSchema>
  * record's shape, whose upgrade turns the previous release's records into
  * the new one.
  */
-const DRAFTS_VERSION = 6
+const DRAFTS_VERSION = 7
 
 /** A message on its way as release 0.1.21 stored it: one per conversation, or none. */
 const pendingSendV1Schema = z.looseObject({
@@ -180,6 +181,62 @@ const draftV5Schema = z.looseObject({
   files: z.array(z.looseObject({})).optional(),
   local: z.unknown().optional(),
 })
+
+/** A comment as version 6 stored it: its words alone, before a comment held files. */
+const commentV6Schema = z.looseObject({ text: z.string() })
+
+/** The comment `value` of version 6 as version 7: its words are its message's, with no files. */
+function commentV6ToV7(value: unknown): unknown {
+  const old = commentV6Schema.safeParse(value)
+  if (!old.success || 'content' in old.data) {
+    return value
+  }
+  const { text, ...rest } = old.data
+  return { ...rest, content: { text, fileIds: [] } }
+}
+
+/** A comment of an edit in progress as version 6 stored it, its words as the edit sends them. */
+function editCommentV6ToV7(value: unknown): unknown {
+  const old = commentV6Schema.safeParse(value)
+  if (!old.success || 'content' in old.data) {
+    return value
+  }
+  const { text, ...rest } = old.data
+  return { ...rest, content: [{ type: 'text', text }] }
+}
+
+/** A record as version 6 stored it, whose comments held words alone. */
+const draftV6Schema = z.looseObject({
+  comments: z.array(z.unknown()).optional(),
+  pendingSends: z.array(z.looseObject({ comments: z.array(z.unknown()).optional() })).optional(),
+  messageEdit: z.looseObject({
+    request: z.looseObject({ comments: z.array(z.unknown()).optional() }).optional(),
+  }).nullable().optional(),
+})
+
+/**
+ * The record `value` of version 6 as version 7: each comment, waiting in the
+ * draft, carried by a message on its way, or kept by an edit in progress,
+ * holds its words as a message, with no files.
+ */
+function draftV6ToV7(value: unknown): unknown {
+  const old = draftV6Schema.safeParse(value)
+  if (!old.success) {
+    return value
+  }
+  const record = old.data
+  const request = record.messageEdit?.request
+  return {
+    ...record,
+    ...(record.comments ? { comments: record.comments.map(commentV6ToV7) } : {}),
+    ...(record.pendingSends
+      ? { pendingSends: record.pendingSends.map((pending) => pending.comments ? { ...pending, comments: pending.comments.map(commentV6ToV7) } : pending) }
+      : {}),
+    ...(record.messageEdit && request?.comments
+      ? { messageEdit: { ...record.messageEdit, request: { ...request, comments: request.comments.map(editCommentV6ToV7) } } }
+      : {}),
+  }
+}
 
 /** A message's file as the record stores a composer's. */
 function storedFile(file: z.infer<typeof draftFileSchema>): z.infer<typeof fileSchema> | z.infer<typeof remoteSchema> {
@@ -242,6 +299,8 @@ function draftV5ToV6(value: unknown): unknown {
  *   message of its `notSaved`, which the page no longer keeps, back in the
  *   composer, before the text it holds, as a refused Save for Later's goes
  *   back.
+ * - One of version 6 gives each comment its words as a message with no
+ *   files, before a comment held files.
  *
  * A record of another shape stays as it was, and its read drops it.
  */
@@ -289,6 +348,9 @@ function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
     }
     if (oldVersion < 6) {
       value = draftV5ToV6(value)
+    }
+    if (oldVersion < 7) {
+      value = draftV6ToV7(value)
     }
     if (value !== cursor.value) {
       cursor.update(value)
@@ -445,6 +507,21 @@ const lastWordsSchema = z.object({
 })
 export type LastWords = z.infer<typeof lastWordsSchema>
 
+/**
+ * What a page of version 6 left as it closed, as version 7 reads it: each
+ * comment of a message on its way holds its words as a message.
+ */
+function lastWordsV6ToV7(value: unknown): unknown {
+  const old = z.looseObject({ pendingSends: z.array(z.looseObject({ comments: z.array(z.unknown()).optional() })) }).safeParse(value)
+  if (!old.success) {
+    return value
+  }
+  return {
+    ...old.data,
+    pendingSends: old.data.pendingSends.map((pending) => pending.comments ? { ...pending, comments: pending.comments.map(commentV6ToV7) } : pending),
+  }
+}
+
 function lastWordsKey(userId: string, conversationId: string): string {
   return `demi.draft.${userId}.${conversationId}`
 }
@@ -467,7 +544,7 @@ export function takeLastWords(userId: string, conversationId: string): LastWords
   try {
     const kept = localStorage.getItem(key)
     localStorage.removeItem(key)
-    return kept === null ? null : lastWordsSchema.parse(JSON.parse(kept))
+    return kept === null ? null : lastWordsSchema.parse(lastWordsV6ToV7(JSON.parse(kept)))
   } catch {
     // Unreadable storage, or an entry that is not ours: the IndexedDB record
     // stands, as it would had the page left nothing here.

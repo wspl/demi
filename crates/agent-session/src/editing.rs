@@ -43,8 +43,8 @@ use demi_conversation_lane_protocol::{
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
-    BlobRef, Block, BlockId, DocumentSource, MediaSource, MessageComment, NodeId, OperationId, UserBlock,
-    UserContentBlock,
+    BlobRef, Block, BlockId, Comment, CommentPart, CommentStage, DocumentSource, MediaSource, MessageComment, NodeId,
+    OperationId, UserBlock, UserContentBlock,
 };
 use tokio::sync::watch;
 
@@ -53,17 +53,39 @@ use super::{
     SessionShared, TurnError, cancel::TurnCancel, compaction, core::SessionCore, persist, turn, window,
 };
 
-/// One part of an edit's content as the session receives it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One part of an edit's content as the session receives it, the message's
+/// or a comment's.
+#[derive(Debug, Clone, PartialEq, Eq, garde::Validate)]
 pub enum EditContent {
-    Content(UserContentBlock),
+    Content(#[garde(skip)] UserContentBlock),
     /// The attachment record the edited message holds under this number,
     /// such as `a7`, which the session puts in its place.
-    KeptAttachment(String),
+    KeptAttachment(#[garde(skip)] String),
     /// The native media block of this kind the edited message holds by the
     /// blob it names, which the session puts in its place.
-    KeptMedia(MediaRef),
+    KeptMedia(#[garde(skip)] MediaRef),
 }
+
+impl CommentPart for EditContent {
+    fn says_something(&self) -> bool {
+        match self {
+            Self::Content(block) => block.says_something(),
+            Self::KeptAttachment(_) | Self::KeptMedia(_) => true,
+        }
+    }
+}
+
+/// The stage of a message an edit's content reaches the session at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Edit;
+
+impl CommentStage for Edit {
+    type Content = Vec<EditContent>;
+}
+
+/// A comment of an edit as the session receives it, its content resolved as
+/// the edit's.
+pub type EditComment = Comment<Edit>;
 
 /// An edit as the session receives it: the request with its content
 /// resolved, and the digest of the request as the web app sent it.
@@ -77,7 +99,7 @@ pub struct EditSubmission {
     pub content: Option<Vec<EditContent>>,
     /// The new version's comments, in place of the edited message's; none
     /// keeps the edited message's, as Regenerate does.
-    pub comments: Option<Vec<MessageComment>>,
+    pub comments: Option<Vec<EditComment>>,
     pub digest: String,
 }
 
@@ -303,7 +325,16 @@ impl Candidate {
                 let content = Self::content(target, content)?;
                 let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
                 // A new version is the user's own, whoever sent the first.
-                let comments = submission.comments.clone().unwrap_or_else(|| target.comments.clone());
+                let comments = match &submission.comments {
+                    Some(comments) => comments
+                        .iter()
+                        .map(|comment| {
+                            let content = Self::content(target, &comment.content)?;
+                            Ok(comment.clone().with_content::<demi_shared_types::Message>(content))
+                        })
+                        .collect::<Result<Vec<MessageComment>, EditError>>()?,
+                    None => target.comments.clone(),
+                };
                 candidate.push_user(turn.clone(), &model, content, comments, preamble, None);
                 candidate.blocks().to_vec()
             }
@@ -344,22 +375,28 @@ impl Candidate {
         })
     }
 
-    /// The new version's content: each reference to a file the edited
-    /// message `target` holds in that block's place.
+    /// The new version's content, or a comment's: each reference to a file
+    /// the edited message `target` holds, in its content or a comment's, in
+    /// that block's place.
     fn content(target: &UserBlock, content: &[EditContent]) -> Result<Vec<UserContentBlock>, EditError> {
+        let held: Vec<UserContentBlock> = target
+            .content
+            .iter()
+            .chain(target.comments.iter().flat_map(|comment| &comment.content))
+            .cloned()
+            .collect();
         content
             .iter()
             .map(|part| match part {
                 EditContent::Content(block) => Ok(block.clone()),
-                EditContent::KeptAttachment(id) => target
-                    .content
+                EditContent::KeptAttachment(id) => held
                     .iter()
                     .find(|kept| matches!(kept, UserContentBlock::Attachment(record) if &record.id == id))
                     .cloned()
                     .ok_or_else(|| EditError::UnknownAttachment(id.clone())),
                 EditContent::KeptMedia(media) => {
                     let (kind, blob) = named(media);
-                    referenced_media(&target.content)
+                    referenced_media(&held)
                         .find(|(its_kind, its_blob, _)| *its_kind == kind && *its_blob == blob)
                         .map(|(_, _, block)| block.clone())
                         .ok_or_else(|| EditError::UnknownMedia {

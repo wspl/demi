@@ -175,10 +175,12 @@ fn content_sources(content: &[UserContentBlock]) -> impl Iterator<Item = Source<
     })
 }
 
-/// The pictures a message's or a steer's comments quote, which the model reads
-/// before its content.
+/// The media of a message's or a steer's comments, which the model reads
+/// before its content: each comment's quoted picture, then its content's.
 fn comment_sources(comments: &[MessageComment]) -> impl Iterator<Item = Source<'_>> {
-    comments.iter().filter_map(|comment| comment.picture.as_ref().map(Source::Media))
+    comments.iter().flat_map(|comment| {
+        comment.picture.as_ref().map(Source::Media).into_iter().chain(content_sources(&comment.content))
+    })
 }
 
 /// The media of a block: a message's or a steer's, its comments' pictures
@@ -243,8 +245,8 @@ pub fn content_references(content: &[UserContentBlock]) -> impl Iterator<Item = 
     content_sources(content).filter_map(Source::reference)
 }
 
-/// The blobs of the pictures `comments` quote, which a message waiting to be
-/// sent or a draft keeps.
+/// The blobs of the pictures `comments` quote and of their content's media,
+/// which a message waiting to be sent keeps.
 pub fn comment_references(comments: &[MessageComment]) -> impl Iterator<Item = &BlobRef> {
     comment_sources(comments).filter_map(Source::reference)
 }

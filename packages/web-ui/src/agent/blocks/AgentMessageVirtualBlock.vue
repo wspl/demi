@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { shownComment, type ShownComment } from '../comments/comments'
+import type { MessageComment } from '@demicodes/protocol'
 import { t } from '../locales/text'
 import { t as shared } from '../../locales/text'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
@@ -152,6 +154,11 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
     emit('sendQueued', submission.id)
   }
 }
+
+/** A message's sent comments as its bubble shows them. */
+function shownComments(comments: readonly MessageComment[] | undefined): ShownComment[] | undefined {
+  return comments?.map(shownComment)
+}
 </script>
 
 <template>
@@ -174,7 +181,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'user'"
       v-bind="attrs"
       :content="block.content"
-      :comments="block.comments"
+      :comments="shownComments(block.comments)"
       :origin="originOf(block.schedule)"
       :brief="block.comments?.length ? null : childBrief(transcript?.node ?? null, block.content)"
       :editable="editable"
@@ -193,7 +200,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'starting_message'"
       v-bind="attrs"
       :content="block.message.content"
-      :comments="block.message.comments"
+      :comments="shownComments(block.message.comments)"
       :origin="originOf(block.message.schedule)"
       :editable="false"
     />
@@ -201,14 +208,14 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'steer'"
       v-bind="attrs"
       :content="block.content"
-      :comments="block.comments"
+      :comments="shownComments(block.comments)"
       :editable="false"
     />
     <UserBlock
       v-else-if="block.type === 'pending_steer'"
       v-bind="attrs"
       :content="block.content"
-      :comments="block.comments"
+      :comments="shownComments(block.comments)"
       :pending="waitingAs(block)"
       :waiting-id="block.pendingSteerId"
       @recall="emit('recallSteer', block.pendingSteerId)"
@@ -218,7 +225,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'queued_message'"
       v-bind="attrs"
       :content="block.content"
-      :comments="block.comments"
+      :comments="shownComments(block.comments)"
       :origin="originOf(block.schedule)"
       :pending="waitingAs(block)"
       :waiting-id="block.queueId"

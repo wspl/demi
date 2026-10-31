@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { EditRejectedError } from '@demicodes/conversation-client'
 import {
   editRequestSchema,
+  messageCommentSchema,
   userContentBlockSchema,
   type Block,
   type ClientContent,
@@ -57,8 +58,14 @@ export const messageEditContentSchema = z.discriminatedUnion('type', [
 ])
 export type MessageEditContent = z.infer<typeof messageEditContentSchema>
 
-export const messageEditRequestSchema = editRequestSchema.omit({ content: true }).extend({
+/**
+ * An edit as the page holds it: its content as the editor writes it, and the
+ * comments it carries as the edited message holds them, the files of each kept
+ * by reference when it is sent.
+ */
+export const messageEditRequestSchema = editRequestSchema.omit({ content: true, comments: true }).extend({
   content: z.array(messageEditContentSchema),
+  comments: z.array(messageCommentSchema).optional(),
 })
 export type MessageEditRequest = z.infer<typeof messageEditRequestSchema>
 
@@ -240,7 +247,12 @@ export function useEditLastMessage(): () => (() => void) | undefined {
  * conversation cannot be kept, and the edit is refused before it is sent.
  */
 export function sentEditRequest(request: MessageEditRequest): EditRequest {
-  return { ...request, content: request.content.map(sentEditContent) }
+  const { comments, ...rest } = request
+  return {
+    ...rest,
+    content: request.content.map(sentEditContent),
+    ...(comments ? { comments: comments.map((comment) => ({ ...comment, content: comment.content.map(sentEditContent) })) } : {}),
+  }
 }
 
 function sentEditContent(part: MessageEditContent): ClientContent {

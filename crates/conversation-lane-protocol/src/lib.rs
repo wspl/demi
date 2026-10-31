@@ -86,6 +86,7 @@ mod server;
 mod transcript;
 
 pub use client::{
+    Client, ClientComment,
     ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery, SendMessage,
 };
 pub use agents::{AgentEntry, AgentRole, SideQuestion, Subagent};

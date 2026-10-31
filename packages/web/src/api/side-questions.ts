@@ -1,5 +1,5 @@
 import { apiRequest, jsonBody, readResponse } from './client'
-import type { SideQuestion } from '@demicodes/protocol'
+import type { ClientContent, SideQuestion } from '@demicodes/protocol'
 import {
   askRequestSchema,
   sideFollowUpSchema,
@@ -30,10 +30,10 @@ export async function askSideQuestion(conversationId: string, request: AskReques
   return answered(await readResponse(response, sideQuestionAnswerSchema))
 }
 
-export async function followUpSideQuestion(conversationId: string, sideId: string, text: string): Promise<void> {
+export async function followUpSideQuestion(conversationId: string, sideId: string, content: ClientContent[]): Promise<void> {
   await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}/messages`, {
     method: 'POST',
-    ...jsonBody(sideFollowUpSchema.parse({ text })),
+    ...jsonBody(sideFollowUpSchema.parse({ content })),
   })
 }
 

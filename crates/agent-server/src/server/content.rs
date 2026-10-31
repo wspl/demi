@@ -5,10 +5,10 @@
 //! edit, the references to the files the edited message holds are resolved by
 //! the session from that message. No frame carries bytes.
 
-use demi_agent_session::EditContent;
+use demi_agent_session::{Edit, EditComment, EditContent};
 use demi_agent_store::media::HeldMedia;
-use demi_conversation_lane_protocol::{AgentCode, ClientContent, Refusal};
-use demi_shared_types::{UserContentBlock, is_blank};
+use demi_conversation_lane_protocol::{AgentCode, ClientComment, ClientContent, Refusal};
+use demi_shared_types::{MessageComment, UserContentBlock, is_blank};
 use futures_util::future::LocalBoxFuture;
 
 /// A file a message's content refers to, which only the backend can
@@ -78,41 +78,83 @@ impl ContentError {
     }
 }
 
-/// Resolves a `send`'s or a `steer`'s content, with the bytes of its media.
-/// Such content never refers to what an edited message holds: the frame's
-/// decode refused it.
+/// Resolves a `send`'s or a `steer`'s content and its comments', with the
+/// bytes of their media. Such content never refers to what an edited message
+/// holds: the frame's decode refused it.
 pub(crate) async fn resolve_message(
     resolver: &dyn ContentResolver,
     content: Vec<ClientContent>,
-) -> Result<(Vec<UserContentBlock>, HeldMedia), ContentError> {
-    let (parts, media) = resolve(resolver, content).await?;
-    let blocks = parts
+    comments: Vec<ClientComment>,
+) -> Result<(Vec<UserContentBlock>, Vec<MessageComment>, HeldMedia), ContentError> {
+    let (content, comments, media) = resolve_edit(resolver, content, Some(comments)).await?;
+    let sent = |parts: Vec<EditContent>| -> Result<Vec<UserContentBlock>, ContentError> {
+        parts
+            .into_iter()
+            .map(|part| match part {
+                EditContent::Content(block) => Ok(block),
+                EditContent::KeptAttachment(_) | EditContent::KeptMedia(_) => Err(
+                    ContentError::invalid("Only an edit refers to the files its message holds"),
+                ),
+            })
+            .collect()
+    };
+    let comments = comments
+        .unwrap_or_default()
         .into_iter()
-        .map(|part| match part {
-            EditContent::Content(block) => Ok(block),
-            EditContent::KeptAttachment(_) | EditContent::KeptMedia(_) => Err(
-                ContentError::invalid("Only an edit refers to the files its message holds"),
-            ),
+        .map(|comment| {
+            let parts = sent(comment.content.clone())?;
+            Ok(comment.with_content::<demi_shared_types::Message>(parts))
         })
-        .collect::<Result<_, _>>()?;
-    Ok((blocks, media))
+        .collect::<Result<_, ContentError>>()?;
+    Ok((sent(content)?, comments, media))
 }
 
-/// Resolves an edit's content, with the bytes of its new media, keeping its
-/// references to the files the edited message holds for the session.
+/// Resolves content the backend hands the agent of its own, as a side
+/// question's, with the bytes of its media, as a `send`'s.
+pub async fn resolve_content(
+    resolver: &dyn ContentResolver,
+    content: Vec<ClientContent>,
+) -> Result<(Vec<UserContentBlock>, HeldMedia), ContentError> {
+    let (content, _, media) = resolve_message(resolver, content, Vec::new()).await?;
+    Ok((content, media))
+}
+
+/// Resolves an edit's content and its comments', with the bytes of their new
+/// media, keeping their references to the files the edited message holds for
+/// the session. All their files are resolved together, so none is granted
+/// unless all can be.
 pub(crate) async fn resolve_edit(
     resolver: &dyn ContentResolver,
     content: Vec<ClientContent>,
-) -> Result<(Vec<EditContent>, HeldMedia), ContentError> {
-    resolve(resolver, content).await
+    comments: Option<Vec<ClientComment>>,
+) -> Result<(Vec<EditContent>, Option<Vec<EditComment>>, HeldMedia), ContentError> {
+    let given = comments.is_some();
+    let comments = comments.unwrap_or_default();
+    let mut groups = vec![content];
+    let mut anchors = Vec::with_capacity(comments.len());
+    for mut comment in comments {
+        groups.push(std::mem::take(&mut comment.content));
+        anchors.push(comment);
+    }
+    let (mut parts, media) = resolve(resolver, groups).await?;
+    let comments: Vec<EditComment> = anchors
+        .into_iter()
+        .zip(parts.drain(1..))
+        .map(|(comment, content)| comment.with_content::<Edit>(content))
+        .collect();
+    let content = parts.pop().expect("the message's content is the first group");
+    Ok((content, given.then_some(comments), media))
 }
 
+/// Resolves each group of content, a message's and each of its comments',
+/// with all their file references in one call to the resolver.
 async fn resolve(
     resolver: &dyn ContentResolver,
-    content: Vec<ClientContent>,
-) -> Result<(Vec<EditContent>, HeldMedia), ContentError> {
-    let files: Vec<FileReference> = content
+    groups: Vec<Vec<ClientContent>>,
+) -> Result<(Vec<Vec<EditContent>>, HeldMedia), ContentError> {
+    let files: Vec<FileReference> = groups
         .iter()
+        .flatten()
         .filter_map(|part| match part {
             ClientContent::Upload { r#ref, file_name } => Some(FileReference::Upload {
                 r#ref: r#ref.clone(),
@@ -138,27 +180,31 @@ async fn resolve(
             resolved.len()
         )));
     }
-    let mut parts = Vec::new();
-    for part in content {
-        match part {
-            // The blank line an editor opens a message without text with is
-            // no text; the request keeps it, so its digest stays as sent.
-            ClientContent::Text { text } if is_blank(&text) => {}
-            ClientContent::Text { text } => {
-                parts.push(EditContent::Content(UserContentBlock::Text { text }));
+    let mut resolved_groups = Vec::with_capacity(groups.len());
+    for group in groups {
+        let mut parts = Vec::new();
+        for part in group {
+            match part {
+                // The blank line an editor opens a message without text with is
+                // no text; the request keeps it, so its digest stays as sent.
+                ClientContent::Text { text } if is_blank(&text) => {}
+                ClientContent::Text { text } => {
+                    parts.push(EditContent::Content(UserContentBlock::Text { text }));
+                }
+                ClientContent::Reference { reference } => {
+                    parts.push(EditContent::Content(UserContentBlock::Reference {
+                        reference,
+                    }));
+                }
+                ClientContent::Upload { .. } | ClientContent::RemoteFile { .. } => {
+                    let blocks = resolved.next().expect("each file reference was resolved");
+                    parts.extend(blocks.into_iter().map(EditContent::Content));
+                }
+                ClientContent::Media { media } => parts.push(EditContent::KeptMedia(media)),
+                ClientContent::Attachment { id } => parts.push(EditContent::KeptAttachment(id)),
             }
-            ClientContent::Reference { reference } => {
-                parts.push(EditContent::Content(UserContentBlock::Reference {
-                    reference,
-                }));
-            }
-            ClientContent::Upload { .. } | ClientContent::RemoteFile { .. } => {
-                let blocks = resolved.next().expect("each file reference was resolved");
-                parts.extend(blocks.into_iter().map(EditContent::Content));
-            }
-            ClientContent::Media { media } => parts.push(EditContent::KeptMedia(media)),
-            ClientContent::Attachment { id } => parts.push(EditContent::KeptAttachment(id)),
         }
+        resolved_groups.push(parts);
     }
-    Ok((parts, media))
+    Ok((resolved_groups, media))
 }

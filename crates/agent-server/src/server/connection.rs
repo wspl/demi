@@ -588,7 +588,7 @@ impl<H: HostResolver> Connection<H> {
                     self.send(ServerFrame::SendResult { message_id, at });
                     return true;
                 }
-                let (content, media) = match resolve_message(&*self.resolver, content).await {
+                let (content, comments, media) = match resolve_message(&*self.resolver, content, comments).await {
                     Ok(resolved) => resolved,
                     Err(error) => {
                         self.reject(kind, error.refusal());
@@ -613,8 +613,8 @@ impl<H: HostResolver> Connection<H> {
                 return true;
             }
             ClientFrame::Steer { steer_id, content, comments } => {
-                let outcome = match resolve_message(&*self.resolver, content).await {
-                    Ok((content, media)) => {
+                let outcome = match resolve_message(&*self.resolver, content, comments).await {
+                    Ok((content, comments, media)) => {
                         session.hold_media(media);
                         session
                             .steer_with_comments(content, comments, steer_id.clone())
@@ -803,7 +803,7 @@ impl<H: HostResolver> Connection<H> {
                 .await
                 .map_err(|error| error.refusal())?,
             EditCheck::Proceed => {
-                let (content, media) = resolve_edit(&*self.resolver, request.content)
+                let (content, comments, media) = resolve_edit(&*self.resolver, request.content, request.comments)
                     .await
                     .map_err(|error| error.refusal())?;
                 let submission = EditSubmission {
@@ -811,7 +811,7 @@ impl<H: HostResolver> Connection<H> {
                     target: request.target_block_id,
                     version: request.version,
                     content: Some(content),
-                    comments: request.comments,
+                    comments,
                     digest,
                 };
                 session.hold_media(media);

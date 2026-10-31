@@ -5,14 +5,14 @@ import { mirrorPage } from './frame-mirror'
 import { passInput } from './user-input'
 
 /**
- * A text area in a document of its own, a same-origin frame, so that the focus
+ * A field in a document of its own, a same-origin frame, so that the focus
  * in it leaves the page's selection where it is: a document has one selection,
  * and a field in the page's own document would end it.
  *
  * ```text
  *   ┌ box: the place the field stands in ─┐
  *   │┌ frame ─────────────────────────────┼──────────────┐
- *   ││ text area, as wide as the box      │ hidden       │
+ *   ││ the field, as wide as the box      │ hidden       │
  *   │└────────────────────────────────────┼──────────────┘
  *   └─────────────────────────────────────┘
  *    the frame is as wide as the window
@@ -20,28 +20,25 @@ import { passInput } from './user-input'
  *
  * The frame is as wide as the page's window, so that the page's style rules
  * for a window's width, as a phone's, hold in it as they do on the page; the
- * box shows only its text area's part. It is as tall as the text area, which
- * grows with its words as `field-sizing: content` lets it. The attributes and
- * listeners given to this component go to the text area, which `field`
- * exposes.
+ * box shows only its field's part. It is as tall as the field. The default
+ * slot is the field, which the frame's document holds; it gets that document,
+ * which an editor is made in: ProseMirror listens to the document its editor
+ * is made in, so one made on the page and moved into the frame would not hear
+ * its selection.
  *
- * A key with ⌘ or Control that the text area leaves goes on to the page, as
- * it would from a field of the page's own, so the app's shortcuts work in it,
+ * A key with ⌘ or Control that the field leaves goes on to the page, as it
+ * would from a field of the page's own, so the app's shortcuts work in it,
  * and the page hears of every input to it (`user-input.ts`).
  */
-defineOptions({ inheritAttrs: false })
-
-const text = defineModel<string>({ default: '' })
-
 const box = ref<HTMLElement>()
 const frame = ref<HTMLIFrameElement>()
 const body = shallowRef<HTMLElement | null>(null)
-const field = ref<HTMLTextAreaElement>()
+const field = ref<HTMLElement>()
 const { width: windowWidth } = useWindowSize()
 const { width: boxWidth } = useElementSize(box)
 
 let release = (): void => {}
-/** Dresses the frame's document and moves the text area into it, again whenever the frame gets a new one, as when it is moved in the page. */
+/** Dresses the frame's document and moves the field into it, again whenever the frame gets a new one, as when it is moved in the page. */
 function take(): void {
   const inside = frame.value?.contentDocument
   const view = inside?.defaultView
@@ -64,7 +61,7 @@ onMounted(take)
 onBeforeUnmount(() => release())
 
 /**
- * Hands the page a key with ⌘ or Control the text area left, from the frame's
+ * Hands the page a key with ⌘ or Control the field left, from the frame's
  * place in it, and the release of either, which holds neither any more.
  */
 function passOn(event: KeyboardEvent): void {
@@ -77,8 +74,8 @@ function passOn(event: KeyboardEvent): void {
     event.preventDefault()
 }
 
-// The frame's own realm observes the text area, which stands in its document.
-// After the render, which moves the text area into a new document the frame got.
+// The frame's own realm observes the field, which stands in its document.
+// After the render, which moves the field into a new document the frame got.
 watch([field, body], ([element], _before, onCleanup) => {
   const view = element?.ownerDocument.defaultView
   if (!element || !view)
@@ -97,15 +94,17 @@ watch([field, boxWidth], ([element, width]) => {
 }, { flush: 'post' })
 
 defineExpose({
-  field,
-  /** Takes the focus into the frame and the text area. */
-  focus(options?: FocusOptions): void {
-    frame.value?.contentWindow?.focus()
-    field.value?.focus(options)
+  /** The frame's document, once the field stands in it. */
+  get document(): Document | null {
+    return body.value?.ownerDocument ?? null
   },
-  /** Whether the text area has the focus. */
+  /** Moves the focus into the frame, as its field takes it. */
+  focusFrame(): void {
+    frame.value?.contentWindow?.focus()
+  },
+  /** Whether the focus is in the frame. */
   get focused(): boolean {
-    return !!field.value && document.activeElement === frame.value && field.value.ownerDocument.activeElement === field.value
+    return document.activeElement === frame.value
   },
 })
 </script>
@@ -114,13 +113,15 @@ defineExpose({
   <div ref="box" class="relative w-full min-w-0 overflow-hidden">
     <iframe
       ref="frame"
-      data-framed-text-area
+      data-framed-field
       class="block max-w-none border-0 bg-transparent"
       :style="{ width: `${windowWidth}px` }"
       @load="take"
     />
   </div>
   <Teleport v-if="body" :to="body">
-    <textarea ref="field" v-model="text" v-bind="$attrs" />
+    <div ref="field">
+      <slot :document="body.ownerDocument" />
+    </div>
   </Teleport>
 </template>

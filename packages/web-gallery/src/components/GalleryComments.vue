@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import type { MessageComment, UserContentBlock } from '@demicodes/protocol'
+import { showToast } from '@demicodes/web-ui/infra/toast'
+import { galleryMessageFiles } from '../fixtures/written-files'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
 import { anchorOfText, pictureAnchor, picturesOf } from '@demicodes/web-ui/agent/comments/anchors'
-import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
+import { inReadingOrder, type ReplyCommenting, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { COMMENTED_REPLY_ID, REPLY_PICTURE, REPLY_PICTURE_SOURCE, TWO_COMMENTS, commentedConversation } from '../fixtures/comments'
 import { PROJECT_ROOT } from '../fixtures/project'
@@ -37,29 +39,62 @@ const props = defineProps<{
 const flow = useTurnFlow({ id: `comments-${props.seed}`, title: 'Slow uploads', cwd: PROJECT_ROOT, blocks: commentedConversation() })
 const session = flow.state
 const messageFiles = useMessageFiles()
-const waiting = ref<MessageComment[]>([])
+const waiting = ref<WaitingComment[]>([])
+/** The comments' files, as the conversation's are in the product. */
+const page = galleryMessageFiles()
+
+/** The comments as a sent message holds them, once their files are uploaded; a toast says why when one is not. */
+async function sentComments(comments: readonly WaitingComment[]): Promise<MessageComment[] | null> {
+  try {
+    return await Promise.all(comments.map(async ({ content, ...comment }) => ({ ...comment, content: await page.content(content) })))
+  } catch (error) {
+    showToast({ title: error instanceof Error ? error.message : String(error), tone: 'danger' })
+    return null
+  }
+}
 
 const commenting: ReplyCommenting = {
   get waiting() {
     return waiting.value
   },
+  files: page.files,
   add: (comment) => (waiting.value = [...waiting.value, comment]),
-  edit: (id, text) => (waiting.value = waiting.value.map((each) => (each.id === id ? { ...each, text } : each))),
+  edit: (id, content) => (waiting.value = waiting.value.map((each) => (each.id === id ? { ...each, content } : each))),
   remove: (id) => (waiting.value = waiting.value.filter((each) => each.id !== id)),
   // A message holding this comment alone, which steers a running turn, as the product's composer would send it.
-  sendNow: (comment) => {
+  sendNow: async (comment) => {
+    const sent = await sentComments([comment])
+    if (!sent)
+      return
     const running = session.phase === 'running' || flow.startingTurn.value
-    ;(running ? flow.steer : flow.turn)([], { text: '', attachments: [] }, [comment])
+    ;(running ? flow.steer : flow.turn)([], { text: '', attachments: [] }, sent)
   },
 }
 
 const ordered = computed(() => inReadingOrder(waiting.value, session.blocks.map((block) => block.id)))
+/** The waiting comments as the pill lists them, each with the message its Edit opens. */
+const listed = computed(() => ordered.value.map((comment) => ({
+  id: comment.id,
+  quote: comment.quote,
+  markdown: comment.content.text,
+  attachments: page.files.capsules(comment.content.fileIds),
+  message: comment.content,
+})))
 
-/** Send, Steer and Queue each carry the waiting comments, which leave the pill, as the product's composer sends them. */
+/**
+ * Send, Steer and Queue each carry the waiting comments, which leave the
+ * pill, as the product's composer sends them, once their files are uploaded.
+ */
 function carrying(go: (content: UserContentBlock[], message: SentMessage, comments: MessageComment[]) => void) {
   return (content: UserContentBlock[], message: SentMessage): void => {
-    go(content, message, ordered.value)
+    const carried = ordered.value
     waiting.value = []
+    void sentComments(carried).then((sent) => {
+      if (sent)
+        go(content, message, sent)
+      else
+        waiting.value = [...carried, ...waiting.value]
+    })
   }
 }
 const send = carrying(flow.turn)
@@ -79,28 +114,29 @@ onMounted(async () => {
     const anchor = picture ? pictureAnchor(root, picture) : null
     if (!anchor)
       return
-    const comment: MessageComment = {
+    const comment = {
       id: `${props.seed}-picture`,
       blockId: COMMENTED_REPLY_ID,
       ...anchor,
       quote: REPLY_PICTURE.quote,
       picture: REPLY_PICTURE_SOURCE,
-      text: 'Is this the 3G test or the Wi‑Fi one?',
     }
+    const text = 'Is this the 3G test or the Wi‑Fi one?'
     if (props.seed === 'picture-waiting')
-      waiting.value = [comment]
+      waiting.value = [{ ...comment, content: { text, fileIds: [] } }]
     else
-      flow.turn([], { text: '', attachments: [] }, [comment])
+      flow.turn([], { text: '', attachments: [] }, [{ ...comment, content: [{ type: 'text', text }] }])
     return
   }
-  const comments = TWO_COMMENTS.flatMap((each, index): MessageComment[] => {
+  const anchors = TWO_COMMENTS.flatMap((each, index) => {
     const anchor = anchorOfText(root, each.quote)
     return anchor ? [{ id: `${props.seed}-${index}`, blockId: COMMENTED_REPLY_ID, ...anchor, at: anchor.start, quote: each.quote, text: each.text }] : []
   })
   if (props.seed === 'waiting') {
-    waiting.value = comments
+    waiting.value = anchors.map(({ text, ...anchor }) => ({ ...anchor, content: { text, fileIds: [] } }))
     return
   }
+  const comments = anchors.map(({ text, ...anchor }): MessageComment => ({ ...anchor, content: [{ type: 'text', text }] }))
   flow.turn([{ type: 'text', text: 'Otherwise go ahead.' }], { text: 'Otherwise go ahead.', attachments: [] }, inReadingOrder(comments, [COMMENTED_REPLY_ID]))
 })
 </script>
@@ -128,7 +164,8 @@ onMounted(async () => {
         >
           <template v-if="ordered.length > 0" #carried>
             <WaitingComments
-              :comments="ordered"
+              :comments="listed"
+              :files="page.files"
               @edit="commenting.edit"
               @remove="commenting.remove"
               @clear="waiting = []"

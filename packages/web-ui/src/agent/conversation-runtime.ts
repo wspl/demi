@@ -20,7 +20,7 @@ import type {
   AgentEntry,
   ClientContent,
   EditRequest,
-  MessageComment,
+  ClientComment,
   RegenerateRequest,
   SavedDelivery,
   Version,
@@ -231,7 +231,7 @@ export class ConversationRuntime {
    * again with its id, which the session takes only once, unless what the
    * reopened conversation shows already holds it.
    */
-  async submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = [], unsent?: AbortSignal): Promise<void> {
+  async submit(content: ClientContent[], messageId: string = createId(), comments: readonly ClientComment[] = [], unsent?: AbortSignal): Promise<void> {
     this.options.state.lastError = null
     for (;;) {
       const client = await untilUnsent(this.ensureOpen(), unsent)
@@ -259,7 +259,7 @@ export class ConversationRuntime {
    * neither lists nor holds in the transcript is sent as a message, so it is
    * never lost and never delivered twice.
    */
-  async steer(content: ClientContent[], id: string = createId(), comments: readonly MessageComment[] = [], unsent?: AbortSignal): Promise<void> {
+  async steer(content: ClientContent[], id: string = createId(), comments: readonly ClientComment[] = [], unsent?: AbortSignal): Promise<void> {
     this.options.state.lastError = null
     const client = await untilUnsent(this.ensureOpen(), unsent)
     try {

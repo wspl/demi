@@ -8,7 +8,7 @@ import {
   type EditRequest,
   type Follow,
   type Followed,
-  type MessageComment,
+  type ClientComment,
   type PendingCall,
   type PendingSteer,
   type ProviderErrorDiagnostics,
@@ -483,7 +483,7 @@ export class ConversationClient {
    * the transcript or the queue. The wait has no deadline of its own: the
    * backend decides that a delivery failed, and says why.
    */
-  submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
+  submit(content: ClientContent[], messageId: string = createId(), comments: readonly ClientComment[] = []): Promise<void> {
     // The answer names the agents' version that shows the message, queued or
     // starting the turn; the send settles once the client holds it.
     let at: Version | null | undefined
@@ -631,7 +631,7 @@ export class ConversationClient {
    * version the answer names, which shows the steer, and rejects with
    * `SteerRejectedError` when the session refuses it.
    */
-  steer(content: ClientContent[], steerId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
+  steer(content: ClientContent[], steerId: string = createId(), comments: readonly ClientComment[] = []): Promise<void> {
     let at: Version | null | undefined
     return this.request(
       { type: 'steer', steerId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) },

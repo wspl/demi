@@ -16,8 +16,8 @@ import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import { homePath } from '@demicodes/web-ui/files/paths'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import type { MessageComment } from '@demicodes/protocol'
-import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
+import type { ReplyCommenting, WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
+import { galleryMessageFiles } from '@demicodes/web-gallery/fixtures/written-files'
 import GalleryWorkPanel from '@demicodes/web-gallery/components/GalleryWorkPanel.vue'
 import { galleryBrowser } from '@demicodes/web-gallery/fixtures/live-browser'
 import { galleryFiles, useGalleryWork } from '@demicodes/web-gallery/fixtures/work-panel'
@@ -79,13 +79,14 @@ function choose(choice: HostChoice): void {
     },
   )
 }
-const comments = ref<MessageComment[]>([])
+const comments = ref<WaitingComment[]>([])
 const commenting: ReplyCommenting = {
   get waiting() {
     return comments.value
   },
+  files: galleryMessageFiles().files,
   add: (comment) => (comments.value = [...comments.value, comment]),
-  edit: (id, text) => (comments.value = comments.value.map((each) => (each.id === id ? { ...each, text } : each))),
+  edit: (id, content) => (comments.value = comments.value.map((each) => (each.id === id ? { ...each, content } : each))),
   remove: (id) => (comments.value = comments.value.filter((each) => each.id !== id)),
 }
 const sidebarOpen = ref(false)

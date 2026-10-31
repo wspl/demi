@@ -66,11 +66,16 @@ export function askHistory(): Block[] {
 let made = 0
 const at = () => new Date(Date.now() + made++).toISOString()
 
-/** A side question's message, as its transcript keeps it: the first quotes the words before the question. */
-export function askMessage(id: string, index: number, quote: string, question: string, picture: MediaSource | null = null): Block {
+/**
+ * A side question's message, as its transcript keeps it: the first quotes the
+ * words before the question, its first text joined to the quote.
+ */
+export function askMessage(id: string, index: number, quote: string, question: readonly UserContentBlock[], picture: MediaSource | null = null): Block {
   const quoted = quote.split('\n').map((line) => `> ${line}`).join('\n')
+  const [lead, ...rest] = question
+  const joined: UserContentBlock[] = lead?.type === 'text' ? [{ type: 'text', text: `${quoted}\n\n${lead.text}` }, ...rest] : [{ type: 'text', text: quoted }, ...question]
   // A side question about a picture carries the picture before the question.
-  const first: UserContentBlock[] = picture ? [{ type: 'image', source: picture }, { type: 'text', text: question }] : [{ type: 'text', text: `${quoted}\n\n${question}` }]
+  const first: UserContentBlock[] = picture ? [{ type: 'image', source: picture }, ...question] : joined
   return {
     type: 'user',
     id: `${id}-q${index}`,
@@ -78,7 +83,7 @@ export function askMessage(id: string, index: number, quote: string, question: s
     turnId: index === 0 ? id : `${id}-turn${index}`,
     createdAt: at(),
     model: demoModel,
-    content: index === 0 ? first : [{ type: 'text', text: question }],
+    content: index === 0 ? first : [...question],
     preamble: null,
   }
 }
