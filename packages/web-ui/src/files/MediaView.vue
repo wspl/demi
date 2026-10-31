@@ -12,7 +12,7 @@ import { useSheetDismiss } from './panel-sheet'
 import SheetCloseButton from './SheetCloseButton.vue'
 import { downloadUrl } from './download'
 import MediumStage from './MediumStage.vue'
-import { mediumKey, useMediaViewer, type MediumPlace } from './media-viewer'
+import { arrowStep, mediumKey, useMediaViewer, type MediumPlace } from './media-viewer'
 import FileIcon from './FileIcon.vue'
 import { formatBytes } from './format'
 import { baseName } from '@demicodes/utils'
@@ -30,7 +30,8 @@ import { t } from './locales/text'
  *   file; it ends with its resolution, its size, Download, then Previous,
  *   its place in the series, *3 / 12*, and Next, and in a phone's overlay
  *   Close (`SheetCloseButton`).
- * - The Left and Right Arrow keys step through the series, and on a phone a
+ * - The arrow keys step through the series, Left and Up back, Right and Down
+ *   on, and on a phone a
  *   swipe does, across a picture or a video; a video's player keeps its own
  *   keys. In a phone's overlay a pull down or a tap beside the medium closes
  *   it.
@@ -128,15 +129,13 @@ watch([() => viewer.shown.value, () => props.shown], ([shown, selected]) => {
     void nextTick(() => root.value?.focus({ preventScroll: true }))
 }, { immediate: true })
 
-/** The arrow keys step to the medium before (left) or after (right); a video's player keeps its own. */
+/** The arrow keys step through the series (`arrowStep`). */
 function onKeydown(event: KeyboardEvent): void {
-  const direction = { ArrowLeft: -1, ArrowRight: 1 }[event.key]
-  if (direction === undefined || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
-    return
-  if (event.target instanceof HTMLVideoElement)
+  const step = arrowStep(event)
+  if (step === null)
     return
   event.preventDefault()
-  viewer.step(direction === -1 ? -1 : 1)
+  viewer.step(step)
 }
 
 /** Downloads the medium as it shows: a Host file's version, or its address. */
