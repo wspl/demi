@@ -1,12 +1,35 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type { MediaSequence } from '../files/media-viewer'
-import type { RequestEditSelection, TranscriptRequests } from '../files/request-changes'
+import { selectsBinary, type RequestEditSelection, type TranscriptRequests } from '../files/request-changes'
+import { resolveHostPath } from '../files/paths'
+import type { MessageFiles } from '../markdown/types'
 
 /**
  * Opens a request's changes, through the `edit` intent, on a pill's click; what
  * the panel already shows stays as it is (`openIntent`). /
  */
 export type EditSelectionHandler = (selection: RequestEditSelection) => void
+
+/**
+ * What a file pill's click does with `selection`: open the file's edit,
+ * through the `edit` intent; or, for a binary file, whose changes keep no
+ * contents to compare, open the file as it is now, through the `file`
+ * intent, as the Change view's Open File would. Null while neither opens it,
+ * and the pill is then no control.
+ */
+export function pillAction(
+  select: EditSelectionHandler | undefined,
+  requests: TranscriptRequests,
+  files: MessageFiles | undefined,
+  selection: RequestEditSelection,
+): (() => void) | null {
+  const open = files?.open
+  if (open && files && selectsBinary(requests, selection)) {
+    const path = resolveHostPath(selection.root ?? files.cwd, selection.file)
+    return () => open({ path, line: null, ...(selection.root === undefined ? {} : { root: selection.root }) })
+  }
+  return select ? () => select(selection) : null
+}
 const editSelectionKey: InjectionKey<() => EditSelectionHandler | undefined> = Symbol('edit-selection')
 
 /**

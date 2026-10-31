@@ -10,7 +10,8 @@ import FileChangePills from './FileChangePills.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
 import { useLiveCalls } from '../live-calls'
 import { runLabel, stepKey, type WorkGroupBlock } from '../work-groups'
-import { useEditSelection, useFilePills, useTranscript } from '../edit-selection'
+import { pillAction, useEditSelection, useFilePills, useTranscript } from '../edit-selection'
+import { useMessageFiles } from '../../markdown/message-files'
 import { changeFile, pillSelection, requestFileSelection, runFiles } from '../../files/request-changes'
 import { foldedMedia, splitMedia } from '../tool-media'
 
@@ -39,6 +40,7 @@ const label = computed(() => runLabel(props.group, liveCalls))
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const select = useEditSelection()
 const transcript = useTranscript()
+const messageFiles = useMessageFiles()
 const pillsShown = useFilePills()
 // Folded, each file the run changed shows once, with its lines from before the
 // run to after its latest call, as that call stored them. A file whose ends
@@ -95,14 +97,18 @@ function restSelection(paths: readonly string[]) {
   }
   return null
 }
+/** What a pill's click does: its edit, or a binary file as it is now (`pillAction`). */
+function action(path: string): (() => void) | null {
+  const picked = selection(path)
+  return picked && transcript ? pillAction(select(), transcript.requests(), messageFiles(), picked) : null
+}
 function selectable(path: string): boolean {
-  return select() !== undefined && selection(path) !== null
+  return action(path) !== null
 }
 function pick(path: string): void {
-  const picked = selection(path)
-  if (picked)
-    select()?.(picked)
+  action(path)?.()
 }
+/** The "+N Files" pill lists its files in the Change view, a binary one among them. */
 function pickRest(paths: readonly string[]): void {
   const picked = restSelection(paths)
   if (picked)

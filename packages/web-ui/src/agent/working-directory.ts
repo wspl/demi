@@ -37,7 +37,8 @@ export function childMessageFiles(files: MessageFiles, directory: string): Messa
   return {
     ...files,
     cwd: directory,
-    ...(open ? { open: (target) => open({ ...target, root: directory }) } : {}),
+    // A target that names its own directory, as a pill names the one its call ran in, keeps it.
+    ...(open ? { open: (target) => open({ ...target, root: target.root ?? directory }) } : {}),
     ...(showInFiles ? { showInFiles: (target) => showInFiles({ ...target, root: directory }) } : {}),
     // A commit link that names its repository's folder keeps it.
     ...(openCommit ? { openCommit: (target) => openCommit({ ...target, root: target.root ?? directory }) } : {}),
