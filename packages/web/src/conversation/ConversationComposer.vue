@@ -9,7 +9,7 @@ import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
-import { inReadingOrder, shownComment } from '@demicodes/web-ui/agent/comments/comments'
+import { inReadingOrder } from '@demicodes/web-ui/agent/comments/comments'
 import { changeEditComments, editComments } from '@demicodes/web-ui/agent/message-editing'
 import { refusedForSize } from '@demicodes/web-ui/agent/session-status'
 import { isCompacting } from '@demicodes/web-ui/agent/conversation-status'
@@ -136,7 +136,6 @@ function send(way: SendWay) {
 const waitingComments = computed(() =>
   inReadingOrder(props.conversation.comments, latestBlocks(props.conversation.history).map((block) => block.id)),
 )
-const commenting = computed(() => store.commenting(props.conversation))
 
 /**
  * The edit of a sent message the composer shows, whose own comments the pill
@@ -146,25 +145,12 @@ const sentEdit = computed(() => {
   const edit = props.conversation.messageEdit
   return edit?.kind === 'message' && edit.phase !== 'regenerating' ? edit : null
 })
-/**
- * The comments the pill lists: the shown edit's, which take Delete alone,
- * else the draft's, each with the message its Edit opens.
- */
+/** The comments the pill steps through: the shown edit's, else the draft's, in reading order. */
 const carriedComments = keptComputed(() => {
   if (sentEdit.value) {
-    return editComments(sentEdit.value).map(shownComment)
+    return inReadingOrder(editComments(sentEdit.value), latestBlocks(props.conversation.history).map((block) => block.id))
   }
-  if (props.conversation.messageEdit?.kind === 'saved') {
-    return []
-  }
-  const files = commenting.value.files
-  return waitingComments.value.map((comment) => ({
-    id: comment.id,
-    quote: comment.quote,
-    markdown: comment.content.text,
-    attachments: files.capsules(comment.content.fileIds),
-    message: comment.content,
-  }))
+  return props.conversation.messageEdit?.kind === 'saved' ? [] : waitingComments.value
 })
 /** Changes the shown edit's comments by `change`. */
 function changeEdit(change: Parameters<typeof changeEditComments>[1]): void {
@@ -353,19 +339,9 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
     >
       <template v-if="carriedComments.length > 0" #carried>
         <WaitingComments
-          v-if="sentEdit"
           :comments="carriedComments"
-          :readonly="sentEdit.phase !== 'editing'"
-          @remove="(id) => changeEdit((comments) => comments.filter((each) => each.id !== id))"
-          @clear="changeEdit(() => [])"
-        />
-        <WaitingComments
-          v-else
-          :comments="carriedComments"
-          :files="commenting.files"
-          @edit="(id, message) => commenting.edit(id, message)"
-          @remove="commenting.remove($event)"
-          @clear="store.clearComments(conversation)"
+          :readonly="sentEdit !== null && sentEdit.phase !== 'editing'"
+          @clear="sentEdit ? changeEdit(() => []) : store.clearComments(conversation)"
         />
       </template>
     </SessionComposer>

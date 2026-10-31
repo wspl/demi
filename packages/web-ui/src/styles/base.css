@@ -1639,6 +1639,8 @@ html[data-theme="light"] .file-pill {
      row's rounded corners, fading out.
    - An element wider than the column its content stands in, as a transcript row is,
      says how far in the column starts with --found-inset-x.
+   - An element with rounded corners of its own, as a comment's box, gives the fill
+     its radius with --found-radius.
    - The fill is translucent and drawn over the element rather than behind it, so a
      row with a fill of its own, as a user's message has, shows it too, and its text
      reads through it.
@@ -1657,7 +1659,7 @@ html[data-theme="light"] .file-pill {
     inset-inline: var(--found-inset-x, 0px);
     /* Over whatever the element stacks inside it, a user's message included. */
     z-index: 100;
-    border-radius: var(--radius-md);
+    border-radius: var(--found-radius, var(--radius-md));
     background-color: color-mix(in srgb, transparent, var(--tint-accent-mix));
     pointer-events: none;
     animation: found-highlight 1.6s ease-out forwards;

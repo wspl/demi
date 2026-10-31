@@ -230,6 +230,12 @@ function selectionField(reply: { blockId: string; root: HTMLElement }, selected:
 defineExpose({ selectionTools, selectionField, pictureTools })
 
 /** The message of the waiting comment `id`, which its Edit opens; none for a sent one. */
+/** Whether the comment `id` is one an open edit holds and can take out. */
+function editedRemoves(id: string): boolean {
+  const edited = props.commenting.edited
+  return !!edited?.remove && edited.comments.some((comment) => comment.id === id)
+}
+
 function waitingMessage(id: string): DraftMessage | undefined {
   return props.commenting.waiting.find((comment) => comment.id === id)?.content
 }
@@ -462,14 +468,15 @@ onBeforeUnmount(() => {
   <Teleport v-for="comment in marked" :key="comment.id" :to="placeOf(`comment:${comment.id}`)">
     <CommentItem
       class="my-2"
-      inline
+      :data-comment-id="comment.id"
       :markdown="comment.markdown"
       :attachments="comment.attachments"
       :editing-message="waitingMessage(comment.id)"
       :files="commenting.files"
       :sent="comment.sent"
+      :deletable="editedRemoves(comment.id)"
       @save="commenting.edit(comment.id, $event)"
-      @delete="commenting.remove(comment.id)"
+      @delete="comment.sent ? commenting.edited?.remove?.(comment.id) : commenting.remove(comment.id)"
     />
   </Teleport>
 

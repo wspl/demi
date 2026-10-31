@@ -1,3 +1,5 @@
+import { inject, provide, type InjectionKey } from 'vue'
+import type { HeldTranscript } from '../../transport/protocol'
 import { z } from 'zod'
 import { messageCommentSchema, type MediaSource, type MessageComment } from '@demicodes/protocol'
 import { ATTACHMENT_MARK } from '../../markdown/user-markdown'
@@ -85,6 +87,66 @@ export interface ReplyCommenting {
   edit: (id: string, content: DraftMessage) => void
   /** Removes the waiting comment `id`. */
   remove: (id: string) => void
+  /**
+   * The edit of a sent message that is open: its comments, which the reply's
+   * boxes show in place of those the message sent, and Delete on them, absent
+   * while the edit is sent.
+   */
+  edited?: EditedComments | null
+}
+
+/** The comments an open edit of a sent message holds (`ReplyCommenting.edited`). */
+export interface EditedComments {
+  /** The edited message's block. */
+  blockId: string
+  comments: readonly MessageComment[]
+  remove?: (id: string) => void
+}
+
+/**
+ * The ids of the comments among `comments` on the block `blockId` and the
+ * replies after it on the conversation's path, which Regenerate or an edit of
+ * the message `blockId`, or a switch to another version of the block,
+ * replaces. A comment whose reply `history` does not hold is not among them:
+ * where its reply stands is not known.
+ */
+export function commentsReplaced(history: HeldTranscript, comments: readonly CommentPlace[], blockId: string): string[] {
+  const place = (id: string): number | null => {
+    for (const window of history.windows) {
+      const at = window.blocks.findIndex((block) => block.id === id)
+      if (at >= 0)
+        return window.start + at
+    }
+    return null
+  }
+  const target = place(blockId)
+  if (target === null)
+    return []
+  return comments.flatMap((comment) => {
+    const at = place(comment.blockId)
+    return at !== null && at >= target ? [comment.id] : []
+  })
+}
+
+/** Where a comment stands: its id, and the reply's block it is on. */
+export interface CommentPlace {
+  id: string
+  blockId: string
+}
+
+/** Brings a comment's box into view and marks it (`WaitingComments.vue`). */
+export type CommentRevealer = (comment: CommentPlace) => void
+
+const commentRevealerKey: InjectionKey<CommentRevealer> = Symbol('comment-revealer')
+
+/** Gives the comments pill below the way to show a comment's box. */
+export function provideCommentRevealer(revealer: CommentRevealer): void {
+  provide(commentRevealerKey, revealer)
+}
+
+/** The way to show a comment's box; none where no transcript is shown. */
+export function useCommentRevealer(): CommentRevealer | null {
+  return inject(commentRevealerKey, null)
 }
 
 /** Whether a message says something: words, or a file. */

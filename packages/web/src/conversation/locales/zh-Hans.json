@@ -45,6 +45,7 @@
     "readFailed": "此浏览器无法读取已存储的草稿。",
     "missingFile": "文件"
   },
+  "commentsReplaced": "{count} 条评论随原回答移除",
   "savedDeleted": "已删除保存的消息",
   "composer": {
     "cloudResetting": "云端正在重置。"
