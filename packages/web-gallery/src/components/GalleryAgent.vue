@@ -25,6 +25,7 @@ defineProps<{
     v-model:small-model="state.choice"
     v-model:same-provider="state.sameProvider"
     v-model:suggested-replies="state.suggestedReplies"
+    v-model:output-speed="state.outputSpeed"
     v-model:send-while-running="galleryMessages.sendWhileRunning"
     v-model:resume-after-restart="galleryMessages.resumeAfterRestart"
     v-model:resume-at-retry="galleryMessages.resumeAtRetry"

@@ -35,6 +35,8 @@ interface Specimen {
   turnSpeed: TurnSpeed | null
   /** The row's width, for the narrow row. */
   width?: string
+  /** Settings › Agent › Output speed; off, the reading keeps its room unseen. */
+  outputSpeed: boolean
 }
 
 let requests = 0
@@ -61,8 +63,8 @@ const NO_TURN: TurnSpeed = { tokens: 0, streamedMs: 0 }
 const KEPT: TurnSpeed = { tokens: 2_340, streamedMs: 45_000 }
 
 /** A specimen with no turn streamed yet and no speed kept, unless `parts` says so. */
-function specimen(parts: Omit<Specimen, 'paused' | 'turn' | 'turnSpeed'> & Partial<Specimen>): Specimen {
-  return { paused: false, turn: NO_TURN, turnSpeed: null, ...parts }
+function specimen(parts: Omit<Specimen, 'paused' | 'turn' | 'turnSpeed' | 'outputSpeed'> & Partial<Specimen>): Specimen {
+  return { paused: false, turn: NO_TURN, turnSpeed: null, outputSpeed: true, ...parts }
 }
 
 const specimens = reactive<Specimen[]>([
@@ -76,6 +78,7 @@ const specimens = reactive<Specimen[]>([
   specimen({
     variant: 'Narrow Row', chips: true, away: true, output: streaming(12_400, 140), paused: true, turnSpeed: KEPT, width: '22rem',
   }),
+  specimen({ variant: 'Output Speed Off', chips: false, away: false, output: streaming(1_240, 15), turnSpeed: KEPT, outputSpeed: false }),
 ])
 
 const agents = reactive(gallerySubagents())
@@ -184,6 +187,9 @@ const WIDTHS = ['22rem', '27.5rem', '30rem', '17rem']
           <Button size="sm" variant="ghost" @click="specimen.chips = !specimen.chips">
             {{ specimen.chips ? 'Hide Chips' : 'Show Chips' }}
           </Button>
+          <Button size="sm" variant="ghost" @click="specimen.outputSpeed = !specimen.outputSpeed">
+            {{ specimen.outputSpeed ? 'Turn Output Speed Off' : 'Turn Output Speed On' }}
+          </Button>
           <Button
             v-if="specimen.width"
             size="sm"
@@ -199,6 +205,7 @@ const WIDTHS = ['22rem', '27.5rem', '30rem', '17rem']
             :output="() => specimen.output"
             :scope="specimen.variant"
             :turn-speed="specimen.turnSpeed"
+            :output-speed="specimen.outputSpeed"
             @scroll-to-bottom="specimen.away = false"
           >
             <template v-if="specimen.chips" #chips>

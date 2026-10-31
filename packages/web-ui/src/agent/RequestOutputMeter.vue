@@ -17,6 +17,11 @@ const props = defineProps<{
   scope: string
   /** The speed of the conversation's last turn, as the server keeps it. */
   turnSpeed: TurnSpeed | null
+  /**
+   * Whether the reading shows (Settings › Agent › Output speed). Off, it
+   * keeps its room unseen, so a chip that comes or goes moves nothing.
+   */
+  visible?: boolean
 }>()
 
 const motion = usePreferredReducedMotion()
@@ -62,6 +67,8 @@ const rate = computed(() => (shown.value ? speed.value : turnSpeed.value))
     <div
       v-if="shown || turnSpeed !== null"
       class="flex h-chip min-w-0 flex-1 flex-wrap content-start items-center justify-end gap-x-1 overflow-hidden text-detail text-fg-subtle tabular-nums"
+      :class="visible === false ? 'invisible' : ''"
+      :aria-hidden="visible === false ? 'true' : undefined"
       data-request-output
     >
       <span class="h-chip" aria-hidden="true" />

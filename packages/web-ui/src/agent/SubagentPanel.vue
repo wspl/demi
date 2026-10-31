@@ -67,10 +67,13 @@ const props = withDefaults(
      * one, the panel reads the child's latest page when it shows it.
      */
     streamed?: boolean
+    /** Whether the panel shows the child's output (Settings › Agent › Output speed); off, it keeps its room. */
+    outputSpeed?: boolean
   }>(),
   {
     terminals: () => [],
     streamed: false,
+    outputSpeed: true,
   },
 )
 
@@ -318,7 +321,7 @@ function closeTab(id: string): void {
         is none.
       -->
       <div class="hidden shrink-0 justify-end px-4 pb-1 has-[>*]:flex">
-        <RequestOutputMeter :output="() => (active ? output?.(active.id) ?? null : null)" :scope="active.id" :turn-speed="null" />
+        <RequestOutputMeter :output="() => (active ? output?.(active.id) ?? null : null)" :scope="active.id" :turn-speed="null" :visible="outputSpeed" />
       </div>
       <AgentStatusBar
         :run="active"

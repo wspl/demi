@@ -337,6 +337,7 @@
       "modelKeywords": "标题模型,haiku,flash,自动",
       "sameProviderKeywords": "隐私,同一供应商",
       "suggestedRepliesKeywords": "建议,回复,快捷回复",
+      "outputSpeedKeywords": "token,速度,每秒",
       "sendKeywords": "引导,排队,回车",
       "restartKeywords": "重启,更新,继续",
       "retryKeywords": "用量限制,额度,重置",

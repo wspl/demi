@@ -135,6 +135,8 @@ export const usePreferences = defineStore('preferences', () => {
   const smallModelSameProvider = computed(() => product.snapshot?.preferences?.smallModelSameProvider ?? false)
   /** Whether answers offer suggested replies (Settings › Agent); absent means yes. */
   const suggestedReplies = computed(() => product.snapshot?.preferences?.suggestedReplies ?? true)
+  /** Whether conversations show the model's output speed (Settings › Agent); absent means yes. */
+  const outputSpeed = computed(() => product.snapshot?.preferences?.outputSpeed ?? true)
 
   /**
    * Whether the user turned the provider entry `providerId` off in
@@ -391,6 +393,7 @@ export const usePreferences = defineStore('preferences', () => {
     smallModel,
     smallModelSameProvider,
     suggestedReplies,
+    outputSpeed,
     contextLimit,
     setContextLimit,
     hidesProvider,

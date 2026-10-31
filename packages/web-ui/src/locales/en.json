@@ -31,6 +31,8 @@
       "sameProviderDescription": "Small requests go only to the provider the conversation uses.",
       "suggestedReplies": "Suggested Replies",
       "suggestedRepliesDescription": "After an answer, offers replies you can send with one click.",
+      "outputSpeed": "Output speed",
+      "outputSpeedDescription": "Shows the tokens a model writes and how fast, above the message field.",
       "messages": "Messages",
       "sendWhileRunning": "Enter while the agent works",
       "sendWhileRunningDescription": "Steer sends to the running turn. Queue waits for it to end. {keys} does the other.",

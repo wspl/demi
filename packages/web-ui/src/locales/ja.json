@@ -31,6 +31,8 @@
       "sameProviderDescription": "軽量リクエストを、会話で使っているプロバイダーにだけ送ります。",
       "suggestedReplies": "返信の候補",
       "suggestedRepliesDescription": "回答のあとに、クリックひとつで送れる返信を提案します。",
+      "outputSpeed": "出力速度",
+      "outputSpeedDescription": "入力欄の上に、モデルが出力したトークン数と速度を表示します。",
       "messages": "メッセージ",
       "sendWhileRunning": "エージェントの作業中に Enter を押したとき",
       "sendWhileRunningDescription": "「今すぐ反映」は実行中のターンにメッセージを送ります。「キューに追加」はターンの終了を待ちます。{keys} でもう一方になります。",

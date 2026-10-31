@@ -337,6 +337,7 @@
       "modelKeywords": "title model,haiku,flash,automatic",
       "sameProviderKeywords": "privacy,same provider",
       "suggestedRepliesKeywords": "suggestions,replies,quick reply",
+      "outputSpeedKeywords": "tokens,speed,tokens per second",
       "sendKeywords": "steer,queue,enter",
       "restartKeywords": "restart,update,continue",
       "retryKeywords": "usage limit,quota,reset",

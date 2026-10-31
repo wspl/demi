@@ -776,6 +776,17 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub suggested_replies: Option<bool>,
+    /// Whether a conversation shows the model's output over its composer:
+    /// the tokens and the speed of the request running, then the last
+    /// turn's speed. Absent means yes.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub output_speed: Option<bool>,
 }
 
 /// The small model the user chose: model settings without a service tier,
@@ -1080,6 +1091,14 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub suggested_replies: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub output_speed: Option<bool>,
 }
 
 /// `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

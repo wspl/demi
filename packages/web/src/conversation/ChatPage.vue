@@ -411,6 +411,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :file-pills="conversation.projectId !== null"
     :commenting="conversation.archived ? undefined : commenting"
     :suggested-replies="preferences.suggestedReplies ? conversation.suggestedReplies : undefined"
+    :output-speed="preferences.outputSpeed"
     @send-suggestion="(text: string) => conversation && store.sendSuggestion(conversation, text)"
     :asking="asking"
     :files="files"
