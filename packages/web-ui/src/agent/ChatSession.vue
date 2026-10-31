@@ -111,6 +111,8 @@ const props = withDefaults(defineProps<{
    * none, as with Suggested Replies off.
    */
   suggestedReplies?: { blockId: string; replies: readonly SuggestedReply[] } | null
+  /** Whether the dock and the subagents' panel show the model's output (Settings › Agent › Output speed). */
+  outputSpeed?: boolean
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
   /**
@@ -251,6 +253,7 @@ const props = withDefaults(defineProps<{
   panelTabs: 0,
   resumeAtRetry: undefined,
   filePills: true,
+  outputSpeed: true,
 })
 /**
  * The share of the session area's height the dock's windows keep; the host
@@ -1094,6 +1097,7 @@ watch(
             :output="shownOutput"
             :scope="conversation.id"
             :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
+            :output-speed="outputSpeed"
             @scroll-to-bottom="scrollToBottom"
           >
             <template v-if="dockShown && (permissionRequests?.length || notificationsCard)" #above>
@@ -1178,6 +1182,7 @@ watch(
             :reveal="reveal?.node ? reveal : null"
             :read-latest="readSubagentLatest"
             :streamed="subagentsStreamed"
+            :output-speed="outputSpeed"
             @read="(id) => emit('readSubagent', id)"
             @read-after="(id) => emit('readSubagentAfter', id)"
             @shown="(id, block, within) => emit('shown', id, block, within)"

@@ -9,10 +9,12 @@ export interface SmallModelState {
   sameProvider: boolean
   /** Suggested Replies, on as the product's default. */
   suggestedReplies: boolean
+  /** Output speed, on as the product's default. */
+  outputSpeed: boolean
 }
 
 export function createSmallModelState(choice: SmallModelChoice | null = null, sameProvider = false): SmallModelState {
-  return reactive({ choice, sameProvider, suggestedReplies: true })
+  return reactive({ choice, sameProvider, suggestedReplies: true, outputSpeed: true })
 }
 
 /** Claude Haiku, which the gallery's Anthropic entry lists beside the composer's models for the small model's menu. */

@@ -31,6 +31,8 @@
       "sameProviderDescription": "轻量请求只发送到对话所用的供应商。",
       "suggestedReplies": "建议回复",
       "suggestedRepliesDescription": "回答之后给出几条回复，点一下即可发送。",
+      "outputSpeed": "输出速度",
+      "outputSpeedDescription": "在输入框上方显示模型输出的 token 数和速度。",
       "messages": "消息",
       "sendWhileRunning": "智能体工作时按 Enter",
       "sendWhileRunningDescription": "“引导”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",

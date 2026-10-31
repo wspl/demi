@@ -31,6 +31,8 @@
       "sameProviderDescription": "경량 요청을 대화가 사용하는 제공업체에만 보냅니다.",
       "suggestedReplies": "추천 답장",
       "suggestedRepliesDescription": "답변 후에 클릭 한 번으로 보낼 수 있는 답장을 제안합니다.",
+      "outputSpeed": "출력 속도",
+      "outputSpeedDescription": "입력란 위에 모델이 출력한 토큰 수와 속도를 표시합니다.",
       "messages": "메시지",
       "sendWhileRunning": "에이전트 작업 중 Enter 키",
       "sendWhileRunningDescription": "조정은 실행 중인 턴에 바로 보냅니다. 대기열에 추가는 턴이 끝날 때까지 기다립니다. {keys} 키는 나머지 방식으로 보냅니다.",

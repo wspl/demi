@@ -337,6 +337,7 @@
       "modelKeywords": "タイトルのモデル,haiku,flash,自動",
       "sameProviderKeywords": "プライバシー,同じプロバイダー",
       "suggestedRepliesKeywords": "候補,返信,クイック返信",
+      "outputSpeedKeywords": "トークン,速度,毎秒",
       "sendKeywords": "ステア,キュー,Enter",
       "restartKeywords": "再起動,アップデート,続行",
       "retryKeywords": "使用量の上限,クォータ,リセット",

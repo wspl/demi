@@ -31,12 +31,15 @@ withDefaults(defineProps<{
   scope?: string
   /** The speed of the conversation's last turn, which the row shows once no reading does. */
   turnSpeed?: TurnSpeed | null
+  /** Whether the row shows the model's output (Settings › Agent › Output speed); off, it keeps its room. */
+  outputSpeed?: boolean
 }>(), {
   showScrollToBottom: false,
   catchingUp: false,
   output: () => null,
   scope: '',
   turnSpeed: null,
+  outputSpeed: true,
 })
 
 const emit = defineEmits<{
@@ -200,7 +203,7 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       </div>
       <span v-if="showScrollToBottom" class="w-chip shrink-0" />
       <div class="flex min-w-0 flex-1 justify-end pe-[var(--composer-inset)]">
-        <RequestOutputMeter :output="output" :scope="scope" :turn-speed="turnSpeed" />
+        <RequestOutputMeter :output="output" :scope="scope" :turn-speed="turnSpeed" :visible="outputSpeed" />
       </div>
     </div>
     <div ref="composerRef" class="relative z-10">

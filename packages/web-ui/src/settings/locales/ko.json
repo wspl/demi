@@ -337,6 +337,7 @@
       "modelKeywords": "제목 모델,haiku,flash,자동",
       "sameProviderKeywords": "개인정보,같은 제공업체",
       "suggestedRepliesKeywords": "추천,답장,빠른 답장",
+      "outputSpeedKeywords": "토큰,속도,초당",
       "sendKeywords": "조정,대기열,Enter",
       "restartKeywords": "재시작,업데이트,계속",
       "retryKeywords": "사용량 한도,할당량,재설정",
