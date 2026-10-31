@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { onScopeDispose, ref } from 'vue'
 import { createFingerDrag } from '../ui/finger-drag'
 
 /** How far a swipe lays the Delete bare, in px. */
@@ -24,6 +24,7 @@ export function useSwipeDelete() {
       offset.value = goes ? -REVEAL_PX : 0
     },
   })
+  onScopeDispose(() => drag.dispose())
   function tap(): void {
     if (revealed.value) {
       revealed.value = false

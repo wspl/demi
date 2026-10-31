@@ -16,6 +16,11 @@ import { dragCloses, dragVelocity } from './drag-close'
  * - A shorter pull, or one held still before the lift, springs back.
  * - A second finger or the system taking the touch springs it back too: only a
  *   lift lets it go.
+ * - A finger put down alone while a drag still holds its pane means the lift
+ *   of the one that held it never came, as when the system took the touch
+ *   without a word: that pane springs back first. Held on, it would stay
+ *   wherever the lost finger left it, as a drawer drawn in halfway that no
+ *   tap closes.
  * - A lift that ends a drag clicks nothing.
  *
  * Its moves are heard on what the finger touched, where a touch's events go
@@ -45,6 +50,23 @@ export interface FingerDragOptions {
 
 /** A finger that moves this far settles whether it drags the pane or scrolls what is under it. */
 const SLOP_PX = 8
+
+/** The drags of the page, each with whether a touch holds its pane. */
+const drags = new Set<{ holding(): boolean, cancel(): void }>()
+
+/**
+ * A finger put down alone: every drag that still holds its pane lost its
+ * finger's lift, and springs back. Heard on the window as it captures, so
+ * before any drag starts on the new touch.
+ */
+function firstFingerDown(event: TouchEvent): void {
+  if (event.touches.length !== 1)
+    return
+  for (const drag of drags) {
+    if (drag.holding())
+      drag.cancel()
+  }
+}
 
 /** Keeps the pane's drag; `dispose` releases the listeners of a touch still under way. */
 export function createFingerDrag(options: FingerDragOptions): FingerDrag & { dispose(): void } {
@@ -140,5 +162,15 @@ export function createFingerDrag(options: FingerDragOptions): FingerDrag & { dis
     target.addEventListener('touchcancel', cancel, { signal })
   }
 
-  return { start, cancel, dispose: release }
+  const drag = { holding: () => touch?.holding === true, cancel }
+  if (drags.size === 0)
+    window.addEventListener('touchstart', firstFingerDown, { capture: true, passive: true })
+  drags.add(drag)
+  function dispose(): void {
+    release()
+    drags.delete(drag)
+    if (drags.size === 0)
+      window.removeEventListener('touchstart', firstFingerDown, { capture: true })
+  }
+  return { start, cancel, dispose }
 }
