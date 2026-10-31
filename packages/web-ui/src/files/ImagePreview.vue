@@ -25,7 +25,8 @@ import type { PixelSize } from './thumbnail'
  * A picture as an image viewer shows it, in the media viewer's window and in the
  * File view.
  *
- * It opens fitted, scaled down and never enlarged. Its actual size is one of its
+ * It opens fitted, as large as its frame lets it, enlarged when it is smaller,
+ * as Photos opens a picture. Its actual size is one of its
  * pixels on one device pixel, so 100% of a 2880-pixel-wide picture is 1440 page
  * pixels wide on a display of two device pixels per page pixel, and all the zoom
  * rules below count from that.
@@ -33,7 +34,8 @@ import type { PixelSize } from './thumbnail'
  * Pointer and trackpad:
  *
  * - The wheel, and a trackpad's pinch, zoom it about the pointer from the fitted
- *   size up to eight times the actual size.
+ *   or the actual size, whichever is smaller, up to eight times the actual size
+ *   or the fitted size, whichever is larger.
  * - While it is larger than its frame a drag moves it, with the grab hand, and it
  *   never leaves an empty band on a side that still has pixels.
  * - A click without a drag toggles the fitted and the actual size about the
@@ -149,7 +151,11 @@ const movable = computed(() => {
   return size.width * shown.scale > now.width + 0.5 || size.height * shown.scale > now.height + 0.5
 })
 
-/** What a click would do, as the pointer says it: move a large picture, zoom in a fitted one, fit a zoomed one. */
+/**
+ * What a click would do, as the pointer says it: move a large picture, or
+ * toggle the fitted and the actual size, zooming in or out by which of them is
+ * larger.
+ */
 const cursor = computed(() => {
   const size = natural.value
   const shown = view.value
@@ -158,9 +164,10 @@ const cursor = computed(() => {
     return 'default'
   if (movable.value)
     return 'grab'
-  if (!isFitted(shown, size, now))
-    return 'zoom-out'
-  return shown.scale < 1 ? 'zoom-in' : 'default'
+  const next = isFitted(shown, size, now) ? 1 : fittedView(size, now).scale
+  if (Math.abs(next - shown.scale) < 1e-6)
+    return 'default'
+  return next > shown.scale ? 'zoom-in' : 'zoom-out'
 })
 
 const imageStyle = computed(() => {
