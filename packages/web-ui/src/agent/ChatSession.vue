@@ -108,7 +108,7 @@ const props = withDefaults(defineProps<{
   /**
    * The replies the user is likely to send next, kept with the answer they
    * follow: null while none are kept, absent where the conversation offers
-   * none, as with Suggested Replies off.
+   * none, as with Suggested replies off.
    */
   suggestedReplies?: { blockId: string; replies: readonly SuggestedReply[] } | null
   /** Whether the dock and the subagents' panel show the model's output (Settings › Agent › Output speed). */

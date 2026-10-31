@@ -540,7 +540,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       </GallerySection>
 
       <GallerySection
-        title="Agent · Only the Conversation’s Provider"
+        title="Agent · Only the conversation’s provider"
         note="With small requests kept on the conversation’s provider, the page cannot know which model Automatic resolves to, so it reads Automatic alone. Turning the switch off names it again, after Automatic in smaller secondary text."
       >
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">

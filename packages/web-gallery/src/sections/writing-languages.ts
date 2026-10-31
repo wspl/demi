@@ -98,7 +98,7 @@ const SIMPLIFIED: LanguageWriting = {
     ['Agent (the Settings section)', '智能体', 'The Agent term above, as Codex’s settings name theirs; not 代理'],
     ['Small Model', '轻量模型', 'No app names the setting; the user chose 轻量, the word Chinese model vendors use for their fast, cheap tier, over a literal 小模型, which reads as a small-parameter research model'],
     ['Automatic', '自动', 'macOS System Settings’ Appearance, ChatGPT’s model picker'],
-    ['Only the Conversation’s Provider', '仅用对话的供应商', 'Demi’s own switch; 仅用 as in macOS’s 仅用 Wi-Fi, with the Provider term'],
+    ['Only the conversation’s provider', '仅用对话的供应商', 'Demi’s own switch; 仅用 as in macOS’s 仅用 Wi-Fi, with the Provider term'],
     ['Model', '模型', 'ChatGPT; Apple’s 型号 is a device model'],
     ['Account', '账户', 'Codex, ChatGPT, Apple; the everyday 账户 over 帐户, and 账号 is a login name'],
     ['Add Account', '添加账户', 'Codex, Apple'],
@@ -211,7 +211,7 @@ const SIMPLIFIED: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '全部关闭', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
-    ['Suggested Replies', '建议回复', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Suggested replies', '建议回复', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 
@@ -278,7 +278,7 @@ const TRADITIONAL: LanguageWriting = {
     ['Agent (the Settings section)', '智慧體', 'The Agent term above, as Codex’s settings name theirs'],
     ['Small Model', '輕量模型', 'Follows Simplified Chinese 轻量模型, the user’s choice; 輕量 is how Taiwanese vendors name a fast, cheap tier, and 小模型 reads as a research term'],
     ['Automatic', '自動', 'macOS System Settings’ Appearance, ChatGPT'],
-    ['Only the Conversation’s Provider', '僅用對話的供應商', 'Demi’s own switch; 僅用 as in Apple’s 僅用 Wi-Fi, with the Provider term'],
+    ['Only the conversation’s provider', '僅用對話的供應商', 'Demi’s own switch; 僅用 as in Apple’s 僅用 Wi-Fi, with the Provider term'],
     ['Model', '模型', 'ChatGPT. Apple’s 機型 is a device model'],
     ['Account', '帳號', 'Apple. ChatGPT and Codex say 帳戶, which reads as a bank account; 帳號 is the everyday word for a login'],
     ['Add Account', '新增帳號', 'Codex, ChatGPT (新增) with Apple’s 帳號'],
@@ -389,7 +389,7 @@ const TRADITIONAL: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '全部關閉', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
-    ['Suggested Replies', '建議回覆', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Suggested replies', '建議回覆', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 
@@ -456,7 +456,7 @@ const JAPANESE: LanguageWriting = {
     ['Agent (the Settings section)', 'エージェント', 'The Agent term above, as Codex’s settings name theirs'],
     ['Small Model', '軽量モデル', 'No app names the setting; 軽量モデル is how Japanese vendors and press describe fast, cheap models, where 小型モデル stresses size'],
     ['Automatic', '自動', 'macOS System Settings’ Appearance, ChatGPT'],
-    ['Only the Conversation’s Provider', '会話のプロバイダーのみ', 'Demi’s own switch; のみ ends a restriction as macOS’s labels do, with the Provider term'],
+    ['Only the conversation’s provider', '会話のプロバイダーのみ', 'Demi’s own switch; のみ ends a restriction as macOS’s labels do, with the Provider term'],
     ['Model', 'モデル', 'ChatGPT, Apple'],
     ['Account', 'アカウント', 'Codex, ChatGPT, Apple; not 口座, a bank account'],
     ['Add Account', 'アカウントを追加', 'Codex, Apple'],
@@ -567,7 +567,7 @@ const JAPANESE: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', 'すべて閉じる', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
-    ['Suggested Replies', '返信の候補', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Suggested replies', '返信の候補', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 
@@ -634,7 +634,7 @@ const KOREAN: LanguageWriting = {
     ['Agent (the Settings section)', '에이전트', 'The Agent term above, as Codex’s settings name theirs'],
     ['Small Model', '경량 모델', 'No app names the setting; 경량 모델 is how Korean vendors and press describe fast, cheap models, where 소형 모델 stresses size'],
     ['Automatic', '자동', 'macOS System Settings’ Appearance, ChatGPT'],
-    ['Only the Conversation’s Provider', '대화의 제공업체만', 'Demi’s own switch; 만 ends a restriction as Apple’s labels do, with the Provider term'],
+    ['Only the conversation’s provider', '대화의 제공업체만', 'Demi’s own switch; 만 ends a restriction as Apple’s labels do, with the Provider term'],
     ['Model', '모델', 'ChatGPT, Apple'],
     ['Account', '계정', 'Codex, ChatGPT, Apple'],
     ['Add Account', '계정 추가', 'Codex, Apple'],
@@ -752,7 +752,7 @@ const KOREAN: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '모두 닫기', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
-    ['Suggested Replies', '추천 답장', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Suggested replies', '추천 답장', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 
