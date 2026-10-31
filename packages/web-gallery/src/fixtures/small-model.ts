@@ -7,7 +7,7 @@ import { composerModels } from './context-limits'
 export interface SmallModelState {
   choice: SmallModelChoice | null
   sameProvider: boolean
-  /** Suggested Replies, on as the product's default. */
+  /** Suggested replies, on as the product's default. */
   suggestedReplies: boolean
   /** Output speed, on as the product's default. */
   outputSpeed: boolean

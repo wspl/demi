@@ -899,7 +899,7 @@ pub struct ModelCatalog {
     pub providers: Vec<CatalogProvider>,
     /// The selection Automatic resolves to for the small model
     /// (`crates/provider-registry/src/small_model.rs`), as for a conversation on the first
-    /// entry; null when Only the Conversation's Provider is on or no tier
+    /// entry; null when Only the conversation's provider is on or no tier
     /// matches.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSelection>")]

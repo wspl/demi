@@ -268,7 +268,7 @@ pub struct ConversationMetadata {
     /// The replies the user is likely to send after the root's latest
     /// answer, as the small model wrote them, with the answer they follow;
     /// null while none are kept, as before they arrive, after a turn that
-    /// did not answer, or with Suggested Replies off.
+    /// did not answer, or with Suggested replies off.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<SuggestedReplies>")]
     pub suggested_replies: Option<SuggestedReplies>,
