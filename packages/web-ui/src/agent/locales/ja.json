@@ -418,6 +418,7 @@
     "closeOthers": "その他を閉じる",
     "closeRight": "右側を閉じる",
     "closeLeft": "左側を閉じる",
+    "closeAll": "すべて閉じる",
     "cannotShow": "このタブは表示できません。",
     "nothingOpen": "開いているものはありません",
     "noFiles": "ファイルも変更もありません",

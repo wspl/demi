@@ -418,6 +418,7 @@
     "closeOthers": "Close Others",
     "closeRight": "Close to the Right",
     "closeLeft": "Close to the Left",
+    "closeAll": "Close All",
     "cannotShow": "This tab cannot be shown.",
     "nothingOpen": "Nothing open",
     "noFiles": "No files or changes",
