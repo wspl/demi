@@ -418,6 +418,7 @@
     "closeOthers": "关闭其他",
     "closeRight": "关闭右侧标签页",
     "closeLeft": "关闭左侧标签页",
+    "closeAll": "全部关闭",
     "cannotShow": "无法显示此标签页。",
     "nothingOpen": "没有打开的内容",
     "noFiles": "没有文件或更改",

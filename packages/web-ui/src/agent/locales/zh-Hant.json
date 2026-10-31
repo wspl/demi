@@ -418,6 +418,7 @@
     "closeOthers": "關閉其他",
     "closeRight": "向右關閉",
     "closeLeft": "向左關閉",
+    "closeAll": "全部關閉",
     "cannotShow": "無法顯示此分頁。",
     "nothingOpen": "沒有開啟的內容",
     "noFiles": "沒有檔案或變更",

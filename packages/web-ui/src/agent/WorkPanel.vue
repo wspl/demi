@@ -2,7 +2,7 @@
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
 import { computed, h, nextTick, provide, ref, shallowRef, watch, type Component, type FunctionalComponent } from 'vue'
-import { ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronLeft, CopyX, PanelRightClose, X } from '@lucide/vue'
+import { ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronLeft, CopyX, ListX, PanelRightClose, X } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -185,9 +185,10 @@ provide(sheetDismissKey, computed(() => (overlay.value ? () => emit('close') : n
 const viewShown = computed(() => props.hostOffline === null && contents.value.some((content) => content.id === selection.value))
 /** The tab menu's commands that close several tabs at once. */
 const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[]>(() => [
-  { scope: 'others', label: t('panel.closeOthers'), icon: CopyX },
   { scope: 'right', label: t('panel.closeRight'), icon: ArrowRightToLine },
   { scope: 'left', label: t('panel.closeLeft'), icon: ArrowLeftToLine },
+  { scope: 'others', label: t('panel.closeOthers'), icon: CopyX },
+  { scope: 'all', label: t('panel.closeAll'), icon: ListX },
 ])
 
 function closeScope(id: string, scope: TabCloseScope): void {

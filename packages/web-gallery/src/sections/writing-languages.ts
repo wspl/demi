@@ -210,6 +210,7 @@ const SIMPLIFIED: LanguageWriting = {
     ['Update channel', '更新通道', 'Chrome’s 渠道 and Edge’s 频道 name a release train; 通道 reads plainest beside 更新'],
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Close All', '全部关闭', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
   ],
 }
 
@@ -386,6 +387,7 @@ const TRADITIONAL: LanguageWriting = {
     ['Update channel', '更新頻道', 'Edge, Chrome'],
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Close All', '全部關閉', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
   ],
 }
 
@@ -562,6 +564,7 @@ const JAPANESE: LanguageWriting = {
     ['Update channel', 'アップデートチャンネル', 'Chrome, Edge'],
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Close All', 'すべて閉じる', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
   ],
 }
 
@@ -745,6 +748,7 @@ const KOREAN: LanguageWriting = {
     ['Update channel', '업데이트 채널', 'Chrome, Edge'],
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
+    ['Close All', '모두 닫기', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
   ],
 }
 

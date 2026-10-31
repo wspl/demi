@@ -1,8 +1,8 @@
 /**
- * Which tabs a close command in a tab's menu takes: the tab, the others, or one
- * side of it.
+ * Which tabs a close command in a tab's menu takes: the tab, one side of it,
+ * the others, or all of them.
  */
-export type TabCloseScope = 'self' | 'others' | 'right' | 'left'
+export type TabCloseScope = 'self' | 'right' | 'left' | 'others' | 'all'
 
 /**
  * The ids `scope` closes, in strip order; empty when there is nothing on that
@@ -26,6 +26,8 @@ export function tabsToClose(
       return tabs.slice(index + 1).map((tab) => tab.id)
     case 'left':
       return tabs.slice(0, index).map((tab) => tab.id)
+    case 'all':
+      return tabs.map((tab) => tab.id)
   }
 }
 
