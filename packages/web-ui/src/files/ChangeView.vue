@@ -51,6 +51,7 @@ import { t } from './locales/text'
 import { formatCount } from '../ui/numbers'
 import { COMMITS_HEIGHT, TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
+import SheetCloseButton from './SheetCloseButton.vue'
 import { relativePath, resolveHostPath } from './paths'
 import { hasSourceView, previewKind, svgImageUrl } from './preview'
 import type { FileContents } from './types'
@@ -643,6 +644,8 @@ function pick(path: string): void {
       </div>
       <!-- It gives way before the controls at the right, scrolling in its own box, as on a phone. -->
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0 phone:ml-0" />
+      <!-- A phone overlay's Close ends the first row, at the screen's top right. -->
+      <SheetCloseButton class="ml-auto" />
       <!-- On a phone the file's controls take a second row, the branch at its start, rather than crowd the first. -->
       <div class="hidden h-0 basis-full phone:block" aria-hidden="true" />
       <!-- The file's controls keep to the right, whether or not a file is shown. -->

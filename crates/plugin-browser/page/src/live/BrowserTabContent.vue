@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { ArrowDownToLine, Download, File, FolderSearch, Monitor, Ruler, Smartphone } from '@lucide/vue'
-import { AddressBar } from '@demicodes/plugin-sdk'
+import { AddressBar, SheetCloseButton } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
 import { Menu } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
@@ -339,6 +339,7 @@ watch(
       @reload="history('reload')"
       @stop="stop"
     >
+      <template #end><SheetCloseButton /></template>
       <template v-if="viewport || downloads.length > 0" #trailing>
         <!-- The downloads, once the user started one here, as a browser's toolbar shows them. -->
         <Dropdown v-if="downloads.length > 0" v-model:open="bubble" :overlay-store="overlays" class="shrink-0">

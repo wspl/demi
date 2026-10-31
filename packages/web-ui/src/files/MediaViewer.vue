@@ -29,7 +29,8 @@ import type { PixelSize } from './thumbnail'
  * - Opening another medium shows it in the same window, fitted.
  *
  * On a phone, the medium fills the screen instead, with its close control, and a
- * swipe left or right steps to the next or the previous picture (`ImagePreview`).
+ * swipe left or right steps to the next or the previous picture or video, and a
+ * pull down closes it (`swipe-layer.ts`).
  * Since it covers the screen, a tap on the empty space around the medium closes
  * it: beside the picture, in the margin and the line under it, beside a video.
  *

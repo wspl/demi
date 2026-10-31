@@ -49,7 +49,10 @@ import { KEEPS_WINDOWS } from '../ui/window-stack'
  *   and Back. A swipe right from the screen's left edge (`SCREEN_EDGE_PX`) opens
  *   it, following the finger in as the closing swipe follows it out.
  * - The work panel opens full screen over the conversation, sliding in from the
- *   right. A swipe right from that edge takes it back, as does its back button.
+ *   right; one the conversation opened (`asideSheet`), such as a picture tapped,
+ *   fades in over it instead, and fades out the same way. A swipe right from
+ *   that edge takes either back to the conversation, as does the full panel's
+ *   back button.
  *   The browser's Back closes it through the host, whose page address holds
  *   whether it is open (`asideOpen`), as a pushed page's does. While it is open
  *   the edge is its swipe, not the drawer's.
@@ -67,6 +70,12 @@ const props = withDefaults(defineProps<{
   label?: string
   /** The keys of the `sidebar` action, shown in the collapse button's tip. */
   toggleShortcut?: string
+  /**
+   * On a phone, whether the work panel is an overlay the conversation opened
+   * (a picture, a file link): it fades in over the conversation, with no
+   * shadow, rather than sliding in from the right as the full panel does.
+   */
+  asideSheet?: boolean
 }>(), { label: 'demi' })
 const emit = defineEmits<{
   resizeEnd: [width: number]
@@ -93,6 +102,17 @@ const phone = usePhone()
 const slots = useSlots()
 /** Whether the sidebar is out of the way on a computer, which a phone never is: its drawer is `open`. */
 const hidden = computed(() => collapsed.value && !phone.value)
+
+/**
+ * Whether the panel shown, or leaving, is the overlay the conversation opened (`asideSheet`): read while
+ * it is open and kept while it leaves, so it leaves the way it came, though its owner then says it is closed.
+ */
+const sheetShown = ref(props.asideSheet)
+watch([() => props.asideSheet, asideOpen], ([sheet, open]) => {
+  if (open) {
+    sheetShown.value = sheet
+  }
+})
 
 // On a phone the two overlays never stack: the newly opened one wins.
 watch(open, (value) => {
@@ -396,16 +416,17 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
       above a window of the dock it opened from, such as a subagent's, which
       stands at the drawer's height over the conversation.
     -->
-    <Transition name="frame-aside" :css="phone" @before-leave="dropPulled" @after-leave="panelSettled">
+    <Transition :name="phone && sheetShown ? 'frame-sheet' : 'frame-aside'" :css="phone" @before-leave="dropPulled" @after-leave="panelSettled">
       <div
         v-if="asideOpen && $slots.aside"
         data-region
         v-bind="{ [KEEPS_WINDOWS]: '' }"
-        :class="phone ? 'frame-aside fixed inset-0 z-[45]' : 'h-full max-w-full shrink-0'"
+        :class="phone ? `${sheetShown ? 'frame-sheet' : 'frame-aside'} fixed inset-0 z-[45]` : 'h-full max-w-full shrink-0'"
         :style="phone
           ? { '--aside-pull': panelPull === null ? undefined : `${panelPull}px` }
           : { width: `${shownAsideWidth}px` }"
         :data-pulled="phone && panelPulling ? '' : undefined"
+        :data-swiped="phone && panelPull !== null ? '' : undefined"
       >
         <slot name="aside" />
       </div>
@@ -471,6 +492,39 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
   translate: 100% 0;
 }
 
+/* The overlay the conversation opens fades in over it, with no shadow; a swipe from the edge still
+   pulls it aside, the conversation showing beneath. */
+.frame-sheet {
+  translate: var(--aside-pull, 0px) 0;
+  transition: translate 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.frame-sheet[data-pulled] {
+  transition: none;
+}
+
+.frame-sheet-enter-active,
+.frame-sheet-leave-active {
+  transition: opacity 200ms ease-out, scale 200ms ease-out;
+}
+
+.frame-sheet-enter-from,
+.frame-sheet-leave-to {
+  opacity: 0;
+  scale: 0.98;
+}
+
+/* Swiped away from the screen's edge, the overlay goes on sliding from where the finger left it. */
+.frame-sheet-leave-active[data-swiped] {
+  transition: translate 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.frame-sheet-leave-to[data-swiped] {
+  translate: 100% 0;
+  opacity: 1;
+  scale: 1;
+}
+
 /* The scrim lightens as the drawer is pulled, and eases back with it when it springs back. */
 .frame-scrim {
   opacity: var(--scrim-shade, 1);
@@ -492,6 +546,10 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
   .frame-aside,
   .frame-aside-enter-active,
   .frame-aside-leave-active,
+  .frame-sheet,
+  .frame-sheet-enter-active,
+  .frame-sheet-leave-active,
+  .frame-sheet-leave-active[data-swiped],
   .frame-scrim {
     transition: none;
   }

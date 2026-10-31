@@ -63,6 +63,8 @@ defineSlots<{
   default(props: { overlap: number }): unknown
   /** The tree; without it there is no tree and no control. */
   tree?(): unknown
+  /** What ends the header row after the tree's control, such as a phone overlay's Close. */
+  end?(): unknown
 }>()
 
 const pane = usePaneWaiting()
@@ -212,6 +214,8 @@ defineExpose({ show, dismiss })
             @click="toggle"
           />
         </Tooltip>
+        <!-- What ends the row after the tree's toggle, such as a phone overlay's Close. -->
+        <slot name="end" />
       </TooltipPlacement>
     </div>
     <!-- It clips a tree on its way in or out at the end. -->

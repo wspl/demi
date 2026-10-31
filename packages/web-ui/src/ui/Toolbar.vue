@@ -32,7 +32,8 @@ export interface ToolbarAction {
  *
  * The actions that do not fit the bar's width go, from its end, into a More menu (»)
  * at the end, as a macOS window's toolbar puts them. The leading content takes what
- * room the actions leave.
+ * room the actions leave. What the `end` slot holds, such as a Close button, ends
+ * the bar after More and never gives up its room: the actions fit in what it leaves.
  */
 const props = defineProps<{
   actions: readonly ToolbarAction[]
@@ -42,6 +43,8 @@ const props = defineProps<{
 }>()
 
 const bar = ref<HTMLElement | null>(null)
+/** The `end` slot's box, empty and hidden while it holds nothing. */
+const end = ref<HTMLElement | null>(null)
 /** Each action, with the divider before it, laid out or measured off the bar. */
 const items = ref<HTMLElement[]>([])
 const more = ref<HTMLElement | null>(null)
@@ -56,7 +59,8 @@ function fit(): void {
   }
   const style = getComputedStyle(element)
   const gap = parseFloat(style.columnGap) || 0
-  const room = element.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0)
+  const held = end.value?.offsetWidth ? end.value.offsetWidth + gap : 0
+  const room = element.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0) - held
   const widths = props.actions.map((_, index) => items.value[index]?.offsetWidth ?? 0)
   shown.value = fittingActions(widths, gap, room, more.value.offsetWidth)
 }
@@ -68,6 +72,10 @@ onMounted(() => {
   }
   observer = new ResizeObserver(() => fit())
   observer.observe(bar.value)
+  // What the end holds can come and go while the bar keeps its width.
+  if (end.value) {
+    observer.observe(end.value)
+  }
   fit()
 })
 onBeforeUnmount(() => observer?.disconnect())
@@ -138,6 +146,9 @@ watch(() => props.actions.map((action) => `${action.label}:${action.group ?? fal
           </Menu>
         </template>
       </Dropdown>
+    </div>
+    <div v-if="$slots.end" ref="end" class="flex flex-none items-center empty:hidden">
+      <slot name="end" />
     </div>
   </div>
 </template>

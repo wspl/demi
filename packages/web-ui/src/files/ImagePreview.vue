@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LONG_PRESS_MS } from '../ui/context-menu'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { useDevicePixelRatio, useElementSize, useMediaQuery } from '@vueuse/core'
+import { useDevicePixelRatio, useElementSize } from '@vueuse/core'
 import { dropSource } from './preview'
 import { startPointerDrag } from '../ui/pointer-drag'
 import {
@@ -17,7 +17,8 @@ import {
   type FramePoint,
   type ImageView,
 } from './image-zoom'
-import { startsSwipe, swipeAxis, swipeOffset, swipeStep, type StepReach, type SwipeAxis } from './swipe-step'
+import { startsSwipe, swipeAxis, type StepReach, type SwipeAxis } from './swipe-step'
+import { useSwipeLayer } from './swipe-layer'
 import type { PixelSize } from './thumbnail'
 
 /**
@@ -47,11 +48,14 @@ import type { PixelSize } from './thumbnail'
  *   it about the fingers, which the page itself never does (`phone-page.ts`).
  *   A long press is no tap: it leaves the picture as it is, under the
  *   system's menu for it where the system has one.
- * - With `dismissible`, as the phone's full screen shows it, a tap beside the
- *   picture, outside the box it is drawn in, asks to close it instead.
+ * - With `dismissible`, as the phone's full screen and the work panel's
+ *   overlay show it, a tap beside the picture, outside the box it is drawn in,
+ *   asks to close it instead. A finger pulling the picture down at its fitted
+ *   size moves it down and fades it; lifted past 72 px it asks to close it, and
+ *   short of that, or cut short by the system, it springs back.
  *
  * With `steps` given, a finger swiped sideways across the picture at its fitted
- * size steps to the neighbour (`swipe-step.ts`):
+ * size steps to the neighbour (`swipe-layer.ts`):
  *
  * - The picture follows the finger, then slides out to the step or springs back.
  * - A zoomed picture is moved by the drag instead.
@@ -98,18 +102,19 @@ const natural = computed<PixelSize | null>(() => pixels.value
   ? { width: pixels.value.width / pixelRatio.value, height: pixels.value.height / pixelRatio.value }
   : null)
 const view = shallowRef<ImageView | null>(null)
-const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
-/** The layer the picture slides on, and how far the swipe has moved it from the middle. */
+/** The layer the picture slides on while a finger swipes it (`swipe-layer.ts`). */
 const slider = ref<HTMLElement | null>(null)
-const swipeX = ref(0)
-/** The slide under way, if any. */
-let sliding: Animation | null = null
-/** A slide out is under way, and the press that would swipe again waits for the next picture. */
-let leaving = false
+const swipe = useSwipeLayer(slider, () => room.value, {
+  reach: () => props.steps,
+  dismissible: () => props.dismissible,
+  step: (direction, slid) => emit('step', direction, slid),
+  dismiss: () => emit('dismiss'),
+})
 
 watch(() => props.src, () => {
   pixels.value = null
   view.value = null
+  swipe.reset()
 })
 
 // A display with another pixel ratio, such as the window moved to it, changes the zoom the picture
@@ -227,48 +232,6 @@ let pinch: { distance: number; at: FramePoint } | null = null
 /** A pinch took over the press under way, whose release then neither toggles nor moves. */
 let pinched = false
 
-/** Slides the picture from `from` to `to` px and rests it there; with reduced motion it only goes. */
-async function slide(from: number, to: number): Promise<void> {
-  const element = slider.value
-  sliding?.cancel()
-  sliding = null
-  if (!element || reduceMotion.value) {
-    swipeX.value = to
-    return
-  }
-  const animation = element.animate(
-    [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
-    { duration: 180, easing: 'ease-out', fill: 'forwards' },
-  )
-  sliding = animation
-  try {
-    await animation.finished
-  }
-  catch {
-    // Cancelled by a newer slide or by the picture going: that one rests the layer.
-    return
-  }
-  swipeX.value = to
-  animation.cancel()
-  sliding = null
-}
-
-/** The swipe ended: `step` is the picture it goes to, or 0 to spring back. */
-async function settle(step: -1 | 0 | 1): Promise<void> {
-  const width = room.value?.width ?? 0
-  if (step === 0) {
-    await slide(swipeX.value, 0)
-    return
-  }
-  if (reduceMotion.value) {
-    emit('step', step, false)
-    return
-  }
-  leaving = true
-  await slide(swipeX.value, -step * width)
-  emit('step', step, true)
-}
-
 function onPress(event: PointerEvent): void {
   const size = natural.value
   const start = view.value
@@ -279,16 +242,16 @@ function onPress(event: PointerEvent): void {
   // every press on the frame is the picture's, a pinch's second finger included, so nothing around
   // it takes the press for a tap on empty space (`MediaViewer`).
   event.preventDefault()
-  if (stopPress || leaving || !size || !start || !room.value)
+  if (stopPress || swipe.leaving() || !size || !start || !room.value)
     return
   // A press during a spring back takes the picture where the finger finds it.
-  sliding?.cancel()
-  sliding = null
+  swipe.hold()
   const at = framePoint(event)
-  const swiping = reach !== undefined && startsSwipe(event.pointerType, isFitted(start, size, room.value))
+  // A fitted picture swipes where it steps sideways or closes with a pull down, either alone.
+  const swiping = (reach !== undefined || props.dismissible) && startsSwipe(event.pointerType, isFitted(start, size, room.value))
   const pressedAt = performance.now()
   let axis: SwipeAxis = 'click'
-  let swiped = 0
+  let last = { dx: 0, dy: 0 }
   let dragged = false
   stopPress = startPointerDrag(event, {
     cursor: movable.value ? 'grabbing' : cursor.value,
@@ -299,33 +262,34 @@ function onPress(event: PointerEvent): void {
         // The direction the drag first leaves a click's reach in is the one it keeps.
         if (axis === 'click')
           axis = swipeAxis(dx, dy)
-        if (axis === 'horizontal') {
-          swiped = dx
-          if (!reduceMotion.value)
-            swipeX.value = swipeOffset(dx, reach)
-        }
+        last = { dx, dy }
+        swipe.follow(axis, dx, dy)
         return
       }
       dragged ||= !isClick(dx, dy)
       if (dragged && room.value)
         view.value = pannedView(start, dx, dy, size, room.value)
     },
-    end(cancelled) {
+    end(cancelled, released) {
       stopPress = null
       const wasPinched = pinched
       pinched = false
-      if (swiping && (axis === 'horizontal' || wasPinched)) {
-        const lifted = cancelled || wasPinched || !room.value || !reach
-        void settle(lifted ? 0 : swipeStep(swiped, room.value.width, performance.now() - pressedAt, reach))
+      // A swipe sideways or down ends in the layer; a pinch that took it over puts the picture back.
+      if (swiping && (axis !== 'click' || wasPinched)) {
+        swipe.release(axis, last.dx, last.dy, released && !cancelled && !wasPinched, performance.now() - pressedAt)
         return
       }
-      if (wasPinched || axis === 'vertical')
+      if (wasPinched)
         return
       // A finger held as long as a long press asked for the system's menu, not for a tap.
       if (!cancelled && !dragged && event.pointerType === 'touch' && performance.now() - pressedAt >= LONG_PRESS_MS)
         return
+      // A tap acts only when the finger itself lifted: a press the system cancelled, or one cut short,
+      // neither zooms nor closes.
       if (cancelled)
         view.value = start
+      else if (!released)
+        return
       else if (!dragged && props.dismissible && !onPicture(at))
         emit('dismiss')
       else if (!dragged && room.value)
@@ -372,13 +336,13 @@ function onTouchEnd(event: TouchEvent): void {
 
 onMounted(() => {
   // A picture that a swipe brought slides in from the side it came from.
-  if (props.from && frame.value)
-    void slide(props.from * frame.value.clientWidth, 0)
+  if (props.from)
+    swipe.arrive(props.from)
 })
 
 onBeforeUnmount(() => {
   stopPress?.()
-  sliding?.cancel()
+  swipe.dispose()
   if (image.value)
     dropSource(image.value)
 })
@@ -397,7 +361,7 @@ onBeforeUnmount(() => {
       @touchend.passive="onTouchEnd"
       @touchcancel.passive="onTouchEnd"
     >
-      <div ref="slider" class="absolute inset-0" :style="swipeX ? { transform: `translateX(${swipeX}px)` } : undefined">
+      <div ref="slider" class="absolute inset-0" :style="swipe.style.value">
         <img
           ref="image"
           :src="src"

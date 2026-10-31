@@ -33,5 +33,6 @@ const label = computed(() => `${props.name} · ${formatBytes(props.size)}`)
     root="/"
     :path="attachmentPath({ name })"
     :label="label"
+    sheet-close
   />
 </template>

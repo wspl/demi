@@ -5,7 +5,7 @@ import RegionStatus from '../ui/RegionStatus.vue'
 import { t as shared } from '../locales/text'
 import { t } from './locales/text'
 import ImagePreview from './ImagePreview.vue'
-import MediaPreview from './MediaPreview.vue'
+import SwipeVideo from './SwipeVideo.vue'
 import { mediumKey, useMediumSource, type ShownMedium } from './media-viewer'
 import type { StepReach } from './swipe-step'
 
@@ -13,7 +13,8 @@ import type { StepReach } from './swipe-step'
  * One medium shown large, as the viewer's window and the work panel's Media tab
  * show it: an image fitted to the space, which zooms and pans as in an image
  * viewer (`ImagePreview`), or a video that plays at once in the web browser's
- * player while `open`, and never while not. A Host image shows its file at
+ * player while `open`, and never while not (`SwipeVideo`). A finger swipes either
+ * the same way where `steps` and `dismissible` say so. A Host image shows its file at
  * the version the page keeps while `open`, and says so when the file is not
  * there.
  *
@@ -32,11 +33,11 @@ const props = defineProps<{
   open: boolean
   /** Edge to edge, with no margin around the medium. */
   flush: boolean
-  /** The neighbours a swipe can step to; none when the picture is not swiped. */
+  /** The neighbours a swipe can step to; none when the medium is not swiped. */
   steps?: StepReach
-  /** The side a swipe brought this picture from. */
+  /** The side a swipe brought this medium from. */
   from?: -1 | 0 | 1
-  /** A tap beside the picture closes it, where the picture covers the screen. */
+  /** A tap beside the medium or a pull down closes it, where the medium covers the screen. */
   dismissible?: boolean
 }>()
 const emit = defineEmits<{
@@ -117,17 +118,20 @@ function onSize(width: number, height: number): void {
       @step="(direction, slid) => emit('step', direction, slid)"
       @dismiss="emit('dismiss')"
     />
-    <MediaPreview
+    <SwipeVideo
       v-else-if="medium.kind === 'video' && src"
       :key="mediumKey(medium)"
       :src="src"
-      kind="video"
       :name="medium.name"
-      autoplay
       :hidden="!open"
       :flush="flush"
+      :steps="steps"
+      :from="from"
+      :dismissible="dismissible"
       @size="onSize"
       @failed="failed = true"
+      @step="(direction, slid) => emit('step', direction, slid)"
+      @dismiss="emit('dismiss')"
     />
     <RegionStatus
       v-if="slow"

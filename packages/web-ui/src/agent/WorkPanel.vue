@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
-import { computed, h, nextTick, ref, shallowRef, watch, type Component, type FunctionalComponent } from 'vue'
+import { computed, h, nextTick, provide, ref, shallowRef, watch, type Component, type FunctionalComponent } from 'vue'
 import { ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronLeft, CopyX, PanelRightClose, X } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
@@ -21,6 +21,8 @@ import type { TitleText } from '../ui/ui-text'
 import { tabsToClose, type TabCloseScope } from './tab-close'
 import { keptContents, pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
 import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
+import { sheetDismissKey } from '../files/panel-sheet'
+import SheetCloseButton from '../files/SheetCloseButton.vue'
 import type { TabUpdate } from '../plugins/page'
 
 /**
@@ -42,6 +44,11 @@ import type { TabUpdate } from '../plugins/page'
  * - the strip's controls
  *
  * The desktop's close control is that back.
+ *
+ * A view the conversation opens on a phone, such as a picture tapped, shows as
+ * an overlay instead (`sheet`): the selected view alone, with no strip and no
+ * bar of the panel's, its own bar ending with Close, which closes the overlay
+ * to the conversation, as the panel's back does (`SheetCloseButton`).
  */
 const props = withDefaults(defineProps<{
   /** The selection and the user's tabs. */
@@ -66,9 +73,16 @@ const props = withDefaults(defineProps<{
    * stay mounted behind it.
    */
   hostOffline?: string | null
+  /**
+   * Whether a phone draws the panel as an overlay over the conversation: only
+   * the selected view, its own bar ending with Close, with no tab strip. The tabs button
+   * opens the full panel instead, where this is false (`work.ts`, `ENTRY_SHEET`).
+   */
+  sheet?: boolean
 }>(), {
   hostOffline: null,
   tabsRead: true,
+  sheet: false,
 })
 const emit = defineEmits<{
   select: [selection: string]
@@ -160,6 +174,15 @@ const contents = computed(() => kept.value.flatMap((id) => {
   const tab = tabs.value.find((item) => item.tab.id === id)
   return tab?.kind ? [{ id, kind: tab.kind, data: tab.data, pinned: false, name: tab.kind.subject?.(tab.data) ?? tab.title }] : []
 }))
+/** Whether the panel is a phone's overlay (`sheet`), off a phone never, whatever the owner says. */
+const overlay = computed(() => phone.value && props.sheet)
+// A view inside the overlay closes it to the conversation; beside the conversation and in the full panel none does.
+provide(sheetDismissKey, computed(() => (overlay.value ? () => emit('close') : null)))
+/**
+ * Whether a view shows in the overlay, whose own bar then ends with its Close; in its place the
+ * overlay keeps a bar of its own for it, over a Host that is offline or a tab the panel cannot show.
+ */
+const viewShown = computed(() => props.hostOffline === null && contents.value.some((content) => content.id === selection.value))
 /** The tab menu's commands that close several tabs at once. */
 const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[]>(() => [
   { scope: 'others', label: t('panel.closeOthers'), icon: CopyX },
@@ -242,9 +265,17 @@ function reorder(from: number, to: number): void {
   <aside
     data-work-panel
     class="flex h-full min-w-0 flex-col overflow-hidden bg-surface text-fg"
-    :class="phone ? 'pb-[var(--safe-bottom)]' : 'border-l border-line'"
+    :class="[phone ? 'pb-[var(--safe-bottom)]' : 'border-l border-line', { 'pt-[var(--safe-top)]': overlay }]"
   >
+    <!--
+      The overlay shows no bar of its own over a view: the view's own bar
+      ends with Close (`SheetCloseButton`), so Close and the view's controls
+      read as one bar. Over a Host that is offline or a tab the panel cannot
+      show, which have no bar, the overlay keeps one for Close. The overlay
+      itself holds off the notch, which the frame's bar does in the full panel.
+    -->
     <div
+      v-if="!overlay"
       class="flex shrink-0 items-center gap-1"
       :class="phone ? 'h-[calc(2.75rem+var(--safe-top))] pl-1 pr-1.5 pt-[var(--safe-top)]' : 'h-11 pl-2 pr-3'"
     >
@@ -342,6 +373,9 @@ function reorder(from: number, to: number): void {
       <Tooltip v-if="!phone" :content="t('session.closePanel')" class="shrink-0">
         <IconButton :icon="PanelRightClose" variant="ghost" :aria-label="t('session.closePanel')" @click="emit('close')" />
       </Tooltip>
+    </div>
+    <div v-else-if="!viewShown" class="flex h-11 shrink-0 items-center justify-end pr-1.5">
+      <SheetCloseButton />
     </div>
     <HostOfflinePage v-if="hostOffline !== null" :name="hostOffline" />
     <div v-show="hostOffline === null" class="flex min-h-0 flex-1 flex-col overflow-hidden">

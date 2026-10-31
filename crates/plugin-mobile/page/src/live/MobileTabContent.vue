@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
-import { Toolbar, downloadUrl, usePage, type ToolbarAction } from '@demicodes/plugin-sdk'
+import { Toolbar, SheetCloseButton, downloadUrl, usePage, useSheetDismiss, type ToolbarAction } from '@demicodes/plugin-sdk'
 import DeviceView from './DeviceView.vue'
 import { drawsWebgl } from './webgl'
 import type { MobileDevicesController } from './controller'
@@ -31,6 +31,8 @@ const props = defineProps<{
 }>()
 
 const { files, errors, overlays } = usePage()
+/** The step back of the phone overlay this tab shows in, null elsewhere: it names the device, as no tab does there. */
+const sheet = useSheetDismiss()
 /** The device's live view, on its own stream, which the conversation's simulators keep. */
 const device = props.session.device(props.data)
 /** Whether the device records, as the device says, whoever started it. */
@@ -129,12 +131,16 @@ const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
     <Toolbar :actions="actions" :overlay-store="overlays" :more-label="t('toolbar.more')">
+      <template #end>
+        <SheetCloseButton />
+      </template>
       <template #leading>
         <!-- The name and the model each show whole or not at all: beside the
              empty first item each fits on the one line, or wraps to the next,
              which the row cuts off, the model first, as it comes after the name.
-             A phone's tab already names the device. -->
-        <div class="flex h-10 min-w-0 flex-1 flex-wrap items-center overflow-hidden phone:invisible">
+             A phone's tab already names the device, but no tab shows over the
+             overlay a phone opens from the conversation, so there the name shows. -->
+        <div class="flex h-10 min-w-0 flex-1 flex-wrap items-center overflow-hidden" :class="sheet ? '' : 'phone:invisible'">
           <span class="h-10 w-0" />
           <span class="flex h-10 items-center gap-1.5 whitespace-nowrap pl-2 text-[13px] text-fg-body" :class="model ? 'pr-1' : 'pr-2'">
             <MobilePlatformLogo :platform="data.platform" class="text-fg-subtle" />
