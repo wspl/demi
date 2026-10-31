@@ -42,9 +42,17 @@ export function fitScale(image: PixelSize, frame: PixelSize): number {
   return Math.min(1, frame.width / image.width, frame.height / image.height)
 }
 
+/**
+ * The scale of a fitted picture in a viewer: as large as `frame` lets it, a
+ * picture smaller than the frame enlarged, as Photos opens one.
+ */
+export function fillScale(image: PixelSize, frame: PixelSize): number {
+  return Math.min(frame.width / image.width, frame.height / image.height)
+}
+
 /** Whether `view` shows the picture at its fitted size. */
 export function isFitted(view: ImageView, image: PixelSize, frame: PixelSize): boolean {
-  return Math.abs(view.scale - fitScale(image, frame)) < SAME_SCALE
+  return Math.abs(view.scale - fillScale(image, frame)) < SAME_SCALE
 }
 
 /**
@@ -76,16 +84,19 @@ export function rescaledView(view: ImageView, ratio: number): ImageView {
 
 /** The picture fitted to the frame and centred in it, as it opens. */
 export function fittedView(image: PixelSize, frame: PixelSize): ImageView {
-  return clampView({ scale: fitScale(image, frame), x: 0, y: 0 }, image, frame)
+  return clampView({ scale: fillScale(image, frame), x: 0, y: 0 }, image, frame)
 }
 
 /**
  * `view` zoomed to `scale` about `at`, so the spot of the picture under it
- * stays under it: from the fitted size, or the actual size where that is
- * smaller, up to eight times the actual size.
+ * stays under it: from the fitted or the actual size, whichever is smaller,
+ * up to eight times the actual size or the fitted size, whichever is larger.
+ * A view already beyond those, as one a smaller frame left larger than its new
+ * fitted size, only moves back toward them: a zoom never goes the other way.
  */
 export function zoomAbout(view: ImageView, scale: number, at: FramePoint, image: PixelSize, frame: PixelSize): ImageView {
-  const next = clamp(scale, fitScale(image, frame), MAX_ZOOM)
+  const fitted = fillScale(image, frame)
+  const next = clamp(scale, Math.min(fitted, 1, view.scale), Math.max(fitted, MAX_ZOOM, view.scale))
   const ratio = next / view.scale
   return clampView({
     scale: next,
@@ -117,7 +128,8 @@ export function isClick(dx: number, dy: number): boolean {
 
 /**
  * What a click at `at` makes of `view`: a fitted picture goes to its actual
- * size about the clicked spot, and any other zoom back to the fitted size.
+ * size about the clicked spot, smaller where it was fitted larger, and any
+ * other zoom back to the fitted size.
  */
 export function toggledView(view: ImageView, at: FramePoint, image: PixelSize, frame: PixelSize): ImageView {
   return isFitted(view, image, frame) ? zoomAbout(view, 1, at, image, frame) : fittedView(image, frame)
