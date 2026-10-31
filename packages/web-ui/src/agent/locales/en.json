@@ -1,4 +1,8 @@
 {
+  "suggestions": {
+    "label": "Suggested Replies",
+    "edit": "Edit"
+  },
   "comments": {
     "comment": "Comment",
     "placeholder": "Add a comment",

@@ -62,6 +62,7 @@ use crate::conversation::notifications::Notifications;
 use crate::conversation::retry_resume::RetryResumes;
 use crate::conversation::idle_compaction::IdleCompactions;
 use crate::conversation::search::SearchIndexer;
+use crate::conversation::suggested_replies::SuggestedReplies;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::collection::BlobCollection;
@@ -116,6 +117,8 @@ pub struct Shard {
     agent: Rc<AgentServer<ShardHosts>>,
     /// The title requests of the user's conversations.
     titles: Titles,
+    /// The suggested replies of the user's conversations.
+    suggested_replies: SuggestedReplies,
     /// What keeps the user's search index in step with the conversations.
     search: SearchIndexer,
     /// What opens a conversation's tree: the conversation lanes being
@@ -216,7 +219,7 @@ impl Shard {
             Rc::new(services.control.clone()),
             Rc::new(services.sync.of(&user)),
         );
-        let ConversationParts { agent, titles } = conversation::conversation_parts(
+        let ConversationParts { agent, titles, suggested_replies } = conversation::conversation_parts(
             shard.clone(),
             user.clone(),
             services.clone(),
@@ -243,6 +246,7 @@ impl Shard {
             closing: CancellationToken::new(),
             agent,
             titles,
+            suggested_replies,
             tree_openers: TaskTracker::new(),
             sync_channels: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
@@ -364,6 +368,10 @@ impl Shard {
         &self.titles
     }
 
+    pub(crate) fn suggested_replies(&self) -> &SuggestedReplies {
+        &self.suggested_replies
+    }
+
     pub(crate) fn search_indexer(&self) -> &SearchIndexer {
         &self.search
     }
@@ -423,6 +431,7 @@ impl Shard {
         self.idle_compactions.clear();
         self.cloud.stop();
         self.titles.abort_all();
+        self.suggested_replies.abort_all();
         self.tree_openers.close();
         closed("the tree openings ended", self.tree_openers.wait()).await;
         let _transfers_closed = closed("the transfers ended", self.conversations.end_transfers()).await;

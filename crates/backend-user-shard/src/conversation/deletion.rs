@@ -129,6 +129,7 @@ impl Shard {
         self.agent().close_tree(&root).await;
         drop(stopped);
         self.titles().abort(&id);
+        self.suggested_replies().abort(&id);
         self.stop_idle(&id);
         // Step 3: its Hosts let go of what they hold for it, its Chrome with
         // its tabs among them; nothing waits for them.

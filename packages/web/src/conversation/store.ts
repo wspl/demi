@@ -440,6 +440,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.workflow = shown.workflow
     conversation.pluginsChanged = shown.pluginsChanged
     conversation.turnSpeed = shown.turnSpeed
+    conversation.suggestedReplies = shown.suggestedReplies
     if (shown.model) {
       conversation.model = { ...shown.model }
     }
@@ -503,6 +504,7 @@ export const useConversations = defineStore('conversations', () => {
       cwd: local.cwd ?? '',
       pluginsChanged: false,
       turnSpeed: null,
+      suggestedReplies: null,
       workflows: null,
       history: EMPTY_TRANSCRIPT,
       shownAt: null,
@@ -3216,6 +3218,20 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
+   * A suggested reply's tap: its words go at once as a message of their own,
+   * as the composer's Return would send one, steering or waiting in the queue
+   * while the agent works; the draft, its comments and its files stay as they
+   * are.
+   */
+  async function sendSuggestion(conversation: Conversation, text: string): Promise<void> {
+    if (conversation.archived) {
+      return
+    }
+    const way = chooseSendWay(agentWorks(conversation.phase, conversation.pendingSends), preferences.sendWhileRunning, false)
+    await deliverInOrder(conversation, addPendingSend(conversation, way, text, []))
+  }
+
+  /**
    * Save for Later: the composer's message, its files included, stands at the top
    * of the list and leaves the composer at once, under the id the page gives it,
    * once its files are uploaded; the backend keeps it and empties the draft with
@@ -4441,6 +4457,7 @@ export const useConversations = defineStore('conversations', () => {
     deleteSend,
     submissions,
     commenting,
+    sendSuggestion,
     clearComments,
     editVersion: (conversation: Conversation) =>
       cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,

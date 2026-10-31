@@ -371,11 +371,13 @@ impl Shard {
         });
     }
 
-    /// What follows the archive of the conversation `id`: its title
-    /// request and idle watch end, and its requests are withdrawn, so a
-    /// command that waits for a credential request's answer returns.
+    /// What follows the archive of the conversation `id`: its title and
+    /// suggested replies requests and its idle watch end, and its requests
+    /// are withdrawn, so a command that waits for a credential request's
+    /// answer returns.
     fn archived(&self, id: &ConversationId) {
         self.titles().abort(id);
+        self.suggested_replies().abort(id);
         self.stop_idle(id);
         demi_backend_permissions::changed(self.permission_shard(), id);
         demi_backend_permissions::withdrawn(self.permission_shard(), id);

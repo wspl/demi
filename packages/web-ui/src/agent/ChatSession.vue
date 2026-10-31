@@ -68,6 +68,7 @@ import SchedulesChip from '../schedules/SchedulesChip.vue'
 import type { ConversationSchedule } from '../schedules/types'
 import { provideScheduleOpener } from './message-origins'
 import { provideComposerFocus } from './composer-focus'
+import { provideSuggestedReplies, type SuggestedReplies, type SuggestedReply } from './suggested-replies'
 import { usePhone } from '../ui/phone'
 import { tabCountIcon } from '../ui/tab-count-icon'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
@@ -76,7 +77,7 @@ import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
 import { continueWithOffer, endsWithErrorRecord, notExposedOffer, signedOutOffer, sessionFailureNotice, sessionShown, behindSession, CATCH_UP_WAIT_MS, transcriptShown, turnRecovery } from './session-status'
-import { getVisibleBlocks } from './visible-blocks'
+import { getVisibleBlocks, isCompactionDivider } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import { provideBlockReader, type BlockReader } from './whole-blocks'
@@ -104,6 +105,12 @@ const props = withDefaults(defineProps<{
   removing?: readonly string[]
   editVersion?: Version | null
   messageEdit?: MessageEditState | null
+  /**
+   * The replies the user is likely to send next, kept with the answer they
+   * follow: null while none are kept, absent where the conversation offers
+   * none, as with Suggested Replies off.
+   */
+  suggestedReplies?: { blockId: string; replies: readonly SuggestedReply[] } | null
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
   /**
@@ -341,6 +348,8 @@ const emit = defineEmits<{
   recallSteer: [id: string]
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
+  /** A suggested reply's words, sent as a new message on their own. */
+  sendSuggestion: [text: string]
   /**
    * Regenerate: the edit of the last message with its content unchanged. The
    * host sends it at once through `regenerateMessage`.
@@ -684,7 +693,50 @@ function regenerate(id: string): void {
 }
 
 // What the transcript leaves to the composer, as a comment's sending, puts the focus there.
-provideComposerFocus()
+const composerFocus = provideComposerFocus()
+/**
+ * Whether the turn that ended last ended while the page showed the
+ * conversation: its answer's suggestions are on their way, and the row
+ * stands from then. One the page found ended, as an old conversation
+ * opened, waits for none, nor does a compaction's end.
+ */
+const endedHere = ref(false)
+watch(() => props.conversation.phase, (phase, before) => {
+  if (phase === 'running') {
+    endedHere.value = false
+  } else if (phase === 'idle' && before === 'running') {
+    endedHere.value = true
+  }
+})
+watch(() => props.conversation.id, () => {
+  endedHere.value = false
+})
+/**
+ * The suggested replies under the last answer, while the conversation rests
+ * after it, a compaction while idle and its divider included: those kept for
+ * it, or none yet after a turn that ended here, so the row stands with the
+ * footer. An open edit hides the pills and keeps the row; a message on its
+ * way, an error or a Stop ends the answer's turn otherwise, and the row goes.
+ */
+const suggested = computed<SuggestedReplies | null>(() => {
+  const kept = props.suggestedReplies
+  const last = getVisibleBlocks(latest.value).findLast((block) => !isCompactionDivider(block))
+  const resting = props.conversation.phase === 'idle' || props.conversation.phase === 'compacting_idle'
+  if (kept === undefined || !resting || props.conversation.archived
+    || (props.pendingSubmissions?.length ?? 0) > 0 || last?.type !== 'text') {
+    return null
+  }
+  const replies = kept && kept.blockId === last.id ? kept.replies : endedHere.value ? null : undefined
+  if (replies === undefined) {
+    return null
+  }
+  return { blockId: last.id, replies: props.messageEdit ? [] : replies }
+})
+provideSuggestedReplies({
+  current: () => suggested.value,
+  send: (text) => emit('sendSuggestion', text),
+  edit: (text) => composerFocus.focus(text),
+})
 // Up Arrow in an empty composer opens the editor on the offered message.
 provideEditLastMessage(() => {
   const id = offeredId.value

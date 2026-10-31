@@ -151,6 +151,8 @@ import GalleryStreamingText from '../components/GalleryStreamingText.vue'
 import GalleryTranscriptMotion from '../components/GalleryTranscriptMotion.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryComments from '../components/GalleryComments.vue'
+import GallerySuggestedReplies from '../components/GallerySuggestedReplies.vue'
+import GallerySuggestedReplyStates from '../components/GallerySuggestedReplyStates.vue'
 import GalleryAsks from '../components/GalleryAsks.vue'
 import GallerySelectionFieldBoxes from '../components/GallerySelectionFieldBoxes.vue'
 import GalleryPhoneFrame from '../components/GalleryPhoneFrame.vue'
@@ -3694,6 +3696,14 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection title="Edit and Resend" note="Shared editor, durable confirmation and recovery states. Regenerate in the last answer’s footer sends the last message again unchanged, without opening the editor: its answer dims until the outcome, which the buttons choose as for a save; a lost confirmation opens the editor with Retry, a conflict opens it with the message. Up Arrow in the empty composer opens the editor on the last message, whose first line says Editing message, right above the message. An edited message shows its versions under it, and a regenerated answer in its footer: the arrows show the version before and after, and wait while an edit is sent. The last message carries two comments: its editor lists them in the pill by the paperclip, to edit or delete, and the new version holds what the pill holds when it is sent.">
         <GalleryMessageEditing />
+      </GallerySection>
+      <GallerySection title="Suggested Replies" note="As the conversation rests after an answer, a row stands under its footer and the replies the user is likely to send next fill it a moment later, up to three, as the small model wrote them. A click on a pill sends its words at once as a new message, alone, and the composer keeps its draft and comments; hovering a pill shows Edit at its end, which puts the words into the composer after the draft, with the focus; on a phone a long press does what Edit does, and the row scrolls sideways. The row keeps its height while they are written and when none came, so nothing under the answer moves as they arrive. It belongs to the last answer only: the next message, an error or a Stop takes it away, and an open edit hides the pills. Send one: the answer that follows offers one, the next none, then three again.">
+        <div class="h-[30rem] overflow-hidden rounded-xl border border-line">
+          <GallerySuggestedReplies />
+        </div>
+      </GallerySection>
+      <GallerySection title="Suggested Replies: States" note="The row in each of its states. Long pills narrow to share the line, each ending in an ellipsis, its tooltip showing it whole.">
+        <GallerySuggestedReplyStates />
       </GallerySection>
       <GallerySection title="Comments" note="Two comments waiting in the draft: each marks its words yellow, and its box stands under the line they end on, the rest of the paragraph going on under it: the comment's yellow mark, its text, always shown, and Delete and Edit; Edit edits it in place. The composer stays on one line, with 2 Comments by the paperclip. Select other words of the reply, write a comment in the field under them and press Return to add it, and the composer takes the focus, so the next Return sends it; while a reply is still being written, its buttons say to wait. Make the frame narrower or wider: the lines wrap again and each box moves under its new line. The pill lists the waiting comments, each with its quote, and × removes them all. Send sends them with the typed text, or alone.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">

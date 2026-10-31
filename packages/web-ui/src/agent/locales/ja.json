@@ -1,4 +1,8 @@
 {
+  "suggestions": {
+    "label": "返信の候補",
+    "edit": "編集"
+  },
   "comments": {
     "comment": "コメント",
     "placeholder": "コメントを追加",

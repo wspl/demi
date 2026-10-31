@@ -1,4 +1,8 @@
 {
+  "suggestions": {
+    "label": "建议回复",
+    "edit": "编辑"
+  },
   "comments": {
     "comment": "评论",
     "placeholder": "添加评论",

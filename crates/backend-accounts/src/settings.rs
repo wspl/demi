@@ -138,6 +138,7 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     preferences.small_model_same_provider = patch
         .small_model_same_provider
         .or(preferences.small_model_same_provider);
+    preferences.suggested_replies = patch.suggested_replies.or(preferences.suggested_replies);
     if let Some(change) = patch.context_limit {
         set_context_limit(&mut preferences.context_limits, change);
     }
