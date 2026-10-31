@@ -18,16 +18,21 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
   const providerSettings = useProviderSettings()
 
   /**
-   * The subscription account an agent of the entry `providerId` runs on:
-   * `account`, the one its context usage names under account rotation
-   * (`crates/provider-registry/src/rotation.rs`), else the entry's active account;
-   * none on an API key.
+   * The subscription account the next request of an agent of the entry
+   * `providerId` runs on: under account rotation, `account`, the one its
+   * context usage names, which the agent takes ahead
+   * (`crates/provider-registry/src/rotation.rs`), and none until it took one;
+   * under Manual, the entry's active account. None on an API key.
    */
   function accountOf(providerId: string, account: string | null) {
     const provider = resources.providers.find((entry) => entry.id === providerId)
-    const accounts = provider?.kind === 'subscription' ? provider.accounts : []
-    const used = accounts.find((entry) => entry.id === account) ?? accounts.find((entry) => entry.active)
-    return provider && used ? { provider, account: used } : null
+    if (provider?.kind !== 'subscription') {
+      return null
+    }
+    const used = provider.rotation === 'manual'
+      ? provider.accounts.find((entry) => entry.active)
+      : provider.accounts.find((entry) => entry.id === account)
+    return used ? { provider, account: used } : null
   }
 
   /** What the card shows of that account's usage limits (`crates/backend-providers/src/usage/mod.rs`). */

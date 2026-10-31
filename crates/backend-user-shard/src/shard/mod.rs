@@ -878,6 +878,12 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         shard
                             .tasks
                             .spawn_local(shard.clone().follow_account_changes(changes));
+                        // And the account each open conversation's next
+                        // request takes under its entry's rotation.
+                        let changes = services.provider_registry.rotation().changes();
+                        shard
+                            .tasks
+                            .spawn_local(shard.clone().follow_rotation_changes(changes));
                         // And the expiry of the user's credentials, which
                         // removes at once what is past due.
                         shard

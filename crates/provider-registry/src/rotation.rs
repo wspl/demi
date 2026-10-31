@@ -16,6 +16,11 @@
 //! - A compaction ran, whose next request writes its prefix anew in any case.
 //! - Its account is removed, or the rotation changes.
 //!
+//! An idle agent takes its next account ahead, as soon as one of these may
+//! have changed it, so that what shows its account shows the one its next
+//! request uses: the module announces each entry whose agents may take
+//! another account.
+//!
 //! Smart spends first the quota a reset would take soonest, since what is
 //! left at a reset is paid for and lost. Each account's longest window, its
 //! week on a Claude or Codex plan, has an urgency: the share left divided by
@@ -68,11 +73,18 @@ pub enum Choice {
     AllUsedUp { earliest: Option<Timestamp> },
 }
 
+/// How many announced changes a follower may fall behind before it misses
+/// some: a broadcast channel holds its backlog in memory, so it has a bound.
+/// A follower that missed some takes every entry as changed.
+const CHANGES_KEPT: usize = 64;
+
 /// The rotation state of every entry this process serves.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AccountRotation {
     /// A `std` mutex: no section awaits.
     state: Mutex<State>,
+    /// The entries whose agents may take another account, as each changes.
+    changes: tokio::sync::broadcast::Sender<ProviderId>,
 }
 
 #[derive(Debug, Default)]
@@ -112,7 +124,25 @@ impl Drop for Running {
 
 impl AccountRotation {
     pub fn new() -> Arc<Self> {
-        Arc::default()
+        Arc::new(Self {
+            state: Mutex::default(),
+            changes: tokio::sync::broadcast::Sender::new(CHANGES_KEPT),
+        })
+    }
+
+    /// The entries whose agents may take another account from now on: an
+    /// account of theirs was marked used up or removed, or their rotation
+    /// changed.
+    pub fn changes(&self) -> tokio::sync::broadcast::Receiver<ProviderId> {
+        self.changes.subscribe()
+    }
+
+    /// Announces that the agents of `entry` may take another account, as
+    /// when its rotation changed or an account of it was removed.
+    pub fn changed(&self, entry: &ProviderId) {
+        // With no follower, as before any user's shard started, no agent
+        // holds an account to take again.
+        let _ = self.changes.send(entry.clone());
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -246,6 +276,7 @@ impl AccountRotation {
         self.lock()
             .used_up
             .insert((entry.clone(), account.clone()), until);
+        self.changed(entry);
     }
 
     /// Forgets the marks of a deleted entry's accounts; their running

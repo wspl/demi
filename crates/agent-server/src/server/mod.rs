@@ -448,11 +448,11 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Readies ahead the next request of every conversation a page has open
-    /// whose model is of the provider entry `provider_id`, or of every one with
-    /// none.
-    ///
-    /// With none is the case when the entry's active account changed
-    /// (`crates/provider-claude-code/src/prepared.rs`).
+    /// whose model is of the provider entry `provider_id`, as when the
+    /// entry's active account changed (`crates/provider-claude-code/src/prepared.rs`)
+    /// or its agents may take another account
+    /// (`crates/provider-registry/src/rotation.rs`); of every one with none,
+    /// as when such changes were missed.
     pub fn prepare_open(&self, provider_id: Option<&str>) {
         let trees: Vec<Rc<Tree<H>>> = self.trees.borrow().values().cloned().collect();
         for tree in trees {

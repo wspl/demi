@@ -5,7 +5,7 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_shared_types::{
-    AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ProviderErrorDiagnostics,
+    AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ModelSelection, ProviderErrorDiagnostics,
     ProviderFailureFacts, ProviderModelList, QuotaWindow, QuotaWindowName, RuntimeState, ThinkingConfig, Timestamp,
     TokenUsage,
     model_accepts_media_type, model_media_type_for,
@@ -173,6 +173,22 @@ pub trait ProviderRuntime {
     /// counting it; most runtimes have nothing to do.
     fn idle(&mut self) {}
 
+    /// Takes now the account the session's next request of `model` runs on,
+    /// for a runtime that gives each agent an account of its own
+    /// (`crates/provider-registry/src/rotation.rs`), so that what shows the
+    /// agent's account shows the one that request uses. `account` is the one
+    /// the session keeps; the answer is the account to keep instead, or none
+    /// when it stays. The request that follows names the account kept, and
+    /// runs on it while it can. Most runtimes have no account of their own.
+    fn next_account<'a>(
+        &'a mut self,
+        model: &'a ModelSelection,
+        account: Option<&'a AgentAccount>,
+    ) -> LocalBoxFuture<'a, Option<Option<AgentAccount>>> {
+        let _ = (model, account);
+        Box::pin(std::future::ready(None))
+    }
+
     /// Whether [`prepare`](Self::prepare) readies anything, so the session
     /// builds the request it takes, reading the media its history replays,
     /// only for a runtime that uses it.
@@ -205,7 +221,8 @@ pub enum Ahead {
     /// A page opened the conversation.
     Opened,
     /// The user picked another model or effort in it, or another account of
-    /// its provider in Settings.
+    /// its provider in Settings, or the account its next request takes may
+    /// have changed (`crates/provider-registry/src/rotation.rs`).
     Chosen,
     /// An action of the session ended, such as a turn: its history may have
     /// changed, and the token of a kept process may be about to expire.
