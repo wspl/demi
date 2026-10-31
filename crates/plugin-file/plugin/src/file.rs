@@ -6,8 +6,27 @@ use demi_command_declarations::NativeOperation;
 use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ViewArgs};
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
-/// The group's entry in the model's capability index.
-const ENTRY: &str = "Exact edits the user sees; view shows you an image, a video or a PDF.";
+/// The group's entry in the model's capability index. A model that has no
+/// edit tool of its own otherwise changes files with a script, whose writes
+/// the user never sees; it takes up `edit` only when told to, what one call
+/// can do and why, with a call to copy. The example starts at the margin, as
+/// the stdin help says why, and its `.......` shows a long block found by
+/// its first and last lines.
+const ENTRY: &str = "Change files only with `demi file edit`: SEARCH/REPLACE blocks of any number of lines, for several files in one call, new ones included with an empty SEARCH, all applied or none; the user sees each change, never what python, node or other programs write. For example:
+demi file edit <<'EOF'
+src/orders.ts
+<<<<<<< SEARCH
+export function check(order) {
+.......
+  return problems
+}
+=======
+export function check(order) {
+  return [...checkItems(order.items), ...checkAddress(order.address)]
+}
+>>>>>>> REPLACE
+EOF
+`view` shows you an image, a video or a PDF.";
 
 /// The help of `demi file edit`'s stdin: the blocks, with an example the
 /// model can copy. Its lines start at the margin, since a marker is a whole
