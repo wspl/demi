@@ -73,9 +73,18 @@ export function provideLabelRoom(room: () => number | undefined): void {
   )
 }
 
-/** What showing the label takes from the row: its own width and the gap its container puts before it. */
+/**
+ * What showing the label takes from the row: its own width and the gap its
+ * container puts before it. The container is the box that lays the label out,
+ * past any wrapper drawn as its contents, as a button's slot is: a gap read
+ * from the wrapper is none, and a label costing less than it takes would show
+ * in a row it then leaves too narrow, give way, and show again, every frame.
+ */
 function labelCost(element: HTMLElement): number {
-  const gap = element.parentElement ? Number.parseFloat(getComputedStyle(element.parentElement).columnGap) : 0
+  let container = element.parentElement
+  while (container && getComputedStyle(container).display === 'contents')
+    container = container.parentElement
+  const gap = container ? Number.parseFloat(getComputedStyle(container).columnGap) : 0
   // Layout is fractional and `offsetWidth` is not; a pixel of margin keeps a
   // label from returning into a row that rounding says has room for it.
   return Math.ceil(element.getBoundingClientRect().width) + (Number.isFinite(gap) ? gap : 0) + 1
