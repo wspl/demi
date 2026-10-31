@@ -44,7 +44,8 @@ import { chosenWay, closePictureField, pictureField, type FieldWay } from './sel
  * then, and comes back as the menu closes, with what was typed.
  *
  * What an action does is the object's, which declares it: the field says it with
- * the words typed, and closes once it is done.
+ * the words typed, and closes once it is done; after a comment it then calls
+ * what the object said follows it.
  */
 const phone = usePhone()
 const selection = shallowRef<SelectionFieldOffer | null>(null)
@@ -167,6 +168,8 @@ async function done(action: 'comment' | 'ask' | 'send', words: string): Promise<
   selection.value = null
   closePictureField()
   focused.value = false
+  if (action === 'comment')
+    taken.actions.commented?.()
 }
 
 const listeners = new AbortController()

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
+import { takeComposerFocus } from './composer-focus'
 import { t as shared } from '../locales/text'
 import { computed, inject, ref, useSlots, watch } from 'vue'
 import { isFocusedElementEditable, useElementSize } from '@vueuse/core'
@@ -646,6 +647,21 @@ function missingFiles(names: readonly string[]): void {
   }
 }
 
+/**
+ * The user asked for this draft again, as New does on the draft it shows. The
+ * message takes the focus, except on a phone (`useAutofocus`).
+ */
+function focusDraft(): void {
+  editor.value?.takeFocus()
+}
+// A comment saved to the draft hands it the focus, but not while the composer
+// shows an edit, which would send without the comment.
+takeComposerFocus(() => {
+  if (!shownEdit.value) {
+    focusDraft()
+  }
+})
+
 defineExpose({
   /**
    * Files the host has taken: their capsules go into the message where they
@@ -656,13 +672,7 @@ defineExpose({
   placeNextFiles(event?: DragEvent): void {
     editor.value?.placeNextFiles(event)
   },
-  /**
-   * The user asked for this draft again, as New does on the draft it shows. The
-   * message takes the focus, except on a phone (`useAutofocus`).
-   */
-  focusDraft(): void {
-    editor.value?.takeFocus()
-  },
+  focusDraft,
 })
 
 function changeDraft(markdown: string, attachments: MessageCapsule[]): void {

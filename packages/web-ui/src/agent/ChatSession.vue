@@ -67,6 +67,7 @@ import StatusDot from '../ui/StatusDot.vue'
 import SchedulesChip from '../schedules/SchedulesChip.vue'
 import type { ConversationSchedule } from '../schedules/types'
 import { provideScheduleOpener } from './message-origins'
+import { provideComposerFocus } from './composer-focus'
 import { usePhone } from '../ui/phone'
 import { tabCountIcon } from '../ui/tab-count-icon'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
@@ -682,6 +683,8 @@ function regenerate(id: string): void {
   }
 }
 
+// What the transcript leaves to the composer, as a comment's sending, puts the focus there.
+provideComposerFocus()
 // Up Arrow in an empty composer opens the editor on the offered message.
 provideEditLastMessage(() => {
   const id = offeredId.value
