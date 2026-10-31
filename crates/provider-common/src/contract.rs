@@ -512,6 +512,11 @@ impl InferenceRequest {
 pub struct RequestBlock {
     pub items: std::ops::Range<usize>,
     pub entries: Vec<demi_shared_types::Entry>,
+    /// Compaction kept the block after a summary, which replaced the history
+    /// its entries were written after: what an entry recorded of that history,
+    /// such as the reasoning the vendor checks against it or the size of the
+    /// call that wrote it, no longer holds.
+    pub kept_past_summary: bool,
 }
 
 /// One entry of the transcript as a provider replays it. Its media hold

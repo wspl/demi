@@ -81,6 +81,8 @@ pub struct ReplayedBlock {
     pub id: BlockId,
     pub items: Range<usize>,
     pub entries: Vec<demi_shared_types::Entry>,
+    /// As for [`demi_provider_common::RequestBlock::kept_past_summary`].
+    pub kept_past_summary: bool,
 }
 
 /// What `request` carries of its model's view.
@@ -208,6 +210,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 id: block.id().clone(),
                 items: first..items.len(),
                 entries: block.entries().to_vec(),
+                kept_past_summary,
             });
         }
     }
@@ -219,15 +222,20 @@ pub fn replay(request: &RequestView) -> Replay {
 }
 
 /// The blocks compaction kept after the summary replay starts at: those
-/// between the last `compaction_boundary`, at `start`, and its marker. Their
-/// reasoning followed the history the summary replaced.
+/// between the last `compaction_boundary`, at `start`, and its own marker.
+/// Their reasoning followed the history the summary replaced.
+///
+/// A boundary stands before the marker of an earlier pass when its pass cut
+/// into what that pass kept, so the first marker after it can be another's.
 fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
-    if !matches!(blocks.get(start), Some(Block::CompactionBoundary(_))) {
+    let Some(Block::CompactionBoundary(boundary)) = blocks.get(start) else {
         return 0..0;
-    }
+    };
     let marker = blocks[start..]
         .iter()
-        .position(|block| matches!(block, Block::CompactionMarker(_)))
+        .position(|block| {
+            matches!(block, Block::CompactionMarker(marker) if marker.boundary_id == boundary.id)
+        })
         .map_or(blocks.len(), |offset| start + offset);
     start + 1..marker
 }
