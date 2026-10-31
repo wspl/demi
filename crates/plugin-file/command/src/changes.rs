@@ -10,24 +10,30 @@ use tokio_util::sync::CancellationToken;
 use crate::files::{FileError, atomic_write, check_cancelled};
 
 /// One file's change: its bytes before (none for a file it creates) and
-/// after (none for a file it deletes), and the permissions a restore gives
-/// back to a file it replaces.
+/// after (none for a file it deletes), the permissions a restore gives
+/// back to a file it replaces, and the path a file it creates was renamed
+/// from, whose deletion is another change of the same commit.
 pub(crate) struct Change {
     pub(crate) path: PathBuf,
     pub(crate) before: Option<Vec<u8>>,
     pub(crate) after: Option<Vec<u8>>,
     pub(crate) permissions: Option<fs::Permissions>,
+    pub(crate) renamed_from: Option<PathBuf>,
 }
 
 /// Records and writes `changes` in order. When one fails, the ones written
 /// before it are restored, latest first, and their recorded edits undone.
+/// Once all are written, each deletion and rename is listed, as `rm` and
+/// `mv` list theirs, so the request's files follow them.
 pub(crate) fn commit(
     changes: &[Change],
     cancellation: &CancellationToken,
     mut recording: Option<&mut Recording>,
 ) -> Result<(), FileError> {
+    // A rename's new file starts from its old one's tracked text
+    // (`Recording::moved`).
     if let Some(recording) = &mut recording {
-        for change in changes {
+        for change in changes.iter().filter(|change| change.renamed_from.is_none()) {
             recording.track(&change.path);
         }
     }
@@ -52,6 +58,17 @@ pub(crate) fn commit(
                 error: Box::new(error),
                 rollbacks,
             });
+        }
+    }
+    if let Some(recording) = recording {
+        for change in changes {
+            match (&change.after, &change.renamed_from) {
+                (Some(_), Some(from)) => recording.moved(from, &change.path),
+                (None, _) if !changes.iter().any(|other| other.renamed_from.as_ref() == Some(&change.path)) => {
+                    recording.removed(&change.path);
+                }
+                _ => {}
+            }
         }
     }
     Ok(())

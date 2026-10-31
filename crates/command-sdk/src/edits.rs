@@ -72,7 +72,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use demi_shared_artifacts::{Mode, Permissions, Publication};
@@ -301,6 +301,62 @@ impl Recording {
         };
         if !matches!(contents, Contents::NotFile) {
             self.before.push((path, contents));
+        }
+    }
+
+    /// Lists the rename of `from` to `to`, which happened, as
+    /// [`Recorder::rename`] does for a command that renames by itself: what
+    /// this job recorded under the old name moves to the new one, unless
+    /// this recording tracks the new name as a file it writes.
+    pub fn renamed(&mut self, from: &Path, to: &Path) {
+        let (from, to) = (normalize(from), normalize(to));
+        if !self.before.iter().any(|(path, _)| path == &to) {
+            self.carry(&from, &to);
+        }
+        self.list(PathChange::Renamed {
+            from: from.to_string_lossy().into_owned(),
+            to: to.to_string_lossy().into_owned(),
+        });
+    }
+
+    /// Lists the move of `from` to `to` by a writer that wrote `to` anew from
+    /// what `from` held, and removed `from`, all of it tracked by this
+    /// recording: the new name's edit starts from what the old name held, so
+    /// it shows the change the move made, and what this job recorded under
+    /// the old name moves to the new one.
+    pub fn moved(&mut self, from: &Path, to: &Path) {
+        let (from, to) = (normalize(from), normalize(to));
+        if let Some(entry) = self.before.iter_mut().find(|(path, _)| *path == from) {
+            entry.0 = to.clone();
+        }
+        self.carry(&from, &to);
+        self.list(PathChange::Renamed {
+            from: from.to_string_lossy().into_owned(),
+            to: to.to_string_lossy().into_owned(),
+        });
+    }
+
+    /// Lists the removal of `path`, which is gone, as [`Recorder::remove`]
+    /// does for a command that removes by itself: what this job recorded at
+    /// or within it goes, and a file the job itself created, not one it moved
+    /// there, is not listed.
+    pub fn removed(&mut self, path: &Path) {
+        let path = normalize(path);
+        let name = path.to_string_lossy().into_owned();
+        let moved_here = self
+            .journal
+            .path_changes
+            .iter()
+            .any(|change| matches!(change, PathChange::Renamed { to, .. } if *to == name));
+        let created = !moved_here
+            && self
+                .journal
+                .files
+                .iter()
+                .any(|file| file.path == name && file.kind == EditKind::Added);
+        self.forget(&path);
+        if !created {
+            self.list(PathChange::Removed { path: name });
         }
     }
 
@@ -546,16 +602,9 @@ impl Drop for Renaming {
         let Some(mut recording) = recording else {
             return;
         };
-        if !happened {
-            return;
+        if happened {
+            recording.renamed(&self.from, &self.to);
         }
-        if !recording.before.iter().any(|(path, _)| path == &self.to) {
-            recording.carry(&self.from, &self.to);
-        }
-        recording.list(PathChange::Renamed {
-            from: self.from.to_string_lossy().into_owned(),
-            to: self.to.to_string_lossy().into_owned(),
-        });
     }
 }
 
@@ -572,16 +621,7 @@ impl Drop for Removing {
             return;
         }
         if let Some(mut recording) = self.recorder.begin() {
-            let path = self.path.to_string_lossy().into_owned();
-            let created = recording
-                .journal
-                .files
-                .iter()
-                .any(|file| file.path == path && file.kind == EditKind::Added);
-            recording.forget(&self.path);
-            if !created {
-                recording.list(PathChange::Removed { path });
-            }
+            recording.removed(&self.path);
         }
     }
 }
@@ -704,14 +744,43 @@ fn publish_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     })
 }
 
+/// `path` as the journal names it, so one file has one entry however a
+/// command names it: absolute, a `..` taking off the name before it, as
+/// `sub/../a.txt` names `a.txt`. A name before a `..` that is a symbolic
+/// link is replaced first by its target, named from the link's directory,
+/// since its `..` is its target's parent; every other name stays as given,
+/// so a file under the working directory keeps the prefix the working
+/// directory shows. Rebuilding from the components drops a trailing
+/// separator, as in `rm -r dir/`, so a folder is named as its files' paths
+/// start.
 fn normalize(path: &Path) -> PathBuf {
-    // Preserve `..`: collapsing it lexically changes paths through symlinks.
-    // Rebuilding from the components drops a trailing separator, as in
-    // `rm -r dir/`, so a folder is named as its files' paths start.
-    std::path::absolute(path)
-        .unwrap_or_else(|_| path.to_owned())
-        .components()
-        .collect()
+    normalize_through(path, LINKS)
+}
+
+/// How many symbolic links before a `..` one path may pass through: links
+/// that point at each other never end, and the system's own lookup stops at
+/// as many.
+const LINKS: usize = 40;
+
+fn normalize_through(path: &Path, links: usize) -> PathBuf {
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
+    let mut normal = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::ParentDir => {
+                if links > 0
+                    && let Ok(target) = fs::read_link(&normal)
+                {
+                    let directory = normal.parent().map(Path::to_path_buf).unwrap_or_default();
+                    normal = normalize_through(&directory.join(target), links - 1);
+                }
+                normal.pop();
+            }
+            Component::CurDir => {}
+            other => normal.push(other),
+        }
+    }
+    normal
 }
 
 /// Inside the runner the event reaches the Host log; inside a command resident

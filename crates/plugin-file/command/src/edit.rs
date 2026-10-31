@@ -134,6 +134,7 @@ pub(crate) fn edit(
                     Some(_) => Some(fs::metadata(&file.path)?.permissions()),
                     None => None,
                 },
+                renamed_from: None,
             })
         })
         .collect::<Result<_, FileError>>()?;

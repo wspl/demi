@@ -160,6 +160,7 @@ pub fn apply(
                 before: if same { before.clone() } else { None },
                 after: Some(updated.into_bytes()),
                 permissions,
+                renamed_from: old_path.clone().filter(|_| !same),
             });
         }
         if !same
@@ -171,6 +172,7 @@ pub fn apply(
                 before,
                 after: None,
                 permissions,
+                renamed_from: None,
             });
         }
     }
