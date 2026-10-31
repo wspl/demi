@@ -703,19 +703,27 @@ function pick(path: string): void {
         class="flex h-9 shrink-0 select-none items-center gap-1.5 border-b border-line pl-3 text-[12px] phone:h-row phone:gap-2 phone:text-[15px]"
         :style="{ paddingInlineEnd: `${overlap + endInset}px` }"
       >
+        <!-- What does not fit gives way in turn, each cut short with an
+             ellipsis: the edit's title first, which only takes the room the
+             rest leaves; then where a renamed file came from, then the
+             folders from the left, the weights of their flex-shrink putting
+             each far ahead of the next; and the file's name last. The icon,
+             the counts and Open File keep their width. -->
         <FileIcon :name="heading.name" :is-directory="false" :size="icons.chip" class="shrink-0" />
-        <span v-if="heading.from" class="min-w-0 truncate text-fg-muted">{{ heading.from }} →</span>
+        <template v-if="heading.from">
+          <span class="min-w-0 truncate text-fg-muted [flex-shrink:1000000000]">{{ heading.from }}</span>
+          <span class="shrink-0 text-fg-muted">→</span>
+        </template>
         <!-- Path and counts use different fonts and sizes: they align on the baseline, as the file pills do. -->
         <span class="flex min-w-0 items-baseline gap-2.5">
-          <!-- One path: its folders give way from the left, and its name stays whole (the gallery's Writing page). -->
+          <!-- One path: its folders give way from the left, then its name from its end (the gallery's Files page). -->
           <span class="flex min-w-0 items-baseline">
-            <span class="min-w-0 truncate text-fg-muted [direction:rtl]"><bdi>{{ heading.folder }}</bdi></span>
-            <span class="shrink-0" :class="heading.deleted ? 'deleted-name' : 'text-fg'">{{ heading.name }}</span>
+            <span class="min-w-0 truncate text-fg-muted [direction:rtl] [flex-shrink:1000000000]"><bdi>{{ heading.folder }}</bdi></span>
+            <TruncatedText :class="heading.deleted ? 'deleted-name' : 'text-fg'" :text="heading.name" />
           </span>
           <LineCounts v-if="counts" :added="counts.added" :removed="counts.removed" />
         </span>
-        <!-- The edit shown is named by its call's title; the file's name keeps its width first. -->
-        <TruncatedText v-if="editAt !== null" class="ml-auto pl-2 text-fg-subtle" :text="edits[editAt]?.title ?? ''" />
+        <TruncatedText v-if="editAt !== null" class="flex-[1_1_0%] pl-2 text-right text-fg-subtle" :text="edits[editAt]?.title ?? ''" />
         <Tooltip v-if="opens !== false" :content="t('changes.openFile')" class="shrink-0" :class="{ 'ml-auto': editAt === null }">
           <IconButton
             :icon="FileOutput"
