@@ -42,7 +42,7 @@ export function rowTails(scroller: HTMLElement): Map<string, RowTail> {
 }
 
 /** How far a row's tail block stands lower in it than it did, as when something above it grew. */
-function tailDisplaced(row: HTMLElement, was: RowTail | undefined): number {
+export function tailDisplaced(row: HTMLElement, was: RowTail | undefined): number {
   const message = was && row.querySelectorAll(MESSAGE)
   const block = message?.[message.length - 1]?.children[was!.index]
   return was && block ? block.getBoundingClientRect().top - row.getBoundingClientRect().top - was.offset : 0

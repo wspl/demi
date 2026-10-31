@@ -6,7 +6,8 @@ import { FOLD_MS } from '../ui/fold'
 import { pageLog } from '../infra/log'
 import { deviceSystem } from '../auth/device-unlock'
 import { revealOffset } from '../ui/reveal'
-import { moveRows, rowsBefore, rowTails, scrolledRows, type RowsBefore, type RowTail } from './row-motion'
+import { prefersReducedMotion } from '../ui/stream-reveal'
+import { moveRows, rowsBefore, rowTails, scrolledRows, tailDisplaced, type RowsBefore, type RowTail } from './row-motion'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -125,6 +126,14 @@ export interface PersistedScrollState {
  * does not hold draws it again in every frame.
  */
 const MISSING_LINES = 5
+/**
+ * How quickly the view glides to the end it follows: the distance left
+ * shrinks by e in this many milliseconds, so most of a new line is scrolled
+ * in within about 150 ms, as long as text streams, without a step.
+ */
+const GLIDE_MS = 50
+/** The keys that scroll a focused list. */
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
 /** How long the scroll stays still before the list writes where it stopped. */
 const SCROLL_SETTLE_MS = 250
 /**
@@ -571,14 +580,21 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       if (resized || !shouldAutoScroll.value)
         follow(dist < AT_END_PX, 'reader_changed_layout')
       else
-        scrollToBottom()
+        glideToEnd()
     }, READER_LAYOUT_MS)
   }
-  onScopeDispose(() => {
+  /**
+   * The view stops holding for what the reader opened, as when they then go
+   * to the end: their later act decides where the view is.
+   */
+  function endHold(): void {
     clearTimeout(readerLayoutTimer)
+    readerLayoutTimer = undefined
+    readerLayoutUntil = 0
     readerRows.clear()
     readerControl = null
-  })
+  }
+  onScopeDispose(endHold)
 
   /**
    * While the view holds, scrolls it by as much as the control the reader
@@ -703,7 +719,19 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       queueMicrotask(() => placeRevealed(index, size, coveredBottom))
   }
 
+  /** The reader goes to the end, by the arrow or by sending: the list follows it from there, and glides to it. */
   function scrollToBottomExplicit() {
+    endHold()
+    follow(true, 'jump_to_end')
+    glideToEnd()
+  }
+
+  /**
+   * What covers the list's end grew, or the list got shorter, as the dock or
+   * an on-screen keyboard does: the view stays at the end in the same frame,
+   * so the latest line is never hidden for one.
+   */
+  function keepEnd() {
     follow(true, 'jump_to_end')
     scrollToBottom()
   }
@@ -738,6 +766,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       if (!el)
         return
       const onWheel = (e: WheelEvent) => {
+        readerTakes()
         if (e.deltaY < 0)
           pendingIntent = 'up'
         if (e.deltaY > 0)
@@ -746,9 +775,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       const onTouchStart = (e: TouchEvent) => {
         touchStartY = e.touches[0]?.clientY ?? 0
         touching = true
+        readerTakes()
       }
       const onTouchEnd = (e: TouchEvent) => {
-        if (e.touches.length > 0)
+        if (!touching || e.touches.length > 0)
           return
         touching = false
         // A touch that scrolled nothing sends no scroll event to settle the shift.
@@ -763,19 +793,45 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         touchStartY = touchY
       }
       const onKeydown = (e: KeyboardEvent) => {
+        if (SCROLL_KEYS.has(e.key))
+          readerTakes()
         if (e.key === 'Enter' || e.key === ' ')
           readerChangesLayout(e)
       }
+      // A mouse or a pen held on the list or on its scrollbar, which stands
+      // beside the scroller in its scroll area (`ScrollArea`), holds the
+      // list as a finger does: the reader drags the bar or selects text.
+      const area = el.parentElement ?? el
+      const onPointerDown = (e: PointerEvent) => {
+        if (e.pointerType === 'touch')
+          return
+        touching = true
+        readerTakes()
+        window.addEventListener('pointerup', onPointerUp, { capture: true })
+        window.addEventListener('pointercancel', onPointerUp, { capture: true })
+      }
+      const onPointerUp = () => {
+        window.removeEventListener('pointerup', onPointerUp, { capture: true })
+        window.removeEventListener('pointercancel', onPointerUp, { capture: true })
+        touching = false
+        endMomentumLater()
+      }
+      area.addEventListener('pointerdown', onPointerDown, { capture: true })
       el.addEventListener('click', readerChangesLayout, { capture: true })
       el.addEventListener('keydown', onKeydown, { capture: true })
       el.addEventListener('wheel', onWheel, { passive: true })
       el.addEventListener('touchstart', onTouchStart, { passive: true })
       el.addEventListener('touchmove', onTouchMove, { passive: true })
-      el.addEventListener('touchend', onTouchEnd, { passive: true })
-      el.addEventListener('touchcancel', onTouchEnd, { passive: true })
+      // The finger lifts where the window hears it: the row it touched can
+      // leave the list as the list scrolls, and its touch's end with it.
+      window.addEventListener('touchend', onTouchEnd, { passive: true, capture: true })
+      window.addEventListener('touchcancel', onTouchEnd, { passive: true, capture: true })
       onCleanup(() => {
-        el.removeEventListener('touchend', onTouchEnd)
-        el.removeEventListener('touchcancel', onTouchEnd)
+        area.removeEventListener('pointerdown', onPointerDown, { capture: true })
+        window.removeEventListener('pointerup', onPointerUp, { capture: true })
+        window.removeEventListener('pointercancel', onPointerUp, { capture: true })
+        window.removeEventListener('touchend', onTouchEnd, { capture: true })
+        window.removeEventListener('touchcancel', onTouchEnd, { capture: true })
         el.removeEventListener('click', readerChangesLayout, { capture: true })
         el.removeEventListener('keydown', onKeydown, { capture: true })
         el.removeEventListener('wheel', onWheel)
@@ -787,8 +843,8 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   )
 
   /**
-   * The list grew or shrank at its end: a reader who follows it sees its end
-   * in the frame that draws the change. Rows the virtualizer measures change
+   * The list grew or shrank at its end: a reader who follows it sees the view
+   * glide to its end from the next frame (`glideToEnd`). Rows the virtualizer measures change
    * its total size, which it reports in the same frame; what follows the
    * rows reports its own size, as a resize observer does after layout and
    * before paint.
@@ -801,8 +857,89 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         endDistance.value = distanceFromBottom(scrollContainer.value)
       return
     }
-    scrollToBottom()
+    glideToEnd()
   }
+
+  /**
+   * The list has been painted where it was placed: from then on, what it
+   * grows by at its end is content that arrived, which the view glides to,
+   * while before it the rows' first measurements only correct the place.
+   */
+  let shownPlaced = false
+  watch(isRestored, (placed) => {
+    shownPlaced = false
+    if (placed)
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        shownPlaced = isRestored.value
+      }))
+  }, { flush: 'sync' })
+
+  /**
+   * The view following the end scrolls to it a little in each frame, the
+   * scroll alone moving the rows, as use-stick-to-bottom does. Rows drawn
+   * from where they stood while the view jumps under them would have to
+   * land in the same frame as the jump, which iOS Safari paints a frame
+   * apart: the rows drop by the growth for a frame, then come back.
+   *
+   * The glide is the list's own scroll: it ends no following, and moves no
+   * row (`seen` goes with it). It stops when the reader touches the list,
+   * scrolls it, or stops following, and resumes when their scroll ends.
+   */
+  let glideFrame = 0
+  let glideAt = 0
+  /**
+   * The glide runs: every scroll meanwhile is the list's own, its glide or
+   * its corrections, until the reader acts on the list (`readerTakes`).
+   */
+  let gliding = false
+  function glideToEnd(): void {
+    furthestDistanceSinceDisengage = 0
+    if (glideFrame !== 0)
+      return
+    // An end further than a view away is jumped to, as nobody follows a
+    // glide that long (`moveRows` moves no row that far either).
+    const el = scrollContainer.value
+    if (!el || !shownPlaced || prefersReducedMotion() || document.hidden || distanceFromBottom(el) > el.clientHeight) {
+      scrollToBottom()
+      return
+    }
+    glideAt = performance.now()
+    gliding = true
+    glideFrame = requestAnimationFrame(glide)
+  }
+  function glide(now: number): void {
+    glideFrame = 0
+    gliding = false
+    const el = scrollContainer.value
+    if (!el || !shouldAutoScroll.value || holdsView() || readerScrolls())
+      return
+    if (rowsShift.value !== 0) {
+      void settleShift(true)
+      glideAt = now
+      gliding = true
+      glideFrame = requestAnimationFrame(glide)
+      return
+    }
+    const end = el.scrollHeight - el.clientHeight
+    const left = end - el.scrollTop
+    if (left < 1)
+      return
+    gliding = true
+    const step = Math.min(left, Math.max(1, Math.round(left * (1 - Math.exp(-(now - glideAt) / GLIDE_MS)))))
+    glideAt = now
+    el.scrollTop += step
+    scrolledTo = el.scrollTop
+    if (seen)
+      seen = scrolledRows(seen, el.scrollTop)
+    glideFrame = requestAnimationFrame(glide)
+  }
+  /** The reader acts on the list: the glide stops, and what scrolls next is theirs. */
+  function readerTakes(): void {
+    cancelAnimationFrame(glideFrame)
+    glideFrame = 0
+    gliding = false
+  }
+  onScopeDispose(() => cancelAnimationFrame(glideFrame))
   watch(() => virtualizer.value.getTotalSize(), followEnd, { flush: 'post' })
 
   // Content that comes or goes moves the rows to their places over
@@ -863,6 +1000,21 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         if (placingPart() && item.key === revealing?.key)
           return false
         const offset = currentInstance.scrollOffset ?? 0
+        // Following, a row that reaches into the view grows below what the
+        // reader sees of it, as streamed text does: the view glides to the
+        // end instead (followEnd). What it grew above the text it ends with,
+        // as a formula drawn late does, would push what the reader reads
+        // down, and is made up at once, as for a row above the view.
+        if (shouldAutoScroll.value && shownPlaced && item.start + item.size > offset) {
+          const row = item.start < offset ? currentInstance.elementsCache.get(item.key) : undefined
+          const above = row ? tailDisplaced(row, settledTails.get(String(item.key))) : 0
+          if (above > RESIZED_PX) {
+            resizeCorrections += 1
+            resizeCorrectedPx += Math.round(above)
+            followRowsAbove(above)
+          }
+          return false
+        }
         const isStreamingTail = item.index === blocks.value.length - 1
         const allowCorrection = shouldAutoScroll.value || !isStreamingTail
         const adjusts = allowCorrection && item.start < offset
@@ -930,7 +1082,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const el = scrollContainer.value
     if (el) {
       scrollOffset.value = viewTop(el)
-      if (shiftsRows) {
+      // The list's own scroll while it glides: the reader neither scrolls nor
+      // leaves the end.
+      const glided = gliding && pendingIntent === null
+      if (shiftsRows && !glided) {
         endMomentumLater()
         // The view reached the scroller's top while rows are shifted: above
         // it are rows it cannot scroll to, or a gap where they are drawn
@@ -945,7 +1100,8 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         seen = scrolledRows(seen, el.scrollTop)
       const dist = distanceFromBottom(el)
       endDistance.value = dist
-      updateAutoScrollState(dist, BOTTOM_THRESHOLD_PX)
+      if (!glided || pendingIntent !== null)
+        updateAutoScrollState(dist, BOTTOM_THRESHOLD_PX)
       pendingIntent = null
       if (scrollSettle === undefined)
         scrolledFrom = scrollOffsetAtStart(el)
@@ -964,6 +1120,8 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     momentumEnd = setTimeout(() => {
       momentumEnd = undefined
       settleShift()
+      if (shouldAutoScroll.value && shownPlaced)
+        glideToEnd()
     }, MOMENTUM_END_MS)
   }
   onScopeDispose(() => clearTimeout(momentumEnd))
@@ -1148,6 +1306,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     placed: isRestored,
     isAtBottom,
     scrollToBottom: scrollToBottomExplicit,
+    keepEnd,
     reveal,
     rowsNear,
     onScroll,
