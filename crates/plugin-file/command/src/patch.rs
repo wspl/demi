@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fs, sync::LazyLock};
 
+use demi_command_sdk::paths;
 use regex::Regex;
 use tokio_util::sync::CancellationToken;
 
@@ -136,7 +137,12 @@ pub fn apply(
         if new_path.is_none() && !updated.is_empty() {
             return Err(PatchError::DeleteLeavesContent.into());
         }
-        if new_path != old_path
+        // One entry under two names is a change in place, not a rename.
+        let same = match (&old_path, &new_path) {
+            (Some(old), Some(new)) => paths::entry(old) == paths::entry(new),
+            _ => false,
+        };
+        if !same
             && new_path
                 .as_ref()
                 .is_some_and(|path| fs::symlink_metadata(path).is_ok())
@@ -144,7 +150,6 @@ pub fn apply(
             return Err(PatchError::DestinationExists.into());
         }
         if let Some(path) = new_path.clone() {
-            let same = new_path == old_path;
             let permissions = if same {
                 Some(fs::metadata(&path)?.permissions())
             } else {
@@ -157,7 +162,7 @@ pub fn apply(
                 permissions,
             });
         }
-        if old_path != new_path
+        if !same
             && let Some(path) = old_path
         {
             let permissions = Some(fs::metadata(&path)?.permissions());
@@ -169,8 +174,14 @@ pub fn apply(
             });
         }
     }
+    // A write reaches the file a link points to, and a removal takes the
+    // link itself.
     for change in &changes {
-        if !touched.insert(change.path.clone()) {
+        let key = match change.after {
+            Some(_) => paths::file(&change.path),
+            None => paths::entry(&change.path),
+        };
+        if !touched.insert(key) {
             return Err(PatchError::PathTwice.into());
         }
     }

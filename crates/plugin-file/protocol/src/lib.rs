@@ -211,7 +211,9 @@ pub enum EditArgsError {
     BlockWithoutFile { block: usize },
     #[error("Line {line} of stdin names {path}, but no block follows it")]
     PathWithoutBlocks { line: usize, path: String },
-    #[error("Line {line} of stdin, {marker}, is out of place in block {block}")]
+    #[error(
+        "Line {line} of stdin, {marker}, is out of place in block {block}; a text that holds a line exactly like a marker is changed with `demi file patch`"
+    )]
     MarkerOutOfPlace {
         line: usize,
         marker: &'static str,

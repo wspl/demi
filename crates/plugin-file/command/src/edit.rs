@@ -47,7 +47,7 @@ use std::{
 };
 
 use demi_command_package_file_protocol::{Block, BlockLine, Choice, Edit};
-use demi_command_sdk::edits::Recording;
+use demi_command_sdk::{edits::Recording, paths};
 use similar::{DiffTag, TextDiff};
 use tokio_util::sync::CancellationToken;
 
@@ -102,19 +102,20 @@ pub(crate) fn edit(
             }]
         }
         Edit::Blocks(files) => {
-            // Each file once, in the order stdin first names it, with every
-            // block stdin gives it.
-            let mut grouped: Vec<(String, PathBuf, Vec<&Block>)> = Vec::new();
+            // Each file once, however stdin names it, in the order stdin
+            // first names it, with every block stdin gives it.
+            let mut grouped: Vec<(String, PathBuf, PathBuf, Vec<&Block>)> = Vec::new();
             for file in files {
                 let path = resolve(cwd, &file.path)?;
-                match grouped.iter_mut().find(|(_, known, _)| *known == path) {
-                    Some((_, _, blocks)) => blocks.extend(&file.blocks),
-                    None => grouped.push((file.path.clone(), path, file.blocks.iter().collect())),
+                let identity = paths::file(&path);
+                match grouped.iter_mut().find(|(_, _, known, _)| *known == identity) {
+                    Some((_, _, _, blocks)) => blocks.extend(&file.blocks),
+                    None => grouped.push((file.path.clone(), path, identity, file.blocks.iter().collect())),
                 }
             }
             grouped
                 .into_iter()
-                .map(|(name, path, blocks)| {
+                .map(|(name, path, _, blocks)| {
                     check_cancelled(cancellation)?;
                     plan_blocks(name, path, &blocks, cancellation)
                 })
