@@ -7,8 +7,12 @@ export interface PointerDragHandlers {
   /**
    * The drag ended. `cancelled` is true when Escape asked to put things back
    * where they were at the press; otherwise the last move has been reported.
+   * `released` is true only when the pointer itself was lifted, not when the
+   * system cancelled it, capture or focus was lost, or the control ended it
+   * early: a control whose release commits something it cannot take back,
+   * such as leaving a view, commits it only then.
    */
-  end: (cancelled: boolean) => void
+  end: (cancelled: boolean, released: boolean) => void
 }
 
 /** The class the document wears while a drag lasts (`styles/base.css`). */
@@ -62,11 +66,11 @@ export function startPointerDrag(event: PointerEvent, handlers: PointerDragHandl
 
   function onEnd(end: PointerEvent): void {
     if (end.pointerId === pointerId)
-      finish(false)
+      finish(false, end.type === 'pointerup')
   }
 
   function onBlur(): void {
-    finish(false)
+    finish(false, false)
   }
 
   function onKeydown(key: KeyboardEvent): void {
@@ -74,10 +78,10 @@ export function startPointerDrag(event: PointerEvent, handlers: PointerDragHandl
       return
     key.preventDefault()
     key.stopPropagation()
-    finish(true)
+    finish(true, false)
   }
 
-  function finish(cancelled: boolean): void {
+  function finish(cancelled: boolean, released: boolean): void {
     if (ended)
       return
     ended = true
@@ -99,7 +103,7 @@ export function startPointerDrag(event: PointerEvent, handlers: PointerDragHandl
       pending = null
     else
       flush()
-    handlers.end(cancelled)
+    handlers.end(cancelled, released)
   }
 
   element.setPointerCapture(pointerId)
@@ -112,5 +116,5 @@ export function startPointerDrag(event: PointerEvent, handlers: PointerDragHandl
   const root = document.documentElement
   root.style.setProperty('--drag-cursor', handlers.cursor)
   root.classList.add(DRAGGING_CLASS)
-  return () => finish(false)
+  return () => finish(false, false)
 }

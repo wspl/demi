@@ -57,6 +57,12 @@ export interface WorkState {
    * brings were there before the page looked, and show at once.
    */
   readonly tabsRead: boolean
+  /**
+   * Whether a phone draws the panel as an overlay over the conversation, with
+   * only the selected view and no tab strip (`ENTRY_SHEET`); false off a
+   * phone, where the panel is always beside the conversation.
+   */
+  readonly sheet: boolean
 }
 
 /**
@@ -74,6 +80,15 @@ const ENTRY_MARK = 'workPanel'
 const ENTRY_STEPS = 'workPanelSteps'
 
 /**
+ * Whether a phone draws the panel this entry opens as an overlay over the
+ * conversation, with only the selected view and no tab strip, rather than the
+ * full panel the tabs button opens. A view opened from the conversation, such
+ * as a picture or a file link, is an overlay; the tabs button is not. Absent
+ * off a phone, where the panel is always beside the conversation.
+ */
+const ENTRY_SHEET = 'workPanelSheet'
+
+/**
  * What the panel reads of the router's current history entry: its mark and
  * steps, and the addresses of the entries before and after it, which
  * vue-router's web history keeps.
@@ -83,6 +98,7 @@ const entryStateSchema = z.looseObject({
   forward: z.string().nullable().optional(),
   [ENTRY_MARK]: z.literal(true).optional(),
   [ENTRY_STEPS]: z.number().int().positive().nullable().optional(),
+  [ENTRY_SHEET]: z.boolean().optional(),
 })
 
 /** The conversation an address shows, and the panel's part of it. */
@@ -93,6 +109,8 @@ interface ShownAddress {
   address: PanelAddress
   /** The panel wrote the address, so one without `panel` says the panel is closed. */
   marked: boolean
+  /** Whether a phone draws the panel this address opens as an overlay (`ENTRY_SHEET`), known with the move, before the router has made it. */
+  sheet: boolean
 }
 
 /** What a move of a conversation's panel leads to: open or closed, what it selected, and its pinned tabs' data. */
@@ -100,6 +118,8 @@ interface PanelView {
   open: boolean
   history: readonly string[]
   pinned: PinnedTabs
+  /** Whether a phone draws it as an overlay over the conversation (`ENTRY_SHEET`). */
+  sheet: boolean
 }
 
 /** The conversation a route shows, or null for any other page. */
@@ -206,6 +226,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return {
       marked: state[ENTRY_MARK] === true,
       steps: state[ENTRY_STEPS] ?? null,
+      sheet: state[ENTRY_SHEET] ?? false,
       back: state.back ?? null,
       forward: state.forward ?? null,
     }
@@ -217,7 +238,8 @@ export const useWorkPanel = defineStore('work-panel', () => {
     if (conversationId === null) {
       return null
     }
-    return { conversation: conversationId, path: route.path, address: queryAddress(route.query), marked: entryState().marked }
+    const entry = entryState()
+    return { conversation: conversationId, path: route.path, address: queryAddress(route.query), marked: entry.marked, sheet: entry.sheet }
   }
 
   /**
@@ -267,7 +289,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
   /** The conversation's panel as its view's state says now. */
   function viewOf(conversationId: string): PanelView {
     const state = stateFor(conversationId)
-    return { open: state.open, history: state.history, pinned: state.pinned }
+    return { open: state.open, history: state.history, pinned: state.pinned, sheet: addressOf(conversationId)?.sheet ?? false }
   }
 
   /**
@@ -300,13 +322,13 @@ export const useWorkPanel = defineStore('work-panel', () => {
     }
     const view = { panel: { history: next.history, tabs: tabsOf(conversationId).tabs.value }, pinned: next.pinned }
     const written = panelAddress(next.open, view, kinds())
-    if (shown.marked && sameAddress(written, shown.address)) {
+    if (shown.marked && sameAddress(written, shown.address) && shown.sheet === next.sheet) {
       return
     }
     if (how === 'correct' && !ready(conversationId)) {
       return
     }
-    navigate(shown, written, how === 'push' ? 'push' : 'replace')
+    navigate(shown, written, how === 'push' ? 'push' : 'replace', next.sheet)
   }
 
   /**
@@ -315,7 +337,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
    * panel goes back to the entry before it opened, as its Back to
    * Conversation says.
    */
-  function navigate(shown: ShownAddress, written: PanelAddress, asked: 'push' | 'replace'): void {
+  function navigate(shown: ShownAddress, written: PanelAddress, asked: 'push' | 'replace', sheet: boolean): void {
     const target = router
     if (!target) {
       return
@@ -337,8 +359,8 @@ export const useWorkPanel = defineStore('work-panel', () => {
     }
     const token = { how }
     moving = token
-    address.value = { conversation: shown.conversation, path: shown.path, address: written, marked: true }
-    const location = { path: shown.path, query: { ...written }, state: { [ENTRY_MARK]: true, [ENTRY_STEPS]: steps }, force: true }
+    address.value = { conversation: shown.conversation, path: shown.path, address: written, marked: true, sheet }
+    const location = { path: shown.path, query: { ...written }, state: { [ENTRY_MARK]: true, [ENTRY_STEPS]: steps, [ENTRY_SHEET]: sheet }, force: true }
     const going = how === 'push' ? target.push(location) : target.replace(location)
     // A move nothing joined that the router did not make leaves the address
     // where the router is. An error a guard throws stays the router's, which
@@ -399,7 +421,11 @@ export const useWorkPanel = defineStore('work-panel', () => {
     }
     const view = viewOf(conversationId)
     const history = pending.shown.reduce<readonly string[]>((selected, id) => selectTab(selected, id), view.history)
-    move(conversationId, { ...view, history, open: view.open || !phone.value || whileLooking }, 'push')
+    const open = view.open || !phone.value || whileLooking
+    // A view the conversation opens on a phone is an overlay, as a tap on a picture is; a panel that was open, or
+    // that stays closed, keeps how it shows, so a show that opens nothing moves nothing.
+    const sheet = view.open || !open ? view.sheet : phone.value
+    move(conversationId, { ...view, history, open, sheet }, 'push')
   }
 
   /**
@@ -451,6 +477,10 @@ export const useWorkPanel = defineStore('work-panel', () => {
         },
         get tabsRead(): boolean {
           return tabs.read
+        },
+        get sheet(): boolean {
+          const shownNow = addressOf(conversationId)
+          return phone.value && shownNow !== null && addressSelection(shownNow.address) !== null && shownNow.sheet
         },
       })
     }
@@ -548,9 +578,9 @@ export const useWorkPanel = defineStore('work-panel', () => {
     }
   }
 
-  /** Opens or closes the conversation's panel, a step of the history. */
+  /** Opens or closes the conversation's panel, a step of the history. The tabs button opens the full panel, not an overlay. */
   function setOpen(conversationId: string, open: boolean): void {
-    move(conversationId, { ...viewOf(conversationId), open }, 'push')
+    move(conversationId, { ...viewOf(conversationId), open, sheet: false }, 'push')
   }
 
   function select(conversationId: string, id: string): void {
@@ -617,7 +647,10 @@ export const useWorkPanel = defineStore('work-panel', () => {
     if (opened.created) {
       tabsOf(conversationId).change({ type: 'create', tab: opened.created })
     }
-    move(conversationId, { open: true, history: selectTab(state.history, opened.selection), pinned: opened.pinned }, 'push')
+    // Opened from the conversation, a phone draws it as an overlay over it; one opened inside an open panel, such as
+    // a file a Change names, keeps how the panel shows.
+    const sheet = state.open ? viewOf(conversationId).sheet : phone.value
+    move(conversationId, { open: true, history: selectTab(state.history, opened.selection), pinned: opened.pinned, sheet }, 'push')
   }
 
   /** Whether any page the user has on opens `intent`. */

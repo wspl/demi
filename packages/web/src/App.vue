@@ -335,6 +335,8 @@ const asideOpen = computed({
     }
   },
 })
+// On a phone the panel opened from the conversation shows as an overlay over it, which the frame fades in.
+const asideSheet = computed(() => activeId.value !== null && work.stateFor(activeId.value).sheet)
 // The shown conversation is read while the user attends the page, and a
 // change of it is the user's action, from the sidebar, a link, Back or a
 // notification.
@@ -506,6 +508,7 @@ useAppShortcuts(
       v-model:width="sidebarWidth"
       v-model:aside-share="asideShare"
       v-model:aside-open="asideOpen"
+      :aside-sheet="asideSheet"
       @resize-end="resources.sidebarWidth = $event"
       @aside-resize-end="resources.asideShare = $event"
     >

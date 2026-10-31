@@ -1,13 +1,15 @@
 import { DRAG_THRESHOLD_PX } from './image-zoom'
 
 /**
- * How a swipe steps the media viewer's picture on a phone: the decisions the
- * gesture's owner, `ImagePreview`, asks of it.
+ * How a swipe moves the medium the media viewer shows on a phone, a picture
+ * or a video: the decisions the swipe's layer (`swipe-layer.ts`) asks of it.
  *
- * - A swipe left shows the next picture and one right the previous, as in Photos.
- * - The picture follows the finger and either settles on the next one or springs
+ * - A swipe left shows the next medium and one right the previous, as in Photos.
+ * - The medium follows the finger and either settles on the next one or springs
  *   back.
  * - At the first or the last it stops.
+ * - A pull down, where the medium may close, moves it down and fades it, and
+ *   closes it once let go far enough down.
  */
 
 /** Which neighbours the picture shown has in its transcript. */
@@ -27,6 +29,22 @@ const FLICK_MIN_PX = 24
 
 /** How much of the finger's travel a picture follows past the first or last one: it gives, but only a little. */
 const RESISTANCE = 0.25
+
+/** How far down a medium is pulled before the finger's lift closes it. */
+const DROP_PX = 72
+
+/** How much of its opacity a medium pulled down a whole frame's height loses. */
+const DROP_FADE = 0.6
+
+/** Whether a pull `dy` px down closes the medium once the finger lifts. */
+export function pullDrops(dy: number): boolean {
+  return dy >= DROP_PX
+}
+
+/** The opacity of a medium pulled `dy` px down in a frame `height` tall. */
+export function pullOpacity(dy: number, height: number): number {
+  return height > 0 ? 1 - Math.min(Math.max(dy, 0) / height, 1) * DROP_FADE : 1
+}
 
 /**
  * Whether a press starts a swipe: a finger or a pen, never the mouse, whose

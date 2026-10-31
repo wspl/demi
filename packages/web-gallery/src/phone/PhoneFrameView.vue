@@ -81,9 +81,8 @@ onBeforeUnmount(() => {
 })
 
 const project = createGalleryProject()
-const work = useGalleryWork('change', { files: galleryFiles(project), browser: galleryBrowser([]) })
-// The panel opens only where the scene shows it.
-work.open.value = false
+// The panel opens only where the scene shows it, and its history starts with it closed.
+const work = useGalleryWork('change', { files: galleryFiles(project), browser: galleryBrowser([]), open: false })
 const COOKIE = `${project.root}/src/auth/cookie.ts`
 
 const flow = useTurnFlow({
@@ -280,7 +279,9 @@ onMounted(async () => {
   <div class="h-full">
     <SidebarLayout
       v-model:open="sidebarOpen"
-      v-model:aside-open="work.open.value"
+      :aside-open="work.open.value"
+      @update:aside-open="(shown: boolean) => (shown ? (work.open.value = true) : work.closePanel())"
+      :aside-sheet="work.sheet.value"
       class="h-full"
     >
       <template #sidebar>
@@ -319,7 +320,7 @@ onMounted(async () => {
         :listed="shownListed"
         :pending-submissions="flow.pendingSubmissions.value"
         :removing="flow.removing.value"
-        @open-aside="work.open.value = true"
+        @open-aside="work.openPanel()"
         @rename="session.title = $event"
         @pin="(pinned) => updateShown((conversation) => ({ ...conversation, pinned }))"
         @archive="leaveShown('Archive the Conversation and Open a New One')"
@@ -363,7 +364,7 @@ onMounted(async () => {
         </template>
       </ChatSession>
       <template #aside>
-        <GalleryWorkPanel :work="work" @close="work.open.value = false" />
+        <GalleryWorkPanel :work="work" @close="work.closePanel()" />
       </template>
       <template #dialogs>
         <ChoosePasswordWizard

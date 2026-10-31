@@ -27,13 +27,15 @@ export function galleryHistory<T extends Shown>(current: () => T, restore: (step
       const next = steps.value[at.value + (direction === 'back' ? -1 : 1)]
       return current().open && next?.open === true
     },
-    go(direction: HistoryDirection): void {
+    /** Goes back or forward a step, and says whether there was one. */
+    go(direction: HistoryDirection): boolean {
       const index = at.value + (direction === 'back' ? -1 : 1)
       const next = steps.value[index]
       if (next) {
         at.value = index
         restore(next)
       }
+      return next !== undefined
     },
     /** The history as a specimen starts it again: what it shows, alone. */
     reset(): void {

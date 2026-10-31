@@ -16,6 +16,7 @@ const emit = defineEmits<{ close: [] }>()
     :kinds="work.kinds.value"
     :before-first-message="beforeFirstMessage"
     :host-offline="hostOffline"
+    :sheet="work.sheet.value"
     @select="work.select"
     @move-tab="work.move"
     @update-tab="work.update"

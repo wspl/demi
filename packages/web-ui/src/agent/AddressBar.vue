@@ -185,5 +185,7 @@ defineExpose({
     <div v-if="$slots.trailing" class="ml-2 flex shrink-0 items-center">
       <slot name="trailing" />
     </div>
+    <!-- What ends the bar after the trailing controls, such as a phone overlay's Close. -->
+    <slot name="end" />
   </div>
 </template>

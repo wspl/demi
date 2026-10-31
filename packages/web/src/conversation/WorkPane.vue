@@ -67,6 +67,7 @@ const kinds = useBoundKinds(
     :kinds="kinds"
     :before-first-message="!recorded"
     :host-offline="offlineHost"
+    :sheet="state.sheet"
     @select="work.select(conversationId, $event)"
     @move-tab="(id, index) => work.move(conversationId, id, index)"
     @update-tab="(id, data) => work.update(conversationId, id, data)"
