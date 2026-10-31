@@ -157,8 +157,7 @@ impl Calls {
             system_hash,
             tools_hash,
             agent: request.agent,
-            // A title request belongs to no turn.
-            turn: (request.purpose != RequestPurpose::Title).then(|| request.turn_id.clone()),
+            turn: request.purpose.belongs_to_turn().then(|| request.turn_id.clone()),
             purpose: request.purpose,
             model: request.model_id.clone(),
             request: request.request_id.clone(),
@@ -369,8 +368,7 @@ impl ProviderRuntime for MeteredRuntime {
         if let Some(agent) = request.agent {
             span.record("agent", agent);
         }
-        // A title request belongs to no turn.
-        if request.purpose != RequestPurpose::Title {
+        if request.purpose.belongs_to_turn() {
             span.record("turn", request.turn_id.as_str());
         }
         if let Some(account) = &self.ledger.account {

@@ -765,6 +765,17 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub small_model_same_provider: Option<bool>,
+    /// Whether a root's answer offers the replies the user is likely to send
+    /// next (`crates/agent-server/src/suggested_replies.rs`). Absent means
+    /// yes.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub suggested_replies: Option<bool>,
 }
 
 /// The small model the user chose: model settings without a service tier,
@@ -785,6 +796,12 @@ pub struct SmallModelSettings {
 }
 
 impl Preferences {
+    /// Whether answers offer suggested replies, Settings › Agent's switch,
+    /// on unless the user turned it off.
+    pub fn suggests_replies(&self) -> bool {
+        self.suggested_replies.unwrap_or(true)
+    }
+
     /// Whether the user turned the entry `provider` off.
     pub fn hides_provider(&self, provider: &ProviderId) -> bool {
         self.hidden_providers.contains(provider)
@@ -1055,6 +1072,14 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub small_model_same_provider: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub suggested_replies: Option<bool>,
 }
 
 /// `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

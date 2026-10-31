@@ -4,10 +4,7 @@ use demi_conversation_lane_protocol::{
     AgentCost, AgentEntry, BlockVersions, CacheChart, ConversationAttachment, Failures, Refusal, ReplyBlockFacts,
     RequestOutput, SendMessage, ShellStatus, TurnSpeed, Version,
 };
-use demi_shared_types::{
-    Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
-    WorkflowChoice,
-};
+use demi_shared_types::{Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, SuggestedReply, Timestamp, WorkflowChoice};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
@@ -268,6 +265,13 @@ pub struct ConversationMetadata {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<TurnSpeed>")]
     pub turn_speed: Option<TurnSpeed>,
+    /// The replies the user is likely to send after the root's latest
+    /// answer, as the small model wrote them, with the answer they follow;
+    /// null while none are kept, as before they arrive, after a turn that
+    /// did not answer, or with Suggested Replies off.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<SuggestedReplies>")]
+    pub suggested_replies: Option<SuggestedReplies>,
     /// Whether the conversation's tree is open with commands of plugins the
     /// user has since turned on or off, so a reload would change them
     /// (`crates/plugin-host/src/lib.rs`).
@@ -314,6 +318,17 @@ pub struct ConversationMetadata {
     /// The conversation's schedules, which wake it, newest first.
     #[garde(skip)]
     pub schedules: Vec<crate::schedules::ConversationSchedule>,
+}
+
+/// The replies the user is likely to send after an answer
+/// (`crates/agent-server/src/suggested_replies.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SuggestedReplies {
+    /// The text block of the answer they follow.
+    pub block_id: BlockId,
+    /// At most three, the most likely first; empty when none was likely.
+    pub replies: Vec<SuggestedReply>,
 }
 
 /// How far back `GET /conversations/:id/cost/recent` counts, as its `window`

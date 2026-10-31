@@ -95,6 +95,7 @@ mod quota;
 mod read_at;
 mod schema;
 mod session;
+mod suggested_reply;
 mod time;
 mod view;
 #[cfg(feature = "whole-image")]
@@ -115,6 +116,7 @@ pub use block::{
 };
 pub use bytes::B64Bytes;
 pub use comment::{MessageComment, comments_content, markdown_quote};
+pub use suggested_reply::{SuggestedReply, SuggestedReplyKind};
 pub use cost::{Cost, Currency};
 pub use catalog::{CatalogRecord, ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{

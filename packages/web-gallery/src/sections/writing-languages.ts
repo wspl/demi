@@ -211,6 +211,7 @@ const SIMPLIFIED: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '全部关闭', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
+    ['Suggested Replies', '建议回复', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 
@@ -388,6 +389,7 @@ const TRADITIONAL: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '全部關閉', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
+    ['Suggested Replies', '建議回覆', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 
@@ -565,6 +567,7 @@ const JAPANESE: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', 'すべて閉じる', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
+    ['Suggested Replies', '返信の候補', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 
@@ -749,6 +752,7 @@ const KOREAN: LanguageWriting = {
     ['Beta', 'Beta', 'Chrome, Edge; kept in English, as theirs is'],
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '모두 닫기', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
+    ['Suggested Replies', '추천 답장', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
   ],
 }
 

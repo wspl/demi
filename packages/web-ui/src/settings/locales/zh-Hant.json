@@ -336,6 +336,7 @@
       "keywords": "輕量模型,標題,快速模型,haiku,flash,輪次",
       "modelKeywords": "標題模型,haiku,flash,自動",
       "sameProviderKeywords": "隱私,同一供應商",
+      "suggestedRepliesKeywords": "建議,回覆,快速回覆",
       "sendKeywords": "引導,排隊,Enter",
       "restartKeywords": "重新啟動,更新,繼續",
       "retryKeywords": "用量限制,額度,重設",

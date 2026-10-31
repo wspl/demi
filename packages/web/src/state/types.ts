@@ -22,7 +22,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, ConversationWorkflowList, RecentCost } from '../api/generated/web-api'
+import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, ConversationWorkflowList, RecentCost, SuggestedReplies } from '../api/generated/web-api'
 import type { WorkflowChoice } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { RecordSlot } from '../conversation/record'
@@ -75,6 +75,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pluginsChanged: boolean
   /** The speed of the root's last turn, which the chips row shows once no reading does. */
   turnSpeed: TurnSpeed | null
+  /** The replies the user is likely to send after the root's latest answer, as the metadata brings them; null while none are kept. */
+  suggestedReplies: SuggestedReplies | null
   /**
    * The workflows the backend keeps for the conversation's project, and the
    * linked worktree's it works in while they differ, which the Workflow menu

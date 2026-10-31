@@ -42,6 +42,7 @@ mod lane;
 mod summary;
 mod turn_timing;
 pub(crate) mod small_requests;
+pub(crate) mod suggested_replies;
 pub(crate) mod titles;
 pub mod transition;
 pub mod workflows;
@@ -76,15 +77,18 @@ use self::product::{
 };
 use self::providers::ConversationProviders;
 use self::small_requests::SmallRequests;
+use self::suggested_replies::SuggestedReplies;
 use self::titles::Titles;
 use crate::services::Services;
 use crate::shard::Shard;
 
-/// What a shard's conversations run on: the agent server and the title
-/// requests, small requests that infer with the same providers.
+/// What a shard's conversations run on: the agent server, and the title and
+/// suggested replies requests, small requests that infer with the same
+/// providers.
 pub(crate) struct ConversationParts {
     pub agent: Rc<AgentServer<ShardHosts>>,
     pub titles: Titles,
+    pub suggested_replies: SuggestedReplies,
 }
 
 /// The conversation parts of `shard`, the user's.
@@ -143,7 +147,8 @@ pub(crate) fn conversation_parts(
         services.clone(),
         http,
     ));
-    let small_requests = Rc::new(SmallRequests::new(providers.clone(), user, services.clone()));
+    let small_requests = Rc::new(SmallRequests::new(providers.clone(), user.clone(), services.clone()));
+    let suggested_replies = SuggestedReplies::new(small_requests.clone(), services.control.clone(), marks.clone(), user);
     let titles = Titles::new(
         small_requests,
         services.control.clone(),
@@ -181,6 +186,7 @@ pub(crate) fn conversation_parts(
                     shard.follow_runs(&conversation);
                     shard.follow_failed_turn(&conversation);
                     shard.follow_turn_end(&conversation);
+                    shard.follow_suggested_replies(&conversation);
                     shard.follow_idle_compaction_end(&conversation);
                     // A conversation no longer loaded keeps no project files.
                     if shard.agent().tree(root).is_none() {
@@ -201,7 +207,7 @@ pub(crate) fn conversation_parts(
             })
         },
     });
-    ConversationParts { agent, titles }
+    ConversationParts { agent, titles, suggested_replies }
 }
 
 /// The context sources a node asks before each provider request, in order:

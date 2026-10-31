@@ -336,6 +336,7 @@
       "keywords": "small model,title,fast model,haiku,flash,turn",
       "modelKeywords": "title model,haiku,flash,automatic",
       "sameProviderKeywords": "privacy,same provider",
+      "suggestedRepliesKeywords": "suggestions,replies,quick reply",
       "sendKeywords": "steer,queue,enter",
       "restartKeywords": "restart,update,continue",
       "retryKeywords": "usage limit,quota,reset",

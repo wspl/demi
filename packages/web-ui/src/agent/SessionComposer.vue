@@ -654,12 +654,17 @@ function missingFiles(names: readonly string[]): void {
 function focusDraft(): void {
   editor.value?.takeFocus()
 }
-// A comment saved to the draft hands it the focus, but not while the composer
-// shows an edit, which would send without the comment.
-takeComposerFocus(() => {
-  if (!shownEdit.value) {
-    focusDraft()
+// A comment saved to the draft, or a suggested reply to edit, hands it the
+// focus, but not while the composer shows an edit, which would send without
+// them.
+takeComposerFocus((words) => {
+  if (shownEdit.value) {
+    return
   }
+  if (words !== undefined) {
+    editor.value?.appendLine(words)
+  }
+  focusDraft()
 })
 
 defineExpose({

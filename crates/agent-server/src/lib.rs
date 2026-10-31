@@ -67,6 +67,7 @@ pub(crate) fn millis(duration: std::time::Duration) -> u64 {
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod small_request;
+pub mod suggested_replies;
 pub mod title;
 
 pub use node::{CODE_PATHS_MAX, Node, ReplyFiles, code_path};

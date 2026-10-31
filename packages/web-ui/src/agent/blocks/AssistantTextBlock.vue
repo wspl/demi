@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CodeFile, ReplyPicture } from '@demicodes/protocol'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import AssistantMessageFooter from './AssistantMessageFooter.vue'
 import type { MessageForkState } from '../message-fork'
@@ -13,6 +13,8 @@ import { answerActions, answerMenuEntries } from '../answer-actions'
 import { quotedWords, sendEntry, useSendTargets } from '../send-to-conversation'
 import { useReplySelectionTools } from '../reply-selection'
 import { pictureWords, useKeepPicture } from '../comments/pictures'
+import { useSuggestedReplies } from '../suggested-replies'
+import SuggestedReplies from './SuggestedReplies.vue'
 
 const props = withDefaults(defineProps<{
   /**
@@ -48,6 +50,12 @@ const tools = useReplySelectionTools()
 const keepPicture = useKeepPicture()
 const root = ref<HTMLElement>()
 const { copy } = useCopy(() => props.content)
+const suggestions = useSuggestedReplies()
+/** The suggested replies under this answer's footer, while it is the one they follow. */
+const suggested = computed(() => {
+  const now = suggestions?.current()
+  return now && now.blockId === props.blockId ? now : null
+})
 
 /**
  * The answer's menu holds what its footer shows at that moment
@@ -96,6 +104,12 @@ const menu: ContextMenuDeclaration = {
       :hide-fork="hideFork"
       :regenerate="regenerate"
       :versions="versions"
+    />
+    <SuggestedReplies
+      v-if="suggested && suggestions && showFooter && !isStreaming"
+      :replies="suggested.replies"
+      @send="suggestions.send"
+      @edit="suggestions.edit"
     />
   </div>
 </template>

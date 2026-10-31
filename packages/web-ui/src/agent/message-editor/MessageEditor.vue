@@ -501,6 +501,18 @@ defineExpose({
     editor.commands.focus()
   },
   /**
+   * Adds `text` as plain text at the end, as a line of its own after what is
+   * there, which then changes the message as typing does.
+   */
+  appendLine(text: string): void {
+    const empty = editor.state.doc.textContent.length === 0 && editor.state.doc.childCount <= 1
+    const chain = editor.chain().focus('end')
+    if (!empty) {
+      chain.splitBlock()
+    }
+    chain.insertContent({ type: 'text', text }).run()
+  },
+  /**
    * Takes the focus as the page gives it, the cursor at the end: not on a phone
    * unless `asked` (`useAutofocus`).
    */

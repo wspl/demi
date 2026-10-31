@@ -1,4 +1,8 @@
 {
+  "suggestions": {
+    "label": "추천 답장",
+    "edit": "편집"
+  },
   "comments": {
     "comment": "댓글",
     "placeholder": "댓글 추가",

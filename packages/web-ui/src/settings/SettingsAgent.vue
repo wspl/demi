@@ -58,6 +58,7 @@ const props = defineProps<{
 
 const smallModel = defineModel<SmallModelChoice | null>('smallModel', { required: true })
 const sameProvider = defineModel<boolean>('sameProvider', { required: true })
+const suggestedReplies = defineModel<boolean>('suggestedReplies', { required: true })
 const sendWhileRunning = defineModel<SendWhileRunning>('sendWhileRunning', { required: true })
 const resumeAfterRestart = defineModel<boolean>('resumeAfterRestart', { required: true })
 const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
@@ -203,6 +204,12 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
           size="sm"
           :options="sendOptions"
         />
+      </SettingsRow>
+      <SettingsRow
+        :label="t('settings.agent.suggestedReplies')"
+        :description="t('settings.agent.suggestedRepliesDescription')"
+      >
+        <Switch v-model="suggestedReplies" size="sm" :aria-label="t('settings.agent.suggestedReplies')" />
       </SettingsRow>
       <SettingsRow
         :label="t('settings.agent.resumeAfterRestart')"

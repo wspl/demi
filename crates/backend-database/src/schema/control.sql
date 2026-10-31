@@ -896,7 +896,7 @@ CREATE TABLE usage_ledger (
   -- Null for a request outside a session, such as a title.
   agent                 INTEGER CHECK (agent >= 0),
   turn_id               TEXT,
-  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image', 'video', 'audio')),
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'suggested_replies', 'image', 'video', 'audio')),
   provider_id           TEXT NOT NULL,
   -- Null for an API key.
   account_id            TEXT,

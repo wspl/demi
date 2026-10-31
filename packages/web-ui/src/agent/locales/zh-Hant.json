@@ -1,4 +1,8 @@
 {
+  "suggestions": {
+    "label": "建議回覆",
+    "edit": "編輯"
+  },
   "comments": {
     "comment": "註解",
     "placeholder": "新增註解",

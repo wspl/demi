@@ -115,6 +115,7 @@ export function settingsSections(): SettingsNavGroup[] {
             { label: uiText('settings.agent.model'), keywords: words(t('sections.agentPage.modelKeywords')) },
             { label: uiText('settings.agent.sameProvider'), keywords: words(t('sections.agentPage.sameProviderKeywords')) },
             { label: uiText('settings.agent.sendWhileRunning'), keywords: words(t('sections.agentPage.sendKeywords')) },
+            { label: uiText('settings.agent.suggestedReplies'), keywords: words(t('sections.agentPage.suggestedRepliesKeywords')) },
             { label: uiText('settings.agent.resumeAfterRestart'), keywords: words(t('sections.agentPage.restartKeywords')) },
             { label: uiText('settings.agent.resumeAtRetry'), keywords: words(t('sections.agentPage.retryKeywords')) },
             { label: uiText('settings.agent.compactIdle'), keywords: words(t('sections.agentPage.compactIdleKeywords')) },

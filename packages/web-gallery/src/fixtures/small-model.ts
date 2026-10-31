@@ -7,10 +7,12 @@ import { composerModels } from './context-limits'
 export interface SmallModelState {
   choice: SmallModelChoice | null
   sameProvider: boolean
+  /** Suggested Replies, on as the product's default. */
+  suggestedReplies: boolean
 }
 
 export function createSmallModelState(choice: SmallModelChoice | null = null, sameProvider = false): SmallModelState {
-  return reactive({ choice, sameProvider })
+  return reactive({ choice, sameProvider, suggestedReplies: true })
 }
 
 /** Claude Haiku, which the gallery's Anthropic entry lists beside the composer's models for the small model's menu. */

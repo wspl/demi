@@ -433,6 +433,9 @@ pub enum RequestPurpose {
     Compaction,
     /// A conversation's title request.
     Title,
+    /// The request for the replies the user is likely to send after an
+    /// answer (`crates/agent-server/src/suggested_replies.rs`).
+    SuggestedReplies,
 }
 
 impl RequestPurpose {
@@ -442,7 +445,14 @@ impl RequestPurpose {
             Self::Turn => "turn",
             Self::Compaction => "compaction",
             Self::Title => "title",
+            Self::SuggestedReplies => "suggested_replies",
         }
+    }
+
+    /// Whether a request of this purpose is one of its session's turn's:
+    /// a small request beside the conversation belongs to none.
+    pub fn belongs_to_turn(self) -> bool {
+        matches!(self, Self::Turn | Self::Compaction)
     }
 }
 
