@@ -16,6 +16,7 @@ import { aroundPlaces, clearPlaces, createPlace, placeRemarks, PLACE_ATTRIBUTE, 
 import CommentItem from './CommentItem.vue'
 import AskCard from './AskCard.vue'
 import { cardContent, pageToRead, readKey, unanswered, type ReplyAsking } from './asks'
+import { useComposerFocus } from '../composer-focus'
 
 /**
  * The comments and side questions on a transcript's replies
@@ -50,6 +51,7 @@ const props = defineProps<{
 }>()
 
 const phone = usePhone()
+const composer = useComposerFocus()
 
 const marked = keptComputed<MarkedComment[]>(() => [
   ...props.sent.map((comment) => ({ ...comment, sent: true })),
@@ -160,7 +162,8 @@ function pictureTools(reply: { blockId: string; root: HTMLElement }, image: HTML
  * What the page's one comment field does for the words or the picture `anchor`
  * names in the reply text block `blockId`, which `quote` quotes:
  *
- * - Comment waits with the other comments.
+ * - Comment waits with the other comments, and the composer takes the focus
+ *   once the field has closed, so Return sends them.
  * - Ask asks a side question, where the list takes them.
  * - Send sends the comment alone now, where the list can.
  *
@@ -192,6 +195,7 @@ function fieldActions(blockId: string, anchor: TextAnchor & { at: number }, quot
   const { sendNow } = props.commenting
   return {
     comment: (words) => withPicture('comment', (kept) => props.commenting.add(comment(words, kept))),
+    commented: () => composer.focus(),
     ask: props.asking ? (words) => withPicture('ask', (kept) => props.asking?.ask({ id: crypto.randomUUID(), ...placed, ...kept, question: words })) : undefined,
     send: sendNow ? (words) => withPicture('comment', (kept) => sendNow(comment(words, kept))) : undefined,
     get unavailable() {

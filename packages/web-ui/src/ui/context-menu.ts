@@ -870,6 +870,11 @@ export function selectedLinesBounds(range: Range): DOMRect | null {
 export interface SelectionFieldActions {
   /** Comments on the selection. */
   comment: (words: string) => void | Promise<void>
+  /**
+   * What follows a comment once the field has closed on it, such as the
+   * composer taking the focus, so Return sends the comment.
+   */
+  commented?: () => void
   /** Asks a side question about the selection. */
   ask?: (words: string) => void | Promise<void>
   /** Sends the quote and the words to the main agent now. */
