@@ -5,20 +5,21 @@ import { type EditorState, Selection, type Transaction } from '@tiptap/pm/state'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import { useMarkdownRenderVersion } from '../../markdown/render-version'
 import { useMessageFiles } from '../../markdown/message-files'
-import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
+import { ATTACHMENT_MARK, parseTypedMarkdown, serializeTypedMarkdown } from '../../markdown/user-markdown'
 import { useAutofocus } from '../../ui/autofocus'
 import { copiedMessageHtml, messageClipboard, type CopiedMessage } from '../message-input/copied-message'
 import { capsuleOf, useTransfers, type MessageCapsule } from './capsules'
-import { composerExtensions, redrawDecorations } from './extensions'
-import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slices'
+import { composerExtensions, inCode, redrawDecorations } from './extensions'
+import { fragmentDocument, markdownSlice } from './clipboard-slices'
 import { useMessageClipboard } from './message-clipboard'
 import { followMessageLink } from './message-links'
 import type { PlaceholderText } from '../../ui/ui-text'
 
 /**
- * The composer's editor, where a user message is written: its Markdown
- * formatted as it will look, each file a capsule where it stands. A sent
- * message is drawn from the same schema, without an editor (`SentMessage`).
+ * The composer's editor, where a user message is written: its Markdown as
+ * typed, every character kept, with the dialect's styles drawn over it, and
+ * each file a capsule where it stands. A sent message is drawn from the
+ * dialect's own reading of it (`SentMessage`).
  */
 const props = withDefaults(
   defineProps<{
@@ -148,10 +149,10 @@ const editor = new Editor({
       content: insertContent,
     },
   }),
-  content: parseUserMarkdown(props.markdown, props.attachments),
+  content: parseTypedMarkdown(props.markdown, props.attachments),
   editable: editable.value,
-  // Formatting as it is typed and pasted text follow the dialect, not tiptap's
-  // own rules.
+  // What is typed and pasted stays as it is: tiptap's rules would turn it
+  // into something else.
   enableInputRules: false,
   enablePasteRules: false,
   editorProps: {
@@ -161,18 +162,14 @@ const editor = new Editor({
       class: 'markdown-body message-editor-text',
       ...fieldAttributes(state),
     }),
-    // A copy, a cut or a drag holds no blank line before its first line or
-    // after its last, in its HTML as in its text. ProseMirror drags the copied
-    // slice, so text moved within a composer leaves such lines behind.
-    transformCopied: (slice, view) => {
-      copied = trimmedSlice(slice, view.state.schema)
-      return copied
+    // A copy, a cut or a drag holds what was selected, as a text field's
+    // does.
+    transformCopied: (slice) => {
+      copied = slice
+      return slice
     },
-    // Copied text is the Markdown, each file by its name, wherever it is
-    // copied from; code copied from inside a code block is the code.
-    clipboardTextSerializer: (slice) => slice.openStart > 0 && slice.content.childCount === 1 && slice.content.firstChild?.type.spec.code
-      ? slice.content.textBetween(0, slice.content.size)
-      : messageClipboard(fragmentDocument(slice.content)).plain,
+    // Copied text is the text as typed, each file by its name.
+    clipboardTextSerializer: (slice) => messageClipboard(fragmentDocument(slice.content)).plain,
   },
   onUpdate: write,
   onTransaction: ({ transaction }) => {
@@ -246,8 +243,8 @@ function fieldAttributes(state: EditorState): Record<string, string> {
     'role': 'textbox',
     'aria-multiline': 'true',
     // A touch keyboard's return key says what Enter does here: it sends,
-    // and in a code block it breaks the line.
-    'enterkeyhint': state.selection.$from.parent.type.name === 'codeBlock' ? 'enter' : 'send',
+    // and in code between fences it starts a line.
+    'enterkeyhint': inCode(state) ? 'enter' : 'send',
   }
   if (props.label) {
     attributes['aria-label'] = props.label
@@ -266,12 +263,7 @@ function fieldAttributes(state: EditorState): Record<string, string> {
 }
 
 function holdsLines(doc: ProseMirrorNode): boolean {
-  let lines = doc.childCount > 1
-  doc.descendants((node) => {
-    lines ||= node.type.spec.code === true || node.type.name === 'hardBreak' || node.type.name === 'image'
-    return !lines
-  })
-  return lines
+  return doc.childCount > 1
 }
 
 /** A line's last pixel is its own: rounding must not take a message off it. */
@@ -308,7 +300,7 @@ function textWidth(): number {
 
 /** Tells the owner what the message now is. */
 function write(): void {
-  const { markdown, attachments } = serializeUserMarkdown<MessageCapsule>(editor.getJSON())
+  const { markdown, attachments } = serializeTypedMarkdown<MessageCapsule>(editor.getJSON())
   shown = markdown
   measure()
   emit('change', markdown, attachments)
@@ -321,7 +313,7 @@ function write(): void {
  * it, follows the document.
  */
 function show(): void {
-  const doc = editor.schema.nodeFromJSON(parseUserMarkdown(props.markdown, props.attachments))
+  const doc = editor.schema.nodeFromJSON(parseTypedMarkdown(props.markdown, props.attachments))
   const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, doc.content)
   tr.setSelection(Selection.atEnd(tr.doc))
   tr.setMeta('addToHistory', false)
@@ -331,13 +323,9 @@ function show(): void {
   write()
 }
 
-/**
- * Where new content lands: where it was told to, or at the cursor; a code
- * block holds only text, so content that lands in one goes after it.
- */
+/** Where new content lands: where it was told to, or at the cursor. */
 function landingPlace(tr: Transaction): number {
-  const $at = tr.doc.resolve(landing === null ? tr.selection.from : Math.min(landing, tr.doc.content.size))
-  return $at.parent.type.spec.code ? $at.after() : $at.pos
+  return landing === null ? tr.selection.from : Math.min(landing, tr.doc.content.size)
 }
 
 /**

@@ -35,7 +35,7 @@ export function useMessageClipboard() {
   }
 
   /**
-   * The message as HTML for mail, documents and chat apps: its formatting, each
+   * The message as HTML for mail, documents and chat apps: its lines, each
    * picture an image, every other file its name.
    */
   function htmlSerializer(schema: Schema): DOMSerializer {

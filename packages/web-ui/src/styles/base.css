@@ -2627,8 +2627,69 @@ html[data-theme="light"] .file-pill {
   outline: none;
 }
 
+/* An editor keeps its text as typed, spaces included, as ProseMirror
+   requires: a space typed where a style ends is a space, not the browser's
+   no-break space. */
+.message-editor-text[contenteditable] {
+  white-space: pre-wrap;
+  white-space: break-spaces;
+}
+
 .message-editor-text p {
   margin: 0;
+}
+
+/* A user message, in its editor or its bubble, is plain text with its
+   Markdown highlighted, as a code editor highlights a language
+   (`message-editor/highlights.ts`):
+   every line a line of its own, never in a box, on a well or indented by the
+   page, so the caret moves through it as through plain text. A construct's
+   syntax, a link's address and a line's marker are dimmed. */
+.message-editor-text .message-syntax {
+  color: var(--color-fg-subtle);
+}
+
+/* A line's marker, `#`, `-`, `1.` or `>` with the spaces before it, in code's
+   monospace, so a nested item's marker stands under its parent's text as in
+   a code editor. */
+.message-editor-text .message-marker {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.message-editor-text code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  line-height: inherit;
+  color: var(--fg-code);
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* The fences and the code between them, in code's monospace and colors. */
+.message-editor-text p.message-code-line {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+/* A heading is bold at the text's size, with room above it and a little
+   below, as spacing of its own line, never a box. The first line has none
+   above. */
+.message-editor-text p.message-heading {
+  font-weight: 600;
+  margin-top: 0.6em;
+  margin-bottom: 0.2em;
+}
+
+.message-editor-text p.message-heading:first-child {
+  margin-top: 0;
+}
+
+.message-editor-text p.message-quote {
+  color: var(--color-fg-muted);
 }
 
 /* A sent message lays its text out as the editor does (tiptap's own style). */
@@ -2639,10 +2700,6 @@ html[data-theme="light"] .file-pill {
   white-space: break-spaces;
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0;
-}
-
-.sent-message pre {
-  white-space: pre-wrap;
 }
 
 .message-editor-text p.is-editor-empty:first-child::before {

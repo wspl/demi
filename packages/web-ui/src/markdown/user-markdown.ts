@@ -2,12 +2,15 @@ import type { JSONContent } from '@tiptap/core'
 import { Lexer, type Token } from 'marked'
 import { markdownReader } from './reader'
 
-// A user message's Markdown and the editor document that shows it, both ways.
-// The message is lines: every line break is kept as typed, a fenced code block
-// is the only block, and each line reads only the inline constructs the dialect
-// below keeps. The page reads and writes this Markdown itself rather than
-// through tiptap's Markdown extension, which backslash-escapes every `_` and
-// writes `<` as `&lt;` in what the model would read.
+// A user message's Markdown and the document that shows it, both ways, every
+// character as typed: a paragraph for each line, and a capsule at each
+// attachment mark (`parseTypedMarkdown`).
+// Its editors and its bubble draw the same highlighting over the text, from
+// how the dialect below reads each line (`markdownSpans`, `lineRoles`,
+// `lineForm`; `agent/message-editor/highlights.ts`).
+//
+// The dialect reads each line's inline constructs on its own, and a fenced
+// code block as its lines.
 
 /**
  * Where a file's capsule sits in a message's Markdown; the files follow in the
@@ -44,16 +47,6 @@ function lexLine(src: string): Token[] {
   return src ? Lexer.lexInline(src, dialect.defaults) : []
 }
 
-/** One run of a line as editor nodes. */
-function readRun(src: string): JSONContent[] {
-  return mergeText(inlineNodes(lexLine(src), []))
-}
-
-type Mark = NonNullable<JSONContent['marks']>[number]
-
-/** Marks from the outside in: the order a run of text opens them. */
-const MARK_ORDER = ['link', 'bold', 'italic', 'strike', 'code']
-
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/
 
 /**
@@ -69,489 +62,13 @@ function fenceOf(line: string): { indent: number; fence: string; info: string } 
   return { indent: open[1]!.length, fence: open[2]!, info: open[3]!.trim() }
 }
 
-interface TextBlock {
-  kind: 'text'
-  lines: string[]
-}
-
-interface CodeBlock {
-  kind: 'code'
-  info: string
-  lines: string[]
-}
-
-/**
- * A message's lines, cut into runs of text and fenced code blocks; a fence left
- * open runs to the end.
- */
-function splitBlocks(markdown: string): (TextBlock | CodeBlock)[] {
-  const lines = markdown.replace(/\r\n?/g, '\n').split('\n')
-  const blocks: (TextBlock | CodeBlock)[] = []
-  let text: TextBlock | null = null
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]!
-    const open = fenceOf(line)
-    if (!open) {
-      if (!text) {
-        text = { kind: 'text', lines: [] }
-        blocks.push(text)
-      }
-      text.lines.push(line)
-      continue
-    }
-    const code: CodeBlock = { kind: 'code', info: open.info, lines: [] }
-    for (index += 1; index < lines.length; index += 1) {
-      const close = FENCE_CLOSE.exec(lines[index]!)
-      if (close && close[1]![0] === open.fence[0] && close[1]!.length >= open.fence.length) {
-        break
-      }
-      // A fence indented by n spaces takes up to n spaces off each of its
-      // lines.
-      code.lines.push(lines[index]!.replace(new RegExp(`^ {0,${open.indent}}`), ''))
-    }
-    blocks.push(code)
-    text = null
-  }
-  return blocks
-}
-
-function textNodes(text: string, marks: readonly Mark[]): JSONContent[] {
-  if (!text) {
-    return []
-  }
-  return [marks.length ? { type: 'text', text, marks: [...marks] } : { type: 'text', text }]
-}
-
-/**
- * The editor nodes for inline tokens under `marks`. A bare URL is text, which
- * the editor shows as a link; a written link is a link mark.
- */
-function inlineNodes(tokens: readonly Token[], marks: readonly Mark[]): JSONContent[] {
-  return tokens.flatMap((token): JSONContent[] => {
-    switch (token.type) {
-      case 'strong':
-        return inlineNodes(token.tokens ?? [], [...marks, { type: 'bold' }])
-      case 'em':
-        return inlineNodes(token.tokens ?? [], [...marks, { type: 'italic' }])
-      case 'del':
-        return inlineNodes(token.tokens ?? [], [...marks, { type: 'strike' }])
-      case 'codespan':
-        return textNodes(token.text, [...marks, { type: 'code' }])
-      case 'link':
-        if (!token.raw.startsWith('[')) {
-          return textNodes(token.raw, marks)
-        }
-        return inlineNodes(token.tokens ?? [], [...marks, linkMark(token.href, token.title ?? null)])
-      case 'image':
-        return [{
-          type: 'image',
-          attrs: { src: token.href, alt: token.text, title: token.title ?? null },
-          ...(marks.length ? { marks: [...marks] } : {}),
-        }]
-      case 'escape':
-      case 'text':
-        return textNodes(token.text, marks)
-      default:
-        return textNodes(token.raw, marks)
-    }
-  })
-}
-
-function linkMark(href: string, title: string | null): Mark {
-  return { type: 'link', attrs: { href, title } }
-}
-
-/**
- * A message's Markdown as the editor document that shows it. The i-th
- * attachment mark becomes the capsule of `attachments[i]`, which the node
- * keeps whole. A mark with no attachment left is dropped, and an attachment
- * with no mark is not in this message: the marks say which files it has. A
- * mark inside a code block cannot stay there: its capsule follows the block.
- */
-export function parseUserMarkdown<Attachment>(
-  markdown: string,
-  attachments: readonly Attachment[],
-): JSONContent {
-  const rest = [...attachments].reverse()
-  const content: JSONContent[] = []
-  for (const block of splitBlocks(markdown)) {
-    if (block.kind === 'code') {
-      const text = block.lines.join('\n')
-      const moved = text.split(ATTACHMENT_MARK).slice(1).flatMap(() => capsule(rest.pop()))
-      content.push({
-        type: 'codeBlock',
-        attrs: { language: block.info || null },
-        ...(text ? { content: textNodes(text.replaceAll(ATTACHMENT_MARK, ''), []) } : {}),
-      })
-      if (moved.length) {
-        content.push({ type: 'paragraph', content: moved })
-      }
-      continue
-    }
-    const inline = block.lines.flatMap((line, index) => [
-      ...(index > 0 ? [{ type: 'hardBreak' }] : []),
-      ...line.split(ATTACHMENT_MARK).flatMap((segment, position) => [
-        ...(position > 0 ? capsule(rest.pop()) : []),
-        ...readRun(segment),
-      ]),
-    ])
-    content.push(inline.length ? { type: 'paragraph', content: inline } : { type: 'paragraph' })
-  }
-  return { type: 'doc', content }
+/** Text as one node, none for no text. */
+function textNodes(text: string): JSONContent[] {
+  return text ? [{ type: 'text', text }] : []
 }
 
 function capsule<Attachment>(attachment: Attachment | undefined): JSONContent[] {
   return attachment === undefined ? [] : [{ type: 'attachment', attrs: { capsule: attachment } }]
-}
-
-/**
- * The Markdown that reads back as the editor document, and what its capsules
- * carry, in the order of their marks. Those are the attachments the document
- * was built with: the editor puts nothing else in a capsule.
- */
-export function serializeUserMarkdown<Attachment>(
-  doc: JSONContent,
-): { markdown: string; attachments: Attachment[] } {
-  const attachments: Attachment[] = []
-  const blocks = (doc.content ?? []).map((block) =>
-    block.type === 'codeBlock'
-      ? codeBlockMarkdown(block)
-      : paragraphMarkdown(block.content ?? [], attachments),
-  )
-  return { markdown: blocks.join('\n'), attachments }
-}
-
-/**
- * The Markdown that shows plain `text` as typed, each character as itself:
- * text written in a plain field, such as a side question's follow-up, shown
- * where a message's Markdown is.
- */
-export function plainUserMarkdown(text: string): string {
-  return serializeUserMarkdown({ type: 'doc', content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }] }).markdown
-}
-
-function codeBlockMarkdown(block: JSONContent): string {
-  const text = (block.content ?? []).map((node) => node.text ?? '').join('').replaceAll(ATTACHMENT_MARK, '')
-  const info = String(block.attrs?.['language'] ?? '')
-  // A backtick fence cannot carry a backtick in its info string; a tilde fence
-  // can.
-  const char = info.includes('`') ? '~' : '`'
-  const fence = char.repeat(Math.max(3, longestRun(text, char) + 1))
-  return `${fence}${info}\n${text ? `${text}\n` : ''}${fence}`
-}
-
-function longestRun(text: string, char: string): number {
-  let longest = 0
-  let run = 0
-  for (const each of text) {
-    run = each === char ? run + 1 : 0
-    longest = Math.max(longest, run)
-  }
-  return longest
-}
-
-function paragraphMarkdown<Attachment>(content: readonly JSONContent[], attachments: Attachment[]): string {
-  const lines: string[] = []
-  let line = ''
-  let segment: JSONContent[] = []
-  const endSegment = () => {
-    line += segmentMarkdown(segment)
-    segment = []
-  }
-  const endLine = () => {
-    endSegment()
-    lines.push(line)
-    line = ''
-  }
-  for (const node of content) {
-    if (node.type === 'hardBreak') {
-      endLine()
-    } else if (node.type === 'attachment') {
-      endSegment()
-      line += ATTACHMENT_MARK
-      attachments.push(node.attrs?.['capsule'])
-    } else if (node.type === 'text' && node.text?.includes('\n')) {
-      // A line break inside text is a line break all the same.
-      node.text.split('\n').forEach((part, index) => {
-        if (index > 0) {
-          endLine()
-        }
-        if (part) {
-          segment.push({ ...node, text: part })
-        }
-      })
-    } else {
-      segment.push(node)
-    }
-  }
-  endLine()
-  // A line of text that looks like a fence would open one: its first fence
-  // character is escaped.
-  return lines.map((each) => {
-    const open = fenceOf(each)
-    return open ? `${each.slice(0, open.indent)}\\${each.slice(open.indent)}` : each
-  }).join('\n')
-}
-
-// ── One line's run of inline content, between line breaks and capsules ──
-
-function isFormatting(mark: Mark): boolean {
-  return mark.type !== 'code'
-}
-
-function markKey(mark: Mark): string {
-  if (mark.type !== 'link') {
-    return mark.type
-  }
-  return `link ${JSON.stringify([mark.attrs?.['href'] ?? '', mark.attrs?.['title'] ?? null])}`
-}
-
-function sameMarks(a: readonly Mark[] | undefined, b: readonly Mark[] | undefined): boolean {
-  const keys = (marks: readonly Mark[] | undefined) => (marks ?? []).map(markKey).sort().join('\n')
-  return keys(a) === keys(b)
-}
-
-function hasMark(node: JSONContent, mark: Mark): boolean {
-  return (node.marks ?? []).some((each) => markKey(each) === markKey(mark))
-}
-
-/**
- * The run as Markdown reads it back: text without marks' edge spaces, which
- * move outside their delimiters (`**bold** text`, not `**bold **text`), and
- * neighbouring text of the same marks as one node.
- */
-function normalizeRun(nodes: readonly JSONContent[]): JSONContent[] {
-  const pieces: JSONContent[] = []
-  nodes.forEach((node, index) => {
-    if (node.type !== 'text') {
-      pieces.push(node)
-      return
-    }
-    const text = (node.text ?? '').replaceAll(ATTACHMENT_MARK, '')
-    const marks = node.marks ?? []
-    if (!text) {
-      return
-    }
-    if (marks.some((mark) => mark.type === 'code') || !marks.length) {
-      pieces.push({ ...node, text })
-      return
-    }
-    const [, lead = '', core = '', trail = ''] = /^(\s*)([\s\S]*?)(\s*)$/.exec(text) ?? []
-    const shared = (other: JSONContent | undefined) => marks.filter((mark) => other && hasMark(other, mark))
-    pieces.push(...textNodes(lead, shared(nodes[index - 1])))
-    pieces.push(...textNodes(core, marks))
-    pieces.push(...textNodes(trail, shared(nodes[index + 1])))
-  })
-  return mergeText(pieces)
-}
-
-/** Neighbouring text of the same marks as one node, as the editor keeps it. */
-function mergeText(nodes: readonly JSONContent[]): JSONContent[] {
-  const merged: JSONContent[] = []
-  for (const node of nodes) {
-    const last = merged.at(-1)
-    if (last?.type === 'text' && node.type === 'text' && sameMarks(last.marks, node.marks)) {
-      merged[merged.length - 1] = { ...last, text: `${last.text ?? ''}${node.text ?? ''}` }
-    } else {
-      merged.push(node)
-    }
-  }
-  return merged
-}
-
-function sameRun(a: readonly JSONContent[], b: readonly JSONContent[]): boolean {
-  const key = (node: JSONContent) => JSON.stringify([
-    node.type,
-    node.text ?? null,
-    node.type === 'image' ? [node.attrs?.['src'], node.attrs?.['alt'] ?? '', node.attrs?.['title'] ?? null] : null,
-    (node.marks ?? []).map(markKey).sort(),
-  ])
-  return a.length === b.length && a.every((node, index) => key(node) === key(b[index]!))
-}
-
-/** Characters the dialect could read as syntax. */
-const SYNTAX = /[\\`*~[\]!]/
-
-/**
- * One run of a line as Markdown. Text is written as typed; only when that
- * would read back as something else is each character that could be syntax
- * escaped.
- */
-function segmentMarkdown(nodes: readonly JSONContent[]): string {
-  const run = normalizeRun(nodes)
-  const plain = writeRun(run, false)
-  const simple = run.every((node) => node.type === 'text' && !node.marks?.length)
-  if (simple && !SYNTAX.test(plain)) {
-    return plain
-  }
-  if (sameRun(normalizeRun(readRun(plain)), run)) {
-    return plain
-  }
-  return writeRun(run, true)
-}
-
-/** How many nodes from `index` on carry `mark`. */
-function markRun(run: readonly JSONContent[], index: number, mark: Mark): number {
-  let end = index
-  while (end < run.length && hasMark(run[end]!, mark)) {
-    end += 1
-  }
-  return end - index
-}
-
-function writeRun(run: readonly JSONContent[], escape: boolean): string {
-  let out = ''
-  const open: Mark[] = []
-  const close = (count: number) => {
-    for (const mark of open.splice(open.length - count).reverse()) {
-      out += closing(mark)
-    }
-  }
-  run.forEach((node, index) => {
-    const marks = (node.marks ?? []).filter(isFormatting)
-    let keep = 0
-    while (keep < open.length && marks.some((mark) => markKey(mark) === markKey(open[keep]!))) {
-      keep += 1
-    }
-    close(open.length - keep)
-    // A mark that goes on longer opens first, so it can stay open past the
-    // shorter ones.
-    const opening = marks
-      .filter((mark) => !open.some((each) => markKey(each) === markKey(mark)))
-      .sort((a, b) =>
-        markRun(run, index, b) - markRun(run, index, a)
-        || MARK_ORDER.indexOf(a.type) - MARK_ORDER.indexOf(b.type))
-    for (const mark of opening) {
-      out += mark.type === 'link' ? '[' : delimiter(mark)
-      open.push(mark)
-    }
-    if (node.type === 'image') {
-      out += imageMarkdown(node)
-    } else if (node.marks?.some((mark) => mark.type === 'code')) {
-      out += codeSpan(node.text ?? '')
-    } else {
-      out += escape ? escapeText(node.text ?? '') : node.text ?? ''
-    }
-  })
-  close(open.length)
-  return out
-}
-
-function delimiter(mark: Mark): string {
-  if (mark.type === 'bold') {
-    return '**'
-  }
-  if (mark.type === 'italic') {
-    return '*'
-  }
-  return '~~'
-}
-
-function closing(mark: Mark): string {
-  if (mark.type !== 'link') {
-    return delimiter(mark)
-  }
-  return `](${destination(String(mark.attrs?.['href'] ?? ''), mark.attrs?.['title'])})`
-}
-
-function destination(target: string, title: unknown): string {
-  const written = /[\s()<>]/.test(target) || !target
-    ? `<${target.replace(/[\\<>]/g, '\\$&')}>`
-    : target.replace(/\\(?=[!-/:-@[-`{-~])/g, '\\\\')
-  return typeof title === 'string' && title
-    ? `${written} "${title.replace(/["\\]/g, '\\$&')}"`
-    : written
-}
-
-function imageMarkdown(node: JSONContent): string {
-  const alt = String(node.attrs?.['alt'] ?? '').replace(/[\\[\]]/g, '\\$&')
-  return `![${alt}](${destination(String(node.attrs?.['src'] ?? ''), node.attrs?.['title'])})`
-}
-
-/**
- * Code as written between backticks: a fence longer than any run inside, padded
- * where an edge would be read away.
- */
-function codeSpan(text: string): string {
-  const fence = '`'.repeat(longestRun(text, '`') + 1)
-  const pad = text.startsWith('`') || text.endsWith('`')
-    || (text.startsWith(' ') && text.endsWith(' ') && text.trim() !== '')
-    ? ' '
-    : ''
-  return `${fence}${pad}${text}${pad}${fence}`
-}
-
-/**
- * Text with every character escaped that could be syntax: backslashes,
- * backticks, brackets, runs of tildes, and a star unless spaces stand on both
- * sides of it (`2 * 3`). A bare URL is left whole, since an escape in it
- * would stay in the address.
- */
-function escapeText(text: string): string {
-  const urls = [...text.matchAll(/https?:\/\/[^\s<]*/gi)].map((match) => ({ from: match.index, to: match.index + match[0].length }))
-  let out = ''
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]!
-    const inUrl = urls.some((url) => index >= url.from && index < url.to)
-    const star = char === '*' && !(/\s/.test(text[index - 1] ?? '') && /\s/.test(text[index + 1] ?? ''))
-    const tildes = char === '~' && (text[index - 1] === '~' || text[index + 1] === '~')
-    out += !inUrl && (star || tildes || /[\\`[\]]/.test(char)) ? `\\${char}` : char
-  }
-  return out
-}
-
-/**
- * What a line's text closes as it is typed: the formatting that ends at the
- * end of `tail`, a run of plain text that follows `before` on its line. The
- * composer replaces the last `length` characters of the tail with `nodes`.
- */
-export function closingFormat(
-  before: readonly JSONContent[],
-  tail: string,
-): { length: number; nodes: JSONContent[] } | null {
-  const last = lexLine(segmentMarkdown(before) + tail).at(-1)
-  if (!last || !tail.endsWith(last.raw)) {
-    return null
-  }
-  // `**bold*` reads as a star and italic, but its writer is one star short of
-  // bold: a delimiter typed just before the construct waits for the rest.
-  const waiting = ['strong', 'em', 'del'].includes(last.type)
-    && tail[tail.length - last.raw.length - 1] === last.raw[0]
-  const formats = ['strong', 'em', 'del', 'codespan', 'image'].includes(last.type)
-    || (last.type === 'link' && last.raw.startsWith('['))
-  return formats && !waiting ? { length: last.raw.length, nodes: mergeText(inlineNodes([last], [])) } : null
-}
-
-/**
- * What typing `typed` after `tail` formats: every construct it closes, as
- * typing it a character at a time would, since a run of text can arrive in
- * one input, as dictation, a text replacement or a schedule types it.
- * The composer replaces the tail and the typed text, `length` characters,
- * with `nodes`; null when nothing closes. With nothing typed, the tail alone
- * is read, as after an input method's text lands.
- */
-export function typedFormat(
-  before: readonly JSONContent[],
-  tail: string,
-  typed: string,
-): { length: number; nodes: JSONContent[] } | null {
-  let formatted: JSONContent[] = []
-  let run = tail
-  for (const char of typed === '' ? [''] : typed) {
-    run += char
-    const closed = closingFormat([...before, ...formatted], run)
-    if (!closed)
-      continue
-    const plain = run.slice(0, run.length - closed.length)
-    formatted = mergeText([...formatted, ...(plain ? [{ type: 'text', text: plain }] : []), ...closed.nodes])
-    run = ''
-  }
-  if (formatted.length === 0)
-    return null
-  return {
-    length: tail.length + typed.length,
-    nodes: mergeText([...formatted, ...(run ? [{ type: 'text', text: run }] : [])]),
-  }
 }
 
 /**
@@ -562,31 +79,229 @@ export function fenceInfo(line: string): string | null {
   return fenceOf(line)?.info ?? null
 }
 
-/** Whether a line of a code block closes it. */
-export function closesFence(line: string): boolean {
-  return FENCE_CLOSE.test(line)
+// ── The text as typed ──
+
+/**
+ * What a line of a message is: text, a fence that opens or closes a code
+ * block, or a line of code between them. A fence closes with a run of the
+ * same character at least as long, and a fence left open makes every line
+ * after it code, as CommonMark reads fences.
+ */
+export type LineRole = 'text' | 'fence' | 'code'
+
+/** Each line's role, in the order of `lines`. */
+export function lineRoles(lines: readonly string[]): LineRole[] {
+  const roles: LineRole[] = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const open = fenceOf(lines[index]!)
+    if (!open) {
+      roles.push('text')
+      continue
+    }
+    roles.push('fence')
+    for (index += 1; index < lines.length; index += 1) {
+      const close = FENCE_CLOSE.exec(lines[index]!)
+      if (close && close[1]![0] === open.fence[0] && close[1]!.length >= open.fence.length) {
+        roles.push('fence')
+        break
+      }
+      roles.push('code')
+    }
+  }
+  return roles
 }
 
 /**
- * The ranges of bare URLs in a run of plain text, which the editor shows as
- * links.
+ * What a range of a line is drawn as: the characters of the syntax, dimmed,
+ * or text the dialect formats. A link carries its target.
  */
-export function bareUrls(text: string): { from: number; to: number; href: string }[] {
-  const ranges: { from: number; to: number; href: string }[] = []
-  let offset = 0
-  const visit = (tokens: readonly Token[]) => {
+export interface MarkdownSpan {
+  from: number
+  to: number
+  kind: 'syntax' | 'bold' | 'italic' | 'strike' | 'code' | 'link'
+  href?: string
+}
+
+const FORMAT_KINDS: Partial<Record<string, MarkdownSpan['kind']>> = { strong: 'bold', em: 'italic', del: 'strike' }
+
+/**
+ * The ranges of a run of text, a line or its part between two capsules, as
+ * the dialect reads it: each construct's text with its kind, and its syntax,
+ * which the editor shows dimmed. A link's address is syntax too.
+ */
+export function markdownSpans(text: string): MarkdownSpan[] {
+  const spans: MarkdownSpan[] = []
+  const add = (from: number, to: number, kind: MarkdownSpan['kind'], href?: string) => {
+    if (to > from) {
+      spans.push(href === undefined ? { from, to, kind } : { from, to, kind, href })
+    }
+  }
+  const visit = (tokens: readonly Token[], start: number) => {
+    let at = start
     for (const token of tokens) {
-      if (token.type === 'link' && !token.raw.startsWith('[')) {
-        const from = text.indexOf(token.raw, offset)
-        if (from >= 0) {
-          ranges.push({ from, to: from + token.raw.length, href: token.href })
-          offset = from + token.raw.length
+      place(token, at)
+      at += token.raw.length
+    }
+  }
+  const inner = (token: Token) => ('tokens' in token && token.tokens ? token.tokens.map((each) => each.raw).join('') : '')
+  const place = (token: Token, at: number) => {
+    const end = at + token.raw.length
+    const format = FORMAT_KINDS[token.type]
+    if (format) {
+      const content = inner(token)
+      const open = content ? token.raw.indexOf(content) : Math.floor(token.raw.length / 2)
+      add(at, at + open, 'syntax')
+      add(at + open, at + open + content.length, format)
+      add(at + open + content.length, end, 'syntax')
+      visit('tokens' in token ? token.tokens ?? [] : [], at + open)
+      return
+    }
+    switch (token.type) {
+      case 'codespan': {
+        const ticks = /^`+/.exec(token.raw)?.[0].length ?? 1
+        add(at, at + ticks, 'syntax')
+        add(at + ticks, end - ticks, 'code')
+        add(end - ticks, end, 'syntax')
+        return
+      }
+      case 'link':
+      case 'image': {
+        if (!token.raw.startsWith('[') && !token.raw.startsWith('!')) {
+          // A bare URL: a link as it stands.
+          add(at, end, 'link', token.href)
+          return
         }
-      } else if ('tokens' in token && token.tokens) {
-        visit(token.tokens)
+        // The label's text as written, read again where it stands: the
+        // lexer's tokens for it hold its escapes undone.
+        const lead = token.type === 'image' ? 2 : 1
+        const close = labelEnd(token.raw, lead - 1)
+        if (close < 0) {
+          return
+        }
+        add(at, at + lead, 'syntax')
+        add(at + lead, at + close, 'link', token.href)
+        if (token.type === 'link') {
+          visit(lexLine(token.raw.slice(lead, close)), at + lead)
+        }
+        add(at + close, end, 'syntax')
+        return
+      }
+      case 'escape':
+        add(at, at + 1, 'syntax')
+        return
+      default:
+    }
+  }
+  visit(lexLine(text), 0)
+  return spans
+}
+
+/**
+ * What a line of text opens with: a heading, a list item, a quote or a rule,
+ * and where its marker (`# `, `- `, `1. `, `> `, with the spaces before it)
+ * ends; null for a line of plain text. The editors draw the marker dimmed and
+ * the line as its form.
+ */
+export interface LineForm {
+  kind: 'heading' | 'list' | 'quote' | 'rule'
+  /** Where the marker ends, and the line's own text starts. */
+  markerEnd: number
+}
+
+/**
+ * CommonMark's line markers, each read on its line alone: a thematic break,
+ * an ATX heading, a block quote, and a bullet or an ordered list item at any
+ * indentation, so a nested item is one however deep it is.
+ */
+const LINE_MARKERS: [LineForm['kind'], RegExp][] = [
+  ['rule', /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/],
+  ['heading', /^ {0,3}#{1,6}(?:[ \t]+|$)/],
+  ['quote', /^ {0,3}(?:>[ \t]?)+/],
+  ['list', /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$)/],
+]
+
+/** The form a line of text opens with (`LineForm`); null for none. */
+export function lineForm(line: string): LineForm | null {
+  for (const [kind, marker] of LINE_MARKERS) {
+    const match = marker.exec(line)
+    if (match) {
+      return { kind, markerEnd: kind === 'rule' ? line.length : match[0].length }
+    }
+  }
+  return null
+}
+
+/**
+ * Where the label that opens at `open`, a `[`, closes: the `]` that balances
+ * it, past escapes and code spans; -1 for none.
+ */
+function labelEnd(raw: string, open: number): number {
+  let depth = 0
+  for (let index = open; index < raw.length; index += 1) {
+    const char = raw[index]
+    if (char === '\\') {
+      index += 1
+    } else if (char === '`') {
+      const run = /^`+/.exec(raw.slice(index))![0]
+      const closing = raw.indexOf(run, index + run.length)
+      if (closing >= 0) {
+        index = closing + run.length - 1
+      }
+    } else if (char === '[') {
+      depth += 1
+    } else if (char === ']') {
+      depth -= 1
+      if (depth === 0) {
+        return index
       }
     }
   }
-  visit(lexLine(text))
-  return ranges
+  return -1
+}
+
+/**
+ * A message's Markdown as the editors hold it: a paragraph for each line, its
+ * text as typed, and the capsule of `attachments[i]` at the i-th attachment
+ * mark. A mark with no attachment left is dropped. `serializeTypedMarkdown`
+ * writes it back character for character.
+ */
+export function parseTypedMarkdown<Attachment>(
+  markdown: string,
+  attachments: readonly Attachment[],
+): JSONContent {
+  const rest = [...attachments].reverse()
+  const lines = markdown.replace(/\r\n?/g, '\n').split('\n')
+  return {
+    type: 'doc',
+    content: lines.map((line) => {
+      const content = line.split(ATTACHMENT_MARK).flatMap((segment, position) => [
+        ...(position > 0 ? capsule(rest.pop()) : []),
+        ...textNodes(segment),
+      ])
+      return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }
+    }),
+  }
+}
+
+/**
+ * The Markdown of an editor's document, character for character, and what
+ * its capsules carry, in the order of their marks.
+ */
+export function serializeTypedMarkdown<Attachment>(
+  doc: JSONContent,
+): { markdown: string; attachments: Attachment[] } {
+  const attachments: Attachment[] = []
+  const lines = (doc.content ?? []).map((block) => {
+    let line = ''
+    for (const node of block.content ?? []) {
+      if (node.type === 'attachment') {
+        line += ATTACHMENT_MARK
+        attachments.push(node.attrs?.['capsule'])
+      } else {
+        line += (node.text ?? '').replaceAll(ATTACHMENT_MARK, '')
+      }
+    }
+    return line
+  })
+  return { markdown: lines.join('\n'), attachments }
 }

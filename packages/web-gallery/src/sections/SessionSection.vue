@@ -1313,13 +1313,17 @@ const attachmentBubble: UserContentBlock[] = [
   },
   { type: 'text', text: '.' },
 ]
-/** A message in the dialect: formatting, a link and a bare URL, and a fenced block. */
+/** A message with Markdown, highlighted as typed: a heading, formatting, a link and a bare URL, a list, a quote and a fenced block. */
 const formattedBubble: UserContentBlock[] = [
   {
     type: 'text',
     text: [
+      '# The modal is off by one',
       'The **modal** `padding` is off by *one* column, ~~not two~~. See [the layout notes](docs/layout.md) and https://example.com/issues/42.',
       'Keep snake_case names and ~/.zshrc as they are; 2 * 3 stays text.',
+      '- check the first frame',
+      '- then the resize',
+      '> the header is fine',
       '```ts',
       'export const padding = 12',
       '```',
@@ -1338,7 +1342,10 @@ const composerDrafts = {
   lines: `Before: ${ATTACHMENT_MARK}\nAfter: ${ATTACHMENT_MARK}\nThe log ${ATTACHMENT_MARK} shows the padding change landing after the layout pass, which is why the modal jumps by one column on the first frame.`,
   long: 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename, and the fixture it reads has the old name.',
   formatted: [
+    '## The modal',
     'The **modal** `padding` is off by *one* column, ~~not two~~. See [the layout notes](docs/layout.md) and https://example.com/issues/42.',
+    '1. check the first frame',
+    '2. then the resize',
     '```ts',
     'export const padding = 12',
     '```',
@@ -1573,7 +1580,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, as tall as a line of its text whether the message stands on one line or the composer is open, through its upload phases, a failed upload with Retry in its mark’s place, so the capsule keeps its width, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button’s reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line’s end. One send; while the agent works, Enter steers the running turn or queues the message, as Settings › General chooses, and ⌘⏎ outside a code block, or a ⌘-click on the send button, sends it the other way, which the button’s tooltip names; Stop stays beside it for the whole turn. Here a steer or a queued message is a toast naming what the product would do; the sessions below take them. When the user’s plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The model chip and the context ring stand in a row under the box, at its right edge, model first; loading and a failed load show there too. The narrow composer resizes from its corner."
+        note="Idle through Fast Mode; the text kept as typed, every character, its Markdown highlighted in place as the bubble shows it: marks dimmed, a line’s marker in monospace so a nested item lines up under its parent’s text, headings bold, code in monospace and its colors, never a box or an indent of its own; each file a capsule where it was put, as tall as a line of its text whether the message stands on one line or the composer is open, through its upload phases, a failed upload with Retry in its mark’s place, so the capsule keeps its width, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button’s reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line’s end. One send; while the agent works, Enter steers the running turn or queues the message, as Settings › General chooses, and ⌘⏎ outside the code between fences, or a ⌘-click on the send button, sends it the other way, which the button’s tooltip names; Stop stays beside it for the whole turn. Here a steer or a queued message is a toast naming what the product would do; the sessions below take them. When the user’s plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The model chip and the context ring stand in a row under the box, at its right edge, model first; loading and a failed load show there too. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -1673,7 +1680,7 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="formatting · as it will look"
+            variant="Markdown · highlighted as typed"
             wide
           >
             <GalleryComposer
@@ -2379,7 +2386,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="UserBlock"
-        note="User; files as capsules where they were put: pointed at, an image or a video shows large in its preview card after 300 ms, with the file’s name and pixel size under it, and a text file its opening lines; formatting; pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
+        note="User; files as capsules where they were put: pointed at, an image or a video shows large in its preview card after 300 ms, with the file’s name and pixel size under it, and a text file its opening lines; Markdown, shown as it was typed and highlighted as the composer highlights it, every mark kept and dimmed, a heading bold, code in monospace and its colors; pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -2420,7 +2427,7 @@ onBeforeUnmount(() => {
             </div>
           </GallerySpecimen>
           <GallerySpecimen
-            variant="formatting"
+            variant="Markdown · as typed, highlighted"
             wide
           >
             <div class="gallery-frame gallery-user-frame bg-surface">

@@ -1,34 +1,32 @@
 import type { JSONContent } from '@tiptap/core'
 import { Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
-import { parseUserMarkdown } from '../../markdown/user-markdown'
+import { parseTypedMarkdown } from '../../markdown/user-markdown'
 import { trimBlankLines } from '../message-input/copied-message'
 import type { MessageCapsule } from './capsules'
 
-// What a composer takes from the clipboard and puts on it, as editor slices:
-// never a blank line of the clipboard's own at either end.
+// What a composer takes from the clipboard or a drop, as editor slices: never
+// a blank line of the clipboard's own at either end. What it puts on the
+// clipboard is what was selected (`MessageEditor`).
 
-/**
- * How an end of pasted content joins the line it lands in: a paragraph's joins
- * it, a code block stands on its own.
- */
+/** How an end of pasted content joins the line it lands in: a line joins it. */
 function opens(node: ProseMirrorNode | null | undefined): number {
   return node?.type.name === 'paragraph' ? 1 : 0
 }
 
 /**
- * Pasted or dropped text read as the dialect, without blank lines at its
- * start and end: a single line joins the line at the cursor, code blocks
- * stand on their own.
+ * Pasted or dropped text as an editor holds it, as typed, without blank lines
+ * at its start and end: its first and last lines join the lines at the
+ * cursor.
  */
 export function markdownSlice(schema: Schema, text: string, capsules: readonly MessageCapsule[] = []): Slice {
-  const parsed = parseUserMarkdown(text, capsules)
+  const parsed = parseTypedMarkdown(text, capsules)
   const content = Fragment.fromJSON(schema, trimBlankLines(parsed.content ?? []).blocks)
   return content.childCount ? new Slice(content, opens(content.firstChild), opens(content.lastChild)) : Slice.empty
 }
 
 /**
- * A slice the editor copies or takes as it is, from a composer or a message,
- * without blank lines at its start and end. An end whose blocks were
+ * A pasted or dropped slice as the editor takes it, without blank lines at
+ * its start and end. An end whose blocks were
  * dropped joins the line it lands in as `markdownSlice`'s ends do; an end
  * kept stays as open as it was.
  */

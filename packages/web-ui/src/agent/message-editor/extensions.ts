@@ -1,31 +1,23 @@
-import { Extension, Mark, Node, getSchema, type AnyExtension, type Editor, type JSONContent } from '@tiptap/core'
-import { Bold } from '@tiptap/extension-bold'
-import { Code } from '@tiptap/extension-code'
-import { CodeBlock } from '@tiptap/extension-code-block'
+import { Extension, Node, getSchema, type AnyExtension, type Editor } from '@tiptap/core'
 import { Document } from '@tiptap/extension-document'
-import { HardBreak } from '@tiptap/extension-hard-break'
-import { Italic } from '@tiptap/extension-italic'
 import { Paragraph } from '@tiptap/extension-paragraph'
-import { Strike } from '@tiptap/extension-strike'
 import { Text } from '@tiptap/extension-text'
 import { Dropcursor, Placeholder, UndoRedo } from '@tiptap/extensions'
-import { Fragment, type Node as ProseMirrorNode, type ResolvedPos, type Schema } from '@tiptap/pm/model'
-import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
-import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
+import { type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
+import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { keepComposition } from '@demicodes/utils'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
-import { WEB_LINK_REL, isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
-import { codeColor, codeRuns, codeTextColor, typedCodeRuns } from '../../markdown/highlight'
-import { bareUrls, closesFence, fenceInfo, typedFormat } from '../../markdown/user-markdown'
+import { messageHighlights } from './highlights'
+import { lineRoleAt } from './lines'
 import { shortcutSet } from '../../ui/shortcut'
 import AttachmentNodeView from './AttachmentNodeView.vue'
 import { readCapsule } from './capsules'
-import ImageNodeView from './ImageNodeView.vue'
-import { ComposerIntake, MESSAGE_IMAGE_ATTRIBUTE, type IntakeOptions } from './intake'
+import { ComposerIntake, type IntakeOptions } from './intake'
 
-// The editor a user message is written and shown in: the schema the dialect
-// reads into, formatting applied as a construct is typed, the composer's keys,
-// and what the page draws over the text (links for bare URLs, colors for code).
+// A user message's document (`markdown/user-markdown.ts`), which its editors
+// hold and its bubble is drawn from: its text as typed, its highlighting
+// (`highlights.ts`) drawn over it, and the editors' keys.
 
 /**
  * A file's capsule, standing where the file is in the text. The node carries
@@ -75,269 +67,11 @@ function capsuleStopsEvent({ event }: { event: Event }): boolean {
   return onButton || !['mousedown', 'copy', 'cut', 'paste'].includes(type)
 }
 
-/**
- * `![alt](target)`: the image. It is read back only from a message editor's own
- * HTML: an image from anywhere else enters as a capsule or its link
- * (`intake.ts`). /
- */
-const ImageNode = Node.create({
-  name: 'image',
-  group: 'inline',
-  inline: true,
-  atom: true,
-  draggable: true,
-  addAttributes() {
-    return {
-      src: { default: '' },
-      alt: { default: '' },
-      title: { default: null },
-    }
-  },
-  parseHTML() {
-    return [
-      { tag: `img[${MESSAGE_IMAGE_ATTRIBUTE}]` },
-      // A sent message draws it as its capsule, in a span that keeps its
-      // attributes (`SentMessage`).
-      {
-        tag: `span[${MESSAGE_IMAGE_ATTRIBUTE}]`,
-        getAttrs: (element) => ({
-          src: element.getAttribute('data-src') ?? '',
-          alt: element.getAttribute('data-alt') ?? '',
-          title: element.getAttribute('data-title'),
-        }),
-      },
-    ]
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['img', { ...HTMLAttributes, [MESSAGE_IMAGE_ATTRIBUTE]: '' }]
-  },
-  addNodeView() {
-    return VueNodeViewRenderer(ImageNodeView)
-  },
-})
+// ── The editors' keys ──
 
-/**
- * How a link or a bare URL in a message opens: a web address in a new tab, a
- * Host file in the File view, and anything else not at all, shown as text.
- */
-export function linkAttributes(target: string): Record<string, string> {
-  if (isHttpUrl(target)) {
-    return { 'data-link': 'web', 'data-target': target, href: target, target: '_blank', rel: WEB_LINK_REL }
-  }
-  return { 'data-link': isLikelyFilePath(target) ? 'file' : 'text', 'data-target': target }
-}
-
-/** `[text](target)`. Typing at its end continues plain text. */
-const LinkMark = Mark.create({
-  name: 'link',
-  inclusive: false,
-  addAttributes() {
-    return {
-      href: {
-        default: '',
-        parseHTML: (element) => element.getAttribute('data-target') ?? element.getAttribute('href') ?? '',
-        rendered: false,
-      },
-      title: { default: null },
-    }
-  },
-  parseHTML() {
-    return [{ tag: 'a[data-target]' }, { tag: 'a[href]' }]
-  },
-  renderHTML({ mark, HTMLAttributes }) {
-    return ['a', { ...HTMLAttributes, ...linkAttributes(String(mark.attrs['href'])) }, 0]
-  },
-})
-
-// ── Formatting as it is typed ──
-
-/**
- * The characters a conversion replaced, which Backspace right after gives back.
- */
-interface FormatUndo {
-  transform: Transaction
-  from: number
-  to: number
-  text: string
-}
-
-const formatKey = new PluginKey<FormatUndo | null>('messageFormat')
-
-/**
- * The inline run that ends at `$pos` on its line, split into what comes before
- * its plain tail and that tail.
- */
-function runBefore($pos: ResolvedPos): { before: JSONContent[]; tail: string } {
-  let run: ProseMirrorNode[] = []
-  $pos.parent.forEach((child, offset) => {
-    if (offset >= $pos.parentOffset) {
-      return
-    }
-    if (child.type.name === 'hardBreak' || child.type.name === 'attachment') {
-      run = []
-      return
-    }
-    run.push(offset + child.nodeSize > $pos.parentOffset ? child.cut(0, $pos.parentOffset - offset) : child)
-  })
-  const last = run.at(-1)
-  const tail = last?.isText && !last.marks.length ? last.text ?? '' : ''
-  return {
-    before: (tail ? run.slice(0, -1) : run).map((node) => node.toJSON()),
-    tail,
-  }
-}
-
-/**
- * Types `text` at `from`–`to` and, when it closes a construct of the dialect,
- * formats it in the same step; true when it did.
- */
-function formatTyped(view: EditorView, from: number, to: number, text: string): boolean {
-  const { state } = view
-  const $from = state.doc.resolve(from)
-  if (from !== to || !$from.parent.isTextblock || $from.parent.type.spec.code) {
-    return false
-  }
-  if ((state.storedMarks ?? $from.marks()).some((mark) => mark.type.spec.code)) {
-    return false
-  }
-  const { before, tail } = runBefore($from)
-  const closed = typedFormat(before, tail, text)
-  if (!closed) {
-    return false
-  }
-  const tr = state.tr.insertText(text, from, to)
-  const end = from + text.length
-  tr.replaceWith(end - closed.length, end, closed.nodes.map((node) => state.schema.nodeFromJSON(node)))
-  tr.setStoredMarks([])
-  tr.setMeta(formatKey, { transform: tr, from, to, text } satisfies FormatUndo)
-  view.dispatch(tr)
-  return true
-}
-
-const formatPlugin = new Plugin<FormatUndo | null>({
-  key: formatKey,
-  // tiptap's Backspace gives back the characters of the last conversion a
-  // plugin marked this way records.
-  isInputRules: true,
-  state: {
-    init: () => null,
-    apply(tr, previous) {
-      const recorded: FormatUndo | undefined = tr.getMeta(formatKey)
-      if (recorded) {
-        return recorded
-      }
-      return tr.selectionSet || tr.docChanged ? null : previous
-    },
-  },
-  props: {
-    handleTextInput: formatTyped,
-    handleDOMEvents: {
-      compositionend(view) {
-        // An input method's text lands after this event.
-        setTimeout(() => {
-          const { selection } = view.state
-          const cursor = selection instanceof TextSelection ? selection.$cursor : null
-          if (!view.isDestroyed && cursor) {
-            formatTyped(view, cursor.pos, cursor.pos, '')
-          }
-        })
-        return false
-      },
-    },
-  },
-})
-
-/**
- * The text of the line the cursor ends: from the line break before it, or the
- * block's start.
- */
-function lineAt($pos: ResolvedPos): { from: number; text: string; plain: boolean; breakBefore: boolean } | null {
-  let from = $pos.start()
-  let text = ''
-  let plain = true
-  let breakBefore = false
-  $pos.parent.forEach((child, offset) => {
-    if (offset >= $pos.parentOffset) {
-      return
-    }
-    if (child.type.name === 'hardBreak') {
-      from = $pos.start() + offset + child.nodeSize
-      text = ''
-      plain = true
-      breakBefore = true
-      return
-    }
-    // Only a line of plain text can be a fence.
-    text += child.text ?? ''
-    plain &&= child.isText && !child.marks.length
-  })
-  const after = $pos.parent.childAfter($pos.parentOffset).node
-  return after && after.type.name !== 'hardBreak' ? null : { from, text, plain, breakBefore }
-}
-
-/**
- * A line typed as a fence opens a code block when it ends: the paragraph
- * splits around it, and the cursor moves into the block.
- */
-function openFence(editor: Editor): boolean {
-  const { state, view } = editor
-  const { $from, empty } = state.selection
-  if (!empty || $from.parent.type.name !== 'paragraph') {
-    return false
-  }
-  const line = lineAt($from)
-  const info = line?.plain ? fenceInfo(line.text) : null
-  if (!line || info === null) {
-    return false
-  }
-  const { paragraph, codeBlock } = state.schema.nodes
-  const start = $from.start()
-  const beforeEnd = line.from - start - (line.breakBefore ? 1 : 0)
-  const afterContent = $from.parent.content.cut($from.parentOffset)
-  const afterStart = afterContent.firstChild?.type.name === 'hardBreak' ? afterContent.cut(1) : afterContent
-  const blocks: ProseMirrorNode[] = []
-  if (line.breakBefore) {
-    blocks.push(paragraph!.create(null, $from.parent.content.cut(0, beforeEnd)))
-  }
-  blocks.push(codeBlock!.create({ language: info || null }))
-  if (afterContent.size) {
-    blocks.push(paragraph!.create(null, afterStart))
-  }
-  const tr = state.tr.replaceWith($from.before(), $from.after(), Fragment.from(blocks))
-  const blockStart = $from.before() + (line.breakBefore ? blocks[0]!.nodeSize : 0)
-  tr.setSelection(TextSelection.create(tr.doc, blockStart + 1))
-  tr.setMeta(formatKey, { transform: tr, from: $from.pos, to: $from.pos, text: '' } satisfies FormatUndo)
-  view.dispatch(tr.scrollIntoView())
-  return true
-}
-
-/**
- * A fence typed as a code block's last line closes it: the cursor leaves for a
- * line after the block.
- */
-function closeFence(editor: Editor): boolean {
-  const { state, view } = editor
-  const { $from, empty } = state.selection
-  const code = $from.parent
-  if (!empty || !code.type.spec.code || $from.parentOffset !== code.content.size) {
-    return false
-  }
-  const text = code.textContent
-  const lineStart = text.lastIndexOf('\n') + 1
-  if (!closesFence(text.slice(lineStart))) {
-    return false
-  }
-  const tr = state.tr.delete($from.start() + Math.max(0, lineStart - 1), $from.pos)
-  const after = tr.mapping.map($from.after())
-  tr.insert(after, state.schema.nodes['paragraph']!.create())
-  tr.setSelection(TextSelection.create(tr.doc, after + 1))
-  tr.setMeta(formatKey, { transform: tr, from: $from.pos, to: $from.pos, text: '' } satisfies FormatUndo)
-  view.dispatch(tr.scrollIntoView())
-  return true
-}
-
-function inCode(state: EditorState): boolean {
-  return !!state.selection.$from.parent.type.spec.code
+/** Whether the caret is on a fence or in the code between fences. */
+export function inCode(state: EditorState): boolean {
+  return lineRoleAt(state.doc, state.selection.from) !== 'text'
 }
 
 export interface MessageKeyOptions {
@@ -360,10 +94,10 @@ export interface MessageKeyOptions {
 /**
  * The composer's keys:
  *
- * - Enter sends and Shift+Enter breaks the line.
- * - In a code block, Enter breaks the line and ⌘/Ctrl+Enter sends.
- * - Outside a code block, ⌘/Ctrl+Enter sends the other way.
- * - A line typed as a fence opens or closes a code block when it ends.
+ * - Enter sends and Shift+Enter starts a line.
+ * - On a fence or in the code between fences, Enter starts a line and
+ *   ⌘/Ctrl+Enter sends.
+ * - Elsewhere, ⌘/Ctrl+Enter sends the other way.
  * - Up Arrow in a composer with no text and no files may open the editor on the
  *   last message.
  *
@@ -380,17 +114,15 @@ const MessageKeys = Extension.create<MessageKeyOptions>({
     }
   },
   addKeyboardShortcuts() {
-    const lineEnd = (editor: Editor) =>
-      closeFence(editor) || openFence(editor) || (inCode(editor.state) && editor.commands.newlineInCode())
     return {
       Enter: ({ editor }) => {
-        if (lineEnd(editor)) {
-          return true
+        if (inCode(editor.state)) {
+          return editor.commands.splitBlock()
         }
         this.options.submit(false)
         return true
       },
-      'Shift-Enter': ({ editor }) => lineEnd(editor) || editor.commands.setHardBreak(),
+      'Shift-Enter': ({ editor }) => editor.commands.splitBlock(),
       // The keys `otherWayKeys` shows: ⌘ on a Mac and Ctrl on a PC by the
       // page's set, never by the library's own `Mod`.
       [shortcutSet() === 'mac' ? 'Meta-Enter' : 'Ctrl-Enter']: ({ editor }) => {
@@ -440,51 +172,23 @@ export function redrawDecorations(editor: Editor): void {
 }
 
 /**
- * A sent message's code block's colors: the theme's text color for the block,
- * hidden while its region waits (`markdown/highlight.ts`), and its tokens'
- * where the language colors them, each run by its offset in the code.
+ * The highlighting over an editor's text (`highlights.ts`): each line's own
+ * attributes on its paragraph, each range's around its text.
  */
-export function codeColors(node: ProseMirrorNode): { style: string; runs: { from: number; to: number; classes: string }[] } {
-  const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''
-  return { style: `color: ${codeColor(language)}`, runs: codeRuns(node.textContent, language) }
-}
-
-/**
- * A code block's colors in the text a person types or edits: the theme's text
- * color from the first moment, never hidden, and the tokens' where the language
- * has loaded. The text being edited is no region.
- */
-export function typedCodeColors(node: ProseMirrorNode): { style: string; runs: { from: number; to: number; classes: string }[] } {
-  const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''
-  return { style: `color: ${codeTextColor()}`, runs: typedCodeRuns(node.textContent, language) }
-}
-
-/**
- * The bare URLs of a text node, each a link in the text itself, with the
- * attributes of its link; none in code or in a written link.
- */
-export function bareLinks(node: ProseMirrorNode): { from: number; to: number; attributes: Record<string, string> }[] {
-  if (!node.isText || !node.text?.includes('http') || node.marks.some((mark) => mark.type.name === 'link' || mark.type.spec.code)) {
-    return []
-  }
-  return bareUrls(node.text).map((url) => ({ from: url.from, to: url.to, attributes: linkAttributes(url.href) }))
-}
-
 function decorate(doc: ProseMirrorNode): DecorationSet {
   const decorations: Decoration[] = []
-  doc.descendants((node, pos) => {
-    if (node.type.spec.code) {
-      const colors = typedCodeColors(node)
-      decorations.push(Decoration.node(pos, pos + node.nodeSize, { style: colors.style }))
-      for (const run of colors.runs) {
-        decorations.push(Decoration.inline(pos + 1 + run.from, pos + 1 + run.to, { class: run.classes }))
-      }
-      return false
+  const lines = messageHighlights(doc)
+  doc.forEach((node, offset, index) => {
+    const highlight = lines[index]
+    if (!highlight) {
+      return
     }
-    for (const link of bareLinks(node)) {
-      decorations.push(Decoration.inline(pos + link.from, pos + link.to, { nodeName: 'a', ...link.attributes }))
+    if (highlight.line) {
+      decorations.push(Decoration.node(offset, offset + node.nodeSize, highlight.line))
     }
-    return true
+    for (const range of highlight.ranges) {
+      decorations.push(Decoration.inline(offset + 1 + range.from, offset + 1 + range.to, range.attributes))
+    }
   })
   return DecorationSet.create(doc, decorations)
 }
@@ -507,60 +211,33 @@ const MessageDecorations = Extension.create({
   },
 })
 
-const MessageFormat = Extension.create({
-  name: 'messageFormat',
-  addProseMirrorPlugins() {
-    return [formatPlugin]
-  },
-})
-
 let schema: Schema | null = null
 
 /**
- * The schema of a message, the composer's: what a sent message is read
- * into and drawn from (`SentMessage`), without an editor.
+ * A message's schema: a paragraph for each line, its text as typed, and a
+ * capsule for each file, nothing else, so pasted HTML keeps only its text and
+ * its files. The editors
+ * hold it, and a sent message is drawn from it (`SentMessage`).
  */
 export function messageSchema(): Schema {
   schema ??= getSchema(messageExtensions())
   return schema
 }
 
-/**
- * What a message holds and how it looks, sent or written: the user dialect
- * and capsules, every file a capsule, a picture's too. The schema has no
- * other node or mark, so nothing else can be in a message: foreign HTML
- * keeps what its parse rules read, and of the rest only the text.
- */
 function messageExtensions(): AnyExtension[] {
-  return [
-    Document,
-    Paragraph,
-    Text,
-    // A new line starts plain, as each line of the dialect does.
-    HardBreak.configure({ keepMarks: false }),
-    Bold,
-    Italic,
-    Strike,
-    // Code sits inside bold or a link: `**`a`**`, [`a`](b).
-    Code.extend({ excludes: 'code' }),
-    CodeBlock,
-    LinkMark,
-    ImageNode,
-    AttachmentNode,
-    MessageDecorations,
-  ]
+  return [Document, Paragraph, Text, AttachmentNode]
 }
 
 /**
- * The composer: the same message, with formatting as it is typed, the
- * composer's keys, and what it takes in from pastes and drops.
+ * A message editor: the message's schema, its highlighting drawn over the
+ * text, the composer's keys, and what it takes in from pastes and drops.
  */
 export function composerExtensions(
   options: MessageKeyOptions & { placeholder: () => string; intake?: IntakeOptions },
 ): AnyExtension[] {
   return [
     ...messageExtensions(),
-    MessageFormat,
+    MessageDecorations,
     ...(options.intake ? [ComposerIntake.configure(options.intake)] : [ComposerIntake]),
     KeepComposition,
     MessageKeys.configure({ submit: options.submit, cancel: options.cancel, editLast: options.editLast }),

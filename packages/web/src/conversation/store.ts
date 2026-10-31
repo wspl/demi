@@ -67,7 +67,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { composerCapsule, contentMessage } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
-import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
+import { ATTACHMENT_MARK, parseTypedMarkdown, serializeTypedMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { createConversationClient } from '@demicodes/web-ui/transport/conversation-lane'
 import { SessionError } from '@demicodes/conversation-client'
 import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, HeldTranscript, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
@@ -1112,12 +1112,12 @@ export const useConversations = defineStore('conversations', () => {
     if (index < 0) {
       return
     }
-    const doc = parseUserMarkdown(conversation.draft, conversation.attachmentIds.map((id) => ({ id })))
+    const doc = parseTypedMarkdown(conversation.draft, conversation.attachmentIds.map((id) => ({ id })))
     for (const block of doc.content ?? []) {
       block.content = block.content?.map((node) =>
         node.type === 'attachment' && node.attrs?.['capsule']?.id === file.id ? { type: 'text', text: file.name } : node)
     }
-    conversation.draft = serializeUserMarkdown(doc).markdown
+    conversation.draft = serializeTypedMarkdown(doc).markdown
     arrangeFiles(conversation, conversation.attachmentIds.filter((id) => id !== file.id))
     conversation.draftShown += 1
     const toast = missingFilesToast([file.name])
@@ -3942,7 +3942,7 @@ export const useConversations = defineStore('conversations', () => {
       const draft = conversation.draft.trimEnd()
       const joined = draft === '' ? text : `${draft}\n\n${text}`
       // As the editor writes the message out.
-      refill(conversation, serializeUserMarkdown(parseUserMarkdown(joined, fileIds)).markdown, fileIds)
+      refill(conversation, serializeTypedMarkdown(parseTypedMarkdown(joined, fileIds)).markdown, fileIds)
       conversation.comments = [...conversation.comments, ...pending.comments]
     })
     // The backend's draft may still hold the message as it was sent.
@@ -4137,7 +4137,7 @@ export const useConversations = defineStore('conversations', () => {
     const draft = conversation.draft.trimEnd()
     const joined = draft === '' ? pasted.markdown : `${draft}\n\n${pasted.markdown}`
     // As the editor writes the message out, so that a refusal finds it unchanged.
-    const text = serializeUserMarkdown(parseUserMarkdown(joined, fileIds)).markdown
+    const text = serializeTypedMarkdown(parseTypedMarkdown(joined, fileIds)).markdown
     refill(conversation, text, fileIds)
     for (const { id, kept } of pasted.attaching) {
       void kept.then((stays) => {

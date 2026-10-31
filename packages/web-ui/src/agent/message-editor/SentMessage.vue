@@ -1,30 +1,28 @@
 <script setup lang="ts">
 import { computed, h, ref, type VNode, type VNodeChild } from 'vue'
-import type { DOMOutputSpec, Node as ProseMirrorNode, Slice } from '@tiptap/pm/model'
+import type { Node as ProseMirrorNode, Slice } from '@tiptap/pm/model'
 import { useMarkdownRenderVersion } from '../../markdown/render-version'
 import { useMessageFiles } from '../../markdown/message-files'
-import { parseUserMarkdown } from '../../markdown/user-markdown'
+import { parseTypedMarkdown } from '../../markdown/user-markdown'
 import { reportError } from '../../infra/errors'
 import { t } from '../locales/text'
 import type { MessageCapsule } from './capsules'
-import { bareLinks, codeColors, messageSchema } from './extensions'
-import { MESSAGE_IMAGE_ATTRIBUTE } from './intake'
+import { messageSchema } from './extensions'
+import { messageHighlights, type HighlightAttributes, type LineHighlight } from './highlights'
 import MessageAttachment from './MessageAttachment.vue'
-import MessageImage from './MessageImage.vue'
 import { useMessageClipboard } from './message-clipboard'
 import { followMessageLink } from './message-links'
 
 /**
- * A sent message as the conversation shows it: drawn once from the composer's
- * schema, each node as the schema draws it and each file as its capsule, with
- * what the composer's editor draws over its text (code's colors, bare URLs as
- * links), and no editor behind it.
+ * A sent message as the conversation shows it: its lines as typed, with the
+ * highlighting its editor draws (`highlights.ts`), each file as its capsule,
+ * and no editor behind it.
  *
  * Its text selects as any text does. A copy or a drag of it, or of a capsule,
- * carries that part of the message in every form, its formatting and its files
- * with it, as the composer's own copy does. Each node it draws says where it
- * stands in the message's document, so the page's selection maps to the
- * document's positions, and the document's slice between them is what goes, as
+ * carries that part of the message in every form, its files with it, as the
+ * composer's own copy does. Each line and file it draws says where it stands
+ * in the message's document, so the page's selection maps to the document's
+ * positions, and the document's slice between them is what goes, as
  * ProseMirror's own copy takes it.
  */
 const props = withDefaults(defineProps<{
@@ -42,122 +40,92 @@ const clipboard = useMessageClipboard()
 const renderVersion = useMarkdownRenderVersion()
 const root = ref<HTMLElement>()
 
-const doc = computed(() => schema.nodeFromJSON(parseUserMarkdown(props.markdown, props.attachments)))
+const doc = computed(() => schema.nodeFromJSON(parseTypedMarkdown(props.markdown, props.attachments)))
 /**
  * Where a drawn node stands in the message's document: the position before it.
  */
 const POSITION = 'data-pos'
 
-/** Whether a spec's entry is the element's attributes. */
-function isAttributes(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
+/** An element drawn with highlighting's attributes, `nodeName` its tag, a span by default. */
+function element(attributes: HighlightAttributes, children: VNodeChild[]): VNode {
+  const { nodeName = 'span', ...rest } = attributes
+  return h(nodeName, rest, children)
 }
 
 /**
- * The element `spec` describes, with `content` in its hole; the schema draws
- * every node and mark as an array.
+ * The line's content from offset `from` to `to`, a character of text one and
+ * a capsule one, as plain text and the files drawn where they stand.
  */
-function fromSpec(spec: unknown, content: VNodeChild[], extra: Record<string, unknown> = {}): VNode {
-  if (!Array.isArray(spec) || typeof spec[0] !== 'string') {
-    throw new Error('A message node draws as an array spec.')
-  }
-  const rest: unknown[] = spec.slice(1)
-  const attributes = isAttributes(rest[0]) ? rest[0] : {}
-  const children = (isAttributes(rest[0]) ? rest.slice(1) : rest).flatMap((child): VNodeChild[] =>
-    child === 0 ? content : Array.isArray(child) ? [fromSpec(child, content)] : [],
-  )
-  return h(spec[0], { ...attributes, ...extra }, children)
-}
-
-/** How the schema draws `mark`. */
-function markSpec(mark: ProseMirrorNode['marks'][number]): DOMOutputSpec {
-  const toDOM = mark.type.spec.toDOM
-  if (!toDOM) {
-    throw new Error(`The mark ${mark.type.name} has no drawing.`)
-  }
-  return toDOM(mark, true)
+function drawPlain(line: ProseMirrorNode, start: number, from: number, to: number): VNodeChild[] {
+  const parts: VNodeChild[] = []
+  line.forEach((child, offset) => {
+    const end = offset + child.nodeSize
+    if (end <= from || offset >= to) {
+      return
+    }
+    if (child.isText) {
+      parts.push((child.text ?? '').slice(Math.max(0, from - offset), to - offset))
+    } else {
+      parts.push(drawFile(child, start + offset))
+    }
+  })
+  return parts
 }
 
 /**
- * A text node, its bare URLs links, inside its marks as the schema draws them,
- * the first mark outermost.
+ * The line from `from` to `to` with the ranges inside it, each wrapping the
+ * ranges it holds; the ranges come in order of their start, the longer of
+ * two that start together first, as constructs nest.
  */
-function drawText(node: ProseMirrorNode): VNodeChild {
-  const text = node.text ?? ''
+function drawRanges(
+  line: ProseMirrorNode,
+  start: number,
+  from: number,
+  to: number,
+  ranges: LineHighlight['ranges'],
+): VNodeChild[] {
   const parts: VNodeChild[] = []
-  let at = 0
-  for (const link of bareLinks(node)) {
-    parts.push(text.slice(at, link.from), h('a', link.attributes, text.slice(link.from, link.to)))
-    at = link.to
+  let at = from
+  let index = 0
+  while (index < ranges.length) {
+    const range = ranges[index]!
+    const end = Math.min(range.to, to)
+    let inner = index + 1
+    while (inner < ranges.length && ranges[inner]!.from < end) {
+      inner += 1
+    }
+    parts.push(...drawPlain(line, start, at, range.from))
+    parts.push(element(range.attributes, drawRanges(line, start, range.from, end, ranges.slice(index + 1, inner))))
+    at = end
+    index = inner
   }
-  parts.push(text.slice(at))
-  return [...node.marks].reverse().reduce<VNodeChild[]>(
-    (inner, mark) => [fromSpec(markSpec(mark), inner)],
-    parts.filter((part) => part !== ''),
-  )
-}
-
-/** A code block's text in its colors. */
-function drawCode(node: ProseMirrorNode, colors: ReturnType<typeof codeColors>): VNodeChild[] {
-  const text = node.textContent
-  const parts: VNodeChild[] = []
-  let at = 0
-  for (const run of colors.runs) {
-    parts.push(text.slice(at, run.from), h('span', { class: run.classes }, text.slice(run.from, run.to)))
-    at = run.to
-  }
-  parts.push(text.slice(at))
+  parts.push(...drawPlain(line, start, at, to))
   return parts.filter((part) => part !== '')
 }
 
-/**
- * `node`, which stands at `pos` in the message's document, drawn; each element
- * of a node says where it stands.
- */
-function draw(node: ProseMirrorNode, pos: number): VNodeChild {
-  if (node.isText) {
-    return drawText(node)
-  }
+/** A capsule, which stands at `pos`, drawn. */
+function drawFile(node: ProseMirrorNode, pos: number): VNodeChild {
   const at = { [POSITION]: String(pos) }
-  switch (node.type.name) {
-    case 'attachment':
-      return h('span', { ...at, 'data-attachment': '', draggable: 'true' }, [
-        h(MessageAttachment, { saved: node.attrs['capsule'] ?? null, editable: false }),
-      ])
-    case 'image': {
-      const image = h('span', { ...at, [MESSAGE_IMAGE_ATTRIBUTE]: '', draggable: 'true' }, [h(MessageImage, {
-        target: String(node.attrs['src'] ?? ''),
-        alt: String(node.attrs['alt'] ?? ''),
-        linked: node.marks.some((mark) => mark.type.name === 'link'),
-        editable: false,
-      })])
-      return [...node.marks].reverse().reduce<VNodeChild>((inner, mark) => fromSpec(markSpec(mark), [inner]), image)
-    }
-  }
-  const content: VNodeChild[] = []
-  // The document's children start at 0; any other node's just inside it.
-  const start = node.type.name === 'doc' ? 0 : pos + 1
-  node.forEach((child, offset) => {
-    content.push(draw(child, start + offset))
+  return h('span', { ...at, 'data-attachment': '', draggable: 'true' }, [
+    h(MessageAttachment, { saved: node.attrs['capsule'] ?? null, editable: false }),
+  ])
+}
+
+/**
+ * Each line of the message as a paragraph that says where it stands, with
+ * its highlighting; an empty line holds a line's height, as the editor gives
+ * it.
+ */
+function drawLines(message: ProseMirrorNode): VNodeChild[] {
+  const highlights = messageHighlights(message)
+  const lines: VNodeChild[] = []
+  message.forEach((line, offset, index) => {
+    const highlight = highlights[index] ?? { line: null, ranges: [] }
+    const ranges = [...highlight.ranges].sort((a, b) => a.from - b.from || b.to - a.to)
+    const content = line.content.size ? drawRanges(line, offset + 1, 0, line.content.size, ranges) : [h('br')]
+    lines.push(h('p', { ...(highlight.line ?? {}), [POSITION]: String(offset) }, content))
   })
-  if (node.type.name === 'doc') {
-    return content
-  }
-  const toDOM = node.type.spec.toDOM
-  if (!toDOM) {
-    throw new Error(`The node ${node.type.name} has no drawing.`)
-  }
-  const spec = toDOM(node)
-  if (node.type.spec.code) {
-    const colors = codeColors(node)
-    return fromSpec(spec, drawCode(node, colors), { ...at, style: colors.style })
-  }
-  // An empty line, or one that ends in a break, holds a line's height, as the
-  // composer's editor gives it.
-  if (node.isTextblock && (node.childCount === 0 || node.lastChild?.type.name === 'hardBreak')) {
-    content.push(h('br'))
-  }
-  return fromSpec(spec, content, at)
+  return lines
 }
 
 /**
@@ -166,7 +134,7 @@ function draw(node: ProseMirrorNode, pos: number): VNodeChild {
  */
 function Content(): VNodeChild {
   void renderVersion.value
-  return draw(doc.value, 0)
+  return drawLines(doc.value)
 }
 
 /** Where a drawn element's node stands in the document. */
@@ -239,10 +207,7 @@ function selected(range: Range): Slice | null {
   return to > from ? doc.value.slice(from, to) : null
 }
 
-/**
- * The page's selection when it lies within this message, and is not a part of
- * one code block.
- */
+/** The page's selection when it lies within this message. */
 function ownSelection(): Range | null {
   const selection = document.getSelection()
   const element = root.value
@@ -255,10 +220,7 @@ function ownSelection(): Range | null {
   if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) {
     return null
   }
-  const code = (node: Node) => (node instanceof Element ? node : node.parentElement)?.closest('pre') ?? null
-  // Code copied from inside a code block is the code, as any page copies it.
-  const block = code(range.startContainer)
-  return block && block === code(range.endContainer) ? null : range
+  return range
 }
 
 /**
@@ -294,7 +256,7 @@ function copy(event: ClipboardEvent): void {
  */
 function dragStart(event: DragEvent): void {
   const transfer = event.dataTransfer
-  const host = event.target instanceof Element ? event.target.closest(`[data-attachment], [${MESSAGE_IMAGE_ATTRIBUTE}]`) : null
+  const host = event.target instanceof Element ? event.target.closest('[data-attachment]') : null
   let content: Slice | null = null
   if (host && root.value?.contains(host)) {
     const pos = positionAttribute(host)
