@@ -109,7 +109,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
 <template>
   <GallerySection
     title="User Message Length"
-    note="A message taller than 300px folds to about 200px, as Claude Code's does, its last line fading out, and Show More under it opens it whole; Show Less folds it again. A message under 300px shows whole, since folding it would hide less than the control takes. A line across the fold shows whole, code's as text's. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the fold follows the wrapping."
+    note="A message taller than 300px folds to about 200px, as Claude Code's does, its last line fading out, and Show More under it opens it whole; Show Less folds it again. A queued message keeps Show More first in its row of controls, then Send and Recall. A message under 300px shows whole, since folding it would hide less than the control takes. A line across the fold shows whole, code's as text's. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the fold follows the wrapping."
   >
     <div class="specimen-stack specimen-stack-loose">
       <GallerySpecimen

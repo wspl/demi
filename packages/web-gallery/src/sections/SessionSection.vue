@@ -2386,7 +2386,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="UserBlock"
-        note="User; files as capsules where they were put: pointed at, an image or a video shows large in its preview card after 300 ms, with the file’s name and pixel size under it, and a text file its opening lines; Markdown, shown as it was typed and highlighted as the composer highlights it, every mark kept and dimmed, a heading bold, code in monospace and its colors; pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
+        note="User; files as capsules where they were put: pointed at, an image or a video shows large in its preview card after 300 ms, with the file’s name and pixel size under it, and a text file its opening lines; Markdown, shown as it was typed and highlighted as the composer highlights it, every mark kept and dimmed, a heading bold, code in monospace and its colors; pending steer, queued, and stuck. A message waiting to be sent, as a steer or queued, stands back from the sent ones: dimmer words on half a bubble’s fill, a steer’s tinted with the accent, with Send and Recall in its last row and what happens to it at the row’s end, the clock’s Sending soon or the queue’s Queued; its words keep their place as it is sent. Long messages have a view of their own: Lengths."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
