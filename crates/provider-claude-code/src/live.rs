@@ -192,39 +192,36 @@ impl Drop for ProcessLog {
     }
 }
 
-/// The user messages a process received: how many, steers included, and
-/// the first one, which an edit, a fork or a compaction changes.
+/// The user messages a process received, steers included, in order.
+///
+/// A request continues them when its first user messages are those. An edit
+/// or a fork changes one or drops some; a compaction replaces them with its
+/// note, the messages it kept and its summary. Every compaction's messages
+/// open with the same note, so the request after a second pass can begin as
+/// the one after the first did, and hold as many messages.
 #[derive(Default)]
 struct Sent {
-    count: usize,
-    first: Option<Vec<UserPart>>,
+    messages: Vec<Vec<UserPart>>,
 }
 
 impl Sent {
     fn of(items: &[InferenceItem]) -> Self {
         Self {
-            count: input::user_messages(items).count(),
-            first: first_user_message(items).cloned(),
+            messages: input::user_messages(items).cloned().collect(),
         }
     }
 
-    /// Whether `items` no longer continue what the process received: they
-    /// hold fewer user messages, or another first one.
+    fn count(&self) -> usize {
+        self.messages.len()
+    }
+
+    /// Whether `items` no longer continue what the process received.
     fn diverged(&self, items: &[InferenceItem]) -> bool {
-        if input::user_messages(items).count() < self.count {
-            return true;
-        }
-        self.first
-            .as_ref()
-            .is_some_and(|first| first_user_message(items) != Some(first))
+        let mut given = input::user_messages(items);
+        self.messages
+            .iter()
+            .any(|sent| given.next() != Some(sent))
     }
-}
-
-fn first_user_message(items: &[InferenceItem]) -> Option<&Vec<UserPart>> {
-    items.iter().find_map(|item| match item {
-        InferenceItem::UserMessage { content } => Some(content),
-        _ => None,
-    })
 }
 
 /// A line of output as it was read.
@@ -507,7 +504,7 @@ impl LiveCli {
     /// for input that never comes.
     pub(crate) fn serves(&self, request: &InferenceRequest) -> bool {
         let gains_input =
-            !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count;
+            !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count();
         self.continues(request) && gains_input
     }
 
@@ -953,11 +950,11 @@ impl LiveCli {
         request: &InferenceRequest,
     ) -> Result<(), ProviderFailure> {
         let count = input::user_messages(&request.items).count();
-        if count <= self.sent.count {
+        if count <= self.sent.count() {
             return Ok(());
         }
         let items = request.items.clone();
-        let sent = self.sent.count;
+        let sent = self.sent.count();
         let (lines, last) = encode_body(FAMILY, move || input::new_user_messages(&items, sent)).await?;
         self.write(lines).await?;
         let given = input::user_message_items(&request.items)
@@ -965,10 +962,9 @@ impl LiveCli {
             .map(|(index, _)| index);
         self.mirror.gave(given);
         self.unanswered = last;
-        self.sent.count = count;
-        if self.sent.first.is_none() {
-            self.sent.first = first_user_message(&request.items).cloned();
-        }
+        self.sent
+            .messages
+            .extend(input::user_messages(&request.items).skip(sent).cloned());
         Ok(())
     }
 
