@@ -83,6 +83,18 @@ export function scrolledRows(before: RowsBefore, scrollTop: number): RowsBefore 
   return { tops: new Map([...before.tops].map(([key, top]) => [key, top - by])), heights: before.heights, tails: before.tails, scrollTop }
 }
 
+/** The moves of a row that are running. */
+function moving(row: HTMLElement): Animation[] {
+  return row.getAnimations().filter((move) => move.id === ROW_MOVE_ID)
+}
+
+/** Puts every row of `scroller` at its place at once, ending the moves that run. */
+export function stopRowMoves(scroller: HTMLElement): void {
+  for (const row of scroller.querySelectorAll<HTMLElement>(ROW))
+    for (const move of moving(row))
+      move.cancel()
+}
+
 /** The properties whose animation changes an element's height. */
 const HEIGHT_PROPERTIES = new Set(['height', 'maxHeight', 'blockSize', 'gridTemplateRows', 'grid-template-rows', 'max-height', 'block-size'])
 
@@ -135,11 +147,8 @@ export function moveRows(scroller: HTMLElement, before: RowsBefore, heights: Map
   const rows = [...scroller.querySelectorAll<HTMLElement>(ROW)]
   if (typeof rows[0]?.animate !== 'function')
     return
-  const moving = (row: HTMLElement) => row.getAnimations().filter((move) => move.id === ROW_MOVE_ID)
   if (prefersReducedMotion() || document.hidden) {
-    for (const row of rows)
-      for (const move of moving(row))
-        move.cancel()
+    stopRowMoves(scroller)
     return
   }
   const keys = rows.map((row) => row.dataset['rowKey']!)

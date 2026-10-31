@@ -7,7 +7,7 @@ import { pageLog } from '../infra/log'
 import { deviceSystem } from '../auth/device-unlock'
 import { revealOffset } from '../ui/reveal'
 import { prefersReducedMotion } from '../ui/stream-reveal'
-import { moveRows, rowsBefore, rowTails, scrolledRows, tailDisplaced, type RowsBefore, type RowTail } from './row-motion'
+import { moveRows, rowsBefore, rowTails, scrolledRows, stopRowMoves, tailDisplaced, type RowsBefore, type RowTail } from './row-motion'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -414,6 +414,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       // A row is measured only in the document (`measureElement` below), as
       // the observer reports only rows there.
       measureElement: (element, entry, instance) => {
+        noteRowWidth(element, entry)
         const size = measureRow(element, entry, instance)
         const index = instance.indexFromElement(element)
         const key = instance.options.getItemKey(index)
@@ -980,6 +981,13 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   const layout = () => `${virtualizer.value.getTotalSize()}|${virtualizer.value.getVirtualItems().map((item) => `${String(item.key)}:${item.start}`).join()}`
   function seeRows(): void {
     const el = scrollContainer.value
+    if (reflowing) {
+      seen = null
+      placeAcrossReflow()
+      return
+    }
+    if (!shouldAutoScroll.value)
+      remeasureReadAt()
     if (unpainted) {
       if (!el || !isRestored.value || holdsView())
         seen = null
@@ -994,10 +1002,18 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
   watch(layout, seeRows, { flush: 'pre' })
   watch(layout, () => {
-    scrollPending()
     const el = scrollContainer.value
-    if (el && seen)
-      moveRows(el, seen, placedHeights(), shouldAutoScroll.value)
+    if (reflowing && el) {
+      scrollPending()
+      stopRowMoves(el)
+      if (keepsEnd)
+        scrollToBottom()
+      endDistance.value = distanceFromBottom(el)
+    } else {
+      scrollPending()
+      if (el && seen)
+        moveRows(el, seen, placedHeights(), shouldAutoScroll.value)
+    }
     settled = placedHeights()
     settledTails = scrollContainer.value ? rowTails(scrollContainer.value) : new Map()
   }, { flush: 'post' })
@@ -1013,7 +1029,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         // Before the first measurement the virtualizer states no offset; the
         // top of the list is where it starts, which is what its own private
         // getter also falls back to.
-        if (holdsView())
+        if (reflowing || holdsView())
           return false
         // The row whose part a reveal placed grows below that part, as its
         // fold opens: the reveal places the part again instead.
@@ -1050,6 +1066,188 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     { immediate: true },
   )
 
+  // The list got wider or narrower, as when a panel beside it opens or the
+  // window is resized: its text wraps anew and every row changes height at
+  // once. That is no content coming or going, so no row moves, and the
+  // reader's place holds in the same frame, as a browser keeps a page's
+  // place through a resize (CSS scroll anchoring): the end for a reader who
+  // follows it, otherwise the paragraph at the view's top, where it stood. A
+  // paragraph the view's top cuts keeps the same share of it above the view,
+  // so the words at the top stay about the same as it wraps into more lines
+  // or fewer. A row's own growth would not do: a long reply that starts
+  // above the view grows below it too, which would carry the view past what
+  // the reader read.
+  //
+  // Every row spans the list's width, so a row measured at another width
+  // than before says the list's width changed. The paragraph's place in its
+  // row is read then, at the new width, before the update moves any row: the
+  // update may draw it no more. Its row's new start then places the view
+  // before the update draws the rows (`seeRows`), so the update draws the
+  // rows the view will show. It holds for the frame: the rows that the new
+  // places bring into view are measured in it too.
+  /** The width each row was last measured at. */
+  const rowWidths = new WeakMap<Element, number>()
+  /** The list's width changed in this frame, and its rows are laid out anew. */
+  let reflowing = false
+  /** The reader follows the end through the reflow. */
+  let keepsEnd = false
+  /**
+   * The paragraph, or other block of a row, at the view's top, as of the last
+   * scroll or placing: its row's key and its place among the children at
+   * each depth (a message drawn anew as it streams replaces its elements,
+   * not their places), how far below the view's top it stood, and the share
+   * of it above the view's top, when the view's top cut it.
+   */
+  let readAt: { key: string, path: number[], offset: number, above: number } | null = null
+  /**
+   * Where the reader's paragraph is to stand through the reflow: below its
+   * row's start, with the rows' box's own place, and below the view's top.
+   */
+  let reflowAt: { key: string, inRow: number, offset: number } | null = null
+  function noteRowWidth(row: Element, entry: ResizeObserverEntry | undefined): void {
+    const width = entry?.borderBoxSize?.[0]?.inlineSize ?? row.getBoundingClientRect().width
+    const was = rowWidths.get(row)
+    if (width <= 0)
+      return
+    rowWidths.set(row, width)
+    if (was === undefined || Math.abs(width - was) < 0.5 || !isRestored.value || reflowing)
+      return
+    reflowing = true
+    keepsEnd = shouldAutoScroll.value && !holdsView()
+    reflowAt = keepsEnd ? null : readingPlace()
+    requestAnimationFrame(() => {
+      reflowing = false
+      reflowAt = null
+    })
+  }
+  /** Where the reader's paragraph stands in its row now, at the new width, and where it is to stand in the view. */
+  function readingPlace(): { key: string, inRow: number, offset: number } | null {
+    const el = scrollContainer.value
+    const at = readAt
+    const row = el && at ? el.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(at.key)}"]`) : null
+    if (!row || !at)
+      return null
+    const { block, reached } = blockOf(row, at.path)
+    const box = block.getBoundingClientRect()
+    // The rows stand in a box that may start below the scrolled content's top.
+    const rowsTop = (row.offsetParent ?? el!).getBoundingClientRect().top - el!.getBoundingClientRect().top + el!.scrollTop
+    return {
+      key: at.key,
+      inRow: rowsTop + box.top - row.getBoundingClientRect().top,
+      // A paragraph that is gone leaves its nearest block, by the place the
+      // paragraph had in the view, which is close by.
+      offset: reached && at.above > 0 ? -at.above * box.height : at.offset,
+    }
+  }
+  /**
+   * Places the view for the rows' new heights, before the update draws them:
+   * at the end, or where the reader's paragraph stands where it stood.
+   */
+  function placeAcrossReflow(): void {
+    const el = scrollContainer.value
+    if (!el)
+      return
+    const instance = virtualizer.value
+    const now = instance.scrollOffset ?? viewTop(el)
+    let target: number | null = null
+    if (keepsEnd) {
+      target = Math.max(0, instance.getTotalSize() - el.clientHeight)
+    } else if (reflowAt) {
+      const index = blocks.value.findIndex((block) => keyOf(block) === reflowAt!.key)
+      const start = instance.measurementsCache[index]?.start
+      if (start !== undefined)
+        target = start + reflowAt.inRow - reflowAt.offset
+    }
+    if (target !== null && Math.abs(target - now) >= 0.5)
+      followRowsAbove(target - now)
+  }
+  /**
+   * The deepest block of `row` that reaches below `y`, the view's top, by its
+   * place among the children at each depth: a paragraph, an item or a code
+   * block of a message, never a run of text inside one, which wraps
+   * elsewhere at another width, nor what stands out of the flow, as a
+   * message's actions over its foot. When the view's top leaves less than
+   * half of that block in view and what follows it starts above `bottom`, the
+   * view's bottom, the reader reads what follows: the next block at the
+   * deepest depth that has one, or, with `last`, the next row. The children
+   * of a block follow one another down the page, so each depth is searched
+   * by halves.
+   */
+  function blockAt(row: HTMLElement, y: number, bottom: number): { path: number[], last: boolean } {
+    const path: number[] = []
+    const chain: Element[] = [row]
+    let at: Element = row
+    for (;;) {
+      const children = at.children
+      let low = 0
+      let high = children.length
+      while (low < high) {
+        const middle = (low + high) >> 1
+        if (children[middle]!.getBoundingClientRect().bottom > y)
+          high = middle
+        else
+          low = middle + 1
+      }
+      const index = inFlow(children, low)
+      const next = children[index]
+      if (!next || getComputedStyle(next).display.startsWith('inline'))
+        break
+      path.push(index)
+      chain.push(next)
+      at = next
+    }
+    const box = at.getBoundingClientRect()
+    if (at === row || box.top >= y || box.bottom - y >= box.height / 2 || box.bottom >= bottom)
+      return { path, last: false }
+    for (let depth = path.length - 1; depth >= 0; depth -= 1) {
+      const siblings = chain[depth]!.children
+      const after = inFlow(siblings, path[depth]! + 1)
+      if (after < siblings.length)
+        return { path: [...path.slice(0, depth), after], last: false }
+    }
+    return { path, last: true }
+  }
+  /** The block of `row` at `path`, or how far the path still leads. */
+  function blockOf(row: Element, path: number[]): { block: Element, reached: boolean } {
+    let block = row
+    for (const index of path) {
+      const child = block.children[index]
+      if (!child)
+        return { block, reached: false }
+      block = child
+    }
+    return { block, reached: true }
+  }
+  /**
+   * Reads again where the reader's block stands, as content arrives while
+   * the reader does not scroll: a paragraph that streams grows below the
+   * view's top, and its share above it shrinks.
+   */
+  function remeasureReadAt(): void {
+    const el = scrollContainer.value
+    const at = readAt
+    const row = el && at ? el.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(at.key)}"]`) : null
+    if (!el || !at || !row)
+      return
+    const { block, reached } = blockOf(row, at.path)
+    if (!reached)
+      return
+    const box = block.getBoundingClientRect()
+    const offset = box.top - el.getBoundingClientRect().top
+    readAt = { ...at, offset, above: offset < 0 && box.height > 0 ? -offset / box.height : 0 }
+  }
+  /** The first of `children` from `from` on that stands in the flow and has a height. */
+  function inFlow(children: HTMLCollection, from: number): number {
+    let index = from
+    while (index < children.length) {
+      const style = getComputedStyle(children[index]!)
+      if (style.position !== 'absolute' && style.position !== 'fixed' && children[index]!.getBoundingClientRect().height > 0)
+        break
+      index += 1
+    }
+    return index
+  }
+
   let lastAnchor: ViewAnchor | null = null
 
   function updateAnchor() {
@@ -1076,6 +1274,18 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
           scrollTop: st,
           start: item.start,
         }
+        const bottom = containerTop + el.clientHeight
+        let read = anchorEl
+        let found = blockAt(read, containerTop, bottom)
+        const next = found.last ? el.querySelector<HTMLElement>(`[data-index="${item.index + 1}"]`) : null
+        if (next) {
+          read = next
+          found = blockAt(read, containerTop, bottom)
+        }
+        const path = found.path
+        const box = blockOf(read, path).block.getBoundingClientRect()
+        const offset = box.top - containerTop
+        readAt = { key: read.dataset['rowKey']!, path, offset, above: offset < 0 && box.height > 0 ? -offset / box.height : 0 }
         return
       }
     }
