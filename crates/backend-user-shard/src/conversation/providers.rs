@@ -40,6 +40,33 @@ use crate::services::Services;
 use crate::shard::Shard;
 use demi_backend_host_access::conversation_of;
 
+impl Shard {
+    /// Follows the entries whose agents may take another account until the
+    /// shard closes (`crates/provider-registry/src/rotation.rs`): the
+    /// conversations on each that a page has open take their next account
+    /// again, so their context usage names the one their next request uses.
+    /// `changes` was subscribed when the shard was made, so no change since
+    /// is missed; a follower that fell behind takes every entry as changed.
+    pub(crate) async fn follow_rotation_changes(
+        self: Rc<Self>,
+        mut changes: tokio::sync::broadcast::Receiver<ProviderId>,
+    ) {
+        use tokio::sync::broadcast::error::RecvError;
+        loop {
+            let changed = tokio::select! {
+                changed = changes.recv() => changed,
+                () = self.closed() => return,
+            };
+            match changed {
+                Ok(entry) => self.agent().prepare_open(Some(entry.as_str())),
+                Err(RecvError::Lagged(_)) => self.agent().prepare_open(None),
+                // The registry lives as long as the backend.
+                Err(RecvError::Closed) => return,
+            }
+        }
+    }
+}
+
 /// Where the user's sessions get their runtimes.
 pub(super) struct ConversationProviders {
     /// The user's shard, whose Cloud runs a provider's process.
@@ -120,7 +147,6 @@ impl ProviderResolver for ConversationProviders {
                 prepares_ahead: false,
                 account: None,
                 running: None,
-                unannounced: false,
             };
             // The active account's runtime until the session's first
             // request names or takes its own.
@@ -267,9 +293,6 @@ struct ConversationRuntime {
     /// until the session's action ends; Smart spreads agents by these
     /// counts, and an idle agent is not among them.
     running: Option<Running>,
-    /// Whether the account was taken ahead of a request, so the next
-    /// request that names none tells the session of it.
-    unannounced: bool,
 }
 
 /// The runtime that serves the session's requests, with what it was built
@@ -420,19 +443,8 @@ impl ConversationRuntime {
             });
             if let Some(kept) = kept {
                 self.keep(entry, kept.id.clone(), runs);
-                self.unannounced = false;
                 return Ok((kept.id, None));
             }
-        }
-        if named.is_none()
-            && self.unannounced
-            && let Some(account) = self.account.clone()
-            && !provider_registry.rotation().is_used_up(&entry.id, &account, now)
-        {
-            // Taken ahead of this request: the session learns of it now.
-            self.keep(entry, account.clone(), runs);
-            self.unannounced = false;
-            return Ok((account.clone(), Some(Some(agent_account(&account, rotation)))));
         }
         let previous = named
             .map(|named| named.credential_id.clone())
@@ -464,9 +476,8 @@ impl ConversationRuntime {
                     );
                 }
                 self.account = Some(account.clone());
-                // Readied ahead, the agent is idle and counts on none.
+                // Taken ahead, the agent is idle and counts on none.
                 self.running = runs.then_some(running);
-                self.unannounced = !runs;
                 Ok((account.clone(), Some(Some(agent_account(&account, rotation)))))
             }
             Some(Choice::AllUsedUp { .. }) => Err(all_used_up(entry, &candidates)),
@@ -573,7 +584,6 @@ impl ConversationRuntime {
         );
         self.account = Some(next.clone());
         self.running = Some(running);
-        self.unannounced = false;
         let selection = self.selection.clone();
         self.serve(&entry, selection, Some(&next)).await.map_err(drop)?;
         let label = |id: &CredentialId| {
@@ -843,7 +853,6 @@ impl ProviderRuntime for ConversationRuntime {
             prepares_ahead: self.prepares_ahead,
             account: None,
             running: None,
-            unannounced: false,
         })
     }
 
@@ -855,6 +864,36 @@ impl ProviderRuntime for ConversationRuntime {
         if let Some(current) = &mut self.current {
             current.runtime.idle();
         }
+    }
+
+    /// The account the next request of `model` takes under the entry's
+    /// rotation, as [`admit`](Self::admit) takes it, without counting the
+    /// agent as running on it; under Manual, none. An entry that cannot
+    /// serve, or whose accounts are all used up, changes nothing: the
+    /// request says why.
+    fn next_account<'a>(
+        &'a mut self,
+        model: &'a ModelSelection,
+        account: Option<&'a AgentAccount>,
+    ) -> LocalBoxFuture<'a, Option<Option<AgentAccount>>> {
+        Box::pin(async move {
+            let entry = self.entry().await.ok()?;
+            match entry.rotation() {
+                Rotation::Manual => {
+                    self.account = None;
+                    self.running = None;
+                    account.is_some().then_some(None)
+                }
+                Rotation::InOrder | Rotation::Smart => {
+                    let selection = configured_selection(&entry, model.clone()).ok()?;
+                    let (_, announce) = self
+                        .agent_account(&entry, &selection.model, account, false)
+                        .await
+                        .ok()?;
+                    announce
+                }
+            }
+        })
     }
 
     fn prepares_ahead(&self) -> bool {

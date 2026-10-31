@@ -116,7 +116,9 @@ import type { TitleText } from '../ui/ui-text'
  *   emitted.
  *
  * A subscription with several accounts offers its rotation and orders its
- * accounts by dragging. Adding its second account and choosing In Order or
+ * accounts by dragging. Only Manual has an active account, the one every
+ * agent uses: under In Order and Smart each agent takes its own, so no
+ * account is marked active nor offered to become it. Adding its second account and choosing In Order or
  * Smart first warn, once, that several accounts or their rotation may
  * violate the provider's terms, at the user's own risk
  * (`crates/provider-registry/src/rotation.rs`).
@@ -225,6 +227,8 @@ const apiKeys = computed(() =>
 const selected = computed(
   () => props.providers.find((p) => p.id === selectedId.value) ?? null,
 )
+/** Whether every agent of the selected entry uses its active account, as without rotation. */
+const manual = computed(() => (selected.value?.rotation ?? 'manual') === 'manual')
 const phone = usePhone()
 const splitOpen = computed({
   get: () => detailOpen.value && selected.value !== null,
@@ -1022,7 +1026,7 @@ function endpointCheck(value: string) {
                 >
                   <template #tags>
                     <Tag v-if="account.plan">{{ account.plan }}</Tag>
-                    <Tag v-if="account.active" tone="accent">{{ t('providers.account.active') }}</Tag>
+                    <Tag v-if="manual && account.active" tone="accent">{{ t('providers.account.active') }}</Tag>
                     <Tag v-if="account.signedOut" tone="warning">{{ t('providers.state.signedOut') }}</Tag>
                     <Tag
                       v-if="
@@ -1053,7 +1057,7 @@ function endpointCheck(value: string) {
                   >
                   <Button
                     size="sm"
-                    v-if="!account.active"
+                    v-if="manual && !account.active"
                     :disabled="busy(selected.id)"
                     @click="emit('activateAccount', selected, account.id)"
                     >{{ t('providers.account.activate') }}</Button

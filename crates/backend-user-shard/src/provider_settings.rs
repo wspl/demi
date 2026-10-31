@@ -470,6 +470,7 @@ impl Services {
         let cache_ttl = self.cache_ttl(&entry, family.as_deref(), config.as_ref(), patch.cache_ttl)?;
         let retimes = cache_ttl.is_some();
         let label = patch.label.map(|label| label.into_string());
+        let rotates_anew = patch.rotation.is_some_and(|rotation| rotation != entry.rotation());
         let updated = self
             .vault
             .update(
@@ -485,6 +486,9 @@ impl Services {
             .ok_or(ProviderRefusal::NotFound)?;
         if reconfigures || retimes {
             self.provider_registry.invalidate(&entry.id).await?;
+        }
+        if rotates_anew {
+            self.provider_registry.rotation().changed(&entry.id);
         }
         Ok(updated)
     }

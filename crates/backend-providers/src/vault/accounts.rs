@@ -144,6 +144,7 @@ pub async fn remove(
     provider_registry.quotas().forget_account(&entry.id, &account);
     vault.mark_changed(&entry.owner, entry.kind()).await;
     provider_registry.invalidate(&entry.id).await?;
+    provider_registry.rotation().changed(&entry.id);
     Ok(active)
 }
 
