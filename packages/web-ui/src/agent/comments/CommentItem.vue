@@ -7,7 +7,6 @@ import { ICON_PX } from '../../ui/icon-metrics'
 import { t } from '../locales/text'
 import { t as shared } from '../../locales/text'
 import CommentBox from './CommentBox.vue'
-import CommentQuote from './CommentQuote.vue'
 import SentMessage from '../message-editor/SentMessage.vue'
 import type { MessageCapsule } from '../message-editor/capsules'
 import type { DraftMessage, MessageFiles } from './comments'
@@ -16,12 +15,12 @@ import type { DraftMessage, MessageFiles } from './comments'
  * A comment: its message, shown as a sent message is, as typed with its
  * Markdown highlighted and a capsule for each file, with ghost Delete and Edit
  * at the row's right end; Edit turns the row into the editor. A sent comment
- * stays as it was sent and says so.
+ * stays as it was sent and says so; while an edit of its message is open,
+ * it takes Delete alone.
  *
- * In the reply, under the line of its words (`inline`), it is a box with a
- * thin border, as a side question's card, led by the comment's yellow mark; a
- * sent one is dimmer. In the message field's list it is a row under the words
- * it quotes.
+ * It stands in the reply, under the line of its words: a box with a thin
+ * border, as a side question's card, led by the comment's yellow mark; a sent
+ * one is dimmer.
  */
 const props = defineProps<{
   /** Its message's Markdown, an attachment mark where each capsule stands. */
@@ -33,15 +32,8 @@ const props = defineProps<{
   /** The files its editor takes, as the composer takes them. */
   files?: MessageFiles
   sent: boolean
-  /**
-   * The text it is about, shown above it where the list stands away from the
-   * reply.
-   */
-  quote?: string
-  /** It stands in the reply, under the line of its words. */
-  inline?: boolean
-  /** It can be read but not changed, such as while the message is sent. */
-  readonly?: boolean
+  /** A sent comment an open edit of its message holds: Delete takes it out of the edit. */
+  deletable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -62,21 +54,20 @@ function save(message: DraftMessage): void {
        hit area pads them; the box being edited is the same distance from
        every side. -->
   <div
-    class="flex flex-col gap-1.5"
-    :class="inline ? ['rounded-xl border border-line py-1.5 text-conversation-secondary', editing ? 'px-1.5' : 'pl-3 pr-1.5'] : ''"
+    class="flex flex-col gap-1.5 [--found-inset-x:0px] [--found-radius:var(--radius-xl)]"
+    :class="['rounded-xl border border-line py-1.5 text-conversation-secondary', editing ? 'px-1.5' : 'pl-3 pr-1.5']"
     :data-comment-sent="sent || undefined"
     data-comment
   >
-    <CommentQuote v-if="quote" :text="quote" />
     <CommentBox v-if="editing && editingMessage && files" :message="editingMessage" :files="files" @save="save" @cancel="editing = false" />
     <div v-else class="flex items-start gap-2">
-      <span v-if="inline" class="inline-flex h-7 shrink-0 items-center text-[var(--comment-ink)]" :class="sent ? 'opacity-60' : ''">
+      <span class="inline-flex h-7 shrink-0 items-center text-[var(--comment-ink)]" :class="sent ? 'opacity-60' : ''">
         <MessageCircleMore :size="ICON_PX.in28" aria-hidden="true" />
       </span>
       <!-- A div, not a p: in the reply, the reply's paragraphs' spacing would reach it. -->
       <div
-        class="min-w-0 flex-1 py-1"
-        :class="[inline ? 'leading-5' : 'text-explanation', sent && inline ? 'text-fg-muted' : 'text-fg-body']"
+        class="min-w-0 flex-1 py-1 leading-5"
+        :class="sent ? 'text-fg-muted' : 'text-fg-body'"
       >
         <SentMessage :markdown="markdown" :attachments="attachments" />
       </div>
@@ -84,7 +75,20 @@ function save(message: DraftMessage): void {
         <Check :size="ICON_PX.in24" aria-hidden="true" />
         {{ t('comments.sent') }}
       </span>
-      <div v-else-if="!readonly" class="flex shrink-0 items-center">
+      <!-- Its room stays while no edit is open, so Delete coming and going moves nothing. -->
+      <Tooltip v-if="props.sent" :content="shared('common.delete')" :disabled="!deletable">
+        <IconButton
+          :icon="Trash2"
+          size="sm"
+          variant="ghost"
+          :class="deletable ? '' : 'invisible'"
+          :aria-label="shared('common.delete')"
+          :aria-hidden="!deletable || undefined"
+          :tabindex="deletable ? undefined : -1"
+          @click="emit('delete')"
+        />
+      </Tooltip>
+      <div v-if="!sent" class="flex shrink-0 items-center">
         <Tooltip :content="shared('common.delete')">
           <IconButton :icon="Trash2" size="sm" variant="ghost" :aria-label="shared('common.delete')" @click="emit('delete')" />
         </Tooltip>

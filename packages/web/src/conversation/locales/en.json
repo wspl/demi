@@ -45,6 +45,7 @@
     "readFailed": "This browser couldn’t read the stored drafts.",
     "missingFile": "File"
   },
+  "commentsReplaced": "{count} Comment Removed with Its Reply | {count} Comments Removed with Their Replies",
   "savedDeleted": "Saved Message Deleted",
   "composer": {
     "cloudResetting": "The Cloud is resetting."

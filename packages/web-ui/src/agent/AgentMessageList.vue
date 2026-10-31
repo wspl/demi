@@ -51,7 +51,7 @@ import type { HeldBlock } from '@demicodes/conversation-client'
 import type { StepsNotSharedRow } from './pending-steers'
 import ReplyComments from './comments/ReplyComments.vue'
 import DrawnSelection from '../ui/DrawnSelection.vue'
-import { sentComments, shownComment, type ReplyCommenting, type ShownComment } from './comments/comments'
+import { sentComments, shownComment, type CommentPlace, type ReplyCommenting, type ShownComment } from './comments/comments'
 import type { ReplyAsking } from './comments/asks'
 import { provideReplySelectionTools } from './reply-selection'
 
@@ -219,8 +219,14 @@ const comments = ref<InstanceType<typeof ReplyComments>>()
  * the session took is also the page's until the transcript holds it.
  */
 const sent = keptComputed<ShownComment[]>(() => {
+  // An open edit of a sent message shows the comments it holds in place of
+  // those the message sent.
+  const edited = props.commenting?.edited ?? null
   const all = [
-    ...props.blocks.flatMap(sentComments).map(shownComment),
+    ...props.blocks.flatMap((block) => (block.id === edited?.blockId ? [] : sentComments(block))).map(shownComment),
+    // Whether the window holds the edited message or not: its boxes stand on
+    // the replies its comments quote.
+    ...(edited?.comments ?? []).map(shownComment),
     ...[...props.pendingSteers, ...props.queue].flatMap((message) => message.comments ?? []).map(shownComment),
     ...(props.pendingSubmissions ?? []).flatMap((message) => message.comments ?? []),
   ]
@@ -477,13 +483,47 @@ function revealAndMark(id: string): boolean {
   highlightFound(scroller, step === null ? rowSelector : `${rowSelector} ${step}`, revealing.signal, { scroll: false })
   return true
 }
+
+/**
+ * The comment the pill asked for whose block the list did not hold, which the
+ * host reads in (`revealBlockId`); it is marked in place of the block.
+ */
+let awaitedComment: CommentPlace | null = null
+
+/**
+ * Brings the comment's box into view and marks it: the list places the box,
+ * which may stand far down its reply's row, as it places an open run's step.
+ * Returns false when the list does not hold the block, which the host reads
+ * in.
+ */
+function revealComment(comment: CommentPlace): boolean {
+  const scroller = scrollContainer.value
+  const target = scroller && props.blocks.some((block) => block.id === comment.blockId) ? runs.reveal(comment.blockId) : null
+  if (!scroller || !target) {
+    awaitedComment = comment
+    return false
+  }
+  awaitedComment = null
+  const box = `[data-comment-id="${CSS.escape(comment.id)}"]`
+  reveal(target.row, props.bottomOffset, box)
+  revealing?.abort()
+  revealing = new AbortController()
+  highlightFound(scroller, `[data-block-id="${CSS.escape(target.row)}"] ${box}`, revealing.signal, { scroll: false })
+  return true
+}
 watch(
   [() => props.revealBlockId, () => renderBlocks.value.length, scrollContainer],
   ([id]) => {
     if (!id)
       return
     void nextTick(() => {
-      if (props.revealBlockId === id && revealAndMark(id))
+      if (props.revealBlockId !== id)
+        return
+      // The comment waited for this block's read alone: any other reveal
+      // ends the wait.
+      const comment = awaitedComment?.blockId === id ? awaitedComment : null
+      awaitedComment = null
+      if (comment ? revealComment(comment) : revealAndMark(id))
         emit('revealed')
     })
   },
@@ -714,6 +754,7 @@ useResizeObserver(scrollContainer, ([entry]) => {
 defineExpose({
   isAtBottom,
   scrollToBottom,
+  revealComment,
 })
 </script>
 

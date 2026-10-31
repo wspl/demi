@@ -17,7 +17,7 @@ import GalleryComposer from './GalleryComposer.vue'
  * Comments on a reply's words, live: the user selects text in the reply,
  * writes one in the comment field and presses Return. The comment marks the text,
  * its box stands under the line the text ends on, and it waits in the
- * composer's pill, which lists the waiting comments and whose × removes them.
+ * composer's pill, whose click steps through the comments and whose × removes them.
  *
  * - Send sends them with what is typed, the bubble showing each quoted text
  *   and its comment, and the reply keeps their marks and boxes, dimmer.
@@ -72,14 +72,6 @@ const commenting: ReplyCommenting = {
 }
 
 const ordered = computed(() => inReadingOrder(waiting.value, session.blocks.map((block) => block.id)))
-/** The waiting comments as the pill lists them, each with the message its Edit opens. */
-const listed = computed(() => ordered.value.map((comment) => ({
-  id: comment.id,
-  quote: comment.quote,
-  markdown: comment.content.text,
-  attachments: page.files.capsules(comment.content.fileIds),
-  message: comment.content,
-})))
 
 /**
  * Send, Steer and Queue each carry the waiting comments, which leave the
@@ -163,13 +155,7 @@ onMounted(async () => {
           @compact="flow.compact"
         >
           <template v-if="ordered.length > 0" #carried>
-            <WaitingComments
-              :comments="listed"
-              :files="page.files"
-              @edit="commenting.edit"
-              @remove="commenting.remove"
-              @clear="waiting = []"
-            />
+            <WaitingComments :comments="ordered" @clear="waiting = []" />
           </template>
         </GalleryComposer>
       </template>

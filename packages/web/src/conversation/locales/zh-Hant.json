@@ -45,6 +45,7 @@
     "readFailed": "此瀏覽器無法讀取已儲存的草稿。",
     "missingFile": "檔案"
   },
+  "commentsReplaced": "{count} 則註解隨原回答移除",
   "savedDeleted": "已刪除暫存的訊息",
   "composer": {
     "cloudResetting": "雲端正在重設。"

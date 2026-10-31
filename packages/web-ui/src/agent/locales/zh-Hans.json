@@ -11,7 +11,7 @@
     "remove": "移除评论",
     "sent": "已发送",
     "writeFirst": "请先输入评论。",
-    "title": "评论",
+    "next": "下一条评论",
     "pictureFailed": "无法评论图片"
   },
   "ask": {

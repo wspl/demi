@@ -1,83 +1,60 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { MessageCircleMore, X } from '@lucide/vue'
 import IconButton from '../../ui/IconButton.vue'
-import Popover from '../../ui/Popover.vue'
-import ScrollArea from '../../ui/ScrollArea.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { ICON_PX } from '../../ui/icon-metrics'
-import { appOverlayStore } from '../../overlay/appOverlay'
 import { t } from '../locales/text'
-import CommentItem from './CommentItem.vue'
-import type { MessageCapsule } from '../message-editor/capsules'
-import type { DraftMessage, MessageFiles } from './comments'
+import { useCommentRevealer, type CommentPlace } from './comments'
 
 /**
  * The comments waiting in the draft, as the composer shows them by its
  * paperclip: a round-ended pill as tall as the composer's own buttons, the
  * comment's mark, *2 Comments* and a ghost ×, which removes them all.
  *
- * A click on the pill lists them, each its quoted text and its message, with
- * Edit and Delete: by the pill on the desktop, as a sheet on a phone. A
- * comment an edit of a sent message carries takes Delete alone. The
- * composer's `carried` slot holds the pill.
+ * A click on the pill brings the next comment's box into view and marks it,
+ * in the order the conversation reads them, from the first again after the
+ * last, as a find bar's Return steps through its matches. The boxes in the
+ * reply hold Edit and Delete. The composer's `carried` slot holds the pill.
  */
 const props = defineProps<{
-  /**
-   * The waiting comments, in the order the conversation reads them: each
-   * one's quote, its message as its box shows it, and the message its Edit
-   * opens, none where it takes no Edit.
-   */
-  comments: readonly {
-    id: string
-    quote: string
-    markdown: string
-    attachments: readonly MessageCapsule[]
-    message?: DraftMessage
-  }[]
-  /** The files a comment's editor takes, as the composer takes them. */
-  files?: MessageFiles
-  /**
-   * They can be read but not changed, as an edit's while it is sent: the pill
-   * has no ×, and the list no Edit or Delete.
-   */
+  /** The comments, in the order the conversation reads them. */
+  comments: readonly CommentPlace[]
+  /** They cannot be changed, as an edit's while it is sent: the pill has no ×. */
   readonly?: boolean
 }>()
 
 const emit = defineEmits<{
-  edit: [id: string, message: DraftMessage]
-  remove: [id: string]
   clear: []
 }>()
 
-const open = ref(false)
-const pill = ref<HTMLElement>()
+const reveal = useCommentRevealer()
+/** The comment the pill showed last; the next click shows the one after it. */
+let shown: string | null = null
 
-function clear(): void {
-  open.value = false
-  emit('clear')
-}
-
-function remove(id: string): void {
-  if (props.comments.length === 1)
-    open.value = false
-  emit('remove', id)
+function next(): void {
+  const at = props.comments.findIndex((comment) => comment.id === shown)
+  const comment = props.comments[at < 0 ? 0 : (at + 1) % props.comments.length]
+  if (!comment)
+    return
+  shown = comment.id
+  reveal?.(comment)
 }
 </script>
 
 <template>
-  <span ref="pill" data-waiting-comments class="btn-solid inline-flex h-chip select-none items-center rounded-full text-chrome text-fg-body">
-    <button
-      type="button"
-      class="inline-flex h-full items-center gap-1.5 rounded-l-full pl-2.5 hover:text-fg-emphasis"
-      :class="readonly ? 'rounded-r-full pr-2.5' : 'pr-1.5'"
-      :aria-expanded="open"
-      @mousedown.prevent
-      @click="open = !open"
-    >
-      <MessageCircleMore :size="ICON_PX.in24" class="text-[var(--comment-ink)]" aria-hidden="true" />
-      {{ t('comments.count', { count: comments.length }, comments.length) }}
-    </button>
+  <span data-waiting-comments class="btn-solid inline-flex h-chip select-none items-center rounded-full text-chrome text-fg-body">
+    <Tooltip :content="t('comments.next')">
+      <button
+        type="button"
+        class="inline-flex h-full items-center gap-1.5 rounded-l-full pl-2.5 hover:text-fg-emphasis"
+        :class="readonly ? 'rounded-r-full pr-2.5' : 'pr-1.5'"
+        @mousedown.prevent
+        @click="next"
+      >
+        <MessageCircleMore :size="ICON_PX.in24" class="text-[var(--comment-ink)]" aria-hidden="true" />
+        {{ t('comments.count', { count: comments.length }, comments.length) }}
+      </button>
+    </Tooltip>
     <Tooltip v-if="!readonly" :content="t('comments.remove', {}, comments.length)">
       <IconButton
         :icon="X"
@@ -86,38 +63,8 @@ function remove(id: string): void {
         class="mr-1"
         :aria-label="t('comments.remove', {}, comments.length)"
         @mousedown.prevent
-        @click="clear"
+        @click="emit('clear')"
       />
     </Tooltip>
   </span>
-  <!--
-    The list opens above the pill, its left edge on the pill's, over the
-    transcript.
-  -->
-  <Popover
-    v-if="open && pill"
-    is-open
-    :overlay-store="appOverlayStore"
-    :anchor-el="pill"
-    side="top"
-    sheet
-    @close="open = false"
-  >
-    <!-- On a phone the list is a sheet's content, which drops this surface. -->
-    <ScrollArea role="dialog" :aria-label="t('comments.title')" class="overlay-shell max-h-[24rem] w-[340px] max-w-full rounded-lg" viewport-class="flex flex-col gap-3 p-3">
-      <CommentItem
-        v-for="comment in comments"
-        :key="comment.id"
-        :markdown="comment.markdown"
-        :attachments="comment.attachments"
-        :editing-message="readonly ? undefined : comment.message"
-        :files="files"
-        :sent="false"
-        :readonly="readonly"
-        :quote="comment.quote"
-        @save="emit('edit', comment.id, $event)"
-        @delete="remove(comment.id)"
-      />
-    </ScrollArea>
-  </Popover>
 </template>

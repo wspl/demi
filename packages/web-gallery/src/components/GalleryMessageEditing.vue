@@ -6,9 +6,10 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
-import { shownComment, type ReplyCommenting, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
+import { commentsReplaced, inReadingOrder, type CommentAnchor, type ReplyCommenting, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
 import { galleryMessageFiles } from '../fixtures/written-files'
 import GalleryComposer from './GalleryComposer.vue'
+import { productWould } from '../product-would'
 import {
   EditRejectedError,
   changeEditComments,
@@ -165,6 +166,7 @@ function switchVersion(blockId: string, to: number): void {
   if (!chosen) {
     return
   }
+  const replaced = commentsReplaced(session.history, waiting.value, blockId)
   const under = (candidate: Row): boolean => {
     for (let at: Row | undefined = candidate; at; at = rows.value.find((each) => each.block.id === at!.follows)) {
       if (at === chosen) {
@@ -175,6 +177,15 @@ function switchVersion(blockId: string, to: number): void {
   }
   leaf.value = rows.value.findLast(under)!.block.id
   showPath()
+  dropReplaced(replaced)
+}
+
+/** The waiting comments `ids` were on replies that left the path: they go, as the product's do, and a toast says so. */
+function dropReplaced(ids: readonly string[]): void {
+  if (ids.length === 0)
+    return
+  waiting.value = waiting.value.filter((comment) => !ids.includes(comment.id))
+  productWould(ids.length === 1 ? 'Remove the Waiting Comment with Its Reply' : `Remove ${ids.length} Waiting Comments with Their Replies`)
 }
 
 /** The stand-in backend: it answers each edit, Save and resend or Regenerate, as the outcome buttons say. */
@@ -200,6 +211,7 @@ const editHost: MessageEditHost = {
     if (!target || request.version.revision !== revision.value) {
       throw new EditRejectedError({ code: 'edit_stale', reason: 'The conversation changed. Open the message again to edit it.' })
     }
+    const replaced = commentsReplaced(session.history, waiting.value, request.targetBlockId)
     if (regenerate) {
       // A new answer beside the old one, a version of the answer.
       write(replyBlock(`reply-${request.operationId}`, 'This is a new answer to the same message; the old one stays a version.'), target.block.id)
@@ -211,6 +223,7 @@ const editHost: MessageEditHost = {
       write(replyBlock(`reply-${request.operationId}`, 'This reply follows the edited message. The old version stays, ‹ 1/2 › under it.'), request.operationId)
     }
     showPath()
+    dropReplaced(replaced)
     accepted.add(request.operationId)
     if (outcome.value === 'disconnect') {
       throw new Error('Connection closed before edit confirmation')
@@ -226,19 +239,23 @@ const commenting: ReplyCommenting = {
   add: (comment) => (waiting.value = [...waiting.value, comment]),
   edit: (id, content) => (waiting.value = waiting.value.map((each) => (each.id === id ? { ...each, content } : each))),
   remove: (id) => (waiting.value = waiting.value.filter((each) => each.id !== id)),
+  // The open edit's comments stand in the reply in place of those the message
+  // sent, and Delete takes one out of the edit, as the product's do.
+  get edited() {
+    const edit = sentEdit.value
+    return edit
+      ? {
+          blockId: edit.request.targetBlockId,
+          comments: editComments(edit),
+          ...(edit.phase === 'editing' ? { remove: (id: string) => changeComments((comments) => comments.filter((each) => each.id !== id)) } : {}),
+        }
+      : null
+  },
 }
 
-/** The comments the pill lists: the shown edit's, else the draft's, as the product's composer chooses. */
+/** The comments the pill steps through: the shown edit's, else the draft's, as the product's composer chooses. */
 const sentEdit = computed(() => messageEdit.value?.kind === 'message' && messageEdit.value.phase !== 'regenerating' ? messageEdit.value : null)
-const carried = computed(() => sentEdit.value
-  ? editComments(sentEdit.value).map(shownComment)
-  : waiting.value.map((comment) => ({
-      id: comment.id,
-      quote: comment.quote,
-      markdown: comment.content.text,
-      attachments: page.files.capsules(comment.content.fileIds),
-      message: comment.content,
-    })))
+const carried = computed(() => inReadingOrder<CommentAnchor & { id: string }>(sentEdit.value ? editComments(sentEdit.value) : waiting.value, session.blocks.map((block) => block.id)))
 
 /** Changes the shown edit's comments by `change`, as the product's composer does. */
 function changeComments(change: Parameters<typeof changeEditComments>[1]): void {
@@ -285,19 +302,9 @@ onBeforeUnmount(() => {
             <!-- The edit's own comments, as the product's composer lists them. -->
             <template v-if="carried.length > 0" #carried>
               <WaitingComments
-                v-if="sentEdit"
                 :comments="carried"
-                :readonly="sentEdit.phase !== 'editing'"
-                @remove="(id) => changeComments((comments) => comments.filter((each) => each.id !== id))"
-                @clear="changeComments(() => [])"
-              />
-              <WaitingComments
-                v-else
-                :comments="carried"
-                :files="page.files"
-                @edit="commenting.edit"
-                @remove="commenting.remove"
-                @clear="waiting = []"
+                :readonly="sentEdit !== null && sentEdit.phase !== 'editing'"
+                @clear="sentEdit ? changeComments(() => []) : (waiting = [])"
               />
             </template>
           </GalleryComposer>

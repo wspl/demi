@@ -37,6 +37,7 @@ import { provideLiveCalls } from './live-calls'
 import { useCallTerminals, useDockTerminals } from './terminals'
 import { provideCommandRevealer } from './command-reports'
 import { provideOriginRevealer } from './agent-receipts'
+import { provideCommentRevealer, type CommentPlace } from './comments/comments'
 import { agentLinkWindow, findAgent, provideMessageAgents } from './agent-links'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
@@ -749,7 +750,14 @@ provideEditLastMessage(() => {
 const list = ref<{
   isAtBottom: boolean
   scrollToBottom: () => void
+  revealComment: (comment: CommentPlace) => boolean
 }>()
+// The comments pill shows each comment's box in turn. A box on a block the
+// list does not hold waits for the host to read the window around it.
+provideCommentRevealer((comment) => {
+  if (!list.value?.revealComment(comment))
+    emit('reveal', { node: null, blockId: comment.blockId })
+})
 /**
  * The button's way to the end: to the latest window when another is shown, then
  * to its end.

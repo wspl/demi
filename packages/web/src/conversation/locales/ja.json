@@ -45,6 +45,7 @@
     "readFailed": "このブラウザーは保存済みの下書きを読み取れませんでした。",
     "missingFile": "ファイル"
   },
+  "commentsReplaced": "元の回答とともにコメント {count} 件を削除しました",
   "savedDeleted": "保存したメッセージを削除しました",
   "composer": {
     "cloudResetting": "クラウドをリセットしています。"

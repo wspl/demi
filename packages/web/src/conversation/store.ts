@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { SerialQueue, deferred, delay, isAbortError, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import { FIRST_BLOCKS, type ClientComment, type ClientContent, type MessageComment } from '@demicodes/protocol'
-import { inReadingOrder, type DraftMessage, type MessageFiles, type ReplyCommenting, type ShownComment, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
+import { commentsReplaced, inReadingOrder, type DraftMessage, type MessageFiles, type ReplyCommenting, type ShownComment, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { NO_COST, agentCost, conversationCost, recentOf, type CostShown, type CostWindow } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
@@ -12,6 +12,8 @@ import { finishedSubagents, runningSubagents } from '@demicodes/web-ui/agent/sub
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure, untilUnsent } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
   beginSavedEdit,
+  changeEditComments,
+  editComments,
   editHasContent,
   regenerateMessage,
   restoreMessageEdit,
@@ -1266,12 +1268,51 @@ export const useConversations = defineStore('conversations', () => {
       get waiting() {
         return conversation.comments
       },
+      get edited() {
+        const edit = conversation.messageEdit
+        if (edit?.kind !== 'message' || edit.phase === 'regenerating') {
+          return null
+        }
+        return {
+          blockId: edit.request.targetBlockId,
+          comments: editComments(edit),
+          // Delete takes a comment out of the edit while it can be changed.
+          ...(edit.phase === 'editing'
+            ? { remove: (id: string) => {
+                if (conversation.messageEdit?.kind === 'message') {
+                  conversation.messageEdit = changeEditComments(conversation.messageEdit, (comments) => comments.filter((each) => each.id !== id))
+                }
+              } }
+            : {}),
+        }
+      },
       files: messageFilesOf(conversation),
       add: (comment) => setComments(conversation, [...conversation.comments, comment]),
       sendNow: (comment) => void sendComment(conversation, comment),
       edit: (id, content) => setComments(conversation, conversation.comments.map((each) => (each.id === id ? { ...each, content } : each))),
       remove: (id) => setComments(conversation, conversation.comments.filter((each) => each.id !== id)),
     }
+  }
+
+  /** The waiting comments a change at `blockId` replaces the replies of (`commentsReplaced`). */
+  function commentsAfter(conversation: Conversation, blockId: string): string[] {
+    return commentsReplaced(conversation.history, conversation.comments, blockId)
+  }
+
+  /**
+   * The replies the comments `ids` were on left the path: the comments go
+   * with them, and a toast says how many.
+   */
+  function dropReplaced(conversation: Conversation, ids: readonly string[]): void {
+    const gone = conversation.comments.filter((comment) => ids.includes(comment.id))
+    if (gone.length === 0) {
+      return
+    }
+    setComments(conversation, conversation.comments.filter((comment) => !ids.includes(comment.id)))
+    showToast({
+      title: t('commentsReplaced', { count: gone.length }, gone.length),
+      tone: 'neutral',
+    })
   }
 
   /** × on the composer's pill: every waiting comment goes. */
@@ -1287,14 +1328,16 @@ export const useConversations = defineStore('conversations', () => {
       set: (state) => { conversation.messageEdit = state },
       version: () => cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
       send: async (request, regenerate) => {
+        const replaced = commentsAfter(conversation, request.targetBlockId)
         if (regenerate) {
           const { operationId, targetBlockId, version } = request
           await (await runtimeFor(conversation)).regenerate({ operationId, targetBlockId, version })
-          return
+        } else {
+          const edit = sentEditRequest(request)
+          const runtime = await runtimeFor(conversation)
+          await runtime.editAndSend(edit)
         }
-        const edit = sentEditRequest(request)
-        const runtime = await runtimeFor(conversation)
-        await runtime.editAndSend(edit)
+        dropReplaced(conversation, replaced)
       },
     }
   }
@@ -4586,8 +4629,14 @@ export const useConversations = defineStore('conversations', () => {
     saveSavedEdit,
     regenerate: (conversation: Conversation, request: MessageEditRequest) =>
       regenerateMessage(editHost(conversation), request),
-    switchVersion: (conversation: Conversation, blockId: string, to: number) =>
-      action(conversation, (runtime) => runtime.switchVersion(blockId, to)),
+    switchVersion: (conversation: Conversation, blockId: string, to: number) => {
+      const replaced = commentsAfter(conversation, blockId)
+      void attempt(conversation, (runtime) => runtime.switchVersion(blockId, to)).then((switched) => {
+        if (switched) {
+          dropReplaced(conversation, replaced)
+        }
+      })
+    },
     addFiles,
     claimFile,
     waitingForUploads,
