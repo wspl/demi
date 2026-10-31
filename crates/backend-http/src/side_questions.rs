@@ -43,20 +43,20 @@ pub(super) async fn ask(
     Ok((status, Json(SideQuestionAnswer { id: side, side_question })))
 }
 
-/// `POST /conversations/:id/side-questions/:side/messages { text }`: 204
+/// `POST /conversations/:id/side-questions/:side/messages { content }`: 204
 /// once the side question took the follow-up.
 pub(super) async fn follow_up(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, side)): Path<(String, String)>,
-    JsonBody(SideFollowUp { text }): JsonBody<SideFollowUp>,
+    JsonBody(SideFollowUp { content }): JsonBody<SideFollowUp>,
 ) -> Result<StatusCode, ApiError> {
     let id = conversation(id)?;
     let side = side_id(side)?;
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.ask_more(id, side, text).await })
+        .call(move |shard, _| async move { shard.ask_more(id, side, content).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)

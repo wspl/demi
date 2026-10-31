@@ -4,8 +4,8 @@
 //! and whose answers are its transcript, which a page reads and follows as any
 //! agent's.
 
-use demi_conversation_lane_protocol::SideQuestion;
-use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, is_blank};
+use demi_conversation_lane_protocol::{ClientContent, SideQuestion};
+use demi_shared_types::{BlockId, CommentPart, MAX_SAFE_INTEGER, MediaSource, NodeId};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -29,16 +29,18 @@ pub struct AskRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub picture: Option<MediaSource>,
-    #[garde(custom(not_blank))]
-    pub question: String,
+    /// What is asked, a message's content, as a frame names it.
+    #[garde(dive, custom(says_something))]
+    pub question: Vec<ClientContent>,
 }
 
 /// `POST /conversations/:id/side-questions/:sideId/messages`: a follow-up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SideFollowUp {
-    #[garde(custom(not_blank))]
-    pub text: String,
+    /// A message's content, as a frame names it.
+    #[garde(dive, custom(says_something))]
+    pub content: Vec<ClientContent>,
 }
 
 /// `PATCH /conversations/:id/side-questions/:sideId`: folds its card to
@@ -71,10 +73,10 @@ fn after_start(start: &u64) -> impl FnOnce(&u64, &()) -> garde::Result + '_ {
     }
 }
 
-fn not_blank(text: &str, _: &()) -> garde::Result {
-    if is_blank(text) {
-        Err(garde::Error::new("holds no words"))
-    } else {
+fn says_something(content: &[ClientContent], _: &()) -> garde::Result {
+    if content.iter().any(CommentPart::says_something) {
         Ok(())
+    } else {
+        Err(garde::Error::new("holds no words and no file"))
     }
 }

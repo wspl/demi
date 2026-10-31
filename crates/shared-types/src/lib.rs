@@ -115,7 +115,7 @@ pub use block::{
     client_blocks, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
-pub use comment::{MessageComment, comments_content, markdown_quote};
+pub use comment::{Comment, CommentContent, CommentPart, CommentStage, Message, MessageComment, comments_content, markdown_quote};
 pub use suggested_reply::{SuggestedReply, SuggestedReplyKind};
 pub use cost::{Cost, Currency};
 pub use catalog::{CatalogRecord, ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};

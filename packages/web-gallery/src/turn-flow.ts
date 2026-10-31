@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
 import type { AgentMessage, Block, ChangedFile, ContextUsage, MessageComment, UserContentBlock } from '@demicodes/protocol'
 import { CHROME_ROLL_MS } from '@demicodes/web-ui/ui/chrome-roll'
+import { shownComment } from '@demicodes/web-ui/agent/comments/comments'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
@@ -219,6 +220,15 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const pendingSubmissions = shallowRef<PendingSubmissionState[]>([])
   /** What each pending message sends, by its id, which its block holds once confirmed. */
   const contents = new Map<string, UserContentBlock[]>()
+  /** The comments each pending message carries, by its id, which its block holds once confirmed. */
+  const carried = new Map<string, MessageComment[]>()
+
+  /** The comments the pending message `id` carries, which leave with it. */
+  function takeComments(id: string): MessageComment[] {
+    const comments = carried.get(id) ?? []
+    carried.delete(id)
+    return comments
+  }
   /** The waiting messages whose Recall is on its way, by id, which the list shows nowhere. */
   const removing = shallowRef<string[]>([])
   /** The composer the specimen shows, while it is mounted. */
@@ -838,8 +848,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     requestId: string | null = null,
   ): string {
     const id = nextId('message')
-    sendLast({ id, way, text: message.text, attachments: message.attachments, comments, error, requestId })
+    sendLast({ id, way, text: message.text, attachments: message.attachments, comments: comments.map(shownComment), error, requestId })
     contents.set(id, content)
+    carried.set(id, [...comments])
     return id
   }
 
@@ -893,6 +904,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     deliveries.clear()
     wishes.clear()
     contents.clear()
+    carried.clear()
     pendingSubmissions.value = []
     removing.value = []
     deliveredBy = 0
@@ -943,7 +955,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       deliver(token, false)
       return
     }
-    const held = { id, content: dropSubmission(id), comments: [...pending.comments ?? []] }
+    const comments = takeComments(id)
+    const held = { id, content: dropSubmission(id), comments }
     if (pending.way === 'steer') {
       state.pendingSteers = [...state.pendingSteers, held]
     } else {
@@ -1010,7 +1023,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   function admitMessage(): void {
     const pending = turnMessage()
     if (pending) {
-      state.starting = { id: pending.id, content: dropSubmission(pending.id), comments: [...pending.comments ?? []] }
+      const comments = takeComments(pending.id)
+      state.starting = { id: pending.id, content: dropSubmission(pending.id), comments }
     }
   }
 

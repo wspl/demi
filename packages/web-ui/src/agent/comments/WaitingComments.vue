@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { MessageCircleMore, X } from '@lucide/vue'
-import type { MessageComment } from '@demicodes/protocol'
 import IconButton from '../../ui/IconButton.vue'
 import Popover from '../../ui/Popover.vue'
 import ScrollArea from '../../ui/ScrollArea.vue'
@@ -10,19 +9,34 @@ import { ICON_PX } from '../../ui/icon-metrics'
 import { appOverlayStore } from '../../overlay/appOverlay'
 import { t } from '../locales/text'
 import CommentItem from './CommentItem.vue'
+import type { MessageCapsule } from '../message-editor/capsules'
+import type { DraftMessage, MessageFiles } from './comments'
 
 /**
  * The comments waiting in the draft, as the composer shows them by its
  * paperclip: a round-ended pill as tall as the composer's own buttons, the
  * comment's mark, *2 Comments* and a ghost ×, which removes them all.
  *
- * A click on the pill lists them, each its quoted text and its comment, with
- * Edit and Delete: by the pill on the desktop, as a sheet on a phone. The
+ * A click on the pill lists them, each its quoted text and its message, with
+ * Edit and Delete: by the pill on the desktop, as a sheet on a phone. A
+ * comment an edit of a sent message carries takes Delete alone. The
  * composer's `carried` slot holds the pill.
  */
 const props = defineProps<{
-  /** The waiting comments, in the order the conversation reads them. */
-  comments: readonly MessageComment[]
+  /**
+   * The waiting comments, in the order the conversation reads them: each
+   * one's quote, its message as its box shows it, and the message its Edit
+   * opens, none where it takes no Edit.
+   */
+  comments: readonly {
+    id: string
+    quote: string
+    markdown: string
+    attachments: readonly MessageCapsule[]
+    message?: DraftMessage
+  }[]
+  /** The files a comment's editor takes, as the composer takes them. */
+  files?: MessageFiles
   /**
    * They can be read but not changed, as an edit's while it is sent: the pill
    * has no ×, and the list no Edit or Delete.
@@ -31,7 +45,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  edit: [id: string, text: string]
+  edit: [id: string, message: DraftMessage]
   remove: [id: string]
   clear: []
 }>()
@@ -94,7 +108,10 @@ function remove(id: string): void {
       <CommentItem
         v-for="comment in comments"
         :key="comment.id"
-        :text="comment.text"
+        :markdown="comment.markdown"
+        :attachments="comment.attachments"
+        :editing-message="readonly ? undefined : comment.message"
+        :files="files"
         :sent="false"
         :readonly="readonly"
         :quote="comment.quote"

@@ -340,7 +340,7 @@ const commenting = computed(() => (conversation.value ? store.commenting(convers
 const asking = computed(() => {
   const shown = conversation.value
   return shown && shown.persistence === 'synced' && !shown.archived
-    ? sideQuestions.asking(shown, (id, at) =>
+    ? sideQuestions.asking(shown, store.sideWriting(shown), (id, at) =>
         readHistory(at === 'latest' ? store.history.readLatest(shown, id) : store.history.readBefore(shown, id)))
     : undefined
 })

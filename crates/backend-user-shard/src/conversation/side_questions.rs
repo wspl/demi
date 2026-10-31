@@ -10,18 +10,22 @@
 //!   keeps, reach its agent entry as they change
 //!   (`crates/agent-server/src/server/tree/agents.rs`).
 
-use demi_agent_server::AskError;
+use demi_agent_server::{AskError, resolve_content};
+use demi_agent_store::media::HeldMedia;
 use demi_agent_store::SideOf;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::side_questions;
 use demi_backend_host_access::root_of;
-use demi_shared_types::{NodeId, markdown_quote};
+use demi_conversation_lane_protocol::ClientContent;
+use demi_shared_types::{NodeId, UserContentBlock, markdown_quote};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_conversation_lane_protocol::SideQuestion;
 use demi_web_api_protocol::side_questions::AskRequest;
 
 use crate::shard::Shard;
+
+use super::lane::ConversationFiles;
 
 /// Why a side question's request was refused.
 #[derive(Debug, thiserror::Error)]
@@ -94,18 +98,27 @@ impl Shard {
             }
             self.restore_tree(&record.id).await.map_err(SideRefusal::Failed)?;
         }
+        // The same request again, as one whose answer was lost, finds the
+        // side question asked, and resolves its files no second time. Its
+        // files are compared once resolved (`Tree::ask`); its place here.
+        if let Ok(asked) = self.side_question(&record.id, &side).await {
+            let same = (&asked.block_id, asked.start, asked.end, &asked.quote, &asked.picture)
+                == (&request.block_id, request.start, request.end, &request.quote, &request.picture);
+            return if same { Ok((asked, false)) } else { Err(SideRefusal::Conflict) };
+        }
+        let (question, media) = self.resolve_question(&record.id, request.question).await?;
         let of = SideOf {
             block: request.block_id,
             start: request.start,
             end: request.end,
             quote: request.quote,
             picture: request.picture,
-            question: request.question,
+            question,
             // The tree takes the time it starts the side at.
             asked_at: self.services().clock.now(),
         };
-        let message = format!("{}\n\n{}", markdown_quote(&of.quote), of.question);
-        let created = self.agent().ask(&root_of(&record.id), side.clone(), of).await?;
+        let message = format!("{}\n\n{}", markdown_quote(&of.quote), text_of(&of.question));
+        let created = self.agent().ask(&root_of(&record.id), side.clone(), of, media).await?;
         let asked = self.side_question(&record.id, &side).await?;
         if !created {
             return Ok((asked, false));
@@ -141,14 +154,26 @@ impl Shard {
         Ok((asked, true))
     }
 
-    /// Sends the follow-up `text` to the side question `side` of the user's
-    /// conversation `id`.
-    pub async fn ask_more(&self, id: ConversationId, side: NodeId, text: String) -> Result<(), SideRefusal> {
+    /// Sends the follow-up `content` to the side question `side` of the
+    /// user's conversation `id`.
+    pub async fn ask_more(&self, id: ConversationId, side: NodeId, content: Vec<ClientContent>) -> Result<(), SideRefusal> {
         let record = self.side_conversation(&id, true).await?;
         self.side_question(&record.id, &side).await?;
         self.open_for_side(&record.id).await?;
-        self.agent().ask_more(&root_of(&record.id), side, text).await?;
+        let (content, media) = self.resolve_question(&record.id, content).await?;
+        self.agent().ask_more(&root_of(&record.id), side, content, media).await?;
         Ok(())
+    }
+
+    /// A side question's content as the agent takes it, its files resolved as
+    /// a message's are, with the bytes of their media.
+    async fn resolve_question(
+        &self,
+        conversation: &ConversationId,
+        content: Vec<ClientContent>,
+    ) -> Result<(Vec<UserContentBlock>, HeldMedia), SideRefusal> {
+        let files = ConversationFiles::of(&self.this(), conversation.clone());
+        resolve_content(&files, content).await.map_err(|error| SideRefusal::Refused(error.message))
     }
 
     /// Runs the failed turn of the side question `side` of the user's
@@ -278,4 +303,17 @@ impl demi_agent_tools::ContextSource for Told {
                 .map(demi_agent_tools::ContextAnswer::from))
         })
     }
+}
+
+/// The words of a side question's content, for the small model that titles
+/// its card: its texts, a blank line between them.
+fn text_of(content: &[UserContentBlock]) -> String {
+    content
+        .iter()
+        .filter_map(|part| match part {
+            UserContentBlock::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }

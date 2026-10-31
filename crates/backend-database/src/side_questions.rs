@@ -4,7 +4,7 @@
 //! its node, and the two fields the backend changes afterwards: the title the
 //! small model writes once, and whether the card is folded.
 
-use demi_shared_types::{BlockId, MediaSource, NodeId};
+use demi_shared_types::{BlockId, MediaSource, NodeId, UserContentBlock};
 use demi_conversation_lane_protocol::SideQuestion;
 use rusqlite::{Connection, Row, params};
 
@@ -67,6 +67,13 @@ pub(crate) fn picture(row: &Row<'_>, table: &'static str) -> Result<Option<Media
         .transpose()
 }
 
+/// What a side question asks, from its JSON (`question`: a message's
+/// content).
+pub(crate) fn question_content(row: &Row<'_>, table: &'static str) -> Result<Vec<UserContentBlock>, StorageError> {
+    let json: String = row.get("question")?;
+    decode(table, "question", serde_json::from_str::<Vec<UserContentBlock>>(&json).map_err(|error| error.to_string()))
+}
+
 fn question(row: &Row<'_>) -> Result<SideQuestion, StorageError> {
     Ok(SideQuestion {
         block_id: decode(TABLE, "block_id", BlockId::try_from(row.get::<_, String>("block_id")?))?,
@@ -74,7 +81,7 @@ fn question(row: &Row<'_>) -> Result<SideQuestion, StorageError> {
         end: decode(TABLE, "end_offset", u64::try_from(row.get::<_, i64>("end_offset")?))?,
         quote: row.get("quote")?,
         picture: picture(row, TABLE)?,
-        question: row.get("question")?,
+        question: question_content(row, TABLE)?,
         title: row.get("title")?,
         folded: row.get("folded")?,
         asked_at: instant(row, TABLE, "asked_at")?,

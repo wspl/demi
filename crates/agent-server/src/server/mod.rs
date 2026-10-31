@@ -24,6 +24,7 @@ use std::{
 use demi_agent_session::{
     AgentMessageError, Continuation, ForkError, ForkSeed, IdleCompactionDue, ModelSwitch, SessionConfig, fork_seed,
 };
+use demi_agent_store::media::HeldMedia;
 use demi_agent_store::{AgentTreeStore, NodeRecord, Placement, SideOf, StoreError};
 use demi_conversation_lane_protocol::{AgentEntry, CacheChart, Version};
 use demi_agent_tools::{
@@ -35,12 +36,12 @@ use demi_agent_transcript::{ForkEnd, IdSource};
 use demi_provider_common::{Ahead, ProviderRuntime};
 use demi_host_interface::{CommandSet, RegisterError};
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase};
+use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase, UserContentBlock};
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, Follows, FrameRx, Outgoing};
-pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
+pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles, resolve_content};
 pub use tree::{AskError, KeptAgents, SideCard, Tree, side_instruction};
 
 use tree::OpenError;
@@ -593,14 +594,20 @@ impl<H: HostResolver> AgentServer<H> {
     /// root in one step. The root goes on with whatever it does, and never
     /// learns of it. The same question again under its id asks nothing; answers
     /// whether this call asked it.
-    pub async fn ask(&self, root: &NodeId, side: NodeId, of: SideOf) -> Result<bool, AskError> {
-        self.tree(root).ok_or(AskError::NotOpen)?.ask(side, of).await
+    pub async fn ask(&self, root: &NodeId, side: NodeId, of: SideOf, media: HeldMedia) -> Result<bool, AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.ask(side, of, media).await
     }
 
-    /// Sends the follow-up `text` to the side question `side` of the
-    /// conversation `root`, whose tree is open.
-    pub async fn ask_more(&self, root: &NodeId, side: NodeId, text: String) -> Result<(), AskError> {
-        self.tree(root).ok_or(AskError::NotOpen)?.ask_more(side, text).await
+    /// Sends the follow-up `content` to the side question `side` of the
+    /// conversation `root`, whose tree is open, with the bytes of its media.
+    pub async fn ask_more(
+        &self,
+        root: &NodeId,
+        side: NodeId,
+        content: Vec<UserContentBlock>,
+        media: HeldMedia,
+    ) -> Result<(), AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.ask_more(side, content, media).await
     }
 
     /// Runs the failed turn of the side question `side` of the conversation

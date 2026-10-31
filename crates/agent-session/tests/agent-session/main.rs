@@ -672,7 +672,7 @@ fn comment_on(reply: &str, id: &str, text: &str) -> demi_shared_types::MessageCo
         at: 0,
         quote: "The test".to_owned(),
         picture: None,
-        text: text.to_owned(),
+        content: vec![demi_shared_types::UserContentBlock::Text { text: text.to_owned() }],
     }
 }
 
@@ -712,11 +712,13 @@ async fn an_edit_gives_its_version_the_comments_it_carries_and_keeps_them_withou
 
     // The edit drops the first comment and rewords the second.
     let reworded = demi_shared_types::MessageComment {
-        text: "Name the test after the request.".to_owned(),
+        content: vec![demi_shared_types::UserContentBlock::Text { text: "Name the test after the request.".to_owned() }],
         ..second
     };
     let mut edit = edit_of(&session, "t1", "op1", "Look again.").await;
-    edit.comments = Some(vec![reworded.clone()]);
+    edit.comments = Some(vec![reworded.clone().with_content::<demi_agent_session::Edit>(
+        reworded.content.iter().cloned().map(demi_agent_session::EditContent::Content).collect(),
+    )]);
     let edited = session.edit_and_send(edit).await.unwrap().turn_id;
     session.settled().await;
     assert_eq!(comments_of(&session, edited.as_str()).await, [reworded.clone()]);

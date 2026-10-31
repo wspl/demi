@@ -1,6 +1,8 @@
 import { toRaw } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import type { ClientContent } from '@demicodes/protocol'
+import type { DraftMessage, MessageFiles } from '@demicodes/web-ui/agent/comments/comments'
 import type { NewSideQuestion, ReplyAsking, ShownSideQuestion } from '@demicodes/web-ui/agent/comments/asks'
 import { ApiError } from '../api/client'
 import { t } from './locales/text'
@@ -18,6 +20,16 @@ import { settleSent, sideActivity, sideRecord } from './side-records'
 /** What of a conversation its side questions are: its id and those the page holds. */
 type SideHolder = Pick<Conversation, 'id' | 'sides'>
 
+/**
+ * How the conversation's page writes a side question's messages: their
+ * files among the conversation's, and each message's content once its files
+ * are uploaded, which rejects when one cannot be.
+ */
+export interface SideWriting {
+  files: MessageFiles
+  content: (message: DraftMessage) => Promise<ClientContent[]>
+}
+
 /** The side question as the transcript shows it. */
 function shown(side: SideRecord): ShownSideQuestion {
   const { record } = side
@@ -29,6 +41,7 @@ function shown(side: SideRecord): ShownSideQuestion {
     quote: record.quote,
     picture: record.picture ?? null,
     question: record.question,
+    sending: side.sending,
     title: record.title,
     folded: record.folded,
     askedAt: record.askedAt,
@@ -76,26 +89,52 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
     }
   }
 
-  /** Asks a new side question: its card shows at once, working, and goes again if the backend refuses it. */
-  async function ask(conversation: SideHolder, question: NewSideQuestion): Promise<void> {
-    const side = sideRecord({ ...question, picture: question.picture ?? undefined, title: null, folded: false, askedAt: new Date().toISOString() })
+  /**
+   * Asks a new side question: its card shows at once, working, its files
+   * uploading as a message's do, and goes again if the backend refuses it or
+   * a file cannot be uploaded.
+   */
+  async function ask(conversation: SideHolder, writing: SideWriting, question: NewSideQuestion): Promise<void> {
+    const { question: message, ...asked } = question
+    const side = sideRecord({ ...asked, question: [], picture: question.picture ?? undefined, title: null, folded: false, askedAt: new Date().toISOString() })
+    side.sending = { markdown: message.text, attachments: writing.files.capsules(message.fileIds) }
     const sent: SentAction = { heldWhenSent: side.history, taken: false }
     side.sent = sent
     conversation.sides = [...conversation.sides, side]
+    // Its files stay while it is on its way.
+    const holder = `ask-${question.id}`
+    writing.files.hold(holder, message.fileIds)
     await serially(question.id, async () => {
       try {
-        const record = await askSideQuestion(conversation.id, question)
+        const content = await writing.content(message)
+        const record = await askSideQuestion(conversation.id, { ...asked, question: content })
         const held = sideOf(conversation, question.id)
         // The entry that names it may have come first, and says the same or later.
         if (held && !held.listed) {
           held.record = record
         }
         if (held) {
+          held.sending = null
           taken(held, sent)
         }
       } catch (error) {
         conversation.sides = conversation.sides.filter((each) => each.id !== question.id)
         reportError(t('failures.askSideQuestion'), error, { site: 'failures.askSideQuestion', conversation: conversation.id, userVisible: true })
+      } finally {
+        writing.files.hold(holder, null)
+      }
+    })
+  }
+
+  /** Sends a follow-up of the side question `id` once its files are uploaded. */
+  function followUp(conversation: SideHolder, writing: SideWriting, id: string, message: DraftMessage): Promise<void> {
+    const holder = `follow-up-${crypto.randomUUID()}`
+    writing.files.hold(holder, message.fileIds)
+    return sending(conversation, id, 'failures.sendFollowUp', t('failures.sendFollowUp'), async () => {
+      try {
+        await followUpSideQuestion(conversation.id, id, await writing.content(message))
+      } finally {
+        writing.files.hold(holder, null)
       }
     })
   }
@@ -212,13 +251,13 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
    * What the conversation's replies do with its side questions, `readPage`
    * reading a page of one's transcript by its node.
    */
-  function asking(conversation: SideHolder, readPage: (id: string, at: 'latest' | 'before') => void): ReplyAsking {
+  function asking(conversation: SideHolder, writing: SideWriting, readPage: (id: string, at: 'latest' | 'before') => void): ReplyAsking {
     return {
       get questions() {
         return conversation.sides.filter((side) => !side.deleting).map(shown)
       },
-      ask: (question) => void ask(conversation, question),
-      followUp: (id, text) => void sending(conversation, id, 'failures.sendFollowUp', t('failures.sendFollowUp'), () => followUpSideQuestion(conversation.id, id, text)),
+      ask: (question) => void ask(conversation, writing, question),
+      followUp: (id, message) => void followUp(conversation, writing, id, message),
       retry: (id) => void sending(conversation, id, 'failures.retrySideQuestion', t('failures.retrySideQuestion'), () => retrySideQuestion(conversation.id, id)),
       stop: (id) => void stop(conversation, id),
       remove: (id) => void remove(conversation, id),

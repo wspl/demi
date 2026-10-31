@@ -122,7 +122,7 @@ use tokio_util::task::AbortOnDropHandle;
 pub use compaction::{CompactionConfig, compaction_refusal, token_threshold};
 pub use editing::ForkError;
 pub use editing::{
-    EditCheck, EditContent, EditError, EditSubmission, ForkSeed, accepted, edit_digest, fork_seed, regenerate_digest,
+    Edit, EditCheck, EditComment, EditContent, EditError, EditSubmission, ForkSeed, accepted, edit_digest, fork_seed, regenerate_digest,
 };
 pub use retry::RetryPolicy;
 pub use window::{LatestPage, latest_page};

@@ -1,3 +1,4 @@
+import type { ShownComment } from './comments/comments'
 import type { ContextUsage, InstructionEntry, MessageComment, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase, TurnSpeed } from '@demicodes/protocol'
 import type { ShownError } from '../infra/errors'
 import type { HeldTranscript, RequestOutputReading } from '@demicodes/conversation-client'
@@ -28,8 +29,8 @@ export interface PendingSubmissionState {
   way: SendWay
   text: string
   attachments: ComposerAttachment[]
-  /** The comments it carries; absent with none. */
-  comments?: readonly MessageComment[]
+  /** The comments it carries, as its bubble shows them; absent with none. */
+  comments?: readonly ShownComment[]
   /** Why the delivery failed; null while the message is on its way. */
   error: string | null
   /**

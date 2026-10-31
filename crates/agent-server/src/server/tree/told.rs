@@ -42,7 +42,7 @@ impl Asked {
         let mut turns: Vec<(String, Option<&str>, bool)> = Vec::new();
         for block in since {
             match block {
-                Block::User(_) if turns.is_empty() => turns.push((of.question.clone(), None, false)),
+                Block::User(_) if turns.is_empty() => turns.push((text_of(&of.question), None, false)),
                 Block::User(user) => turns.push((text_of(&user.content), None, false)),
                 Block::Text(text) => {
                     if let Some(turn) = turns.last_mut() {

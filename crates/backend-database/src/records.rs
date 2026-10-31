@@ -46,14 +46,16 @@ use super::columns::{json, to_json};
 use super::contents::{self, Hash, LEVEL};
 
 /// The format of the blocks records hold (`blocks.body: transcript block
-/// format 18` in the schema). A release reads each format it knows:
+/// format 19` in the schema). A release reads each format it knows:
 ///
+/// - format 18 is format 19 with each comment's words as its `text`, where
+///   format 19 holds its content ([`comments_contented`]);
 /// - format 17 is format 18 with entries that name no owner, all the Claude
 ///   Code CLI's, and redacted reasoning as a block of its own
 ///   ([`entries_owned`]);
 /// - format 16 is format 17 without the times a block's parts started and
 ///   ended, which read as null ([`times_unkept`]).
-pub(crate) const FORMAT: i64 = 18;
+pub(crate) const FORMAT: i64 = 19;
 
 /// A value of at least this many bytes is a content. A shorter one costs
 /// less inline than its marker and the lookup of its bytes.
@@ -366,6 +368,9 @@ impl<'c> Codec<'c> {
         if stored.format <= 17 {
             entries_owned(&mut value);
         }
+        if stored.format <= 18 {
+            comments_contented(&mut value);
+        }
         Ok(value)
     }
 
@@ -387,6 +392,21 @@ fn times_unkept(block: &mut Value) {
     if let Value::Object(fields) = block {
         for field in unkept {
             fields.insert((*field).to_owned(), Value::Null);
+        }
+    }
+}
+
+/// A block of format 18 as format 19 reads it: a `user` or `steer` block's
+/// comments hold their words as text content.
+fn comments_contented(block: &mut Value) {
+    let Some(Value::Array(comments)) = block.get_mut("comments") else {
+        return;
+    };
+    for comment in comments {
+        if let Value::Object(fields) = comment
+            && let Some(text) = fields.remove("text")
+        {
+            fields.insert("content".to_owned(), serde_json::json!([{ "type": "text", "text": text }]));
         }
     }
 }

@@ -1,5 +1,5 @@
 import { markRaw, type Raw } from 'vue'
-import type { ClientContent, MessageComment } from '@demicodes/protocol'
+import type { ClientContent } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
@@ -11,7 +11,7 @@ import { ApiError } from '../api/client'
 import { OVER_ANY } from './drafts'
 import { saveDraft } from '../api/drafts'
 import { deleteSaved, postSaved, putSaved, saveFromDraft } from '../api/saved'
-import type { ConversationDraft, DraftFile, ListedSavedMessage, Revisions, SavedListing } from '../api/generated/web-api'
+import type { ConversationDraft, DraftComment, DraftFile, DraftSavingComment, ListedSavedMessage, Revisions, SavedListing } from '../api/generated/web-api'
 import type { Conversation, ProductAttachment } from '../state/types'
 import { t } from './locales/text'
 
@@ -53,7 +53,7 @@ export interface Message {
 
 /** What a draft holds: the message, and the comments waiting to be sent with it, which no saved message takes. */
 export interface Writing extends Message {
-  comments: MessageComment[]
+  comments: DraftComment[]
 }
 
 /** What the page keeps with a change of the record. */
@@ -112,6 +112,11 @@ function namedFile(file: DraftFile): ClientContent {
     : { type: 'remote_file', deviceId: file.deviceId, path: file.path }
 }
 
+/** `comments` as a save names them, each one's files as a draft's are. */
+function namedComments(comments: readonly DraftComment[]): DraftSavingComment[] {
+  return comments.map(({ content, ...comment }) => ({ ...comment, content: { text: content.text, files: content.files.map(namedFile) } }))
+}
+
 /** Whether `a` and `b` hold the same text and files. */
 function sameMessage(a: Message, b: Message): boolean {
   return a.text === b.text && JSON.stringify(a.files.map(namedFile)) === JSON.stringify(b.files.map(namedFile))
@@ -140,7 +145,7 @@ export function wholeListed(listed: ListedSavedMessage): Message | null {
 
 /** Whether `a` and `b` hold the same text, files and comments. */
 function sameWriting(a: Writing, b: Writing): boolean {
-  return sameMessage(a, b) && JSON.stringify(a.comments) === JSON.stringify(b.comments)
+  return sameMessage(a, b) && JSON.stringify(namedComments(a.comments)) === JSON.stringify(namedComments(b.comments))
 }
 
 /** A message with no text but blank space and no file, which no list keeps. */
@@ -154,30 +159,54 @@ function isBlank(writing: Writing): boolean {
 }
 
 /**
- * The composer's message as a save holds it. A file whose upload is not done
- * has no upload to name yet, so the text leaves out its mark until it has;
+ * A message the page writes, `markdown` with a mark for each file of `ids`
+ * among `files`, as a save holds it. A file whose upload is not done has no
+ * upload to name yet, so the text leaves out its mark until it has;
  * `complete` says whether every file of the message is in.
  */
-export function composerWriting(
-  conversation: Pick<Conversation, 'draft' | 'files' | 'attachmentIds' | 'comments'>,
-): { writing: Writing; complete: boolean } {
-  const parts = conversation.draft.split(ATTACHMENT_MARK)
+function writtenMessage(
+  markdown: string,
+  ids: readonly string[],
+  files: readonly ProductAttachment[],
+): { message: Message; complete: boolean } {
+  const parts = markdown.split(ATTACHMENT_MARK)
   let text = parts[0] ?? ''
-  const files: DraftFile[] = []
+  const named: DraftFile[] = []
   let complete = true
   parts.slice(1).forEach((part, index) => {
-    const id = conversation.attachmentIds[index]
-    const file = conversation.files.find((item) => item.id === id)
-    const named = file ? draftFile(file) : null
-    if (named) {
+    const id = ids[index]
+    const file = files.find((item) => item.id === id)
+    const drafted = file ? draftFile(file) : null
+    if (drafted) {
       text += ATTACHMENT_MARK
-      files.push(named)
+      named.push(drafted)
     } else {
       complete = false
     }
     text += part
   })
-  return { writing: { text, files, comments: [...conversation.comments] }, complete }
+  return { message: { text, files: named }, complete }
+}
+
+/**
+ * The composer's draft as a save holds it: its message and each waiting
+ * comment's, written the same way; `complete` says whether every file of
+ * them is in.
+ */
+export function composerWriting(
+  conversation: Pick<Conversation, 'draft' | 'files' | 'attachmentIds' | 'comments'>,
+): { writing: Writing; complete: boolean } {
+  const own = writtenMessage(conversation.draft, conversation.attachmentIds, conversation.files)
+  let complete = own.complete
+  // A comment of files alone, none of them in yet, says nothing a save could
+  // keep: it is saved once one is in.
+  const comments = conversation.comments.flatMap(({ content, ...comment }): DraftComment[] => {
+    const written = writtenMessage(content.text, content.fileIds, conversation.files)
+    complete &&= written.complete
+    const saysSomething = written.message.files.length > 0 || written.message.text.replaceAll(ATTACHMENT_MARK, '').trim() !== ''
+    return saysSomething ? [{ ...comment, content: written.message }] : []
+  })
+  return { writing: { ...own.message, comments }, complete }
 }
 
 /** A composer's file as a draft holds it; none while its upload is not done. */
@@ -270,7 +299,7 @@ export function createRecordSync(options: {
 
   /** A writing as `seen` keeps it. */
   function held(writing: Writing): string {
-    return JSON.stringify([writing.text, writing.files.map(namedFile), writing.comments])
+    return JSON.stringify([writing.text, writing.files.map(namedFile), namedComments(writing.comments)])
   }
 
   function clearTimer(id: string): void {
@@ -426,7 +455,7 @@ export function createRecordSync(options: {
     try {
       const answer = await saveDraft(
         conversation.id,
-        { text: writing.text, files: writing.files.map(namedFile), comments: writing.comments },
+        { text: writing.text, files: writing.files.map(namedFile), comments: namedComments(writing.comments) },
         { signal, keepalive },
       )
       signal.throwIfAborted()

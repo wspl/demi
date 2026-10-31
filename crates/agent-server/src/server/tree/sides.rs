@@ -21,12 +21,13 @@ use std::{
 };
 
 use demi_agent_session::{SessionEvent, Settle, Subscription};
+use demi_agent_store::media::HeldMedia;
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord, SideOf};
 use demi_agent_tools::HostResolver;
 use demi_agent_transcript::ForkEnd;
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
-use demi_shared_types::{NodeId, QueuedMessage, SessionPhase, TurnId, UserContentBlock, markdown_quote};
+use demi_shared_types::{Attachment, NodeId, QueuedMessage, SessionPhase, TurnId, UserContentBlock, markdown_quote};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
@@ -124,17 +125,27 @@ impl<H: HostResolver> Side<H> {
 
 /// The first message of the side question `of`: the asked words as a
 /// quote, or the asked picture as an image the message carries, the
-/// instruction, then the question.
+/// instruction, then the question's content, its first text joined to the
+/// instruction by a blank line.
 fn first_message(id: TurnId, of: &SideOf) -> QueuedMessage {
-    let content = match &of.picture {
+    let mut content = match &of.picture {
         None => vec![UserContentBlock::Text {
-            text: format!("{}\n\n{}\n\n{}", markdown_quote(&of.quote), side_instruction(false), of.question),
+            text: format!("{}\n\n{}", markdown_quote(&of.quote), side_instruction(false)),
         }],
         Some(source) => vec![
             UserContentBlock::Image { source: source.clone() },
-            UserContentBlock::Text { text: format!("{}\n\n{}", side_instruction(true), of.question) },
+            UserContentBlock::Text { text: side_instruction(true).to_owned() },
         ],
     };
+    let mut question = of.question.iter().cloned();
+    if let Some(UserContentBlock::Text { text }) = of.question.first()
+        && let Some(UserContentBlock::Text { text: lead }) = content.last_mut()
+    {
+        lead.push_str("\n\n");
+        lead.push_str(text);
+        question.next();
+    }
+    content.extend(question);
     QueuedMessage {
         comments: Vec::new(),
         id,
@@ -143,9 +154,25 @@ fn first_message(id: TurnId, of: &SideOf) -> QueuedMessage {
     }
 }
 
-/// Whether two side questions ask the same of the same words, whenever.
+/// Whether two side questions ask the same of the same words, whenever: the
+/// same files by their bytes, whatever number each request's resolution gave
+/// them among the conversation's attachments.
 fn asks_the_same(a: &SideOf, b: &SideOf) -> bool {
-    (&a.block, a.start, a.end, &a.quote, &a.picture, &a.question) == (&b.block, b.start, b.end, &b.quote, &b.picture, &b.question)
+    (&a.block, a.start, a.end, &a.quote, &a.picture) == (&b.block, b.start, b.end, &b.quote, &b.picture)
+        && unnumbered(&a.question) == unnumbered(&b.question)
+}
+
+/// `question` with no attachment's number.
+fn unnumbered(question: &[UserContentBlock]) -> Vec<UserContentBlock> {
+    question
+        .iter()
+        .map(|block| match block {
+            UserContentBlock::Attachment(attachment) => {
+                UserContentBlock::Attachment(Attachment { id: String::new(), ..attachment.clone() })
+            }
+            other => other.clone(),
+        })
+        .collect()
 }
 
 impl<H: HostResolver> Tree<H> {
@@ -166,7 +193,7 @@ impl<H: HostResolver> Tree<H> {
     ///
     /// The same question again under its id asks nothing more. Answers whether
     /// this call asked it.
-    pub(crate) async fn ask(self: &Rc<Self>, id: NodeId, of: SideOf) -> Result<bool, AskError> {
+    pub(crate) async fn ask(self: &Rc<Self>, id: NodeId, of: SideOf, media: HeldMedia) -> Result<bool, AskError> {
         let tree = self.clone();
         let started = self.lifecycle.spawn_local(async move {
             let _turn = tree.starts.acquire(id.clone()).await;
@@ -216,19 +243,24 @@ impl<H: HostResolver> Tree<H> {
             };
             let origin = Origin::Forked { record, seed };
             tree.start_side(&server, origin, runtime).await.map_err(AskError::Failed)?;
+            if let Some(side) = tree.side(&id) {
+                side.node.session().hold_media(media);
+            }
             Ok(true)
         });
         started.await.map_err(|error| AskError::Failed(format!("the side question did not start: {error}")))?
     }
 
-    /// Sends the follow-up `text` to the side question `id`: its next turn,
-    /// after its own history, opening it again when it closed.
-    pub(crate) async fn ask_more(self: &Rc<Self>, id: NodeId, text: String) -> Result<(), AskError> {
+    /// Sends the follow-up `content` to the side question `id`, with the
+    /// bytes of its media: its next turn, after its own history, opening it
+    /// again when it closed.
+    pub(crate) async fn ask_more(self: &Rc<Self>, id: NodeId, content: Vec<UserContentBlock>, media: HeldMedia) -> Result<(), AskError> {
         let tree = self.clone();
         let sent = self.lifecycle.spawn_local(async move {
             let _turn = tree.starts.acquire(id.clone()).await;
-            let message = tree.text_message(text);
+            let message = tree.content_message(content);
             if let Some(side) = tree.live_side(&id).await {
+                side.node.session().hold_media(media);
                 return side
                     .node
                     .session()
@@ -236,7 +268,9 @@ impl<H: HostResolver> Tree<H> {
                     .map(drop)
                     .map_err(|error| AskError::Refused(error.to_string()));
             }
-            tree.reopen_side(&id, Some(message)).await.map(drop)
+            let side = tree.reopen_side(&id, Some(message)).await?;
+            side.node.session().hold_media(media);
+            Ok(())
         });
         sent.await.map_err(|error| AskError::Failed(format!("the follow-up did not start: {error}")))?
     }

@@ -19,7 +19,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 10
+  -- nodes.state: checkpoint state format 11
   state            TEXT NOT NULL,
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that
@@ -68,9 +68,9 @@ CREATE INDEX nodes_children ON nodes (parent_id, number);
 -- Each side question (comments-and-ask.md § Side questions), by its node, a
 -- child of the root without a number: the root's text block its history
 -- ends at, the character offsets of the asked words in the block's
--- rendered text, the words, the question, when it was asked, the title the
--- small model wrote, null until it wrote one, and whether its card is
--- folded. A side question about a picture (comments-and-ask.md § Images)
+-- rendered text, the words, the question, a message's content as JSON,
+-- when it was asked, the title the small model wrote, null until it wrote
+-- one, and whether its card is folded. A side question about a picture (comments-and-ask.md § Images)
 -- has the picture, a media source as JSON, its place among the block's
 -- pictures as its offsets and its alt text as its words. The tree store
 -- writes the row with its node; the title and the fold are the backend's.
@@ -115,7 +115,7 @@ CREATE TABLE blocks (
   -- it is then of that row's version. Null for every other row.
   replaces       INTEGER CHECK (replaces < idx),
   -- The block's format; a release reads each format it knows.
-  -- blocks.body: transcript block format 18
+  -- blocks.body: transcript block format 19
   format         INTEGER NOT NULL,
   type           TEXT NOT NULL,
   id             TEXT NOT NULL,
@@ -226,7 +226,7 @@ CREATE TABLE share_blocks (
   copy       INTEGER PRIMARY KEY,
   token      TEXT NOT NULL,
   idx        INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.body: transcript block format 18
+  -- share_blocks.body: transcript block format 19
   format     INTEGER NOT NULL,
   type       TEXT NOT NULL,
   id         TEXT NOT NULL,

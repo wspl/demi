@@ -64,6 +64,12 @@ const props = withDefaults(
      * it holds, since the same marks can stand for other files.
      */
     shownFromOutside?: number
+    /**
+     * The document the editor is made in, a frame's (`FramedField.vue`);
+     * the page's when absent. ProseMirror listens to the document its editor
+     * is made in.
+     */
+    document?: Document
   }>(),
   {
     attachments: () => [],
@@ -126,6 +132,7 @@ let landing: number | null = null
 let copied: Slice | null = null
 
 const editor = new Editor({
+  ...(props.document ? { element: props.document.createElement('div') } : {}),
   extensions: composerExtensions({
     placeholder: () => props.placeholder,
     submit: (otherWay) => emit('submit', otherWay),
@@ -194,14 +201,24 @@ function takeFocus(): void {
  * happens after mounting.
  */
 let focusing: ReturnType<typeof setTimeout> | undefined
+/**
+ * The editor's box as it is laid out, which a frame's styles arriving, its
+ * fonts loading or its owner's shape changing moves after it mounted: the
+ * text is measured again whenever it does.
+ */
+let resized: ResizeObserver | undefined
 onMounted(() => {
   // On the page at last: how wide the text is can be measured.
   measure()
+  const view = editor.view.dom.ownerDocument.defaultView ?? window
+  resized = new view.ResizeObserver(() => measure())
+  resized.observe(editor.view.dom)
   if (props.autofocus) {
     focusing = setTimeout(() => takeFocus())
   }
 })
 onBeforeUnmount(() => {
+  resized?.disconnect()
   clearTimeout(focusing)
   editor.destroy()
 })

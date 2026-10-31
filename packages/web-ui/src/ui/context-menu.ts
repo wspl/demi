@@ -6,6 +6,7 @@ import { t as shared } from '../locales/text'
 import { t } from './locales/text'
 import { SYSTEM_PICTURE_MENUS } from './system-picture-menu'
 import type { SentenceText, TitleText } from './ui-text'
+import type { DraftMessage, MessageFiles } from '../agent/comments/comments'
 
 /**
  * The page's context menus. One handler at the page's root
@@ -868,17 +869,19 @@ export function selectedLinesBounds(range: Range): DOMRect | null {
  * a rejection too.
  */
 export interface SelectionFieldActions {
+  /** The files of the conversation the field's message is written in. */
+  files: MessageFiles
   /** Comments on the selection. */
-  comment: (words: string) => void | Promise<void>
+  comment: (message: DraftMessage) => void | Promise<void>
   /**
    * What follows a comment once the field has closed on it, such as the
    * composer taking the focus, so Return sends the comment.
    */
   commented?: () => void
   /** Asks a side question about the selection. */
-  ask?: (words: string) => void | Promise<void>
-  /** Sends the quote and the words to the main agent now. */
-  send?: (words: string) => void | Promise<void>
+  ask?: (message: DraftMessage) => void | Promise<void>
+  /** Sends the quote and the message to the main agent now. */
+  send?: (message: DraftMessage) => void | Promise<void>
   /**
    * Why the field cannot act now, such as a reply still being written; read where
    * the field is drawn, so it turns able as the reason goes under a selection that

@@ -2,7 +2,7 @@
 import { keptComputed } from '../../infra/keep-same'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { MessageCircleQuestionMark, MessageSquarePlus } from '@lucide/vue'
-import type { MediaSource, MessageComment } from '@demicodes/protocol'
+import type { MediaSource } from '@demicodes/protocol'
 import { usePhone } from '../../ui/phone'
 import { selectedText, type ContextMenuEntry, type ResolvedSelection, type SelectionFieldActions } from '../../ui/context-menu'
 import { chooseWay, openPictureField } from './selection-field'
@@ -10,7 +10,7 @@ import { t } from '../locales/text'
 import { reportError } from '../../infra/errors'
 import { anchorOf, pictureAnchor, pictureOf, pictureQuote, rangeOf, type TextAnchor } from './anchors'
 import { pictureSource, useKeepPicture } from './pictures'
-import type { MarkedComment, ReplyCommenting } from './comments'
+import type { DraftMessage, MarkedComment, ReplyCommenting, ShownComment, WaitingComment } from './comments'
 import { publishMarks, type MarkKind } from './highlights'
 import { aroundPlaces, clearPlaces, createPlace, placeRemarks, PLACE_ATTRIBUTE, type Remark } from './lines'
 import CommentItem from './CommentItem.vue'
@@ -45,7 +45,7 @@ const props = defineProps<{
    * The comments the transcript's messages sent, which show dimmer and take no
    * edit.
    */
-  sent: readonly MessageComment[]
+  sent: readonly ShownComment[]
   /** The transcript's side questions; absent where it takes none. */
   asking?: ReplyAsking
 }>()
@@ -53,9 +53,15 @@ const props = defineProps<{
 const phone = usePhone()
 const composer = useComposerFocus()
 
+/** Each comment's box shows its message: a sent one's content, a waiting one's text and files. */
 const marked = keptComputed<MarkedComment[]>(() => [
   ...props.sent.map((comment) => ({ ...comment, sent: true })),
-  ...props.commenting.waiting.map((comment) => ({ ...comment, sent: false })),
+  ...props.commenting.waiting.map(({ content, ...comment }) => ({
+    ...comment,
+    sent: false,
+    markdown: content.text,
+    attachments: props.commenting.files.capsules(content.fileIds),
+  })),
 ])
 
 function replyRoot(blockId: string): HTMLElement | null {
@@ -191,13 +197,15 @@ function fieldActions(blockId: string, anchor: TextAnchor & { at: number }, quot
       }
     })()
   }
-  const comment = (text: string, kept: { picture?: MediaSource }) => ({ id: crypto.randomUUID(), ...placed, at: anchor.at, ...kept, text })
+  const comment = (content: DraftMessage, kept: { picture?: MediaSource }): WaitingComment =>
+    ({ id: crypto.randomUUID(), ...placed, at: anchor.at, ...kept, content })
   const { sendNow } = props.commenting
   return {
-    comment: (words) => withPicture('comment', (kept) => props.commenting.add(comment(words, kept))),
+    files: props.commenting.files,
+    comment: (written) => withPicture('comment', (kept) => props.commenting.add(comment(written, kept))),
     commented: () => composer.focus(),
-    ask: props.asking ? (words) => withPicture('ask', (kept) => props.asking?.ask({ id: crypto.randomUUID(), ...placed, ...kept, question: words })) : undefined,
-    send: sendNow ? (words) => withPicture('comment', (kept) => sendNow(comment(words, kept))) : undefined,
+    ask: props.asking ? (written) => withPicture('ask', (kept) => props.asking?.ask({ id: crypto.randomUUID(), ...placed, ...kept, question: written })) : undefined,
+    send: sendNow ? (written) => withPicture('comment', (kept) => sendNow(comment(written, kept))) : undefined,
     get unavailable() {
       return streaming() ? t('comments.waitReply') : null
     },
@@ -220,6 +228,11 @@ function selectionField(reply: { blockId: string; root: HTMLElement }, selected:
 }
 
 defineExpose({ selectionTools, selectionField, pictureTools })
+
+/** The message of the waiting comment `id`, which its Edit opens; none for a sent one. */
+function waitingMessage(id: string): DraftMessage | undefined {
+  return props.commenting.waiting.find((comment) => comment.id === id)?.content
+}
 
 // --- Each box's and card's place in its reply.
 
@@ -249,13 +262,29 @@ function prune(keys: ReadonlySet<string>): void {
 
 const questions = keptComputed(() => props.asking?.questions ?? [])
 /** Each card's Reply field, open or not, and what it holds. */
-const replies = ref<Record<string, { open: boolean; text: string }>>({})
+const replies = ref<Record<string, { open: boolean; message: DraftMessage }>>({})
 /** The reads of the cards' transcripts asked for, each once (`readKey`). */
 const asked = new Set<string>()
 
-function replyOf(id: string): { open: boolean; text: string } {
-  return (replies.value[id] ??= { open: false, text: '' })
+function replyOf(id: string): { open: boolean; message: DraftMessage } {
+  return (replies.value[id] ??= { open: false, message: { text: '', fileIds: [] } })
 }
+
+// A Reply's files stay with what it holds, while its card is folded or out
+// of view as while its field is open.
+const replyHolder = (id: string) => `reply-${id}`
+watch(() => Object.entries(replies.value).map(([id, reply]) => [id, reply.message.fileIds] as const), (now, before) => {
+  for (const [id, ids] of now)
+    props.commenting.files.hold(replyHolder(id), ids.length > 0 ? ids : null)
+  for (const [id] of before ?? []) {
+    if (!now.some(([held]) => held === id))
+      props.commenting.files.hold(replyHolder(id), null)
+  }
+}, { deep: true })
+onBeforeUnmount(() => {
+  for (const id of Object.keys(replies.value))
+    props.commenting.files.hold(replyHolder(id), null)
+})
 
 // Each card reads what it needs of its transcript, each first question and
 // answer, a page at a time, each read asked once.
@@ -434,7 +463,10 @@ onBeforeUnmount(() => {
     <CommentItem
       class="my-2"
       inline
-      :text="comment.text"
+      :markdown="comment.markdown"
+      :attachments="comment.attachments"
+      :editing-message="waitingMessage(comment.id)"
+      :files="commenting.files"
       :sent="comment.sent"
       @save="commenting.edit(comment.id, $event)"
       @delete="commenting.remove(comment.id)"
@@ -453,9 +485,10 @@ onBeforeUnmount(() => {
         :failure="cardContent(question).failure"
         :failure-facts="question.failures[cardContent(question).failure?.id ?? ''] ?? null"
         :replying="replyOf(question.id).open"
-        :reply="replyOf(question.id).text"
+        :reply="replyOf(question.id).message"
+        :files="commenting.files"
         @update:replying="replyOf(question.id).open = $event"
-        @update:reply="replyOf(question.id).text = $event"
+        @update:reply="replyOf(question.id).message = $event"
         @ask="asking.followUp(question.id, $event)"
         @retry="asking.retry(question.id)"
         @stop="asking.stop(question.id)"

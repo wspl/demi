@@ -1,6 +1,6 @@
 //! What the web app sends.
 
-use demi_shared_types::{BlobRef, BlockId, CommandId, MAX_SAFE_INTEGER, MessageComment, NodeId, OperationId, TurnId, is_blank};
+use demi_shared_types::{BlobRef, BlockId, CommandId, Comment, CommentPart, CommentStage, MAX_SAFE_INTEGER, NodeId, OperationId, TurnId, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -77,7 +77,7 @@ pub enum ClientFrame {
         /// there are none.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(dive)]
-        comments: Vec<MessageComment>,
+        comments: Vec<ClientComment>,
     },
     /// Send a message saved for later as the composer would, as the message
     /// `turn_id`, and remove it from the list in the same step. The backend handles it;
@@ -280,7 +280,7 @@ pub struct EditRequest {
     /// keeps the edited message's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
-    pub comments: Option<Vec<MessageComment>>,
+    pub comments: Option<Vec<ClientComment>>,
 }
 
 /// Regenerate of the answer to a user message: the message stays as it
@@ -313,8 +313,30 @@ pub struct SendMessage {
     /// omitted when there are none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
-    pub comments: Vec<MessageComment>,
+    pub comments: Vec<ClientComment>,
 }
+
+/// The stage of a message the web app sends, a frame's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Client;
+
+impl CommentStage for Client {
+    type Content = Vec<ClientContent>;
+}
+
+impl JsonSchema for Client {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Client".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!(false)
+    }
+}
+
+/// A comment as the web app sends it with a message, a steer or an edit: its
+/// content as the message's own, files by reference.
+pub type ClientComment = Comment<Client>;
 
 /// One part of the content the web app sends. Files are referred to, never
 /// carried: a new file is an upload or a file on a paired device, and an edit
@@ -371,6 +393,15 @@ pub enum ClientContent {
         #[garde(length(chars, min = 1))]
         id: String,
     },
+}
+
+impl CommentPart for ClientContent {
+    fn says_something(&self) -> bool {
+        match self {
+            Self::Text { text } => !is_blank(text),
+            _ => true,
+        }
+    }
 }
 
 impl ClientContent {

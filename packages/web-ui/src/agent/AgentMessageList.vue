@@ -51,7 +51,7 @@ import type { HeldBlock } from '@demicodes/conversation-client'
 import type { StepsNotSharedRow } from './pending-steers'
 import ReplyComments from './comments/ReplyComments.vue'
 import DrawnSelection from '../ui/DrawnSelection.vue'
-import { sentComments, type ReplyCommenting } from './comments/comments'
+import { sentComments, shownComment, type ReplyCommenting, type ShownComment } from './comments/comments'
 import type { ReplyAsking } from './comments/asks'
 import { provideReplySelectionTools } from './reply-selection'
 
@@ -215,12 +215,17 @@ const rowsRoot = ref<HTMLElement | null>(null)
 const comments = ref<InstanceType<typeof ReplyComments>>()
 /**
  * The comments the messages sent, those still on their way or waiting for the
- * agent included, which mark their replies dimmer.
+ * agent included, which mark their replies dimmer: each once, as a message
+ * the session took is also the page's until the transcript holds it.
  */
-const sent = keptComputed(() => [
-  ...props.blocks.flatMap(sentComments),
-  ...[...props.pendingSteers, ...props.queue, ...(props.pendingSubmissions ?? [])].flatMap((message) => message.comments ?? []),
-])
+const sent = keptComputed<ShownComment[]>(() => {
+  const all = [
+    ...props.blocks.flatMap(sentComments).map(shownComment),
+    ...[...props.pendingSteers, ...props.queue].flatMap((message) => message.comments ?? []).map(shownComment),
+    ...(props.pendingSubmissions ?? []).flatMap((message) => message.comments ?? []),
+  ]
+  return all.filter((comment, index) => all.findIndex((each) => each.id === comment.id) === index)
+})
 // A reply's selection offers Comment while the list takes comments.
 provideReplySelectionTools({
   selection: (reply, selected, streaming) => comments.value?.selectionTools(reply, selected, streaming) ?? [],

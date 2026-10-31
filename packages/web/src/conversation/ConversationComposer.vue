@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { referenced } from './uploads'
 import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed, ref, watch } from 'vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
@@ -8,7 +9,7 @@ import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
-import { inReadingOrder } from '@demicodes/web-ui/agent/comments/comments'
+import { inReadingOrder, shownComment } from '@demicodes/web-ui/agent/comments/comments'
 import { changeEditComments, editComments } from '@demicodes/web-ui/agent/message-editing'
 import { refusedForSize } from '@demicodes/web-ui/agent/session-status'
 import { isCompacting } from '@demicodes/web-ui/agent/conversation-status'
@@ -68,21 +69,13 @@ const startingTurn = computed(() =>
 )
 
 /**
- * A file of the composer with where it is once a message can name it without
- * its bytes, which a copy of the message carries: its blob once uploaded, or
- * its device.
+ * The composer's files, those of its comments, of the other open editors and
+ * of a message on its way left out: each file is one message's.
  */
-function referenced(file: ProductAttachment): ProductAttachment {
-  if (file.kind === 'reference') {
-    return { ...file, reference: { type: 'device', deviceId: file.deviceId } }
-  }
-  return file.upload ? { ...file, reference: { type: 'stored', sha256: file.upload.sha256, mediaType: file.upload.mediaType } } : file
-}
-
-/** The composer's files, those of a message on its way left out. */
-const attachments = keptComputed(() => props.conversation.files.filter(
-  (file) => !props.conversation.pendingSends.some((pending) => pending.fileIds.includes(file.id)),
-).map(referenced))
+const attachments = keptComputed(() => {
+  const beside = store.besideComposer(props.conversation)
+  return props.conversation.files.filter((file) => !beside.has(file.id)).map(referenced)
+})
 
 /** The store takes the files; their capsules go into the message where the composer said they would land. */
 function addFiles(files: File[]) {
@@ -153,12 +146,25 @@ const sentEdit = computed(() => {
   const edit = props.conversation.messageEdit
   return edit?.kind === 'message' && edit.phase !== 'regenerating' ? edit : null
 })
-/** The comments the pill lists: the shown edit's, else the draft's. */
+/**
+ * The comments the pill lists: the shown edit's, which take Delete alone,
+ * else the draft's, each with the message its Edit opens.
+ */
 const carriedComments = keptComputed(() => {
   if (sentEdit.value) {
-    return editComments(sentEdit.value)
+    return editComments(sentEdit.value).map(shownComment)
   }
-  return props.conversation.messageEdit?.kind === 'saved' ? [] : waitingComments.value
+  if (props.conversation.messageEdit?.kind === 'saved') {
+    return []
+  }
+  const files = commenting.value.files
+  return waitingComments.value.map((comment) => ({
+    id: comment.id,
+    quote: comment.quote,
+    markdown: comment.content.text,
+    attachments: files.capsules(comment.content.fileIds),
+    message: comment.content,
+  }))
 })
 /** Changes the shown edit's comments by `change`. */
 function changeEdit(change: Parameters<typeof changeEditComments>[1]): void {
@@ -350,14 +356,14 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
           v-if="sentEdit"
           :comments="carriedComments"
           :readonly="sentEdit.phase !== 'editing'"
-          @edit="(id, text) => changeEdit((comments) => comments.map((each) => (each.id === id ? { ...each, text } : each)))"
           @remove="(id) => changeEdit((comments) => comments.filter((each) => each.id !== id))"
           @clear="changeEdit(() => [])"
         />
         <WaitingComments
           v-else
           :comments="carriedComments"
-          @edit="(id, text) => commenting.edit(id, text)"
+          :files="commenting.files"
+          @edit="(id, message) => commenting.edit(id, message)"
           @remove="commenting.remove($event)"
           @clear="store.clearComments(conversation)"
         />

@@ -62,7 +62,7 @@ use demi_conversation_lane_protocol::{JobModel, JobPhase, Subagent, TurnSpeed, V
 use demi_host_interface::{CommandMedium, Seen, UnsentStart, WholeOutput};
 use demi_shared_types::{
     AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
-    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
+    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
@@ -480,7 +480,8 @@ pub struct SideOf {
     pub end: u64,
     pub quote: String,
     pub picture: Option<demi_shared_types::MediaSource>,
-    pub question: String,
+    /// What was asked, a message's content.
+    pub question: Vec<UserContentBlock>,
     pub asked_at: Timestamp,
 }
 

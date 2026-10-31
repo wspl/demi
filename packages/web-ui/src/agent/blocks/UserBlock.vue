@@ -8,8 +8,8 @@ import { AlarmClock, CircleAlert, Clock, Copy, ListEnd, MessagesSquare, Pencil, 
 import { useCopy } from '../../composables/useCopy'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
-import { contentCopy, type CopiedMessage } from '../message-input/copied-message'
-import { commentsContent } from '../comments/comments'
+import { contentCopy, messageClipboard, type CopiedMessage } from '../message-input/copied-message'
+import { commentsMessage, type ShownComment } from '../comments/comments'
 import { messageSchema } from '../message-editor/extensions'
 import { useMessageClipboard } from '../message-editor/message-clipboard'
 import { parseTypedMarkdown } from '../../markdown/user-markdown'
@@ -70,7 +70,7 @@ const props = defineProps<{
    * followed by its comment, before the message's own text; a picture's as a
    * small copy of it.
    */
-  comments?: readonly { id: string; quote: string; picture?: MediaSource | null; text: string }[]
+  comments?: readonly ShownComment[]
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
   actionsPinned?: boolean
   /** Allows editing an explicitly submitted user message. */
@@ -139,12 +139,15 @@ function copySource(): CopySource {
     return sent.value?.clipboardItem()
   }
   const schema = messageSchema()
-  // The comments' marks come first, as their pictures' files do.
-  const lead = contentMessage(commentsContent(props.comments))
+  return clipboard.item(clipboard.forms(schema, withComments().content))
+}
+
+/** The message with its comments before its text, as the model reads them, their files before its own. */
+function withComments() {
+  const lead = commentsMessage(props.comments ?? [])
   const { markdown, capsules } = message.value
   const text = lead.markdown && markdown ? `${lead.markdown}\n\n${markdown}` : lead.markdown || markdown
-  const doc = schema.nodeFromJSON(parseTypedMarkdown(text, [...lead.capsules, ...capsules]))
-  return clipboard.item(clipboard.forms(schema, doc.content))
+  return messageSchema().nodeFromJSON(parseTypedMarkdown(text, [...lead.capsules, ...capsules]))
 }
 
 /**
@@ -152,7 +155,10 @@ function copySource(): CopySource {
  * their pictures as files with its own.
  */
 function sentWords(): CopiedMessage {
-  return contentCopy([...commentsContent(props.comments ?? []), ...props.content])
+  if (!props.comments?.length) {
+    return contentCopy(props.content)
+  }
+  return messageClipboard(withComments().toJSON()).message
 }
 
 // A message not yet confirmed shows how far each of its files' uploads has
@@ -423,7 +429,7 @@ useResizeObserver(bodyRef, measure)
                   <img :src="mediaAddress(comment.picture)" :alt="comment.quote" class="max-h-24 max-w-40 rounded-md object-contain">
                 </blockquote>
                 <blockquote v-else><p class="whitespace-pre-wrap">{{ comment.quote }}</p></blockquote>
-                <p class="whitespace-pre-wrap">{{ comment.text }}</p>
+                <SentMessage :markdown="comment.markdown" :attachments="comment.attachments" />
               </template>
             </div>
             <SentMessage

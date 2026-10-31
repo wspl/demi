@@ -1286,10 +1286,20 @@ fn to_text(frame: &ServerFrame) -> String {
 /// which it does from the blob, so a Host that is slow to reach, offline or a
 /// stopped Cloud never holds a message. A command that needs the file fetches it
 /// with `demi attachment download`.
-struct ConversationFiles {
+pub(super) struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
     shard: Weak<Shard>,
     conversation: ConversationId,
+}
+
+impl ConversationFiles {
+    /// The resolver of the files of `shard`'s conversation `conversation`.
+    pub(super) fn of(shard: &Rc<Shard>, conversation: ConversationId) -> Self {
+        Self {
+            shard: Rc::downgrade(shard),
+            conversation,
+        }
+    }
 }
 
 impl ContentResolver for ConversationFiles {

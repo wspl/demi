@@ -1,4 +1,4 @@
-import type { AgentCost, Block, CacheChart, ConversationAttachment, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, TurnSpeed, Version } from '@demicodes/protocol'
+import type { AgentCost, Block, CacheChart, ConversationAttachment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, TurnSpeed, Version } from '@demicodes/protocol'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
@@ -29,6 +29,8 @@ import type { RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
+import type { WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
+import type { ShownMessage } from '@demicodes/web-ui/agent/comments/asks'
 
 export type ProductAttachment =
   | (ComposerFileAttachment & Pick<SavedFile, 'file' | 'upload' | 'claim'>)
@@ -41,9 +43,15 @@ export type PendingSend = SavedDraft['pendingSends'][number] & { way: SendWay }
 export interface DeliveredSend {
   id: string
   text: string
-  /** Its files, which leave the composer's with it and are released once it goes. */
+  /**
+   * Its files and its comments', which leave the composer's with it and are
+   * released once it goes.
+   */
   files: ProductAttachment[]
-  comments: MessageComment[]
+  /** The ids of its own files, in the order of their marks. */
+  fileIds: string[]
+  /** Its comments, whose files are among `files`. */
+  comments: WaitingComment[]
 }
 
 /** The sidebar's `device` is derived from `target` and the devices for the row (`App.vue`), never kept. */
@@ -120,9 +128,10 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   draftShown: number
   /**
    * The comments waiting to be sent with the next message, in the order
-   * they were saved, which belong to the draft as its text does.
+   * they were saved, which belong to the draft as its text does; each one's
+   * files are among the composer's, which hold them as its marks do.
    */
-  comments: MessageComment[]
+  comments: WaitingComment[]
   /**
    * The conversation's draft and its messages saved for later, newest first: one slot,
    * which the backend changes in one transaction, of what the page last read of each,
@@ -265,6 +274,8 @@ export interface SideRecord {
   folding: SideFolding | null
   /** The user deleted it and the backend has yet to: its card is gone already, and returns if the backend refuses. */
   deleting: boolean
+  /** The page's first question as its card shows it until the backend holds it; null once it does. */
+  sending: ShownMessage | null
 }
 
 /**

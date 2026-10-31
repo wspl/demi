@@ -3,7 +3,7 @@
 //! saved, whichever page saved it.
 
 use demi_conversation_lane_protocol::ClientContent;
-use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, MessageComment};
+use demi_shared_types::{BlobRef, Comment, CommentContent, CommentStage, MAX_SAFE_INTEGER, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -16,7 +16,8 @@ pub const ATTACHMENT_MARK: char = '\u{FFFC}';
 
 /// `PUT /conversations/:id/draft`: the message's Markdown and its files in
 /// the order of their marks, each named as a frame names it, an `upload` or
-/// a `remote_file`, and the comments waiting to be sent with it.
+/// a `remote_file`, and the comments waiting to be sent with it, each a
+/// message of the same form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DraftSave {
@@ -25,7 +26,7 @@ pub struct DraftSave {
     #[garde(dive)]
     pub files: Vec<ClientContent>,
     #[garde(dive)]
-    pub comments: Vec<MessageComment>,
+    pub comments: Vec<DraftSavingComment>,
 }
 
 /// `GET /conversations/:id/draft`'s answer: the draft as it now is.
@@ -68,7 +69,7 @@ pub struct ConversationDraft {
     /// The files in the order of their marks.
     pub files: Vec<DraftFile>,
     /// The comments waiting to be sent, in the order they were saved.
-    pub comments: Vec<MessageComment>,
+    pub comments: Vec<DraftComment>,
 }
 
 impl ConversationDraft {
@@ -110,3 +111,65 @@ pub enum DraftFile {
     /// A file on a paired device, which the model reads when it runs.
     RemoteFile { device_id: String, path: String },
 }
+
+/// A message as a draft keeps it, the composer's or a waiting comment's:
+/// its Markdown with an attachment mark where each file's capsule stands, and
+/// its files in the order of their marks, each in the form of the stage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[schemars(rename = "DraftMessage{File}")]
+pub struct DraftMessage<File> {
+    #[garde(skip)]
+    pub text: String,
+    #[garde(skip)]
+    pub files: Vec<File>,
+}
+
+impl<File: Clone + PartialEq + Eq + std::fmt::Debug> CommentContent for DraftMessage<File> {
+    fn says_something(&self) -> bool {
+        !is_blank(&self.text.replace(ATTACHMENT_MARK, "")) || !self.files.is_empty()
+    }
+}
+
+/// The stage of a message a draft keeps, its files as the draft shows them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Draft;
+
+impl CommentStage for Draft {
+    type Content = DraftMessage<DraftFile>;
+}
+
+impl JsonSchema for Draft {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Draft".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!(false)
+    }
+}
+
+/// The stage of a message a page saves as the draft, its files as a frame
+/// names them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftSaving;
+
+impl CommentStage for DraftSaving {
+    type Content = DraftMessage<ClientContent>;
+}
+
+impl JsonSchema for DraftSaving {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "DraftSaving".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!(false)
+    }
+}
+
+/// A comment waiting in a draft, its files as the draft shows them.
+pub type DraftComment = Comment<Draft>;
+
+/// A waiting comment as a page saves it with the draft.
+pub type DraftSavingComment = Comment<DraftSaving>;

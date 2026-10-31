@@ -724,10 +724,15 @@ impl<H: HostResolver> Tree<H> {
     }
 
     pub(super) fn text_message(&self, text: String) -> QueuedMessage {
+        self.content_message(vec![UserContentBlock::Text { text }])
+    }
+
+    /// A message of `content` under a new id.
+    pub(super) fn content_message(&self, content: Vec<UserContentBlock>) -> QueuedMessage {
         QueuedMessage {
             comments: Vec::new(),
             id: TurnId::try_from(self.ids.next_id()).expect("an id source never gives an empty id"),
-            content: vec![UserContentBlock::Text { text }],
+            content,
             schedule: None,
         }
     }

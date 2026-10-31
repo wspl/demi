@@ -613,6 +613,8 @@ CREATE TABLE plugin_reports (
 -- revision of the save. The row stays when the draft is emptied, so a revision
 -- is never used twice. It holds the revision of the conversation's messages
 -- saved for later too, which every save, edit, send and removal of one raises.
+-- conversation_drafts.document: draft format 2, whose waiting comments each
+-- hold a message as the draft's own, its text and its files.
 CREATE TABLE conversation_drafts (
   conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
   revision        INTEGER NOT NULL CHECK (revision >= 1),

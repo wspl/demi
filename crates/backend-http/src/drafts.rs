@@ -8,11 +8,11 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::drafts::{DraftRefusal, StagedFile};
+use demi_backend_database::drafts::{DraftRefusal, Staged, StagedFile};
 use demi_backend_page_sync::Part;
 use demi_conversation_lane_protocol::ClientContent;
 use demi_web_api_protocol::drafts::{
-    ATTACHMENT_MARK, DraftAnswer, DraftSave, DraftWritten,
+    ATTACHMENT_MARK, DraftAnswer, DraftMessage, DraftSave, DraftWritten,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::AttachmentId;
@@ -44,6 +44,17 @@ pub(super) async fn save(
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
     let files = staged_files(&save.text, save.files)?;
+    let comments = save
+        .comments
+        .into_iter()
+        .enumerate()
+        .map(|(index, comment)| {
+            let DraftMessage { text, files } = comment.content.clone();
+            let files = staged_files(&text, files)
+                .map_err(|error| ApiError::invalid_body(format!("comments[{index}].content: {}", error.message())))?;
+            Ok(comment.with_content::<Staged>(DraftMessage { text, files }))
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
     let saved = services
         .control
         .save_draft(
@@ -51,7 +62,7 @@ pub(super) async fn save(
             user.id.clone(),
             save.text,
             files,
-            save.comments,
+            comments,
         )
         .await?
         .map_err(refused)?;
