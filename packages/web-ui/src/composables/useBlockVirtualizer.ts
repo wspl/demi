@@ -41,6 +41,16 @@ function drawnRows(range: Range, rows: readonly Pick<VirtualItem, 'start' | 'end
   return Array.from({ length: last - first + 1 }, (_, index) => first + index)
 }
 
+/** Whether a control or a <details> is open: its `aria-expanded`, or its `open`. */
+function openState(element: Element): string | null {
+  return element instanceof HTMLDetailsElement ? String(element.open) : element.getAttribute('aria-expanded')
+}
+
+/** What a row's controls and <details> hold open, each by its element. */
+function disclosures(row: HTMLElement): Map<Element, string | null> {
+  return new Map([...row.querySelectorAll('[aria-expanded], details')].map((element) => [element, openState(element)]))
+}
+
 /**
  * The rows that lie in the view, by first and last index; the view's first row
  * when none does.
@@ -539,16 +549,21 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   // at the end grows below the view by less than that, and following would pull
   // its steps up under the reader the next time the list grows.
   //
-  // A click that changed no row's height, such as on a copy button, leaves
-  // following as it was, and the view catches up with what arrived while it
-  // held.
+  // A click that opened or folded nothing leaves following as it was, and the
+  // view catches up with what arrived while it held: a click on a copy button,
+  // or on a reply's text while it streams, which grows the row by itself. The
+  // reader changed a row when it changed height and a control or a <details>
+  // it held then opened or folded (`aria-expanded`, `open`), or the control
+  // they clicked gave way to what it opened, as Edit gives way to its editor;
+  // never by the row's height alone, nor by controls that came since, as the
+  // steps that join a run.
   let readerLayoutUntil = 0
   let readerLayoutTimer: ReturnType<typeof setTimeout> | undefined
   /**
    * The rows the reader acted on while the view holds, each with its height
-   * when first acted on.
+   * and what it held open (`disclosures`) when first acted on.
    */
-  const readerRows = new Map<HTMLElement, number>()
+  const readerRows = new Map<HTMLElement, { height: number, disclosures: Map<Element, string | null>, controls: Set<Element> }>()
   /**
    * The control the reader last acted on while the view holds, and how far
    * below the view's top it stood then.
@@ -561,7 +576,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const target = event.target instanceof Element ? event.target : null
     const row = target?.closest<HTMLElement>('[data-index]') ?? null
     if (row && !readerRows.has(row))
-      readerRows.set(row, row.getBoundingClientRect().height)
+      readerRows.set(row, { height: row.getBoundingClientRect().height, disclosures: disclosures(row), controls: new Set() })
+    const clicked = target?.closest('button, summary, [role="button"]')
+    if (row && clicked)
+      readerRows.get(row)!.controls.add(clicked)
     const control = target?.closest('button, summary, a, [role="button"]') ?? target
     readerControl = control ? { element: control, top: control.getBoundingClientRect().top } : null
     readerLayoutUntil = performance.now() + READER_LAYOUT_MS
@@ -569,8 +587,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     readerLayoutTimer = setTimeout(() => {
       readerLayoutTimer = undefined
       const el = scrollContainer.value
-      const resized = [...readerRows].some(([row, height]) =>
-        Math.abs(row.getBoundingClientRect().height - height) > RESIZED_PX)
+      const resized = [...readerRows].some(([row, was]) =>
+        Math.abs(row.getBoundingClientRect().height - was.height) > RESIZED_PX
+        && ([...was.disclosures].some(([element, state]) => element.isConnected && openState(element) !== state)
+          || [...was.controls].some((control) => !control.isConnected)))
       readerRows.clear()
       readerControl = null
       if (!el)
