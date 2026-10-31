@@ -19,7 +19,7 @@ import { missingFilesToast, pasteMessage, type CopiedMessage, type PasteHost } f
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { editHasContent, editKey, useEditLastMessage, type MessageEditState } from './message-editing'
 import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
-import { parseUserMarkdown, serializeUserMarkdown } from '../markdown/user-markdown'
+import { parseTypedMarkdown, serializeTypedMarkdown } from '../markdown/user-markdown'
 import MessageEditor from './message-editor/MessageEditor.vue'
 import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
@@ -335,7 +335,7 @@ const carried = computed(() => props.attachments.map(composerCapsule))
  * editor tells every change.
  */
 const capsules = ref<MessageCapsule[]>(
-  serializeUserMarkdown<MessageCapsule>(parseUserMarkdown(draft.value, carried.value)).attachments,
+  serializeTypedMarkdown<MessageCapsule>(parseTypedMarkdown(draft.value, carried.value)).attachments,
 )
 /**
  * Their transfers, and those of the files an edit adds, which the capsules in

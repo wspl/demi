@@ -12,7 +12,7 @@ import { contentCopy, type CopiedMessage } from '../message-input/copied-message
 import { commentsContent } from '../comments/comments'
 import { messageSchema } from '../message-editor/extensions'
 import { useMessageClipboard } from '../message-editor/message-clipboard'
-import { parseUserMarkdown } from '../../markdown/user-markdown'
+import { parseTypedMarkdown } from '../../markdown/user-markdown'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -143,7 +143,7 @@ function copySource(): CopySource {
   const lead = contentMessage(commentsContent(props.comments))
   const { markdown, capsules } = message.value
   const text = lead.markdown && markdown ? `${lead.markdown}\n\n${markdown}` : lead.markdown || markdown
-  const doc = schema.nodeFromJSON(parseUserMarkdown(text, [...lead.capsules, ...capsules]))
+  const doc = schema.nodeFromJSON(parseTypedMarkdown(text, [...lead.capsules, ...capsules]))
   return clipboard.item(clipboard.forms(schema, doc.content))
 }
 
@@ -258,7 +258,7 @@ const bodyRef = ref<HTMLElement>()
  * Where a long message folds, and the line box its fade spans; null when it is
  * short enough to show whole. The fold is `FOLDED_PX` down, or lower, at the
  * end of a line of text across that mark, so it cuts no letter. Anything else
- * across it, such as an image or a code block, is cut there.
+ * across it is cut there.
  */
 const clip = ref<{ height: number; line: number } | null>(null)
 

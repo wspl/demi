@@ -1,13 +1,14 @@
 import { Extension } from '@tiptap/core'
-import { Fragment, Slice, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
+import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, Selection } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import { transferHasFiles } from '../../composables/useFileDrop'
-import { ATTACHMENT_MARK, serializeUserMarkdown } from '../../markdown/user-markdown'
+import { ATTACHMENT_MARK, serializeTypedMarkdown } from '../../markdown/user-markdown'
 import { dataTransferFiles, pastedTextFile, pastedTextIsLong } from '../message-input/attachments'
 import { transferCopiedMessage, type CopiedMessage } from '../message-input/copied-message'
 import { capsuleOf, type MessageCapsule } from './capsules'
 import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slices'
+import { lineRoleAt } from './lines'
 
 // What a composer takes in: whatever is pasted or dropped, from Finder, a web
 // page, another app or Demi's own transcript, becomes text in the user dialect
@@ -16,16 +17,15 @@ import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slice
 // - Files and images whose bytes the page can read become capsules, as a pasted
 //   screenshot does.
 // - An image it cannot read becomes its link.
-// - Rich text keeps the dialect's formats, which the schema's parse rules are,
-//   and every other element becomes its text.
+// - Rich text becomes its text, line by line: a message keeps its characters
+//   as typed, and its formatting is what its Markdown says.
 
 /**
- * The attribute an image of the dialect, `![alt](target)`, carries in the
- * HTML a message editor writes, which is the one `<img>` the schema reads
- * back: an image from anywhere else is a file or a link, never a picture set
- * into the text.
+ * What a line break of pasted HTML stands as while the schema reads it, which
+ * has no node for one and would read it as a space: the line separator, which
+ * it keeps, and which becomes a line of the message's Markdown.
  */
-export const MESSAGE_IMAGE_ATTRIBUTE = 'data-message-image'
+const LINE_BREAK = '\u2028'
 
 /**
  * How long the page tries to read another site's image before it takes its link
@@ -105,21 +105,25 @@ export async function readImage(src: string): Promise<File | null> {
   }
 }
 
-function inCode($pos: ResolvedPos): boolean {
-  return !!$pos.parent.type.spec.code
+/** Whether `pos` is on a fence or in the code between fences, which takes text as it is. */
+function inCode(doc: ProseMirrorNode, pos: number): boolean {
+  return lineRoleAt(doc, pos) !== 'text'
 }
 
-/**
- * Whether parsed HTML holds anything of the dialect beyond its text: a format,
- * a link, code, an image or a capsule.
- */
-function holdsFormatting(slice: Slice): boolean {
-  let formatted = false
+/** Whether parsed HTML holds anything an editor keeps beyond its text: a capsule. */
+function holdsCapsules(slice: Slice): boolean {
+  let held = false
   slice.content.descendants((node) => {
-    formatted ||= node.marks.length > 0 || !!node.type.spec.code || node.type.name === 'image' || node.type.name === 'attachment'
-    return !formatted
+    held ||= node.type.name === 'attachment'
+    return !held
   })
-  return formatted
+  return held
+}
+
+/** A slice parsed from HTML as Markdown, each of its line breaks a line. */
+function sliceMarkdown(slice: Slice): { markdown: string; attachments: MessageCapsule[] } {
+  const { markdown, attachments } = serializeTypedMarkdown<MessageCapsule>(fragmentDocument(slice.content))
+  return { markdown: markdown.replaceAll(LINE_BREAK, '\n'), attachments }
 }
 
 /** HTML from anywhere, made ready for the schema to read (`prepareHtml`). */
@@ -137,9 +141,9 @@ interface PreparedHtml {
 }
 
 /**
- * HTML from anywhere, made ready for the schema to read: each image that is
- * not the dialect's own stands as a capsule under a new id, and each table
- * row is a line of its cells' text.
+ * HTML from anywhere, made ready for the schema to read: each image stands as
+ * a capsule under a new id, each table row is a line of its cells' text, and
+ * each line break stands as `LINE_BREAK`.
  */
 function prepareHtml(html: string): PreparedHtml {
   const page = new DOMParser().parseFromString(html, 'text/html')
@@ -147,9 +151,6 @@ function prepareHtml(html: string): PreparedHtml {
   const preformatted = [...page.body.querySelectorAll<HTMLElement>('[style]')]
     .some((element) => element.tagName !== 'PRE' && element.style.whiteSpace.startsWith('pre'))
   for (const image of page.body.querySelectorAll('img')) {
-    if (image.hasAttribute(MESSAGE_IMAGE_ATTRIBUTE)) {
-      continue
-    }
     const id = `incoming-${crypto.randomUUID()}`
     images.set(id, image.getAttribute('src') ?? '')
     const stand = page.createElement('span')
@@ -165,6 +166,9 @@ function prepareHtml(html: string): PreparedHtml {
       return line
     })
     table.replaceWith(...lines)
+  }
+  for (const lineBreak of page.body.querySelectorAll('br')) {
+    lineBreak.replaceWith(LINE_BREAK)
   }
   return { source: html, html: page.body.innerHTML, images, preformatted }
 }
@@ -268,7 +272,7 @@ function intakePlugin(options: IntakeOptions): Plugin {
    * copy from elsewhere has none, and stands as its name.
    */
   async function bringImages(slice: Slice, taken: Map<string, string>): Promise<void> {
-    const { markdown, attachments } = serializeUserMarkdown<MessageCapsule>(fragmentDocument(slice.content))
+    const { markdown, attachments } = sliceMarkdown(slice)
     const files = await Promise.all(attachments.map((capsule) => {
       const src = taken.get(capsule.id)
       return src === undefined ? null : readBytes(src)
@@ -292,8 +296,8 @@ function intakePlugin(options: IntakeOptions): Plugin {
 
   /**
    * What a paste or a drop brings that is not a file: images become
-   * capsules or links, HTML keeps the dialect's formats, and plain text is
-   * read as the dialect. `at` is where a drop landed, null for a paste.
+   * capsules or links, and the rest is its text, line by line. `at` is where
+   * a drop landed, null for a paste.
    */
   function take(view: EditorView, transfer: DataTransfer, slice: Slice, at: number | null): boolean {
     const parsed = preparedFor(transfer)
@@ -315,12 +319,12 @@ function intakePlugin(options: IntakeOptions): Plugin {
     const html = transfer.getData('text/html')
     const text = transfer.getData('text/plain') || transfer.getData('text/uri-list').replace(/\r?\n/g, ' ')
     // HTML a message editor wrote, HTML with nothing else, or HTML whose
-    // formats the text would lose; HTML laid out as written, a code
-    // editor's, only colors what its text holds with its indentation.
-    const readsHtml = !!parsed && (html.includes('data-pm-slice') || !text || (!parsed.preformatted && holdsFormatting(slice)))
+    // files the text would lose; HTML laid out as written, a code editor's,
+    // only colors what its text holds with its indentation.
+    const readsHtml = !!parsed && (html.includes('data-pm-slice') || !text || (!parsed.preformatted && holdsCapsules(slice)))
     const { schema } = view.state
     if (readsHtml) {
-      const { markdown, attachments } = serializeUserMarkdown<MessageCapsule>(fragmentDocument(slice.content))
+      const { markdown, attachments } = sliceMarkdown(slice)
       insert(view, markdownSlice(schema, markdown, attachments), at)
     } else {
       insert(view, markdownSlice(schema, text), at)
@@ -337,7 +341,7 @@ function intakePlugin(options: IntakeOptions): Plugin {
     if (!transfer) {
       return false
     }
-    const code = inCode(view.state.selection.$from)
+    const code = inCode(view.state.doc, view.state.selection.from)
     const pasted = dataTransferFiles(transfer)
     // A copied message comes back with its files where they stood; code takes
     // text alone. A copy of this message whose files it still carries keeps
@@ -356,11 +360,12 @@ function intakePlugin(options: IntakeOptions): Plugin {
       options.files(pasted)
       return true
     }
-    // Code takes pasted text as it is.
-    if (code) {
-      return false
-    }
     const text = transfer.getData('text/plain')
+    // Code takes pasted text as it is, however long.
+    if (code) {
+      insert(view, markdownSlice(view.state.schema, text), null)
+      return true
+    }
     if (pastedTextIsLong(text)) {
       landAtSelection(view)
       options.files([pastedTextFile(text)])
@@ -385,7 +390,7 @@ function intakePlugin(options: IntakeOptions): Plugin {
       if (at === undefined) {
         return false
       }
-      const kept = trimmedSlice(new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd), view.state.schema)
+      const kept = new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd)
       insert(view, kept, at)
       return true
     }
@@ -393,10 +398,7 @@ function intakePlugin(options: IntakeOptions): Plugin {
     if (!transfer) {
       return false
     }
-    const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
-    const $pos = pos === undefined ? null : view.state.doc.resolve(pos)
-    // A code block holds only text: anything else lands after it.
-    const at = $pos && inCode($pos) ? $pos.after() : pos
+    const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
     // A message dragged out of another message or composer brings its
     // files back without their bytes, whatever else the drag carries.
     const copied = transferCopiedMessage(transfer)
@@ -409,9 +411,14 @@ function intakePlugin(options: IntakeOptions): Plugin {
     if (transferHasFiles(transfer)) {
       return true
     }
-    // Code takes dropped text as it is.
-    if (!$pos || at === undefined || (inCode($pos) && transfer.getData('text/plain'))) {
+    if (at === undefined) {
       return false
+    }
+    // Code takes dropped text as it is.
+    const text = transfer.getData('text/plain')
+    if (inCode(view.state.doc, at) && text) {
+      insert(view, markdownSlice(view.state.schema, text), at)
+      return true
     }
     return take(view, transfer, slice, at)
   }

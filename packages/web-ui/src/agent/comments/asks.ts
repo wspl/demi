@@ -1,7 +1,6 @@
 import type { Block, MediaSource, ProviderFailureFacts, ReplyPicture } from '@demicodes/protocol'
 import type { HeldTranscript } from '../../transport/protocol'
 import { toolCallTitle } from '../block-helpers'
-import { plainUserMarkdown } from '../../markdown/user-markdown'
 import { latestWindow } from '@demicodes/conversation-client'
 import type { HeldBlock } from '../history'
 import type { AgentActivity } from '../agent-activity'
@@ -238,15 +237,10 @@ export function shownTurns(question: ShownSideQuestion): HeldBlock[] {
       quote: question.quote, ...(question.picture ? { picture: question.picture } : {}), text: question.question,
     }],
   })
-  // A follow-up's text is the field's plain text, which the bubble reads as a
-  // message's Markdown.
-  const followUp = (block: Extract<HeldBlock, { type: 'user' }>): HeldBlock => ({
-    ...block,
-    content: block.content.map((part) => (part.type === 'text' ? { ...part, text: plainUserMarkdown(part.text) } : part)),
-  })
+  // A follow-up's text is shown as typed, as every message's is.
   return (ownBlocks(question) ?? []).map((block, index) => {
     if (block.type !== 'user')
       return block
-    return index === 0 ? first(block) : followUp(block)
+    return index === 0 ? first(block) : block
   })
 }
