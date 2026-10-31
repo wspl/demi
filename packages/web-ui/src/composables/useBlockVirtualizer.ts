@@ -6,6 +6,7 @@ import { FOLD_MS } from '../ui/fold'
 import { pageLog } from '../infra/log'
 import { deviceSystem } from '../auth/device-unlock'
 import { revealOffset } from '../ui/reveal'
+import { windowHeight } from '../ui/window-height'
 import { prefersReducedMotion } from '../ui/stream-reveal'
 import { moveRows, rowsBefore, rowTails, scrolledRows, stopRowMoves, tailDisplaced, type RowsBefore, type RowTail } from './row-motion'
 
@@ -338,7 +339,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const el = scrollContainer.value
     return {
       offset: el ? viewTop(el) : instance.scrollOffset ?? 0,
-      height: instance.scrollRect?.height ?? window.innerHeight,
+      height: instance.scrollRect?.height ?? windowHeight.value,
     }
   }
   /**
@@ -372,6 +373,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     }
   }
 
+  // Until the scroller is measured, as tall as the window, which it never
+  // exceeds: the first render covers the view, at worst a little more. Read
+  // once: the options would be made anew at every change of the window's
+  // height, and the virtualizer would place every row again.
+  const initialRect = { width: 0, height: windowHeight.value }
   const virtualizer = useVirtualizer<HTMLElement, HTMLElement>(
     computed(() => ({
       count: blocks.value.length,
@@ -379,9 +385,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       // `placement()`, so its first render is of the rows it will show.
       enabled: blocks.value.length > 0,
       initialOffset: placement,
-      // Until the scroller is measured, as tall as the window, which it never
-      // exceeds: the first render covers the view, at worst a little more.
-      initialRect: { width: 0, height: window.innerHeight },
+      initialRect,
       getScrollElement: () => scrollContainer.value ?? null,
       // The virtualizer places the view in the list: on the scroller, below
       // the rows' shift. The position is read when it is reported: the
@@ -461,7 +465,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const anchor = persistedState?.anchor
     if (anchor && blocks.value.some((block) => block.id === anchor.blockId))
       return anchor.scrollTop
-    return Math.max(0, virtualizer.value.getTotalSize() - window.innerHeight)
+    return Math.max(0, virtualizer.value.getTotalSize() - windowHeight.value)
   }
 
   const virtualItems = keptComputed(() => {

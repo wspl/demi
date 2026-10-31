@@ -47,9 +47,9 @@ const grown = new Set<string>()
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ExternalLink, PanelRight } from '@lucide/vue'
-import { IconButton, usePage } from '@demicodes/plugin-sdk'
+import { IconButton, usePage, windowHeight } from '@demicodes/plugin-sdk'
 import { widgetFactsSchema, type FrameSize, type WidgetFacts } from './generated/plugin'
 import { t } from './locales/text'
 import WidgetFrame from './WidgetFrame.vue'
@@ -86,8 +86,6 @@ watch(() => [props.id, page.plugin.enabled.value] as const, () => {
   unavailable.value = false
 })
 
-const windowHeight = ref(window.innerHeight)
-
 function onHeight(height: number): void {
   const declaredHeight = declared.value?.height
   if (declaredHeight != null && height > Math.max(reported.value ?? 0, declaredHeight)) {
@@ -98,11 +96,6 @@ function onHeight(height: number): void {
   reported.value = height
   knownHeights.set(props.id, height)
 }
-function onResize(): void {
-  windowHeight.value = window.innerHeight
-}
-onMounted(() => addEventListener('resize', onResize))
-onBeforeUnmount(() => removeEventListener('resize', onResize))
 
 /** The frame the page declares, which the reply's data brought; it stays while the plugin is off. */
 const declared = computed<FrameSize | null>(() => widget.value?.frame ?? null)

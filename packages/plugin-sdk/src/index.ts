@@ -73,6 +73,7 @@ export {
 export type { IntentName, IntentPayloads, IntentRequest } from '@demicodes/web-ui/plugins/intents'
 // Where a pinned tab is, as the page's address holds it.
 export { definePlace, type PanelPlace, type PlaceFields } from '@demicodes/web-ui/plugins/place'
+export { windowHeight } from '@demicodes/web-ui/ui/window-height'
 // What a page keeps live while its plugin is on, apart from the panel:
 // its stores, which its page
 // context's `store` reaches, its sessions by key that outlive the views
