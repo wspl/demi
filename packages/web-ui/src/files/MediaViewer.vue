@@ -9,7 +9,7 @@ import { isClick } from './image-zoom'
 import MediumStage from './MediumStage.vue'
 import { formatCount } from '../ui/numbers'
 import { formatZoom } from './image-zoom'
-import type { MediaViewerState, ShownMedium } from './media-viewer'
+import { arrowStep, type MediaViewerState, type ShownMedium } from './media-viewer'
 import type { StepReach } from './swipe-step'
 import type { PixelSize } from './thumbnail'
 
@@ -74,15 +74,13 @@ function details(withZoom: boolean): string {
   ].filter((part) => part !== null).join(' · ')
 }
 
-/** The arrow keys step to the medium before (left, up) or after (right, down); a video's player keeps its own. */
+/** The arrow keys step through the series (`arrowStep`). */
 function onKeydown(event: KeyboardEvent): void {
-  const direction = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key]
-  if (direction === undefined || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
-    return
-  if (event.target instanceof HTMLVideoElement)
+  const step = arrowStep(event)
+  if (step === null)
     return
   event.preventDefault()
-  props.viewer.step(direction === -1 ? -1 : 1)
+  props.viewer.step(step)
 }
 
 /** The neighbours of the picture shown, which a swipe can step to; none when it stands in no transcript. */
