@@ -422,6 +422,7 @@ const {
   placed,
   isAtBottom,
   scrollToBottom,
+  keepEnd,
   reveal,
   rowsNear,
   onScroll,
@@ -687,7 +688,7 @@ watch(
     nextTick(() => {
       scrollOffset.value = viewTop()
       if (wasAtBottom)
-        scrollToBottom()
+        keepEnd()
     })
   },
   { flush: 'post' },
@@ -702,7 +703,7 @@ useResizeObserver(scrollContainer, ([entry]) => {
   const changed = listHeight !== null && height !== listHeight
   listHeight = height
   if (changed && isAtBottom.value)
-    scrollToBottom()
+    keepEnd()
 })
 
 defineExpose({
