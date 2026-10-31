@@ -130,10 +130,15 @@ pub struct Group<B = Binding> {
     /// see from it that the capability fits the task never asks for its help. An
     /// entry says:
     ///
-    /// - in three sentences or fewer, what the group does, in the third person and
-    ///   in the words of the task, not of the implementation;
+    /// - in a few sentences, what the group does, in the words of the task, not
+    ///   of the implementation;
     /// - when to use it, as the situations a user would describe;
-    /// - when not to, where a common alternative is better.
+    /// - when not to, where a common alternative is better;
+    /// - where the product needs the model to use it one way, as every change
+    ///   the user is to see goes through `demi file edit`: that rule, its
+    ///   reason, what one call can do, and a call to copy, at the margin. A
+    ///   model takes up a command by the example it has seen, and holds to a
+    ///   rule only with its reason beside it.
     ///
     /// It gives reasons and situations, never capital letters or "you must": a
     /// newer model follows emphasis too eagerly and reaches for the capability
