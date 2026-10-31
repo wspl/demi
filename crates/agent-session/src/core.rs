@@ -2980,6 +2980,7 @@ impl SessionCore {
             blocks.push(RequestBlock {
                 items: block.items,
                 entries: block.entries,
+                kept_past_summary: block.kept_past_summary,
             });
         }
         self.request_blocks = RequestBlocks {
@@ -3074,6 +3075,7 @@ impl SessionCore {
             .map(|block| RequestBlock {
                 items: block.items,
                 entries: block.entries,
+                kept_past_summary: block.kept_past_summary,
             })
             .collect::<Vec<_>>();
         InferenceRequest {

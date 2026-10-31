@@ -220,6 +220,7 @@ fn entries(items: &[InferenceItem], blocks: &[RequestBlock], session: &Uuid) -> 
             .map(|index| RequestBlock {
                 items: index..index + 1,
                 entries: Vec::new(),
+                kept_past_summary: false,
             })
             .collect();
         alone.as_slice()
@@ -336,6 +337,7 @@ pub(crate) fn without_web_searches(blocks: &[RequestBlock]) -> Vec<RequestBlock>
         .map(|block| RequestBlock {
             items: block.items.clone(),
             entries: block.entries.iter().filter(|entry| !of_search(entry)).cloned().collect(),
+            kept_past_summary: block.kept_past_summary,
         })
         .collect()
 }
@@ -348,9 +350,13 @@ pub(crate) fn without_web_searches(blocks: &[RequestBlock]) -> Vec<RequestBlock>
 ///   block's items are written instead.
 /// - Reasoning no entry stands for is left out, since only its own vendor
 ///   checks it.
-/// - Reasoning kept past a summary is left out too, since that vendor checks it
-///   against the history the summary replaced
-///   (`crates/provider-anthropic-api/src/request.rs`).
+/// - Of a block kept past a summary, reasoning is left out too, since that
+///   vendor checks it against the history the summary replaced
+///   (`crates/provider-anthropic-api/src/request.rs`); and its answers lose the
+///   usage of the call that wrote them, which counted the replaced history. The
+///   CLI takes the latest usage for the size of what comes before it, and
+///   refuses without a call a request that this size puts over its window
+///   (Claude Code 2.1.296).
 fn block_entries(
     items: &[InferenceItem],
     block: &RequestBlock,
@@ -365,20 +371,13 @@ fn block_entries(
         .map(|entry| entry.decode::<Value>().expect("a held entry is JSON"))
         .partition(|entry| entry["type"] == LEFT_OUT);
     let mut kept = restored(&entries, &media(block_items)).unwrap_or_default();
-    let past_summary = block_items.iter().any(|item| {
-        matches!(
-            item,
-            InferenceItem::AssistantThinking {
-                kept_past_summary: true,
-                ..
-            } | InferenceItem::Opaque {
-                kept_past_summary: true,
-                ..
-            }
-        )
-    });
-    if past_summary {
+    if block.kept_past_summary {
         kept.retain(|entry| !is_reasoning(entry));
+        for entry in kept.iter_mut().filter(|entry| entry["type"] == "assistant") {
+            if let Some(message) = entry["message"].as_object_mut() {
+                message.remove("usage");
+            }
+        }
     }
     extend_recorded(&mut kept, block_items);
     let split = kept.iter().position(is_result).unwrap_or(kept.len());
