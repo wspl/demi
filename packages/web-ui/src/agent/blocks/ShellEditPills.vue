@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import { ICON_PX } from '../../ui/icon-metrics'
 import type { ToolCallBlock } from '../block-types'
 import { storedShellView } from '../block-helpers'
-import { useEditSelection, useFilePills, useTranscript } from '../edit-selection'
+import { pillAction, useEditSelection, useFilePills, useTranscript } from '../edit-selection'
+import { useMessageFiles } from '../../markdown/message-files'
 import { callPills, pillSelection, requestFileSelection } from '../../files/request-changes'
 import FileChangePills from './FileChangePills.vue'
 
@@ -17,6 +18,7 @@ import FileChangePills from './FileChangePills.vue'
 const props = defineProps<{ block: ToolCallBlock }>()
 const select = useEditSelection()
 const transcript = useTranscript()
+const messageFiles = useMessageFiles()
 const pillsShown = useFilePills()
 const files = computed(() => pillsShown() ? callPills(props.block) : [])
 
@@ -44,21 +46,22 @@ function restSelection(paths: readonly string[]) {
   }
   return null
 }
-function selectable(path: string): boolean {
-  return select() !== undefined && selection(path) !== null
-}
-
-function pick(path: string): void {
+/** What a pill's click does: its edit, or a binary file as it is now (`pillAction`). */
+function action(path: string): (() => void) | null {
   const picked = selection(path)
-  if (picked) {
-    select()?.(picked)
-  }
+  return picked && transcript ? pillAction(select(), transcript.requests(), messageFiles(), picked) : null
 }
+function selectable(path: string): boolean {
+  return action(path) !== null
+}
+function pick(path: string): void {
+  action(path)?.()
+}
+/** The "+N Files" pill lists its files in the Change view, a binary one among them. */
 function pickRest(paths: readonly string[]): void {
   const picked = restSelection(paths)
-  if (picked) {
+  if (picked)
     select()?.(picked)
-  }
 }
 </script>
 

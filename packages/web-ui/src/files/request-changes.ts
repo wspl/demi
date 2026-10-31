@@ -295,6 +295,15 @@ export function selectionIsBinary(file: RequestFile, index: number | null): bool
 }
 
 /**
+ * Whether what `selection` opens shows no diff because the file is binary,
+ * as the request it names records (`selectionIsBinary`).
+ */
+export function selectsBinary(requests: TranscriptRequests, selection: RequestEditSelection): boolean {
+  const file = requests.requests.find((request) => request.id === selection.request)?.files.find((each) => each.path === selection.file)
+  return file !== undefined && selectionIsBinary(file, editIndex(file, selection.edit))
+}
+
+/**
  * Whether two readings of a request's files hold the same files and edits.
  *
  * The request is read anew on each frame of a turn, so the same files come as new

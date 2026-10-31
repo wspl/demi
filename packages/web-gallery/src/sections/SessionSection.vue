@@ -3111,7 +3111,7 @@ onBeforeUnmount(() => {
             />
           </div>
         </GallerySpecimen>
-        <GallerySpecimen variant="contents not kept · the logo has none, the readme’s first edit none" wide>
+        <GallerySpecimen variant="contents not kept · the logo has none, so its pill opens the file as it is now; the readme’s first edit none" wide>
           <div class="gallery-frame h-[22rem] bg-surface">
             <AgentMessageList
               class="h-full"
