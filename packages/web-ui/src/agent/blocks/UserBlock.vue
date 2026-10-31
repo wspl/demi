@@ -4,7 +4,7 @@ import { t as shared } from '../../locales/text'
 import { computed, onMounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
-import { AlarmClock, CircleAlert, Copy, MessagesSquare, Pencil, Trash2 } from '@lucide/vue'
+import { AlarmClock, CircleAlert, Clock, Copy, ListEnd, MessagesSquare, Pencil, Trash2 } from '@lucide/vue'
 import { useCopy } from '../../composables/useCopy'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
@@ -334,7 +334,17 @@ useResizeObserver(bodyRef, measure)
     <div v-else-if="sender" class="flex max-w-[80%] select-none items-center pb-1 text-detail text-fg-subtle">
       <NoticeLabel notice="" :title="sender.name" :go="sender.go" />
     </div>
-    <div class="relative rounded-xl bg-surface-card px-4 py-2.5" :style="bubbleWidth">
+    <!--
+      A message that waits to be sent holds its controls in its last row, with
+      what happens to it at the row's end. It stands back from the sent ones:
+      dimmer words on half a bubble's fill, a steer's tinted with the accent.
+    -->
+    <div
+      class="relative rounded-xl px-4 py-2.5"
+      :class="pending === 'steer' ? 'user-waiting-steer' : pending ? 'user-waiting' : 'bg-surface-card'"
+      :style="bubbleWidth"
+      :data-pending="pending"
+    >
       <div
         v-if="!pending"
         ref="actionsRef"
@@ -376,9 +386,14 @@ useResizeObserver(bodyRef, measure)
           <CircleAlert :size="ICON_PX.in24" aria-hidden="true" />
         </span>
       </div>
+      <!--
+        The text keeps to the bubble's end: a row of controls, Show More or a
+        waiting message's, may widen the bubble past a narrow text, and as the
+        row changes the text keeps its place.
+      -->
       <div
         ref="contentRef"
-        class="overflow-hidden"
+        class="ml-auto w-fit max-w-full overflow-hidden"
         :style="
           clip && !expanded
             ? {
@@ -420,15 +435,39 @@ useResizeObserver(bodyRef, measure)
           </template>
         </div>
       </div>
-      <!-- Under the text, its label in line with the text's start. -->
-      <Button
-        v-if="clip"
-        size="sm"
-        variant="ghost"
-        class="-ml-2 mt-1"
-        :aria-expanded="expanded"
-        @click.stop="expanded = !expanded"
-      >{{ expanded ? t('transcript.user.showLess') : t('transcript.user.showMore') }}</Button>
+      <!--
+        Under the text, labels in line with the text's start: Show More, and a
+        waiting message's Send and Recall after it, as one row of the bubble's
+        own controls, with what happens to the message at its end.
+      -->
+      <div v-if="clip || pending" class="-ml-2 mt-1 flex select-none flex-wrap items-center gap-x-1">
+        <Button
+          v-if="clip"
+          size="sm"
+          variant="ghost"
+          :aria-expanded="expanded"
+          @click.stop="expanded = !expanded"
+        >{{ expanded ? t('transcript.user.showLess') : t('transcript.user.showMore') }}</Button>
+        <template v-if="pending">
+          <span v-if="clip" class="mx-0.5 h-4 w-px bg-line" aria-hidden="true" />
+          <!-- The two stay on one line, wrapping together, each a finger's height on a phone. -->
+          <span class="flex items-center gap-x-1">
+            <Button
+              :size="phone ? 'lg' : 'sm'"
+              variant="ghost"
+              :operation="waitingId ? sendNowOperation(waitingId) : undefined"
+              @click.stop="emit('sendNow')"
+            >{{ t('composer.send') }}</Button>
+            <Button :size="phone ? 'lg' : 'sm'" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
+          </span>
+          <span
+            class="ml-auto flex items-center gap-1 ps-2 text-detail text-fg-faint"
+          >
+            <component :is="pending === 'steer' ? Clock : ListEnd" :size="ICON_PX.in20" :class="pending === 'steer' ? 'text-on-accent' : ''" aria-hidden="true" />
+            {{ pending === 'steer' ? t('transcript.user.sendingSoon') : t('transcript.user.queuedMark') }}
+          </span>
+        </template>
+      </div>
     </div>
     <!-- Why a message was not delivered, under it, as the alert beside it marks it. -->
     <p
@@ -439,30 +478,6 @@ useResizeObserver(bodyRef, measure)
     </p>
     <!-- An edited message's versions, under it at its end, always in view. -->
     <VersionSwitcher v-if="versions && !pending" :choice="versions" class="-mr-1 mt-0.5" />
-    <!--
-      A pending message says what happens to it, its controls in view rather
-      than on hover.
-    -->
-    <div
-      v-if="pending"
-      class="mt-1 flex max-w-[80%] select-none flex-wrap items-center justify-end gap-x-1 text-detail leading-5 text-fg-subtle"
-    >
-      <!--
-        A queued message stands under the queue's divider, which already says
-        so.
-      -->
-      <span v-if="pending === 'steer'" class="mr-1">{{ t('transcript.user.sendsNext') }}</span>
-      <!-- The two stay on one line, wrapping under the note together, each a finger's height on a phone. -->
-      <span class="flex items-center gap-x-1">
-        <Button
-          :size="phone ? 'lg' : 'xs'"
-          variant="ghost"
-          :operation="waitingId ? sendNowOperation(waitingId) : undefined"
-          @click.stop="emit('sendNow')"
-        >{{ t('composer.send') }}</Button>
-        <Button :size="phone ? 'lg' : 'xs'" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
-      </span>
-    </div>
   </div>
 </template>
 
@@ -473,6 +488,15 @@ useResizeObserver(bodyRef, measure)
  */
 .user-actions {
   height: calc(var(--agent-text) * var(--agent-leading));
+}
+
+/* Half the way from the transcript's surface to a sent bubble's fill, or to the accent's tint. */
+.user-waiting {
+  background-color: color-mix(in srgb, var(--color-surface-card) 50%, var(--surface-current));
+}
+
+.user-waiting-steer {
+  background-color: color-mix(in srgb, color-mix(in srgb, var(--surface-current), var(--tint-accent-mix)) 50%, var(--surface-current));
 }
 
 .user-sticky::after {
