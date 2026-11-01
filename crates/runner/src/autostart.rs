@@ -329,6 +329,11 @@ fn path(value: &str) -> String {
 /// writes its own log. A stop or a restart ends the runner's process alone:
 /// what a command left running, detached from it, goes on, as it does when
 /// the runner replaces itself.
+///
+/// `OOMPolicy=continue` keeps the runner when the kernel kills a command's
+/// process for memory: every process a command starts is in the unit's
+/// control group, and systemd's default stops the whole unit when any of
+/// them is killed so. A systemd older than 243 ignores the setting.
 #[cfg(target_os = "linux")]
 fn unit(launcher: &str, home: &str, directory: &str) -> String {
     format!(
@@ -342,6 +347,7 @@ fn unit(launcher: &str, home: &str, directory: &str) -> String {
          Restart=on-failure\n\
          RestartSec=10\n\
          KillMode=process\n\
+         OOMPolicy=continue\n\
          StandardOutput=null\n\
          StandardError=null\n\
          \n\
