@@ -1,13 +1,13 @@
 //! One conversation browser's environment: the Chrome process tree, its event
-//! task, its two directories and the tab registry, from launch to retirement.
+//! task, its directories and the tab registry, from launch to retirement.
 //!
 //! ```text
 //! /tmp/demi-browser-a1B2c3/                 the runtime directory
 //!   demi-profile.lock                       the environment's lock
-//!   profile -> /var/tmp/demi-profile-a1B2c3
 //!   org.chromium.Chromium.d4E5f6/SingletonSocket
-//! /var/tmp/demi-profile-a1B2c3/             the profile: Chrome's user data
-//!   downloads/  uploads/
+//! <scratch>/<conversation>/.browser/        the conversation's profile
+//!   profile.lock                            held while a Chrome runs on it
+//!   downloads/  uploads/                    emptied when that Chrome stops
 //! ```
 //!
 //! # Directories
@@ -15,12 +15,20 @@
 //! - The runtime directory is Chrome's temporary directory. Its singleton
 //!   socket's path has a limit (108 bytes on Linux), so it lives in the short
 //!   `/tmp`, not in the resident's `TMPDIR`, which can be any length.
-//! - The profile can grow large, so it lives on disk (`TMPDIR` when absolute,
-//!   else `/var/tmp`), never a memory-backed `/tmp`: the Cloud's is 256 MiB of
-//!   its memory.
-//! - Directories are made runtime first (with its lock), then the link, then
-//!   the profile, and removed in reverse, so a running profile always has its
-//!   runtime directory. Each is readable only by its user.
+//! - The profile is the conversation's, in its scratch directory
+//!   (`demi_command_protocol::browser_profile_directory`): every Chrome the
+//!   conversation starts on this Host runs on it, so its sign-ins outlast a
+//!   crash, the last tab closing and a release. The runner removes it when the
+//!   conversation is archived or deleted (`crates/runner-jobs/src/scratch.rs`).
+//!   Retirement keeps it.
+//! - A drawing's Chrome runs on a temporary profile instead, on disk (`TMPDIR`
+//!   when absolute, else `/var/tmp`), never a memory-backed `/tmp`: the
+//!   Cloud's is 256 MiB of its memory. Its runtime directory links to it, and
+//!   retirement removes it.
+//! - Directories are made runtime first (with its lock), then a temporary
+//!   profile's link, then the profile, and removed in reverse, so a running
+//!   temporary profile always has its runtime directory. Each is readable only
+//!   by its user.
 //! - Two stores stay in the user's home on purpose: Linux's NSS certificate
 //!   database (moving it would also move the user's fonts) and macOS's Crashpad
 //!   reports. Linux crash reports follow the profile through
@@ -39,10 +47,11 @@
 //! The sweep works as follows:
 //!
 //! - It first takes the lock of each runtime directory. One it can take belongs
-//!   to no running resident, so its marked processes, profile and directory are
-//!   removed. A held one belongs to another resident (an upgrade's previous
+//!   to no running resident, so its marked processes, the temporary profile it
+//!   links to, and the directory are removed. A held one belongs to another resident (an upgrade's previous
 //!   release) and is never touched.
-//! - Then it removes profiles whose runtime directory is gone.
+//! - Then it removes temporary profiles whose runtime directory is gone. It
+//!   never removes a conversation's profile.
 //! - A lock file takes its name only once it is held, so a sweep in another
 //!   resident finds either no lock or a held one.
 
@@ -147,6 +156,20 @@ const STAGED_LOCK: &str = "demi-profile.lock.new";
 /// The runtime directory's link to its profile, on Unix.
 #[cfg(unix)]
 const PROFILE_LINK: &str = "profile";
+/// The file a conversation's profile is locked on while a Chrome runs on it,
+/// in the profile.
+const PROFILE_LOCK: &str = "profile.lock";
+/// The file a start makes in a conversation's profile that another resident's
+/// Chrome runs on, such as an upgrade's previous release: that browser sees
+/// it and retires, and the start takes the profile.
+const PROFILE_HANDOFF: &str = "profile.handoff";
+/// How often a browser looks for a handoff its profile was asked for.
+const HANDOFF_POLL: Duration = Duration::from_millis(250);
+/// How long a start waits for the browser it asked to hand off its profile.
+/// Its retirement takes a graceful close and the end of its processes, each
+/// bounded; a holder that has not let go by then does not see the request,
+/// and the start fails rather than wait for it forever.
+const PROFILE_WAIT: Duration = Duration::from_secs(30);
 
 /// The user a resident sweeps browser directories for: its own. Other
 /// users' directories in the shared bases are neither opened nor reported.
@@ -231,20 +254,34 @@ impl DirectoryBases {
 /// [`Self::keep_until_retired`].
 ///
 /// - The runtime directory is Chrome's temporary directory. It holds the
-///   environment's lock and, on Unix, a link to the profile.
-/// - On Unix the profile is a directory of its own with Chrome's user data, the
-///   downloads and the uploads.
-/// - On Windows the runtime directory is the profile.
+///   environment's lock and, on Unix, a link to a temporary profile.
+/// - The profile holds Chrome's user data, the downloads and the uploads.
 pub(crate) struct EnvironmentDirectories {
     runtime: tempfile::TempDir,
-    profile: Option<tempfile::TempDir>,
-    /// Held until retirement has removed both, however this resident ends.
+    profile: Profile,
+    /// Held until retirement has removed what goes, however this resident
+    /// ends.
     lock: std::fs::File,
 }
 
+/// An environment's profile.
+enum Profile {
+    /// Removed with the environment, as a drawing's is: on Unix a directory
+    /// of its own the runtime directory links to; on Windows, `None`, the
+    /// runtime directory itself.
+    Temporary(Option<tempfile::TempDir>),
+    /// A conversation's, which outlives the environment and is held locked
+    /// while the environment runs on it.
+    Kept {
+        directory: PathBuf,
+        lock: std::fs::File,
+    },
+}
+
 impl EnvironmentDirectories {
-    /// Makes an environment's directories in `bases`, each readable only by its
-    /// user, since every user shares the bases on Unix.
+    /// Makes the directories in `bases` of an environment with a temporary
+    /// profile, each readable only by its user, since every user shares the
+    /// bases on Unix.
     ///
     /// 1. The runtime directory comes first with its lock held, whose file
     ///    takes the name the sweep opens only once it is held, so that a sweep
@@ -254,17 +291,7 @@ impl EnvironmentDirectories {
     /// 3. Then comes the profile the link names, so that a running
     ///    environment's profile always has its runtime directory.
     pub(crate) fn create(bases: &DirectoryBases) -> Result<Self> {
-        let runtime = private_directory(&bases.runtime, RUNTIME_PREFIX, 6)?;
-        let staged = runtime.path().join(STAGED_LOCK);
-        let lock = std::fs::File::create_new(&staged)?;
-        lock.try_lock().map_err(|error| match error {
-            std::fs::TryLockError::Error(error) => BrowserError::Io(error),
-            // Nothing else opens the staged file; a lock there is a defect.
-            std::fs::TryLockError::WouldBlock => BrowserError::Io(io::Error::other(
-                "a new browser environment is already locked",
-            )),
-        })?;
-        std::fs::rename(&staged, runtime.path().join(LOCK))?;
+        let (runtime, lock) = Self::locked_runtime(bases)?;
         #[cfg(unix)]
         let profile = {
             let identity = runtime
@@ -284,9 +311,78 @@ impl EnvironmentDirectories {
         let profile = None;
         Ok(Self {
             runtime,
-            profile,
+            profile: Profile::Temporary(profile),
             lock,
         })
+    }
+
+    /// Makes an environment's runtime directory in `bases` for a Chrome that
+    /// runs on `profile`, a conversation's, which it holds locked until
+    /// retirement. It makes `profile` when it is missing, readable only by its
+    /// user. When another resident's Chrome runs on it, it asks that browser
+    /// to hand it off and waits up to [`PROFILE_WAIT`], or until `stop`.
+    pub(crate) async fn with_profile(bases: &DirectoryBases, profile: &Path, stop: &CancellationToken) -> Result<Self> {
+        let mut directory = std::fs::DirBuilder::new();
+        directory.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut directory, 0o700);
+        directory.create(profile)?;
+        let profile_lock = std::fs::File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(profile.join(PROFILE_LOCK))?;
+        let handoff = profile.join(PROFILE_HANDOFF);
+        let deadline = tokio::time::Instant::now() + PROFILE_WAIT;
+        loop {
+            match profile_lock.try_lock() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock) if tokio::time::Instant::now() < deadline => {
+                    std::fs::File::create(&handoff)?;
+                    tokio::select! {
+                        _ = stop.cancelled() => return Err(BrowserError::Cancelled),
+                        () = tokio::time::sleep(HANDOFF_POLL) => {}
+                    }
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    return Err(BrowserError::Unavailable(
+                        "another browser still runs on this conversation's profile".into(),
+                    ));
+                }
+                Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+            }
+        }
+        // Asked of the browser that let go, or of one long gone.
+        match std::fs::remove_file(&handoff) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
+            _ => {}
+        }
+        let (runtime, lock) = Self::locked_runtime(bases)?;
+        Ok(Self {
+            runtime,
+            profile: Profile::Kept {
+                directory: profile.to_owned(),
+                lock: profile_lock,
+            },
+            lock,
+        })
+    }
+
+    /// The runtime directory with its lock held, whose file takes the name
+    /// the sweep opens only once it is held.
+    fn locked_runtime(bases: &DirectoryBases) -> Result<(tempfile::TempDir, std::fs::File)> {
+        let runtime = private_directory(&bases.runtime, RUNTIME_PREFIX, 6)?;
+        let staged = runtime.path().join(STAGED_LOCK);
+        let lock = std::fs::File::create_new(&staged)?;
+        lock.try_lock().map_err(|error| match error {
+            std::fs::TryLockError::Error(error) => BrowserError::Io(error),
+            // Nothing else opens the staged file; a lock there is a defect.
+            std::fs::TryLockError::WouldBlock => BrowserError::Io(io::Error::other(
+                "a new browser environment is already locked",
+            )),
+        })?;
+        std::fs::rename(&staged, runtime.path().join(LOCK))?;
+        Ok((runtime, lock))
     }
 
     /// Chrome's temporary directory, which names the environment.
@@ -296,32 +392,46 @@ impl EnvironmentDirectories {
 
     /// Chrome's user data directory, which holds the downloads and uploads.
     pub(crate) fn profile(&self) -> &Path {
-        self.profile.as_ref().unwrap_or(&self.runtime).path()
+        match &self.profile {
+            Profile::Temporary(profile) => profile.as_ref().unwrap_or(&self.runtime).path(),
+            Profile::Kept { directory, .. } => directory,
+        }
     }
 
     /// From here only retirement removes the directories: Chrome may be
     /// writing into them.
     pub(crate) fn keep_until_retired(&mut self) {
         self.runtime.disable_cleanup(true);
-        if let Some(profile) = &mut self.profile {
+        if let Profile::Temporary(Some(profile)) = &mut self.profile {
             profile.disable_cleanup(true);
         }
     }
 
-    /// Removes the profile, then the runtime directory, once `retired` says
-    /// that Chrome's processes are gone, and then lets the lock go. A
-    /// failure keeps what is left, for a later sweep, and names the profile.
+    /// Once `retired` says that Chrome's processes are gone, removes a
+    /// temporary profile, or empties a kept one's downloads and uploads, then
+    /// removes the runtime directory and lets the locks go. A failure keeps
+    /// what is left, for a later sweep, and names the profile.
     pub(crate) async fn remove(self, retired: Result<()>) -> Result<()> {
         let runtime = self.runtime.keep();
-        let profile = self.profile.map(tempfile::TempDir::keep);
+        let (profile, kept) = match self.profile {
+            Profile::Temporary(profile) => (profile.map(tempfile::TempDir::keep), None),
+            Profile::Kept { directory, lock } => (Some(directory), Some(lock)),
+        };
         let result = async {
             retired?;
-            if let Some(profile) = &profile {
-                remove_directory(profile).await?;
+            match (&profile, &kept) {
+                (Some(profile), Some(_)) => {
+                    for files in [DOWNLOADS, UPLOADS] {
+                        remove_present(&profile.join(files)).await?;
+                    }
+                }
+                (Some(profile), None) => remove_directory(profile).await?,
+                (None, _) => {}
             }
             remove_directory(&runtime).await
         }
         .await;
+        drop(kept);
         drop(self.lock);
         result.map_err(|source| BrowserError::ProfileRetained {
             path: profile.unwrap_or(runtime),
@@ -361,10 +471,19 @@ async fn remove_directory(directory: &Path) -> Result<()> {
     }
 }
 
+/// The profile's directory of the browser's downloads, emptied when it stops.
+const DOWNLOADS: &str = "downloads";
+/// The profile's directory of the files the user chose to upload, emptied
+/// when the browser stops.
+const UPLOADS: &str = "uploads";
+
 /// The caller supplies the installed, verified release, never a PATH lookup.
 pub struct LaunchOptions {
     /// The executable, and on Linux the Chrome runtime it starts with.
     pub installation: Installation,
+    /// The conversation's profile, which every Chrome it starts on this Host
+    /// runs on.
+    pub profile: PathBuf,
     /// The release's version, for the user agent pages see.
     version: String,
     /// The user's time zone and languages; they do not change while the
@@ -380,11 +499,13 @@ impl LaunchOptions {
     /// and `color_scheme`.
     pub fn pinned(
         installation: Installation,
+        profile: PathBuf,
         locale: CommandLocale,
         color_scheme: ColorScheme,
     ) -> Result<Self> {
         Ok(Self {
             installation,
+            profile,
             version: crate::driver::installation::pinned_version()?,
             locale,
             color_scheme,
@@ -416,6 +537,9 @@ pub struct BrowserEnvironment {
     /// give a tab its viewers watch, once one of them has a panel; none
     /// before.
     pub(crate) opening: watch::Sender<Option<BrowserViewport>>,
+    /// Cancelled once another resident asked for the profile: its owner
+    /// retires the browser.
+    handoff: CancellationToken,
 }
 
 /// Own Chrome, its event task and its directories until the conversation work ends;
@@ -442,11 +566,15 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let mut directories = EnvironmentDirectories::create(&DirectoryBases::host())?;
+    let mut directories = EnvironmentDirectories::with_profile(&DirectoryBases::host(), &options.profile, &stop).await?;
     let mut process = ChromeProcess::new(directories.runtime(), &executable);
-    let download_directory = directories.profile().join("downloads");
+    // Emptied as the browser starts too: a resident that ended without
+    // retiring it left them.
+    let download_directory = directories.profile().join(DOWNLOADS);
+    remove_present(&download_directory).await?;
     tokio::fs::create_dir(&download_directory).await?;
-    let upload_directory = directories.profile().join("uploads");
+    let upload_directory = directories.profile().join(UPLOADS);
+    remove_present(&upload_directory).await?;
     tokio::fs::create_dir(&upload_directory).await?;
     let builder = BrowserConfig::builder()
         .respect_https_errors()
@@ -540,6 +668,24 @@ where
         }),
     );
     capture.serve(captures.clone(), &observers, ended.clone());
+    let handoff = CancellationToken::new();
+    {
+        let asked = handoff.clone();
+        let request = profile.join(PROFILE_HANDOFF);
+        let ended = ended.clone();
+        observers.spawn(async move {
+            while !ended.is_cancelled() {
+                if tokio::fs::try_exists(&request).await.unwrap_or(false) {
+                    asked.cancel();
+                    return;
+                }
+                tokio::select! {
+                    _ = ended.cancelled() => return,
+                    () = tokio::time::sleep(HANDOFF_POLL) => {}
+                }
+            }
+        });
+    }
     let changes = numbers.browser_changes();
     let pump_ended = ended.clone();
     let pump_failure = failure.clone();
@@ -609,6 +755,7 @@ where
                 captures,
                 changes,
                 opening,
+                handoff: handoff.clone(),
             };
             work(environment).await
         } => result,
@@ -647,9 +794,21 @@ where
 /// Without the installed Chrome's location the sweep cannot find an orphan's
 /// processes, so it leaves the runtime directories to the next resident:
 /// removing a profile under a Chrome that still runs would leave both.
+///
+/// A resident runs it once, as it starts, and a browser starts only after it
+/// ([`swept`]): an orphan's Chrome may still run on a conversation's profile
+/// once its resident's lock is gone.
 pub async fn sweep_orphans(chrome: &crate::driver::installation::Chrome) {
     let installations = chrome.roots().await;
     sweep_orphans_in(&DirectoryBases::host(), installations, Owner::current()).await;
+    chrome.swept().send_replace(true);
+}
+
+/// Answers once the resident's [`sweep_orphans`] has ended.
+pub async fn swept(chrome: &crate::driver::installation::Chrome) {
+    let mut ended = chrome.swept().subscribe();
+    // The sender lives as long as `chrome`.
+    let _ = ended.wait_for(|ended| *ended).await;
 }
 
 async fn sweep_orphans_in(bases: &DirectoryBases, installations: Option<Vec<PathBuf>>, owner: Owner) {
@@ -986,6 +1145,13 @@ impl BrowserEnvironment {
     /// tab, and its owner retires it.
     pub fn emptied(&self) -> &CancellationToken {
         self.tabs.emptied()
+    }
+
+    /// Cancelled once another resident asked for the conversation's profile,
+    /// as an upgrade's next release does: its owner retires the browser, whose
+    /// tabs end, and that resident starts one on the profile.
+    pub fn handoff_asked(&self) -> &CancellationToken {
+        &self.handoff
     }
 
     /// Why the browser connection ended on its own, if it did.

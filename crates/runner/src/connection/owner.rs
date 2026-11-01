@@ -433,11 +433,13 @@ impl Owner<'_> {
                 let _hello = demi_runner_process::steps::step("hello", "backend");
                 // The pairs settle a glare by it (`crate::pairs`).
                 let _ = self.own.set(device_id.clone());
+                // The residents let go first: a conversation's browser runs on
+                // the profile its scratch directory holds.
+                self.release_unheld(&conversations, &held, stopped).await;
                 if let Err(error) = registered.scratch.keep_only(&conversations, &archived).await {
                     // The next connection tries again.
                     tracing::warn!(event = "scratch_directories.list_failed", %error, "the scratch directories could not be listed");
                 }
-                self.release_unheld(&conversations, &held, stopped).await;
                 let state = registered.state.clone();
                 let config = RunnerConfig {
                     backend_url: registered.backend.url().clone(),
@@ -684,10 +686,11 @@ impl Owner<'_> {
                         result = residents.release_conversation(&conversation_id) => result,
                     };
                     // Its recordings end with their devices and tabs, complete,
-                    // as the residents release; an archived or deleted
-                    // conversation then loses them.
+                    // and its browser with its profile closed, as the residents
+                    // release; an archived or deleted conversation then loses
+                    // both.
                     if over {
-                        scratch.forget_recordings(&conversation_id).await;
+                        scratch.forget_archived(&conversation_id).await;
                     }
                     match wire::encode(&wire::Outbound::ConversationReleased {
                         id,
