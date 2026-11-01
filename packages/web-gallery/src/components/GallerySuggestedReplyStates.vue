@@ -6,13 +6,13 @@ import { LONG_SUGGESTIONS, SUGGESTION_ROUNDS } from '../fixtures/suggested-repli
 
 /**
  * The row of suggested replies in each state it has, under an answer's
- * width: three, three long ones narrowed, one, being written and none, the
- * last two keeping the row's height. A pill's click and its Edit say in a
+ * width: three, three long ones wrapped, one, being written and none, the
+ * last two keeping a line's height. A pill's click and its Edit say in a
  * toast what the product would do with the words.
  */
-const STATES: readonly { name: string; replies: readonly SuggestedReply[] | null }[] = [
+const STATES: readonly { name: string; replies: readonly SuggestedReply[] | null; narrow?: boolean }[] = [
   { name: 'three', replies: SUGGESTION_ROUNDS[0] ?? [] },
-  { name: 'three long ones, narrowed', replies: LONG_SUGGESTIONS },
+  { name: 'three long ones in a narrow column, wrapped', replies: LONG_SUGGESTIONS, narrow: true },
   { name: 'one', replies: SUGGESTION_ROUNDS[1] ?? [] },
   { name: 'being written: the row keeps its height', replies: null },
   { name: 'none came: the row keeps its height', replies: [] },
@@ -31,7 +31,7 @@ function edited(text: string): void {
   <div class="flex flex-col gap-4">
     <div v-for="state in STATES" :key="state.name">
       <p class="mb-1 font-mono text-caption text-fg-faint">{{ state.name }}</p>
-      <div class="rounded-lg border border-dashed border-line px-[var(--agent-pad-x,2rem)] pb-2">
+      <div class="rounded-lg border border-dashed border-line px-[var(--agent-pad-x,2rem)] pb-2" :class="state.narrow ? 'max-w-[26rem]' : ''">
         <SuggestedReplies :replies="state.replies" @send="sent" @edit="edited" />
       </div>
     </div>
