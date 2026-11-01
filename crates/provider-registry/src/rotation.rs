@@ -3,10 +3,15 @@
 //!
 //! The module tracks:
 //!
-//! - The accounts used up until their moment.
+//! - The accounts a vendor refused as used up, until their moment.
 //! - How many agents run a turn on each account, so that agents started
 //!   together spread over the accounts before their snapshots change. An idle
 //!   agent keeps its account without counting on it.
+//!
+//! What it tracks and the accounts' snapshots only order the accounts; only the
+//! vendor refuses a request. An account they show used up comes after every
+//! other, the soonest to reset first, and a request whose every account shows
+//! used up is sent on that one. A request asks each account at most once.
 //!
 //! An agent keeps its account once it took one, because the vendor's prompt
 //! cache belongs to the account: a 300K conversation that moves to another
@@ -65,12 +70,20 @@ pub struct Candidate {
 /// What a choice found.
 #[derive(Debug)]
 pub enum Choice {
-    /// The account the agent takes, counted among those running on it
-    /// until the count drops.
+    /// The account the request is sent on, counted among those running on
+    /// it until the count drops.
     Account(Running),
-    /// Every account is used up; the earliest moment one can be used again,
-    /// when known.
-    AllUsedUp { earliest: Option<Timestamp> },
+    /// Every account of the entry refused this request already.
+    AllTried,
+}
+
+/// A vendor's refusal of an account as used up.
+#[derive(Debug, Clone, Copy)]
+struct Mark {
+    /// When the account can be used again.
+    until: Timestamp,
+    /// When the refusal came: a snapshot observed later says more.
+    at: Timestamp,
 }
 
 /// How many announced changes a follower may fall behind before it misses
@@ -89,8 +102,8 @@ pub struct AccountRotation {
 
 #[derive(Debug, Default)]
 struct State {
-    /// The accounts used up, each until the moment it can be used again.
-    used_up: HashMap<Account, Timestamp>,
+    /// The accounts a vendor refused as used up.
+    used_up: HashMap<Account, Mark>,
     /// How many agents run a turn on each account. An idle agent keeps
     /// its account, but counts on none.
     running: HashMap<Account, usize>,
@@ -151,44 +164,53 @@ impl AccountRotation {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Takes an account of `entry` among `candidates` for an agent of
-    /// `model` under `rotation`, and counts the agent as running on it.
-    /// Manual takes none: its agents use the active account.
+    /// Takes an account of `entry` among `candidates` for a request of
+    /// `model` under `rotation`, other than those in `tried`, which refused
+    /// the request already, and counts the request as running on it. Manual
+    /// takes none: its requests use the active account.
     pub fn take(
         self: &Arc<Self>,
         entry: &ProviderId,
         rotation: Rotation,
         candidates: &[Candidate],
         model: &Model,
+        tried: &[CredentialId],
         now: Timestamp,
     ) -> Option<Choice> {
         let mut state = self.lock();
-        let rooms = rooms(&state, entry, candidates, model, now);
+        let rooms: Vec<Option<Room>> = rooms(&state, entry, candidates, model, now)
+            .into_iter()
+            .zip(candidates)
+            .map(|(room, candidate)| (!tried.contains(&candidate.id)).then_some(room))
+            .collect();
+        let open: Vec<Room> = rooms
+            .iter()
+            .map(|room| room.unwrap_or(Room::UsedUp(None)))
+            .collect();
         let (mode, picked) = match rotation {
             Rotation::Manual => return None,
-            Rotation::InOrder => ("order", rooms.iter().position(|room| room.usable()).map(|index| (index, 1))),
+            Rotation::InOrder => ("order", open.iter().position(|room| room.usable()).map(|index| (index, 1))),
             Rotation::Smart => {
                 let running = |index: usize| {
                     let key = (entry.clone(), candidates[index].id.clone());
                     state.running.get(&key).copied().unwrap_or(0)
                 };
-                ("smart", most_urgent(&rooms, running))
+                ("smart", most_urgent(&open, running))
             }
         };
-        let usable = rooms.iter().filter(|room| room.usable()).count();
+        let usable = open.iter().filter(|room| room.usable()).count();
+        let picked = picked.or_else(|| soonest(&rooms).map(|index| (index, 1)));
         let Some((index, tied)) = picked else {
-            let earliest = earliest(&rooms);
             tracing::info!(
                 event = "account.chosen",
                 provider = %entry,
                 mode,
                 candidates = candidates.len(),
-                usable,
-                reason = "all_used_up",
-                earliest_ms = earliest.map(|moment| moment.as_millisecond()),
-                "no account of the entry can be used now"
+                tried = tried.len(),
+                reason = "all_tried",
+                "every account of the entry refused the request"
             );
-            return Some(Choice::AllUsedUp { earliest });
+            return Some(Choice::AllTried);
         };
         let account = (entry.clone(), candidates[index].id.clone());
         let running = state.running.entry(account.clone()).or_default();
@@ -200,14 +222,15 @@ impl AccountRotation {
             mode,
             candidates = candidates.len(),
             usable,
-            urgency_pct = match rooms[index] {
+            urgency_pct = match open[index] {
                 Room::Left { urgency, .. } => Some((urgency * 100.0).round().clamp(0.0, 10_000.0) as u64),
                 Room::UsedUp(_) => None,
             },
             running = *running as u64,
-            reason = match (rotation, tied) {
-                (Rotation::InOrder, _) => "first_usable",
-                (_, 1) => "most_urgent",
+            reason = match (rotation, tied, open[index]) {
+                (_, _, Room::UsedUp(_)) => "soonest_reset",
+                (Rotation::InOrder, _, _) => "first_usable",
+                (_, 1, _) => "most_urgent",
                 _ => "fewest_running_among_equal_urgency",
             },
             "an account was chosen for an agent"
@@ -263,19 +286,18 @@ impl AccountRotation {
         (!rooms.iter().any(Room::usable)).then(|| earliest(&rooms))
     }
 
-    /// Whether `account` of `entry` is marked used up at `now`.
-    pub fn is_used_up(&self, entry: &ProviderId, account: &CredentialId, now: Timestamp) -> bool {
-        self.lock()
-            .used_up
-            .get(&(entry.clone(), account.clone()))
-            .is_some_and(|until| *until > now)
+    /// Whether a vendor refused `candidate` of `entry` as used up and the
+    /// refusal still holds at `now`.
+    pub fn is_used_up(&self, entry: &ProviderId, candidate: &Candidate, now: Timestamp) -> bool {
+        mark(&self.lock(), entry, candidate, now).is_some()
     }
 
-    /// Marks `account` of `entry` used up until `until`.
-    pub fn mark_used_up(&self, entry: &ProviderId, account: &CredentialId, until: Timestamp) {
+    /// Marks `account` of `entry` used up until `until`, as its vendor said
+    /// at `at`.
+    pub fn mark_used_up(&self, entry: &ProviderId, account: &CredentialId, until: Timestamp, at: Timestamp) {
         self.lock()
             .used_up
-            .insert((entry.clone(), account.clone()), until);
+            .insert((entry.clone(), account.clone()), Mark { until, at });
         self.changed(entry);
     }
 
@@ -312,16 +334,29 @@ fn rooms(
     candidates
         .iter()
         .map(|candidate| {
-            let marked = state
-                .used_up
-                .get(&(entry.clone(), candidate.id.clone()))
-                .filter(|until| **until > now);
-            match marked {
-                Some(until) => Room::UsedUp(Some(*until)),
+            match mark(state, entry, candidate, now) {
+                Some(mark) => Room::UsedUp(Some(mark.until)),
                 None => account_room(candidate.snapshot.as_ref(), model, now),
             }
         })
         .collect()
+}
+
+/// The vendor's refusal of `candidate` of `entry` that holds at `now`: one
+/// whose moment is still to come, and that no snapshot observed after it
+/// says more than.
+fn mark(state: &State, entry: &ProviderId, candidate: &Candidate, now: Timestamp) -> Option<Mark> {
+    state
+        .used_up
+        .get(&(entry.clone(), candidate.id.clone()))
+        .filter(|mark| mark.until > now)
+        .filter(|mark| {
+            candidate
+                .snapshot
+                .as_ref()
+                .is_none_or(|snapshot| snapshot.observed_at <= mark.at)
+        })
+        .copied()
 }
 
 /// The standing of an account whose snapshot is `snapshot`, for `model`,
@@ -443,6 +478,21 @@ fn most_urgent(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<(usiz
         .into_iter()
         .min_by_key(|(index, _, _)| (running(*index), *index))
         .map(|(index, _, _)| (*index, tied))
+}
+
+/// The index of the account of `rooms`, none of them usable, that can be used
+/// again soonest: the first that names the earliest moment, else the first
+/// that names none. An account left out, as `None`, is never taken.
+fn soonest(rooms: &[Option<Room>]) -> Option<usize> {
+    rooms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, room)| match room {
+            Some(Room::UsedUp(until)) => Some((index, *until)),
+            Some(Room::Left { .. }) | None => None,
+        })
+        .min_by_key(|(index, until)| (until.is_none(), *until, *index))
+        .map(|(index, _)| index)
 }
 
 /// The earliest moment an account of `rooms`, all used up, can be used
