@@ -1,6 +1,7 @@
 // `bun run readme-picture` in this package: the README's picture,
-// `docs/assets/product.webp`, a moving picture that plays once and rests on
-// its last frame.
+// `docs/assets/product.webp`, a moving picture that loops. It ends as it
+// starts, iPhone Duo closed and facing the viewer, so each round runs on into
+// the next.
 //
 // It plays a scene of `src/demo/readme.ts` in the demos' app on two screens,
 // a computer's browser and a phone, and records both frame by frame: each
@@ -32,8 +33,8 @@ const DUO_BODY = join(
 )
 const FPS = 25
 const STEP_MS = 1000 / FPS
-/** How long the picture runs past the scene's end, so the hinge and the view come to rest. */
-const REST_MS = 600
+/** How long the picture runs past the scene's end, while iPhone Duo is closed again and comes to rest. */
+const REST_MS = 2300
 /** The longest the scene may play, so a scene that never ends stops the recording. */
 const LONGEST_MS = 20_000
 const DESKTOP = { viewport: { width: 1440, height: 1080 }, deviceScaleFactor: 2 }
@@ -127,12 +128,21 @@ const server = Bun.serve({
   },
 })
 const frames = await mkdtemp(join(tmpdir(), 'readme-picture-'))
-const browser = await chromium.launch()
+// The GPU draws the 3D body: Chromium's software renderer leaves thin seams
+// along the model's parts.
+const browser = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu'] })
 /** What went wrong on a screen, which stops the recording. */
 const errors: string[] = []
 try {
   const screens = await Promise.all([open('desktop', DESKTOP), open('phone', PHONE)])
   const [desk, phone] = screens
+  const renderer = await desk.evaluate(() => {
+    const gl = document.createElement('canvas').getContext('webgl2')
+    const info = gl?.getExtension('WEBGL_debug_renderer_info')
+    return gl && info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : 'none'
+  })
+  if (/swiftshader|none/i.test(renderer))
+    throw new Error(`The browser draws WebGL without the GPU (${renderer}).`)
   await settle(desk, phone)
   const pointer = await hinge(desk)
   const card = await layout()
@@ -150,7 +160,7 @@ try {
       break
     if (at > LONGEST_MS)
       throw new Error(`The scene did not end on both screens in ${LONGEST_MS / 1000} s.`)
-    await pointer(since('check'))
+    await pointer(since)
     await Promise.all(screens.map((page) => animationsAt(page, at)))
     const [computer, handset] = await Promise.all(screens.map((page) => page.screenshot()))
     const name = join(frames, `${String(frame).padStart(4, '0')}.png`)
@@ -159,7 +169,7 @@ try {
     await Promise.all(screens.map((page) => page.clock.runFor(STEP_MS)))
   }
   const picture = join(frames, 'product.webp')
-  const encode = Bun.spawn(['img2webp', '-loop', '1', '-kmax', '300', '-lossless', '-m', '4', '-d', String(STEP_MS), ...names, '-o', picture], { stdout: 'ignore' })
+  const encode = Bun.spawn(['img2webp', '-loop', '0', '-kmax', '300', '-lossless', '-m', '4', '-d', String(STEP_MS), ...names, '-o', picture], { stdout: 'ignore' })
   if ((await encode.exited) !== 0)
     throw new Error('img2webp failed')
   await Bun.write(OUT, Bun.file(picture))
@@ -208,31 +218,44 @@ async function settle(desk: Page, phone: Page): Promise<void> {
 }
 
 /**
- * The pointer's drags on iPhone Duo as the agent checks it, by the time since
- * the scene marked `check`: the hinge's slider from flat to about 109°, then
- * the view turned from an empty part of the panel.
+ * The pointer's presses on iPhone Duo, each by the time since the scene
+ * marked one of its moments, moved from `x0` to `x1` while held. As the agent
+ * checks it: the hinge's slider dragged from flat to about 109°, then the view
+ * turned from an empty part of the panel. Once the scene is done: a click on
+ * Face the Device, a press that does not move, turns the view back, and the
+ * slider closes the hinge, as the picture's first frame shows it.
  */
-async function hinge(desk: Page): Promise<(since: number | null) => Promise<void>> {
+async function hinge(desk: Page): Promise<(since: (mark: string) => number | null) => Promise<void>> {
   const slider = (await desk.locator('[data-work-panel] [role=slider]').first().boundingBox())!
   const view = (await desk.locator('[data-work-panel] canvas').first().boundingBox())!
+  const face = (await desk.getByRole('button', { name: 'Face the Device' }).boundingBox())!
   const y = slider.y + slider.height / 2
   const flat = slider.x + slider.width - 6
-  const drags = [
-    { from: 50, to: 750, x0: flat, x1: slider.x + slider.width * 0.6, y },
-    { from: 850, to: 1400, x0: view.x + 12, x1: view.x + 12 - 65, y: view.y + 30 },
+  const half = slider.x + slider.width * 0.6
+  const faceAt = { x: face.x + face.width / 2, y: face.y + face.height / 2 }
+  const presses = [
+    { mark: 'check', from: 50, to: 750, x0: flat, x1: half, y },
+    { mark: 'check', from: 850, to: 1400, x0: view.x + 12, x1: view.x + 12 - 65, y: view.y + 30 },
+    { mark: 'done', from: 500, to: 560, x0: faceAt.x, x1: faceAt.x, y: faceAt.y },
+    { mark: 'done', from: 800, to: 1500, x0: half, x1: slider.x + 1, y },
   ]
-  let held: (typeof drags)[number] | null = null
-  return async (since) => {
-    const drag = since === null ? undefined : drags.find((each) => since >= each.from && since <= each.to + STEP_MS)
-    if (drag && since !== null) {
-      if (held !== drag) {
+  let held: (typeof presses)[number] | null = null
+  return async (sinceMark) => {
+    const at = (each: (typeof presses)[number]) => sinceMark(each.mark)
+    const press = presses.find((each) => {
+      const since = at(each)
+      return since !== null && since >= each.from && since <= each.to + STEP_MS
+    })
+    const since = press && at(press)
+    if (press && since != null) {
+      if (held !== press) {
         if (held)
           await desk.mouse.up()
-        await desk.mouse.move(drag.x0, drag.y)
+        await desk.mouse.move(press.x0, press.y)
         await desk.mouse.down()
-        held = drag
+        held = press
       }
-      await desk.mouse.move(drag.x0 + (drag.x1 - drag.x0) * eased((since - drag.from) / (drag.to - drag.from)), drag.y)
+      await desk.mouse.move(press.x0 + (press.x1 - press.x0) * eased((since - press.from) / (press.to - press.from)), press.y)
     } else if (held) {
       await desk.mouse.move(held.x1, held.y)
       await desk.mouse.up()
