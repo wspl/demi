@@ -32,20 +32,95 @@ const leaveWidths = new WeakMap<HTMLElement, number>()
 const closeWidths = new WeakMap<HTMLElement, number>()
 
 function measureOpenWidth(tab: HTMLElement): number {
-  const prevWidth = tab.style.width
-  const prevFlex = tab.style.flex
-  const prevMin = tab.style.minWidth
-  // No inline width or flex: the width the strip's sharing gives the tab is
-  // what it opens to.
-  tab.style.width = ''
-  tab.style.flex = ''
-  tab.style.minWidth = ''
-  void tab.offsetWidth
-  const width = tab.getBoundingClientRect().width
-  tab.style.width = prevWidth
-  tab.style.flex = prevFlex
-  tab.style.minWidth = prevMin
-  return width
+  const parent = tab.parentElement
+  const measure = (): number => {
+    const prevWidth = tab.style.width
+    const prevFlex = tab.style.flex
+    const prevMin = tab.style.minWidth
+    // No inline width or flex: the width the strip's sharing gives the tab is
+    // what it opens to.
+    tab.style.width = ''
+    tab.style.flex = ''
+    tab.style.minWidth = ''
+    void tab.offsetWidth
+    const width = tab.getBoundingClientRect().width
+    tab.style.width = prevWidth
+    tab.style.flex = prevFlex
+    tab.style.minWidth = prevMin
+    return width
+  }
+  return parent ? measureSettled(parent, [], measure) : measure()
+}
+
+/**
+ * What `measure` reads of `parent`'s tabs laid out as they settle: the
+ * closing ones, `closing` and those already on their way out, take no room,
+ * and each tab on its way in the room it opens to, also one opened with it
+ * whose motion has yet to start. Tabs opened together thus open to one share,
+ * rather than each later one to the room the earlier ones, still narrow,
+ * leave it.
+ *
+ * Their own motion runs on: those tabs are taken out of the flow, which a
+ * motion does not move by, and a copy of each one on its way in stands in its
+ * place at its open width, for `measure` to read (`opening`). The measure may
+ * lay the strip out shorter, and the browser would pull a scroll at its end
+ * back to fit that at once: the scroll is put back.
+ */
+function measureSettled<T>(
+  parent: HTMLElement,
+  closing: HTMLElement[],
+  measure: (opening: Map<HTMLElement, HTMLElement>) => T,
+): T {
+  const children = [...parent.children].filter(isStyledEl)
+  const leaving = children.filter((child) => closing.includes(child) || isLeavingTab(child))
+  const entering = children.filter((child) => !leaving.includes(child) && enterWidths.has(child))
+  // Opened in the same render, a tab whose motion has yet to start holds no
+  // least width (`beforeEnterTab`): it takes its own while measured.
+  const pending = children.filter(
+    (child) =>
+      !leaving.includes(child) && !entering.includes(child) && child.classList.contains(`${TAB_TRANSITION}-enter-active`),
+  )
+  const pendingLeast = pending.map((child) => child.style.minWidth)
+  const scrolled: [HTMLElement, number][] = []
+  for (let each: HTMLElement | null = parent; each; each = each.parentElement) {
+    if (each.scrollLeft > 0) {
+      scrolled.push([each, each.scrollLeft])
+    }
+  }
+  const opening = new Map<HTMLElement, HTMLElement>()
+  try {
+    for (const child of entering) {
+      const copy = child.cloneNode(true) as HTMLElement
+      for (const property of ['width', 'flex', 'min-width', 'max-width', 'overflow', 'opacity', 'position']) {
+        copy.style.removeProperty(property)
+      }
+      copy.style.transition = 'none'
+      copy.removeAttribute('id')
+      child.before(copy)
+      opening.set(child, copy)
+    }
+    for (const child of [...leaving, ...entering]) {
+      child.style.position = 'absolute'
+    }
+    for (const child of pending) {
+      child.style.minWidth = ''
+    }
+    return measure(opening)
+  } finally {
+    for (const copy of opening.values()) {
+      copy.remove()
+    }
+    for (const child of [...leaving, ...entering]) {
+      child.style.position = ''
+    }
+    pending.forEach((child, index) => {
+      child.style.minWidth = pendingLeast[index]!
+    })
+    void parent.offsetWidth
+    for (const [each, left] of scrolled) {
+      each.scrollLeft = left
+    }
+  }
 }
 
 function tabEl(el: Element): HTMLElement {
@@ -219,6 +294,9 @@ export function enterTab(el: Element): void {
   }
   const width = measureOpenWidth(tab)
   enterWidths.set(tab, width)
+  // Its content does not cap it on the way: a short title's tab opens to its
+  // least width, which is wider than the title.
+  tab.style.maxWidth = 'none'
   tab.style.flex = '0 0 auto'
   tab.style.transition = 'none'
   tab.style.width = '0'
@@ -281,6 +359,7 @@ export function afterEnterTab(el: Element): void {
   enterWidths.delete(tab)
   tab.style.width = ''
   tab.style.minWidth = ''
+  tab.style.maxWidth = ''
   tab.style.overflow = ''
   tab.style.flex = ''
   tab.style.opacity = ''
@@ -443,61 +522,42 @@ export function afterLeaveTab(el: Element): void {
 /**
  * Starts the tabs that stay toward the widths they take once the closing
  * ones are gone, in the closing tab's motion, so the strip moves once rather
- * than closing first and widening after. A tab on its way in keeps its own
- * motion.
+ * than closing first and widening after. A tab on its way in grows on, to
+ * its share of the room the close leaves.
  */
 function settleStaying(parent: HTMLElement, closing: HTMLElement[]): void {
   if (prefersReducedMotion()) {
     return
   }
-  const children = [...parent.children].filter(isStyledEl)
-  const leaving = children.filter((child) => closing.includes(child) || isLeavingTab(child))
-  const entering = children.filter((child) => !leaving.includes(child) && enterWidths.has(child))
-  const staying = children.filter((child) => !leaving.includes(child) && !entering.includes(child))
+  const staying = [...parent.children].filter(
+    (child): child is HTMLElement =>
+      isStyledEl(child) && !closing.includes(child) && !isLeavingTab(child) && !enterWidths.has(child),
+  )
   const from = staying.map((child) => child.getBoundingClientRect().width)
-  // The measure lays the strip out shorter, and the browser would pull a
-  // scroll at its end back to fit that at once: the scroll is put back.
-  const scrolled: [HTMLElement, number][] = []
-  for (let each: HTMLElement | null = parent; each; each = each.parentElement) {
-    if (each.scrollLeft > 0) {
-      scrolled.push([each, each.scrollLeft])
+  const { to, opened } = measureSettled(parent, closing, (opening) => {
+    for (const child of staying) {
+      child.style.transition = 'none'
+      child.style.width = ''
+      child.style.flex = ''
     }
-  }
-  // Out of the flow, which keeps their own motion running, the closing tabs
-  // leave the room the others share once they are gone.
-  for (const child of leaving) {
-    child.style.position = 'absolute'
-  }
-  // A tab on its way in takes the room it opens to; its least width is not
-  // one its motion runs on.
-  for (const child of entering) {
-    child.style.minWidth = `${enterWidths.get(child)}px`
-  }
-  for (const child of staying) {
-    child.style.transition = 'none'
-    child.style.width = ''
-    child.style.flex = ''
-  }
-  const to = staying.map((child) => child.getBoundingClientRect().width)
-  for (const child of leaving) {
-    child.style.position = ''
-  }
-  for (const child of entering) {
-    child.style.minWidth = '0'
-  }
-  staying.forEach((child, index) => {
-    child.style.width = `${from[index]}px`
-    child.style.flex = '0 0 auto'
+    const widths = staying.map((child) => child.getBoundingClientRect().width)
+    const open = [...opening].map(([child, copy]) => [child, copy.getBoundingClientRect().width] as const)
+    staying.forEach((child, index) => {
+      child.style.width = `${from[index]}px`
+      child.style.flex = '0 0 auto'
+    })
+    return { to: widths, opened: open }
   })
-  void parent.offsetWidth
-  for (const [each, left] of scrolled) {
-    each.scrollLeft = left
-  }
   staying.forEach((child, index) => {
     closeWidths.set(child, to[index]!)
     child.style.transition = `width ${TAB_WIDTH_MS}ms ease-out`
     child.style.width = `${to[index]}px`
   })
+  // A tab on its way in grows on to the room the close leaves it.
+  for (const [child, width] of opened) {
+    enterWidths.set(child, width)
+    child.style.width = `${width}px`
+  }
 }
 
 
