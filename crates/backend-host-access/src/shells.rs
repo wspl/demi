@@ -765,14 +765,6 @@ impl ShellEnvironment for Registered {
         self.environment.read_output(command)
     }
 
-    fn write<'a>(
-        &'a self,
-        command: &'a CommandId,
-        stdin: Bytes,
-    ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
-        self.environment.write(command, stdin)
-    }
-
     fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>> {
         self.environment.abort(command)
     }

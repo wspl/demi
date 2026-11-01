@@ -279,7 +279,6 @@
     "open_failed": "无法打开对话。",
     "save_failed": "无法保存对话。",
     "subagent_failed": "无法启动或停止子智能体。",
-    "shell_input_failed": "无法将输入发送到命令。",
     "shell_stop_failed": "无法停止命令。",
     "nothing_to_retry": "没有可重试的内容。",
     "summary_missing": "模型未写出摘要。",

@@ -279,7 +279,6 @@
     "open_failed": "チャットを開けませんでした。",
     "save_failed": "チャットを保存できませんでした。",
     "subagent_failed": "サブエージェントを開始または停止できませんでした。",
-    "shell_input_failed": "入力をコマンドに送信できませんでした。",
     "shell_stop_failed": "コマンドを停止できませんでした。",
     "nothing_to_retry": "再試行するものはありません。",
     "summary_missing": "モデルが要約を作成しませんでした。",

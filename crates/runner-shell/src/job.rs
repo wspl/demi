@@ -66,7 +66,6 @@ use demi_runner_process::process::{JOB_ID_ENV, Stray};
 use demi_runner_process::{
     job_shell::ShellJob,
     process::{OutputChunk, ProcessExit, ProcessInput},
-    stdio::{LIVE_INPUT_ENV, reference},
 };
 #[cfg(unix)]
 use tokio_util::task::AbortOnDropHandle;
@@ -114,31 +113,38 @@ const OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
 /// without an end.
 const KILLED_WORK: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// A job's three pipes: the ends the interpreter uses and the runner's.
+/// A job's standard handles: the ends the interpreter uses and the runner's.
 struct Pipes {
     stdin: File,
-    input_writer: File,
+    /// The runner's end of the job's stdin pipe; none for a job whose stdin
+    /// is the null device.
+    input_writer: Option<File>,
     output_reader: File,
     stdout: File,
     error_reader: File,
     stderr: File,
-    /// A copy of the job's stdin pipe, which `DEMI_LIVE_INPUT` names
-    /// (`crates/runner-process/src/stdio.rs`); kept open until every
-    /// interpreter task finishes.
-    input_reference: File,
 }
 
 impl Pipes {
+    /// The job's stdin is a pipe the relayed input goes into, or with
+    /// `relayed_input` false the null device, which a program reads to its
+    /// end at once: an open pipe nothing writes to would hold a program that
+    /// reads stdin, such as `rg` given no path, until the job ends.
+    ///
     /// Out of open files, this waits for one on a shell thread until the
     /// job is cancelled (`crates/command-sdk/src/descriptors.rs`).
-    async fn open(shell: &ShellRuntime, scope: &Scope) -> io::Result<Self> {
+    async fn open(shell: &ShellRuntime, scope: &Scope, relayed_input: bool) -> io::Result<Self> {
         let scope = scope.clone();
         shell
             .spawn_blocking(move || {
-                let (stdin, input_writer) = scope.descriptors(pipe)?;
+                let (stdin, input_writer) = if relayed_input {
+                    let (stdin, writer) = scope.descriptors(pipe)?;
+                    (stdin, Some(writer))
+                } else {
+                    (scope.descriptors(null_device)?, None)
+                };
                 let (output_reader, stdout) = scope.descriptors(pipe)?;
                 let (error_reader, stderr) = scope.descriptors(pipe)?;
-                let input_reference = scope.duplicate(&stdin)?;
                 Ok(Self {
                     stdin,
                     input_writer,
@@ -146,7 +152,6 @@ impl Pipes {
                     stdout,
                     error_reader,
                     stderr,
-                    input_reference,
                 })
             })
             .await
@@ -155,13 +160,13 @@ impl Pipes {
 }
 
 impl Job {
-    /// Starts `script`. `live` says whether the job's stdin is its own
-    /// input, which it is unless the backend relays it from another command.
+    /// Starts `script`, whose stdin is the input the backend relays to
+    /// [`Job::input`] when `relayed_input`, and empty otherwise.
     pub async fn start(
         script: String,
         cwd: PathBuf,
-        mut env: BTreeMap<String, String>,
-        live: bool,
+        env: BTreeMap<String, String>,
+        relayed_input: bool,
         scope: Scope,
         shell: &ShellRuntime,
     ) -> io::Result<Self> {
@@ -172,12 +177,7 @@ impl Job {
             stdout,
             error_reader,
             stderr,
-            input_reference,
-        } = Pipes::open(shell, &scope).await?;
-        env.remove(LIVE_INPUT_ENV);
-        if live {
-            env.insert(LIVE_INPUT_ENV.into(), reference(&input_reference)?);
-        }
+        } = Pipes::open(shell, &scope, relayed_input).await?;
         // Queues of a few chunks: a job that prints faster than its output is
         // taken, or is sent input faster than it reads, waits instead of
         // filling the runner's memory.
@@ -204,7 +204,9 @@ impl Job {
         let job_scope = scope.clone();
         let owner_scope = scope.clone();
         let input_cancel = cancel.child_token();
-        let writer = feed(shell, input_writer, receiver, input_cancel.clone());
+        // Without a pipe, input sent to the job is refused, as by a program
+        // that closed its stdin.
+        let writer = input_writer.map(|file| feed(shell, file, receiver, input_cancel.clone()));
         let (drains, drained) = mpsc::unbounded_channel();
         let readers = [
             pump(
@@ -225,7 +227,6 @@ impl Job {
             ),
         ];
         let worker = shell.spawn_blocking(move || {
-            let _input_reference = input_reference;
             let runtime = tokio::runtime::Handle::current();
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 runtime.block_on(execute(
@@ -275,7 +276,11 @@ impl Job {
                 format!("{what} had not ended 1 s after KILL and was left to end at its next check")
             });
             input_cancel.cancel();
-            let mut error = match writer.await {
+            let written = match writer {
+                Some(writer) => writer.await,
+                None => Ok(Ok(())),
+            };
+            let mut error = match written {
                 Ok(Err(error))
                     if !matches!(
                         error.kind(),
@@ -743,6 +748,11 @@ fn pump(
 
 /// A pipe as two files; a caller waits out a lack of open files with
 /// `Scope::descriptors`.
+/// The null device, for a job's stdin that is empty.
+fn null_device() -> io::Result<File> {
+    File::open(if cfg!(windows) { "NUL" } else { "/dev/null" })
+}
+
 pub(crate) fn pipe() -> io::Result<(File, File)> {
     let (reader, writer) = std::io::pipe()?;
     #[cfg(unix)]

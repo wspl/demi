@@ -160,7 +160,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
         .ok_or_else(|| io::Error::other("missing command context"))?
         .clone();
     let stdin = standard_file(0)?;
-    let request = RawCommand::new(context, root, argv, stdio::is_live(&stdin, &env)?)?;
+    let request = RawCommand::new(context, root, argv, !stdio::is_null_device(&stdin)?)?;
     let invocation = LocalInvocation {
         operation: RAW.into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),

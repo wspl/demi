@@ -63,7 +63,6 @@ fn request(operation: &str) -> Invocation {
             .to_string_lossy()
             .into_owned(),
         env: BTreeMap::new(),
-        live_input: None,
         viewable: None,
     }
 }

@@ -14,8 +14,6 @@
 //! - The media types the model reads come with the job when the backend starts
 //!   it. A job that `demi host shell` starts on another Host carries none,
 //!   since its output is relayed and no result reports its end.
-//! - Stdin that is the job's own input is never read, since it would wait for
-//!   the job's end.
 
 use std::{
     fs,
@@ -215,19 +213,6 @@ pub fn failure(error: &FileError) -> Completion {
 async fn view(mut context: InvocationContext, args: &ViewArgs) -> Result<Completion, ResidentError> {
     let command = context.request.command.clone();
     let named = args.path.as_deref().unwrap_or_default();
-    // Stdin that is the job's own input would wait until the job ends.
-    if named.is_empty() && context.request.live_input == Some(true) {
-        context
-            .output
-            .stderr(Bytes::from(format!(
-                "{command}: no file named, and stdin is the job's input; name a file or pipe one in\n"
-            )))
-            .await?;
-        return Ok(Completion {
-            exit_code: 1,
-            error: None,
-        });
-    }
     let paths: Vec<&str> = if named.is_empty() {
         vec!["-"]
     } else {
@@ -287,11 +272,6 @@ async fn view_file(context: &InvocationContext, path: &str) -> Result<(), FileEr
 /// Shows the model what stdin holds. Stdin over the medium bound is read to
 /// its end, so the writer is not cut off and the line names its size.
 async fn view_stdin(context: &mut InvocationContext) -> Result<(), FileError> {
-    if context.request.live_input == Some(true) {
-        return Err(FileError::Io(std::io::Error::other(
-            "stdin is the job's input; pipe a file in",
-        )));
-    }
     let mut bytes = Vec::new();
     let mut size = 0u64;
     loop {

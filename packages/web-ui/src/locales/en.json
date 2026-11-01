@@ -279,7 +279,6 @@
     "open_failed": "The conversation couldn’t be opened.",
     "save_failed": "The conversation couldn’t be saved.",
     "subagent_failed": "A subagent couldn’t be started or stopped.",
-    "shell_input_failed": "The input couldn’t be sent to the command.",
     "shell_stop_failed": "The command couldn’t be stopped.",
     "nothing_to_retry": "There’s nothing to retry.",
     "summary_missing": "The model didn’t write a summary.",

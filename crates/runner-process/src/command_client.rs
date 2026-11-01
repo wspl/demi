@@ -21,16 +21,18 @@ pub const CONTEXT_ENV: &str = "DEMI_CONTEXT_ID";
 /// [`RawCommand`].
 pub const RAW: &str = "raw";
 
-/// A command line a client forwards to the runner: the execution context it runs in, its root command and
-/// arguments, and whether its input is the job's own input. A request that
-/// breaks these rules is refused as it is read.
+/// A command line a client forwards to the runner: the execution context it
+/// runs in, its root command and arguments, and whether it has an input. A
+/// request that breaks these rules is refused as it is read.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "Request")]
 pub struct RawCommand {
     pub context: String,
     pub root: String,
     pub argv: Vec<String>,
-    pub live: bool,
+    /// Whether the command's stdin is something to read: false for the null
+    /// device ([`crate::stdio::is_null_device`]).
+    pub stdin: bool,
 }
 
 /// A request as it arrives, before its check.
@@ -40,31 +42,28 @@ struct Request {
     context: String,
     root: String,
     argv: Vec<String>,
-    live: bool,
+    #[serde(default)]
+    stdin: Option<bool>,
+    /// Whether the command's stdin is its job's input that ends only with
+    /// the job, which a job's shell of an earlier release, one that outlived
+    /// its runner, sends instead of `stdin`: such an input is none to read.
+    #[serde(default)]
+    live: Option<bool>,
 }
 
 impl TryFrom<Request> for RawCommand {
     type Error = io::Error;
 
     fn try_from(request: Request) -> io::Result<Self> {
-        RawCommand::new(
-            request.context,
-            request.root,
-            request.argv,
-            request.live,
-        )
+        let stdin = request.stdin.unwrap_or(request.live != Some(true));
+        RawCommand::new(request.context, request.root, request.argv, stdin)
     }
 }
 
 impl RawCommand {
     /// A request whose context is a context id, whose root is a single
     /// command name, and whose arguments hold no NUL.
-    pub fn new(
-        context: String,
-        root: String,
-        argv: Vec<String>,
-        live: bool,
-    ) -> io::Result<Self> {
+    pub fn new(context: String, root: String, argv: Vec<String>, stdin: bool) -> io::Result<Self> {
         if context.len() != 32
             || !context.bytes().all(|byte| byte.is_ascii_hexdigit())
             || root.is_empty()
@@ -80,7 +79,7 @@ impl RawCommand {
             context,
             root,
             argv,
-            live,
+            stdin,
         })
     }
 }
@@ -92,7 +91,7 @@ pub struct Stdio<I, O, E> {
 }
 
 /// Input is read only after an explicit pull. Output and connection processing
-/// continue while that read waits, including when the user never types anything.
+/// continue while that read waits, including when nothing is ever written.
 /// A runner that is gone is waited for up to `patience`, as a job's command
 /// waits for one that starts again ([`crate::local_socket::RUNNER_RETURN`]).
 pub async fn forward<I, O, E>(

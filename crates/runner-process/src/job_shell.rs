@@ -37,9 +37,10 @@ pub struct JobStart {
     /// before its script runs (`crates/runner-shell/src/lib.rs`).
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
-    /// Whether the job's input is its own input rather than a stdin the
-    /// backend relays (`crates/runner-process/src/stdio.rs`).
-    pub live: bool,
+    /// Whether the job reads a stdin the backend relays from another
+    /// command, which [`ShellJob::input`] takes; otherwise its stdin is
+    /// empty, so a program that reads it ends at once instead of waiting.
+    pub relayed_input: bool,
     /// Ends the job and everything it runs when cancelled.
     pub cancellation: CancellationToken,
     pub commands: Option<JobCommands>,

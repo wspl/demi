@@ -398,7 +398,6 @@ impl Opening {
                 env: Default::default(),
                 edits: None,
                 json,
-                live_input: None,
                 viewable: None,
             };
             match resident.client().invoke(&invocation).await {

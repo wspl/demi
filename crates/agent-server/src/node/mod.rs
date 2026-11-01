@@ -206,16 +206,6 @@ impl<H: HostResolver> Node<H> {
         }
     }
 
-    /// Writes `stdin` to a running command through the node's environment
-    /// for the conversation's current Host, as a page's `shell_write` asks.
-    pub(crate) async fn shell_write(
-        &self,
-        command: &CommandId,
-        stdin: String,
-    ) -> Result<(), CallError> {
-        self.runtime.shell_access().write(command, stdin).await
-    }
-
     /// Stops a running command through the node's environment for the
     /// conversation's current Host, as a page's `shell_abort` asks.
     pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<(), CallError> {

@@ -5,7 +5,7 @@ use brush_core::{
     CommandArg, ExecutionContext, ExecutionResult, Shell, SourceInfo, builtins,
     execution_host::FileControl, openfiles::OpenFile,
 };
-use demi_runner_process::{command_client::CONTEXT_ENV, stdio::is_live};
+use demi_runner_process::command_client::CONTEXT_ENV;
 use std::{
     collections::{BTreeMap, HashMap},
     fs::File,
@@ -246,7 +246,6 @@ fn execute_utility(
                 &scope,
                 context.shell.child_attributes(),
             ),
-            live_input: is_live(&stdin, &env)?,
             umask,
             cwd: context.shell.working_dir().to_owned(),
             env,

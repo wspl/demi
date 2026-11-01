@@ -726,15 +726,6 @@ impl<H: HostResolver> Connection<H> {
                     self.reject(kind, refusal);
                 }
             }
-            // What the command prints and its end reach every attached
-            // connection as its `shell_output` (`crates/agent-server/src/server/tree/live.rs`);
-            // only the write's acknowledgement is a reply.
-            ClientFrame::ShellWrite { command_id, stdin } => {
-                match tree.shell_write(&command_id, stdin).await {
-                    Ok(()) => self.send(ServerFrame::ShellWriteResult { command_id }),
-                    Err(error) => self.error(AgentCode::ShellInputFailed, error),
-                }
-            }
             ClientFrame::ShellAbort { command_id } => {
                 match tree.shell_abort(&command_id).await {
                     Ok(()) => return true,

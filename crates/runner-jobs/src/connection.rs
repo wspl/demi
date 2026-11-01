@@ -523,7 +523,6 @@ impl Relay {
                 facts,
                 bytes,
             } => (call_id, CallEvent::Medium(facts.clone(), bytes.clone())),
-            Inbound::RpcStdinPull { call_id } => (call_id, CallEvent::Pull),
             Inbound::RpcExit { call_id, exit_code } => (call_id, CallEvent::Exit(*exit_code)),
             Inbound::ArtifactLocation {
                 id,
