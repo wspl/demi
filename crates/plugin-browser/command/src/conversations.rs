@@ -1368,6 +1368,7 @@ impl Conversations {
             return Ok(CommandOutput::Json(output::value(TabNewResult {
                 tab: tab.id().clone(),
                 viewport,
+                list: user.then(|| browser.numbers.list_number()),
             })?));
         }
         if matches!(command, BrowserOperation::ContentFetch(_)) {

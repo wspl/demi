@@ -180,12 +180,11 @@ pub(crate) async fn keep(
 pub(crate) async fn new_tab(
     port: &PluginPort,
     url: Option<String>,
-) -> Result<TabId, PluginError> {
+) -> Result<TabNewResult, PluginError> {
     let input = TabNewInput { timeout: None, url };
-    let made = run::<TabNewResult, _>(port, BrowserOperation::TabNew, input, CallKind::Starts)
+    run::<TabNewResult, _>(port, BrowserOperation::TabNew, input, CallKind::Starts)
         .await
-        .map_err(refused)?;
-    Ok(made.tab)
+        .map_err(refused)
 }
 
 /// Closes the browser's tab `tab`. A tab the browser does not have, or a

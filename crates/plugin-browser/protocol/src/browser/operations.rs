@@ -185,6 +185,16 @@ pub struct TabNewResult {
     )]
     #[schemars(with = "BrowserViewport")]
     pub viewport: Option<BrowserViewport>,
+    /// The number of the first tab list that names the tab, for a `user`
+    /// caller only: a list numbered lower was taken before the tab opened.
+    /// The model has no use for it, so the agent's command never prints it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(skip)]
+    pub list: Option<u64>,
 }
 
 input! {
