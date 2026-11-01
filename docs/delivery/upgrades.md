@@ -533,9 +533,27 @@ the database copies, the switch and the return on failure are an upgrade's.
 
 - **Publishing it.** To publish a deployed version the user is content with,
   turn its pre-release into the latest release on GitHub with
-  `gh release edit "v$version" --prerelease=false --latest`. The files users
-  install are then the ones the server ran, built once. Every version is kept,
-  published or not.
+  `gh release edit "v$version" --prerelease=false --latest --notes-file
+  notes.md`. The files users install are then the ones the server ran, built
+  once. Every version is kept, published or not.
+- **Its notes.** A Beta's release says what changed since the Beta before it,
+  for the people who use Demi; a Canary keeps the notes GitHub generates.
+  Whoever publishes reads every work package merged between the two versions,
+  its commit message and its decision record, drafts the notes, and publishes
+  them only once the user agrees. They live only in the release, in this
+  order:
+  1. One sentence on the release, such as how many changes it holds.
+  2. **Highlights**: three to five changes that matter most, each a bold name
+     and one or two sentences on what the user can now do.
+  3. **New**, **Improved** and **Fixed**: one line each, in the words of the
+     screen and of someone using Demi, never a module's or a commit's.
+  4. How to update, Settings › Updates or `sudo demi-server upgrade`, and the
+     link that compares the two versions.
+
+  A change no one using Demi meets, such as one to the website, the
+  documents, the build, the tests, the logs or the code's structure, has no
+  line. Each line is checked against its change before it is written: it
+  says what the change does, not what its title suggests.
 - **Data.** A deploy that changes a schema migrates the server's databases as
   an upgrade does.
   - A schema changed again after a deploy shipped it, in the same unpublished
