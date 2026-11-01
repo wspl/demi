@@ -378,7 +378,7 @@ and the newest release of its channel:
 
 - **Beta** offers the releases Demi publishes, which GitHub marks *latest*.
 - **Canary** offers every release, including the pre-release that each push
-  to `main` publishes once it passes its checks.
+  to `main` that changes Demi publishes once it passes its checks.
 
 The backend looks for the newest release when it starts, when the channel
 changes, on **Check Now**, and then every hour on Canary and every day on
@@ -463,10 +463,12 @@ The same commit always has the same version, and a later commit a higher one.
 Nothing is committed to deploy, and versions skip numbers between releases.
 
 Every push to `main` builds everything a release publishes, for every
-target (`.github/workflows/build.yml`). Once that build and the push's checks
-(`ci.yml`) have passed, `canary.yml` publishes it as a pre-release, the next
-Canary. A deploy needs the pre-release of the newest pushed commit: it usually
-finds it published already, and otherwise asks for it and waits. The commit
+target (`.github/workflows/build.yml`), unless it changes only files no
+release holds, such as documents or the website. Once that build and the
+push's checks (`ci.yml`) have passed, `canary.yml` publishes it as a
+pre-release, the next Canary. A deploy needs the pre-release of the newest
+pushed commit: it usually finds it published already, and otherwise asks for
+it and waits, which builds a commit that changed only documents. The commit
 and its version are worked out first, so every later step names them, and a
 version that has a release already, as a Canary or from an earlier deploy, is
 not published again:
