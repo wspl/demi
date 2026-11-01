@@ -415,7 +415,7 @@ impl ConversationRuntime {
     ///
     /// - the entry still has it;
     /// - its rotation is the one it was taken under;
-    /// - it is not marked used up.
+    /// - no refusal of its vendor marks it used up.
     ///
     /// Otherwise it is one taken now, which the session is told of. A request that
     /// `runs` counts the agent as running on it.
@@ -430,27 +430,38 @@ impl ConversationRuntime {
         let rotation = entry.rotation();
         let now = self.scope.services.clock.now();
         if let Some(named) = named.filter(|named| named.rotation == rotation) {
-            let accounts = self
-                .scope
-                .services
-                .vault
-                .accounts(entry.id.clone())
+            let candidates = provider_registry
+                .candidates(entry, false)
                 .await
-                .map_err(|error| refused(entry_unreadable(&error), None))?;
-            let kept = accounts.into_iter().find(|account| {
-                account.id.as_str() == named.credential_id
-                    && !provider_registry.rotation().is_used_up(&entry.id, &account.id, now)
-            });
+                .map_err(|error| refused(error.to_string(), None))?;
+            let kept = match candidates.iter().find(|candidate| candidate.id.as_str() == named.credential_id) {
+                Some(candidate) => {
+                    (!provider_registry.rotation().is_used_up(&entry.id, candidate, now))
+                        .then(|| candidate.id.clone())
+                }
+                // One its vendor signed out is not a candidate, and is kept:
+                // its request fails with the sign-in the user is asked for.
+                None => self
+                    .scope
+                    .services
+                    .vault
+                    .accounts(entry.id.clone())
+                    .await
+                    .map_err(|error| refused(entry_unreadable(&error), None))?
+                    .into_iter()
+                    .find(|account| account.id.as_str() == named.credential_id)
+                    .map(|account| account.id),
+            };
             if let Some(kept) = kept {
-                self.keep(entry, kept.id.clone(), runs);
-                return Ok((kept.id, None));
+                self.keep(entry, kept.clone(), runs);
+                return Ok((kept, None));
             }
         }
         let previous = named
             .map(|named| named.credential_id.clone())
             .or_else(|| self.account.as_ref().map(ToString::to_string));
         let (choice, candidates) = provider_registry
-            .take_account(entry, model)
+            .take_account(entry, model, &[])
             .instrument(tracing::info_span!(
                 "account_choice",
                 conversation = %self.scope.conversation,
@@ -463,8 +474,10 @@ impl ConversationRuntime {
                 let account = running.account().clone();
                 if let Some(previous) = previous.filter(|previous| previous != account.as_str()) {
                     // The account the agent kept was used up, removed or of another rotation.
-                    let used_up = CredentialId::try_from(previous.as_str())
-                        .is_ok_and(|previous| provider_registry.rotation().is_used_up(&entry.id, &previous, now));
+                    let used_up = candidates.iter().any(|candidate| {
+                        candidate.id.as_str() == previous
+                            && provider_registry.rotation().is_used_up(&entry.id, candidate, now)
+                    });
                     tracing::info!(
                         event = "account.rotated",
                         conversation = %self.scope.conversation,
@@ -480,7 +493,7 @@ impl ConversationRuntime {
                 self.running = runs.then_some(running);
                 Ok((account.clone(), Some(Some(agent_account(&account, rotation)))))
             }
-            Some(Choice::AllUsedUp { .. }) => Err(all_used_up(entry, &candidates)),
+            Some(Choice::AllTried) => Err(all_used_up(entry, &candidates)),
             None => unreachable!("a rotating entry takes an account or finds them used up"),
         }
     }
@@ -503,9 +516,9 @@ impl ConversationRuntime {
     /// The agent's account failed with `failure`, a usage limit: marks it used up
     /// until the moment the failure or its quota names, or for 30 minutes.
     ///
-    /// The mark is made whether the request is sent again or not, so no agent
-    /// takes the account meanwhile. Answers the account, the moment and the window
-    /// used up.
+    /// The mark is made whether the request is sent again or not, so agents take
+    /// the entry's other accounts first meanwhile. Answers the account, the moment
+    /// and the window used up.
     fn mark_used_up(
         &mut self,
         entry: &ProviderEntry,
@@ -544,24 +557,27 @@ impl ConversationRuntime {
     }
 
     /// The agent's account failed with `failure`, a usage limit, before anything
-    /// of the run reached the agent: the account is marked used up, and the agent
-    /// takes another, whose runtime serves the same request again.
+    /// of the run reached the agent: the account is marked used up and joins
+    /// `tried`, and the agent takes one the request has not tried, whose runtime
+    /// serves the same request again.
     ///
-    /// Answers the move, or nothing when every account is used up
+    /// Answers the move, or nothing when every account refused the request
     /// (`crates/provider-registry/src/rotation.rs`).
     async fn switch_account(
         &mut self,
         failure: &ProviderFailure,
+        tried: &mut Vec<CredentialId>,
     ) -> Result<(AccountSwitch, AgentAccount), ()> {
         let entry = self.entry().await.map_err(drop)?;
         let (used_up, moment, window) = self.mark_used_up(&entry, failure).ok_or(())?;
+        tried.push(used_up.clone());
         let provider_registry = self.scope.services.provider_registry.clone();
         let model = self.selection.model.clone();
         // The agent stops counting on the used-up account before the
         // choice, which then counts it nowhere.
         self.running = None;
         let (choice, candidates) = provider_registry
-            .take_account(&entry, &model)
+            .take_account(&entry, &model, tried)
             .instrument(tracing::info_span!(
                 "account_choice",
                 conversation = %self.scope.conversation,
@@ -711,8 +727,8 @@ fn agent_account(account: &CredentialId, rotation: Rotation) -> AgentAccount {
     }
 }
 
-/// The failure of a request no account of `entry` can serve: every one is
-/// used up, and the turn ends as it would with Manual
+/// The failure of a request no account of `entry` takes, as it has none, and
+/// the turn ends as it would with Manual
 /// (`crates/provider-registry/src/rotation.rs`).
 fn all_used_up(entry: &ProviderEntry, candidates: &[Candidate]) -> ProviderFailure {
     let message = match candidates.len() {
@@ -763,6 +779,9 @@ impl ProviderRuntime for ConversationRuntime {
                 output_limit: admitted.output_limit,
                 ..request
             };
+            // The accounts that refused this request, which it does not ask
+            // again.
+            let mut tried = Vec::new();
             loop {
                 let mut used_up = None;
                 let mut shown = false;
@@ -808,8 +827,8 @@ impl ProviderRuntime for ConversationRuntime {
                 // Once output showed, nothing is held any more.
                 if shown {
                     // Part of the answer reached the agent, so the request
-                    // is not sent again, but no agent takes the account
-                    // until its moment.
+                    // is not sent again, but agents take the entry's other
+                    // accounts first until its moment.
                     if let Ok(entry) = self.entry().await {
                         self.mark_used_up(&entry, &failure);
                     }
@@ -817,7 +836,7 @@ impl ProviderRuntime for ConversationRuntime {
                     return;
                 }
                 let switched = tokio::select! {
-                    switched = self.switch_account(&failure) => switched,
+                    switched = self.switch_account(&failure, &mut tried) => switched,
                     () = cancel.cancelled() => return,
                 };
                 match switched {
@@ -869,8 +888,7 @@ impl ProviderRuntime for ConversationRuntime {
     /// The account the next request of `model` takes under the entry's
     /// rotation, as [`admit`](Self::admit) takes it, without counting the
     /// agent as running on it; under Manual, none. An entry that cannot
-    /// serve, or whose accounts are all used up, changes nothing: the
-    /// request says why.
+    /// serve changes nothing: the request says why.
     fn next_account<'a>(
         &'a mut self,
         model: &'a ModelSelection,

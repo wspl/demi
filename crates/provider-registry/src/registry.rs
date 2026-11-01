@@ -184,9 +184,9 @@ impl ProviderRegistry {
         &self.rotation
     }
 
-    /// Marks `account` of `entry` used up until `until`, so no agent and no
-    /// image takes it meanwhile, and tells the entry's pages now and at
-    /// `until`, since it routes their requests elsewhere until then.
+    /// Marks `account` of `entry` used up until `until`, as its vendor just
+    /// refused it, so requests take its other accounts first meanwhile, and
+    /// tells the entry's pages now and at `until`.
     ///
     /// `source` says where `until` comes from: `vendor_refusal` when the
     /// failure named it, `snapshot` when the account's quota did, `default`
@@ -200,7 +200,7 @@ impl ProviderRegistry {
             source,
             "an account was marked used up"
         );
-        self.rotation.mark_used_up(entry, account, until);
+        self.rotation.mark_used_up(entry, account, until, self.clock.now());
         self.quotas.used_up(entry, until);
     }
 
@@ -402,13 +402,14 @@ impl ProviderRegistry {
             .collect())
     }
 
-    /// Takes an account of `entry` under its rotation for an agent of
-    /// `model`, reading stale snapshots first for Smart; none for a
-    /// Manual entry.
+    /// Takes an account of `entry` under its rotation for a request of
+    /// `model`, other than those in `tried`, which refused it already,
+    /// reading stale snapshots first for Smart; none for a Manual entry.
     pub async fn take_account(
         &self,
         entry: &ProviderEntry,
         model: &Model,
+        tried: &[CredentialId],
     ) -> Result<(Option<Choice>, Vec<Candidate>), RegistryError> {
         let rotation = entry.rotation();
         let candidates = self
@@ -416,7 +417,7 @@ impl ProviderRegistry {
             .await?;
         let choice = self
             .rotation
-            .take(&entry.id, rotation, &candidates, model, self.clock.now());
+            .take(&entry.id, rotation, &candidates, model, tried, self.clock.now());
         Ok((choice, candidates))
     }
 

@@ -19,8 +19,10 @@
 //!
 //! - the user has it on and its switch for the kind is on;
 //! - it is signed in or has its key;
-//! - it offers the model;
-//! - an account of it is not used up.
+//! - it offers the model.
+//!
+//! An entry whose every account shows used up comes after the others, the
+//! soonest to reset first, and is asked all the same: only its vendor refuses.
 //!
 //! # Handing a call on
 //!
@@ -878,9 +880,14 @@ impl Call<'_> {
                     }
                 };
                 let position = offering.iter().position(|route| route.entry.id == entry.id);
+                // An entry that shows used up is asked all the same: only its
+                // vendor refuses.
                 let why = match position {
                     None => Some(Unable::NotOffered),
-                    Some(index) => standings[index].unable(),
+                    Some(index) => match standings[index] {
+                        Standing::UsedUp(_) => None,
+                        standing => standing.unable(),
+                    },
                 };
                 if let Some(why) = why {
                     return Err(refused(MediaRefusal::Cannot {
@@ -892,12 +899,26 @@ impl Call<'_> {
                 }
                 vec![offering[position.expect("an entry that can is offered")]]
             }
-            None => offering
-                .iter()
-                .zip(&standings)
-                .filter(|(_, standing)| **standing == Standing::Ready)
-                .map(|(route, _)| *route)
-                .collect(),
+            // The entries ready first, then those that show used up, the
+            // soonest to reset first: only a vendor refuses.
+            None => {
+                let mut used_up: Vec<(&Route, Option<Timestamp>)> = offering
+                    .iter()
+                    .zip(&standings)
+                    .filter_map(|(route, standing)| match standing {
+                        Standing::UsedUp(until) => Some((*route, *until)),
+                        _ => None,
+                    })
+                    .collect();
+                used_up.sort_by_key(|(_, until)| (until.is_none(), *until));
+                offering
+                    .iter()
+                    .zip(&standings)
+                    .filter(|(_, standing)| **standing == Standing::Ready)
+                    .map(|(route, _)| *route)
+                    .chain(used_up.into_iter().map(|(route, _)| route))
+                    .collect()
+            }
         };
         let mut spent: Option<PortFailure> = None;
         for candidate in tried {
@@ -1445,8 +1466,7 @@ impl Making<'_> {
         let services = self.shard.services();
         let provider_registry = &services.provider_registry;
         let rotation = entry.rotation();
-        // The accounts the call used up; taking one again means the
-        // rotation has no other.
+        // The accounts that refused the call, which it does not ask again.
         let mut tried: Vec<CredentialId> = Vec::new();
         let mut last_moment = None;
         // What the vendor named to trace the last usage limit, which the
@@ -1469,13 +1489,10 @@ impl Making<'_> {
                     (active.ok_or_else(|| refused(MediaRefusal::NoProvider))?, None)
                 }
                 Rotation::InOrder | Rotation::Smart => {
-                    let (choice, _) = provider_registry.take_account(entry, &self.model).await.map_err(failed)?;
+                    let (choice, _) = provider_registry.take_account(entry, &self.model, &tried).await.map_err(failed)?;
                     match choice {
-                        Some(Choice::Account(running)) if tried.contains(running.account()) => {
-                            return Err(used_up(last_moment, &last_trace));
-                        }
                         Some(Choice::Account(running)) => (running.account().clone(), Some(running)),
-                        Some(Choice::AllUsedUp { earliest }) => return Err(used_up(earliest, &last_trace)),
+                        Some(Choice::AllTried) => return Err(used_up(last_moment, &last_trace)),
                         None => unreachable!("a rotating entry takes an account or finds them used up"),
                     }
                 }
@@ -1485,12 +1502,6 @@ impl Making<'_> {
                 .await
                 .map_err(failed)?
                 .ok_or_else(|| refused(MediaRefusal::NoProvider))?;
-            let now = services.clock.now();
-            // A Manual entry whose account a call used up is not asked
-            // again until it resets: Automatic goes on with the next entry.
-            if rotation == Rotation::Manual && provider_registry.rotation().is_used_up(&entry.id, &account, now) {
-                return Err(used_up(provider.quota().and_then(|quota| quota.used_up_until(now)), &last_trace));
-            }
             // The account is named only to whoever manages the entry: on a
             // shared instance it is the administrator's
             // (`crates/backend-providers/src/vault/entries.rs`).
