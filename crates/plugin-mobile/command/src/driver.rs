@@ -80,6 +80,11 @@ impl Rect {
         }
     }
 
+    /// Whether `point` lies within it.
+    pub fn contains(&self, point: &Points) -> bool {
+        (self.x..=self.x + self.width).contains(&point.x) && (self.y..=self.y + self.height).contains(&point.y)
+    }
+
     /// The smallest rectangle around both.
     pub fn union(&self, other: &Rect) -> Rect {
         let left = self.x.min(other.x);
