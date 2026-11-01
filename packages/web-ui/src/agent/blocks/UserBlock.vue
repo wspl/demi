@@ -425,7 +425,7 @@ useResizeObserver(bodyRef, measure)
               The quoted text is the reply's words as they rendered, never read
               as Markdown again.
             -->
-            <div v-if="comments?.length" class="markdown-body" :class="message.markdown || message.capsules.length ? 'mb-[var(--markdown-block-gap)]' : ''" data-sent-comments>
+            <div v-if="comments?.length" class="markdown-body" data-sent-comments>
               <template v-for="comment in comments" :key="comment.id">
                 <blockquote v-if="comment.picture" data-comment-picture>
                   <img :src="mediaAddress(comment.picture)" :alt="comment.quote" class="max-h-24 max-w-40 rounded-md object-contain">
