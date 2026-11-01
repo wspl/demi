@@ -128,6 +128,7 @@
     },
     "newFile": "新しいファイル",
     "moreFiles": "+{count} ファイル",
+    "fewerFiles": "表示を減らす",
     "picture": {
       "open": "{name} を拡大して開く",
       "play": "{name} を再生"

@@ -128,6 +128,7 @@
     },
     "newFile": "New file",
     "moreFiles": "+{count} File | +{count} Files",
+    "fewerFiles": "Show Less",
     "picture": {
       "open": "Open {name} large",
       "play": "Play {name}"
