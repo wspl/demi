@@ -331,11 +331,35 @@ pub async fn run(
                     }
                     Some((_, listed)) => {
                         let at = listed.frame.centre();
-                        {
-                            let _lift = open.touching(at, at);
-                            acting(&open, call, at, open.device.tap(at, 0.0)).await?;
+                        let tapped = typing::Tapped {
+                            role: listed.role.clone(),
+                            label: listed.label.clone(),
+                            at,
+                        };
+                        let before = typing::focused_now(&open.device).await?;
+                        // A second tap when the first left the focus where it was.
+                        let mut kept = None;
+                        let mut field = None;
+                        for within in [typing::RETAP, typing::LANDING] {
+                            {
+                                let _lift = open.touching(at, at);
+                                acting(&open, call, at, open.device.tap(at, 0.0)).await?;
+                            }
+                            match typing::focus_after(&open.device, &tapped, before.as_ref(), within).await? {
+                                typing::Focus::Came(focused) => {
+                                    field = Some(focused);
+                                    break;
+                                }
+                                typing::Focus::Kept(focused) => kept = Some(focused),
+                            }
                         }
-                        Some(typed(&open, &input.text).await?)
+                        let field = match (field, kept) {
+                            (Some(field), _) => field,
+                            (None, kept) => {
+                                return Err(typing::kept_focus(&tapped, &kept.expect("a tap that kept the focus says where")));
+                            }
+                        };
+                        Some(typed_at(&open, &input.text, field).await?)
                     }
                     None => Some(typed(&open, &input.text).await?),
                 };
@@ -1227,7 +1251,16 @@ fn reading_of<'a>(call: &'a Call<'_>, input: &'a RecordInput, output: Option<&'a
 /// Types `text` on the device as the agent, the recording drawing each run
 /// of keys as it goes out.
 async fn typed(open: &Arc<OpenDevice>, text: &str) -> Result<typing::Typed, MobileError> {
+    crate::keys::TYPED.scope(told(open), typing::type_text(&open.device, text)).await
+}
+
+/// `typed` at `field`, the one a tap focused.
+async fn typed_at(open: &Arc<OpenDevice>, text: &str, field: Option<typing::Field>) -> Result<typing::Typed, MobileError> {
+    crate::keys::TYPED.scope(told(open), typing::type_at(&open.device, field, text)).await
+}
+
+/// Reports each run of keys `type` sends as the agent's input.
+fn told(open: &Arc<OpenDevice>) -> Arc<dyn Fn(&str) + Send + Sync> {
     let device = open.clone();
-    let told: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(move |run: &str| device.report_typed(run, InputBy::Agent));
-    crate::keys::TYPED.scope(told, typing::type_text(&open.device, text)).await
+    Arc::new(move |run: &str| device.report_typed(run, InputBy::Agent))
 }

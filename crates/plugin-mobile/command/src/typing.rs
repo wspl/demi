@@ -23,6 +23,19 @@
 //! Enter and Tab act on the app, a submit or a move of the focus, so the
 //! text from the first of them on goes in unchecked.
 //!
+//! `--into` taps its field first, and the focus comes to it a moment later,
+//! or not at all: a tree read at once still names the field that had it, and
+//! Safari on iOS takes the first tap after keys went into one field without
+//! moving the focus off it. So the text waits until the tree shows the focus
+//! on the field under the tap, or on another field than the one that had it
+//! before, which is the field like it nearest to where it stood, as the boxes
+//! of a row are alike but for where they stand and a field moves when the
+//! page scrolls. The field is tapped once more, as a person taps again, when
+//! the focus does not come within [`RETAP`], and the command fails, naming
+//! the field that kept it, when it does not come after that either: a tap
+//! on a label of the field that has the focus fails too, since no tap tells
+//! which field a label names.
+//!
 //! A screen whose tree names no focused field may still have one that takes
 //! keys: a web page whose accessibility is still loading, or a verification
 //! code's boxes that the app draws over a field it hides from the tree. The
@@ -37,7 +50,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::time::Instant;
 
 use crate::{
-    driver::{Device, RawElement, Rect},
+    driver::{Device, Points, RawElement, Rect},
     error::MobileError,
     keys, text,
 };
@@ -48,12 +61,16 @@ use crate::{
 const FOCUS_WATCH: Duration = Duration::from_millis(500);
 /// How long a character, or a field's focus, may take to show in the tree
 /// before it counts as lost.
-const LANDING: Duration = Duration::from_secs(2);
+pub const LANDING: Duration = Duration::from_secs(2);
 /// The least time between two reads of the tree, for a device that answers
 /// at once.
 const READ_GAP: Duration = Duration::from_millis(50);
 /// The pace of a password's keys, which cannot be read back.
 const PASSWORD_PACE: Duration = Duration::from_millis(50);
+/// How long `--into` waits for the focus to come to the field it tapped
+/// before it taps again: Safari moves it within a few frames when it moves
+/// it at all.
+pub const RETAP: Duration = Duration::from_secs(1);
 
 /// A text field as one read of the tree shows it.
 #[derive(Debug, Clone)]
@@ -176,9 +193,95 @@ impl Typed {
     }
 }
 
+/// The element `type --into` tapped for the focus.
+pub struct Tapped {
+    pub role: String,
+    pub label: Option<String>,
+    /// Where it was tapped, in the tree's points.
+    pub at: Points,
+}
+
+impl Tapped {
+    /// Whether `field` is the one tapped: it stands under the tap.
+    fn took(&self, field: &Field) -> bool {
+        field.frame.contains(&self.at)
+    }
+
+    /// The element as a failure names it.
+    fn named(&self) -> String {
+        match &self.label {
+            Some(label) => format!("{} {}", self.role, text::quoted(label)),
+            None => self.role.clone(),
+        }
+    }
+}
+
+/// The focused field of `device` as one read of the tree shows it now.
+pub async fn focused_now(device: &Arc<dyn Device>) -> Result<Option<Field>, MobileError> {
+    Ok(focused(&device.tree().await?).map(Field::of))
+}
+
 /// Types `text` at the focused field of `device`.
 pub async fn type_text(device: &Arc<dyn Device>, text: &str) -> Result<Typed, MobileError> {
-    let Some(field) = focused_field(device).await? else {
+    let field = focused_field(device).await?;
+    type_at(device, field, text).await
+}
+
+/// Where the focus is after a tap on a field.
+pub enum Focus {
+    /// It came to the field tapped, or left the one that had it; none when
+    /// the tree names no focused field, as [`focused_field`] tells.
+    Came(Option<Field>),
+    /// It stayed on the field that had it.
+    Kept(Field),
+}
+
+/// Where the focus is after a tap on `tapped`, once the tree shows it on
+/// `tapped` or off `before`, the field that had it before the tap, as it is
+/// now; kept when it is still on `before` after `within`.
+pub async fn focus_after(
+    device: &Arc<dyn Device>,
+    tapped: &Tapped,
+    before: Option<&Field>,
+    within: Duration,
+) -> Result<Focus, MobileError> {
+    let started = Instant::now();
+    loop {
+        let read = Instant::now();
+        let tree = device.tree().await?;
+        let now = focused(&tree).map(Field::of);
+        match (now, before) {
+            (Some(field), _) if tapped.took(&field) => return Ok(Focus::Came(Some(field))),
+            (Some(field), Some(before)) if !before.in_tree(&tree).is_some_and(|was| was.same(&field)) => {
+                return Ok(Focus::Came(Some(field)));
+            }
+            (Some(field), None) => return Ok(Focus::Came(Some(field))),
+            (Some(field), Some(_)) if started.elapsed() >= within => return Ok(Focus::Kept(field)),
+            (None, _) => {
+                let keyboard = || crate::tree::find(&tree, &|element| element.keyboard_key).is_some();
+                if started.elapsed() >= LANDING || (started.elapsed() >= FOCUS_WATCH && keyboard()) {
+                    return Ok(Focus::Came(None));
+                }
+            }
+            (Some(_), Some(_)) => {}
+        }
+        tokio::time::sleep_until(read + READ_GAP).await;
+    }
+}
+
+/// The failure of a tap on `tapped` that left the focus on `kept`.
+pub fn kept_focus(tapped: &Tapped, kept: &Field) -> MobileError {
+    MobileError::Failed(format!(
+        "two taps on {} did not give it the focus: {} kept it, so nothing was typed",
+        tapped.named(),
+        kept.named()
+    ))
+}
+
+/// Types `text` at `field`, the focused field, or as a hardware keyboard's
+/// keys, unchecked, when the tree names none.
+pub async fn type_at(device: &Arc<dyn Device>, field: Option<Field>, text: &str) -> Result<Typed, MobileError> {
+    let Some(field) = field else {
         keys::enter(device, text).await?;
         return Ok(Typed::unchecked(Vec::new()));
     };
