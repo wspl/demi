@@ -240,6 +240,15 @@ function waitingMessage(id: string): DraftMessage | undefined {
   return props.commenting.waiting.find((comment) => comment.id === id)?.content
 }
 
+/**
+ * Saves the edit of the waiting comment `id`, and the composer takes the
+ * focus, as after a new comment, so Return sends the comments.
+ */
+function saveEdit(id: string, content: DraftMessage): void {
+  props.commenting.edit(id, content)
+  composer.focus()
+}
+
 // --- Each box's and card's place in its reply.
 
 /** The place of each comment (`comment:<id>`) and side question (`ask:<id>`). */
@@ -475,7 +484,7 @@ onBeforeUnmount(() => {
       :files="commenting.files"
       :sent="comment.sent"
       :deletable="editedRemoves(comment.id)"
-      @save="commenting.edit(comment.id, $event)"
+      @save="saveEdit(comment.id, $event)"
       @delete="comment.sent ? commenting.edited?.remove?.(comment.id) : commenting.remove(comment.id)"
     />
   </Teleport>
