@@ -1,21 +1,20 @@
-//! The requests the backend makes for the user to this device's exposed ports
-//! (`crates/backend-user-shard/src/shard/exposed_ports.rs`), for as long as its
-//! connection lasts.
+//! The requests the backend makes for the user from this device, such as a
+//! provider entry's that connects through it
+//! (`crates/backend-user-shard/src/shard/device_requests.rs`), for as long as
+//! its connection lasts.
 //!
-//! The runner makes each request to `127.0.0.1:<port>`, or
-//! `https://localhost:<port>` connected to 127.0.0.1, with its own HTTP client,
-//! the method, path, headers and body as given. It streams the answer back: its
-//! status and headers in `http_answered` and its body through the request's
-//! answer pipe.
-//!
-//! Which ports are exposed is the backend's to decide: it sends no request to
-//! any other.
+//! The runner makes each request to its URL with its own HTTP client, the
+//! method, headers and body as given, and reaches the URL's host as any
+//! program on the device does: `127.0.0.1` is the device, and a name or an
+//! address of its network is resolved and reached there. It streams the
+//! answer back: its status and headers in `http_answered` and its body through
+//! the request's answer pipe.
 //!
 //! The answer pipe opens before the request goes out, so the pipe is never
 //! waiting for its source while a slow resident thinks. Its end is the
 //! request's: when the backend ends the pipe, its caller stopped waiting, and
-//! the runner abandons the request and closes its connection to the port,
-//! before the answer's head or after.
+//! the runner abandons the request and closes its connection, before the
+//! answer's head or after.
 
 use std::collections::HashSet;
 use std::error::Error as _;
@@ -23,9 +22,11 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 
+use reqwest::Url;
+
 use bytes::Bytes;
 use demi_runner_process::pipes::{PipeClient, report_pipe};
-use demi_runner_protocol::exposure::{CONNECT_TIMEOUT, HttpHeader, HttpScheme, MAX_HEADERS};
+use demi_runner_protocol::device_requests::{CONNECT_TIMEOUT, HttpHeader, MAX_HEADERS};
 use demi_runner_protocol::wire::{self, Inbound, Outbound, PipeRef};
 use futures_util::StreamExt as _;
 use reqwest::header::{CONNECTION, HeaderMap, HeaderName, HeaderValue};
@@ -34,8 +35,8 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 /// The headers that belong to one connection, not to the request, which
-/// the runner's own connection to the port sets for itself; those a
-/// `Connection` header names are such too.
+/// the runner's own connection sets for itself; those a `Connection` header
+/// names are such too.
 const HOP_BY_HOP: [&str; 9] = [
     "connection",
     "host",
@@ -49,7 +50,7 @@ const HOP_BY_HOP: [&str; 9] = [
 ];
 
 /// The requests of one connection to the backend, which end with it.
-pub struct Exposure {
+pub struct DeviceRequests {
     http: reqwest::Client,
     pipes: PipeClient,
     control: mpsc::UnboundedSender<wire::Frame>,
@@ -61,7 +62,6 @@ pub struct Exposure {
 /// One `http_request`.
 struct Request {
     id: String,
-    port: u16,
     url: String,
     method: String,
     headers: Vec<HttpHeader>,
@@ -69,11 +69,11 @@ struct Request {
     answer: PipeRef,
 }
 
-impl Exposure {
+impl DeviceRequests {
     pub fn new(pipes: PipeClient, control: mpsc::UnboundedSender<wire::Frame>, closed: CancellationToken) -> io::Result<Self> {
-        // A port of this device is reached as it is: no proxy, `localhost`
-        // is 127.0.0.1 whatever the device resolves it to, and a redirect
-        // is the answer, which the backend's client follows or not.
+        // An address is reached as it is: no proxy, `localhost` is
+        // 127.0.0.1 whatever the device resolves it to, and a redirect is
+        // the answer, which the backend's client follows or not.
         let http = reqwest::Client::builder()
             .no_proxy()
             .resolve("localhost", SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
@@ -97,10 +97,8 @@ impl Exposure {
     pub fn handle(&mut self, message: Inbound) -> Result<(), Inbound> {
         let Inbound::HttpRequest {
             id,
-            scheme,
-            port,
+            url,
             method,
-            path,
             headers,
             body,
             answer,
@@ -108,15 +106,10 @@ impl Exposure {
         else {
             return Err(message);
         };
-        let url = match scheme {
-            HttpScheme::Http => format!("http://127.0.0.1:{port}{path}"),
-            HttpScheme::Https => format!("https://localhost:{port}{path}"),
-        };
         // Finished requests leave nothing to keep.
         while self.requests.try_join_next().is_some() {}
         let request = Request {
             id,
-            port,
             url,
             method,
             headers,
@@ -159,7 +152,6 @@ impl Serving {
         let began = std::time::Instant::now();
         let seen = Seen::default();
         let Request {
-            port,
             id,
             url,
             method,
@@ -167,7 +159,7 @@ impl Serving {
             body,
             answer,
         } = request;
-        // The answer pipe opens first and stays open while the port takes
+        // The answer pipe opens first and stays open while the address takes
         // its time, so only the caller decides how long that is. The body is
         // bulk, so each chunk waits for its taker rather than the runner
         // holding them without end.
@@ -185,8 +177,8 @@ impl Serving {
         };
         // The pipe ended first: the backend ended it, as it does when the
         // request's caller stopped waiting, or it failed. Dropping the
-        // exchange abandons the request and closes its connection to the
-        // port, whether its answer had begun or not.
+        // exchange abandons the request and closes its connection, whether
+        // its answer had begun or not.
         drop(exchange);
         let (sent, body_read) = match first {
             Ok(body_read) => (piped.await, body_read),
@@ -200,15 +192,17 @@ impl Serving {
                 (sent, Err(abandoned))
             }
         };
+        // The host alone: a URL's path or query may hold a key.
+        let host = Url::parse(&url).ok().and_then(|url| url.host_str().map(str::to_owned)).unwrap_or_default();
         tracing::info!(
-            event = "exposed_port.request_ended",
+            event = "device_request.ended",
             id = id.as_str(),
-            port,
+            host = host.as_str(),
             outcome = if sent.is_ok() && seen.status.load(Ordering::Relaxed) != 0 { "answered" } else { "failed" },
             status = seen.status.load(Ordering::Relaxed),
             bytes = seen.bytes.load(Ordering::Relaxed),
             ms = began.elapsed().as_millis() as u64,
-            "a request to an exposed port ended"
+            "a request the backend made from this device ended"
         );
         report_pipe(&self.control, answer.id.clone(), sent);
         if let Some(body) = body {
@@ -234,7 +228,7 @@ impl Serving {
         let (response, body_read) = match self.make(url, method, headers, body, cancel).await {
             Ok(made) => made,
             Err((error, body_read)) => {
-                tracing::debug!(event = "exposed_port.request_failed", id, %error, "a request to an exposed port failed");
+                tracing::debug!(event = "device_request.failed", id, %error, "a request the backend made from this device failed");
                 self.fail(id, error.to_string(), &chunks).await;
                 return body_read;
             }
@@ -325,7 +319,7 @@ impl Serving {
         match wire::encode(message) {
             Ok(frame) => self.send_frame(frame),
             Err(error) => {
-                tracing::warn!(event = "reply.encode_failed", what = "exposed_port", %error, "an exposed port's message was not encoded");
+                tracing::warn!(event = "reply.encode_failed", what = "device_request", %error, "a device request's message was not encoded");
                 true
             }
         }
@@ -386,12 +380,12 @@ fn end_to_end(headers: &HeaderMap) -> HeaderMap {
 }
 
 /// A failed request in words: the error and each of its causes, without
-/// the URL, which names this device's own address.
+/// the URL, whose path or query may hold a key.
 fn causes(error: &reqwest::Error) -> String {
     let mut message = if error.is_connect() {
-        "The port refused the connection".to_owned()
+        "The address could not be connected to".to_owned()
     } else if error.is_timeout() {
-        "The port did not answer in time".to_owned()
+        "The address did not answer in time".to_owned()
     } else {
         "The request could not be made".to_owned()
     };

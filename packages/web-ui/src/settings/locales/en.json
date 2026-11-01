@@ -713,9 +713,13 @@
       "failed": "Failed",
       "enableModel": "Enable a model first",
       "noTextModel": "The test sends a chat message, and this provider has no text model",
-      "exposePort": "Expose Port",
-      "tryAgain": "Try Again",
-      "sharedDevice": "Everyone who uses this provider reaches {device} at this endpoint."
+      "through": "Connect through",
+      "throughServer": "Server",
+      "throughServerDescription": "Requests go out from the server.",
+      "throughDevice": "Requests go out from {device}, which reaches the endpoint on its own network.",
+      "throughOffline": "{device} is offline: requests fail until it connects.",
+      "throughRemoved": "Removed Device",
+      "throughRemovedDescription": "The device was removed: requests fail until you choose another."
     },
     "cli": {
       "title": "Command-Line Tool",

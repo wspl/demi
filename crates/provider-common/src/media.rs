@@ -40,9 +40,6 @@ pub const ANSWER_LIMIT: usize = 256 * 1024 * 1024;
 /// fields, such as a model's words.
 const JSON_ROOM: usize = 1024 * 1024;
 
-/// How many redirects a request follows, as reqwest's own policy does.
-pub(crate) const REDIRECTS: usize = 10;
-
 /// How an answer's body holds its file, which says how much of it is read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Holding {
@@ -142,7 +139,7 @@ pub(crate) async fn follow(
     let http = http.without_redirects().map_err(transport)?;
     let origin = origin.origin();
     let (mut method, mut url, mut body) = (ask.method.clone(), ask.url.clone(), ask.body.clone());
-    for _ in 0..=REDIRECTS {
+    for _ in 0..=crate::client::REDIRECTS {
         let headers = if url.origin() == origin { key.clone() } else { HeaderMap::new() };
         let mut request = http.request(method.clone(), url.clone()).headers(headers);
         if let Some((content_type, bytes)) = &body {
@@ -157,14 +154,13 @@ pub(crate) async fn follow(
         let Some(next) = location.and_then(|location| url.join(location).ok()) else {
             return Ok(response);
         };
-        let keeps_method = matches!(status, StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT);
-        if !keeps_method && (status == StatusCode::SEE_OTHER || method == http::Method::POST) {
+        if !crate::client::redirect_keeps_method(status, &method) {
             method = http::Method::GET;
             body = None;
         }
         url = next;
     }
-    Err(unreadable(format!("its address redirected more than {REDIRECTS} times")))
+    Err(unreadable(format!("its address redirected more than {} times", crate::client::REDIRECTS)))
 }
 
 /// A vendor whose media models a provider makes, by its id in the catalog of
@@ -627,12 +623,12 @@ pub(crate) async fn within_deadline<T>(call: impl Future<Output = Result<T, Medi
 }
 
 /// The failure of a request that did not reach the vendor or broke off.
-/// A port the device has not exposed is `port_not_exposed`, which waiting
-/// cannot fix, and an offline device `device_offline`.
+/// A request through a removed device is `device_removed`, which waiting
+/// cannot fix, and one through an offline device `device_offline`.
 pub(crate) fn transport(error: impl Into<crate::SendError>) -> MediaFailure {
     let error = error.into();
     let code = match &error {
-        crate::SendError::Device(crate::DeviceRefusal::NotExposed { .. }) => ErrorCode::PortNotExposed,
+        crate::SendError::Device(crate::DeviceRefusal::Removed) => ErrorCode::DeviceRemoved,
         crate::SendError::Device(crate::DeviceRefusal::Offline { .. }) => ErrorCode::DeviceOffline,
         _ => ErrorCode::Overloaded,
     };

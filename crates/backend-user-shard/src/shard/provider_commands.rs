@@ -25,6 +25,7 @@ use demi_shared_types::{
     FileExtension, AudioShape, ImageShape, ModelSelection, VideoShape, WireApi, model_reads_images,
     output::{Cell, Fields, Table, warning},
 };
+use demi_web_api_protocol::ids::DeviceId;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
@@ -58,11 +59,11 @@ const ENTRY: &str = "The user's model providers and their models.";
 
 const LIST_SUMMARY: &str = "List each provider entry: its id, its name in Settings, its kind, its count of models and its status (Ready, or what it still needs); demi providers show lists an entry's models. --all adds the entries and models the user turned off. A read.";
 
-const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, whether a key is saved (never the key), accounts by label, status, and each model with every field: context window and output limit in tokens, default effort and efforts (off when thinking can be turned off), service tiers, the files it reads, and whether you run on it. A read.";
+const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, the device its requests go out from, whether a key is saved (never the key), accounts by label, status, and each model with every field: context window and output limit in tokens, default effort and efforts (off when thinking can be turned off), service tiers, the files it reads, and whether you run on it. A read.";
 
 const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --name it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. Needs the user's permission.";
 
-const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, its key with --api-key-stdin, or how it makes images with --image, videos with --video and audio with --audio. Needs the user's permission.";
+const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, the device its requests go out from with --through, its key with --api-key-stdin, or how it makes images with --image, videos with --video and audio with --audio. Needs the user's permission.";
 
 const ORDER_SUMMARY: &str = "Put the entries in an order, the one Settings > Providers shows and generated images, videos and audio try them in, subscriptions before keys: the entries named come first, in the order given, and the others keep theirs after them. Needs the user's permission.";
 
@@ -85,6 +86,7 @@ const WIRE: &str = "The wire of an openai endpoint, responses or chat-completion
 const ENTRY_ARG: &str = "The entry's name or id, as `demi providers list` shows them.";
 const NAME: &str = "The entry's name, 1 to 80 characters, as Settings shows it.";
 const BASE_URL: &str = "The API's address, an http or https URL such as https://api.example.com/v1.";
+const THROUGH: &str = "Where an API-key entry's requests go out from: server, or one of the user's devices by name or id, which reaches what that device reaches, such as an address on its own network.";
 const API_KEY_STDIN: &str = "Read the entry's key from stdin, one line; pipe it in, never type it into a command.";
 const API_KEY: &str = "The key, read from stdin with --api-key-stdin.";
 const IMAGE: &str = "on turns the entry's Image Generation on and off turns it off; a shape turns it on, and for a compatible API also chooses how it makes images: openai-images, or none for no images. A vendor's entry makes images in its vendor's shape only, which on turns on.";
@@ -134,6 +136,7 @@ struct EditArgs {
     entry: String,
     name: Option<String>,
     base_url: Option<String>,
+    through: Option<String>,
     api_key_stdin: Option<bool>,
     api_key: Option<String>,
     image: Option<String>,
@@ -255,6 +258,9 @@ struct ShownEntry {
     /// The configured endpoint; null for a vendor entry that uses its
     /// vendor's, and for a compatible entry not given one yet.
     endpoint: Option<String>,
+    /// The device its requests go out from, by name, or by id once removed;
+    /// null for the server.
+    through: Option<String>,
     /// Whether a key is saved; null for a subscription.
     key_saved: Option<bool>,
     /// The labels of a subscription's accounts, for a user who configures
@@ -382,6 +388,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .describe("entry", ENTRY_ARG)
                 .describe("name", NAME)
                 .describe("base-url", BASE_URL)
+                .describe("through", THROUGH)
                 .describe("api-key-stdin", API_KEY_STDIN)
                 .describe("api-key", API_KEY)
                 .describe("image", IMAGE)
@@ -588,12 +595,21 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
         label: args.name.map(Trimmed::from),
         api_key: key(args.api_key_stdin, args.api_key)?.map(Some),
         base_url: args.base_url.map(endpoint).transpose()?.map(Some),
+        through_device: match args.through {
+            Some(through) => Some(through_device(&shard, &through).await?),
+            None => None,
+        },
         media: media_patch(args.image.as_deref(), args.video.as_deref(), args.audio.as_deref(), compatible)?,
         ..ProviderPatch::default()
     };
-    if patch.label.is_none() && patch.api_key.is_none() && patch.base_url.is_none() && patch.media.is_none() {
+    if patch.label.is_none()
+        && patch.api_key.is_none()
+        && patch.base_url.is_none()
+        && patch.through_device.is_none()
+        && patch.media.is_none()
+    {
         return Err(failed(
-            "nothing to change: give --name, --base-url, --api-key-stdin, --image, --video or --audio",
+            "nothing to change: give --name, --base-url, --through, --api-key-stdin, --image, --video or --audio",
         ));
     }
     patch.validate().map_err(|report| failed(problems(&report)))?;
@@ -945,6 +961,21 @@ fn wire(text: String) -> Result<WireApi, RpcError> {
         .map_err(|error| failed(format!("wireApi: {error}")))
 }
 
+/// `--through` as the device to connect through: none for `server`, else
+/// the user's device of that id or, failing that, that name.
+async fn through_device(shard: &Shard, through: &str) -> Result<Option<DeviceId>, RpcError> {
+    if through == "server" {
+        return Ok(None);
+    }
+    let devices = shard.host_records().await.map_err(failed)?;
+    devices
+        .iter()
+        .find(|device| device.id.as_str() == through)
+        .or_else(|| devices.iter().find(|device| device.name == through))
+        .map(|device| Some(device.id.clone()))
+        .ok_or_else(|| failed(format!("--through: no device named {through}; give server or a device of `demi host list`")))
+}
+
 /// `--base-url` as an endpoint, refused in the words of a refused body.
 fn endpoint(text: String) -> Result<EndpointUrl, RpcError> {
     EndpointUrl::try_from(text).map_err(|error| failed(format!("baseUrl: {error}")))
@@ -1183,6 +1214,18 @@ async fn shown(
         family: entry.family.clone(),
         wire: config.and_then(|config| config.wire_api),
         endpoint: config.and_then(|config| config.base_url.as_ref().map(|url| url.url().to_string())),
+        through: match &entry.through_device {
+            Some(id) => Some(
+                shard
+                    .host_records()
+                    .await
+                    .map_err(failed)?
+                    .into_iter()
+                    .find(|device| device.id == *id)
+                    .map_or_else(|| id.as_str().to_owned(), |device| device.name),
+            ),
+            None => None,
+        },
         key_saved: config.map(|config| config.api_key.is_some()),
         accounts,
         availability: catalog.map_or_else(
@@ -1324,6 +1367,10 @@ impl ShownEntry {
             .field("Family", self.family.as_str())
             .field("Wire", self.wire.map(|wire| wire.to_string()))
             .field("Endpoint", self.endpoint.as_deref())
+            .field(
+                "Connect through",
+                (self.kind == CredentialKind::ApiKey).then(|| self.through.as_deref().unwrap_or("Server")),
+            )
             .field("Key saved", self.key_saved);
         if self.kind == CredentialKind::Subscription {
             fields.table("Accounts", &accounts);

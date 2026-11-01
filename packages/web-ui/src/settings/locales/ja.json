@@ -713,9 +713,13 @@
       "failed": "失敗",
       "enableModel": "先にモデルを有効にしてください",
       "noTextModel": "テストはチャットメッセージを送信しますが、このプロバイダーにはテキストモデルがありません",
-      "exposePort": "ポートを公開",
-      "tryAgain": "再試行",
-      "sharedDevice": "このプロバイダーを使うすべてのユーザーが、このエンドポイントで {device} にアクセスします。"
+      "through": "接続元",
+      "throughServer": "サーバ",
+      "throughServerDescription": "リクエストはサーバから送信されます。",
+      "throughDevice": "リクエストは {device} から送信され、そのネットワークからエンドポイントにアクセスします。",
+      "throughOffline": "{device} はオフラインです。接続されるまでリクエストは失敗します。",
+      "throughRemoved": "削除されたデバイス",
+      "throughRemovedDescription": "デバイスは削除されました。別のデバイスを選ぶまでリクエストは失敗します。"
     },
     "cli": {
       "title": "コマンドラインツール",

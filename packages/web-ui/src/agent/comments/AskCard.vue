@@ -197,7 +197,6 @@ defineExpose({ element: root, failed: () => props.failure != null })
           :provider-id="failure.model.providerId"
           :retry-at="failureFacts?.retryAt ?? null"
           :signed-out="failureFacts?.signedOut ?? null"
-          :not-exposed="failureFacts?.notExposed ?? null"
           :device-offline="failureFacts?.deviceOffline ?? null"
         />
         <Button size="xs" @click="emit('retry')">{{ t('ask.retry') }}</Button>

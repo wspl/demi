@@ -330,7 +330,6 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
           :provider-id="block.model.providerId"
           :retry-at="failure?.retryAt ?? null"
           :signed-out="failure?.signedOut ?? null"
-          :not-exposed="failure?.notExposed ?? null"
           :device-offline="failure?.deviceOffline ?? null"
         />
       </div>

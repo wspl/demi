@@ -224,7 +224,7 @@ pub async fn download(
         let headers = move |hop: &Url| if hop.origin() == origin { key.clone() } else { HeaderMap::new() };
         let request = demi_shared_artifacts::Download {
             limit: ANSWER_LIMIT as u64,
-            redirects: crate::media::REDIRECTS,
+            redirects: crate::client::REDIRECTS,
             headers: &headers,
             first: Some(first),
             // The client decodes the codings the build's reqwest knows, so

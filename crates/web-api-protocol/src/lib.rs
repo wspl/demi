@@ -29,7 +29,6 @@ pub mod devices;
 pub mod diagnostics;
 pub mod drafts;
 pub mod error;
-pub mod exposed_ports;
 pub mod files;
 pub mod hosts;
 pub mod ids;

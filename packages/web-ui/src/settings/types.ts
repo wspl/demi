@@ -411,6 +411,11 @@ export interface SettingsProviderEntry {
   makesText?: boolean
   /** Where its requests go; empty for a compatible API not given an endpoint yet. */
   baseUrl: string
+  /**
+   * The user's device its requests go out from, by id, which reaches the
+   * endpoint as it reaches any address; null for the server. Absent, the server.
+   */
+  throughDevice?: string | null
   wireApi: SettingsWireApi
   apiKey: string
   keyConfigured?: boolean
@@ -436,11 +441,6 @@ export interface SettingsProviderEntry {
   testPassed?: boolean
   /** The model the last test asked: a plan can cover some models and refuse others. */
   testedWith?: string
-  /**
-   * The port of the user's device the last test named and the device has not
-   * exposed, which the test's result offers to expose (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
-   */
-  notExposed?: { deviceId: string; device: string; port: number }
   enabled: boolean
   models: SettingsProviderModel[]
   /** In the order In Order follows, which the user changes by dragging. */

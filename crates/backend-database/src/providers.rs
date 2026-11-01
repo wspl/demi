@@ -11,7 +11,7 @@
 //! sealed bytes.
 
 use demi_shared_types::{CacheTtl, CatalogRecord, QuotaSnapshot, Timestamp};
-use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{CredentialId, DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, Rotation};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -33,6 +33,19 @@ pub trait ResealSealed: Send + Sync {
     /// again for the schedule of the same id; an error, which never quotes
     /// the secret, says why it cannot be opened.
     fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String>;
+
+    /// Entry `id`'s configuration `sealed`, opened: when its endpoint's host
+    /// is a device's id that `owned` accepts, that device and the
+    /// configuration sealed again with the endpoint on the device itself
+    /// (`schema/control/from_0_1_5860.rs`); none for any other endpoint. An
+    /// error, which never quotes the configuration, says why it cannot be
+    /// read.
+    fn provider_endpoint_on_device(
+        &self,
+        id: &ProviderId,
+        sealed: &[u8],
+        owned: &dyn Fn(&str) -> bool,
+    ) -> Result<Option<(String, Vec<u8>)>, String>;
 }
 
 /// A database that holds no sealed configuration a migration re-encodes,
@@ -46,6 +59,15 @@ impl ResealSealed for NoSealed {
 
     fn schedule_secret(&self, id: &str, _: &[u8]) -> Result<Vec<u8>, String> {
         Err(format!("no key opens the secret of schedule {id} here"))
+    }
+
+    fn provider_endpoint_on_device(
+        &self,
+        id: &ProviderId,
+        _: &[u8],
+        _: &dyn Fn(&str) -> bool,
+    ) -> Result<Option<(String, Vec<u8>)>, String> {
+        Err(format!("no key opens the configuration of entry {id} here"))
     }
 }
 
@@ -83,6 +105,9 @@ pub struct ProviderRow {
     /// The prompt cache lifetime the entry's requests ask for; none asks for
     /// none.
     pub cache_ttl: Option<CacheTtl>,
+    /// The owner's device an API-key entry's requests go out from; none for
+    /// the server.
+    pub through_device: Option<DeviceId>,
 }
 
 /// The switches a change of an entry sets, each when given: each kind of
@@ -142,7 +167,7 @@ pub struct CredentialWrite {
     pub secret: Option<Vec<u8>>,
 }
 
-const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation, cache_ttl, web_search, x_search, search_images, search_videos";
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation, cache_ttl, web_search, x_search, search_images, search_videos, through_device_id";
 /// The columns a new entry stores; its rotation is the default, manual, its
 /// Image Generation is on, and it joins the end of its owner's list.
 const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, cache_ttl, position";
@@ -231,8 +256,9 @@ impl ControlService {
     }
 
     /// Replaces the entry's label, family, sealed configuration, rotation,
-    /// switches or prompt cache lifetime, and answers the entry as it
-    /// now is; `None` for an entry that no longer exists.
+    /// switches, prompt cache lifetime or the device it connects through,
+    /// and answers the entry as it now is; `None` for an entry that no
+    /// longer exists.
     #[allow(clippy::too_many_arguments)]
     pub async fn update_provider(
         &self,
@@ -243,6 +269,7 @@ impl ControlService {
         rotation: Option<Rotation>,
         switches: EntrySwitches,
         cache_ttl: Option<Option<CacheTtl>>,
+        through_device: Option<Option<DeviceId>>,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -316,6 +343,12 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE providers SET cache_ttl = ?1 WHERE id = ?2",
                     params![ttl.as_ref().map(CacheTtl::as_str), id.as_str()],
+                )?;
+            }
+            if let Some(device) = through_device {
+                transaction.execute(
+                    "UPDATE providers SET through_device_id = ?1 WHERE id = ?2",
+                    params![device.as_ref().map(DeviceId::as_str), id.as_str()],
                 )?;
             }
             let updated = provider_by_id(&transaction, &id)?;
@@ -737,6 +770,10 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
         cache_ttl: row
             .get::<_, Option<String>>("cache_ttl")?
             .map(|ttl| decode("providers", "cache_ttl", CacheTtl::try_from(ttl)))
+            .transpose()?,
+        through_device: row
+            .get::<_, Option<String>>("through_device_id")?
+            .map(|device| decode("providers", "through_device_id", DeviceId::try_from(device)))
             .transpose()?,
     })
 }

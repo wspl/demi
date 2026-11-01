@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use demi_provider_registry::entry::ProviderEntry;
 use demi_provider_common::{
-    ErrorCode, InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
+    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
 };
 use demi_provider_common::media::MediaFailure;
 use demi_shared_types::MediaKind;
@@ -22,7 +22,6 @@ use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use super::claude_cli::{CrossPlacement, ProcessWork};
-use crate::shard::exposed_ports::endpoint_device;
 use crate::shard::Shard;
 
 impl Shard {
@@ -48,13 +47,13 @@ impl Shard {
             .filter(|kind| shapes.makes(*kind))
             .find_map(|kind| provider_registry.maker(entry, provider, kind));
         let Some(maker) = maker else {
-            return TestResult::Failed { message: "This provider makes nothing yet".into(), model: None, not_exposed: None };
+            return TestResult::Failed { message: "This provider makes nothing yet".into(), model: None };
         };
         let http = provider_registry.http_for(entry, self.http().clone());
         let catalog = services.media.current();
         let listing = tokio::select! {
             () = cancel.cancelled() => {
-                return TestResult::Failed { message: "The test was cancelled".into(), model: None, not_exposed: None };
+                return TestResult::Failed { message: "The test was cancelled".into(), model: None };
             }
             listing = maker.media().check_key(&http, &catalog) => listing,
         };
@@ -63,7 +62,7 @@ impl Shard {
                 let first = models.into_iter().next().map(|model| model.name.unwrap_or(model.id));
                 TestResult::Passed { model: first.unwrap_or_else(|| entry.label.clone()) }
             }
-            Err(failure) => TestResult::Failed { message: failure_words(&failure), model: None, not_exposed: None },
+            Err(failure) => TestResult::Failed { message: failure_words(&failure), model: None },
         }
     }
 
@@ -84,7 +83,7 @@ impl Shard {
             return self.test_media_key(&entry, &provider, cancel).await;
         }
         let Some(model_id) = model_id else {
-            return TestResult::Failed { message: "Name a text model to test".into(), model: None, not_exposed: None };
+            return TestResult::Failed { message: "Name a text model to test".into(), model: None };
         };
         let catalog = provider_registry
             .entry_catalog(&entry, &Ok(provider.clone()), false)
@@ -97,14 +96,12 @@ impl Shard {
             return TestResult::Failed {
                 message: format!("This provider lists no model {model_id}"),
                 model: None,
-                not_exposed: None,
             };
         };
         let name = model.display_name.clone();
         let failed = |message: String| TestResult::Failed {
             message,
             model: Some(name.clone()),
-            not_exposed: None,
         };
         // The model the catalog lists is also the configured one, when the
         // entry configures its list.
@@ -182,20 +179,10 @@ impl Shard {
         match first {
             None => failed("The test was cancelled".into()),
             Some(None) => failed("The provider returned no events".into()),
-            Some(Some(ProviderEvent::Error(failure))) => {
-                let not_exposed = match failure.code {
-                    // Only the owner's device can be exposed by the one who tests.
-                    Some(ErrorCode::PortNotExposed) if entry.owner == *self.user() => {
-                        endpoint_device(&self.services().control, &entry).await
-                    }
-                    _ => None,
-                };
-                TestResult::Failed {
-                    message: failure.message,
-                    model: Some(name),
-                    not_exposed,
-                }
-            }
+            Some(Some(ProviderEvent::Error(failure))) => TestResult::Failed {
+                message: failure.message,
+                model: Some(name),
+            },
             Some(Some(_)) => TestResult::Passed { model: name },
         }
     }

@@ -34,7 +34,7 @@ use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{Secret, SecretError};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
 use demi_web_api_protocol::auth::UserDto;
-use demi_web_api_protocol::ids::{ProviderId, UserId};
+use demi_web_api_protocol::ids::{DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
     ConfiguredModel, ConfiguredModels, CreateProvider, CredentialKind, ModelKind, ModelMatch, ProviderPatch, Rotation,
 };
@@ -102,6 +102,9 @@ pub enum ProviderRefusal {
     /// A model of a kind the entry makes none of.
     #[error("models: {model} is {} {kind} model, but {entry} makes no {}; choose {} {kind} shape first", article(*kind), plural(*kind), article(*kind))]
     UnmadeKind { entry: String, model: String, kind: ModelKind },
+    /// A device to connect through that is none of the entry owner's.
+    #[error("throughDevice: no such device of the provider's owner")]
+    UnknownDevice,
     /// A prompt cache lifetime the entry's provider does not take.
     #[error("cacheTtl: {entry} can’t ask for a prompt cache lifetime of {ttl}")]
     CacheTtl { entry: String, ttl: String },
@@ -469,6 +472,11 @@ impl Services {
         }
         let cache_ttl = self.cache_ttl(&entry, family.as_deref(), config.as_ref(), patch.cache_ttl)?;
         let retimes = cache_ttl.is_some();
+        let through_device = match patch.through_device {
+            Some(device) => Some(self.through_device(&entry, device).await?),
+            None => None,
+        };
+        let reroutes = through_device.is_some();
         let label = patch.label.map(|label| label.into_string());
         let rotates_anew = patch.rotation.is_some_and(|rotation| rotation != entry.rotation());
         let updated = self
@@ -481,10 +489,11 @@ impl Services {
                 patch.rotation,
                 switches,
                 cache_ttl,
+                through_device,
             )
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
-        if reconfigures || retimes {
+        if reconfigures || retimes || reroutes {
             self.provider_registry.invalidate(&entry.id).await?;
         }
         if rotates_anew {
@@ -612,6 +621,25 @@ impl Services {
             .model(reference)
             .await
             .map_err(|error| ProviderRefusal::CatalogUnavailable(error.to_string()))
+    }
+
+    /// The device an edit of `entry` connects it through, none for the
+    /// server: only an API-key entry connects through one, and only through
+    /// a device of its owner's.
+    async fn through_device(&self, entry: &ProviderEntry, device: Option<DeviceId>) -> Result<Option<DeviceId>, ProviderRefusal> {
+        if !matches!(entry.credential, EntryCredential::ApiKey(_)) {
+            return Err(ProviderRefusal::SubscriptionOnly);
+        }
+        let Some(device) = device else {
+            return Ok(None);
+        };
+        let control = self.vault.control();
+        let mut devices = control.paired_devices(entry.owner.clone()).await?;
+        devices.extend(control.managed_device(entry.owner.clone()).await?);
+        if !devices.iter().any(|owned| owned.id == device) {
+            return Err(ProviderRefusal::UnknownDevice);
+        }
+        Ok(Some(device))
     }
 
     /// The API-key family `name`, which must speak `wire_api` when the

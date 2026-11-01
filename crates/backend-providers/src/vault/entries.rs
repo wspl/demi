@@ -48,9 +48,10 @@ use demi_provider_common::credentials::{
     credential_id_for, decode_secret,
 };
 use demi_shared_types::{CacheTtl, Timestamp};
-use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{CredentialId, DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, Rotation};
 use demi_web_api_protocol::settings::InstanceMode;
+use demi_web_api_protocol::text::EndpointUrl;
 use demi_web_api_protocol::state::ManagedKinds;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -575,8 +576,8 @@ impl Vault {
     }
 
     /// Replaces the entry's label, family, configuration, rotation, media
-    /// switches or prompt cache lifetime; `None` for an entry that no longer
-    /// exists.
+    /// switches, prompt cache lifetime or the device it connects through;
+    /// `None` for an entry that no longer exists.
     #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
@@ -587,12 +588,13 @@ impl Vault {
         rotation: Option<Rotation>,
         switches: EntrySwitches,
         cache_ttl: Option<Option<CacheTtl>>,
+        through_device: Option<Option<DeviceId>>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
         let row = self
             .0
             .control
-            .update_provider(id, label, family, sealed, rotation, switches, cache_ttl)
+            .update_provider(id, label, family, sealed, rotation, switches, cache_ttl, through_device)
             .await?;
         if let Some(row) = &row {
             self.mark_changed(&row.owner, row.kind).await;
@@ -699,6 +701,7 @@ impl Vault {
             search_images: row.search_images,
             search_videos: row.search_videos,
             cache_ttl: row.cache_ttl,
+            through_device: row.through_device,
         })
     }
 
@@ -730,6 +733,9 @@ impl Vault {
 ///   that vendor; one with an endpoint and no vendor stays a compatible entry.
 /// - To schedules, it seals a URL secret as a schedule's in place of an
 ///   automation's.
+/// - To entries that connect through a device, it reads each endpoint and
+///   seals again one that named a device by its id, the endpoint now on the
+///   device itself.
 pub struct VaultReseal(VaultKey);
 
 impl VaultReseal {
@@ -755,6 +761,32 @@ impl ResealSealed for VaultReseal {
             .open(seal::Row::AutomationSecret(id), sealed)
             .map_err(|error| error.to_string())?;
         Ok(self.0.seal(seal::Row::ScheduleSecret(id), &secret))
+    }
+
+    fn provider_endpoint_on_device(
+        &self,
+        id: &ProviderId,
+        sealed: &[u8],
+        owned: &dyn Fn(&str) -> bool,
+    ) -> Result<Option<(String, Vec<u8>)>, String> {
+        let text = open_text(&self.0, id, sealed)?;
+        let sealed: SealedConfig = decode_secret(&text).map_err(|error| error.to_string())?;
+        if sealed.format != CONFIG_FORMAT {
+            return Err(format!("the configuration's format {} is not {CONFIG_FORMAT}", sealed.format));
+        }
+        let mut config = checked(sealed.config)?;
+        let Some(endpoint) = &config.base_url else {
+            return Ok(None);
+        };
+        let mut url = endpoint.url().clone();
+        let Some(device) = url.host_str().filter(|host| owned(host)).map(str::to_owned) else {
+            return Ok(None);
+        };
+        // `localhost` for HTTPS, whose certificate names it rather than the address.
+        let host = if url.scheme() == "https" { "localhost" } else { "127.0.0.1" };
+        url.set_host(Some(host)).map_err(|error| error.to_string())?;
+        config.base_url = Some(EndpointUrl::try_from(String::from(url)).map_err(|_| "the endpoint on the device is not one".to_owned())?);
+        Ok(Some((device, seal_config(&self.0, id, &config))))
     }
 }
 

@@ -66,6 +66,7 @@ mod from_0_1_5751;
 mod from_0_1_5773;
 mod from_0_1_5785;
 mod from_0_1_5842;
+mod from_0_1_5860;
 mod from_0_1_5844;
 
 pub(super) const HISTORY: &[Shipped] = &[
@@ -299,5 +300,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_5844.sql"),
         migration: from_0_1_5844::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_5860.sql"),
+        migration: from_0_1_5860::MIGRATION,
     },
 ];

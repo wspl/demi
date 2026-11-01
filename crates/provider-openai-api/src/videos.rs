@@ -270,7 +270,7 @@ fn openai_size(aspect: Option<Aspect>, resolution: Option<VideoResolution>) -> O
 
 /// The ask as `multipart/form-data`, the form OpenAI's reference and
 /// vLLM-Omni take: its `Content-Type` and its body, built whole so the ask
-/// also reaches a server on a device's exposed port.
+/// also goes through a device.
 fn openai_form(fields: &OpenAiFields) -> (String, Bytes) {
     let mut form = FormBody::new().text("model", &fields.model).text("prompt", &fields.prompt);
     if let Some(seconds) = &fields.seconds {

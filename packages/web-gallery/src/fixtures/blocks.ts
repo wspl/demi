@@ -1392,26 +1392,26 @@ export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
 }
 
 /**
- * The record of a turn whose request named port 11434 of alex-mbp, which
- * the device has not exposed (`crates/backend-user-shard/src/shard/exposed_ports.rs`): refused
- * before it reached the device, with no answer to keep.
+ * The record of a turn whose entry connects through a device its owner
+ * removed since (`crates/backend-user-shard/src/shard/device_requests.rs`):
+ * refused before it left the server, with no answer to keep.
  */
-export function notExposedErrorBlock(id: string): Block {
+export function deviceRemovedErrorBlock(id: string): Block {
   return {
     type: 'error',
     id,
     createdAt: iso(30_000),
     model: demoModel,
-    message: 'Port 11434 of alex-mbp isn’t exposed.',
-    code: 'port_not_exposed',
+    message: 'The device this provider connects through was removed. Choose another in Connect Through.',
+    code: 'device_removed',
     diagnostics: { source: 'transport' },
   }
 }
 
 /**
- * The record of a turn whose request named a port of alex-mbp while it was
+ * The record of a turn whose entry connects through alex-mbp while it was
  * offline, after the retries an unreachable endpoint gets
- * (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
+ * (`crates/backend-user-shard/src/shard/device_requests.rs`).
  */
 export function deviceOfflineErrorBlock(id: string): Block {
   return {

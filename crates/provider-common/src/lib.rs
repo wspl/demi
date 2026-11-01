@@ -69,7 +69,7 @@ pub mod wire;
 
 pub use body::{FormBody, encode_body, json_body};
 pub use client::{
-    DeviceAddress, DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute, ProviderHttp, RequestBuilder, Routed, SendError,
+    DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute, ProviderHttp, RequestBuilder, SendError,
 };
 pub use contract::{
     AccountSwitch, Ahead, CallEvent, CallOutcome, Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest,

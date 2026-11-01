@@ -103,7 +103,7 @@ mod connection;
 mod console;
 mod environment;
 mod direct;
-mod exposure;
+mod device_requests;
 mod forward;
 #[cfg(windows)]
 mod git;

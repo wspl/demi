@@ -77,10 +77,10 @@ use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
 const SUMMARY: &str =
-    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host, forward a port from one host to another, expose a device's port to the backend's requests.";
+    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host, forward a port from one host to another.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Hosts and devices: list, run a command on another, attach, detach, move the conversation, forward and expose ports, pair.";
+const ENTRY: &str = "Hosts and devices: list, run a command on another, attach, detach, move the conversation, forward ports, pair.";
 
 /// The path of `demi host pair`, which always brings a host the
 /// conversation may not reach.
@@ -187,12 +187,6 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             crate::forward_commands::MANAGE_DESCRIPTION,
         )
         .group(crate::forward_commands::forward_group(shard.clone()))
-        .permission(
-            crate::expose_commands::MANAGE,
-            crate::expose_commands::MANAGE_ACTION,
-            crate::expose_commands::MANAGE_DESCRIPTION,
-        )
-        .group(crate::expose_commands::expose_group(shard.clone()))
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()

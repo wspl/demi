@@ -125,7 +125,7 @@ pub use content::{
     xml_escaped,
 };
 pub use failure::{
-    ContinueWith, FailureSource, NotExposedPort, OfflineDevice, ProviderErrorDiagnostics, ProviderFailureFacts, SignedOutAccount,
+    ContinueWith, FailureSource, OfflineDevice, ProviderErrorDiagnostics, ProviderFailureFacts, SignedOutAccount,
     VendorTrace,
 };
 pub use idle_compaction::{IDLE_COMPACTION_CONTEXT, IDLE_COMPACTION_CONTEXT_FLOOR};

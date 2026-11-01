@@ -290,20 +290,6 @@ CREATE TABLE port_forwards (
 ) STRICT;
 CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
 
--- Each user's exposed ports (port-exposure.md): a port of one of the
--- user's Hosts, none until the user enters it, which the backend's requests
--- for the user may reach, and its label, empty for none.
-CREATE TABLE exposed_ports (
-  id         TEXT PRIMARY KEY,
-  user_id    TEXT NOT NULL REFERENCES users (id),
-  device_id  TEXT NOT NULL REFERENCES devices (id),
-  port       INTEGER CHECK (port BETWEEN 1 AND 65535),
-  label      TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  UNIQUE (device_id, port)
-) STRICT;
-CREATE INDEX exposed_ports_of_user ON exposed_ports (user_id, created_at);
-
 -- The workflows of each directory of a Host as the backend last read them,
 -- in the Workflow menu's form, with when (`crates/backend-host-access/src/kept.rs`):
 -- what a page reads at once, also after a restart while the Host is
@@ -859,6 +845,11 @@ CREATE TABLE providers (
   -- find, when the vendor's can; on from the start.
   search_images        INTEGER NOT NULL DEFAULT 1 CHECK (search_images IN (0, 1)),
   search_videos        INTEGER NOT NULL DEFAULT 1 CHECK (search_videos IN (0, 1)),
+  -- The owner's device an API-key entry's requests go out from
+  -- (crates/backend-user-shard/src/shard/device_requests.rs); null for the
+  -- server. It names no row, so a device removed leaves it, and the entry's
+  -- requests fail until another is chosen.
+  through_device_id    TEXT CHECK (through_device_id IS NULL OR credential_kind = 'api_key'),
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;

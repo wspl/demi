@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
@@ -9,14 +9,13 @@ import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
-import { useExposedPortSettings } from './exposed-ports'
-import type { SettingsProviderEntry } from '@demicodes/web-ui/settings/types'
+import { deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
+import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
 
 const resources = useResources()
 const preferences = usePreferences()
 const product = useProduct()
 const settings = useProviderSettings()
-const exposedPorts = useExposedPortSettings()
 const { providers, login } = storeToRefs(settings)
 const {
   report,
@@ -42,12 +41,19 @@ const {
   installCli,
 } = settings
 
-/** Expose Port on a failed test: the port is exposed, then the test runs again. */
-async function exposeAndTest(provider: SettingsProviderEntry, deviceId: string, port: number): Promise<void> {
-  if (await exposedPorts.expose(deviceId, port)) {
-    test(provider)
-  }
-}
+/** The Hosts an entry may connect through, the Cloud first, as the Host menu lists them; none until the snapshot names them. */
+const hosts = computed<HostMenuHost[] | undefined>(() => {
+  const devices = product.snapshot?.devices
+  return devices
+    ?.map((device) => ({
+      id: device.id,
+      name: hostLabel(hostKindOf(device), device),
+      kind: hostKindOf(device),
+      state: device.state,
+      mark: deviceMarkOf(device, devices),
+    }))
+    .sort((a, b) => Number(b.kind === 'cloud') - Number(a.kind === 'cloud'))
+})
 
 // The vendor catalog, which the page reads as it starts, fails in the Add
 // Provider dialog's region, with its own Retry.
@@ -101,9 +107,7 @@ watch(
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
-    @expose-port="exposeAndTest"
-    :is-exposed="exposedPorts.isExposed"
-    :shared-device="exposedPorts.sharedDevice"
+    :hosts="hosts"
     @refresh="refresh"
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"

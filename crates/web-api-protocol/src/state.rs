@@ -122,7 +122,6 @@ pub enum SyncFollowed {
     Subagents,
     Credentials,
     PortForwards,
-    ExposedPorts,
     Passkeys,
     Sessions,
     Users,
@@ -278,14 +277,6 @@ pub enum SyncEvent {
     PortForwards {
         #[serde(rename = "portForwards")]
         port_forwards: Vec<crate::port_forwards::PortForwardDto>,
-        /// The entity tag of the list's route's answer; empty when it has none.
-        etag: String,
-    },
-    /// An exposed port was added, changed or removed: the user's exposed
-    /// ports.
-    ExposedPorts {
-        #[serde(rename = "exposedPorts")]
-        exposed_ports: Vec<crate::exposed_ports::ExposedPortDto>,
         /// The entity tag of the list's route's answer; empty when it has none.
         etag: String,
     },

@@ -921,23 +921,20 @@ pub enum Inbound {
         id: String,
         message: String,
     },
-    /// A request the backend makes for the user to exposed port `port`
-    /// (`crates/backend-user-shard/src/shard/exposed_ports.rs`): the runner makes it with `method`, `path` and
-    /// `headers`, reading its body from `body`, when it has one, and answers `http_answered`
-    /// with the status and headers, the answer's body going into `answer`,
-    /// or `http_failed`.
+    /// A request the backend makes for the user from this device
+    /// (`crates/backend-user-shard/src/shard/device_requests.rs`): the runner
+    /// makes it to `url` with `method` and `headers`, reading its body from
+    /// `body`, when it has one, and answers `http_answered` with the status
+    /// and headers, the answer's body going into `answer`, or `http_failed`.
     HttpRequest {
         id: String,
-        scheme: crate::exposure::HttpScheme,
-        #[garde(range(min = 1))]
-        port: u16,
+        /// An `http` or `https` URL, as the device resolves its host.
+        #[garde(pattern("^https?://"))]
+        url: String,
         #[garde(length(min = 1, max = 32))]
         method: String,
-        /// The path and query, from `/`.
-        #[garde(pattern("^/"))]
-        path: String,
-        #[garde(length(max = crate::exposure::MAX_HEADERS), dive)]
-        headers: Vec<crate::exposure::HttpHeader>,
+        #[garde(length(max = crate::device_requests::MAX_HEADERS), dive)]
+        headers: Vec<crate::device_requests::HttpHeader>,
         /// None for a request without a body.
         #[serde(
             default,
@@ -1580,17 +1577,17 @@ pub enum Outbound {
         #[garde(length(min = 1))]
         forward: String,
     },
-    /// The port answered the backend's `http_request` `id`: its status and
-    /// headers; the body follows in the request's answer pipe.
+    /// The address answered the backend's `http_request` `id`: its status
+    /// and headers; the body follows in the request's answer pipe.
     HttpAnswered {
         id: String,
         #[garde(range(min = 100, max = 999))]
         status: u16,
-        #[garde(length(max = crate::exposure::MAX_HEADERS), dive)]
-        headers: Vec<crate::exposure::HttpHeader>,
+        #[garde(length(max = crate::device_requests::MAX_HEADERS), dive)]
+        headers: Vec<crate::device_requests::HttpHeader>,
     },
-    /// The request `id` got no answer: the port refused the connection, or
-    /// the request could not be made, as `message` says.
+    /// The request `id` got no answer: the address refused the connection,
+    /// or the request could not be made, as `message` says.
     HttpFailed {
         id: String,
         message: String,

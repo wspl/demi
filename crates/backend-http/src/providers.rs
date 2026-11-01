@@ -84,6 +84,7 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
             (StatusCode::BAD_REQUEST, ErrorCode::UnknownProviderType)
         }
         ProviderRefusal::UnknownVendor(_) => (StatusCode::BAD_REQUEST, ErrorCode::UnknownVendor),
+        ProviderRefusal::UnknownDevice => (StatusCode::BAD_REQUEST, ErrorCode::DeviceNotFound),
         ProviderRefusal::LoginFamily(_)
         | ProviderRefusal::SubscriptionOnly
         | ProviderRefusal::OwnModels(_) => (StatusCode::BAD_REQUEST, ErrorCode::SubscriptionOnly),

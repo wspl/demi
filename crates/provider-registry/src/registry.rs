@@ -116,7 +116,7 @@ pub struct ProviderRegistry {
     /// The media catalog, whose time each entry's media carry.
     media: MediaCatalog,
     /// The way to the users' devices, set once the backend's shards
-    /// started, which hold their connections (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
+    /// started, which hold their connections (`crates/backend-user-shard/src/shard/device_requests.rs`).
     devices: OnceLock<Arc<dyn DeviceRoute>>,
 }
 
@@ -167,15 +167,19 @@ impl ProviderRegistry {
     }
 
     /// The client `entry`'s requests go through on `client`, the shard's or
-    /// the shared services': an address naming one of the entry owner's
-    /// devices reaches that device's exposed port (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
+    /// the shared services': out from the owner's device the entry connects
+    /// through (`crates/backend-user-shard/src/shard/device_requests.rs`), or
+    /// to the network.
     pub fn http_for(&self, entry: &ProviderEntry, client: reqwest::Client) -> ProviderHttp {
-        self.http_of(Some(entry.owner.as_str()), client)
+        self.http_of(Some(entry), client)
     }
 
-    fn http_of(&self, owner: Option<&str>, client: reqwest::Client) -> ProviderHttp {
-        match (owner, self.devices.get()) {
-            (Some(owner), Some(route)) => ProviderHttp::with_devices(client, route.clone(), owner),
+    fn http_of(&self, entry: Option<&ProviderEntry>, client: reqwest::Client) -> ProviderHttp {
+        let through = entry.and_then(|entry| Some((entry, entry.through_device.as_ref()?)));
+        match (through, self.devices.get()) {
+            (Some((entry, device)), Some(route)) => {
+                ProviderHttp::through_device(client, route.clone(), entry.owner.as_str(), device.as_str())
+            }
             _ => ProviderHttp::new(client),
         }
     }
@@ -449,8 +453,7 @@ impl ProviderRegistry {
                 pool: pool.clone(),
                 account: None,
             });
-            // The entry does not exist yet: it has no owner whose devices
-            // its requests could name.
+            // The entry does not exist yet: it connects through no device.
             self.args(id.to_owned(), label.to_owned(), None, credential)
         };
         match registered.login_accounts(args()) {
@@ -699,7 +702,7 @@ impl ProviderRegistry {
         let mut args = self.args(
             entry.id.as_str().to_owned(),
             entry.label.clone(),
-            Some(entry.owner.as_str()),
+            Some(entry),
             credential,
         );
         args.cache_ttl = entry.cache_ttl.clone();
@@ -707,14 +710,14 @@ impl ProviderRegistry {
         Ok(args)
     }
 
-    fn args(&self, entry_id: String, label: String, owner: Option<&str>, credential: FamilyCredential) -> FamilyArgs {
+    fn args(&self, entry_id: String, label: String, entry: Option<&ProviderEntry>, credential: FamilyCredential) -> FamilyArgs {
         FamilyArgs {
             entry_id,
             label,
             credential,
             cache_ttl: None,
             searches: Searches::default(),
-            http: self.http_of(owner, self.http.clone()),
+            http: self.http_of(entry, self.http.clone()),
             services_http: self.http.clone(),
             clock: self.clock.clone(),
             models_dev: self.vendors.models_dev().clone(),

@@ -937,7 +937,7 @@ impl Shard {
                 node, patches, version, ..
             } => {
                 let added = blocks_added(&patches);
-                let failures = failure_facts(&services.vault, provider_registry, self.user(), &added).await;
+                let failures = failure_facts(&services.vault, provider_registry, &added).await;
                 let (attachments, reply_blocks) = streamed
                     .named(&services.conversations, self.plugins(), conversation, &node, &patches)
                     .await;
