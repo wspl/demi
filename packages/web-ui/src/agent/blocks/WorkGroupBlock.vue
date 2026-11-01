@@ -12,7 +12,7 @@ import { useLiveCalls } from '../live-calls'
 import { runLabel, stepKey, type WorkGroupBlock } from '../work-groups'
 import { pillAction, useEditSelection, useFilePills, useTranscript } from '../edit-selection'
 import { useMessageFiles } from '../../markdown/message-files'
-import { changeFile, pillSelection, requestFileSelection, runFiles } from '../../files/request-changes'
+import { pillSelection, runFiles, runPills } from '../../files/request-changes'
 import { foldedMedia, splitMedia } from '../tool-media'
 
 /**
@@ -42,11 +42,12 @@ const select = useEditSelection()
 const transcript = useTranscript()
 const messageFiles = useMessageFiles()
 const pillsShown = useFilePills()
-// Folded, each file the run changed shows once, with its lines from before the
-// run to after its latest call, as that call stored them. A file whose ends
-// were not kept is named alone. A conversation outside a project shows none.
+// Folded, each file the run changed shows once, newest first, with its lines
+// from before the run to after its latest call, as that call stored them. A
+// file whose ends were not kept is named alone. A conversation outside a
+// project shows none.
 const changed = computed(() => runFiles(calls.value))
-const files = computed(() => pillsShown() ? changed.value.map(changeFile) : [])
+const files = computed(() => pillsShown() ? runPills(calls.value) : [])
 const media = computed(() => splitMedia(foldedMedia(props.group.steps)))
 
 // A step enters once, as it joins, the way a row joining the transcript does:
@@ -83,20 +84,6 @@ function selection(path: string) {
     ? pillSelection(transcript.node, transcript.requests(), call, first.call, first.path, transcript.directory(call.id))
     : null
 }
-/** What the "+N Files" pill opens: the first of its files the request lists. */
-function restSelection(paths: readonly string[]) {
-  const call = calls.value.at(-1)
-  if (!transcript || !call)
-    return null
-  const directory = transcript.directory(call.id)
-  for (const path of paths) {
-    const found = selection(path)
-      ?? requestFileSelection(transcript.node, transcript.requests(), call, path, directory)
-    if (found)
-      return found
-  }
-  return null
-}
 /** What a pill's click does: its edit, or a binary file as it is now (`pillAction`). */
 function action(path: string): (() => void) | null {
   const picked = selection(path)
@@ -107,12 +94,6 @@ function selectable(path: string): boolean {
 }
 function pick(path: string): void {
   action(path)?.()
-}
-/** The "+N Files" pill lists its files in the Change view, a binary one among them. */
-function pickRest(paths: readonly string[]): void {
-  const picked = restSelection(paths)
-  if (picked)
-    select()?.(picked)
 }
 </script>
 
@@ -169,9 +150,7 @@ function pickRest(paths: readonly string[]): void {
         :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
         :files="files"
         :selectable="selectable"
-        :rest-selectable="(paths) => select() !== undefined && restSelection(paths) !== null"
         @select="pick"
-        @open-rest="pickRest"
       />
     </Fold>
   </template>

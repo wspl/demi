@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from '../locales/text'
 import LineCounts from '../../files/LineCounts.vue'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowReactive, type ComponentPublicInstance } from 'vue'
 import { baseName } from '@demicodes/utils'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import CornerPlus from '../../ui/CornerPlus.vue'
@@ -21,8 +21,8 @@ import type { ChangeFile } from '../../files/changes'
  * - A renamed file names its old path in the tooltip.
  *
  * The pills take at most two lines. The files that do not fit fold into a last
- * pill, "+N Files", which asks for the call's whole list (`openRest`) where a
- * pill asks for its file.
+ * pill, "+N Files", which shows them in place on the lines below and turns into
+ * Show Less, which folds them back.
  */
 const props = withDefaults(
   defineProps<{
@@ -32,16 +32,11 @@ const props = withDefaults(
      * other only names its file.
      */
     selectable?: boolean | ((path: string) => boolean)
-    /**
-     * Whether the "+N Files" pill opens the files it names, by their paths;
-     * without it, it only counts them.
-     */
-    restSelectable?: (paths: readonly string[]) => boolean
   }>(),
-  { selectable: true, restSelectable: undefined },
+  { selectable: true },
 )
 
-const emit = defineEmits<{ select: [path: string]; openRest: [paths: string[]] }>()
+const emit = defineEmits<{ select: [path: string] }>()
 const icons = useIconPx()
 
 /** The most lines the pills take. */
@@ -53,10 +48,30 @@ function opens(path: string): boolean {
 
 const container = ref<HTMLElement>()
 /**
- * The pills in the order of `files`, which `measure` lays out and each tip
- * points at.
+ * Each file's pill by its path, which `measure` lays out and each tip points
+ * at: by path, since a list in a new order, as newest first makes it, moves
+ * the pills, and an array of template refs keeps the order they mounted in.
  */
-const pillEls = ref<HTMLElement[]>([])
+const pillEls = shallowReactive(new Map<string, HTMLElement>())
+type PillRef = (element: Element | ComponentPublicInstance | null) => void
+/** One function for each path, so a render passes the same ref and Vue never unsets it in between. */
+const pillRefs = new Map<string, PillRef>()
+function pillRef(path: string): PillRef {
+  let set = pillRefs.get(path)
+  if (!set) {
+    set = (element) => {
+      if (element instanceof HTMLElement) {
+        if (pillEls.get(path) !== element)
+          pillEls.set(path, element)
+      } else {
+        pillEls.delete(path)
+        pillRefs.delete(path)
+      }
+    }
+    pillRefs.set(path, set)
+  }
+  return set
+}
 
 /** What the last pill says for the files that do not fit, "+3 Files". */
 function moreLabel(count: number): string {
@@ -77,8 +92,9 @@ const fitCount = useFitMore({
   box: () => container.value,
   measure: () => {
     const box = container.value
-    const first = pillEls.value[0]
-    if (!box || !first)
+    const pills = props.files.map((file) => pillEls.get(file.path))
+    const first = pills[0]
+    if (!box || !first || pills.some((pill) => !pill))
       return null
     const style = getComputedStyle(box)
     const font = getComputedStyle(first).font
@@ -86,7 +102,7 @@ const fitCount = useFitMore({
     return {
       room,
       // A pill wider than the line shrinks to it, truncating its name.
-      widths: pillEls.value.map((pill) => Math.min(pill.offsetWidth, room)),
+      widths: pills.map((pill) => Math.min(pill!.offsetWidth, room)),
       gap: parseFloat(style.columnGap),
       rows: MAX_ROWS,
       countWidth: (rest) => Math.ceil(textWidth(moreLabel(rest), font)) + MORE_PADDING_PX,
@@ -94,8 +110,10 @@ const fitCount = useFitMore({
   },
 })
 
-const hiddenPaths = computed(() => props.files.slice(fitCount.value).map((file) => file.path))
-const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? false)
+/** How many files the first two lines leave out. */
+const hidden = computed(() => props.files.length - fitCount.value)
+/** "+N Files" put the files it counted in place. */
+const expanded = ref(false)
 </script>
 
 <template>
@@ -107,8 +125,8 @@ const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? fa
       <component
         :is="opens(file.path) ? 'button' : 'span'"
         :type="opens(file.path) ? 'button' : undefined"
-        v-show="index < fitCount"
-        ref="pillEls"
+        v-show="expanded || index < fitCount"
+        :ref="pillRef(file.path)"
         class="file-pill group/pill inline-flex h-pill max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-pill leading-4 phone:pl-2 phone:pr-2.5 text-fg-muted transition-colors duration-200 ease-out"
         :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
         @click="opens(file.path) && emit('select', file.path)"
@@ -134,15 +152,14 @@ const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? fa
         </span>
       </component>
       <!-- The whole path, and where a renamed file came from. -->
-      <Tooltip :trigger="pillEls[index]" :content="file.from ? `${file.from} → ${file.path}` : file.path" />
+      <Tooltip :trigger="pillEls.get(file.path)" :content="file.from ? `${file.from} → ${file.path}` : file.path" />
     </template>
-    <component
-      :is="opensRest ? 'button' : 'span'"
-      :type="opensRest ? 'button' : undefined"
-      v-if="hiddenPaths.length > 0"
-      class="file-pill inline-flex h-pill select-none items-center rounded-full px-2 text-pill leading-4 text-fg-muted transition-colors duration-200 ease-out"
-      :class="opensRest ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
-      @click="opensRest && emit('openRest', hiddenPaths)"
-    >{{ moreLabel(hiddenPaths.length) }}</component>
+    <button
+      v-if="hidden > 0"
+      type="button"
+      :aria-expanded="expanded"
+      class="file-pill btn inline-flex h-pill select-none items-center rounded-full px-2 text-pill leading-4 text-fg-muted transition-colors duration-200 ease-out [--shadow-btn:var(--shadow-pill)] hover:text-fg-body"
+      @click="expanded = !expanded"
+    >{{ expanded ? t('transcript.fewerFiles') : moreLabel(hidden) }}</button>
   </div>
 </template>

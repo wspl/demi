@@ -3232,7 +3232,7 @@ onBeforeUnmount(() => {
       </div>
       <GallerySection
         title="Changed Files"
-        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green plus, a removed one is struck through. Pick a file to show it in its request’s changes at that call’s first edit. The pills take at most two lines; the files that do not fit fold into a last pill, +N Files, which opens the request’s changes, where every file is listed. Resize the page to see it fold again. The row folds the command and output on its own; the pills do not move."
+        note="A shell call lists the files it touched under its row, newest first: icon, name and line counts as pills that wrap. A new file carries a green plus, a removed one is struck through. Pick a file to show it in its request’s changes at that call’s first edit. The pills take at most two lines; the files that do not fit fold into a last pill, +N Files, which shows them in place and turns into Show Less, which folds them back. Resize the page to see it fold again. The row folds the command and output on its own; the pills do not move."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">

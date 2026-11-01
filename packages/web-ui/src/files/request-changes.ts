@@ -106,9 +106,58 @@ export function changeFile(file: ChangedFile | EditedFile): ChangeFile {
   }
 }
 
-/** The files a shell call's pills show: those it changed, but outside its agent's working directory. */
+/**
+ * The files a shell call's pills show, newest first: those it changed, but
+ * outside its agent's working directory. Its list holds them in the order
+ * its job first wrote each, then its removals and renames.
+ */
 export function callPills(block: ToolCallBlock): ChangeFile[] {
-  return (storedShellView(block)?.files ?? []).filter((file) => !file.outside).map(changeFile)
+  return ownFiles(block).map(changeFile)
+}
+
+function ownFiles(block: ToolCallBlock): EditedFile[] {
+  return (storedShellView(block)?.files ?? []).filter((file) => !file.outside).reverse()
+}
+
+/**
+ * The files a run's folded pills show (`runFiles`), newest first: by the
+ * latest of `calls` that changed each, and within a call as its own pills
+ * stand.
+ *
+ * Each call stores the run's list as it stands after it, so the call that
+ * last changed a file is the latest whose list holds its entry otherwise than
+ * the list before: written, renamed with a folder or deleted, as the store
+ * tracks them (`crates/agent-store/src/changes.rs`), never worked out again
+ * here.
+ */
+export function runPills(calls: readonly ToolCallBlock[]): ChangeFile[] {
+  const lists = calls.map((call) => storedShellView(call)?.runFiles ?? null)
+  const latest = [...runFiles(calls)].reverse()
+  const same = (a: ChangedFile | undefined, b: ChangedFile) =>
+    !!a && a.kind === b.kind && a.from === b.from && a.edits.length === b.edits.length
+  const changedAt = (file: ChangedFile): number => {
+    for (let at = lists.length - 1; at >= 0; at -= 1) {
+      const list = lists[at]
+      if (!list) {
+        continue
+      }
+      const before = lists.slice(0, at).reverse().find((earlier) => earlier !== null) ?? []
+      if (!same(before.find((entry) => entry.path === file.path), list.find((entry) => entry.path === file.path) ?? file)) {
+        return at
+      }
+    }
+    return -1
+  }
+  const placeIn = (at: number, file: ChangedFile): number => {
+    const own = at >= 0 ? ownFiles(calls[at]!) : []
+    const place = own.findIndex((entry) => entry.path === file.path || file.path.startsWith(`${entry.path}/`))
+    return place < 0 ? own.length : place
+  }
+  return latest
+    .map((file, order) => ({ file, order, at: changedAt(file) }))
+    .map((entry) => ({ ...entry, place: placeIn(entry.at, entry.file) }))
+    .sort((a, b) => b.at - a.at || a.place - b.place || a.order - b.order)
+    .map(({ file }) => changeFile(file))
 }
 
 /**
@@ -206,27 +255,6 @@ export function pillSelection(
       return { node, request: request.id, file: file.path, edit: editRef(first), ...(root === null ? {} : { root }) }
   }
   return null
-}
-
-/**
- * What the "+N Files" pill opens for the file `path` of the call or run
- * (`crates/agent-store/src/changes.rs`): the file of the request whose list holds
- * it, at All Changes.
- *
- * So it works for a file the request removed too, which a pill alone is no control
- * for. It is null for a file the request does not list.
- */
-export function requestFileSelection(
-  node: string | null,
-  requests: TranscriptRequests,
-  block: ToolCallBlock,
-  path: string,
-  root: string | null,
-): RequestEditSelection | null {
-  const request = requests.requestOf.get(block.id)
-  return request?.files.some((file) => file.path === path)
-    ? { node, request: request.id, file: path, edit: null, ...(root === null ? {} : { root }) }
-    : null
 }
 
 /** How a selection names `edit`. */

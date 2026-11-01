@@ -90,8 +90,11 @@ export interface FitMoreOptions {
  * How many of a box's items show. Every item shows first, so `measure` reads them
  * all.
  *
- * Then the count settles, again whenever the box resizes, the items change or a web
- * font finishes loading (it changes the widths without changing the box).
+ * Then the count settles, again whenever the box's width changes, the items change
+ * or a web font finishes loading (it changes the widths without changing the box).
+ * Only the width decides what fits: a height the items themselves give the box, as
+ * a caller that shows every item on request does, fits nothing again, so the count
+ * and the control beside it stay as they are.
  */
 export function useFitMore(options: FitMoreOptions): Ref<number> {
   const shown = ref(options.items().length)
@@ -109,7 +112,14 @@ export function useFitMore(options: FitMoreOptions): Ref<number> {
   }
 
   onMounted(() => {
-    observer = new ResizeObserver(() => { void fit() })
+    let width: number | undefined
+    observer = new ResizeObserver((entries) => {
+      const now = entries.at(-1)?.contentRect.width
+      if (now === width)
+        return
+      width = now
+      void fit()
+    })
     const box = options.box()
     if (box)
       observer.observe(box)

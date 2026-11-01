@@ -5,7 +5,7 @@ import type { ToolCallBlock } from '../block-types'
 import { storedShellView } from '../block-helpers'
 import { pillAction, useEditSelection, useFilePills, useTranscript } from '../edit-selection'
 import { useMessageFiles } from '../../markdown/message-files'
-import { callPills, pillSelection, requestFileSelection } from '../../files/request-changes'
+import { callPills, pillSelection } from '../../files/request-changes'
 import FileChangePills from './FileChangePills.vue'
 
 /**
@@ -32,20 +32,6 @@ function selection(path: string) {
     ? pillSelection(transcript.node, transcript.requests(), props.block, call, path, transcript.directory(props.block.id))
     : null
 }
-/** What the "+N Files" pill opens: the first of its files the request lists. */
-function restSelection(paths: readonly string[]) {
-  const call = storedShellView(props.block)?.commandId
-  if (!transcript || !call)
-    return null
-  const directory = transcript.directory(props.block.id)
-  for (const path of paths) {
-    const found = pillSelection(transcript.node, transcript.requests(), props.block, call, path, directory)
-      ?? requestFileSelection(transcript.node, transcript.requests(), props.block, path, directory)
-    if (found)
-      return found
-  }
-  return null
-}
 /** What a pill's click does: its edit, or a binary file as it is now (`pillAction`). */
 function action(path: string): (() => void) | null {
   const picked = selection(path)
@@ -57,12 +43,6 @@ function selectable(path: string): boolean {
 function pick(path: string): void {
   action(path)?.()
 }
-/** The "+N Files" pill lists its files in the Change view, a binary one among them. */
-function pickRest(paths: readonly string[]): void {
-  const picked = restSelection(paths)
-  if (picked)
-    select()?.(picked)
-}
 </script>
 
 <template>
@@ -72,8 +52,6 @@ function pickRest(paths: readonly string[]): void {
     :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
     :files="files"
     :selectable="selectable"
-    :rest-selectable="(paths) => select() !== undefined && restSelection(paths) !== null"
     @select="pick"
-    @open-rest="pickRest"
   />
 </template>
