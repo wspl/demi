@@ -462,6 +462,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/server-upgrade", get(server_upgrade::read))
         .route("/server-upgrade/channel", put(server_upgrade::set_channel))
+        .route("/server-upgrade/prepare-ahead", put(server_upgrade::set_prepare_ahead))
         .route("/server-upgrade/check", post(server_upgrade::check))
         .route("/server-upgrade/run", post(server_upgrade::run))
         .route("/server-upgrade/agents", get(server_upgrade::agents))

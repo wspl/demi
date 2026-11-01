@@ -8,16 +8,17 @@ import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
 
 /** Which moment of the server's updates the specimen starts at. */
-export type UpdatesMoment = 'upToDate' | 'checking' | 'preparing' | 'available' | 'prepareFailed' | 'downloading' | 'installing' | 'failed' | 'checkFailed'
+export type UpdatesMoment = 'upToDate' | 'checking' | 'offered' | 'preparing' | 'available' | 'prepareFailed' | 'downloading' | 'installing' | 'failed' | 'checkFailed'
 
 /**
  * Settings › Updates with a stand-in server that runs 0.1.5469:
  * Beta offers nothing newer and Canary offers 0.1.5500. Check Now looks
- * again after a moment, a channel looks for the newest of it, and a newer
- * release found is got ready in the background in a few seconds. Update Now
- * runs the rest of the update in a few seconds, what was got ready ahead
- * already installed, and says the product would restart, where the product shows
- * every page the update's screen.
+ * again after a moment, a channel looks for the newest of it, and, with
+ * automatic downloads on, a newer release found is got ready in the
+ * background in a few seconds; turning them on gets the one offered ready
+ * at once. Update Now runs the rest of the update in a few seconds, what was
+ * got ready ahead already installed, and says the product would restart,
+ * where the product shows every page the update's screen.
  */
 const props = withDefaults(defineProps<{ moment?: UpdatesMoment }>(), { moment: 'available' })
 
@@ -69,20 +70,23 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
   const offered = { state: 'checked', at: AT, newer: OFFERED } as const
   switch (moment) {
     case 'upToDate':
-      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', check: { state: 'checked', at: AT, newer: null }, preparation: NONE, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', prepareAhead: false, check: { state: 'checked', at: AT, newer: null }, preparation: NONE, run: { state: 'none' } }
     case 'checking':
-      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', check: { state: 'checking' }, preparation: NONE, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', prepareAhead: false, check: { state: 'checking' }, preparation: NONE, run: { state: 'none' } }
+    case 'offered':
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', prepareAhead: false, check: offered, preparation: NONE, run: { state: 'none' } }
     case 'preparing':
-      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', check: offered, preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB }, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', prepareAhead: true, check: offered, preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB }, run: { state: 'none' } }
     case 'available':
-      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', check: offered, preparation: READY, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', prepareAhead: true, check: offered, preparation: READY, run: { state: 'none' } }
     case 'prepareFailed':
-      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', check: offered, preparation: { state: 'failed', version: NEWER, reason: 'GitHub answered 503 Service Unavailable' }, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'canary', prepareAhead: true, check: offered, preparation: { state: 'failed', version: NEWER, reason: 'GitHub answered 503 Service Unavailable' }, run: { state: 'none' } }
     case 'downloading':
       return {
         running: RUNNING,
         runningNotesUrl: notesOf(RUNNING),
         channel: 'canary',
+        prepareAhead: true,
         check: offered,
         preparation: { state: 'downloading', version: NEWER, done: 88 * MB, total: 214 * MB },
         run: { state: 'updating', to: NEWER, steps: stepsAt('download', { state: 'running', started: ago(9), progress: { kind: 'bytes', done: 88 * MB, total: 214 * MB, perSecond: 1.8 * MB } }) },
@@ -92,6 +96,7 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
         running: RUNNING,
         runningNotesUrl: notesOf(RUNNING),
         channel: 'canary',
+        prepareAhead: true,
         check: offered,
         preparation: { state: 'installing', version: NEWER },
         run: { state: 'updating', to: NEWER, steps: stepsAt('installImage', { state: 'running', started: ago(6), progress: null }) },
@@ -101,6 +106,7 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
         running: RUNNING,
         runningNotesUrl: notesOf(RUNNING),
         channel: 'canary',
+        prepareAhead: true,
         check: offered,
         preparation: READY,
         run: {
@@ -111,7 +117,7 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
         },
       }
     case 'checkFailed':
-      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', check: { state: 'failed', at: AT, reason: 'GitHub answered 403 Forbidden' }, preparation: NONE, run: { state: 'none' } }
+      return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', prepareAhead: false, check: { state: 'failed', at: AT, reason: 'GitHub answered 403 Forbidden' }, preparation: NONE, run: { state: 'none' } }
   }
 }
 
@@ -126,8 +132,22 @@ async function check(): Promise<void> {
   // Canary's newest is NEWER, offered only to a server that runs an older one.
   const newer = state.value.channel === 'canary' && state.value.running !== NEWER ? OFFERED : null
   state.value = { ...state.value, check: { state: 'checked', at: new Date().toISOString(), newer } }
-  if (newer !== null && state.value.preparation.state !== 'ready')
+  await prepareOffered()
+}
+
+/** Gets the release the last check offered ready, when automatic downloads are on and no work ahead ran or runs for it. */
+async function prepareOffered(): Promise<void> {
+  const { check, preparation, prepareAhead, run } = state.value
+  const newer = check.state === 'checked' ? check.newer : null
+  if (prepareAhead && newer && run.state !== 'updating' && (preparation.state === 'none' || preparation.state === 'failed'))
     await prepare(newer.version)
+}
+
+/** Turns automatic downloads on or off; work ahead that runs finishes, as the server's does. */
+async function setPrepareAhead(prepareAhead: boolean): Promise<void> {
+  await slow(400)
+  state.value = { ...state.value, prepareAhead }
+  void prepareOffered()
 }
 
 /** Gets `version` ready in the background, as the server does after a check found it. */
@@ -192,7 +212,7 @@ async function update(version: string): Promise<void> {
   show()
   await slow(1200)
   productWould(`Restart in ${version}`)
-  state.value = { ...startingAt('upToDate'), running: version, runningNotesUrl: notesOf(version), channel: state.value.channel }
+  state.value = { ...startingAt('upToDate'), running: version, runningNotesUrl: notesOf(version), channel: state.value.channel, prepareAhead: state.value.prepareAhead }
 }
 </script>
 
@@ -201,6 +221,7 @@ async function update(version: string): Promise<void> {
     :state="state"
     :overlay-store="appOverlayStore"
     :on-set-channel="setChannel"
+    :on-set-prepare-ahead="setPrepareAhead"
     :on-check="check"
     :on-count-agents="async () => { await slow(600); return 2 }"
     :on-update="update"

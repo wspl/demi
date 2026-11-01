@@ -11,7 +11,7 @@ use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::Shards;
 use demi_backend_user_shard::upgrades::RunRefused;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::server_upgrade::{RunUpgrade, ServerUpgrade, SetUpgradeChannel, WorkingAgents};
+use demi_web_api_protocol::server_upgrade::{RunUpgrade, ServerUpgrade, SetPrepareAhead, SetUpgradeChannel, WorkingAgents};
 
 use super::body::JsonBody;
 use super::error::ApiError;
@@ -43,6 +43,18 @@ pub(super) async fn set_channel(
         return Err(not_offered());
     }
     services.upgrades.set_channel(request.channel).await?;
+    now(&services)
+}
+
+pub(super) async fn set_prepare_ahead(
+    State(services): State<Arc<Services>>,
+    AdminUser(_): AdminUser,
+    JsonBody(request): JsonBody<SetPrepareAhead>,
+) -> Result<Json<ServerUpgrade>, ApiError> {
+    if !services.upgrades.offered() {
+        return Err(not_offered());
+    }
+    services.upgrades.set_prepare_ahead(request.prepare_ahead).await?;
     now(&services)
 }
 

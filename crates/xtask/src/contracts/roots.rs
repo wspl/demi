@@ -152,6 +152,7 @@ pub fn web() -> Vec<Root> {
         receives::<server_upgrade::ServerUpgrade>(),
         receives::<server_upgrade::WorkingAgents>(),
         sends::<server_upgrade::SetUpgradeChannel>(),
+        sends::<server_upgrade::SetPrepareAhead>(),
         sends::<server_upgrade::RunUpgrade>(),
         receives::<state::SyncEvent>(),
         sends::<state::PageMessage>(),

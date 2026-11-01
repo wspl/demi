@@ -39,6 +39,8 @@
     "failedNoVersion": "无法更新。Demi 仍在运行 {running}。",
     "channel": "更新通道",
     "channelDescription": "Canary 最先收到新版本，这些版本还没人在服务器上试过。",
+    "prepareAhead": "自动下载更新",
+    "prepareAheadDescription": "更新时无需再等待下载。不建议在 Canary 开启：它发布频繁，会消耗大量流量。",
     "beta": "Beta",
     "canary": "Canary",
     "confirmTitle": "将 Demi 更新到 {version}？",

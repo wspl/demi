@@ -63,6 +63,8 @@ export interface ServerUpgrade {
   /** The page of `running`'s release, with its notes. */
   runningNotesUrl: string
   channel: UpgradeChannel
+  /** Whether a check that finds a newer release gets it ready at once; otherwise Update Now downloads it. */
+  prepareAhead: boolean
   check: UpgradeCheck
   preparation: UpgradePreparation
   run: UpgradeRun

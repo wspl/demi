@@ -10,6 +10,7 @@ import ExternalLink from '../ui/ExternalLink.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import ProgressBar from '../ui/ProgressBar.vue'
+import Switch from '../ui/Switch.vue'
 import UpdateSteps from '../ui/UpdateSteps.vue'
 import { formatPast, formatSpan } from '../ui/dates'
 import { formatTimeLeft } from '../ui/time-left'
@@ -38,6 +39,8 @@ const props = defineProps<{
   overlayStore: OverlayStore
   /** Changes the channel, which looks for the newest release of it. */
   onSetChannel?: Action<[UpgradeChannel]>
+  /** Turns getting a newer release ready as soon as it is found on or off. */
+  onSetPrepareAhead?: Action<[boolean]>
   /** Looks for the newest release now. */
   onCheck?: Action
   /** How many agents work on the server, every account's, which the question names. */
@@ -346,6 +349,14 @@ function update(): unknown {
             </Menu>
           </template>
         </Dropdown>
+      </SettingsRow>
+      <SettingsRow :label="t('updates.prepareAhead')" :description="t('updates.prepareAheadDescription')">
+        <Switch
+          :model-value="state.prepareAhead"
+          size="sm"
+          :aria-label="t('updates.prepareAhead')"
+          @update:model-value="onSetPrepareAhead"
+        />
       </SettingsRow>
     </SettingsGroup>
     <Dialog

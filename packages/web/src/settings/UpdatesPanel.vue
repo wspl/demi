@@ -10,6 +10,7 @@ import {
   serverUpgradeSchema,
   workingAgentsSchema,
   type RunUpgrade,
+  type SetPrepareAhead,
   type SetUpgradeChannel,
 } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
@@ -40,6 +41,15 @@ function setChannel(channel: UpgradeChannel): Promise<void> {
   )
 }
 
+function setPrepareAhead(prepareAhead: boolean): Promise<void> {
+  return write(
+    '/server-upgrade/prepare-ahead',
+    { method: 'PUT', ...jsonBody({ prepareAhead } satisfies SetPrepareAhead) },
+    t('updates.prepareAheadFailed'),
+    'updates.prepareAheadFailed',
+  )
+}
+
 function check(): Promise<void> {
   return write('/server-upgrade/check', { method: 'POST' }, t('updates.checkFailed'), 'updates.checkFailed')
 }
@@ -64,6 +74,7 @@ async function countAgents(): Promise<number> {
     :state="product.snapshot.serverUpgrade"
     :overlay-store="appOverlayStore"
     :on-set-channel="setChannel"
+    :on-set-prepare-ahead="setPrepareAhead"
     :on-check="check"
     :on-count-agents="countAgents"
     :on-update="update"

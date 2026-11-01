@@ -39,6 +39,8 @@
     "failedNoVersion": "Couldn’t update. Demi still runs {running}.",
     "channel": "Update channel",
     "channelDescription": "Canary gets the newest builds first, before anyone has tried them on a server.",
+    "prepareAhead": "Download updates automatically",
+    "prepareAheadDescription": "Updates finish faster. Not recommended on Canary: it releases often and uses a lot of bandwidth.",
     "beta": "Beta",
     "canary": "Canary",
     "confirmTitle": "Update Demi to {version}?",
