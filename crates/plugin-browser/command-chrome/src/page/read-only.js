@@ -45,7 +45,9 @@
       if (remaining < 0) {
         fail('the result exceeds its size limit');
       }
-      return value;
+      // A string the page cut inside a surrogate pair has half of it,
+      // which JSON.stringify escapes and serde_json refuses.
+      return value.toWellFormed();
     }
     if (typeof value === 'function') {
       fail(`${place} is a function`);
@@ -83,7 +85,7 @@
         const inner = isIdentifier(key) ? `${place}.${key}` : `${place}[${JSON.stringify(key)}]`;
         const item = copy(value[key], inner, depth + 1);
         if (item !== undefined) {
-          result[key] = item;
+          result[key.toWellFormed()] = item;
         }
       }
     }

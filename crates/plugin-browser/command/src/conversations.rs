@@ -610,6 +610,10 @@ impl Owner {
                 let failure = if matches!(error, BrowserError::Installation(_)) {
                     EnvironmentFailure::Installation(message)
                 } else if publish.borrow().as_ref().is_some_and(|ready| ready.is_ok()) {
+                    // A retirement ends a running browser as cancelled.
+                    if !matches!(error, BrowserError::Cancelled) {
+                        tracing::warn!(event = "browser.lost", reason = %message, "a conversation's browser was lost");
+                    }
                     EnvironmentFailure::Lost(message)
                 } else {
                     EnvironmentFailure::Unavailable(message)

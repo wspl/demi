@@ -700,11 +700,21 @@ where
         if let Err(error) = &result {
             let message = match error {
                 chromiumoxide::error::CdpError::InvalidMessage(message, source) => {
-                    let diagnostic =
-                        serde_json::from_str::<chromiumoxide::cdp::CdpEventMessage>(message)
+                    // The connection tries a response, then an event, so its
+                    // error only says neither fit: the message is read again
+                    // as what it is, a response when it has an `id`.
+                    let diagnostic = match serde_json::from_str::<serde_json::Value>(message) {
+                        Err(error) => Some(error.to_string()),
+                        Ok(value) if value.get("id").is_some() => {
+                            serde_json::from_value::<chromiumoxide::types::Response>(value)
+                                .err()
+                                .map(|error| error.to_string())
+                        }
+                        Ok(_) => serde_json::from_str::<chromiumoxide::cdp::CdpEventMessage>(message)
                             .err()
-                            .map(|error| error.to_string())
-                            .unwrap_or_else(|| source.to_string());
+                            .map(|error| error.to_string()),
+                    }
+                    .unwrap_or_else(|| source.to_string());
                     format!("browser protocol decoding failed: {diagnostic}")
                 }
                 _ => format!("browser connection ended: {error}"),

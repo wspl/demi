@@ -18,6 +18,7 @@ use crate::error::CdpError;
 use crate::error::Result;
 
 mod frames;
+mod surrogates;
 
 use frames::LimitedFrames;
 
@@ -153,15 +154,18 @@ impl<T: EventMessage + Unpin> Stream for Connection<T> {
         // read from the ws
         match ready!(pin.ws.poll_next_unpin(cx)) {
             Some(Ok(WsMessage::Text(text))) => {
+                // An error names the text as parsed, so a diagnosis reads
+                // what failed rather than a surrogate this already mended.
+                let text = surrogates::well_formed(&text);
                 let ready = match serde_json::from_str::<Message<T>>(&text) {
                     Ok(msg) => {
                         tracing::trace!("Received {:?}", msg);
                         Ok(msg)
                     }
                     Err(err) => {
-                        let msg = text.as_str().to_string();
+                        let msg = text.to_string();
                         tracing::debug!(target: "chromiumoxide::conn::raw_ws::parse_errors", msg, "Failed to parse raw WS message {}", err);
-                        Err(CdpError::InvalidMessage(text.as_str().to_string(), err))
+                        Err(CdpError::InvalidMessage(msg, err))
                     }
                 };
                 Poll::Ready(Some(ready))
