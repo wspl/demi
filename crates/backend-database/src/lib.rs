@@ -149,6 +149,7 @@ pub mod side_questions;
 pub mod sidebar;
 mod sqlite;
 pub mod subagents;
+pub mod suggested_replies;
 pub mod tree;
 pub mod update;
 pub mod usage;

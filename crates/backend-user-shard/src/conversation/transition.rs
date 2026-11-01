@@ -377,7 +377,7 @@ impl Shard {
     /// answer returns.
     fn archived(&self, id: &ConversationId) {
         self.titles().abort(id);
-        self.suggested_replies().abort(id);
+        self.suggested_replies().stop(id);
         self.stop_idle(id);
         demi_backend_permissions::changed(self.permission_shard(), id);
         demi_backend_permissions::withdrawn(self.permission_shard(), id);

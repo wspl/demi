@@ -154,7 +154,7 @@ impl Shard {
             cwd: resolved.path().to_owned(),
             last_turn: facts.last_turn.as_ref().map(last_turn),
             turn_speed: facts.turn_speed,
-            suggested_replies: self.suggested_replies().kept(&record.id),
+            suggested_replies: services.control.suggested_replies(record.id.clone()).await?,
             plugins_changed,
             notifications_card,
             other_cost,
