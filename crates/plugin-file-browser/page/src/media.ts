@@ -17,6 +17,7 @@ import MediaTab from './MediaTab.vue'
 export const mediaDataSchema = z.object({
   key: z.string().optional(),
   row: z.string().optional(),
+  repeat: z.number().int().nonnegative().optional(),
 })
 export type MediaData = z.infer<typeof mediaDataSchema>
 

@@ -1,5 +1,5 @@
 import { toRaw } from 'vue'
-import type { ShownMedium } from '../files/media-viewer'
+import { mediumKey, type ShownMedium } from '../files/media-viewer'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
 import { ATTACHMENT_MARK } from '../markdown/user-markdown'
 import { messageMediumReferences, referencedMedia, type MessageMediumReference } from '../markdown/render'
@@ -33,12 +33,21 @@ export interface TranscriptPicturesContext {
  * The images and videos a list's `rows` show, in the order they stand, from the
  * oldest to the newest: the images the messages show, the user's attached
  * files, and the media the tools and the command reports returned. It is what
- * the media viewer steps through, and holds only what `rows` holds, each
- * picture marked with its row.
+ * the media viewer steps through, in this order whatever order a row's line
+ * shows them in, and holds only what `rows` holds, each picture marked with
+ * its row and which of the same picture there it is.
  */
 export function transcriptPictures(rows: readonly MessageListBlock[], context: TranscriptPicturesContext): ShownMedium[] {
-  return rows.flatMap((row) => (row.type === 'work_group' ? row.steps : [row]).flatMap((block) =>
-    blockPictures(block, context).map((medium) => ({ ...medium, row: row.id }))))
+  return rows.flatMap((row) => {
+    const media = (row.type === 'work_group' ? row.steps : [row]).flatMap((block) => blockPictures(block, context))
+    const seen = new Map<string, number>()
+    return media.map((medium) => {
+      const key = mediumKey(medium)
+      const repeat = seen.get(key) ?? 0
+      seen.set(key, repeat + 1)
+      return { ...medium, row: row.id, ...(repeat ? { repeat } : {}) }
+    })
+  })
 }
 
 /**
@@ -97,7 +106,7 @@ function toolPictures(media: readonly ToolMedium[], context: TranscriptPicturesC
   return media.flatMap((medium): ShownMedium[] =>
     medium.kind === 'gone'
       ? []
-      : [{ kind: medium.kind, src: context.address(medium.source), name: medium.name, size: sourceSize(medium.source) }])
+      : [{ kind: medium.kind, src: context.address(medium.source), name: medium.name, size: sourceSize(medium.source), reference: medium.source }])
 }
 
 /**

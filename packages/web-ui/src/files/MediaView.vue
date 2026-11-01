@@ -12,7 +12,7 @@ import { useSheetDismiss } from './panel-sheet'
 import SheetCloseButton from './SheetCloseButton.vue'
 import { downloadUrl } from './download'
 import MediumStage from './MediumStage.vue'
-import { arrowStep, mediumKey, useMediaViewer, type MediumPlace } from './media-viewer'
+import { arrowStep, samePlace, useMediaViewer, type MediumPlace } from './media-viewer'
 import FileIcon from './FileIcon.vue'
 import { formatBytes } from './format'
 import { baseName } from '@demicodes/utils'
@@ -65,11 +65,8 @@ watchEffect(() => {
     viewer.restore(props.place)
 })
 // The tab keeps where the medium shown stands, for the next reload.
-watch(medium, (shown) => {
-  if (!shown)
-    return
-  const place: MediumPlace = { key: mediumKey(shown), ...(shown.row === undefined ? {} : { row: shown.row }) }
-  if (place.key !== props.place?.key || place.row !== props.place?.row)
+watch(viewer.mediumPlace, (place) => {
+  if (place && (!props.place || !samePlace(place, props.place)))
     emit('place', place)
 }, { immediate: true })
 /** The medium's pixel size, from its reference until it loads, and its size in bytes, as the stage reports them. */

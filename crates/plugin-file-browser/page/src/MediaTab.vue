@@ -12,7 +12,13 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ update: [data: MediaData] }>()
 
-const place = computed(() => (props.data.key === undefined ? undefined : { key: props.data.key, ...(props.data.row === undefined ? {} : { row: props.data.row }) }))
+const place = computed(() => (props.data.key === undefined
+  ? undefined
+  : {
+      key: props.data.key,
+      ...(props.data.row === undefined ? {} : { row: props.data.row }),
+      ...(props.data.repeat === undefined ? {} : { repeat: props.data.repeat }),
+    }))
 </script>
 
 <template>

@@ -60,7 +60,7 @@ function onLoaded(): void {
  */
 function openLarge(event: MouseEvent): void {
   const row = event.currentTarget instanceof Element ? transcriptRowOf(event.currentTarget) : undefined
-  viewer.show({ kind: props.picture.kind, src: src.value, name: props.picture.name, size: known.value, row }, transcript?.pictures)
+  viewer.show({ kind: props.picture.kind, src: src.value, name: props.picture.name, size: known.value, row, reference: props.picture.source }, transcript?.pictures)
 }
 
 onBeforeUnmount(() => {
