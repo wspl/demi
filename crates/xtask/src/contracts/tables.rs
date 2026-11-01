@@ -326,8 +326,8 @@ export function showsInPlace(mediaType: string): boolean {
 const CONTEXT_LIMIT_LOOKUPS: &str = r#"
 /**
  * The limits a model whose context window is `window` offers below its full
- * window, largest first; none for a window of at most 500,000 tokens or an
- * unknown one.
+ * window, largest first; none for a window under 500,000 tokens or an unknown
+ * one.
  */
 export function contextLimits(window: number | null): number[] {
   return CONTEXT_LIMIT_STEPS.filter((step) => window !== null && window >= step.minWindow).map(

@@ -222,7 +222,21 @@ async fn estimate(s: &SessionShared, cancel: &TurnCancel) -> Result<u64, TurnErr
     Ok(s.read(|core| context_tokens(&core.request_view(&view), &system_prompt)))
 }
 
-/// Lands the recorded model switch.
+/// Gives every selection the session holds the facts its entry states for
+/// its model now (`crates/shared-types/src/model.rs`), before anything reads
+/// them for a request: its thresholds, its replay or a switch's compaction.
+pub(super) async fn refresh_facts(s: &SessionShared, cancel: &TurnCancel) -> Result<(), TurnError> {
+    let held = s.read(SessionCore::held_models);
+    let mut current = Vec::with_capacity(held.len());
+    for model in &held {
+        current.push(cancel.guard(s.runtime.current_model(model)).await?);
+    }
+    s.update(|core| core.adopt_facts(&current));
+    Ok(())
+}
+
+/// Lands the recorded model switch, once every selection has its current
+/// facts.
 ///
 /// The history is first compacted to fit the new model with the current one,
 /// then the switch becomes current and the runtimes it replaced are closed.
@@ -232,6 +246,7 @@ pub(super) async fn apply_switch(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
+    refresh_facts(s, cancel).await?;
     let Some((target, limits)) = s.read(|core| core.switch_target()) else {
         return Ok(false);
     };
@@ -318,6 +333,9 @@ async fn stream(
     let mut attempt = 1;
     let mut refusal_compacted = false;
     loop {
+        // A retry, or the request after a refusal's pass, is built with the
+        // facts the entry states when it goes.
+        refresh_facts(s, cancel).await?;
         let model = s.read(|core| core.model.clone());
         let window = cancel.guard(compaction::window_in_use(s, &model)).await?;
         s.update(|core| core.count_request());

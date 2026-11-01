@@ -7,11 +7,13 @@
 //! applies it before it sends the catalog to the web app and when a
 //! conversation switches to the model.
 //!
-//! The conversation keeps its selection: a changed catalog does not change a
-//! running conversation, which keeps its model's facts until the user selects a
-//! model again. The one exception is an entry with a configured model list,
-//! whose facts the backend applies again at every inference boundary, while the
-//! conversation's thinking and tier choices stay as the user made them.
+//! The conversation keeps its choices, the model, its thinking and its tier,
+//! until the user changes them. The model's facts, its window, output limit,
+//! thinking capabilities and file types, are its entry's catalog's as it states
+//! them now: a session takes them when it opens and before each request, and
+//! the backend applies them again to each request. A catalog that does not list
+//! the model leaves its facts as they are, except an entry's configured list,
+//! which names every model the entry serves and refuses the request.
 //!
 //! # File types
 //!

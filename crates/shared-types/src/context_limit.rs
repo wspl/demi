@@ -25,8 +25,8 @@ pub struct ContextLimitStep {
     pub min_window: u32,
 }
 
-/// The steps, largest first: a window over 500,000 tokens offers 300K and
-/// 200K, and one of 1,000,000 or more 500K as well.
+/// The steps, largest first: a window of 500,000 tokens or more offers 300K
+/// and 200K, and one of 1,000,000 or more 500K as well.
 pub const CONTEXT_LIMIT_STEPS: [ContextLimitStep; 3] = [
     ContextLimitStep {
         tokens: 500_000,
@@ -34,17 +34,17 @@ pub const CONTEXT_LIMIT_STEPS: [ContextLimitStep; 3] = [
     },
     ContextLimitStep {
         tokens: 300_000,
-        min_window: 500_001,
+        min_window: 500_000,
     },
     ContextLimitStep {
         tokens: 200_000,
-        min_window: 500_001,
+        min_window: 500_000,
     },
 ];
 
 /// The limits a model whose context window is `window` offers below its
-/// full window, largest first; none for a window of at most 500,000 tokens
-/// or an unknown one, which is zero.
+/// full window, largest first; none for a window under 500,000 tokens or an
+/// unknown one, which is zero.
 pub fn context_limits(window: u32) -> impl Iterator<Item = u32> {
     CONTEXT_LIMIT_STEPS
         .into_iter()

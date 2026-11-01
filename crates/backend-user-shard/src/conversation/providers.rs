@@ -2,7 +2,8 @@
 //!
 //! A session's runtime resolves the conversation's provider entry at every
 //! inference boundary: a fresh read of the entry in the user's scope, the
-//! entry's configured model facts applied again, and a runtime that serves the
+//! facts the entry's catalog states for the model now applied again
+//! (`crates/shared-types/src/model.rs`), and a runtime that serves the
 //! request. It keeps its runtime while the entry and the model stay the same,
 //! and builds a new one, closing the old, when either changes. A running request
 //! finishes with the runtime it started with.
@@ -17,7 +18,6 @@ use std::sync::Arc;
 use demi_agent_server::{ProviderResolver, ResolveError};
 use demi_agent_tools::{ProfileModel, Unavailable};
 use demi_backend_host_access::transition::ChangeRefusal;
-use demi_provider_registry::catalog::configured_selection;
 use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices};
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
@@ -94,8 +94,9 @@ impl ConversationProviders {
 }
 
 impl ProviderResolver for ConversationProviders {
-    /// The model selection the record of `root`'s conversation holds; a
-    /// socket opens only a conversation that has one.
+    /// The model selection the record of `root`'s conversation holds, with
+    /// the facts its entry's catalog states now; a socket opens only a
+    /// conversation that has one.
     fn selection<'a>(
         &'a self,
         root: &'a NodeId,
@@ -107,9 +108,10 @@ impl ProviderResolver for ConversationProviders {
                 .conversation(conversation_of(root))
                 .await
                 .map_err(|error| ResolveError::Failed(error.to_string()))?;
-            record
+            let model = record
                 .and_then(|record| record.model)
-                .ok_or_else(|| ResolveError::Failed("The conversation has no model yet".into()))
+                .ok_or_else(|| ResolveError::Failed("The conversation has no model yet".into()))?;
+            Ok(self.current_model(&model).await)
         })
     }
 
@@ -150,13 +152,30 @@ impl ProviderResolver for ConversationProviders {
             };
             // The active account's runtime until the session's first
             // request names or takes its own.
-            let selection = configured_selection(&entry, model.clone())
+            let selection = current_selection(&self.services, &entry, model.clone())
+                .await
                 .map_err(|error| ResolveError::Failed(error.to_string()))?;
             runtime
                 .serve(&entry, selection, None)
                 .await
                 .map_err(|failure| ResolveError::Failed(failure.message))?;
             Ok(Box::new(runtime) as Box<dyn ProviderRuntime>)
+        })
+    }
+
+    /// `model` with the facts its entry's catalog states now; as it is when
+    /// the entry is gone or unreadable, whose request then says so.
+    fn current_model<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, ModelSelection> {
+        Box::pin(async move {
+            let Ok(provider) = ProviderId::try_from(model.provider_id.as_str()) else {
+                return model.clone();
+            };
+            let Ok(Some(entry)) = self.services.vault.visible(&self.user, &provider).await else {
+                return model.clone();
+            };
+            current_selection(&self.services, &entry, model.clone())
+                .await
+                .unwrap_or_else(|_| model.clone())
         })
     }
 
@@ -265,6 +284,18 @@ fn missing(model: &str, refusal: ChangeRefusal) -> Unavailable {
     }
 }
 
+/// `selection` with the facts `entry`'s catalog states for its model now
+/// ([`ProviderRegistry::current_selection`](demi_provider_registry::registry::ProviderRegistry)).
+async fn current_selection(
+    services: &Services,
+    entry: &ProviderEntry,
+    selection: ModelSelection,
+) -> Result<ModelSelection, demi_provider_registry::catalog::NotConfigured> {
+    let registry = &services.provider_registry;
+    let provider = registry.provider_for(entry).await;
+    registry.current_selection(entry, &provider, selection).await
+}
+
 /// Whose requests a session's runtime makes, and what it builds its
 /// runtimes with.
 struct Scope {
@@ -279,8 +310,8 @@ struct Scope {
 /// A session's runtime.
 struct ConversationRuntime {
     scope: Rc<Scope>,
-    /// The selection of the latest request, with the entry's configured
-    /// facts applied.
+    /// The selection of the latest request, with the facts of the entry's
+    /// catalog applied.
     selection: ModelSelection,
     current: Option<Current>,
     /// Whether the entry's provider runs a process it prepares ahead; its
@@ -343,9 +374,9 @@ impl ConversationRuntime {
     /// own: the one the request names while it is still the entry's and taken
     /// under the entry's rotation, else one taken now.
     ///
-    /// Answers the model's output limit, which the entry's configured model
-    /// decides when it has a configured list; the request's own cap is not the
-    /// model's, and stays (`crates/provider-common/src/contract.rs`).
+    /// Answers the model's output limit as the entry's catalog states it now;
+    /// the request's own cap is not the model's, and stays
+    /// (`crates/provider-common/src/contract.rs`).
     ///
     /// `runs` says whether the request runs now, which counts the agent as
     /// running on its account, or is only readied ahead.
@@ -365,7 +396,8 @@ impl ConversationRuntime {
             thinking: request.thinking.clone(),
             service_tier_id: request.service_tier_id.clone(),
         };
-        let selection = configured_selection(&entry, requested)
+        let selection = current_selection(&self.scope.services, &entry, requested)
+            .await
             .map_err(|error| refused(error.to_string(), None))?;
         let rotation = entry.rotation();
         let (account, announce) = match rotation {
@@ -903,7 +935,9 @@ impl ProviderRuntime for ConversationRuntime {
                     account.is_some().then_some(None)
                 }
                 Rotation::InOrder | Rotation::Smart => {
-                    let selection = configured_selection(&entry, model.clone()).ok()?;
+                    let selection = current_selection(&self.scope.services, &entry, model.clone())
+                        .await
+                        .ok()?;
                     let (_, announce) = self
                         .agent_account(&entry, &selection.model, account, false)
                         .await

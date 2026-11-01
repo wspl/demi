@@ -67,7 +67,8 @@ impl Shard {
     /// - A switch takes the new model's facts from the entry's catalog with the
     ///   parts it names, the model's first effort when it names none, and the
     ///   vendor's default tier when it names none.
-    /// - A change of parts keeps the model's facts and changes those parts.
+    /// - A change of parts takes the model's facts from the catalog as it
+    ///   states them now, and changes those parts.
     ///
     /// Each part it names is one the catalog's model offers.
     async fn settings_selection(
@@ -80,14 +81,15 @@ impl Shard {
             let provider = ProviderId::try_from(current.provider_id.as_str())
                 .map_err(|_| ChangeRefusal::ProviderNotFound)?;
             let listed = self.listed_model(&provider, &current.model.id).await?;
-            let mut selection = current.clone();
-            if let Some(effort) = change.thinking_effort {
-                selection.thinking = listed.thinking_for(Some(&effort))?;
-            }
-            if let Some(tier) = change.service_tier_id {
-                selection.service_tier_id = listed.tier_for(tier.as_deref())?;
-            }
-            return Ok(selection);
+            let thinking = match change.thinking_effort {
+                Some(effort) => listed.thinking_for(Some(&effort))?,
+                None => current.thinking.clone(),
+            };
+            let tier = match change.service_tier_id {
+                Some(tier) => listed.tier_for(tier.as_deref())?,
+                None => current.service_tier_id.clone(),
+            };
+            return Ok(listed.selection(provider.as_str(), thinking, tier));
         };
         let tier = change.service_tier_id.flatten();
         self.chosen_selection(&ModelSettings {

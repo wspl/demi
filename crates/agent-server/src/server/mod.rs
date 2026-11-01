@@ -70,6 +70,10 @@ pub trait ProviderResolver {
         model: &'a ModelSelection,
     ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>>;
 
+    /// `model` with the facts its entry's catalog states now, which a
+    /// session takes before each request (`crates/shared-types/src/model.rs`).
+    fn current_model<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, ModelSelection>;
+
     /// The window the token thresholds and the usage of a session that infers
     /// with `model` use.
     ///

@@ -33,8 +33,8 @@ export function contextWindowInUse(model: ModelInfo | null | undefined): number 
 
 /**
  * The Context row's options for `model`: its full window first, then the
- * limits its window offers. None for a window of at most 500K, which shows
- * no row.
+ * limits its window offers. None for a window under 500K, which shows no
+ * row.
  */
 export function contextLimitOptions(model: ModelInfo): ContextLimitOption[] {
   const full = model.contextWindow

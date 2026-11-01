@@ -372,6 +372,12 @@ impl ProviderResolver for DeepSeek {
         Box::pin(async move { runtime })
     }
 
+    /// The model as it is: the fixture's has no catalog to change it.
+    fn current_model<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, ModelSelection> {
+        let model = model.clone();
+        Box::pin(async move { model })
+    }
+
     /// The model's own window: the fixture has no user to limit it, and its
     /// root has no profile.
     fn context_window<'a>(

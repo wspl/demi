@@ -64,12 +64,12 @@ function model(id: string, name: string, contextWindow: number): ModelInfo {
   }
 }
 
-/** A model of each window size: 200K offers no limit, 800K offers 300K and 200K, 1M offers 500K too. */
+/** A model of each window size: 200K offers no limit, 500K offers 300K and 200K, 1M offers 500K too. */
 export const contextLimitModels: Record<string, ModelInfo[]> = {
   anthropic: [
     model('claude-haiku', 'Claude Haiku', 200_000),
     model('claude-opus', 'Claude Opus', 1_000_000),
   ],
-  openai: [model('gpt-long', 'GPT Long', 800_000)],
+  openai: [model('gpt-long', 'GPT Long', 500_000)],
   google: [model('gemini-pro', 'Gemini Pro', 1_048_576)],
 }

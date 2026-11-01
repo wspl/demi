@@ -89,7 +89,8 @@ struct Envelope {
 }
 
 /// One model as the proxy describes it; only the fields Demi reads. A
-/// context window is a count of tokens.
+/// context window is a count of tokens: `context_window` is the one the Grok
+/// CLI starts a session at, and `context_windows` all it lets the user pick.
 #[derive(Deserialize)]
 struct GrokModel {
     #[serde(default)]
@@ -102,6 +103,8 @@ struct GrokModel {
     description: Option<String>,
     #[serde(default)]
     context_window: Option<std::num::NonZeroU32>,
+    #[serde(default)]
+    context_windows: Option<Vec<std::num::NonZeroU32>>,
     #[serde(default)]
     supports_reasoning_effort: Option<bool>,
     #[serde(default)]
@@ -129,11 +132,20 @@ impl GrokModel {
             .map(|name| name.0)
             .collect();
         let reasoning = self.supports_reasoning_effort == Some(true) || !efforts.is_empty();
+        // The largest window the model takes: the proxy serves any of them
+        // with nothing in the request to choose one, and a smaller one is the
+        // user's Context limit.
+        let context_window = self
+            .context_windows
+            .into_iter()
+            .flatten()
+            .chain(self.context_window)
+            .max();
         Some(ProviderModel {
             display_name: self.name.map_or_else(|| id.clone(), |name| name.0),
             id,
             description: self.description,
-            context_window: self.context_window.map(std::num::NonZeroU32::get),
+            context_window: context_window.map(std::num::NonZeroU32::get),
             output_limit: None,
             supports_tools: Some(true),
             // The proxy states no modalities; Grok Build's own harness sends

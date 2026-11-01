@@ -832,6 +832,7 @@ impl AgentSession {
             );
         }
         let interrupted = state.phase != SessionPhase::Idle;
+        let current = deps.runtime.current_model(&state.model).await;
         let parts = CoreParts {
             id,
             model: state.model,
@@ -857,8 +858,10 @@ impl AgentSession {
         let user_recovers = deps.runtime.user_recovers_turns();
         let session = Self::start(SessionCore::new(parts), deps);
         // The rows the store holds are current; the completed calls mark
-        // theirs, and an interruption record its own, for the next save.
+        // theirs, and an interruption record its own, for the next save. The
+        // model takes the facts its entry states now, as before a request.
         session.shared.update(|core| {
+            core.adopt_facts(&[current]);
             if !user_recovers {
                 core.hold();
             } else if interrupted {
