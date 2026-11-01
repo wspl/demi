@@ -8,12 +8,16 @@ import {
   afterLeaveTab,
   beforeEnterTab,
   beforeLeaveTab,
+  closingProgress,
   cutMarkCover,
   enterTab,
   isLeavingTab,
   fadeRoom,
+  keepingCloseMotion,
   leaveTab,
+  resettleClosing,
   revealScroll,
+  settledScrollWidth,
   settledTabBounds,
   stripGap,
   tabsChanged,
@@ -54,9 +58,12 @@ const FADE_PX = 24
  * The scroll is the strip's own, timed and eased like the tab motion, and aimed
  * at the settled layout: a tab on its way out takes no room and a tab on its
  * way in its full width, so one motion lands the tab where it ends up. Close
- * and insert collapse or grow from the current width. The wheel scrolls the
- * strip along its axis, so a vertical wheel over the tabs moves them sideways
- * instead of the page.
+ * and insert collapse or grow from the current width. A close is one motion:
+ * the tabs that stay move to their new widths as it collapses, and a scroll it
+ * brings, such as back from an end that came into reach, keeps step with the
+ * collapse, so the browser never pulls the strip back after it. The wheel
+ * scrolls the strip along its axis, so a vertical wheel over the tabs moves
+ * them sideways instead of the page.
  *
  * Slots. The host passes its `TabItem`s as children and sizes the strip in its
  * row. The `leading` slot holds tabs that stand ahead of them and never scroll,
@@ -141,15 +148,33 @@ const overflowing = ref(false)
 let resizeObserver: ResizeObserver | null = null
 let mutationObserver: MutationObserver | null = null
 let scrollFrame: number | null = null
+/** Where a scroll that keeps step with closing tabs ends. */
+let followTarget: number | null = null
 
 function cancelScroll(): void {
   if (scrollFrame !== null) {
     cancelAnimationFrame(scrollFrame)
     scrollFrame = null
   }
+  followTarget = null
+}
+
+/**
+ * Lands a scroll that kept step with tabs that have now closed where it was
+ * going, before anything else moves the strip: the close may end between two
+ * of its frames.
+ */
+function finishFollow(strip: HTMLElement): void {
+  const tabs = el.value
+  if (followTarget !== null && (!tabs || closingProgress(tabs) === null)) {
+    strip.scrollLeft = followTarget
+    cancelScroll()
+  }
 }
 
 // The same length and ease-out as the tab width motion, so the two read as one.
+// While tabs close, the scroll follows their collapse itself: a timed scroll
+// would run ahead of it or behind, and the tabs on one side would move first.
 function scrollStripTo(strip: HTMLElement, target: number): void {
   cancelScroll()
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -158,11 +183,25 @@ function scrollStripTo(strip: HTMLElement, target: number): void {
   }
   const start = strip.scrollLeft
   const startedAt = performance.now()
+  const tabs = el.value
+  const closedAt = tabs ? closingProgress(tabs) : null
+  followTarget = closedAt === null ? null : target
   const step = (now: number): void => {
-    const progress = Math.min(1, (now - startedAt) / TAB_WIDTH_MS)
-    const eased = 1 - (1 - progress) ** 3
+    let eased: number
+    if (closedAt !== null && tabs) {
+      const closed = closingProgress(tabs)
+      eased = closed === null || closedAt >= 1 ? 1 : Math.min(1, Math.max(0, (closed - closedAt) / (1 - closedAt)))
+    } else {
+      const progress = Math.min(1, (now - startedAt) / TAB_WIDTH_MS)
+      eased = 1 - (1 - progress) ** 3
+    }
     strip.scrollLeft = start + (target - start) * eased
-    scrollFrame = progress < 1 ? requestAnimationFrame(step) : null
+    if (eased < 1) {
+      scrollFrame = requestAnimationFrame(step)
+    } else {
+      scrollFrame = null
+      followTarget = null
+    }
   }
   scrollFrame = requestAnimationFrame(step)
 }
@@ -281,6 +320,9 @@ function resized(): void {
 // Only the strip scrolls, never the page: scrollIntoView would move both.
 function revealActive(): void {
   const strip = scroller()
+  if (strip) {
+    finishFollow(strip)
+  }
   const active = strip?.querySelector<HTMLElement>('[aria-selected="true"]') ?? null
   if (active !== watchedTab) {
     if (watchedTab) {
@@ -291,8 +333,21 @@ function revealActive(): void {
     }
     watchedTab = active
   }
+  // With the selected tab outside the scrolling tabs, as Changes is, a close
+  // still brings the end back in step with it.
+  if (strip && !active && el.value && closingProgress(el.value) !== null) {
+    const end = Math.max(0, settledScrollWidth(strip, el.value) - strip.clientWidth)
+    if (strip.scrollLeft - end >= 1) {
+      scrollStripTo(strip, end)
+    }
+  }
   if (strip && active) {
-    const target = revealScroll(strip, activeBounds(strip, active), FADE_PX)
+    const view = {
+      scrollLeft: strip.scrollLeft,
+      clientWidth: strip.clientWidth,
+      scrollWidth: el.value ? settledScrollWidth(strip, el.value) : strip.scrollWidth,
+    }
+    const target = revealScroll(view, activeBounds(strip, active), FADE_PX)
     if (target !== null) {
       scrollStripTo(strip, target)
     }
@@ -342,6 +397,10 @@ function onBeforeEnter(el: Element): void {
 function onEnter(el: Element): void {
   if (moving.has(el)) {
     enterTab(el)
+    // Tabs closing as it opens move to the room it leaves them.
+    if (el.parentElement) {
+      resettleClosing(el.parentElement)
+    }
   }
 }
 
@@ -480,12 +539,12 @@ function onPointermove(event: PointerEvent): void {
   held.to = dragTarget(held.centers, held.from, held.centers[held.from]! + offset)
   held.tabs.forEach((tab, index) => {
     if (index === held.from) {
-      tab.style.transition = 'none'
+      tab.style.transition = keepingCloseMotion(tab, 'none')
       tab.style.zIndex = '2'
       tab.style.transform = `translateX(${offset}px)`
       return
     }
-    tab.style.transition = 'transform 150ms ease-out'
+    tab.style.transition = keepingCloseMotion(tab, 'transform 150ms ease-out')
     tab.style.transform = `translateX(${dragShift(index, held.from, held.to) * held.step}px)`
   })
 }
@@ -493,7 +552,7 @@ function onPointermove(event: PointerEvent): void {
 /** Puts every tab of `ended` back in its own place, without motion. */
 function release(ended: Drag): void {
   for (const tab of ended.tabs) {
-    tab.style.transition = ''
+    tab.style.transition = keepingCloseMotion(tab, '')
     tab.style.zIndex = ''
     tab.style.transform = ''
   }
@@ -565,6 +624,19 @@ onMounted(() => {
   measureRoom()
   revealActive()
 })
+
+// The overflow button comes or goes with a close that starts or ends the
+// overflow, and the room it takes or gives changes where the closing motion
+// ends.
+watch(
+  overflowing,
+  () => {
+    if (el.value) {
+      resettleClosing(el.value)
+    }
+  },
+  { flush: 'post' },
+)
 
 // The leading tabs' width changes with their marks and badges, and they come
 // and go with the host's.
