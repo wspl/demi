@@ -642,7 +642,11 @@ export const fourScreenshotsTool = screenshotsCall(
   captures(4),
 )
 
-/** Twelve screenshots in one call: as many as fit in the call's line, the rest counted as +N. */
+/**
+ * Twelve screenshots in one call: as many as fit in the call's line, newest
+ * first, the oldest counted as +N. The last, the flow's end with its timeline,
+ * stands first.
+ */
 export const twelveScreenshotsTool = screenshotsCall(
   {
     id: 'tool-twelve-screenshots',
@@ -653,7 +657,7 @@ export const twelveScreenshotsTool = screenshotsCall(
     }),
   },
   'cmd-twelve-shots',
-  captures(12),
+  [...captures(11), { tab: 't12', width: 1600, height: 300, bytes: 21_404, medium: blobImage(galleryBlobs.timeline) }],
 )
 
 /**
