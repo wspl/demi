@@ -2384,6 +2384,50 @@ impl SessionCore {
         Some((ModelSelection::clone(&switch.model), limits))
     }
 
+    /// Every selection the session holds: its model's, and those of the
+    /// recorded switch and of the one waiting for an edit.
+    pub(super) fn held_models(&self) -> Vec<ModelSelection> {
+        let switches = [&self.switch, &self.waiting_switch];
+        let switched = switches.into_iter().flatten().map(|switch| ModelSelection::clone(&switch.model));
+        std::iter::once(self.model.clone()).chain(switched).collect()
+    }
+
+    /// Takes the facts of `current`, the models as their entries state them
+    /// now, in place of those of every selection the session holds of the same
+    /// model, keeping the thinking and tier the user chose. Runs between two
+    /// requests; a selection of a model `current` does not hold is left as it
+    /// is.
+    pub(super) fn adopt_facts(&mut self, current: &[ModelSelection]) {
+        let facts = |held: &ModelSelection| {
+            current
+                .iter()
+                .find(|now| now.provider_id == held.provider_id && now.model.id == held.model.id)
+                .filter(|now| now.model != held.model)
+                .map(|now| now.model.clone())
+        };
+        if let Some(model) = facts(&self.model) {
+            session_log!(
+                self,
+                info,
+                event = "model.facts_changed",
+                node = %self.id,
+                provider = %self.model.provider_id,
+                model = self.model.model.id,
+                from_window = self.model.model.context_window,
+                to_window = model.context_window,
+                "the model's facts changed in its entry's catalog"
+            );
+            self.model.model = model;
+            self.persist.dirty = true;
+            self.requests.save = true;
+        }
+        for switch in [&mut self.switch, &mut self.waiting_switch].into_iter().flatten() {
+            if let Some(model) = facts(&switch.model) {
+                switch.model.model = model;
+            }
+        }
+    }
+
     /// Makes the recorded switch current, and returns the runtimes it
     /// replaced for closing. Runs between two requests, when the runtime is
     /// in its slot.

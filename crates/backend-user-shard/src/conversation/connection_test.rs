@@ -10,7 +10,6 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_provider_registry::catalog::configured_selection;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
@@ -109,11 +108,7 @@ impl Shard {
         };
         // The model the catalog lists is also the configured one, when the
         // entry configures its list.
-        let selection =
-            match configured_selection(&entry, model.selection(entry.id.as_str(), None, None)) {
-                Ok(selection) => selection,
-                Err(error) => return failed(error.to_string()),
-            };
+        let selection = model.selection(entry.id.as_str(), None, None);
         let runtime = if provider.capabilities().process_host {
             let work = ProcessWork::Account(entry.id.clone());
             let placement = CrossPlacement::placement(Rc::downgrade(&self.this()), work);

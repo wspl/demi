@@ -2225,7 +2225,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="ModelSelector"
-        note="The model dropdown aligns to the trigger’s right edge, extending to the left. A new conversation inherits the saved model, reasoning and Fast Mode; the product adapter persists this preference to the backend. A model over 500K offers a Context row: the limit is the user’s for that model in every conversation, so the context specimens share one store, and the usage indicator counts against the limit."
+        note="The model dropdown aligns to the trigger’s right edge, extending to the left. A new conversation inherits the saved model, reasoning and Fast Mode; the product adapter persists this preference to the backend. A model of 500K or more offers a Context row: the limit is the user’s for that model in every conversation, so the context specimens share one store, and the usage indicator counts against the limit."
       >
         <div class="specimen-stack">
           <GallerySpecimen variant="new conversation · saved choice">
@@ -2266,7 +2266,7 @@ onBeforeUnmount(() => {
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GalleryOverlayWell size="wide">
-            <GallerySpecimen variant="context · 800K model: full, 300K, 200K">
+            <GallerySpecimen variant="context · 500K model: full, 300K, 200K">
               <GalleryContextLimit provider-id="openai" model-id="gpt-long" />
             </GallerySpecimen>
           </GalleryOverlayWell>

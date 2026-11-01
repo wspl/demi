@@ -81,6 +81,11 @@ pub trait SessionRuntime {
         model: &'a ModelSelection,
     ) -> LocalBoxFuture<'a, Result<SystemPrompt, String>>;
 
+    /// `model` with the facts its provider entry states for it now: its
+    /// window, output limit, thinking capabilities and file types, while the
+    /// thinking and tier stay `model`'s.
+    fn current_model<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, ModelSelection>;
+
     /// The window the session's token thresholds use for `model`: the model's
     /// context window, or the limit the user set on it
     /// (`crates/shared-types/src/context_limit.rs`).

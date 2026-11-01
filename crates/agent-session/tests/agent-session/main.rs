@@ -136,6 +136,11 @@ impl SessionRuntime for TestRuntime {
         Box::pin(async move { Ok(prompt) })
     }
 
+    fn current_model<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, ModelSelection> {
+        let model = model.clone();
+        Box::pin(async move { model })
+    }
+
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
         let window = self
             .window_in_use

@@ -63,36 +63,6 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
     }
 }
 
-/// `selection` with the facts of the entry's configured model applied again, as
-/// every inference boundary applies them (`crates/shared-types/src/model.rs`).
-///
-/// An edit of a model's limits reaches the next request, and the thinking and
-/// tier stay as the user chose them. An entry without a configured list keeps
-/// the selection as it is.
-pub fn configured_selection(
-    entry: &ProviderEntry,
-    selection: ModelSelection,
-) -> Result<ModelSelection, NotConfigured> {
-    let EntryCredential::ApiKey(config) = &entry.credential else {
-        return Ok(selection);
-    };
-    let Some(models) = &config.models else {
-        return Ok(selection);
-    };
-    let Some(model) = models
-        .0
-        .iter()
-        .find(|model| model.kind == ModelKind::Text && model.id.as_str() == selection.model.id)
-    else {
-        return Err(NotConfigured(selection.model.id));
-    };
-    Ok(configured_model(model).selection(
-        entry.id.as_str(),
-        selection.thinking,
-        selection.service_tier_id,
-    ))
-}
-
 /// A list never fetched: a configured list, or an empty catalog.
 fn unfetched(models: Vec<ProviderModel>, warnings: Vec<String>) -> ProviderModelList {
     ProviderModelList {
@@ -193,6 +163,38 @@ impl ProviderRegistry {
             Ok(Some(catalog)) => catalog,
             Ok(None) => unfetched(Vec::new(), Vec::new()),
             Err(failure) => unfetched(Vec::new(), vec![failure]),
+        }
+    }
+
+    /// `selection` with the facts the entry's catalog states for its model
+    /// now, as every inference boundary applies them
+    /// (`crates/shared-types/src/model.rs`): its window, output limit,
+    /// thinking capabilities and file types, while the thinking and tier stay
+    /// as the user chose them. `provider` is the entry's, as for its catalog.
+    ///
+    /// The catalog is read as known now, so no boundary waits for a source.
+    /// A model it does not list keeps the facts it has, since a catalog not
+    /// read yet lists nothing; on an entry with a configured list, which names
+    /// every model the entry serves, it is refused.
+    pub async fn current_selection(
+        &self,
+        entry: &ProviderEntry,
+        provider: &Result<Arc<dyn Provider>, RegistryError>,
+        selection: ModelSelection,
+    ) -> Result<ModelSelection, NotConfigured> {
+        let catalog = self.read_entry_catalog(entry, provider, Reading::Known).await;
+        if let Some(listed) = catalog.models.iter().find(|listed| listed.id == selection.model.id) {
+            return Ok(listed.selection(
+                entry.id.as_str(),
+                selection.thinking,
+                selection.service_tier_id,
+            ));
+        }
+        match &entry.credential {
+            EntryCredential::ApiKey(config) if config.models.is_some() => {
+                Err(NotConfigured(selection.model.id))
+            }
+            _ => Ok(selection),
         }
     }
 

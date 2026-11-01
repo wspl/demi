@@ -1043,6 +1043,10 @@ impl SessionRuntime for CopyRuntime {
         self.session.system_prompt(model)
     }
 
+    fn current_model<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, ModelSelection> {
+        self.session.current_model(model)
+    }
+
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
         self.session.context_window(model)
     }

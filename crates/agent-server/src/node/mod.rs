@@ -822,6 +822,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         })
     }
 
+    fn current_model<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, ModelSelection> {
+        self.providers.current_model(model)
+    }
+
     /// The window the product gives `model`, with the Context the node's
     /// profile chose in place of the user's limit.
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {

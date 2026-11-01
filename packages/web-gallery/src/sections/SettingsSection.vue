@@ -634,7 +634,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Profile Editor · Own Context"
-        note="The scout profile on Claude Opus, whose 1M window offers a choice: its subagents use 500K while the user’s conversations on Opus keep their own limit. Default names the window that limit gives; the Context row leaves with Parent’s Model or a model of 500K or less."
+        note="The scout profile on Claude Opus, whose 1M window offers a choice: its subagents use 500K while the user’s conversations on Opus keep their own limit. Default names the window that limit gives; the Context row leaves with Parent’s Model or a model under 500K."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!contextEditor.open.value" size="md" @click="contextEditor.open.value = true">Open</Button>

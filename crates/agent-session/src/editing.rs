@@ -292,6 +292,9 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     }
     drop(reservation);
     cancel.check()?;
+    // The replacement's first request lands no switch, so its facts are
+    // brought up to date here, before its preflight reads them.
+    turn::refresh_facts(s, cancel).await?;
     compaction::preflight(s, cancel).await?;
     turn::run_replacement(s, cancel).await
 }
