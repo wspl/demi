@@ -338,7 +338,7 @@ impl ControlService {
     }
 
     /// Deletes the device with its attachments to conversations, its
-    /// projects, the port forwards it is an end of and its exposed ports, one transaction. The projects' conversations first move
+    /// projects and the port forwards it is an end of, one transaction. The projects' conversations first move
     /// off them, each to its project's directory, or its worktree's,
     /// on the device as a direct device target, which no longer runs. A project is a pointer: no file goes.
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
@@ -433,12 +433,12 @@ impl ControlService {
                 running
             };
             // A forward of which the device was an end goes with it, and
-            // so do its exposed ports and the workflows kept of it.
+            // so do the workflows kept of it. A provider entry that connects
+            // through it keeps naming it, and fails until another is chosen.
             transaction.execute(
                 "DELETE FROM port_forwards WHERE listen_device_id = ?1 OR connect_device_id = ?1",
                 [device.as_str()],
             )?;
-            transaction.execute("DELETE FROM exposed_ports WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM host_workflows WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;

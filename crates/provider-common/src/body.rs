@@ -33,9 +33,9 @@ pub fn json_body(body: &impl Serialize) -> Vec<u8> {
     serde_json::to_vec(body).expect("a request body serializes")
 }
 
-/// A `multipart/form-data` body built whole (RFC 7578), which a request to
-/// a device's exposed port needs: reqwest's own form is a stream, which
-/// the device route cannot carry, and it does not give its bytes.
+/// A `multipart/form-data` body built whole (RFC 7578), which a request
+/// through a device needs: reqwest's own form is a stream, which the device
+/// route cannot carry, and it does not give its bytes.
 pub struct FormBody {
     boundary: String,
     bytes: Vec<u8>,

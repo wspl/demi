@@ -1,5 +1,4 @@
 import { createSmallModelState } from './small-model'
-import { macAddress } from './exposed-ports'
 import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
 import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
@@ -973,13 +972,29 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      // Its endpoint names alex-mbp by its id, whose port 11434 is not
-      // exposed: its last test says so, with Expose Port.
-      id: 'mac-ollama', name: 'Ollama on alex-mbp', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
-      baseUrl: `${macAddress(11434)}/v1`, wireApi: 'openai-chat', apiKey: '',
-      modelSource: 'manual', state: 'error', detail: 'Port 11434 of alex-mbp isn’t exposed.', testedWith: 'qwen3:32b',
-      notExposed: { deviceId: 'mac', device: 'alex-mbp', port: 11434 },
+      // The office workstation is on alex-mbp's network, out of the server's
+      // reach: its requests go out from alex-mbp, which reaches it.
+      id: 'office-ollama', name: 'Ollama on the office workstation', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
+      baseUrl: 'http://192.168.1.50:11434/v1', throughDevice: 'mac', wireApi: 'openai-chat', apiKey: '',
+      modelSource: 'manual', testedWith: 'qwen3:32b',
       models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, extensions: [] })],
+    }),
+    provider({
+      // Ollama on alex-mbp itself: its requests go out from alex-mbp, whose
+      // own 127.0.0.1 the endpoint names.
+      id: 'mac-ollama', name: 'Ollama on alex-mbp', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
+      baseUrl: 'http://127.0.0.1:11434/v1', throughDevice: 'mac', wireApi: 'openai-chat', apiKey: '',
+      modelSource: 'manual', testedWith: 'qwen3:32b',
+      models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, extensions: [] })],
+    }),
+    provider({
+      // It connected through a laptop since removed: its last test says so,
+      // and Connect Through shows Removed Device until another is chosen.
+      id: 'laptop-lm-studio', name: 'LM Studio on the old laptop', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
+      baseUrl: 'http://127.0.0.1:1234/v1', throughDevice: 'old-laptop', wireApi: 'openai-chat', apiKey: '',
+      modelSource: 'manual', state: 'error', testedWith: 'gemma-3-12b',
+      detail: 'The device this provider connects through was removed. Choose another in Connect Through.',
+      models: [model({ id: 'gemma-3-12b', contextWindow: 32_000, tools: true, extensions: [] })],
     }),
     provider({
       // A second Google key, for work, turned off.

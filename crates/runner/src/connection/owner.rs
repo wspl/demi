@@ -173,9 +173,9 @@ struct Owner<'r> {
     pairing: Option<Arc<crate::pairs::Pairing>>,
     /// The user's port forwards on this connection, which end with it.
     forwarding: Option<crate::forward::Forwarding>,
-    /// The backend's requests to exposed ports on this connection, which
+    /// The requests the backend sends out from this device, which
     /// end with it.
-    exposure: Option<crate::exposure::Exposure>,
+    device_requests: Option<crate::device_requests::DeviceRequests>,
     /// The manifests installed on this connection, which end with it.
     manifests: Manifests,
     /// The runner release downloading ahead on this connection, and what
@@ -235,7 +235,7 @@ pub async fn serve(
     // lasts.
     registered.pipes.set_pairs(Some(pairing.clone()));
     let forwarding = crate::forward::Forwarding::new(listed, pairing.clone(), registered.pipes.clone());
-    let exposure = crate::exposure::Exposure::new(
+    let device_requests = crate::device_requests::DeviceRequests::new(
         registered.pipes.clone(),
         transport.control.clone(),
         transport.cancellation(),
@@ -263,7 +263,7 @@ pub async fn serve(
         own,
         pairing: Some(pairing),
         forwarding: Some(forwarding),
-        exposure: Some(exposure),
+        device_requests: Some(device_requests),
         manifests: Manifests::default(),
     };
     let result = owner.run(&mut transport).await;
@@ -885,9 +885,9 @@ impl Owner<'_> {
                 }
             }
             Inbound::HttpRequest { .. } => {
-                if let Some(exposure) = &mut self.exposure {
-                    // It is an exposed port's request.
-                    let _ = exposure.handle(message);
+                if let Some(requests) = &mut self.device_requests {
+                    // It is a device request.
+                    let _ = requests.handle(message);
                 }
             }
             Inbound::DirectClose { peer } => self.direct.close(&peer),
@@ -1106,7 +1106,7 @@ impl Owner<'_> {
         self.forwarding = None;
         self.registered.pipes.set_pairs(None);
         self.pairing = None;
-        self.exposure = None;
+        self.device_requests = None;
         self.direct.close_all();
         tokio::join!(self.host.close(), self.streams.close(), self.volumes.close());
         // State writes finish, since a claimed token must not be lost, and a

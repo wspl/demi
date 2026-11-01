@@ -593,10 +593,8 @@ impl Shard {
         // The commands recorded on it that the backend no longer holds, as
         // after a restart, are taken up to be lost with it.
         self.take_up(removal.running.iter().cloned());
-        // The forwards it was an end of went with it, and its exposed
-        // ports.
+        // The forwards it was an end of went with it.
         self.forwards_changed().await;
-        self.mark(Part::ExposedPorts);
         Ok(removal)
     }
 

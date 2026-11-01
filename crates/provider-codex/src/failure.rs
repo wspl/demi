@@ -108,7 +108,6 @@ pub fn read_codex_failure(
                 retry_at: unix_seconds(resets_at),
                 continue_with: None,
                 signed_out: None,
-                not_exposed: None,
                 device_offline: None,
             };
         }
@@ -121,7 +120,6 @@ pub fn read_codex_failure(
                 retry_at: unix_seconds(lifts),
                 continue_with: None,
                 signed_out: None,
-                not_exposed: None,
                 device_offline: None,
             };
         }

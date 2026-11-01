@@ -25,7 +25,7 @@ pub use self::permissions::deliver_decisions;
 mod plugins;
 
 pub use self::plugins::ReloadRefusal;
-pub mod exposed_ports;
+pub mod device_requests;
 mod policy;
 pub mod port_forwards;
 pub mod subagents;
@@ -104,9 +104,6 @@ pub struct Shard {
     devices: Devices,
     /// The pipes of the user's devices.
     pipes: Pipes,
-    /// The requests under way through each exposed port, which its removal
-    /// ends.
-    exposure: exposed_ports::Underway,
     /// Each agent node's commands, for the rpc calls of its jobs.
     commands: CommandRouter,
     /// Every task the shard spawns, which its close waits for.
@@ -240,7 +237,6 @@ impl Shard {
             conversations: Conversations::default(),
             devices,
             pipes: Pipes::new(ARRIVAL),
-            exposure: exposed_ports::Underway::default(),
             commands: CommandRouter::default(),
             tasks: TaskTracker::new(),
             closing: CancellationToken::new(),
@@ -765,9 +761,9 @@ impl ShardPool {
             tracing::error!(event = "provider_registry.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
         }
         shared.provider_registry.set_machine(Arc::new(machine));
-        // A provider entry's request to one of its owner's devices goes
-        // through the owner's shard (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
-        shared.provider_registry.set_devices(exposed_ports::DeviceRequests::new(shards.clone()));
+        // A provider entry's request through one of its owner's devices goes
+        // through the owner's shard (`crates/backend-user-shard/src/shard/device_requests.rs`).
+        shared.provider_registry.set_devices(device_requests::DeviceRequests::new(shards.clone()));
         Ok(Self { shards, workers })
     }
 

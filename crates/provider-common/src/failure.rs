@@ -72,10 +72,10 @@ impl ProviderFailure {
     /// even be built has no code. The message names the error and its causes
     /// but never the endpoint, which stays inside the provider.
     ///
-    /// A request to a device's port fails in Demi's words
-    /// (`crates/backend-user-shard/src/shard/exposed_ports.rs`):
+    /// A request through a device fails in Demi's words
+    /// (`crates/backend-user-shard/src/shard/device_requests.rs`):
     ///
-    /// - A port the device has not exposed fails with `port_not_exposed`, which
+    /// - A device its owner removed fails with `device_removed`, which
     ///   waiting cannot fix.
     /// - An offline device fails with `device_offline`, retried as an
     ///   unreachable endpoint is.
@@ -83,9 +83,9 @@ impl ProviderFailure {
     pub fn transport(label: &str, error: impl Into<SendError>) -> Self {
         let error = match error.into() {
             SendError::Transport(error) => error,
-            SendError::Device(refusal @ DeviceRefusal::NotExposed { .. }) => {
+            SendError::Device(refusal @ DeviceRefusal::Removed) => {
                 return Self {
-                    code: Some(ErrorCode::PortNotExposed),
+                    code: Some(ErrorCode::DeviceRemoved),
                     ..Self::no_answer(refusal.to_string())
                 };
             }
@@ -255,13 +255,14 @@ pub enum ErrorCode {
     AuthUnsupported,
     /// The credential could not be refreshed.
     AuthRefreshFailed,
-    /// The request named a port of one of the user's devices that the
-    /// device has not exposed (`crates/backend-user-shard/src/shard/exposed_ports.rs`): the failure offers
-    /// Expose Port, and the agent does not retry it.
-    PortNotExposed,
-    /// The request named a port of one of the user's devices while the
-    /// device is offline, or a Cloud stopped (`crates/backend-user-shard/src/shard/exposed_ports.rs`): retried
-    /// as an unreachable endpoint is, and the failure names the device.
+    /// The entry connects through a device its owner removed
+    /// (`crates/backend-user-shard/src/shard/device_requests.rs`): the agent
+    /// does not retry it.
+    DeviceRemoved,
+    /// The entry connects through a device that is offline, or a Cloud
+    /// stopped (`crates/backend-user-shard/src/shard/device_requests.rs`):
+    /// retried as an unreachable endpoint is, and the failure names the
+    /// device.
     DeviceOffline,
     /// Any other failure the vendor named, with the vendor's own code.
     Vendor(String),
@@ -282,7 +283,7 @@ impl ErrorCode {
             Self::AuthInvalid => "auth_invalid",
             Self::AuthUnsupported => "auth_unsupported",
             Self::AuthRefreshFailed => "auth_refresh_failed",
-            Self::PortNotExposed => "port_not_exposed",
+            Self::DeviceRemoved => "device_removed",
             Self::DeviceOffline => "device_offline",
             Self::Vendor(code) => code,
         }
@@ -350,7 +351,7 @@ impl FromStr for ErrorCode {
             "auth_invalid" => Self::AuthInvalid,
             "auth_unsupported" => Self::AuthUnsupported,
             "auth_refresh_failed" => Self::AuthRefreshFailed,
-            "port_not_exposed" => Self::PortNotExposed,
+            "device_removed" => Self::DeviceRemoved,
             "device_offline" => Self::DeviceOffline,
             other => Self::Vendor(other.to_owned()),
         })

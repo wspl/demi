@@ -713,9 +713,13 @@
       "failed": "失败",
       "enableModel": "请先启用一个模型",
       "noTextModel": "测试会发送一条聊天消息，但此供应商没有文本模型",
-      "exposePort": "公开端口",
-      "tryAgain": "重试",
-      "sharedDevice": "使用此供应商的所有人都会通过此端点访问 {device}。"
+      "through": "出网设备",
+      "throughServer": "服务器",
+      "throughServerDescription": "请求从服务器发出。",
+      "throughDevice": "请求从 {device} 发出，端点填它能访问的地址。",
+      "throughOffline": "{device} 离线：连上之前请求会失败。",
+      "throughRemoved": "已移除的设备",
+      "throughRemovedDescription": "该设备已被移除：选择其他设备之前请求会失败。"
     },
     "cli": {
       "title": "命令行工具",

@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
-use crate::ids::{CredentialId, LoginId, ProviderId};
+use crate::ids::{CredentialId, DeviceId, LoginId, ProviderId};
 use crate::text::{EndpointUrl, Trimmed};
 
 /// How an entry authenticates (`crates/provider-registry/src/families.rs`).
@@ -269,6 +269,12 @@ pub struct ProviderPatch {
     #[schemars(with = "Option<Nullable<CacheTtl>>")]
     #[garde(skip)]
     pub cache_ttl: Option<Option<CacheTtl>>,
+    /// An API-key entry's Connect Through: one of the owner's devices its
+    /// requests go out from, null for the server.
+    #[serde(default, with = "double_option")]
+    #[schemars(with = "Option<Nullable<DeviceId>>")]
+    #[garde(skip)]
+    pub through_device: Option<Option<DeviceId>>,
 }
 
 /// A change of an entry's media, by kind.
@@ -479,6 +485,12 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Vec<CacheTtl>>")]
     pub cache_ttl_presets: Option<Vec<CacheTtl>>,
+    /// The owner's device an API-key entry's requests go out from, which
+    /// reaches its endpoint on its own network; null for the server and for
+    /// a subscription.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<DeviceId>")]
+    pub through_device: Option<DeviceId>,
     pub created_at: Timestamp,
 }
 
@@ -647,16 +659,6 @@ pub enum TestResult {
         )]
         #[schemars(with = "String")]
         model: Option<String>,
-        /// For a request to a port of the entry's device that the device
-        /// has not exposed, that port, which the page offers to expose
-        /// with Expose Port before testing again (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "demi_shared_types::NotExposedPort")]
-        not_exposed: Option<demi_shared_types::NotExposedPort>,
     },
 }
 

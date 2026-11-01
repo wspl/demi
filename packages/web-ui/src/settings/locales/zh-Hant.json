@@ -713,9 +713,13 @@
       "failed": "失敗",
       "enableModel": "請先啟用一個模型",
       "noTextModel": "測試會傳送一則聊天訊息，但此供應商沒有文字模型",
-      "exposePort": "公開連接埠",
-      "tryAgain": "再試一次",
-      "sharedDevice": "使用此供應商的所有人都會透過此端點連線到 {device}。"
+      "through": "出網裝置",
+      "throughServer": "伺服器",
+      "throughServerDescription": "請求從伺服器送出。",
+      "throughDevice": "請求從 {device} 送出，端點填它能連線的位址。",
+      "throughOffline": "{device} 離線：連線之前請求會失敗。",
+      "throughRemoved": "已移除的裝置",
+      "throughRemovedDescription": "該裝置已被移除：選擇其他裝置之前請求會失敗。"
     },
     "cli": {
       "title": "命令列工具",

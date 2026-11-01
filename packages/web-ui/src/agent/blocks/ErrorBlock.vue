@@ -40,11 +40,6 @@ const props = defineProps<{
    */
   signedOut?: { provider: string; account: string } | null
   /**
-   * The device's port the request named, while it is still not exposed, which
-   * the record names instead of the code's words.
-   */
-  notExposed?: { device: string; port: number } | null
-  /**
    * The device the request named while it was offline, which the record names.
    */
   deviceOffline?: { device: string } | null
@@ -65,7 +60,6 @@ const label = computed(() =>
     {
       retryAt: props.retryAt ?? null,
       signedOut: props.signedOut ?? null,
-      notExposed: props.notExposed ?? null,
       deviceOffline: props.deviceOffline ?? null,
       credential: props.providerId === undefined ? null : credentialKinds()?.(props.providerId) ?? null,
     },

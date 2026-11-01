@@ -79,8 +79,6 @@ pub enum Part {
     Credentials,
     /// The user's port forwards with what their runners announced.
     PortForwards,
-    /// The user's exposed ports.
-    ExposedPorts,
     /// The user's passkeys.
     Passkeys,
     /// The user's sessions, the signed-in browsers.

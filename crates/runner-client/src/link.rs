@@ -463,29 +463,28 @@ pub(crate) enum Answer {
     Read(Vec<FileRead>),
     /// The runner's answer to a page's offer.
     Direct(DirectAnswer),
-    /// An exposed port's answer to a request, but for its body.
+    /// The answer to a request the device made, but for its body.
     Http(HttpHead),
     Done,
 }
 
-/// What an exposed port answered a request (`crates/backend-user-shard/src/shard/exposed_ports.rs`): its status
-/// and headers; its body comes through the request's answer pipe.
+/// What the address answered a request the device made
+/// (`crates/backend-user-shard/src/shard/device_requests.rs`): its status and
+/// headers; its body comes through the request's answer pipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpHead {
     pub status: u16,
-    pub headers: Vec<demi_runner_protocol::exposure::HttpHeader>,
+    pub headers: Vec<demi_runner_protocol::device_requests::HttpHeader>,
 }
 
-/// A request the backend makes for the user to one of the device's exposed
-/// ports, as [`Link::http_request`] sends it.
+/// A request the backend makes for the user from the device, as
+/// [`Link::http_request`] sends it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequest {
-    pub scheme: demi_runner_protocol::exposure::HttpScheme,
-    pub port: u16,
+    /// An `http` or `https` URL, as the device resolves its host.
+    pub url: String,
     pub method: String,
-    /// The path and query, from `/`.
-    pub path: String,
-    pub headers: Vec<demi_runner_protocol::exposure::HttpHeader>,
+    pub headers: Vec<demi_runner_protocol::device_requests::HttpHeader>,
 }
 
 /// What the runner says of a page's peer besides its answer
@@ -1293,10 +1292,9 @@ impl Link {
         self.post(&message);
     }
 
-    /// Asks the runner to make `request` to one of its exposed ports, its
-    /// body read from `body`, and waits for the answer's status and headers;
-    /// the answer's body comes through `answer`. The caller decides that
-    /// the port is exposed (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
+    /// Asks the runner to make `request` from its device, its body read
+    /// from `body`, and waits for the answer's status and headers; the
+    /// answer's body comes through `answer`.
     pub async fn http_request(
         &self,
         request: HttpRequest,
@@ -1306,10 +1304,8 @@ impl Link {
         let answered = self
             .call(Expected::Http, |id| Inbound::HttpRequest {
                 id,
-                scheme: request.scheme,
-                port: request.port,
+                url: request.url,
                 method: request.method,
-                path: request.path,
                 headers: request.headers,
                 body,
                 answer,
@@ -1319,7 +1315,7 @@ impl Link {
             Answer::Http(head) => Ok(head),
             _ => Err(HostError::new(
                 HostErrorKind::Protocol,
-                "the runner answered a request to a port with another reply",
+                "the runner answered a request it made with another reply",
             )),
         }
     }

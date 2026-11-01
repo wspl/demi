@@ -15,7 +15,6 @@ use demi_backend_runners::install::install_commands;
 use demi_conversation_lane_protocol::Version;
 use demi_plugin_interface::PluginError;
 use demi_web_api_protocol::auth::{Role, UserDto};
-use demi_web_api_protocol::exposed_ports::ExposedPortList;
 use demi_web_api_protocol::instructions::InstructionsAnswer;
 use demi_web_api_protocol::port_forwards::PortForwardList;
 use demi_web_api_protocol::users::Users;
@@ -214,13 +213,6 @@ impl Shard {
                 SyncEvent::PortForwards {
                     etag: etag_of(&list),
                     port_forwards: list.forwards,
-                }
-            }
-            Part::ExposedPorts => {
-                let list = ExposedPortList { ports: self.exposed_port_list().await? };
-                SyncEvent::ExposedPorts {
-                    etag: etag_of(&list),
-                    exposed_ports: list.ports,
                 }
             }
             Part::Passkeys => {

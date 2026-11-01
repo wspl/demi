@@ -28,7 +28,9 @@ import { slow } from '../fixtures/slow'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import { providerOperation } from '@demicodes/web-ui/settings/provider-operations'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
-import { macPortOf, useGalleryExposedPorts } from '../fixtures/exposed-ports'
+import { galleryDevices } from '../fixtures/devices'
+import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
 import { HOUR_SECONDS, WEEK_SECONDS, windowNamed } from '../fixtures/usage-limits'
 
 /**
@@ -39,9 +41,28 @@ const props = defineProps<{
   state: SettingsState
   /** Whether the user infers with API keys the master shares, as a user of a shared server does. */
   sharedApiKeys?: boolean
+  /**
+   * The paired devices as Settings › Devices holds them, which a revoke or a
+   * rename there changes; the gallery's own devices without them.
+   */
+  devices?: readonly SettingsDevice[]
 }>()
 
 const s = computed(() => props.state)
+
+const ownDevices = galleryDevices().map((entry) => entry.device)
+
+/** The Hosts Connect Through offers: the Cloud, then the paired devices, one of them offline. */
+const hosts = computed<HostMenuHost[]>(() => [
+  { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
+  ...(props.devices ?? ownDevices).map((device) => ({
+    id: device.id,
+    name: device.name,
+    kind: 'device' as const,
+    state: device.state,
+    mark: device.mark,
+  })),
+])
 
 /**
  * As the product's page shows an entry from what it holds: it is incomplete,
@@ -149,34 +170,27 @@ async function removeProvider(id: string) {
   }
 }
 
-/** The gallery's exposed ports, which a device's page and Expose Port on a failed test change. */
-const exposedPorts = useGalleryExposedPorts()
-
-/** The gallery is a shared instance whose master is Alex: an endpoint naming alex-mbp serves every user. */
-function sharedDevice(endpoint: string): string | null {
-  return macPortOf(endpoint) === null ? null : 'alex-mbp'
-}
-
 /**
- * The mock judges a connection by its inputs: no key is rejected, localhost
- * is unreachable, and a port of alex-mbp its id names is refused until it is
- * exposed. The test is the provider's operation, as the product's store
- * starts it (`provider-operations.ts`).
+ * The mock judges a connection by its inputs: a removed or offline device to
+ * connect through fails, no key is rejected, and localhost is unreachable
+ * from the server, while a device reaches its own. The test is the provider's
+ * operation, as the product's store starts it (`provider-operations.ts`).
  */
 function test(p: SettingsProviderEntry, accountId?: string) {
   void operations.start(
     providerOperation(p.id, accountId ? { kind: 'account', accountId, action: 'test' } : { kind: 'testing' }),
     () => slow(1200).then(() => {
-      const port = macPortOf(p.baseUrl)
-      p.notExposed = undefined
-      if (port !== null && !exposedPorts.isExposed('mac', port)) {
+      const through = p.throughDevice ? hosts.value.find((host) => host.id === p.throughDevice) : null
+      if (through === undefined) {
         p.state = 'error'
-        p.detail = `Port ${port} of alex-mbp isn’t exposed.`
-        p.notExposed = { deviceId: 'mac', device: 'alex-mbp', port }
+        p.detail = 'The device this provider connects through was removed. Choose another in Connect Through.'
+      } else if (through && through.state !== 'online') {
+        p.state = 'error'
+        p.detail = `${through.name} is offline.`
       } else if (p.vendorId && !p.apiKey && !p.keyConfigured) {
         p.state = 'error'
         p.detail = '401 · No API key provided'
-      } else if (/localhost|127\.0\.0\.1/.test(p.baseUrl)) {
+      } else if (!through && /localhost|127\.0\.0\.1/.test(p.baseUrl)) {
         p.state = 'unreachable'
         p.detail = `connect ECONNREFUSED ${p.baseUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}`
       } else {
@@ -186,12 +200,6 @@ function test(p: SettingsProviderEntry, accountId?: string) {
       }
     }),
   )
-}
-
-/** Expose Port on a failed test: the port is exposed, as Settings › Devices then shows it, and the test runs again. */
-async function exposePort(p: SettingsProviderEntry, deviceId: string, port: number) {
-  await exposedPorts.expose(deviceId, port)
-  test(p)
 }
 
 function refresh(p: SettingsProviderEntry) {
@@ -555,9 +563,7 @@ function closeLogin() {
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
-    @expose-port="exposePort"
-    :is-exposed="exposedPorts.isExposed"
-    :shared-device="sharedDevice"
+    :hosts="hosts"
     @refresh="refresh"
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"

@@ -261,13 +261,14 @@ export function continueWithOffer(
 }
 
 /**
- * Whether the unfinished turn ended because the vendor signed its account out,
- * which the dock answers with Open Providers
- * (`crates/provider-claude-code/src/account.rs`): its failure's facts name the
- * account while it is still signed out. False while running, and for any other
- * end. /
+ * Whether the unfinished turn ended for what only Settings › Providers
+ * mends, which the dock answers with Open Providers: the vendor signed its
+ * account out (`crates/provider-claude-code/src/account.rs`), while its
+ * failure's facts name the account still signed out; or the entry connects
+ * through a device its owner removed, which another choice in Connect
+ * Through mends. False while running, and for any other end.
  */
-export function signedOutOffer(
+export function openProvidersOffer(
   phase: 'idle' | string,
   blocks: readonly (RecordCandidate & { id?: string })[],
   failures: Readonly<Record<string, { signedOut?: { provider: string; account: string } | null }>>,
@@ -276,32 +277,10 @@ export function signedOutOffer(
     return false
   }
   const end = turnRecord(blocks)
-  return end?.type === 'error' && !!end.id && !!failures[end.id]?.signedOut
-}
-
-/**
- * The port that the unfinished turn's request named on the user's device while
- * the device had not exposed it, which the dock offers to expose before the
- * turn resumes (`crates/backend-user-shard/src/shard/exposed_ports.rs`,
- * Recovery): none once `exposed` says the port is exposed by now, from Settings
- * or another tab, when Resume alone tries again. Null while running, and for
- * any other end. /
- */
-export function notExposedOffer(
-  phase: 'idle' | string,
-  blocks: readonly (RecordCandidate & { id?: string })[],
-  failures: Readonly<Record<string, { notExposed?: { deviceId: string; device: string; port: number } | null }>>,
-  exposed: (deviceId: string, port: number) => boolean,
-): { deviceId: string; device: string; port: number } | null {
-  if (phase !== 'idle') {
-    return null
+  if (end?.type !== 'error' || !end.id) {
+    return false
   }
-  const end = turnRecord(blocks)
-  if (end?.type !== 'error' || end.code !== 'port_not_exposed' || !end.id) {
-    return null
-  }
-  const named = failures[end.id]?.notExposed ?? null
-  return named && !exposed(named.deviceId, named.port) ? named : null
+  return !!failures[end.id]?.signedOut || end.code === 'device_removed'
 }
 
 /** What `turnRecovery` reads of a block. */

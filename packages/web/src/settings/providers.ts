@@ -72,7 +72,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         testPassed?: boolean
         detail?: string
         testedWith?: string
-        notExposed?: { deviceId: string; device: string; port: number }
       }
     >
   >({})
@@ -393,6 +392,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         // emptied endpoint or key is removed, as the API's null does.
         ...(changes.wireApi !== undefined ? protocol(changes.wireApi) : {}),
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
+        ...(changes.throughDevice !== undefined ? { throughDevice: changes.throughDevice } : {}),
         ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
         ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
         ...(changes.cacheTtl !== undefined ? { cacheTtl: changes.cacheTtl.value } : {}),
@@ -523,7 +523,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         signal.throwIfAborted()
         testResults.value[provider.id] = result.type === 'passed'
           ? { state: 'ready', testPassed: true, testedWith: result.model }
-          : { state: 'error', testPassed: false, detail: result.message, testedWith: result.model, notExposed: result.notExposed }
+          : { state: 'error', testPassed: false, detail: result.message, testedWith: result.model }
       } catch (error) {
         signal.throwIfAborted()
         testResults.value[provider.id] = {

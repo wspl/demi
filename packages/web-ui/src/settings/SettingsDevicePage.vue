@@ -43,12 +43,10 @@ import { hostIcon } from '../hosts/icons'
 import DeviceIcon from '../devices/DeviceIcon.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SentenceText } from '../ui/ui-text'
-import SettingsExposedPorts from './SettingsExposedPorts.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { Action } from '../ui/operations'
-import type { ExposedPortChange, SettingsExposedPort } from './exposed-ports'
 import type { SettingsDevice } from './types'
 
 /**
@@ -63,8 +61,6 @@ import type { SettingsDevice } from './types'
  *   browser's last measurement, with when it was taken and Measure, which
  *   alone measures from here: showing the page measures nothing.
  * - Device holds the facts, with Rename…
- * - Exposed Ports lists the ports Demi's own requests may reach, the Cloud's as a
- *   device's.
  * - Revoke… ends the page.
  *
  * The Cloud's page has no Connection.
@@ -79,12 +75,6 @@ const props = defineProps<{
   overlayStore: OverlayStore
   /** Revokes the device; the dialog's button works until it settles. */
   onRevoke?: Action
-  /** The device's exposed ports, oldest first. */
-  exposedPorts?: readonly SettingsExposedPort[]
-  /** Expose Port: a row with the port missing; answers its id, or null when it failed. */
-  onExposePort?: () => Promise<string | null>
-  onChangeExposedPort?: (id: string, change: ExposedPortChange) => Promise<void>
-  onRemoveExposedPort?: (id: string) => Promise<void>
 }>()
 const emit = defineEmits<{
   back: []
@@ -333,14 +323,6 @@ async function revoke(): Promise<void> {
         <span class="text-chrome text-fg-muted">{{ formatDay(device.pairedAt) }}</span>
       </SettingsRow>
     </SettingsGroup>
-
-    <SettingsExposedPorts
-      :ports="exposedPorts ?? []"
-      :overlay-store="overlayStore"
-      :on-expose="onExposePort"
-      :on-change="onChangeExposedPort"
-      :on-remove="onRemoveExposedPort"
-    />
 
     <SettingsGroup v-if="device">
       <SettingsRow :label="t('page.revokeThis')">

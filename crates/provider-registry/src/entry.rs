@@ -3,7 +3,7 @@
 
 use demi_provider_common::{Searches, Secret};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
-use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{CredentialId, DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
     AudioMedia, ConfiguredModels, CredentialKind, EntryMedia, EntrySearch, ImageMedia, ProviderDto, Rotation, SetupPart, VideoMedia,
 };
@@ -43,6 +43,10 @@ pub struct ProviderEntry {
     pub search_videos: bool,
     /// The prompt cache lifetime its requests ask for; none to send none.
     pub cache_ttl: Option<CacheTtl>,
+    /// The owner's device an API-key entry's requests go out from
+    /// (`crates/backend-user-shard/src/shard/device_requests.rs`); none for
+    /// the server.
+    pub through_device: Option<DeviceId>,
 }
 
 /// How an entry authenticates.
@@ -291,6 +295,7 @@ impl ProviderEntry {
             },
             cache_ttl: self.cache_ttl.clone(),
             cache_ttl_presets,
+            through_device: self.through_device.clone(),
             created_at: self.created_at,
         }
     }

@@ -10,7 +10,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, PanelRight, Play, EthernetPort, Search, Settings2, Share, TextCursorInput } from '@lucide/vue'
+import { ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, PanelRight, Play, Search, Settings2, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, Version } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -77,7 +77,7 @@ import SidebarToggle from '../sidebar/SidebarToggle.vue'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { continueWithOffer, endsWithErrorRecord, notExposedOffer, signedOutOffer, sessionFailureNotice, sessionShown, behindSession, CATCH_UP_WAIT_MS, transcriptShown, turnRecovery } from './session-status'
+import { continueWithOffer, endsWithErrorRecord, openProvidersOffer, sessionFailureNotice, sessionShown, behindSession, CATCH_UP_WAIT_MS, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks, isCompactionDivider } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -220,12 +220,6 @@ const props = withDefaults(defineProps<{
    */
   credentialKinds?: CredentialKinds
   /**
-   * Whether the user's device exposes the port by now, as the page learns of
-   * each change. A failure for a port exposed meanwhile offers Resume alone,
-   * not Expose Port. Absent, no port counts as exposed.
-   */
-  isExposed?: (deviceId: string, port: number) => boolean
-  /**
    * The user's preference to resume a turn by itself at the time its failure
    * names, which such a failure's record offers. Absent, it offers none.
    */
@@ -326,11 +320,6 @@ const emit = defineEmits<{
    * in again.
    */
   openProviders: []
-  /**
-   * Expose Port on the turn's failure: the port of the user's device it named,
-   * then the turn resumes.
-   */
-  exposePort: [deviceId: string, port: number]
   retryLoad: []
   /**
    * The alert of the message `id`, which was not delivered: it goes again as
@@ -645,21 +634,9 @@ const continueWith = computed(() =>
     ? continueWithOffer(props.conversation.phase, latestVisible.value, props.conversation.failures)
     : null,
 )
-/**
- * The port of the user's device the turn's request named while it was not
- * exposed and still is not, which the dock offers to expose.
- */
-const notExposed = computed(() =>
-  canRecover.value
-    ? notExposedOffer(props.conversation.phase, latestVisible.value, props.conversation.failures, props.isExposed ?? (() => false))
-    : null,
-)
-/**
- * Whether the turn ended because the vendor signed its account out, which the
- * dock answers with Open Providers.
- */
-const signedOut = computed(() =>
-  canRecover.value && signedOutOffer(props.conversation.phase, latestVisible.value, props.conversation.failures),
+/** Whether the turn ended for what only Settings › Providers mends, which the dock answers with Open Providers. */
+const opensProviders = computed(() =>
+  canRecover.value && openProvidersOffer(props.conversation.phase, latestVisible.value, props.conversation.failures),
 )
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmissions?.length
@@ -1141,11 +1118,7 @@ watch(
                 <ArrowRightLeft :size="ICON_PX.in28" />
                 <span class="min-w-0 truncate">{{ t('dock.continueWith', { label: continueWith.label }) }}</span>
               </SessionDockChip>
-              <SessionDockChip v-if="notExposed" @click="emit('exposePort', notExposed.deviceId, notExposed.port)">
-                <EthernetPort :size="ICON_PX.in28" />
-                {{ t('dock.exposePort') }}
-              </SessionDockChip>
-              <SessionDockChip v-if="signedOut" data-open-providers @click="emit('openProviders')">
+              <SessionDockChip v-if="opensProviders" data-open-providers @click="emit('openProviders')">
                 <Settings2 :size="ICON_PX.in28" />
                 {{ t('dock.openProviders') }}
               </SessionDockChip>

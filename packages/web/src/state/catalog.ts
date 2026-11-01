@@ -170,6 +170,7 @@ export function providerView(
     // The `media` family's entries make media alone.
     makesText: entry.providerType !== 'media',
     baseUrl: entry.endpoint ?? '',
+    throughDevice: entry.throughDevice,
     wireApi: wireApi(entry.providerType, entry.wireApi),
     apiKey: '',
     cacheTtl: entry.cacheTtlPresets ? { value: entry.cacheTtl, presets: entry.cacheTtlPresets } : undefined,

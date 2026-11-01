@@ -713,9 +713,13 @@
       "failed": "실패",
       "enableModel": "먼저 모델을 켜십시오",
       "noTextModel": "테스트는 채팅 메시지를 보내지만 이 제공업체에는 텍스트 모델이 없습니다",
-      "exposePort": "포트 공개",
-      "tryAgain": "다시 시도",
-      "sharedDevice": "이 제공업체를 사용하는 모든 사용자가 이 엔드포인트로 {device}에 연결합니다."
+      "through": "연결 경유",
+      "throughServer": "서버",
+      "throughServerDescription": "요청은 서버에서 보냅니다.",
+      "throughDevice": "요청은 {device}에서 보내며, 해당 네트워크에서 엔드포인트에 연결합니다.",
+      "throughOffline": "{device}이(가) 오프라인입니다. 연결될 때까지 요청이 실패합니다.",
+      "throughRemoved": "제거된 기기",
+      "throughRemovedDescription": "기기가 제거되었습니다. 다른 기기를 선택할 때까지 요청이 실패합니다."
     },
     "cli": {
       "title": "명령줄 도구",

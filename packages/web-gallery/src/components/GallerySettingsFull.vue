@@ -3,7 +3,6 @@ import { showUnexpectedErrors } from '@demicodes/web-ui/infra/errors'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, galleryDevices, useGalleryDevices } from '../fixtures/devices'
-import { useGalleryExposedPorts } from '../fixtures/exposed-ports'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -272,7 +271,6 @@ function restoreArchived(id: string) {
 
 /** The paired devices, whose controls act on them as the product's do. */
 const devices = useGalleryDevices(() => galleryDevices())
-const exposedPorts = useGalleryExposedPorts()
 /** A revoked device leaves the list, and its projects go with it, as the product's do. */
 async function revokeDevice(id: string) {
   await slow()
@@ -345,7 +343,7 @@ function resetShortcuts() {
 
   <GalleryAgent v-else-if="tab === 'agent'" :state="s.smallModel" />
 
-  <GallerySettingsProviders v-else-if="tab === 'models'" :state="state" />
+  <GallerySettingsProviders v-else-if="tab === 'models'" :state="state" :devices="devices.devices.value" />
 
   <SettingsPlugins
     v-else-if="tab === 'plugins'"
@@ -390,10 +388,6 @@ function resetShortcuts() {
     :overlay-store="appOverlayStore"
     :install-commands="demoInstallCommands"
     :claim-device="devices.claim"
-    :exposed-ports="exposedPorts.ports.value"
-    :on-expose-port="exposedPorts.expose"
-    :on-change-exposed-port="exposedPorts.change"
-    :on-remove-exposed-port="exposedPorts.remove"
     @show="devices.shown.value = $event"
     @set-route="devices.setRoute"
     @try-now="devices.tryNow"

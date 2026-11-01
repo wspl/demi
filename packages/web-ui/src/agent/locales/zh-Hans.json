@@ -145,7 +145,6 @@
     "failureResets": "{failure}{reset}。",
     "apiKeyRefused": "供应商拒绝了 API 密钥。",
     "signedOut": "{provider} 已将 {account} 退出登录。请在“设置 › 供应商”中重新登录。",
-    "notExposed": "{device} 的端口 {port} 未公开。",
     "deviceOffline": "{device} 处于离线状态。",
     "opaque": {
       "other": "{vendor} 的 {name}",
@@ -270,7 +269,6 @@
     "continue": "继续",
     "continueWith": "改用 {label} 继续",
     "openProviders": "打开供应商",
-    "exposePort": "公开端口",
     "outputTokens": "{tokens} token",
     "tokenRate": "{rate} token/秒",
     "lastTurnRate": "上一轮速度：{rate} token/秒"

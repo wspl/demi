@@ -14,9 +14,11 @@ import {
   Hourglass,
   Info,
   ListOrdered,
+  MonitorX,
   Plug,
   Plus,
   RefreshCw,
+  Server,
   SlidersHorizontal,
   TextCursorInput,
   Trash2,
@@ -47,6 +49,10 @@ import { usePhone } from '@demicodes/web-ui/ui/phone'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
+import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
+import { hostGlyph } from '../devices/device-glyphs'
+import { DEVICE_STATE_LABEL } from '../devices/state'
+import type { HostMenuHost } from '../hosts/types'
 import AddModelDialog from './AddModelDialog.vue'
 import AddProviderDialog from './AddProviderDialog.vue'
 import ModelDialog from './ModelDialog.vue'
@@ -163,22 +169,17 @@ const props = defineProps<{
   /** Whether the user went on past the warning about several accounts, which then never shows again. */
   multiAccountWarned?: boolean
   /**
-   * Whether the user's device exposes the port by now, as the page learns
-   * of each change: a test that failed for that port offers Try Again
-   * rather than Expose Port; absent, no port counts as exposed.
-   */
-  isExposed?: (deviceId: string, port: number) => boolean
-  /**
-   * The name of the user's device an endpoint names, when every user of the
-   * entry reaches it, as on a shared instance (`crates/backend-user-shard/src/shard/exposed_ports.rs`); null for any other endpoint. Absent, none is.
-   */
-  sharedDevice?: (endpoint: string) => string | null
-  /**
    * Whether the user infers with API keys another user shares, which
    * `providers` then holds none of: the API Keys group lists and adds none,
    * and says whose they are.
    */
   sharedApiKeys?: boolean
+  /**
+   * The user's Hosts a provider's requests may go out from (Connect
+   * Through), the Cloud first, as the Host menu lists them; absent until the
+   * page knows them.
+   */
+  hosts?: HostMenuHost[]
 }>()
 
 const emit = defineEmits<{
@@ -199,8 +200,6 @@ const emit = defineEmits<{
   signIn: [provider: SettingsProviderEntry]
   /** Test the provider; a subscription names the account to test with. */
   test: [provider: SettingsProviderEntry, accountId?: string]
-  /** Expose Port on a failed test: the device's port it named is exposed, then the test runs again. */
-  exposePort: [provider: SettingsProviderEntry, deviceId: string, port: number]
   refresh: [provider: SettingsProviderEntry]
   /** Ask the vendor for one account's usage again. */
   refreshUsage: [provider: SettingsProviderEntry, accountId: string]
@@ -853,9 +852,44 @@ const endpointFault = ref<string | null>(null)
 watch(selectedId, () => {
   endpointFault.value = null
 })
-/** The user's device the entry's endpoint names, which every user of the entry reaches. */
-function endpointDevice(provider: SettingsProviderEntry): string | null {
-  return provider.baseUrl ? props.sharedDevice?.(provider.baseUrl) ?? null : null
+/** The Host the entry's requests go out from; null for the server, and for a device the page does not list. */
+function throughOf(provider: SettingsProviderEntry): HostMenuHost | null {
+  return provider.throughDevice ? props.hosts?.find((host) => host.id === provider.throughDevice) ?? null : null
+}
+
+/** Whether the entry goes out through a device its owner removed since: one the listed Hosts no longer hold. */
+function throughRemoved(provider: SettingsProviderEntry): boolean {
+  return !!provider.throughDevice && !!props.hosts && !throughOf(provider)
+}
+
+/** What Connect Through's trigger shows: the device's name, Removed Device, or Server. */
+function throughLabel(provider: SettingsProviderEntry): string {
+  if (throughRemoved(provider)) {
+    return t('providers.connection.throughRemoved')
+  }
+  return throughOf(provider)?.name ?? t('providers.connection.throughServer')
+}
+
+/**
+ * What Connect Through's row can say of the choice, with the one it says
+ * now: where requests go out from, and an offline or removed Host. A Host's
+ * row holds the room of each state it can pass to without a choice of the
+ * user's, so that going offline or removed moves nothing below it.
+ */
+function throughDescriptions(provider: SettingsProviderEntry): { text: string; shown: boolean }[] {
+  const removed = t('providers.connection.throughRemovedDescription')
+  if (throughRemoved(provider)) {
+    return [{ text: removed, shown: true }]
+  }
+  const host = throughOf(provider)
+  if (!host) {
+    return [{ text: t('providers.connection.throughServerDescription'), shown: true }]
+  }
+  return [
+    { text: t('providers.connection.throughDevice', { device: host.name }), shown: host.state === 'online' },
+    { text: t('providers.connection.throughOffline', { device: host.name }), shown: host.state !== 'online' },
+    { text: removed, shown: false },
+  ]
 }
 
 function endpointCheck(value: string) {
@@ -1189,10 +1223,7 @@ function endpointCheck(value: string) {
                       </template>
                     </Dropdown>
                   </SettingsRow>
-                  <SettingsRow
-                    :label="t('providers.connection.endpoint')"
-                    :description="endpointDevice(selected) ? t('providers.connection.sharedDevice', { device: endpointDevice(selected) }) : undefined"
-                  >
+                  <SettingsRow :label="t('providers.connection.endpoint')">
                     <template v-if="endpointFault" #detail>
                       <InlineError :message="endpointFault" />
                     </template>
@@ -1210,6 +1241,59 @@ function endpointCheck(value: string) {
                     />
                   </SettingsRow>
                 </template>
+                <!-- Where the requests go out from: the server, or one of the user's Hosts,
+                     which then reaches the endpoint on its own network. -->
+                <SettingsRow :label="t('providers.connection.through')">
+                  <template #description>
+                    <span class="grid">
+                      <span
+                        v-for="variant in throughDescriptions(selected)"
+                        :key="variant.text"
+                        class="col-start-1 row-start-1"
+                        :class="{ invisible: !variant.shown }"
+                        :aria-hidden="!variant.shown || undefined"
+                      >{{ variant.text }}</span>
+                    </span>
+                  </template>
+                  <Dropdown
+                    size="sm"
+                    :overlay-store="overlayStore"
+                    variant="default"
+                    :trigger-label="t('providers.connection.through')"
+                    :icon="throughOf(selected) ? hostGlyph(throughOf(selected)!) : throughRemoved(selected) ? MonitorX : Server"
+                    :disabled="fieldsLocked(selected)"
+                  >
+                    <template #trigger>{{ throughLabel(selected) }}</template>
+                    <template #content="{ close }">
+                      <Menu>
+                        <MenuItem
+                          :icon="Server"
+                          :label="t('providers.connection.throughServer')"
+                          choice
+                          :is-selected="!selected.throughDevice"
+                          @select="
+                            close();
+                            selected.throughDevice && emit('change', selected, { throughDevice: null })
+                          "
+                        />
+                        <MenuDivider v-if="hosts?.length" />
+                        <MenuItem
+                          v-for="host in hosts ?? []"
+                          :key="host.id"
+                          :icon="hostGlyph(host)"
+                          :label="host.name"
+                          :value="host.state === 'online' ? undefined : DEVICE_STATE_LABEL[host.state]"
+                          choice
+                          :is-selected="selected.throughDevice === host.id"
+                          @select="
+                            close();
+                            selected.throughDevice !== host.id && emit('change', selected, { throughDevice: host.id })
+                          "
+                        />
+                      </Menu>
+                    </template>
+                  </Dropdown>
+                </SettingsRow>
                 <SettingsRow
                   :label="t('providers.connection.apiKey')"
                   :description="
@@ -1257,19 +1341,6 @@ function endpointCheck(value: string) {
                     <p class="select-text break-words text-[12px] leading-4 text-on-danger">
                       {{ selected.detail }}
                     </p>
-                    <!-- A port exposed by now, from a device's page or another tab, is tried again as it is. -->
-                    <template v-if="selected.notExposed">
-                      <Button
-                        v-if="isExposed?.(selected.notExposed.deviceId, selected.notExposed.port)"
-                        size="sm"
-                        @click="emit('test', selected)"
-                      >{{ t('providers.connection.tryAgain') }}</Button>
-                      <Button
-                        v-else
-                        size="sm"
-                        @click="emit('exposePort', selected, selected.notExposed.deviceId, selected.notExposed.port)"
-                      >{{ t('providers.connection.exposePort') }}</Button>
-                    </template>
                   </div>
                 </template>
                 <span
