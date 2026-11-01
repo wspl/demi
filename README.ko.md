@@ -20,7 +20,9 @@
   <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <b>한국어</b>
 </p>
 
-<!-- Screenshot -->
+<p align="center">
+  <img src="docs/assets/product.webp" alt="브라우저의 Demi: 에이전트가 iPhone 앱을 2열 레이아웃으로 만들고, 답변에는 댓글과 곁질문이, 아래에는 추천 답장이 있습니다. 사이드 패널에는 반쯤 접힌 iPhone Duo에서 실행 중인 앱이, 휴대폰에는 같은 대화가 보입니다." width="800">
+</p>
 
 Demi는 내 서버에서 호스팅하는 웹 기반 AI 에이전트이며, 어느 브라우저에서나 열 수 있습니다. 간단한 질문부터 맡기고 싶은 일까지, 자료 조사, 웹사이트 조작, 파일 작업, 코드 작성을 모두 하나의 대화에서 처리합니다.
 

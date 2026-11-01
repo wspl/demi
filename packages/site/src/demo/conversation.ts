@@ -1,7 +1,7 @@
 // A demo's conversation: the state `ChatSession` reads, and the writes a
 // scene makes to it over time, as the product's runtime would make them.
 import { reactive } from 'vue'
-import type { Block, ChangedFile, EditedFile, ModelSelection, UserContentBlock } from '@demicodes/protocol'
+import type { Block, ChangedFile, EditedFile, MessageComment, ModelSelection, UserContentBlock } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
@@ -229,6 +229,12 @@ export class Conversation {
     await this.wait(700)
   }
 
+  /** The user sends `text` with `comments` on the words of earlier replies, as the composer sends a commented message; the agent goes on at once. */
+  commented(text: string, comments: readonly MessageComment[]): void {
+    this.append({ ...this.userBlock([{ type: 'text', text }]), comments } as Block)
+    this.state.phase = 'running'
+  }
+
   /**
    * The agent answers `text`, as it streams: fast, at most `REPLY_MS`
    * whatever `ms` asks, since a demo is watched and a slow reply only waits.
@@ -256,15 +262,24 @@ export class Conversation {
     }
   }
 
-  /** The agent runs a shell command, which prints its output and exits. */
+  /** The agent runs a shell command, which prints its output and exits, then waits for the model. */
   async shell(step: ShellStep): Promise<void> {
-    this.state.waitingSince = null
-    const ms = step.ms ?? 900
-    const call = this.call(step)
-    await this.wait(ms)
-    this.exited(call, step, ms)
+    await this.run(step)
     this.state.waitingSince = Date.now()
     await this.wait(300)
+  }
+
+  /**
+   * The agent runs a shell command, which prints its output and exits, and
+   * goes on at once. It takes `step.ms`, of which the scene plays the last
+   * `playMs`: a long build shows its whole length yet passes at a glance.
+   */
+  async run(step: ShellStep, playMs = step.ms ?? 900): Promise<void> {
+    this.state.waitingSince = null
+    const ms = step.ms ?? 900
+    const call = this.call(step, Math.max(0, ms - playMs))
+    await this.wait(Math.min(ms, playMs))
+    this.exited(call, step, ms)
   }
 
   /**

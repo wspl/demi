@@ -232,13 +232,13 @@ function litAfter(degrees: number, from: number, lit: 'outer' | 'inner'): 'outer
 }
 
 /** How the device folds and is folded, as the Host says; none for one that does not fold. */
-function foldOf(device: OpenDevice): LiveFold | null {
+function foldOf(device: OpenDevice, body: string | null): LiveFold | null {
   const fold = device.simulator.fold
   if (!fold) {
     return null
   }
   return fold.kind === 'hinge'
-    ? { kind: 'hinge', degrees: device.degrees, display: device.lit, outer: device.simulator.points, inner: fold.inner, body: null }
+    ? { kind: 'hinge', degrees: device.degrees, display: device.lit, outer: device.simulator.points, inner: fold.inner, body }
     : { kind: 'twofold', open: device.degrees > 0 }
 }
 
@@ -291,6 +291,8 @@ function beat(ms: number): Promise<void> {
  */
 export interface GalleryScreen {
   paint(context: CanvasRenderingContext2D, points: { width: number; height: number }): void
+  /** The file on the Host of the 3D body a hinged foldable wears, as the product reads Apple's; the stand-in's without one. */
+  body?: string
 }
 
 export interface GalleryMobile {
@@ -744,7 +746,7 @@ class MobileView {
         model: each.simulator.model,
         recording: each.recording,
         orientation: each.orientation,
-        fold: foldOf(each),
+        fold: foldOf(each, this.drawn?.body ?? null),
       },
     })
   }

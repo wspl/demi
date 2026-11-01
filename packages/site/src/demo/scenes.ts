@@ -8,6 +8,7 @@ import type { GalleryWork } from '@demicodes/web-gallery/fixtures/work-panel'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { WorkflowChoice, WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import type { ConversationSchedule, ScheduleTask } from '@demicodes/web-ui/schedules/types'
+import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { DEMOS, type DemoId, type Form } from '@/features'
 import type { Conversation, ShellStep } from './conversation'
@@ -60,6 +61,8 @@ export interface Stage {
   shoot(shot: DeviceShot | null): void
   /** Shows `card` at the browser's corner, beside the desktop's app, or takes the card away for `null`. */
   card(card: StageCard | null): void
+  /** The comments waiting in this screen's draft, which the user writes on a reply's words. */
+  commenting: ReplyCommenting
   /**
    * The user types `text` into the composer, a few letters at a time over
    * `ms`, and sends it: on `on`'s screen alone when it is given, as the user
@@ -280,6 +283,10 @@ function area(part: 'conversation' | 'steps' | 'later' | 'panel'): CameraRect {
     return { x: 6, y: 76, width: width - 12, height: 420 }
   return { x: 0, y: 0, width, height: 614 }
 }
+
+export const MACBOOK_HOST = hostOf(MACBOOK)
+export const WINDOWS_PC_HOST = hostOf(WINDOWS_PC)
+export const ALL_DEVICES: readonly HostDeviceOption[] = [MACBOOK, WINDOWS_PC, HOME_LAB, VPS]
 
 export const SCENES: Record<DemoId, Scene> = {
   agent: {

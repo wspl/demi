@@ -58,6 +58,12 @@ const area = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const keys = ref<InstanceType<typeof DeviceKeys> | null>(null)
 const scene = shallowRef<FoldScene | null>(null)
+/**
+ * The body the view draws the device with, which its canvas names for a
+ * check or a recording to wait on: Apple's once it loaded, the stand-in where
+ * there is none or it failed, nothing while it loads.
+ */
+const shownBody = ref<'apple' | 'stand-in' | null>(props.bodyUrl ? null : 'stand-in')
 /** Each display's pictures, on their own streams. */
 const pictures = { outer: props.session.displayPictures('outer'), inner: props.session.displayPictures('inner') }
 /** The lit display's pictures, which the pointer and the view's status are about. */
@@ -197,16 +203,20 @@ onMounted(() => {
       if (!body) {
         // The file does not fit: the stand-in shows the device.
         drawing.useStandIn()
+        shownBody.value = 'stand-in'
         return
       }
       // A view that went meanwhile leaves the body unused.
       if (scene.value !== drawing || !(await drawing.useBody(body))) {
         body.dispose()
+        return
       }
+      shownBody.value = 'apple'
     })().catch((error: unknown) => {
       // The stand-in shows the device: the file could not be read, or not as a body.
       console.warn('iPhone Duo\'s body did not load', error)
       drawing.useStandIn()
+      shownBody.value = 'stand-in'
     })
   }
   // Each display's pictures come no larger than the view shows the device.
@@ -364,6 +374,7 @@ defineExpose({ posture: hinge })
     <div ref="area" class="relative min-h-0 flex-1 overflow-hidden">
       <canvas
         ref="canvas"
+        :data-body="shownBody"
         class="absolute inset-0 h-full w-full touch-none select-none"
         :style="{ cursor }"
         @pointerdown="down"
