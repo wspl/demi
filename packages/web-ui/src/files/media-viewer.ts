@@ -1,4 +1,4 @@
-import { computed, inject, provide, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from 'vue'
+import { computed, inject, provide, ref, shallowRef, toRaw, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from 'vue'
 import { hostImage } from './host-image'
 import { useShowing } from './showing'
 import {
@@ -30,6 +30,17 @@ export type ShownMedium = {
   bytes?: number | null
   /** The transcript row it stands in, which tells apart the same picture standing in two rows (`transcriptRowOf`). */
   row?: string
+  /**
+   * The reference it was read from, a tool's result's or a report's, which
+   * tells apart the same picture standing twice in one row: a tool may return
+   * one picture twice.
+   */
+  reference?: object
+  /**
+   * Which of the same picture in its row it is, from the oldest, 0 the first,
+   * which the series says: what a tab keeps of `reference` across a reload.
+   */
+  repeat?: number
 } & (
   | { src: string; file?: never }
   | { file: MediumFile; src?: never }
@@ -37,11 +48,27 @@ export type ShownMedium = {
 
 /**
  * Where a medium stands in a conversation's series, as a tab that shows it
- * keeps it across a reload: its key (`mediumKey`) and the row it stands in.
+ * keeps it across a reload: its key (`mediumKey`), the row it stands in, and
+ * which of the same medium in that row it is.
  */
 export interface MediumPlace {
   key: string
   row?: string
+  repeat?: number
+}
+
+/** Whether two places name the same. */
+export function samePlace(one: MediumPlace, other: MediumPlace): boolean {
+  return one.key === other.key && one.row === other.row && (one.repeat ?? 0) === (other.repeat ?? 0)
+}
+
+/** The place `medium` names. */
+export function placeOf(medium: ShownMedium): MediumPlace {
+  return {
+    key: mediumKey(medium),
+    ...(medium.row === undefined ? {} : { row: medium.row }),
+    ...(medium.repeat ? { repeat: medium.repeat } : {}),
+  }
 }
 
 const ARROW_STEPS: Partial<Record<string, -1 | 1>> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }
@@ -165,6 +192,11 @@ export interface MediaViewerState {
   /** The shown medium's place among its transcript's media; null for one opened on its own. */
   position: Readonly<ComputedRef<ViewerPosition | null>>
   /**
+   * Where the shown medium stands in its conversation's series, as the series
+   * says now, which a tab keeps across a reload; null while none shows.
+   */
+  mediumPlace: Readonly<ComputedRef<MediumPlace | null>>
+  /**
    * Shows `medium`, in place of the one shown, in the same window.
    * `among` gives the media of the transcript it stands in, which `step` goes through.
    */
@@ -225,30 +257,44 @@ export function createMediaViewer(where: () => ViewerPlace, { reveal }: MediaVie
   }
 
   /**
-   * Where `medium` stands in `media`: at `last`, where it stood, if it still
-   * does, else its first place in its row, else its first place; -1 if it is
-   * not there.
+   * Where `medium` stands in `media`: where its reference stands, else as
+   * `locatePlace` finds its place; -1 if it is not there.
    */
   function locate(media: readonly ShownMedium[], medium: ShownMedium, last: number): number {
-    return locatePlace(media, { key: mediumKey(medium), ...(medium.row === undefined ? {} : { row: medium.row }) }, last)
+    const reference = medium.reference && toRaw(medium.reference)
+    const read = reference ? media.findIndex((each) => each.reference && toRaw(each.reference) === reference) : -1
+    return read >= 0 ? read : locatePlace(media, placeOf(medium), last)
   }
 
-  /** `locate` by the medium's place. */
-  function locatePlace(media: readonly ShownMedium[], { key, row }: MediumPlace, last: number): number {
+  /**
+   * Where the medium of `place` stands in `media`: at `last`, where it stood,
+   * if it still does, else in its row, the same medium's `repeat`th there or
+   * its first, else its first place; -1 if it is not there.
+   */
+  function locatePlace(media: readonly ShownMedium[], place: MediumPlace, last: number): number {
+    const { key, row, repeat = 0 } = place
     const at = media[last]
-    if (at && mediumKey(at) === key)
+    if (at && samePlace(placeOf(at), place))
       return last
-    const inRow = row === undefined ? -1 : media.findIndex((each) => mediumKey(each) === key && each.row === row)
-    return inRow >= 0 ? inRow : media.findIndex((each) => mediumKey(each) === key)
+    if (row !== undefined) {
+      const inRow = media.flatMap((each, index) => (mediumKey(each) === key && each.row === row ? [index] : []))
+      if (inRow.length > 0)
+        return inRow[repeat] ?? inRow[0]!
+    }
+    return media.findIndex((each) => mediumKey(each) === key)
   }
 
-  const position = computed<ViewerPosition | null>(() => {
+  /** Where the shown medium stands in its series, and the series; null for none. */
+  const standing = computed(() => {
     const medium = shown.value
     const media = sequence.value?.()
-    if (!medium || !media)
-      return null
-    const at = locate(media, medium, index.value)
-    return at < 0 ? null : { at: at + 1, of: media.length }
+    return medium && media ? { media, at: locate(media, medium, index.value) } : null
+  })
+  const position = computed<ViewerPosition | null>(() =>
+    standing.value && standing.value.at >= 0 ? { at: standing.value.at + 1, of: standing.value.media.length } : null)
+  const mediumPlace = computed<MediumPlace | null>(() => {
+    const medium = standing.value?.media[standing.value.at] ?? shown.value
+    return medium ? placeOf(medium) : null
   })
 
   /** Shows `medium` in the window, standing at `at` of the transcript's media, if it is known. */
@@ -267,6 +313,7 @@ export function createMediaViewer(where: () => ViewerPlace, { reveal }: MediaVie
     shown,
     geometry,
     position,
+    mediumPlace,
     inPanel,
     show(medium, among) {
       open(medium, among ?? null, among ? locate(among(), medium, -1) : -1)

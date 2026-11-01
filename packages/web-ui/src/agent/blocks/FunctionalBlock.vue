@@ -109,14 +109,19 @@ useResizeObserver(() => (props.pictures?.length ? faceRow.value : undefined), me
 // step.
 useResizeObserver(() => (props.pictures?.length ? roll.value?.root : undefined), measureFace)
 watch(() => props.pictures?.length ?? 0, measureFace, { flush: 'post' })
+/**
+ * The pictures newest first, each keyed by its place among them oldest first,
+ * which a picture keeps as newer ones join.
+ */
+const newestFirst = computed(() => (props.pictures ?? []).map((picture, place) => ({ picture, place })).reverse())
 const picturesFit = computed(() => {
-  const pictures = props.pictures ?? []
+  const pictures = newestFirst.value
   if (pictures.length === 0 || rowWidth.value === 0)
     return { shown: 0, more: 0 }
   const font = rowFont.value
-  return fitRowPictures(rowWidth.value, faceWidth.value, pictures.map((picture) => rowPictureBox(picture).width), (count) => Math.ceil(textWidth(`+${count}`, font)))
+  return fitRowPictures(rowWidth.value, faceWidth.value, pictures.map(({ picture }) => rowPictureBox(picture).width), (count) => Math.ceil(textWidth(`+${count}`, font)))
 })
-const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit.value.shown))
+const shownPictures = computed(() => newestFirst.value.slice(0, picturesFit.value.shown))
 </script>
 
 <template>
@@ -188,8 +193,8 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
         data-row-pictures
       >
         <RowPicture
-          v-for="(picture, index) in shownPictures"
-          :key="index"
+          v-for="{ picture, place } in shownPictures"
+          :key="place"
           :picture="picture"
         />
         <span v-if="picturesFit.more > 0" class="tabular-nums text-fg-faint">+{{ picturesFit.more }}</span>

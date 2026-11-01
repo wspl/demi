@@ -5,9 +5,11 @@ import type { ToolPicture } from './tool-media'
 /**
  * How a row's pictures share its one line with its face: they stand at the
  * row's end, right-aligned and at least 8 pixels after the face's last part,
- * the chevron or a tag, 4 pixels apart, and never wrap. The face gives way
- * first: its title truncates, but only down to half the row; then the pictures
- * that no longer fit are counted after the last one shown, `+5`. /
+ * the chevron or a tag, 4 pixels apart, newest first, and never wrap. The face
+ * gives way first: its title truncates, but only down to half the row; then
+ * the oldest pictures, which no longer fit, are counted after the last one
+ * shown, `+5`. The newest, which a run's latest step made, is the one a person
+ * looks for, so it is the last to go.
  */
 
 /**
@@ -30,9 +32,10 @@ export const ROW_PICTURES_LEAD = 8
 export const ROW_PICTURES_GAP = 4
 
 /**
- * Which of the pictures of `widths`, in their order, show in a row `row`
- * pixels wide whose face is `face` pixels wide when nothing cuts it, given
- * how wide the count of `n` pictures is drawn (`moreWidth`). The pictures
+ * Which of the pictures of `widths`, in their order (a row gives them newest
+ * first), show in a row `row` pixels wide whose face is `face` pixels wide
+ * when nothing cuts it, given how wide the count of `n` pictures is drawn
+ * (`moreWidth`). The pictures
  * take what the face leaves, the face keeping its own width or half the
  * row, whichever is less; when they do not all fit, as many show as leave
  * room for the count of the rest. In a row too narrow for even the count,
