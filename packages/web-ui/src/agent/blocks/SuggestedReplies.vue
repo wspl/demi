@@ -123,6 +123,12 @@ onBeforeUnmount(clearPress)
 .suggested-reply {
   border-radius: calc(var(--spacing-chip) / 2);
 }
+/* In light the pill is as white as the reading surface under it, where a button's
+   half-pixel hairline all but vanishes, on a phone most: its edge is a whole pixel. */
+html[data-theme="light"] .suggested-reply.btn {
+  --shadow-btn: 0 0 0 1px rgb(0 0 0 / 0.12);
+  --shadow-btn-hover: 0 0 0 1px rgb(0 0 0 / 0.18);
+}
 /* The Edit button lies over the pill's end, on the pill's own fill, the words fading under it. */
 .suggested-reply-edit {
   background: linear-gradient(to right, transparent, var(--fill-color) 55%);
