@@ -3,10 +3,12 @@
 // frame shows Demi's own app as it looked, with none of the app's script.
 // The page tells it which demo to play (`src/demo/message.ts`); each
 // time, the recording starts over, and a demo that loops starts over by
-// itself once its seconds have run.
-import { DEMOS, isDemoId, type DemoId } from '@/features'
+// itself once its seconds have run. The page pauses the play while the
+// frame is off screen, and it goes on from there, its clock and its
+// animations stopped meanwhile.
+import { DEMOS, isDemoId, isForm, type DemoId, type Form } from '@/features'
 import { aim } from '@/demo/camera'
-import { cameraOf, readPlay, shotOf, tellCamera, tellReady, tellShot, tellTab } from '@/demo/message'
+import { cameraOf, cardOf, readPlay, shotOf, tellCamera, tellCard, tellReady, tellShot } from '@/demo/message'
 import type { RecordedChild, RecordedEvent, RecordedNode, RecordedRange, Recording } from './recording'
 
 const SVG = 'http://www.w3.org/2000/svg'
@@ -16,7 +18,8 @@ const SVG = 'http://www.w3.org/2000/svg'
  */
 const HOLD_MS = 250
 const query = new URLSearchParams(location.search)
-const form = query.get('form') === 'phone' ? 'phone' : 'desktop'
+const askedForm = query.get('form')
+const form: Form = isForm(askedForm) ? askedForm : 'desktop'
 
 /** Answers each demo's recording for this screen, fetched once. */
 const recordings = new Map<DemoId, Promise<Recording>>()
@@ -90,6 +93,14 @@ class Play {
         return
       this.playing = true
       this.began = performance.now()
+      // A play paused before its first screen showed pauses there, its
+      // clock at its start and the first screen's animations stopped too.
+      if (this.pausedAt !== null) {
+        const before = this.frozen
+        this.pausedAt = null
+        this.pause()
+        this.frozen = [...new Set([...before, ...this.frozen])]
+      }
       requestAnimationFrame(this.tick)
     })
   }
@@ -98,8 +109,34 @@ class Play {
     this.stopped = true
   }
 
+  /** When the play paused, by the page's clock; null while it plays. */
+  private pausedAt: number | null = null
+  /** The animations the pause stopped, which it lets go on with the play. */
+  private frozen: Animation[] = []
+
+  pause(): void {
+    if (this.pausedAt !== null)
+      return
+    this.pausedAt = performance.now()
+    this.frozen = document.getAnimations().filter((animation) => animation.playState === 'running')
+    for (const animation of this.frozen)
+      animation.pause()
+  }
+
+  resume(): void {
+    if (this.pausedAt === null)
+      return
+    this.began += performance.now() - this.pausedAt
+    this.pausedAt = null
+    for (const animation of this.frozen)
+      animation.play()
+    this.frozen = []
+    if (this.playing)
+      requestAnimationFrame(this.tick)
+  }
+
   private readonly tick = (): void => {
-    if (this.stopped)
+    if (this.stopped || this.pausedAt !== null)
       return
     const ran = performance.now() - this.began
     if (this.loop && ran >= this.loop.loopMs) {
@@ -297,9 +334,10 @@ class Play {
         break
       }
       case 'message': {
-        const data = event[2] as { demi?: string; closed?: unknown } | null
-        if (data?.demi === 'tab' && typeof data.closed === 'boolean')
-          tellTab(data.closed)
+        const data = event[2]
+        const card = cardOf(data)
+        if (card !== undefined)
+          tellCard(card)
         const device = shotOf(data)
         if (device !== undefined)
           tellShot(device)
@@ -385,23 +423,35 @@ function loaded(): Promise<void> {
 
 let playing: Play | null = null
 let asked = 0
+/** Whether the page has the play paused, which a play the page asks for meanwhile starts as. */
+let paused = false
 async function play(demo: DemoId): Promise<void> {
   const ask = ++asked
+  // The screen showing stays until the next is ready to show in its place,
+  // still: a play that went on would tell the page of shots and cards the
+  // next demo does not have.
+  playing?.stop()
   const recording = await recordingOf(demo)
-  // The screen showing stays until the next is ready to show in its place.
   await sheetsOf(recording)
   if (ask !== asked)
     return
-  playing?.stop()
   CSS.highlights.clear()
   document.getSelection()?.removeAllRanges()
   const entry = DEMOS.find((each) => each.id === demo)
   playing = new Play(recording, entry?.loops ? { loopMs: entry.seconds * 1000, again: () => void play(demo) } : undefined)
+  if (paused)
+    playing.pause()
   await playing.ready
   // The first screen painted: the page shows the frame from then.
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 }
 
-readPlay((demo) => void play(demo))
+readPlay((demo) => void play(demo), (pause) => {
+  paused = pause
+  if (pause)
+    playing?.pause()
+  else
+    playing?.resume()
+})
 const first = query.get('demo')
 void play(first !== null && isDemoId(first) ? first : 'hero').then(tellReady)

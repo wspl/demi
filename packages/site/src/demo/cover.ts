@@ -17,7 +17,7 @@ export interface Cover<P extends object> {
  * scaled to the canvas, its corners rounded by `radius` of them; the cover
  * follows the canvas as it moves and resizes, a panel sliding in included.
  */
-export function cover<P extends object>(canvas: HTMLCanvasElement, screen: Component, initial: P, size: { width: number; height: number }, radius = 0): Cover<P> {
+export function cover<P extends object>(canvas: Element, screen: Component, initial: P, size: { width: number; height: number }, radius = 0): Cover<P> {
   const props = reactive(initial) as P
   const layer = document.createElement('div')
   layer.style.cssText = 'position: fixed; overflow: hidden; pointer-events: none; z-index: 40;'

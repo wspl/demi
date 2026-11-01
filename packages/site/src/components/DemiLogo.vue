@@ -3,18 +3,15 @@
 // when `otter` is set. The two parts come from the lockup and the wordmark
 // files, and are sized and spaced here, since the lockup's own spacing is too
 // tight at the size of a page's header.
-import lockup from '../../../../docs/assets/brand/lockup-light.svg?raw'
+import { OTTER_SVG } from '@/brand'
 import wordmark from '../../../../docs/assets/brand/wordmark-light.svg?url&no-inline'
 
 defineProps<{ otter?: boolean }>()
-
-// The lockup's first nested drawing is the otter.
-const otterSvg = /<svg x="0"[\s\S]*?<\/svg>/.exec(lockup)?.[0] ?? ''
 </script>
 
 <template>
   <span class="logo" role="img" aria-label="Demi">
-    <span v-if="otter" class="otter" v-html="otterSvg" />
+    <span v-if="otter" class="otter" v-html="OTTER_SVG" />
     <span class="word" :style="{ '--wordmark': `url('${wordmark}')` }" />
   </span>
 </template>

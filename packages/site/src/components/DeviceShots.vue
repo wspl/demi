@@ -24,6 +24,10 @@ import macbook from '@/assets/devices/macbook.webp'
 import windowsPc from '@/assets/devices/windows-pc.webp'
 import vps from '@/assets/devices/vps.webp'
 import homeLab from '@/assets/devices/home-lab.webp'
+import macbookTile from '@/assets/devices/tile/macbook.webp'
+import windowsPcTile from '@/assets/devices/tile/windows-pc.webp'
+import vpsTile from '@/assets/devices/tile/vps.webp'
+import homeLabTile from '@/assets/devices/tile/home-lab.webp'
 
 const props = defineProps<{ shot: DeviceShot | null }>()
 /** What this stage's SVG ids start with, so another stage's never answer its references. */
@@ -51,6 +55,8 @@ interface Spot {
 /** Each machine: its picture, its picture's size, its screen on it if it has one, its system and its places. */
 interface Machine {
   src: string
+  /** Its picture on its card in the square: the machine alone, drawn to sit small in a tile. */
+  tile: string
   w: number
   h: number
   screen?: [x: number, y: number, width: number, height: number]
@@ -65,30 +71,30 @@ interface Machine {
 }
 
 /** Where a machine stands close. */
-type Stand = 'browser' | 'phone' | 'pair'
+type Stand = 'browser' | 'square' | 'phone' | 'pair'
 
 const MACHINES: Record<ShotDevice, Machine> = {
   macbook: {
-    src: macbook, w: 1108, h: 698, screen: [136, 44, 836, 479], name: 'MacBook', logo: 'apple',
+    src: macbook, tile: macbookTile, w: 1108, h: 698, screen: [136, 44, 836, 479], name: 'MacBook', logo: 'apple',
     browser: { width: 0.44, x: 0.775, bottom: 0.99 },
     phone: { width: 0.5, x: 0.68, bottom: 0.93 },
     every: { width: 0.17, x: 0.86, bottom: 0.23 },
   },
   'windows-pc': {
-    src: windowsPc, w: 1237, h: 655, screen: [36, 43, 856, 456], name: 'Windows PC', logo: 'windows',
+    src: windowsPc, tile: windowsPcTile, w: 1237, h: 655, screen: [36, 43, 856, 456], name: 'Windows PC', logo: 'windows',
     browser: { width: 0.52, x: 0.735, bottom: 0.99 },
     phone: { width: 0.52, x: 0.68, bottom: 0.93 },
     every: { width: 0.17, x: 0.86, bottom: 0.47 },
   },
   vps: {
-    src: vps, w: 1400, h: 437, name: 'VPS', logo: 'ubuntu',
+    src: vps, tile: vpsTile, w: 1400, h: 437, name: 'VPS', logo: 'ubuntu',
     browser: { width: 0.4, x: 0.795, bottom: 0.99 },
     phone: { width: 0.46, x: 0.68, bottom: 0.91 },
     pair: { width: 0.26, x: 0.53, bottom: 0.93 },
     every: { width: 0.19, x: 0.86, bottom: 0.65 },
   },
   'home-lab': {
-    src: homeLab, w: 917, h: 708, name: 'Home Lab', logo: 'debian',
+    src: homeLab, tile: homeLabTile, w: 917, h: 708, name: 'Home Lab', logo: 'debian',
     browser: { width: 0.26, x: 0.81, bottom: 0.99 },
     phone: { width: 0.3, x: 0.68, bottom: 0.94 },
     pair: { width: 0.18, x: 0.87, bottom: 0.93 },
@@ -110,17 +116,22 @@ const LINE_MS = 350
  * it prints, as a terminal window does, and shows its latest lines once it
  * has more.
  */
-const ROWS = { terminal: 5, screen: 8 }
+const ROWS = { terminal: 5, screen: 8, card: 3 }
 
 const SERVER = { w: 837, h: 756, every: { width: 0.13, x: 0.58, bottom: 0.6 } }
 /** Where the wire from the app starts in the overview: the right edge of the app, which DemoStage shrinks to the left. */
 const APP = { x: 0.47, y: 0.5 }
 
 const box = ref<HTMLElement | null>(null)
-const size = ref({ w: 0, h: 0 })
+/** The stage's size, and the page's rem in pixels, which grows with the window as the stage does. */
+const size = ref({ w: 0, h: 0, rem: 16 })
 let observer: ResizeObserver | undefined
 onMounted(() => {
-  observer = new ResizeObserver(([entry]) => (size.value = { w: entry!.contentRect.width, h: entry!.contentRect.height }))
+  observer = new ResizeObserver(([entry]) => (size.value = {
+    w: entry!.contentRect.width,
+    h: entry!.contentRect.height,
+    rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+  }))
   observer.observe(box.value!)
 })
 onBeforeUnmount(() => observer?.disconnect())
@@ -160,10 +171,11 @@ watch(close, (shot, before) => {
   staying.value = new Set(before?.machines.map((each) => each.device).filter((name) => up.has(name)))
   if (!shot)
     return
-  const stand: Stand = shot.beside === 'browser' ? 'browser' : shot.machines.length > 1 ? 'pair' : 'phone'
+  const two = shot.machines.length > 1
+  const stand: Stand = shot.beside === 'browser' ? (two ? 'square' : 'browser') : two ? 'pair' : 'phone'
   const next = { ...last.value }
   for (const each of shot.machines)
-    next[each.device] = { lines: each.lines, done: each.done, stand: MACHINES[each.device][stand] ? stand : 'phone' }
+    next[each.device] = { lines: each.lines, done: each.done, stand: stand === 'square' || MACHINES[each.device][stand] ? stand : 'phone' }
   last.value = next
 })
 
@@ -208,7 +220,8 @@ watch(() => (Object.keys(MACHINES) as ShotDevice[]).filter((name) => shown(name)
   for (const name of up) {
     if (before?.includes(name))
       continue
-    arrival.set(name, performance.now() + ARRIVE_MS[last.value[name]?.stand === 'browser' ? 'browser' : 'phone'])
+    const atBrowser = last.value[name]?.stand === 'browser' || last.value[name]?.stand === 'square'
+    arrival.set(name, performance.now() + ARRIVE_MS[atBrowser ? 'browser' : 'phone'])
     // A machine that comes back shows what it printed before and goes on
     // from there; the lines that differ, as when the play starts over, it
     // prints again.
@@ -228,14 +241,19 @@ watch(() => (Object.keys(MACHINES) as ShotDevice[]).filter((name) => shown(name)
 })
 watch(last, pump)
 onBeforeUnmount(() => clearTimeout(pumping))
-/** The lines a machine's terminal shows now, and whether the last one is its work's done line. */
-function linesOf(name: ShotDevice): { lines: string[]; done: boolean } {
+/**
+ * The lines a machine's terminal shows now, whether the last one is its
+ * work's done line, and the number of the first shown: a line keeps its
+ * number as the terminal scrolls, so only a new one comes in.
+ */
+function linesOf(name: ShotDevice): { lines: string[]; done: boolean; first: number } {
   const all = last.value[name]
   if (!all)
-    return { lines: [], done: false }
+    return { lines: [], done: false, first: 0 }
   const count = revealed.value[name] ?? 0
-  const rows = MACHINES[name].screen ? ROWS.screen : ROWS.terminal
-  return { lines: all.lines.slice(Math.max(0, count - rows), count), done: all.done && count >= all.lines.length }
+  const rows = inSquare(name) ? ROWS.card : MACHINES[name].screen ? ROWS.screen : ROWS.terminal
+  const first = Math.max(0, count - rows)
+  return { lines: all.lines.slice(first, count), done: all.done && count >= all.lines.length, first }
 }
 
 /** A picture's box in pixels, from its spot. */
@@ -245,10 +263,40 @@ function place(spot: Spot, w: number, h: number) {
   return { left: spot.x * size.value.w - width / 2, top: spot.bottom * size.value.h - height, width, height }
 }
 
-/** Where each machine is now: in the overview, or where it stands close, down or up. */
+/**
+ * The square of every machine beside the browser, each on a card: the cards'
+ * width and where the right column's right edge stands, in shares of the
+ * stage's width; the one gap between the cards, across and down alike, in
+ * pixels; a card's height (its picture's row and a terminal of three lines),
+ * in rems, as its content is set; and each machine's column and row, from
+ * the right and the bottom.
+ */
+const SQUARE = { width: 0.25, right: 0.985, gap: 56, height: 8.75 }
+const SQUARE_PLACES: Record<ShotDevice, { column: number; row: number }> = {
+  'macbook': { column: 1, row: 1 },
+  'windows-pc': { column: 0, row: 1 },
+  'home-lab': { column: 1, row: 0 },
+  'vps': { column: 0, row: 0 },
+}
+
+/** Whether `name` stands on a card in the square beside the browser. */
+function inSquare(name: ShotDevice): boolean {
+  return last.value[name]?.stand === 'square' && !every.value
+}
+
+/** Where each machine is now: in the overview, or where it stands close, down or up; on its card in the square. */
 function machineBox(name: ShotDevice) {
   const machine = MACHINES[name]
-  return place(every.value ? machine.every : machine[last.value[name]?.stand ?? 'browser']!, machine.w, machine.h)
+  if (inSquare(name)) {
+    const place = SQUARE_PLACES[name]
+    const width = SQUARE.width * size.value.w
+    const left = SQUARE.right * size.value.w - (place.column + 1) * width - place.column * SQUARE.gap
+    const height = SQUARE.height * size.value.rem
+    const top = size.value.h - (place.row + 1) * height - place.row * SQUARE.gap
+    return { left, top, width, height }
+  }
+  const stand = last.value[name]?.stand
+  return place(every.value ? machine.every : machine[stand === undefined || stand === 'square' ? 'browser' : stand]!, machine.w, machine.h)
 }
 const serverBox = computed(() => place(SERVER.every, SERVER.w, SERVER.h))
 function shown(name: ShotDevice): boolean {
@@ -276,17 +324,49 @@ const wires = computed(() => {
   ]
 })
 
-/** The data flowing between two machines close: a wire from one's right side to the other's left, and its label over the middle. */
-const flow = computed(() => {
-  const data = close.value?.flow
-  if (!data)
-    return null
+/**
+ * The data flowing between machines close, each a wire and its label over
+ * its middle. Beside the phone, a wire runs level from the sender's side that
+ * faces the receiver to the receiver's. In the square, it runs from card to
+ * card along the line between their middles, across, down or slanting.
+ */
+/** The line between two cards in the square, from the edge of one to the edge of the other along the line between their middles. */
+function squareLine(from: ShotDevice, to: ShotDevice): { x1: number; y1: number; x2: number; y2: number } {
+  const a = machineBox(from)
+  const b = machineBox(to)
+  const ca = { x: a.left + a.width / 2, y: a.top + a.height / 2 }
+  const cb = { x: b.left + b.width / 2, y: b.top + b.height / 2 }
+  const dx = cb.x - ca.x
+  const dy = cb.y - ca.y
+  // How far along the line it leaves a card of `box`'s size, past its edge.
+  const out = (box: { width: number; height: number }) => Math.min(dx ? (box.width / 2 + 6) / Math.abs(dx) : Infinity, dy ? (box.height / 2 + 6) / Math.abs(dy) : Infinity)
+  return { x1: ca.x + dx * out(a), y1: ca.y + dy * out(a), x2: cb.x - dx * out(b), y2: cb.y - dy * out(b) }
+}
+
+/** Every machine's line to every other in the square, drawn faint from the start: the paths the data takes when it goes. */
+const mesh = computed(() => {
+  const up = (Object.keys(SQUARE_PLACES) as ShotDevice[]).filter((name) => inSquare(name) && closeOf(name) !== undefined)
+  return up.flatMap((one, i) => up.slice(i + 1).map((other) => ({ key: `${one}-${other}`, ...squareLine(one, other) })))
+})
+
+const flows = computed(() => (close.value?.flows ?? []).map((data) => {
   const a = machineBox(data.from)
   const b = machineBox(data.to)
+  // Machines that already stood keep no one waiting: the wire grows at once.
+  const standing = staying.value.has(data.from) && staying.value.has(data.to)
+  const key = `${data.from}-${data.to}`
+  if (inSquare(data.from) && inSquare(data.to)) {
+    const { x1, y1, x2, y2 } = squareLine(data.from, data.to)
+    // The label stands clear of its wire: beside one that runs down, under one that runs across.
+    const side = Math.abs(y2 - y1) > Math.abs(x2 - x1) / 4 ? 'beside' : 'under'
+    return { key, label: data.label, d: `M${x1},${y1} L${x2},${y2}`, x: (x1 + x2) / 2, y: (y1 + y2) / 2, standing, side }
+  }
   const y = Math.min(a.top + a.height / 2, b.top + b.height / 2)
-  const [x1, x2] = [a.left + a.width + 6, b.left - 6]
-  return { label: data.label, d: `M${x1},${y} L${x2},${y}`, x: (x1 + x2) / 2, y }
-})
+  const rightward = a.left < b.left
+  const x1 = rightward ? a.left + a.width + 6 : a.left - 6
+  const x2 = rightward ? b.left - 6 : b.left + b.width + 6
+  return { key, label: data.label, d: `M${x1},${y} L${x2},${y}`, x: (x1 + x2) / 2, y, standing, side: null }
+}))
 
 /** A screen's box on its machine's picture, in shares of the picture. */
 function screenBox(machine: Machine) {
@@ -296,7 +376,7 @@ function screenBox(machine: Machine) {
 
 /**
  * The terminal of a machine that has no screen, over its picture: beside the
- * browser, its right edge on the stage's; beside the phone, centred on it,
+ * browser, its right edge on the stage's; beside the phone, centered on it,
  * narrower with a second machine beside it.
  */
 const TERMINAL = { width: 0.4, pair: 0.27, right: 0.995 }
@@ -328,20 +408,23 @@ function px(b: { left: number; top: number; width: number; height: number }) {
         </circle>
       </g>
     </svg>
-    <svg v-if="flow" class="flow" :viewBox="`0 0 ${size.w} ${size.h}`">
+    <svg v-if="mesh.length" class="mesh" :viewBox="`0 0 ${size.w} ${size.h}`">
+      <line v-for="line in mesh" :key="line.key" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2" class="wire" />
+    </svg>
+    <svg v-for="line in flows" :key="line.key" class="flow" :class="{ standing: line.standing }" :viewBox="`0 0 ${size.w} ${size.h}`">
       <g>
-        <mask :id="`${ids}-grow-flow`" maskUnits="userSpaceOnUse" x="0" y="0" :width="size.w" :height="size.h">
-          <path :d="flow.d" class="grow" pathLength="1" />
+        <mask :id="`${ids}-grow-${line.key}`" maskUnits="userSpaceOnUse" x="0" y="0" :width="size.w" :height="size.h">
+          <path :d="line.d" class="grow" pathLength="1" />
         </mask>
-        <path :id="`${ids}-flow-wire`" :d="flow.d" class="wire" :mask="`url(#${ids}-grow-flow)`" />
+        <path :id="`${ids}-flow-${line.key}`" :d="line.d" class="wire" :mask="`url(#${ids}-grow-${line.key})`" />
         <circle v-for="i in lessMotion ? 0 : 3" :key="i" r="3.5" class="dot">
           <animateMotion dur="0.9s" :begin="`${(i - 1) * 0.3}s`" repeatCount="indefinite" calcMode="linear">
-            <mpath :href="`#${ids}-flow-wire`" />
+            <mpath :href="`#${ids}-flow-${line.key}`" />
           </animateMotion>
         </circle>
       </g>
     </svg>
-    <span v-if="flow" class="packet" :style="{ left: `${flow.x}px`, top: `${flow.y}px` }">{{ flow.label }}</span>
+    <span v-for="line in flows" :key="`label-${line.key}`" class="packet" :class="[{ standing: line.standing }, line.side]" :style="{ left: `${line.x}px`, top: `${line.y}px` }">{{ line.label }}</span>
 
     <div class="node server" :class="{ shown: every && !parting }" :style="px(serverBox)">
       <img :src="server" alt="">
@@ -349,15 +432,15 @@ function px(b: { left: number; top: number; width: number; height: number }) {
     </div>
 
     <template v-for="(machine, name, order) in MACHINES" :key="name">
-      <div class="node machine" :class="{ shown: shown(name), staying: staying.has(name) && !every, 'with-phone': last[name]?.stand !== 'browser' && !every }" :style="{ ...px(machineBox(name)), '--order': order }">
-        <img :src="machine.src" alt="">
+      <div class="node machine" :class="{ shown: shown(name), staying: staying.has(name) && !every, 'with-phone': (last[name]?.stand === 'phone' || last[name]?.stand === 'pair') && !every, card: inSquare(name), idle: inSquare(name) && closeOf(name)?.idle, here: inSquare(name) && closeOf(name)?.here }" :style="{ ...px(machineBox(name)), '--order': order }">
+        <img :src="inSquare(name) ? machine.tile : machine.src" alt="">
         <span class="label">
-          <DeviceLogo :logo="machine.logo" :size="13" />
+          <DeviceLogo v-if="!inSquare(name)" :logo="machine.logo" :size="13" />
           <b>{{ machine.name }}</b>
-          <i class="light" :class="{ busy: closeOf(name) !== undefined && !linesOf(name).done, done: every || (closeOf(name) !== undefined && linesOf(name).done) }" />
+          <i class="light" :class="{ busy: closeOf(name) !== undefined && !closeOf(name)?.idle && !linesOf(name).done, done: every || (closeOf(name) !== undefined && !closeOf(name)?.idle && linesOf(name).done) }" />
         </span>
-        <div v-if="last[name]" :class="[machine.screen ? 'display' : 'terminal', { narrow: last[name]?.stand === 'pair' }]" :style="machine.screen ? screenBox(machine) : terminalBox(name)">
-          <p v-for="(line, i) in linesOf(name).lines" :key="line + i" :class="{ ok: linesOf(name).done && i === linesOf(name).lines.length - 1 }">{{ line }}<i v-if="i === linesOf(name).lines.length - 1" class="cursor" /></p>
+        <div v-if="last[name]" :class="[machine.screen && !inSquare(name) ? 'display' : 'terminal', { narrow: last[name]?.stand === 'pair' }]" :style="inSquare(name) ? undefined : machine.screen ? screenBox(machine) : terminalBox(name)">
+          <p v-for="(line, i) in linesOf(name).lines" :key="linesOf(name).first + i" :class="{ ok: linesOf(name).done && i === linesOf(name).lines.length - 1 }">{{ line }}<i v-if="i === linesOf(name).lines.length - 1" class="cursor" /></p>
           <p v-if="!linesOf(name).lines.length"><i class="cursor" /></p>
         </div>
       </div>
@@ -398,6 +481,24 @@ function px(b: { left: number; top: number; width: number; height: number }) {
   animation: dot-in 0.3s ease-out 1.6s both;
 }
 
+.flow.standing .grow {
+  animation-delay: 0.1s;
+}
+
+.flow.standing .dot,
+.packet.standing {
+  animation-delay: 0.6s;
+}
+
+/* In the square, the label stands clear of its wire, which shows whole: beside one that runs down or slants, under one that runs across. */
+.packet.beside {
+  transform: translate(0.5rem, -50%);
+}
+
+.packet.under {
+  transform: translate(-50%, 0.4rem);
+}
+
 @keyframes grow {
   from {
     stroke-dashoffset: 1;
@@ -418,6 +519,16 @@ function px(b: { left: number; top: number; width: number; height: number }) {
   stroke: #d9b49a;
 }
 
+/* The square's lines wait faint under the data's, and come once the cards stand. */
+.mesh {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  animation: dot-in 0.5s ease-out 0.9s both;
+}
+
 .packet {
   position: absolute;
   padding: 0.125rem 0.5rem;
@@ -434,7 +545,7 @@ function px(b: { left: number; top: number; width: number; height: number }) {
 @keyframes packet-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 0.25rem) scale(0.6);
+    scale: 0.6;
   }
 }
 
@@ -563,6 +674,92 @@ function px(b: { left: number; top: number; width: number; height: number }) {
 .label b {
   color: var(--ink);
   font-weight: 600;
+}
+
+/*
+ * Every machine beside the browser stands in a square over its corner, each
+ * on a card of its own: its picture small beside its name, and its terminal
+ * under them, so each reads as one thing apart from the browser behind it
+ * and the wire between them. A machine that waits fades back, and the
+ * conversation's machine says so beside its name.
+ */
+.machine.card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 0.6rem 0.65rem;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  box-shadow: 0 2px 0.25rem rgb(60 40 20 / 5%), 0 1rem 2.5rem rgb(60 40 20 / 14%);
+}
+
+.machine.card img,
+.machine.card .label,
+.machine.card .terminal {
+  transition: opacity 0.35s ease, background 0.35s ease, color 0.35s ease;
+}
+
+.machine.card.idle img,
+.machine.card.idle .label {
+  opacity: 0.45;
+}
+
+/* The machine the conversation runs on is ringed in the accent, and the ring moves with it. */
+.shots .machine.card.shown {
+  transition:
+    transform 0.75s var(--rise) 0.3s,
+    opacity 0.45s ease-out 0.3s,
+    visibility 0s 0.3s,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.machine.card.here {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 1.25rem 2.75rem rgb(60 40 20 / 18%);
+}
+
+/* A machine that waits has its terminal off: light, its text faint. */
+.machine.card.idle .terminal {
+  background: var(--cream);
+  color: var(--ink-faint);
+}
+
+.machine.card img {
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--cream);
+  object-fit: contain;
+  filter: none;
+}
+
+.shots:not(.every) .machine.card .label {
+  position: static;
+  grid-area: 1 / 2;
+  justify-self: start;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
+.machine.card .terminal {
+  position: static;
+  grid-column: 1 / -1;
+  height: auto;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.6rem;
+  box-shadow: none;
+  font-size: 0.6875rem;
+  transition: none;
 }
 
 .light {

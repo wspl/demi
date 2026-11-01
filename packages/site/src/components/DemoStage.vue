@@ -2,13 +2,19 @@
 // A demo's demo: Demi in a desktop browser window, and on a phone in front
 // of it, showing the same conversation. The two appear together, once both
 // apps have loaded, rather than as empty frames first; a narrow screen hides
-// the desktop, and the phone appears alone once it has loaded.
+// the desktop, and the phone appears alone once it has loaded. The demo and
+// the stage's endless animations pause while the stage is off screen or
+// covered, and go on from there.
 import { ChevronLeftIcon, ChevronRightIcon, CopyIcon, LockIcon, PanelLeftIcon, PlusIcon, ShareIcon, SignalIcon, WifiIcon, BatteryFullIcon } from '@lucide/vue'
 import type { DemoId } from '@/features'
 import { computed, ref, watch } from 'vue'
+import { useOnScreen } from '@/onScreen'
 import DemoFrame from './DemoFrame.vue'
 import DeviceShots from './DeviceShots.vue'
-import { CAMERA_MS, type DeviceShot } from '@/demo/message'
+import PiecesCard from './PiecesCard.vue'
+import ProductionCard from './ProductionCard.vue'
+import RuntimeCard from './RuntimeCard.vue'
+import { CAMERA_MS, type DeviceShot, type StageCard } from '@/demo/message'
 
 const props = defineProps<{
   demo: DemoId
@@ -20,14 +26,21 @@ const props = defineProps<{
    * up, as the hero's does.
    */
   lifts?: boolean
+  /** The play's number: a new one plays the demo again from its start. */
+  run?: number
+  /** Whether another stage covers this one. */
+  covered?: boolean
 }>()
-/** Whether the desktop demo closed its tab, which leaves the address bar empty. */
-const closed = ref(false)
+const root = ref<HTMLElement | null>(null)
+const onScreen = useOnScreen(root)
+const paused = computed(() => props.covered || !onScreen.value)
 /** What the stage shows beside the app, as the desktop's demo says. */
 const shot = ref<DeviceShot | null>(null)
-watch(() => props.demo, () => {
-  closed.value = false
+/** What the card at the browser's corner shows, as the desktop's demo says. */
+const card = ref<StageCard | null>(null)
+watch([() => props.demo, () => props.run], () => {
   shot.value = null
+  card.value = null
 })
 const desktopReady = ref(false)
 const desktopHidden = ref(false)
@@ -54,23 +67,23 @@ function focus(close: boolean, at: boolean): void {
 </script>
 
 <template>
-  <div class="stage" :class="{ shown, lifts, 'shot-desk': shot?.kind === 'close' && shot.beside === 'browser', 'shot-away': shot?.kind === 'close' && shot.beside === 'phone', 'shot-every': shot?.kind === 'all', 'shot-clear': shot?.kind === 'clear' }">
+  <div ref="root" class="stage" :class="{ shown, lifts, paused, 'shot-desk': shot?.kind === 'close' && shot.beside === 'browser', 'shot-away': shot?.kind === 'close' && shot.beside === 'phone', 'shot-every': shot?.kind === 'all', 'shot-clear': shot?.kind === 'clear' }">
     <div class="browser">
       <div class="chrome">
         <span class="lights" aria-hidden="true"><i /><i /><i /></span>
         <span class="tools" aria-hidden="true">
           <ChevronLeftIcon :size="20" /><ChevronRightIcon :size="20" /><PanelLeftIcon :size="18" />
         </span>
-        <span class="address"><template v-if="!closed"><LockIcon :size="13" />demi.example.com</template><template v-else>Search or enter website name</template></span>
+        <span class="address"><LockIcon :size="13" />demi.example.com</span>
         <span class="tools end" aria-hidden="true">
           <ShareIcon :size="18" /><PlusIcon :size="20" /><CopyIcon :size="18" />
         </span>
       </div>
-      <DemoFrame :demo="demo" form="desktop" :width="1024" :height="614" @focus="focus" @tab="closed = $event" @shot="shot = $event" @ready="desktopReady = true" @hidden="desktopHidden = $event" />
+      <DemoFrame :demo="demo" form="desktop" :width="1024" :height="614" :run="run" :paused="paused" @focus="focus" @shot="shot = $event" @card="card = $event" @ready="desktopReady = true" @hidden="desktopHidden = $event" />
     </div>
     <div class="phone" :class="{ away: lifts ? !(phoneLeads || desktopHidden) : focused, cut }" :style="{ '--camera': `${CAMERA_MS}ms` }" aria-hidden="true">
       <div class="phone-screen">
-        <DemoFrame :demo="demo" form="phone" :width="393" :height="852" @ready="phoneReady = true" />
+        <DemoFrame :demo="demo" form="phone" :width="393" :height="852" :run="run" :paused="paused" @ready="phoneReady = true" />
         <span class="status">
           <b>9:41</b>
           <span class="status-icons"><SignalIcon :size="15" :stroke-width="2.6" /><WifiIcon :size="15" :stroke-width="2.6" /><BatteryFullIcon :size="19" :stroke-width="2" /></span>
@@ -78,12 +91,20 @@ function focus(close: boolean, at: boolean): void {
         <span class="island" />
       </div>
     </div>
-    <DeviceShots v-if="lifts" :shot="shot" />
+    <DeviceShots :shot="shot" />
+    <RuntimeCard :card="card?.kind === 'runtime' ? card : null" />
+    <ProductionCard :card="card?.kind === 'production' ? card : null" />
+    <PiecesCard :card="card?.kind === 'pieces' ? card : null" />
     <p class="visually-hidden">{{ label }}</p>
   </div>
 </template>
 
 <style scoped>
+/* The stage's endless animations, a lit machine's or a cursor's, stop with its demo. */
+.paused :deep(*) {
+  animation-play-state: paused;
+}
+
 /*
  * On a stage that lifts, as the hero's, the browser and the phone make room
  * for the machines (DeviceShots) and come back, each fading as it moves: the
@@ -185,6 +206,15 @@ function focus(close: boolean, at: boolean): void {
 
 .stage.shown {
   opacity: 1;
+}
+
+/*
+ * The tour's stage keeps its browser in the middle of its column: the room
+ * the phone stands out into is split between the two sides.
+ */
+.stage:not(.lifts) {
+  padding-right: 6.5%;
+  padding-left: 6.5%;
 }
 
 .browser {
@@ -332,7 +362,8 @@ function focus(close: boolean, at: boolean): void {
 
 /* A narrow screen shows the phone alone: the desktop's window would be too small to read. */
 @media (max-width: 720px) {
-  .stage {
+  .stage,
+  .stage:not(.lifts) {
     padding: 0;
   }
 

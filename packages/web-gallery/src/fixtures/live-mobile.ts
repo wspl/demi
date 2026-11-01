@@ -297,8 +297,11 @@ export interface GalleryMobile {
   plugin: GalleryPlugin
   /** The panel tab of a device its user closed: the device closes, as `demi mobile close` does. */
   removed(tab: PanelTab): void
-  /** The agent opens the next simulator with `demi mobile open`: its tab joins the panel. */
-  agentOpens(): Promise<void>
+  /**
+   * The agent opens a simulator with `demi mobile open`, the one of `model`
+   * when it is given, else the next one: its tab joins the panel.
+   */
+  agentOpens(model?: string): Promise<void>
   /** The agent taps each open device at a point of its screen, as `demi mobile tap` does. */
   agentTaps(): void
   /** The agent starts or stops recording the first open device, as `demi mobile record` does. */
@@ -569,8 +572,9 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
         closeDevice(id)
       }
     },
-    agentOpens: async () => {
-      const next = SIMULATORS.find((simulator) => ![...open.values()].some((each) => each.simulator === simulator)) ?? SIMULATORS[0]
+    agentOpens: async (model?: string) => {
+      const next = (model ? SIMULATORS.find((simulator) => simulator.model === model) : undefined)
+        ?? SIMULATORS.find((simulator) => ![...open.values()].some((each) => each.simulator === simulator)) ?? SIMULATORS[0]
       if (next) {
         agentUsed(await openDevice(next))
       }

@@ -7,11 +7,14 @@
 // but their own hidden, so each is as tall as its longest: the closing feature
 // shrinks by what the opening one grows, and nothing else on the screen moves
 // when the selection does. The page's HTML holds each text once, as search
-// engines read it: the hidden copies come only after it mounts.
+// engines read it: the hidden copies come only after it mounts. While the
+// demo is off screen, it and the progress bar pause together.
 import { ChevronDownIcon } from '@lucide/vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import AnywhereStage from '@/components/AnywhereStage.vue'
 import DemoStage from '@/components/DemoStage.vue'
-import { FEATURES } from '@/features'
+import { FEATURES, type FeatureId } from '@/features'
+import { useOnScreen } from '@/onScreen'
 
 const selected = ref(0)
 const mounted = ref(false)
@@ -19,6 +22,25 @@ onMounted(() => {
   mounted.value = true
 })
 const feature = computed(() => FEATURES[selected.value]!)
+/**
+ * The feature whose demo plays on one device at a time, on a stage of its
+ * own over the usual one; the usual one keeps its size and the last other
+ * feature's demo meanwhile, so the panel never changes size.
+ */
+const ANYWHERE: FeatureId = 'machines'
+const anywhere = computed(() => feature.value.id === ANYWHERE)
+const stageDemo = ref<FeatureId>(feature.value.id === ANYWHERE ? FEATURES.find((each) => each.id !== ANYWHERE)!.id : feature.value.id)
+/** The usual stage's play: each feature chosen plays from its start, the one it last played too. */
+const stageRun = ref(0)
+watch(feature, (next) => {
+  if (next.id === ANYWHERE)
+    return
+  stageDemo.value = next.id
+  stageRun.value += 1
+})
+
+const panel = ref<HTMLElement | null>(null)
+const panelOnScreen = useOnScreen(panel)
 
 function next(): void {
   selected.value = (selected.value + 1) % FEATURES.length
@@ -51,13 +73,12 @@ function move(event: KeyboardEvent): void {
     </div>
 
     <div class="body">
-      <div class="list" role="tablist" aria-orientation="vertical" aria-label="Features" @keydown="move">
+      <div class="list" :class="{ paused: !panelOnScreen }" role="tablist" aria-orientation="vertical" aria-label="Features" @keydown="move">
         <button
           v-for="(item, index) in FEATURES"
           :id="`feature-tab-${item.id}`"
           :key="item.id"
           ref="tabs"
-         
           class="item"
           :class="{ selected: index === selected }"
           role="tab"
@@ -97,16 +118,37 @@ function move(event: KeyboardEvent): void {
         </button>
       </div>
 
-      <div id="feature-panel" class="panel" role="tabpanel" :aria-labelledby="`feature-tab-${feature.id}`">
-        <DemoStage :demo="feature.id" :label="feature.title" />
+      <div id="feature-panel" ref="panel" class="panel" role="tabpanel" :aria-labelledby="`feature-tab-${feature.id}`">
+        <div class="usual" :class="{ covered: anywhere }">
+          <DemoStage :demo="stageDemo" :run="stageRun" :covered="anywhere" :label="feature.title" />
+        </div>
+        <AnywhereStage :demo="ANYWHERE" :active="anywhere" :label="feature.title" />
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
+.panel {
+  position: relative;
+}
+
+/* Under the stage that plays on one device at a time, the usual one keeps its room and shows nothing. */
+.usual {
+  transition: opacity 0.25s ease 0.3s;
+}
+
+.usual.covered {
+  transition: opacity 0.25s ease;
+}
+
+.covered {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .heading {
-  margin-bottom: clamp(1.25rem, 3.4vh, 2rem);
+  margin-bottom: clamp(2rem, 6vh, 4rem);
   text-align: center;
 }
 
@@ -265,6 +307,10 @@ function move(event: KeyboardEvent): void {
   background: var(--ink);
   transform-origin: left;
   animation: fill 12s linear forwards;
+}
+
+.paused .fill {
+  animation-play-state: paused;
 }
 
 @keyframes fill {

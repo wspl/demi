@@ -22,6 +22,15 @@ function fade(element: HTMLElement, ms: number): void {
 
 const ENTRANCES: readonly Entrance[] = [
   {
+    // A message the user sends rises into place as it fades in, as a sent
+    // message does in a chat.
+    selector: '.group\\/user',
+    within: true,
+    run: (message) => {
+      message.animate([{ opacity: 0, transform: 'translateY(0.75rem)' }, { opacity: 1, transform: 'none' }], { duration: 350, easing: SETTLE })
+    },
+  },
+  {
     // The work panel slides in from the window's right edge, and the
     // conversation gives it room as it comes; its divider, which keeps
     // windows too, comes with it.

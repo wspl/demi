@@ -33,9 +33,9 @@ function markStyle(mark: Mark, color?: string): Record<string, string> {
 }
 
 const providers = [
-  { name: 'Claude', text: 'Use your subscription.', mark: claude, tint: '#f6e2d8', color: '#c9795c' },
-  { name: 'ChatGPT', text: 'Use your subscription, Codex included.', mark: openai, tint: '#e2ebdf', color: '#5f7d58' },
-  { name: 'Grok Build', text: 'Use your subscription.', mark: xai, tint: '#e1e7ee', color: '#4d6274' },
+  { name: 'Claude', text: 'Use your Pro or Max plan.', mark: claude, tint: '#f6e2d8', color: '#c9795c' },
+  { name: 'ChatGPT', text: 'Use your Plus, Pro or Business plan, Codex models included.', mark: openai, tint: '#e2ebdf', color: '#5f7d58' },
+  { name: 'Grok Build', text: 'Use your SuperGrok plan.', mark: xai, tint: '#e1e7ee', color: '#4d6274' },
   {
     name: 'Coding plans',
     text: 'Kimi, GLM, MiniMax and more, with your plan’s key.',
@@ -46,7 +46,7 @@ const providers = [
     ],
   },
   { name: 'API keys', text: 'Anthropic, OpenAI, Gemini or any compatible endpoint.', icon: KeyRoundIcon, tint: '#ebe4f1', color: '#6b5a80' },
-  { name: 'Local models', text: 'Run models such as Ollama on your own computer.', icon: SquareTerminalIcon, tint: '#f4e6d2', color: '#8a6235' },
+  { name: 'Local models', text: 'Run Ollama on your own computer. Demi reaches it through port forwarding.', icon: SquareTerminalIcon, tint: '#f4e6d2', color: '#8a6235' },
 ]
 
 const models = [
@@ -148,7 +148,7 @@ const usage = [
   display: grid;
   grid-template-columns: 3.25rem 1fr;
   gap: 0.875rem;
-  align-items: center;
+  align-items: start;
   padding: 1rem 1.125rem;
   border: 1px solid var(--line);
   border-radius: 1rem;

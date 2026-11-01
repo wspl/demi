@@ -4,7 +4,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
-import { isDemoId, type DemoId } from '@/features'
+import { isDemoId, isForm, type DemoId } from '@/features'
 import DemoScene from './DemoScene.vue'
 import { readPlay, tellReady } from './message'
 import type { Form } from './scenes'
@@ -14,7 +14,8 @@ provideMediaViewer()
 
 const query = new URLSearchParams(location.search)
 const asked = query.get('demo')
-const form: Form = query.get('form') === 'phone' ? 'phone' : 'desktop'
+const askedForm = query.get('form')
+const form: Form = isForm(askedForm) ? askedForm : 'desktop'
 const demo = ref<DemoId>(asked !== null && isDemoId(asked) ? asked : 'hero')
 const run = ref(0)
 
