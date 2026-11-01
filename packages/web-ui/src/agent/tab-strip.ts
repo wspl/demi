@@ -26,6 +26,10 @@ export const TAB_WIDTH_MS = 200
 
 const leaveParents = new WeakMap<HTMLElement, HTMLElement>()
 const enterWidths = new WeakMap<HTMLElement, number>()
+/** The width a closing tab collapses from. */
+const leaveWidths = new WeakMap<HTMLElement, number>()
+/** The width a tab that stays moves to while others close. */
+const closeWidths = new WeakMap<HTMLElement, number>()
 
 function measureOpenWidth(tab: HTMLElement): number {
   const prevWidth = tab.style.width
@@ -229,7 +233,47 @@ export function enterTab(el: Element): void {
  * otherwise.
  */
 export function settledTabWidth(tab: HTMLElement): number {
-  return enterWidths.get(tab) ?? tab.getBoundingClientRect().width
+  return enterWidths.get(tab) ?? closeWidths.get(tab) ?? tab.getBoundingClientRect().width
+}
+
+/**
+ * How wide the content of `scroller`, which holds `strip`, will be once the
+ * strip's motion ends: a closing tab takes no room and gives back its gap,
+ * and every other tab takes its settled width.
+ */
+export function settledScrollWidth(scroller: HTMLElement, strip: HTMLElement): number {
+  const gap = stripGap(strip)
+  let change = 0
+  for (const child of strip.children) {
+    if (!isStyledEl(child)) {
+      continue
+    }
+    const width = child.getBoundingClientRect().width
+    if (isLeavingTab(child)) {
+      const margin = Number.parseFloat(getComputedStyle(child).marginRight) || 0
+      change -= width + margin + gap
+    } else {
+      change += settledTabWidth(child) - width
+    }
+  }
+  return scroller.scrollWidth + change
+}
+
+/**
+ * How far the strip's closing tabs have collapsed, from 0 to 1, the least of
+ * them; null when none is closing. The tabs that stay move with them.
+ */
+export function closingProgress(strip: HTMLElement): number | null {
+  let progress: number | null = null
+  for (const child of strip.children) {
+    const from = isStyledEl(child) ? leaveWidths.get(child) : undefined
+    if (from === undefined || from <= 0) {
+      continue
+    }
+    const done = clamp(1 - child.getBoundingClientRect().width / from, 0, 1)
+    progress = progress === null ? done : Math.min(progress, done)
+  }
+  return progress
 }
 
 export function afterEnterTab(el: Element): void {
@@ -261,11 +305,12 @@ function stillLeaving(parent: HTMLElement): boolean {
 /**
  * Holds `tab` and each other tab that stays at its width, out of the strip's
  * sharing (`flex: 0 0 auto`), all read before any is written, so the strip
- * is laid out once and not once per tab.
+ * is laid out once and not once per tab. A tab on its way in keeps growing.
  */
 function lockWidths(tab: HTMLElement): void {
   const siblings = [...tab.parentElement?.children ?? []].filter(
-    (child): child is HTMLElement => isStyledEl(child) && child !== tab && !child.classList.contains('tabs-leave-active'),
+    (child): child is HTMLElement =>
+      isStyledEl(child) && child !== tab && !child.classList.contains('tabs-leave-active') && !enterWidths.has(child),
   )
   const held = [tab, ...siblings]
   const widths = held.map((each) => each.getBoundingClientRect().width)
@@ -276,7 +321,9 @@ function lockWidths(tab: HTMLElement): void {
 }
 
 /**
- * After a close, ease remaining tabs from the squeezed width to the new layout.
+ * After a close, hands the remaining tabs back to the strip's sharing. They
+ * already moved with the close (`settleStaying`); only a change the close
+ * brought about, such as the strip no longer overflowing, eases them on.
  */
 function releaseStrip(parent: HTMLElement | null): void {
   if (!parent?.children) {
@@ -294,6 +341,7 @@ function releaseStrip(parent: HTMLElement | null): void {
   const from = tabs.map((tab) => tab.getBoundingClientRect().width)
 
   for (const tab of tabs) {
+    closeWidths.delete(tab)
     tab.style.transition = 'none'
     tab.style.width = ''
     tab.style.flex = ''
@@ -341,7 +389,12 @@ export function beforeLeaveTab(el: Element): void {
   // out as an unselected one and the strip shows one selected tab throughout.
   tab.setAttribute('aria-selected', 'false')
   tab.style.setProperty('--tab-active', 'var(--tab-row)')
+  // A tab closed with others, as Close Others closes them one by one, may
+  // hold the width motion an earlier one gave it: its own close fades it.
+  closeWidths.delete(tab)
+  tab.style.transition = ''
   lockWidths(tab)
+  leaveWidths.set(tab, Number.parseFloat(tab.style.width) || 0)
   tab.style.minWidth = '0'
   tab.style.overflow = 'hidden'
 }
@@ -351,13 +404,100 @@ export function leaveTab(el: Element): void {
   tab.style.width = '0'
   tab.style.marginRight = `-${columnGap(tab)}px`
   tab.style.opacity = '0'
+  if (tab.parentElement) {
+    settleStaying(tab.parentElement, [tab])
+  }
+}
+
+/**
+ * `transition` for a tab, with the width motion a close gave it while that
+ * runs: a transition that leaves width out would end it at once.
+ */
+export function keepingCloseMotion(tab: HTMLElement, transition: string): string {
+  if (!closeWidths.has(tab)) {
+    return transition
+  }
+  const width = `width ${TAB_WIDTH_MS}ms ease-out`
+  return transition && transition !== 'none' ? `${transition}, ${width}` : width
+}
+
+/**
+ * Aims the tabs that stay at their widths again while tabs close, once the
+ * strip's room changed under them, as when a close ends its overflow and the
+ * overflow button goes: the motion is retargeted, not followed by another.
+ */
+export function resettleClosing(strip: HTMLElement): void {
+  if ([...strip.children].some(isLeavingTab)) {
+    settleStaying(strip, [])
+  }
 }
 
 export function afterLeaveTab(el: Element): void {
   const tab = tabEl(el)
   const parent = tab.parentElement ?? leaveParents.get(tab) ?? null
   leaveParents.delete(tab)
+  leaveWidths.delete(tab)
   releaseStrip(parent)
+}
+
+/**
+ * Starts the tabs that stay toward the widths they take once the closing
+ * ones are gone, in the closing tab's motion, so the strip moves once rather
+ * than closing first and widening after. A tab on its way in keeps its own
+ * motion.
+ */
+function settleStaying(parent: HTMLElement, closing: HTMLElement[]): void {
+  if (prefersReducedMotion()) {
+    return
+  }
+  const children = [...parent.children].filter(isStyledEl)
+  const leaving = children.filter((child) => closing.includes(child) || isLeavingTab(child))
+  const entering = children.filter((child) => !leaving.includes(child) && enterWidths.has(child))
+  const staying = children.filter((child) => !leaving.includes(child) && !entering.includes(child))
+  const from = staying.map((child) => child.getBoundingClientRect().width)
+  // The measure lays the strip out shorter, and the browser would pull a
+  // scroll at its end back to fit that at once: the scroll is put back.
+  const scrolled: [HTMLElement, number][] = []
+  for (let each: HTMLElement | null = parent; each; each = each.parentElement) {
+    if (each.scrollLeft > 0) {
+      scrolled.push([each, each.scrollLeft])
+    }
+  }
+  // Out of the flow, which keeps their own motion running, the closing tabs
+  // leave the room the others share once they are gone.
+  for (const child of leaving) {
+    child.style.position = 'absolute'
+  }
+  // A tab on its way in takes the room it opens to; its least width is not
+  // one its motion runs on.
+  for (const child of entering) {
+    child.style.minWidth = `${enterWidths.get(child)}px`
+  }
+  for (const child of staying) {
+    child.style.transition = 'none'
+    child.style.width = ''
+    child.style.flex = ''
+  }
+  const to = staying.map((child) => child.getBoundingClientRect().width)
+  for (const child of leaving) {
+    child.style.position = ''
+  }
+  for (const child of entering) {
+    child.style.minWidth = '0'
+  }
+  staying.forEach((child, index) => {
+    child.style.width = `${from[index]}px`
+    child.style.flex = '0 0 auto'
+  })
+  void parent.offsetWidth
+  for (const [each, left] of scrolled) {
+    each.scrollLeft = left
+  }
+  staying.forEach((child, index) => {
+    closeWidths.set(child, to[index]!)
+    child.style.transition = `width ${TAB_WIDTH_MS}ms ease-out`
+    child.style.width = `${to[index]}px`
+  })
 }
 
 
