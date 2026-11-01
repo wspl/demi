@@ -4,12 +4,14 @@ import { Paragraph } from '@tiptap/extension-paragraph'
 import { Text } from '@tiptap/extension-text'
 import { Dropcursor, Placeholder, UndoRedo } from '@tiptap/extensions'
 import { type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
-import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
+import { closeHistory } from '@tiptap/pm/history'
+import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { keepComposition } from '@demicodes/utils'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { messageHighlights } from './highlights'
-import { lineRoleAt } from './lines'
+import { lineRoleAt, lineTexts } from './lines'
+import { listBackspace, listIndent, listNewline, type ListChange } from './list-keys'
 import { shortcutSet } from '../../ui/shortcut'
 import AttachmentNodeView from './AttachmentNodeView.vue'
 import { readCapsule } from './capsules'
@@ -91,10 +93,59 @@ export interface MessageKeyOptions {
   editLast: () => boolean
 }
 
+type ListKey = (lines: readonly string[], line: number, offset: number) => ListChange | null
+
+/**
+ * Applies what `key` answers for the caret's line (`list-keys.ts`) as a step
+ * of its own for Undo, which never joins the edit before it, as two quick
+ * Backspaces would; false where it answers nothing, outside text, or with a
+ * selection across lines, or across characters where `caretOnly`.
+ */
+function runListKey(editor: Editor, key: ListKey, caretOnly: boolean): boolean {
+  const { state, view } = editor
+  const { $from, $to, empty } = state.selection
+  if (inCode(state) || caretOnly && !empty || $from.depth !== 1 || !$from.sameParent($to)) {
+    return false
+  }
+  const change = key(lineTexts(state.doc), $from.index(0), $from.parentOffset)
+  if (!change) {
+    return false
+  }
+  if (!change.edits.length && !change.split) {
+    return true
+  }
+  const lineStart = (doc: ProseMirrorNode, line: number): number => {
+    let at = 0
+    for (let index = 0; index < line; index += 1) {
+      at += doc.child(index).nodeSize
+    }
+    return at + 1
+  }
+  const tr = closeHistory(state.tr)
+  for (const edit of change.edits) {
+    const start = lineStart(state.doc, edit.line)
+    tr.insertText(edit.insert, tr.mapping.map(start + edit.from), tr.mapping.map(start + edit.to))
+  }
+  if (change.split) {
+    const at = tr.mapping.map(lineStart(state.doc, change.split.line) + change.split.at)
+    tr.split(at)
+    if (change.split.insert) {
+      tr.insertText(change.split.insert, at + 2)
+    }
+  }
+  if (change.caret) {
+    tr.setSelection(TextSelection.create(tr.doc, lineStart(tr.doc, change.caret.line) + change.caret.offset))
+  }
+  view.dispatch(tr.scrollIntoView())
+  return true
+}
+
 /**
  * The composer's keys:
  *
- * - Enter sends and Shift+Enter starts a line.
+ * - Enter sends and Shift+Enter starts a line, continuing a list item's or a
+ *   quote's marks (`list-keys.ts`), as Backspace, Tab and Shift+Tab work
+ *   them.
  * - On a fence or in the code between fences, Enter starts a line and
  *   ⌘/Ctrl+Enter sends.
  * - Elsewhere, ⌘/Ctrl+Enter sends the other way.
@@ -122,7 +173,10 @@ const MessageKeys = Extension.create<MessageKeyOptions>({
         this.options.submit(false)
         return true
       },
-      'Shift-Enter': ({ editor }) => editor.commands.splitBlock(),
+      'Shift-Enter': ({ editor }) => runListKey(editor, listNewline, true) || editor.commands.splitBlock(),
+      'Backspace': ({ editor }) => runListKey(editor, listBackspace, true),
+      'Tab': ({ editor }) => runListKey(editor, (lines, line) => listIndent(lines, line, 1), false),
+      'Shift-Tab': ({ editor }) => runListKey(editor, (lines, line) => listIndent(lines, line, -1), false),
       // The keys `otherWayKeys` shows: ⌘ on a Mac and Ctrl on a PC by the
       // page's set, never by the library's own `Mod`.
       [shortcutSet() === 'mac' ? 'Meta-Enter' : 'Ctrl-Enter']: ({ editor }) => {
