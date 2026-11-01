@@ -378,7 +378,7 @@ and the newest release of its channel:
 
 - **Beta** offers the releases Demi publishes, which GitHub marks *latest*.
 - **Canary** offers every release, including the pre-release that each push
-  to `main` publishes once it passes its checks.
+  to `main` that changes Demi publishes once it passes its checks.
 
 The backend looks for the newest release when it starts, when the channel
 changes, on **Check Now**, and then every hour on Canary and every day on
@@ -463,10 +463,12 @@ The same commit always has the same version, and a later commit a higher one.
 Nothing is committed to deploy, and versions skip numbers between releases.
 
 Every push to `main` builds everything a release publishes, for every
-target (`.github/workflows/build.yml`). Once that build and the push's checks
-(`ci.yml`) have passed, `canary.yml` publishes it as a pre-release, the next
-Canary. A deploy needs the pre-release of the newest pushed commit: it usually
-finds it published already, and otherwise asks for it and waits. The commit
+target (`.github/workflows/build.yml`), unless it changes only files no
+release holds, such as documents or the website. Once that build and the
+push's checks (`ci.yml`) have passed, `canary.yml` publishes it as a
+pre-release, the next Canary. A deploy needs the pre-release of the newest
+pushed commit: it usually finds it published already, and otherwise asks for
+it and waits, which builds a commit that changed only documents. The commit
 and its version are worked out first, so every later step names them, and a
 version that has a release already, as a Canary or from an earlier deploy, is
 not published again:
@@ -531,9 +533,27 @@ the database copies, the switch and the return on failure are an upgrade's.
 
 - **Publishing it.** To publish a deployed version the user is content with,
   turn its pre-release into the latest release on GitHub with
-  `gh release edit "v$version" --prerelease=false --latest`. The files users
-  install are then the ones the server ran, built once. Every version is kept,
-  published or not.
+  `gh release edit "v$version" --prerelease=false --latest --notes-file
+  notes.md`. The files users install are then the ones the server ran, built
+  once. Every version is kept, published or not.
+- **Its notes.** A Beta's release says what changed since the Beta before it,
+  for the people who use Demi; a Canary keeps the notes GitHub generates.
+  Whoever publishes reads every work package merged between the two versions,
+  its commit message and its decision record, drafts the notes, and publishes
+  them only once the user agrees. They live only in the release, in this
+  order:
+  1. One sentence on the release, such as how many changes it holds.
+  2. **Highlights**: three to five changes that matter most, each a bold name
+     and one or two sentences on what the user can now do.
+  3. **New**, **Improved** and **Fixed**: one line each, in the words of the
+     screen and of someone using Demi, never a module's or a commit's.
+  4. How to update, Settings › Updates or `sudo demi-server upgrade`, and the
+     link that compares the two versions.
+
+  A change no one using Demi meets, such as one to the website, the
+  documents, the build, the tests, the logs or the code's structure, has no
+  line. Each line is checked against its change before it is written: it
+  says what the change does, not what its title suggests.
 - **Data.** A deploy that changes a schema migrates the server's databases as
   an upgrade does.
   - A schema changed again after a deploy shipped it, in the same unpublished

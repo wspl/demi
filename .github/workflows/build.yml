@@ -4,7 +4,13 @@
 # Starting it:
 #
 # - A push to `main` starts it, so the branch's newest commit is
-#   built by the time a release or a deploy asks for it (release.yml).
+#   built by the time a release or a deploy asks for it (release.yml). A push
+#   that changes only files no release holds, listed in `paths-ignore`, starts
+#   none, so it is no Canary: GitHub compares the tree the push leaves with the
+#   one before it. A file a build starts to read leaves the list. The website's
+#   package.json is not in it, since the web build's `bun install` reads every
+#   workspace's manifest, and neither is any workflow, since release.yml
+#   rebuilds a commit only when `.github` is the same as at the branch's newest.
 # - A manual start on a branch, `gh workflow run build.yml --ref <branch>`,
 #   builds the branch's newest commit.
 # - release.yml calls it for a commit it finds no finished build of, with the
@@ -45,6 +51,23 @@ name: Build
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "packages/site/src/**"
+      - "packages/site/public/**"
+      - "packages/site/record/**"
+      - "packages/site/*.ts"
+      - "packages/site/*.html"
+      - "packages/site/tsconfig*.json"
+      - "packages/site/wrangler.jsonc"
+      - ".demi/**"
+      - "README*.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "ARCHITECTURE.md"
+      - "CONTRIBUTING.md"
+      - "CODE_OF_CONDUCT.md"
+      - "SECURITY.md"
   workflow_dispatch:
   workflow_call:
     inputs:

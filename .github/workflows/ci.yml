@@ -15,8 +15,12 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push cancels its older run. A push to main is never
+# cancelled: Canary publishes a commit only when its own checks passed, and the
+# next push may build nothing (build.yml), so a cancelled run would keep the
+# commit's changes from Canary until a later push that builds.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 env:

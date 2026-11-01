@@ -7,8 +7,9 @@
 #                        is above every published release's?
 #                          └─► release.yml with `prerelease`, waited for
 #
-# - A commit whose build or checks failed, or whose CI a newer push cancelled,
-#   is not published; the next push that passes is.
+# - A commit whose build or checks failed is not published; the next push that
+#   passes is. Nor is one that build.yml never built, because its push changed
+#   only files no release holds.
 # - The published versions are the repository's `v<version>` tags, which a
 #   release gets when its draft is published: a draft that still uploads its
 #   files is no release.
