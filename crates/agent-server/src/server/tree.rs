@@ -40,7 +40,6 @@ use std::{
     time::Duration,
 };
 
-use bytes::Bytes;
 use demi_agent_session::{Continuation, LatestPage, ModelSwitch, SessionEvent, Settle, Status, Subscription};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_status};
@@ -733,29 +732,11 @@ impl<H: HostResolver> Tree<H> {
         self.agents.card_changed(id, card);
     }
 
-    /// Writes a page's input to the conversation's command `command`.
-    ///
-    /// The input goes through the shells of the live node that holds it, or of
-    /// the closed child it stays with while it stops
-    /// (`crates/agent-server/src/server/tree/supervisor.rs`). The root's shells
-    /// refuse a command nothing holds.
-    pub(crate) async fn shell_write(&self, command: &CommandId, stdin: String) -> Result<(), String> {
-        match (self.holder(command), self.stopping_shell(command)) {
-            (None, Some(environment)) => environment
-                .write(command, Bytes::from(stdin))
-                .await
-                .map_err(|error| error.to_string()),
-            (holder, _) => holder
-                .unwrap_or_else(|| self.root.clone())
-                .shell_write(command, stdin)
-                .await
-                .map_err(|error| error.to_string()),
-        }
-    }
-
     /// Stops the conversation's command `command` as a page's stop does,
-    /// through the shells that hold it, as [`shell_write`](Self::shell_write)
-    /// finds them.
+    /// through the shells of the live node that holds it, or of the closed
+    /// child it stays with while it stops
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`). The root's
+    /// shells refuse a command nothing holds.
     pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<(), String> {
         match (self.holder(command), self.stopping_shell(command)) {
             (None, Some(environment)) => environment

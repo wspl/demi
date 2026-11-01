@@ -3,12 +3,11 @@
 //! - `status` looks at commands of the conversation as a result shows them,
 //!   at once, and changes how often they report. It never waits for an end:
 //!   a command reports its end itself (`crates/agent-session/src/reports.rs`).
-//! - `input` writes to a command's input.
 //! - `output` prints a command's whole output.
 //! - `stop` stops a running command through the shell environment that runs it,
 //!   as a page's stop does.
 //!
-//! Looking, answering and stopping are things a shell does, so they are
+//! Looking, reading and stopping are things a shell does, so they are
 //! commands and not tools. Each is an `rpc` command handled in the backend from
 //! any of the conversation's shells, so one script combines them with anything
 //! else. They work on any command of the conversation, whichever agent ran it;
@@ -62,14 +61,12 @@ const LINE_CHARS: usize = 2_000;
 /// message's size is limited.
 const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
-const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its prompt, read its whole output, or stop it.";
+const GROUP_SUMMARY: &str = "Shell commands: look at a command, read its whole output, or stop it.";
 
 /// The group's entry in the model's capability index.
-const GROUP_ENTRY: &str = "status, input, output and stop of commands by commandId.";
+const GROUP_ENTRY: &str = "status, output and stop of commands by commandId.";
 
 const STATUS_SUMMARY: &str = "Show commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and the output you have not seen yet, as a shell result shows them, at once.";
-
-const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails.";
 
 const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next status shows it stopped, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
@@ -104,16 +101,6 @@ struct StatusArgs {
     id: Vec<String>,
 }
 
-/// The input of `demi shell input`.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct InputArgs {
-    /// The command's commandId, as its result names it
-    id: String,
-    /// What to write to the command's input
-    input: String,
-}
-
 /// The input of `demi shell stop`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -134,14 +121,6 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
                 .failure_output("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
                 .json_output::<StatusJson>()
                 .bind(TypedRpc::new(verb(server.clone(), status))),
-        )
-        .leaf(
-            LeafBuilder::rpc("input", INPUT_SUMMARY)
-                .input::<InputArgs>()
-                .positionals(["id"])
-                .stdin_field("input")
-                .success_output("nothing")
-                .bind(TypedRpc::new(verb(server.clone(), input))),
         )
         .leaf(
             LeafBuilder::rpc("output", OUTPUT_SUMMARY)
@@ -443,35 +422,6 @@ fn ended_lines(id: &str, end: CommandEnd) -> Vec<String> {
     lines.push(format!("commandId: {id}"));
     lines.push(format!("[its whole output: demi shell output {id}]"));
     lines
-}
-
-/// Writes the call's input to the conversation's command it names, through
-/// the shell environment that runs it.
-async fn input<H: HostResolver>(call: Invoked<H, InputArgs>, _port: RpcPort) -> Result<u8, RpcError> {
-    let id = &call.args.id;
-    let unknown = || format!("no command {id} in this conversation");
-    let Ok(command) = CommandId::try_from(id.as_str()) else {
-        return fail(&unknown());
-    };
-    let place = match call.tree.command_place(&command).await {
-        Ok(place) => place,
-        Err(reason) => return fail(&reason),
-    };
-    let environment = match place {
-        CommandPlace::Unknown => return fail(&unknown()),
-        CommandPlace::Stored => None,
-        CommandPlace::Held(node) => node.environment_of(&command),
-        CommandPlace::Stopping(environment) => Some(environment),
-    };
-    let Some(environment) = environment else {
-        return fail(&format!("command {id} is not running"));
-    };
-    match environment.write(&command, Bytes::from(call.args.input)).await {
-        Ok(()) => Ok(0),
-        Err(ShellError::NotRunning(_)) => fail(&format!("command {id} is not running")),
-        Err(ShellError::EmptyStdin) => fail("the input is empty"),
-        Err(error) => fail(&error.to_string()),
-    }
 }
 
 /// Stops each of the conversation's commands the call names, in order. A

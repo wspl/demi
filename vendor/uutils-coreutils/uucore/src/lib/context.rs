@@ -187,7 +187,6 @@ pub fn edit_remove(path: &Path) -> Option<Box<dyn Send>> {
 pub struct Context {
     pub name: &'static str,
     pub control: Option<Arc<dyn Control>>,
-    pub live_input: bool,
     pub umask: u32,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,

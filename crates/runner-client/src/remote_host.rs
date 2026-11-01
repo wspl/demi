@@ -1141,31 +1141,6 @@ impl RemoteJob {
         self.shared.end().await
     }
 
-    /// Writes to the job's standard input in frames of at most
-    /// [`STDIN_CHUNK_BYTES`], in order; nothing once the job ended, and an
-    /// error while no connection serves it.
-    pub async fn write_stdin(&self, bytes: Bytes) -> Result<(), HostError> {
-        if self.shared.ended().is_some() {
-            return Ok(());
-        }
-        let link = self.connected()?;
-        send_stdin(&link, &bytes, |bytes| Inbound::JobStdin {
-            job_id: self.id.clone(),
-            bytes,
-        })
-    }
-
-    pub async fn close_stdin(&self) -> Result<(), HostError> {
-        match self.live() {
-            Some(link) => {
-                link.send(&Inbound::JobStdinEnd {
-                    job_id: self.id.clone(),
-                })
-            }
-            None => Ok(()),
-        }
-    }
-
     /// The connection that serves the job's device, or why there is none.
     fn connected(&self) -> Result<Link, HostError> {
         self.link()

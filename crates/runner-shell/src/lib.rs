@@ -149,7 +149,7 @@ impl JobShell for ShellRuntime {
                 job.script,
                 job.cwd,
                 job.env,
-                job.live,
+                job.relayed_input,
                 scope,
                 self,
             )

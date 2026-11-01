@@ -1249,30 +1249,6 @@ impl ShellEnvironment for RemoteShellEnvironment {
         })
     }
 
-    fn write<'a>(
-        &'a self,
-        command: &'a CommandId,
-        stdin: Bytes,
-    ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
-        Box::pin(async move {
-            let record = self.record(command)?;
-            let running = self.0.state.borrow().running.get(command).cloned();
-            let Some(running) = running.filter(|_| record.borrow().is_running()) else {
-                return Err(ShellError::NotRunning(command.clone()));
-            };
-            if stdin.is_empty() {
-                return Err(ShellError::EmptyStdin);
-            }
-            // Input typed while the command acquires its Host waits for it.
-            let job = running
-                .started()
-                .await
-                .ok_or_else(|| ShellError::NotRunning(command.clone()))?;
-            job.write_stdin(stdin).await?;
-            Ok(())
-        })
-    }
-
     fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>> {
         Box::pin(std::future::ready(self.stop_command(command)))
     }

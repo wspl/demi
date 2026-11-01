@@ -797,16 +797,6 @@ export class ConversationClient {
     this.sendFrame({ type: 'shell_abort', commandId })
   }
 
-  /** Writes stdin to a running command; resolves on its `shell_write_result`. */
-  shellWrite(commandId: string, stdin: string): Promise<void> {
-    return this.request({ type: 'shell_write', commandId, stdin }, (event) => {
-      if (event.type === 'shell_write_result' && event.commandId === commandId) {
-        return { resolve: undefined }
-      }
-      return this.failure(event, 'shell_write')
-    })
-  }
-
   /** Disposes the conversation's tree, then detaches. */
   async close(): Promise<void> {
     try {
@@ -1167,7 +1157,6 @@ export class ConversationClient {
       }
       case 'edit_result':
       case 'remove_result':
-      case 'shell_write_result':
       case 'retry_scheduled':
         this.emit(frame)
         return

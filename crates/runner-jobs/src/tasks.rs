@@ -768,7 +768,7 @@ impl JobConfig {
                         script,
                         cwd: spec.cwd,
                         env,
-                        live: stdin.is_none(),
+                        relayed_input: stdin.is_some(),
                         cancellation: cancel.child_token(),
                         commands,
                         edits: recorder,

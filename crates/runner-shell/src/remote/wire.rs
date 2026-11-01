@@ -67,7 +67,7 @@ pub(super) struct Start {
     pub script: String,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
-    pub live: bool,
+    pub relayed_input: bool,
     #[serde(default)]
     pub commands: Option<Commands>,
     #[serde(default)]

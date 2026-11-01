@@ -1847,18 +1847,6 @@ impl Link {
                     stdin,
                 },
             ),
-            Outbound::RpcStdin { call_id, bytes } => {
-                let call = self.0.session.call(&call_id);
-                if let Some(call) = call {
-                    call.live_input(Bytes::from(bytes.0));
-                }
-            }
-            Outbound::RpcStdinEnd { call_id } => {
-                let call = self.0.session.call(&call_id);
-                if let Some(call) = call {
-                    call.end_live_input();
-                }
-            }
             Outbound::RpcCancel { call_id } => {
                 let call = self.0.session.call(&call_id);
                 if let Some(call) = call {

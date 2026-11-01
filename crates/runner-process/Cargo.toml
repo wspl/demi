@@ -61,4 +61,4 @@ mach2 = "0.7"
 [target.'cfg(windows)'.dependencies]
 # A private local socket's pipe, which only its account opens (`src/local_socket.rs`).
 uuid = { version = "1", features = ["v4"] }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }

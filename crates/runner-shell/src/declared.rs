@@ -8,7 +8,7 @@ use demi_command_protocol::{LocalInvocation, Record};
 use demi_command_sdk::{Input, InvocationContext, Output, ResidentError};
 use demi_runner_process::{
     command_client::{RAW, RawCommand},
-    stdio::is_live,
+    stdio::is_null_device,
 };
 use std::{collections::BTreeMap, io, sync::Arc};
 
@@ -33,7 +33,7 @@ pub(super) fn execute(
                 .skip(1)
                 .map(|arg| arg.to_string())
                 .collect(),
-            is_live(&stdin, &env)?,
+            !is_null_device(&stdin)?,
         )?;
         let cancellation = scope.cancellation.child_token();
         let _cancel_on_return = cancellation.drop_guard_ref();

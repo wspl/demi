@@ -157,15 +157,14 @@ impl Dispatcher {
                 .leaf()
                 .ok_or_else(|| ResidentError::failed(DispatchError::NotALeaf))?;
             let body = if leaf.stdin_target(&parsed.values).is_some() {
-                // A terminal is the live channel, not a finite command body.
                 let mut bytes = Vec::new();
-                if !raw.live {
-                    while let Some(chunk) = invocation.input.next().await? {
-                        if bytes.len() + chunk.len() > MAX_STDIN_BODY {
-                            return Err(ResidentError::failed(DispatchError::BodyTooLarge).into());
-                        }
-                        bytes.extend_from_slice(&chunk);
+                while raw.stdin
+                    && let Some(chunk) = invocation.input.next().await?
+                {
+                    if bytes.len() + chunk.len() > MAX_STDIN_BODY {
+                        return Err(ResidentError::failed(DispatchError::BodyTooLarge).into());
                     }
+                    bytes.extend_from_slice(&chunk);
                 }
                 Some(
                     String::from_utf8(bytes)
@@ -236,7 +235,6 @@ impl Dispatcher {
                     context: context.command.clone(),
                     json: Some(parsed.json),
                     edits: (!context.ended()).then(|| context.edits.clone()),
-                    live_input: Some(raw.live),
                     viewable: context.viewable.clone(),
                     operation: binding.operation.clone(),
                     invocation_id: invocation.request.invocation_id,
@@ -293,8 +291,7 @@ impl Dispatcher {
                         parsed,
                         cwd: invocation.request.cwd,
                         env: invocation.request.env,
-                        live: raw.live,
-                        finite: !raw.live && leaf.stdin_field.is_none(),
+                        finite: raw.stdin && leaf.stdin_field.is_none(),
                     },
                     invocation.input,
                     &mut output,

@@ -1067,16 +1067,8 @@ impl Owner<'_> {
                 .kept
                 .jobs
                 .input(&WorkId::Spawn(spawn_id.clone()), bytes.0.clone().into()),
-            Inbound::JobStdin { job_id, bytes } => self
-                .kept
-                .jobs
-                .input(&WorkId::Job(job_id.clone()), bytes.0.clone().into()),
             Inbound::SpawnStdinEnd { spawn_id } => {
                 self.kept.jobs.end_input(&WorkId::Spawn(spawn_id.clone()));
-                Ok(())
-            }
-            Inbound::JobStdinEnd { job_id } => {
-                self.kept.jobs.end_input(&WorkId::Job(job_id.clone()));
                 Ok(())
             }
             Inbound::SpawnKill { spawn_id, signal } => {

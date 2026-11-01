@@ -33,7 +33,8 @@ pub struct Request {
     pub parsed: Parsed,
     pub cwd: String,
     pub env: BTreeMap<String, String>,
-    pub live: bool,
+    /// Whether the call's input goes to the backend on a pipe; a leaf that
+    /// takes stdin as an argument has it read already.
     pub finite: bool,
 }
 
@@ -46,7 +47,6 @@ pub enum CallEvent {
     Stderr(Bytes),
     /// A medium the call hands its job, its bytes in the pipe.
     Medium(MediumFacts, PipeRef),
-    Pull,
     Exit(u8),
     /// The link's session ended, for this reason, so the call cannot end
     /// with its exit.
@@ -54,7 +54,6 @@ pub enum CallEvent {
 }
 
 struct CallTransport<'a> {
-    id: &'a str,
     output: &'a wire::Backlog,
     stop: &'a CancellationToken,
 }
@@ -190,11 +189,7 @@ pub async fn invoke(
         // backend knows a worktree the command names (`Backlog::report`).
         backlog.report();
         backlog.push(message);
-        if !request.live {
-            backlog.push(stdin_end(&id)?);
-        }
         let transport = CallTransport {
-            id: &id,
             output: &backlog,
             stop: &stop,
         };
@@ -226,15 +221,11 @@ async fn exchange(
     // the call wrote after it reaches the job: the output waits its turn.
     let turn = tokio::sync::Mutex::new(());
     let &CallTransport {
-        id,
         output: connection,
         stop,
     } = transport;
     let (stdin_sender, stdin_receiver) = oneshot::channel();
     let (stdout_sender, stdout_receiver) = oneshot::channel();
-    // One demand at a time: the backend asks for input only after it has
-    // taken the last, and a second is a protocol violation.
-    let (pull, demanded) = mpsc::channel(1);
     let control = async {
         let mut pipe_senders = Some((stdin_sender, stdout_sender));
         while let Some(event) = events.recv().await {
@@ -263,10 +254,6 @@ async fn exchange(
                     report(connection, &reference, &kept)?;
                     kept.map_err(ResidentError::failed)?;
                 }
-                CallEvent::Pull if request.live => pull
-                    .try_send(())
-                    .map_err(|_| ResidentError::failed(RpcError::OverlappingDemands))?,
-                CallEvent::Pull => connection.push(stdin_end(id)?),
                 CallEvent::Lost(reason) => {
                     return Err(ResidentError::failed(io::Error::other(reason)));
                 }
@@ -292,14 +279,7 @@ async fn exchange(
         };
         download(pipes, connection, stop, output, &reference, &turn).await
     };
-    let input = send_input(
-        pipes,
-        request.live,
-        stdin_receiver,
-        demanded,
-        input,
-        transport,
-    );
+    let input = send_input(pipes, stdin_receiver, input, transport);
     let complete = async {
         let (code, ()) = tokio::try_join!(control, download)?;
         Ok(code)
@@ -373,35 +353,14 @@ async fn medium_bytes(pipes: &PipeClient, stop: &CancellationToken, reference: &
 
 async fn send_input(
     pipes: &PipeClient,
-    live: bool,
     reference: oneshot::Receiver<Option<PipeRef>>,
-    mut demanded: mpsc::Receiver<()>,
-    mut input: Input,
+    input: Input,
     transport: &CallTransport<'_>,
 ) -> Result<(), ResidentError> {
     let &CallTransport {
-        id,
         output: connection,
         stop,
     } = transport;
-    if live {
-        let _reference = reference.await.map_err(|_| ResidentError::Cancelled)?;
-        while demanded.recv().await.is_some() {
-            let message = match input.next().await? {
-                Some(bytes) => wire::encode(&wire::Outbound::RpcStdin {
-                    call_id: id.into(),
-                    bytes: wire::WireBytes(bytes.to_vec()),
-                }),
-                None => {
-                    connection.push(stdin_end(id)?);
-                    return Ok(());
-                }
-            }
-            .map_err(ResidentError::failed)?;
-            connection.push(message);
-        }
-        return Ok(());
-    }
     if let Some(reference) = reference.await.map_err(|_| ResidentError::Cancelled)? {
         let token = stop.clone();
         let body = futures_util::stream::unfold((input, token), |(mut input, stop)| async move {
@@ -447,16 +406,6 @@ enum RpcError {
     DuplicatePipes,
     #[error("RPC input pipe disagrees with invocation")]
     InputDisagrees,
-    #[error("overlapping RPC stdin demands")]
-    OverlappingDemands,
     #[error("RPC success arrived before pipe descriptors")]
     SuccessBeforePipes,
-}
-
-/// The frame that ends a call's standard input.
-fn stdin_end(call_id: &str) -> Result<wire::Frame, ResidentError> {
-    wire::encode(&wire::Outbound::RpcStdinEnd {
-        call_id: call_id.into(),
-    })
-    .map_err(ResidentError::failed)
 }

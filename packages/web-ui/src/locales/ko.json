@@ -279,7 +279,6 @@
     "open_failed": "대화를 열 수 없습니다.",
     "save_failed": "대화를 저장할 수 없습니다.",
     "subagent_failed": "서브에이전트를 시작하거나 중지할 수 없습니다.",
-    "shell_input_failed": "입력을 명령에 보낼 수 없습니다.",
     "shell_stop_failed": "명령을 중지할 수 없습니다.",
     "nothing_to_retry": "다시 시도할 항목이 없습니다.",
     "summary_missing": "모델이 요약을 작성하지 않았습니다.",

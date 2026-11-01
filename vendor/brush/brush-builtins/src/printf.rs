@@ -93,7 +93,6 @@ fn invocation<SE: brush_core::ShellExtensions>(
         control: shell
             .execution_host()
             .and_then(|host| host.utility_control(shell.child_attributes())),
-        live_input: false,
         // printf creates no file: the mask is the shell's, or none beyond the
         // process's own.
         umask: shell.child_attributes().umask.unwrap_or(0),

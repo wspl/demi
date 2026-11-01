@@ -163,7 +163,6 @@ impl Command {
         name: &'static str,
     ) -> std::io::Result<Child> {
         let invocation = super::snapshot();
-        let own_input = matches!(self.stdin, None | Some(Stdio(Stream::Inherit)));
         let (stdin, parent_stdin) = utility_stream(self.stdin.take(), &invocation.stdin, true)?;
         let (stdout, parent_stdout) = utility_stream(self.stdout.take(), &invocation.stdout, false)?;
         let (stderr, parent_stderr) = utility_stream(self.stderr.take(), &invocation.stderr, false)?;
@@ -182,7 +181,6 @@ impl Command {
         let context = super::Context {
             name,
             control: invocation.control.clone(),
-            live_input: invocation.live_input && own_input,
             umask: invocation.umask,
             cwd: command
                 .get_current_dir()

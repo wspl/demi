@@ -96,13 +96,6 @@ pub trait ShellEnvironment {
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>>;
 
-    /// Writes to a running command's standard input.
-    fn write<'a>(
-        &'a self,
-        command: &'a CommandId,
-        stdin: Bytes,
-    ) -> LocalBoxFuture<'a, Result<(), ShellError>>;
-
     /// Stops a running command: asks it to end, and ends it when it does
     /// not, and returns once the stop is asked; [`ended`](Self::ended) waits
     /// for the end, which only the command's runner reports (`crates/runner-shell/src/job.rs`). A command that is not running stays
@@ -346,8 +339,6 @@ pub enum ShellError {
     UnknownCommand(CommandId),
     #[error("Command \"{0}\" is not running")]
     NotRunning(CommandId),
-    #[error("stdin must not be empty")]
-    EmptyStdin,
     #[error(transparent)]
     Host(#[from] HostError),
 }

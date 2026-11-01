@@ -184,10 +184,8 @@ pub enum PortRequest {
     Stderr {
         bytes: B64Bytes,
     },
-    /// The next chunk of a finite standard input.
+    /// The next chunk of the call's standard input.
     ReadStdin {},
-    /// The next interactive write to the calling job, until it ends.
-    ReadLiveStdin {},
     /// Whether the call waits for the user's answer, until it ends or says it
     /// no longer does: meanwhile the shell call that runs its job does not
     /// return and its window does not run (`crates/agent-tools/src/lib.rs`),
@@ -255,8 +253,8 @@ impl RpcPort {
         written(self.transport.request(request).await?, "stderr")
     }
 
-    /// The next chunk of the call's finite standard input; none at its end,
-    /// or when the calling process has no pipe there.
+    /// The next chunk of the call's standard input; none at its end, or when
+    /// the calling process has no pipe there.
     pub async fn read_stdin(&self) -> Result<Option<Bytes>, PortError> {
         input(
             self.transport.request(PortRequest::ReadStdin {}).await?,
@@ -279,16 +277,6 @@ impl RpcPort {
             bytes: B64Bytes::new(bytes),
         };
         written(self.transport.request(request).await?, "medium")
-    }
-
-    /// The next interactive write to the calling job; none once it ended.
-    pub async fn read_live_stdin(&self) -> Result<Option<Bytes>, PortError> {
-        input(
-            self.transport
-                .request(PortRequest::ReadLiveStdin {})
-                .await?,
-            "read_live_stdin",
-        )
     }
 
     /// Completes once the call is stopped: cancelled by the runner, or ended

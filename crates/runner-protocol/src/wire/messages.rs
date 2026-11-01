@@ -237,13 +237,6 @@ pub enum Inbound {
         )]
         stdout: Option<PipeRef>,
     },
-    JobStdin {
-        job_id: String,
-        bytes: WireBytes,
-    },
-    JobStdinEnd {
-        job_id: String,
-    },
     JobKill {
         job_id: String,
         #[serde(
@@ -281,9 +274,6 @@ pub enum Inbound {
     /// goes.
     JobRelease {
         job_id: String,
-    },
-    RpcStdinPull {
-        call_id: String,
     },
     /// The call's pipe ends, sent before anything else for the call.
     RpcPipes {
@@ -971,8 +961,6 @@ impl Inbound {
             self,
             Self::SpawnStdin { .. }
                 | Self::SpawnStdinEnd { .. }
-                | Self::JobStdin { .. }
-                | Self::JobStdinEnd { .. }
                 | Self::RpcOutput { .. }
                 | Self::RpcMedium { .. }
                 | Self::RpcExit { .. }
@@ -996,13 +984,10 @@ impl Inbound {
             | Self::Claimed { .. }
             | Self::Revoked { .. }
             | Self::Ping { .. } => Carriage::Connection,
-            Self::JobStdin { .. }
-            | Self::JobStdinEnd { .. }
-            | Self::JobKill { .. }
+            Self::JobKill { .. }
             | Self::JobFollow { .. }
             | Self::JobRelease { .. }
             | Self::Manifest { .. }
-            | Self::RpcStdinPull { .. }
             | Self::RpcPipes { .. }
             | Self::RpcOutput { .. }
             | Self::RpcMedium { .. }
@@ -1433,13 +1418,6 @@ pub enum Outbound {
         cwd: String,
         env: BTreeMap<String, String>,
         stdin: bool,
-    },
-    RpcStdin {
-        call_id: String,
-        bytes: WireBytes,
-    },
-    RpcStdinEnd {
-        call_id: String,
     },
     RpcCancel {
         call_id: String,
@@ -2608,8 +2586,6 @@ impl Outbound {
             | Self::JobExit { .. }
             | Self::JobMedium { .. }
             | Self::RpcCall { .. }
-            | Self::RpcStdin { .. }
-            | Self::RpcStdinEnd { .. }
             | Self::RpcCancel { .. }
             | Self::PipeDone { .. }
             | Self::PipeQueued { .. }

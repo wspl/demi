@@ -210,16 +210,6 @@ pub struct Invocation {
     )]
     #[garde(skip)]
     pub json: Option<bool>,
-    /// Whether the calling process's stdin is the job's own input, which
-    /// `demi shell input` feeds and which ends only with the job, for an
-    /// invocation a job's command makes (`crates/runner-process/src/stdio.rs`).
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[garde(skip)]
-    pub live_input: Option<bool>,
     /// The media types the job may show the model, for an invocation a
     /// job's command makes; none for a user stream or a package call, which
     /// cannot return media (`crates/runner-jobs/src/commands/command_output.rs`).

@@ -1149,21 +1149,6 @@ export const lookTool = lookCall(
   statusText('17', 'running', '✓ auth.test.ts > signs in (12 ms)\n'),
 )
 
-/** An answer to the prompt the login test waits for, then a look at what it did with it. */
-export const inputTool = toolCall({
-  id: 'tool-input',
-  toolName: 'shell',
-  status: 'completed',
-  input: JSON.stringify({
-    script: "demi shell input 17 <<'EOF'\nr\nEOF\ndemi shell status 17",
-    description: 'Rerun the failed tests',
-  }),
-  view: shellView({
-    commandId: '21',
-    chunks: [{ stream: 'stdout', text: statusText('17', 'running', 'Rerunning 1 failed test\n') }],
-  }),
-})
-
 /** A stop of the login test, which a command of the shell does. */
 export const stopTool = toolCall({
   id: 'tool-stop',
@@ -1578,7 +1563,6 @@ export function transcriptDemoBlocks(): Block[] {
       runningShellTool as Block,
       editingShellTool as Block,
       lookTool as Block,
-      inputTool as Block,
       stopTool as Block,
       withLists(errorTool as Block, listedFiles(editingShellTool)),
     ),

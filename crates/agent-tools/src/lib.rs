@@ -85,7 +85,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bytes::Bytes;
 use demi_agent_session::{
     Arrival, Arrived, CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
     ToolOutcome,
@@ -511,15 +510,6 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             seen: running.place,
             unsent: running.unsent.clone(),
         });
-        Ok(())
-    }
-
-    /// Writes `stdin` to a running command of the current Host, as a page's
-    /// input does.
-    pub async fn write(&self, command: &CommandId, stdin: String) -> Result<(), CallError> {
-        let cwd = self.cwd().await?;
-        let (_, environment) = self.environment(Handle::Command(command), cwd.as_deref()).await?;
-        environment.write(command, Bytes::from(stdin)).await?;
         Ok(())
     }
 

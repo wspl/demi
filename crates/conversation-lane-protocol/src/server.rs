@@ -275,11 +275,6 @@ pub enum ServerFrame {
         #[garde(dive)]
         status: Box<ShellStatus>,
     },
-    /// Acknowledges `shell_write`.
-    ShellWriteResult {
-        #[garde(skip)]
-        command_id: CommandId,
-    },
     /// A transient provider failure is being retried after `delayMs`.
     RetryScheduled {
         #[garde(skip)]
@@ -470,8 +465,6 @@ pub enum AgentCode {
     SaveFailed,
     /// A subagent could not be started, resumed or closed.
     SubagentFailed,
-    /// A page's input did not reach its command.
-    ShellInputFailed,
     /// A page's stop did not reach its command.
     ShellStopFailed,
     /// A Retry with no turn to run again.

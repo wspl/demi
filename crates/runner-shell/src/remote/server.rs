@@ -464,7 +464,7 @@ impl Server {
             script,
             cwd,
             env,
-            live,
+            relayed_input,
             commands,
             edits,
         } = start;
@@ -501,7 +501,7 @@ impl Server {
                 script,
                 cwd,
                 env,
-                live,
+                relayed_input,
                 cancellation: CancellationToken::new(),
                 commands,
                 edits,

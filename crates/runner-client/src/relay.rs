@@ -7,7 +7,7 @@
 //! - Mints the call's standard output pipe, and its standard input's when the
 //!   process has one.
 //! - Serves the handler's port: output through the pipe, errors as
-//!   `rpc_output`, and live input on demand.
+//!   `rpc_output`.
 //!
 //! The call exits after its standard output drained, with the handler's code,
 //! 130 when the runner cancelled it, or 1 with the first cause that stopped it.
@@ -34,7 +34,6 @@ use demi_shared_gates::SerialGate;
 use demi_shared_types::B64Bytes;
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
-use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -119,7 +118,6 @@ pub(crate) struct CallEntry {
     handler: RefCell<Option<CancellationToken>>,
     /// The first cause that stopped the call.
     cause: RefCell<Option<Stop>>,
-    live: RefCell<Live>,
     pipes: RefCell<Option<CallPipes>>,
 }
 
@@ -138,13 +136,6 @@ impl CallPipes {
     }
 }
 
-/// The call's live input: one chunk requested at a time.
-enum Live {
-    Idle,
-    Waiting(oneshot::Sender<Option<Bytes>>),
-    Closed,
-}
-
 impl CallEntry {
     fn new(job_id: String) -> Rc<Self> {
         Rc::new(Self {
@@ -152,7 +143,6 @@ impl CallEntry {
             stopped: CancellationToken::new(),
             handler: RefCell::new(None),
             cause: RefCell::new(None),
-            live: RefCell::new(Live::Idle),
             pipes: RefCell::new(None),
         })
     }
@@ -197,7 +187,6 @@ impl CallEntry {
         if let Some(handler) = &*self.handler.borrow() {
             handler.cancel();
         }
-        self.end_live_input();
         for pipe in self.pipes.borrow().iter().flat_map(CallPipes::iter) {
             pipe.fail(&reason);
         }
@@ -205,60 +194,6 @@ impl CallEntry {
 
     fn cause(&self) -> Option<Stop> {
         self.cause.borrow().clone()
-    }
-
-    /// A chunk of live input the runner sent. One nobody asked for, or one
-    /// over the chunk limit, stops the call.
-    pub(crate) fn live_input(&self, bytes: Bytes) {
-        let phase = std::mem::replace(&mut *self.live.borrow_mut(), Live::Idle);
-        match phase {
-            Live::Waiting(next) if bytes.len() <= STDIN_CHUNK_BYTES => {
-                // A reader that went away took nothing.
-                let _ = next.send(Some(bytes));
-            }
-            Live::Closed => *self.live.borrow_mut() = Live::Closed,
-            Live::Idle | Live::Waiting(_) => {
-                self.stop(Stop::Ended(
-                    "Unrequested or oversized RPC stdin chunk".into(),
-                ));
-            }
-        }
-    }
-
-    /// The live input ended: the job's stdin closed, or the call stopped.
-    pub(crate) fn end_live_input(&self) {
-        let phase = std::mem::replace(&mut *self.live.borrow_mut(), Live::Closed);
-        if let Live::Waiting(next) = phase {
-            // A reader that went away hears nothing.
-            let _ = next.send(None);
-        }
-    }
-
-    /// Asks the runner for the next chunk of live input.
-    async fn next_live_input(
-        &self,
-        link: &CallEnv,
-        call_id: &str,
-    ) -> Result<Option<Bytes>, PortError> {
-        let received = {
-            let mut live = self.live.borrow_mut();
-            match &*live {
-                Live::Closed => return Ok(None),
-                Live::Waiting(_) => {
-                    return Err(PortError::Ended("live input is already being read".into()));
-                }
-                Live::Idle => {}
-            }
-            let (next, received) = oneshot::channel();
-            *live = Live::Waiting(next);
-            received
-        };
-        link.send(&Inbound::RpcStdinPull {
-            call_id: call_id.into(),
-        })
-        .map_err(|error| PortError::Ended(error.to_string()))?;
-        // A dropped sender is an input that ended.
-        Ok(received.await.unwrap_or(None))
     }
 }
 
@@ -693,13 +628,6 @@ impl PortTransport for RelayPort {
                 }
                 PortRequest::ReadStdin {} => Ok(PortResponse::Input {
                     bytes: self.read_stdin().await?.map(B64Bytes::new),
-                }),
-                PortRequest::ReadLiveStdin {} => Ok(PortResponse::Input {
-                    bytes: self
-                        .entry
-                        .next_live_input(&self.link, &self.call_id)
-                        .await?
-                        .map(B64Bytes::new),
                 }),
                 PortRequest::AwaitsUser { awaits } => {
                     self.await_user(awaits);

@@ -134,13 +134,6 @@ pub enum ClientFrame {
         #[garde(skip)]
         node: Option<NodeId>,
     },
-    /// Write stdin to a running command.
-    ShellWrite {
-        #[garde(skip)]
-        command_id: CommandId,
-        #[garde(skip)]
-        stdin: String,
-    },
     /// Stop a running command.
     ShellAbort {
         #[garde(skip)]
@@ -174,7 +167,6 @@ pub enum ClientFrameKind {
     Retry,
     Resume,
     Compact,
-    ShellWrite,
     ShellAbort,
     Close,
 }
@@ -205,7 +197,6 @@ impl ClientFrame {
             Self::Retry {} => ClientFrameKind::Retry,
             Self::Resume {} => ClientFrameKind::Resume,
             Self::Compact { .. } => ClientFrameKind::Compact,
-            Self::ShellWrite { .. } => ClientFrameKind::ShellWrite,
             Self::ShellAbort { .. } => ClientFrameKind::ShellAbort,
             Self::Close {} => ClientFrameKind::Close,
         }

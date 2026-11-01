@@ -1034,9 +1034,8 @@ async fn run_on_host(
                 .start_job(start)
                 .await
                 .map_err(|error| error.message)?;
-            let ended = CancellationToken::new();
             let ending = async {
-                let end = tokio::select! {
+                tokio::select! {
                     end = job.end() => end,
                     () = port.cancelled() => {
                         stop(&job, &stdout, stdin.as_ref()).await
@@ -1048,9 +1047,7 @@ async fn run_on_host(
                         }
                         job.stop_unless_away(&reason).await
                     }
-                };
-                ended.cancel();
-                end
+                }
             };
             // The far job's view carries the first bytes of its standard
             // error; its standard output is the pipe. A message without bytes
@@ -1063,18 +1060,7 @@ async fn run_on_host(
                     }
                 }
             };
-            // A caller without a pipe on its standard input types into the
-            // job, until the job ends.
-            let typing = async {
-                if stdin.is_some() {
-                    return;
-                }
-                tokio::select! {
-                    () = forward_live_input(&job, port) => {}
-                    () = ended.cancelled() => {}
-                }
-            };
-            let (end, (), ()) = tokio::join!(ending, view, typing);
+            let (end, ()) = tokio::join!(ending, view);
             // The end and the output are read, stopped or not: the runner
             // may remove the job's directory.
             job.release().await;
@@ -1135,23 +1121,3 @@ async fn stop(job: &RemoteJob, stdout: &Pipe, stdin: Option<&Pipe>) -> JobEnd {
     job.stop_unless_away("the Host's runner went away while the command ran").await
 }
 
-/// Writes what the caller types into the job, and ends its input when the
-/// caller's does.
-async fn forward_live_input(job: &RemoteJob, port: &RpcPort) {
-    loop {
-        match port.read_live_stdin().await {
-            Ok(Some(bytes)) => {
-                if job.write_stdin(bytes).await.is_err() {
-                    return;
-                }
-            }
-            Ok(None) => {
-                // The job may have ended already, which ends its input too.
-                let _ = job.close_stdin().await;
-                return;
-            }
-            // The call is over.
-            Err(_) => return,
-        }
-    }
-}
