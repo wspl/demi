@@ -367,10 +367,25 @@ async fn open_for(
     data: TabData,
 ) -> Result<Option<String>, PluginError> {
     // A new tab is bound before its page opens, so the list that names it
-    // finds it bound and adds no panel tab of its own.
+    // finds it bound and adds no panel tab of its own. It starts loading its
+    // address in the same call: a second call would cost the user another
+    // round trip to the Host. An address the Host refuses makes no tab: if
+    // the user asked for another meanwhile, the tab opens on that one.
     let (tab, made) = match data.live() {
-        Some(tab) => (tab.to_owned(), false),
-        None => (page::new_tab(port).await?.id.to_string(), true),
+        Some(tab) => (tab.to_owned(), None),
+        None => {
+            let mut asked = data.url;
+            loop {
+                let url = (asked != "about:blank").then(|| asked.clone());
+                match page::new_tab(port, url).await {
+                    Ok(made) => break (made.to_string(), Some(asked)),
+                    Err(error) => match data_of(port, id).await? {
+                        Some(now) if now.url != asked => asked = now.url,
+                        _ => return Err(error),
+                    },
+                }
+            }
+        }
     };
     let bound = fields([
         ("tab", Value::String(tab.clone())),
@@ -380,8 +395,8 @@ async fn open_for(
     port.update_panel_tab(id, bound).await?;
     match data_of(port, id).await? {
         None => page::close(port, &tab).await.map(|()| None),
-        // A new tab is blank already.
-        Some(now) if made && now.url == "about:blank" => Ok(Some(tab)),
+        // A new tab loads the address it was made on already.
+        Some(now) if made.as_ref() == Some(&now.url) => Ok(Some(tab)),
         Some(now) => page::navigate(port, &tab, now.url)
             .await
             .map(|_| Some(tab)),

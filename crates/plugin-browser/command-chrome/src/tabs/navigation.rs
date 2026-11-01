@@ -600,9 +600,7 @@ pub async fn steer(
     let list = tab.list_number();
     let url = match command {
         BrowserOperation::Open(input) => {
-            validate_url(&input.url)?;
-            requested(tab, &input.url);
-            visit(tab, &input.url);
+            start_loading(tab, &input.url)?;
             input.url.clone()
         }
         BrowserOperation::Reload(_) => {
@@ -629,6 +627,15 @@ pub async fn steer(
         title: None,
         list: Some(list),
     })
+}
+
+/// The user's address bar: starts loading `url` in `tab` without waiting
+/// for it.
+pub fn start_loading(tab: &BrowserTab, url: &str) -> Result<()> {
+    validate_url(url)?;
+    requested(tab, url);
+    visit(tab, url);
+    Ok(())
 }
 
 /// The tab shows `url` until the user's navigation to it commits or ends

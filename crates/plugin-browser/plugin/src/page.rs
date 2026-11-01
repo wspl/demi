@@ -25,7 +25,7 @@
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
 use demi_command_package_browser_protocol::browser::{
-    BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab,
+    BackInput, BrowserErrorCode, BrowserOperation, BrowserTab,
     FailureDocument, ForwardInput, NavigationResult, OpenInput, PREFIX, ReloadInput, StopInput,
     TabCloseInput, TabId, TabMoved, TabNewInput, TabNewResult,
 };
@@ -175,24 +175,17 @@ pub(crate) async fn keep(
     Ok(port.keep_report(device.as_str(), revision, value).await?)
 }
 
-/// A new empty tab, starting the environment when needed: work the user
-/// starts, which wakes a stopped Cloud.
-pub(crate) async fn new_tab(port: &PluginPort) -> Result<BrowserTab, PluginError> {
-    let input = TabNewInput { timeout: None };
+/// A new tab, starting the environment when needed: work the user starts,
+/// which wakes a stopped Cloud. It starts loading `url` at once, when given.
+pub(crate) async fn new_tab(
+    port: &PluginPort,
+    url: Option<String>,
+) -> Result<TabId, PluginError> {
+    let input = TabNewInput { timeout: None, url };
     let made = run::<TabNewResult, _>(port, BrowserOperation::TabNew, input, CallKind::Starts)
         .await
         .map_err(refused)?;
-    Ok(BrowserTab {
-        id: made.tab,
-        title: String::new(),
-        url: "about:blank".to_owned(),
-        created_by: BrowserCreatedBy::User {},
-        loading: false,
-        can_go_back: false,
-        can_go_forward: false,
-        shows: 0,
-        favicon: None,
-    })
+    Ok(made.tab)
 }
 
 /// Closes the browser's tab `tab`. A tab the browser does not have, or a
