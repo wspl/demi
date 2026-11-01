@@ -69,6 +69,7 @@
   },
   "updates": {
     "channelFailed": "Couldn’t change the update channel",
+    "prepareAheadFailed": "Couldn’t change automatic downloads",
     "checkFailed": "Couldn’t check for updates",
     "updateFailed": "Couldn’t start the update"
   },

@@ -39,6 +39,8 @@
     "failedNoVersion": "업데이트할 수 없습니다. Demi는 계속 {running}입니다.",
     "channel": "업데이트 채널",
     "channelDescription": "Canary는 아직 아무도 서버에서 써 보지 않은 최신 빌드를 가장 먼저 받습니다.",
+    "prepareAhead": "업데이트 자동 다운로드",
+    "prepareAheadDescription": "업데이트할 때 다운로드를 기다리지 않아도 됩니다. Canary에서는 권장하지 않습니다. 릴리스가 잦아 트래픽을 많이 사용합니다.",
     "beta": "Beta",
     "canary": "Canary",
     "confirmTitle": "Demi를 {version}(으)로 업데이트하시겠습니까?",

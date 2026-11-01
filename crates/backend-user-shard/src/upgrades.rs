@@ -8,10 +8,13 @@
 //!     pages ◄── the state channel ◄── heard(notice)
 //! ```
 //!
-//! Every check that finds a newer release has the server get it ready ahead:
-//! the backend writes its version to the prepare request beside the update's,
-//! whose appearance has systemd start `demi-server prepare --requested`, and
-//! shows the administrators how far the release is got ready.
+//! When an administrator turns it on, every check that finds a newer release
+//! has the server get it ready ahead: the backend writes its version to the
+//! prepare request beside the update's, whose appearance has systemd start
+//! `demi-server prepare --requested`, and shows the administrators how far
+//! the release is got ready. Off, as a server starts, Update Now downloads
+//! the release itself, so a channel that publishes often costs no download
+//! of a release no one installs.
 //!
 //! The backend cannot update the server itself: it runs as an unprivileged
 //! user, and the update stops it. It writes the version to the request file,
@@ -106,7 +109,8 @@ pub struct Upgrades {
     update: Arc<Update>,
     clock: Arc<dyn Clock>,
     state: Mutex<State>,
-    /// One check at a time.
+    /// One check, or turn of the switch, at a time: each writes or removes
+    /// the prepare request.
     checking: tokio::sync::Mutex<()>,
     /// A check ended or the channel changed: the periodic checks work out
     /// when the next is due again.
@@ -115,6 +119,8 @@ pub struct Upgrades {
 
 struct State {
     channel: UpgradeChannel,
+    /// Whether a check that finds a newer release gets it ready at once.
+    prepare_ahead: bool,
     check: UpgradeCheck,
     preparation: UpgradePreparation,
     run: UpgradeRun,
@@ -125,6 +131,18 @@ struct State {
     told: bool,
     /// When the last check ended; none before the first.
     checked: Option<Instant>,
+}
+
+impl State {
+    /// The newer release the last check found, which an update that runs
+    /// leaves no work ahead for.
+    fn newer_to_prepare(&self) -> Option<String> {
+        match (&self.check, &self.run) {
+            (_, UpgradeRun::Updating { .. }) => None,
+            (UpgradeCheck::Checked { newer, .. }, _) => newer.as_ref().map(|newer| newer.version.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl Upgrades {
@@ -139,9 +157,9 @@ impl Upgrades {
         update: Arc<Update>,
         clock: Arc<dyn Clock>,
     ) -> Result<Arc<Self>, StorageError> {
-        let channel = match request {
-            Some(_) => control.upgrade_channel(installed).await?,
-            None => UpgradeChannel::Beta,
+        let (channel, prepare_ahead) = match request {
+            Some(_) => (control.upgrade_channel(installed).await?, control.prepare_ahead().await?),
+            None => (UpgradeChannel::Beta, false),
         };
         let upgrades = Arc::new(Self {
             request,
@@ -152,6 +170,7 @@ impl Upgrades {
             clock,
             state: Mutex::new(State {
                 channel,
+                prepare_ahead,
                 check: UpgradeCheck::Never,
                 preparation: UpgradePreparation::None,
                 run: UpgradeRun::None,
@@ -188,6 +207,7 @@ impl Upgrades {
                 running: self.running.to_string(),
                 running_notes_url: releases::page_url(&self.running),
                 channel: state.channel,
+                prepare_ahead: state.prepare_ahead,
                 check: state.check.clone(),
                 preparation: state.preparation.clone(),
                 run: state.run.clone(),
@@ -225,6 +245,27 @@ impl Upgrades {
         let _one = self.checking.lock().await;
         if self.locked().checked.is_none_or(|checked| checked < switched) {
             self.check_held().await;
+        }
+        Ok(())
+    }
+
+    /// Turns getting a newer release ready ahead on or off. Turned on, it
+    /// gets the one the last check found ready at once. Turned off, the work
+    /// ahead that runs finishes, since root runs it, and a request it has not
+    /// taken yet is withdrawn, so none starts after it.
+    pub async fn set_prepare_ahead(&self, on: bool) -> Result<(), StorageError> {
+        let _one = self.checking.lock().await;
+        self.control.set_prepare_ahead(on).await?;
+        let prepare = {
+            let mut state = self.locked();
+            state.prepare_ahead = on;
+            state.prepare_ahead.then(|| state.newer_to_prepare()).flatten()
+        };
+        self.changed();
+        if let Some(newer) = prepare {
+            self.request_preparation(&newer);
+        } else if !on {
+            self.withdraw_preparation();
         }
         Ok(())
     }
@@ -300,22 +341,43 @@ impl Upgrades {
                 None
             } else {
                 state.checked = Some(Instant::now());
-                let newer = match &check {
-                    UpgradeCheck::Checked { newer, .. } => newer.as_ref().map(|newer| newer.version.clone()),
-                    _ => None,
-                };
                 state.check = check;
-                newer.filter(|_| !matches!(state.run, UpgradeRun::Updating { .. }))
+                state.prepare_ahead.then(|| state.newer_to_prepare()).flatten()
             }
         };
         self.changed();
         self.due_changed.notify_one();
-        if let (Some(newer), Some(request)) = (prepare, &self.request) {
-            let prepare = request.with_file_name(PREPARE_REQUEST_NAME);
-            match write_request(&prepare, &newer) {
-                Ok(()) => tracing::info!(event = "upgrade.prepare_requested", version = %newer, "the server gets the newest release ready ahead"),
-                Err(error) => tracing::warn!(event = "upgrade.prepare_unrequested", version = %newer, %error, "the newest release was not asked to be got ready"),
-            }
+        if let Some(newer) = prepare {
+            self.request_preparation(&newer);
+        }
+    }
+
+    /// The prepare request beside the update's; none when the server offers
+    /// no updates.
+    fn prepare_request(&self) -> Option<PathBuf> {
+        self.request.as_ref().map(|request| request.with_file_name(PREPARE_REQUEST_NAME))
+    }
+
+    /// Has the server get `newer` ready ahead.
+    fn request_preparation(&self, newer: &str) {
+        let Some(prepare) = self.prepare_request() else {
+            return;
+        };
+        match write_request(&prepare, newer) {
+            Ok(()) => tracing::info!(event = "upgrade.prepare_requested", version = %newer, "the server gets the newest release ready ahead"),
+            Err(error) => tracing::warn!(event = "upgrade.prepare_unrequested", version = %newer, %error, "the newest release was not asked to be got ready"),
+        }
+    }
+
+    /// Removes a prepare request `demi-server` has not taken yet.
+    fn withdraw_preparation(&self) {
+        let Some(prepare) = self.prepare_request() else {
+            return;
+        };
+        match std::fs::remove_file(&prepare) {
+            Ok(()) => tracing::info!(event = "upgrade.prepare_withdrawn", "a request to get a release ready ahead was withdrawn"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => tracing::warn!(event = "upgrade.prepare_unwithdrawn", %error, "a request to get a release ready ahead could not be withdrawn"),
         }
     }
 

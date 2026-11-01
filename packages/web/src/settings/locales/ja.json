@@ -69,6 +69,7 @@
   },
   "updates": {
     "channelFailed": "アップデートチャンネルを変更できませんでした",
+    "prepareAheadFailed": "アップデートの自動ダウンロードを変更できませんでした",
     "checkFailed": "アップデートを確認できませんでした",
     "updateFailed": "アップデートを開始できませんでした"
   },

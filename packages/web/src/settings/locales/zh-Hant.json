@@ -69,6 +69,7 @@
   },
   "updates": {
     "channelFailed": "無法變更更新頻道",
+    "prepareAheadFailed": "無法變更自動下載更新",
     "checkFailed": "無法檢查更新",
     "updateFailed": "無法開始更新"
   },

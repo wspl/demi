@@ -19,6 +19,9 @@ pub struct ServerUpgrade {
     /// The page of `running`'s release, with its notes.
     pub running_notes_url: String,
     pub channel: UpgradeChannel,
+    /// Whether a check that finds a newer release gets it ready at once;
+    /// otherwise Update Now downloads it.
+    pub prepare_ahead: bool,
     pub check: UpgradeCheck,
     /// The newest release, which the server gets ready while it serves.
     pub preparation: UpgradePreparation,
@@ -120,6 +123,14 @@ pub enum UpgradeRun {
 pub struct SetUpgradeChannel {
     #[garde(skip)]
     pub channel: UpgradeChannel,
+}
+
+/// `PUT /server-upgrade/prepare-ahead`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetPrepareAhead {
+    #[garde(skip)]
+    pub prepare_ahead: bool,
 }
 
 /// `POST /server-upgrade/run`: the release the page offered, which the

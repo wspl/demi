@@ -1001,5 +1001,7 @@ CREATE TABLE server_settings (
   -- The channel an administrator chose in Settings › Updates; none keeps the installation's.
   upgrade_channel TEXT CHECK (upgrade_channel IN ('beta', 'canary')),
   -- Whether every user uses the master's providers, which the master chooses in Settings › Users.
-  instance_mode   TEXT NOT NULL DEFAULT 'isolated' CHECK (instance_mode IN ('shared', 'isolated'))
+  instance_mode   TEXT NOT NULL DEFAULT 'isolated' CHECK (instance_mode IN ('shared', 'isolated')),
+  -- Whether a check that finds a newer release gets it ready at once, which an administrator turns on in Settings › Updates.
+  prepare_ahead   INTEGER NOT NULL DEFAULT 0 CHECK (prepare_ahead IN (0, 1))
 ) STRICT;

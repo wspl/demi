@@ -69,6 +69,7 @@
   },
   "updates": {
     "channelFailed": "无法更改更新通道",
+    "prepareAheadFailed": "无法更改自动下载更新",
     "checkFailed": "无法检查更新",
     "updateFailed": "无法开始更新"
   },

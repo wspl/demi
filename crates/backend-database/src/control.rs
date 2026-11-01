@@ -437,6 +437,30 @@ impl ControlService {
         .await
     }
 
+    /// Whether a check that finds a newer release gets it ready at once: not
+    /// until an administrator turns it on.
+    pub async fn prepare_ahead(&self) -> Result<bool, StorageError> {
+        self.call(|connection, _| {
+            let on: Option<bool> = connection
+                .query_row("SELECT prepare_ahead FROM server_settings WHERE id = 1", [], |row| row.get(0))
+                .optional()?;
+            Ok(on.unwrap_or(false))
+        })
+        .await
+    }
+
+    pub async fn set_prepare_ahead(&self, on: bool) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "INSERT INTO server_settings (id, prepare_ahead) VALUES (1, ?1)
+                 ON CONFLICT (id) DO UPDATE SET prepare_ahead = excluded.prepare_ahead",
+                [on],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn set_upgrade_channel(&self, channel: UpgradeChannel) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
