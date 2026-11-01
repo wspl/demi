@@ -343,11 +343,13 @@ useResizeObserver(bodyRef, measure)
     <!--
       A message that waits to be sent holds its controls in its last row, with
       what happens to it at the row's end. It stands back from the sent ones:
-      dimmer words on half a bubble's fill, a steer's tinted with the accent.
+      dimmer words on half a bubble's fill. A row of controls at its foot
+      stands as far from the bubble's bottom as from its start, so a hovered
+      control's fill sits square in the corner.
     -->
     <div
-      class="relative rounded-xl px-4 py-2.5"
-      :class="pending === 'steer' ? 'user-waiting-steer' : pending ? 'user-waiting' : 'bg-surface-card'"
+      class="relative rounded-xl px-4 pt-2.5"
+      :class="[pending ? 'user-waiting' : 'bg-surface-card', clip || pending ? 'pb-2' : 'pb-2.5']"
       :style="bubbleWidth"
       :data-pending="pending"
     >
@@ -446,7 +448,7 @@ useResizeObserver(bodyRef, measure)
         waiting message's Send and Recall after it, as one row of the bubble's
         own controls, with what happens to the message at its end.
       -->
-      <div v-if="clip || pending" class="-ml-2 mt-1 flex select-none flex-wrap items-center gap-x-1">
+      <div v-if="clip || pending" class="on-fill -ml-2 mt-1 flex select-none flex-wrap items-center gap-x-1">
         <Button
           v-if="clip"
           size="sm"
@@ -469,7 +471,7 @@ useResizeObserver(bodyRef, measure)
           <span
             class="ml-auto flex items-center gap-1 ps-2 text-detail text-fg-faint"
           >
-            <component :is="pending === 'steer' ? Clock : ListEnd" :size="ICON_PX.in20" :class="pending === 'steer' ? 'text-on-accent' : ''" aria-hidden="true" />
+            <component :is="pending === 'steer' ? Clock : ListEnd" :size="ICON_PX.in20" aria-hidden="true" />
             {{ pending === 'steer' ? t('transcript.user.sendingSoon') : t('transcript.user.queuedMark') }}
           </span>
         </template>
@@ -496,13 +498,13 @@ useResizeObserver(bodyRef, measure)
   height: calc(var(--agent-text) * var(--agent-leading));
 }
 
-/* Half the way from the transcript's surface to a sent bubble's fill, or to the accent's tint. */
+/*
+ * Half the way from the transcript's surface to a sent bubble's fill, a fill
+ * its row of controls sits on (`on-fill`), so their hover steps from it.
+ */
 .user-waiting {
-  background-color: color-mix(in srgb, var(--color-surface-card) 50%, var(--surface-current));
-}
-
-.user-waiting-steer {
-  background-color: color-mix(in srgb, color-mix(in srgb, var(--surface-current), var(--tint-accent-mix)) 50%, var(--surface-current));
+  --fill-color: color-mix(in srgb, var(--color-surface-card) 50%, var(--surface-current));
+  background-color: var(--fill-color);
 }
 
 .user-sticky::after {
