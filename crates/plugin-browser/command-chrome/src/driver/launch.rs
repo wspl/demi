@@ -224,7 +224,13 @@ pub async fn configure(
     runtime: Option<&Runtime>,
     capture: &str,
 ) -> Result<BrowserConfigBuilder> {
+    // A conversation's profile keeps the extension of an earlier start, which
+    // may be another release's.
     let extension = capture_extension(profile);
+    match tokio::fs::remove_dir_all(&extension).await {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
+        _ => {}
+    }
     tokio::fs::create_dir(&extension).await?;
     for (name, contents) in CAPTURE_EXTENSION {
         tokio::fs::write(extension.join(name), contents).await?;
@@ -240,18 +246,33 @@ pub async fn configure(
     .await?;
     // The profile's language preference sets `navigator.languages` and every
     // request's `Accept-Language` from the first byte, in popups and workers too.
+    // A conversation's profile keeps the preferences the sites and Chrome set
+    // before, and only this one changes.
     let preferences = profile.join("Default");
-    tokio::fs::create_dir(&preferences).await?;
+    tokio::fs::create_dir_all(&preferences).await?;
+    let file = preferences.join("Preferences");
+    let mut kept = match tokio::fs::read(&file).await {
+        Ok(bytes) => serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .filter(serde_json::Value::is_object)
+            .unwrap_or_else(|| serde_json::json!({})),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
+        Err(error) => return Err(error.into()),
+    };
+    if !kept["intl"].is_object() {
+        kept["intl"] = serde_json::json!({});
+    }
+    kept["intl"]["accept_languages"] = serde_json::Value::String(locale.languages.join(","));
+    // Replaced whole, so a start that ends halfway leaves the file as it was.
+    let staged = preferences.join("Preferences.demi");
     tokio::fs::write(
-        preferences.join("Preferences"),
-        serde_json::to_vec(&serde_json::json!({
-            "intl": { "accept_languages": locale.languages.join(",") }
-        }))
-        .map_err(|error| {
+        &staged,
+        serde_json::to_vec(&kept).map_err(|error| {
             crate::driver::operation::BrowserError::Configuration(error.to_string())
         })?,
     )
     .await?;
+    tokio::fs::rename(&staged, &file).await?;
     let mut builder = builder
         .disable_default_args()
         .with_head()

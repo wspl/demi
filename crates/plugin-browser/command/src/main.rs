@@ -17,9 +17,9 @@ async fn main() {
     let browser = Arc::new(demi_browser::DemiBrowser::new());
     let chrome = browser.chrome().clone();
     let resident = demi_command_sdk::serve_stdio(browser);
-    // Profiles a resident that ended without retiring its browsers left are
-    // removed beside serving; a sweep still
-    // under way when serving ends is given up.
+    // What a resident that ended without retiring its browsers left is swept
+    // beside serving, and every browser starts after it; a sweep still under
+    // way when serving ends is given up.
     let sweep = demi_command_package_browser_chrome::tabs::environment::sweep_orphans(&chrome);
     tokio::pin!(resident, sweep);
     let result = tokio::select! {

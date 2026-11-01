@@ -27,14 +27,15 @@
 //! Host that was offline when a conversation was deleted therefore cleans up as
 //! soon as it connects, with nothing to remember in between.
 //!
-//! The conversation's recordings (`crates/shared-recording`), in a directory
-//! of their own inside it, go sooner: when the conversation is archived or
-//! deleted. The release the backend sends then says so
-//! ([`Scratch::forget_recordings`]), and the hello's answer names the
+//! The conversation's recordings (`crates/shared-recording`) and its browser
+//! profile, each in a directory of its own inside it, go sooner: when the
+//! conversation is archived or deleted. The release the backend sends then
+//! says so ([`Scratch::forget_archived`]), and the hello's answer names the
 //! conversations that are archived, so a Host that was offline then removes
 //! them as it connects. Neither depends on a resident running: a recording
-//! outlives every device and tab it recorded, and the conversation's idleness,
-//! its move to another Host and the detaching of a device end none.
+//! outlives every device and tab it recorded, the profile every browser that
+//! ran on it, and the conversation's idleness, its move to another Host and
+//! the detaching of a device end neither.
 //!
 //! A backend that cannot read the conversations drops the connection rather
 //! than name none, which would remove every directory.
@@ -82,7 +83,7 @@ impl Scratch {
     }
 
     /// Removes the scratch directory of every conversation not in `existing`,
-    /// and the recordings of those `archived`.
+    /// and the recordings and browser profiles of those `archived`.
     ///
     /// It removes the directories under the root whose name no existing
     /// conversation has. Anything else there, such as a file or a link, is left
@@ -118,7 +119,7 @@ impl Scratch {
             }
         }
         for conversation in archived {
-            self.forget_recordings(conversation).await;
+            self.forget_archived(conversation).await;
         }
         Ok(())
     }
@@ -143,19 +144,30 @@ impl Scratch {
         Ok(names)
     }
 
-    /// Removes `conversation`'s recordings: it was archived or deleted. One
-    /// that cannot be removed stays until the next time the runner connects.
-    pub async fn forget_recordings(&self, conversation: &str) {
-        let directory = demi_command_protocol::recordings_in(&self.root, conversation);
-        match tokio::fs::remove_dir_all(&directory).await {
-            Ok(()) => tracing::info!(
-                event = "recordings.removed",
-                conversation,
-                reason = "archived_or_deleted",
-                "the recordings of an archived or deleted conversation were removed"
-            ),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => tracing::warn!(event = "recordings.remove_failed", conversation, %error, "the recordings of an archived or deleted conversation could not be removed"),
+    /// Removes `conversation`'s recordings and browser profile: it was
+    /// archived or deleted. One that cannot be removed stays until the next
+    /// time the runner connects.
+    pub async fn forget_archived(&self, conversation: &str) {
+        for (what, directory) in [
+            ("recordings", demi_command_protocol::recordings_in(&self.root, conversation)),
+            ("browser_profile", demi_command_protocol::browser_profile_in(&self.root, conversation)),
+        ] {
+            match tokio::fs::remove_dir_all(&directory).await {
+                Ok(()) => tracing::info!(
+                    event = "archived_files.removed",
+                    conversation,
+                    what,
+                    "what an archived or deleted conversation kept on the Host was removed"
+                ),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => tracing::warn!(
+                    event = "archived_files.remove_failed",
+                    conversation,
+                    what,
+                    %error,
+                    "what an archived or deleted conversation kept on the Host could not be removed"
+                ),
+            }
         }
     }
 }

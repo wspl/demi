@@ -1,5 +1,6 @@
-//! Chrome's process tree: what retirement ends, so that no Chrome, helper,
-//! profile or temporary directory outlives its environment.
+//! Chrome's process tree: what retirement ends, so that no Chrome, helper or
+//! temporary directory outlives its environment, and no Chrome runs on a
+//! conversation's profile after it.
 //!
 //! Chrome starts in a process group of its own with a private marker naming its
 //! environment. Helpers such as Crashpad can detach into another session, so

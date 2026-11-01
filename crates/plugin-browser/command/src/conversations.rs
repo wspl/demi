@@ -21,19 +21,22 @@
 //!
 //! Each piece of state has one owner task; others send requests or read its
 //! snapshot. Every task started for an environment belongs to it, and
-//! retirement joins all of them before it removes the profile: no browser work
+//! retirement joins all of them before it lets the profile go: no browser work
 //! outlives its environment.
 //!
 //! # Lifetime
 //!
-//! - The browser ends on exactly two signals it sees itself: the last tab
-//!   closing and the conversation release. It has no idle timer and no notion
+//! - The browser ends on exactly three signals it sees itself: the last tab
+//!   closing, the conversation release, and another resident asking for the
+//!   conversation's profile, as an upgrade's next release does. It has no idle timer and no notion
 //!   of agent activity. The backend decides when to release, and an open tab, a
 //!   loading page or a running download never postpones it.
 //! - Retirement invalidates tabs, references and debugging handles together. A
 //!   release cancels the commands that run (`cancelled`) before it retires. A
 //!   command still running when another closes the last tab fails with
-//!   `browser_lost`. Nothing is restored: the next `tab.new` starts fresh.
+//!   `browser_lost`. No tab is restored: the next `tab.new` starts a browser
+//!   with none. The conversation's profile stays, so its sign-ins, cookies and
+//!   site storage carry over to the next browser.
 //! - A failed cleanup keeps another environment from starting over the
 //!   unresolved owner. After a completed one the next `tab.new` may start a
 //!   fresh browser.
@@ -177,13 +180,15 @@ enum Request {
 }
 
 impl ConversationBrowser {
-    /// The browser of `conversation`, whose tabs take their numbers from
-    /// `numbers` across every browser it starts, and whose changes `messages`
-    /// tells the plugin of while its owner runs.
+    /// The browser of `conversation`, whose every Chrome runs on `profile`,
+    /// whose tabs take their numbers from `numbers` across every browser it
+    /// starts, and whose changes `messages` tells the plugin of while its
+    /// owner runs.
     fn start(
         tasks: &TaskTracker,
         chrome: Chrome,
         conversation: String,
+        profile: std::path::PathBuf,
         numbers: TabNumbers,
         messages: watch::Receiver<Option<Messages>>,
         library: Arc<Library>,
@@ -194,6 +199,7 @@ impl ConversationBrowser {
         let owner = Owner {
             state: State::Absent,
             chrome,
+            profile,
             numbers: numbers.clone(),
             published,
             released: cancellation.clone(),
@@ -303,8 +309,8 @@ impl ConversationBrowser {
         }
     }
 
-    /// Retires `environment` if it still runs, and answers once Chrome and
-    /// its profile are gone. A retirement once asked for finishes, so the
+    /// Retires `environment` if it still runs, and answers once Chrome is
+    /// gone and its profile let go. A retirement once asked for finishes, so the
     /// caller's cancellation does not reach it.
     pub async fn retire(&self, environment: &BrowserEnvironment) -> Result<()> {
         let environment = environment.clone();
@@ -348,6 +354,8 @@ impl ConversationBrowser {
 struct Owner {
     state: State,
     chrome: Chrome,
+    /// The conversation's profile, which every browser it starts runs on.
+    profile: std::path::PathBuf,
     /// The conversation's tab numbers, which outlast each browser.
     numbers: TabNumbers,
     published: watch::Sender<Lifecycle>,
@@ -562,6 +570,7 @@ impl Owner {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
         let chrome = self.chrome.clone();
+        let profile = self.profile.clone();
         let numbers = self.numbers.clone();
         let owner_stop = stop.clone();
         let task = self.tasks.spawn_traced(async move {
@@ -569,8 +578,9 @@ impl Owner {
             let retire = owner_stop.clone();
             let result = async {
                 let installation = chrome.installation().await?;
+                demi_command_package_browser_chrome::tabs::environment::swept(&chrome).await;
                 with_browser(
-                    LaunchOptions::pinned(installation, starting.locale, starting.color_scheme)?,
+                    LaunchOptions::pinned(installation, profile, starting.locale, starting.color_scheme)?,
                     numbers,
                     owner_stop.clone(),
                     move |environment| async move {
@@ -582,10 +592,12 @@ impl Owner {
                             environment: environment.clone(),
                             live,
                         })));
-                        // The browser runs until it is retired or its last tab closed.
+                        // The browser runs until it is retired, its last tab
+                        // closed, or another resident asked for its profile.
                         tokio::select! {
                             _ = retire.cancelled() => {}
                             _ = environment.emptied().cancelled() => {}
+                            _ = environment.handoff_asked().cancelled() => {}
                         }
                         Ok(())
                     },
@@ -880,19 +892,24 @@ pub(crate) struct Conversations {
     chrome: Chrome,
 }
 
-/// Makes a conversation's library of recordings.
+/// What a conversation keeps on this Host beside its scratch files: its
+/// library of recordings and its browser profile.
 #[derive(Clone)]
-struct Libraries {
+struct Kept {
     home: Option<std::path::PathBuf>,
     codec: Arc<dyn Codec>,
 }
 
-impl Libraries {
-    fn of(&self, conversation: &str) -> Arc<Library> {
+impl Kept {
+    fn library(&self, conversation: &str) -> Arc<Library> {
         Arc::new(Library::new(
             demi_command_protocol::recordings_directory(self.home.as_deref(), conversation),
             self.codec.clone(),
         ))
+    }
+
+    fn profile(&self, conversation: &str) -> std::path::PathBuf {
+        demi_command_protocol::browser_profile_directory(self.home.as_deref(), conversation)
     }
 }
 
@@ -905,7 +922,7 @@ async fn serve(
     chrome: Chrome,
     numbers: watch::Receiver<Option<Numbers>>,
     messages: watch::Receiver<Option<Messages>>,
-    libraries: Libraries,
+    kept: Kept,
 ) {
     let mut browsers: HashMap<String, Arc<ConversationBrowser>> = HashMap::new();
     // A requester that left needs no answer.
@@ -920,8 +937,9 @@ async fn serve(
                     .or_insert_with(|| {
                         let tabs =
                             TabNumbers::from_source(numbers.borrow().clone(), conversation.clone());
-                        let library = libraries.of(&conversation);
-                        ConversationBrowser::start(&tasks, chrome.clone(), conversation, tabs, messages.clone(), library)
+                        let library = kept.library(&conversation);
+                        let profile = kept.profile(&conversation);
+                        ConversationBrowser::start(&tasks, chrome.clone(), conversation, profile, tabs, messages.clone(), library)
                     })
                     .clone();
                 let _gone = reply.send(browser);
@@ -968,8 +986,8 @@ impl Conversations {
         let tasks = TaskTracker::new();
         let (numbers, source) = watch::channel(None);
         let (messages, sender) = watch::channel(None);
-        let libraries = Libraries { home, codec };
-        tasks.spawn_traced(serve(receiver, tasks.clone(), chrome.clone(), source, sender, libraries));
+        let kept = Kept { home, codec };
+        tasks.spawn_traced(serve(receiver, tasks.clone(), chrome.clone(), source, sender, kept));
         Self {
             requests,
             tasks,
@@ -1549,7 +1567,7 @@ impl Conversations {
             })?));
         }
         if matches!(command, BrowserOperation::TabClose(_)) {
-            // Closing the last tab stops Chrome and removes its profile
+            // Closing the last tab stops Chrome and lets its profile go
             // before the close is acknowledged.
             let closed = tab.close_request(cancellation, command.timeout()).await?;
             if matches!(closed, Closed::Environment) || environment.emptied().is_cancelled() {

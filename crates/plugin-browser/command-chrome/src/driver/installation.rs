@@ -51,6 +51,9 @@ type GlibcReader = dyn Fn() -> std::io::Result<Option<GlibcVersion>> + Send + Sy
 #[derive(Clone)]
 pub struct Chrome {
     artifacts: Arc<watch::Sender<Option<Artifacts>>>,
+    /// Whether the resident's sweep of what its predecessors left has ended
+    /// (`crate::tabs::environment::sweep_orphans`).
+    swept: Arc<watch::Sender<bool>>,
     /// The target whose archives the Host takes: this program's own.
     target: &'static str,
     glibc: Arc<GlibcReader>,
@@ -60,6 +63,7 @@ impl Default for Chrome {
     fn default() -> Self {
         Self {
             artifacts: Arc::new(watch::Sender::new(None)),
+            swept: Arc::new(watch::Sender::new(false)),
             target: host_target(),
             glibc: Arc::new(glibc::host),
         }
@@ -75,6 +79,10 @@ pub struct Installation {
 }
 
 impl Chrome {
+    pub(crate) fn swept(&self) -> &watch::Sender<bool> {
+        &self.swept
+    }
+
     /// Takes the resident's artifacts source, which the runner answers.
     pub fn attach(&self, artifacts: Artifacts) {
         self.artifacts.send_replace(Some(artifacts));

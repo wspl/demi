@@ -90,6 +90,22 @@ pub fn recordings_in(scratch_root: &std::path::Path, conversation: &str) -> std:
     scratch_root.join(scratch_name(conversation)).join(".recordings")
 }
 
+/// Where a conversation's browser profile is on a Host: beside its scratch
+/// files, in the installation `home`, or the system's temporary directory for
+/// a program without one. Every Chrome the conversation starts on the Host
+/// runs on it, so its sign-ins outlast each browser; the runner removes it
+/// with the recordings, when the conversation is archived or deleted
+/// (`crates/runner-jobs/src/scratch.rs`).
+pub fn browser_profile_directory(home: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
+    browser_profile_in(&home.map_or_else(std::env::temp_dir, std::path::Path::to_path_buf).join("scratch"), conversation)
+}
+
+/// [`browser_profile_directory`] where the installation's scratch directories
+/// are kept, `scratch_root`, which the runner knows by that name.
+pub fn browser_profile_in(scratch_root: &std::path::Path, conversation: &str) -> std::path::PathBuf {
+    scratch_root.join(scratch_name(conversation)).join(".browser")
+}
+
 /// How many characters of a conversation's id name its scratch directory.
 const SCRATCH_NAME_CHARS: usize = 12;
 
