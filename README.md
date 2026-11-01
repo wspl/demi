@@ -20,7 +20,9 @@
   <b>English</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
-<!-- Screenshot -->
+<p align="center">
+  <img src="docs/assets/product.webp" alt="Demi in a browser: an agent builds a two-column layout for an iPhone app, with a comment and a side question on its reply and suggested replies under it, the app on a half-folded iPhone Duo in the side panel, and the same conversation on a phone." width="800">
+</p>
 
 Demi is a web-based AI agent you host on your own server. Open it in any
 browser. Ask it a question or hand it a job: research, operating websites,

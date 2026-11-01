@@ -20,7 +20,9 @@
   <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a>
 </p>
 
-<!-- Screenshot -->
+<p align="center">
+  <img src="docs/assets/product.webp" alt="ブラウザの Demi：エージェントが iPhone アプリを 2 列レイアウトにし、その返信にはコメントとサイドの質問、下には返信の候補。サイドパネルには半分折りたたんだ iPhone Duo で動くアプリ、スマートフォンには同じ会話。" width="800">
+</p>
 
 Demi は、自分のサーバーでホストする Web ベースの AI エージェントです。どのブラウザからでも開けます。ちょっとした質問から仕事の依頼まで、調査、Web サイトの操作、ファイルの処理、コーディングをひとつの会話で行えます。
 

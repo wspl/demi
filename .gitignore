@@ -53,5 +53,6 @@ Thumbs.db
 packages/site/public/demos/
 packages/site/dist-record/
 packages/site/dist-recording/
+packages/site/dist-readme/
 # Wrangler's local state
 packages/site/.wrangler/

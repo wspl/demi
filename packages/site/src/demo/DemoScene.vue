@@ -28,6 +28,9 @@ import type { ConversationSchedule } from '@demicodes/web-ui/schedules/types'
 import { CLOUD, PROJECTS, SCENES, sidebarRows, type DemoHosts, type Form } from './scenes'
 import { CAMERA_MS, tellCamera, tellCard, tellShot, type CameraRect, type DeviceShot, type StageCard } from './message'
 import { animateEntrances } from './entrances'
+import { README_SCENES, readmeExtras, readmeSubagents } from './readme'
+import { DUO_BODY_URL } from './readme-page'
+import { savedParts, type SavedRow } from '@demicodes/web-ui/agent/saved'
 
 const props = defineProps<{
   demo: DemoId
@@ -36,12 +39,29 @@ const props = defineProps<{
   run: number
 }>()
 
-const scene = SCENES[props.demo]
+// `?readme=<id>` plays a README picture's scene in place of the demo.
+const readmeId = new URLSearchParams(location.search).get('readme')
+const readme = readmeId ? README_SCENES[readmeId] : undefined
+const scene = readme ?? SCENES[props.demo]
 const conversation = new Conversation(`demo-${props.run}`, scene.title, scene.cwd)
 conversation.state.terminals = [...(scene.services ?? [])]
+if (readme)
+  conversation.state.subagents = readmeSubagents(conversation.state.id) as never
 // The working tree has no changes: no scene shows them.
 const project = { ...createGalleryProject(), changes: createChangeSetOf([]) }
-const work = useGalleryWork(null, { files: galleryFiles(project), browser: galleryBrowser([]) })
+const savedRows: SavedRow[] = (readme?.saved ?? []).map((text, i) => ({ id: `saved-${i}`, parts: savedParts(text, []), state: 'saved' }))
+const work = useGalleryWork(null, { files: readmeFiles(galleryFiles(project)), browser: galleryBrowser([]), screen: readme?.screen })
+
+/** A README scene's files, where the body its foldable wears reads from the address its recorder serves it at. */
+function readmeFiles(files: ReturnType<typeof galleryFiles>): ReturnType<typeof galleryFiles> {
+  const body = readme?.screen.body
+  const tree = files.tree
+  const contents = tree?.source.contents
+  if (!body || !tree || !contents)
+    return files
+  const url: typeof contents.url = (path, options) => (path === body ? DUO_BODY_URL : contents.url(path, options))
+  return { ...files, tree: { ...tree, source: { ...tree.source, contents: { ...contents, url } } } } as typeof files
+}
 work.open.value = false
 const hosts = reactive<DemoHosts>({ primary: scene.primary ?? CLOUD, attached: [] })
 const devices = scene.devices ?? []
@@ -88,7 +108,7 @@ const sidebarOpen = ref(false)
 /** The desktop's sidebar, collapsed for a scene that needs only the conversation. */
 const sidebarCollapsed = ref(scene.sidebar === false)
 // The panel as wide as the conversation lets it be, so its page and diff read in the small frame.
-const asideShare = ref(0.6)
+const asideShare = ref(readme?.asideShare ?? 0.6)
 const draft = ref('')
 
 function focus(target: Element | string | CameraRect | null, cut = false): void {
@@ -158,7 +178,7 @@ async function compose(text: string, ms: number, on?: Form): Promise<void> {
 }
 
 // The scene starts before the first render, so the conversation never shows empty.
-scene.play({ conversation, work, form: props.form, hosts, schedules, open, look, shoot, card, compose }).catch((error: unknown) => {
+scene.play({ conversation, work, form: props.form, hosts, schedules, open, look, shoot, card, compose, commenting }).catch((error: unknown) => {
   if (!(error instanceof Stopped))
     throw error
 })
@@ -185,6 +205,8 @@ onBeforeUnmount(() => {
           :projects="PROJECTS"
           :conversations="sidebarRows(conversation)"
           :active-id="conversation.state.id"
+          :workspaces="readme?.workspaces.list"
+          :workspace-id="readme?.workspaces.current ?? null"
         />
       </template>
       <ChatSession
@@ -195,6 +217,8 @@ onBeforeUnmount(() => {
         :panel-tabs="work.panel.value.tabs.length"
         :select-edit="work.selectEdit"
         :commenting="commenting"
+        :asking="readmeExtras.asking"
+        :suggested-replies="readmeExtras.suggested ?? undefined"
         :schedules="schedules"
         @open-aside="work.open.value = true"
         @show-subagent="() => {}"
@@ -231,6 +255,7 @@ onBeforeUnmount(() => {
             :models="MODELS"
             :model-settings="MODEL_SETTINGS"
             :workflow="scene.workflow ?? null"
+            :saved="savedRows"
           />
         </template>
       </ChatSession>

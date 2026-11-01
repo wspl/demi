@@ -21,7 +21,8 @@
   "include": [
     "vite.config.ts",
     "build.ts",
-    "record.ts"
+    "record.ts",
+    "readme-picture.ts"
   ],
   "exclude": [
     "node_modules",

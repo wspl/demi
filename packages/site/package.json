@@ -8,6 +8,7 @@
     "build": "bun build.ts",
     "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.app.json tsconfig.node.json",
     "record": "bun record.ts",
+    "readme-picture": "bun readme-picture.ts",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

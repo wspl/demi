@@ -20,7 +20,9 @@
   <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <b>繁體中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
-<!-- Screenshot -->
+<p align="center">
+  <img src="docs/assets/product.webp" alt="瀏覽器裡的 Demi：智慧代理為一個 iPhone App 做了雙欄版面，回覆上有一則評論和一個追問，下方是回覆建議；側邊面板裡是半摺疊的 iPhone Duo 上執行的 App，手機上是同一個對話。" width="800">
+</p>
 
 Demi 是架設在你自己伺服器上的網頁版 AI 智慧體，在任何瀏覽器中都能開啟。隨口問個問題，或把一整件事交給它：查資料、操作網站、處理檔案、寫程式，都在同一個對話裡完成。
 
