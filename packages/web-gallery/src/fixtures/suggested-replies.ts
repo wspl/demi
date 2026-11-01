@@ -33,9 +33,13 @@ export const SUGGESTION_ROUNDS: readonly (readonly SuggestedReply[])[] = [
   [],
 ]
 
-/** Suggestions long enough that the row narrows them, each ending in an ellipsis. */
+/**
+ * Suggestions long enough that a narrow row wraps them, each within the
+ * longest the backend keeps, the second one long word and the last wider
+ * than the row.
+ */
 export const LONG_SUGGESTIONS: readonly SuggestedReply[] = [
   answer('Merge it, then ship a release to the beta channel for the team'),
-  answer('Run the whole auth suite again on the staging database first'),
-  topic('Rename the cookie helper so its name says which cookie it reads'),
+  answer('Rename SessionCookieCompatibilityRegressionTestHelper'),
+  topic('Rename the cookie helper so its name says which cookie it reads, and update every test that names it'),
 ]
