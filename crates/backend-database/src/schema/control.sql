@@ -623,6 +623,16 @@ CREATE TABLE conversation_drafts (
   updated_at      INTEGER NOT NULL
 ) STRICT;
 
+-- The replies a conversation's latest answer offers
+-- (crates/agent-server/src/suggested_replies.rs): the text block of the
+-- answer they follow, and replies, a JSON array of SuggestedReply, empty
+-- when none was likely. A later answer's replace them.
+CREATE TABLE conversation_suggested_replies (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  block_id        TEXT NOT NULL,
+  replies         TEXT NOT NULL
+) STRICT;
+
 -- The messages saved for later, each in one list: a conversation's own, or
 -- its project's, which the project's conversations share while the project
 -- keeps them per project. Each one's text and files are one JSON document,

@@ -7,12 +7,13 @@
 //! An answer written before the work started asks for none: a tree only
 //! opened, as a page opening an old conversation opens it; a version of an
 //! answer brought back; a compaction; a turn that ended without text. What a
-//! request answered is kept in memory with the answer it follows, for the
-//! conversation's metadata, until the next answer's replaces it, an archive
-//! or a deletion; a restart of the backend forgets it, as the next answer
-//! brings new ones, and the page shows it only under that answer. Work that
-//! starts while a request runs cancels it, as does the shard's close. The
-//! pages learn what a request kept from the conversation's metadata.
+//! request answered is stored with the answer it follows
+//! (`demi_backend_database::suggested_replies`), for the conversation's
+//! metadata, until the next answer's replaces it, so a page the backend's
+//! restart reconnects shows what it showed; the page shows it only under
+//! that answer. Work that starts while a request runs cancels it, as does an
+//! archive and the shard's close. The pages learn what a request kept from
+//! the conversation's metadata.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -44,8 +45,6 @@ pub(crate) struct SuggestedReplies {
     /// When each running tree started to run: only an answer written since
     /// asks for suggestions.
     working: RefCell<HashMap<ConversationId, Timestamp>>,
-    /// What each conversation's latest answer offers.
-    kept: Rc<RefCell<HashMap<ConversationId, Kept>>>,
     /// Each conversation's request in flight, by its number, which tells it
     /// from a request it replaced.
     in_flight: Rc<RefCell<HashMap<ConversationId, (u64, CancellationToken)>>>,
@@ -61,26 +60,14 @@ impl SuggestedReplies {
             marks,
             user,
             working: RefCell::default(),
-            kept: Rc::default(),
             in_flight: Rc::default(),
             next: Cell::new(0),
         }
     }
 
-    /// What the conversation `id`'s latest answer offers, for its metadata.
-    pub(crate) fn kept(&self, id: &ConversationId) -> Option<Kept> {
-        self.kept.borrow().get(id).cloned()
-    }
-
-    /// Forgets what the conversation `id` offered and stops its request, as
-    /// its archive or its deletion does.
-    pub(crate) fn abort(&self, id: &ConversationId) {
-        self.stop(id);
-        self.kept.borrow_mut().remove(id);
-    }
-
-    /// Stops the conversation `id`'s request, as work that starts does.
-    fn stop(&self, id: &ConversationId) {
+    /// Stops the conversation `id`'s request, as work that starts and an
+    /// archive do; the page offers an archived conversation's none.
+    pub(crate) fn stop(&self, id: &ConversationId) {
         if let Some((_, cancel)) = self.in_flight.borrow_mut().remove(id) {
             cancel.cancel();
         }
@@ -108,7 +95,6 @@ impl SuggestedReplies {
         let control = self.control.clone();
         let user = self.user.clone();
         let marks = self.marks.clone();
-        let kept = self.kept.clone();
         let in_flight = self.in_flight.clone();
         tasks.spawn_local(
             async move {
@@ -125,7 +111,7 @@ impl SuggestedReplies {
                     }
                     let replies = response.as_deref().map(suggestions_from_response).unwrap_or_default();
                     let outcome = if replies.is_empty() { "none" } else { "kept" };
-                    kept.borrow_mut().insert(id.clone(), Kept { block_id: answer.clone(), replies });
+                    control.keep_suggested_replies(id.clone(), Kept { block_id: answer.clone(), replies }).await?;
                     Ok(outcome)
                 }
                 .await;
