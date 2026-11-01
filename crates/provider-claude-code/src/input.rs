@@ -25,6 +25,13 @@ pub(crate) enum Input<'a> {
         message: Message<'a>,
         /// The message's client id.
         uuid: &'a str,
+        /// `false` keeps the message for the turn a later one starts.
+        #[serde(rename = "shouldQuery", skip_serializing_if = "Option::is_none")]
+        should_query: Option<bool>,
+        /// Always `true`: the CLI hands the text on as written, without
+        /// reading it as typing, such as a note to the model naming what
+        /// follows an `@` or a slash command run.
+        client_composed: bool,
     },
     ControlRequest {
         request_id: &'a str,
@@ -155,13 +162,26 @@ pub(crate) fn line(input: &Input<'_>) -> Vec<u8> {
 /// The user messages of `items` after the first `sent`, which a kept
 /// process has not received yet: new messages and steers. Answers their lines
 /// and the client id of the last one; none when there is no new message.
+///
+/// The CLI starts a turn on the first message it reads and folds one that
+/// comes while the turn runs into a later tool result, wrapped as a message
+/// sent mid-turn, where a session resumed from the transcript has it as the
+/// user's own entry. So every message but the last waits for it: they begin
+/// one turn, as a resumed session has them.
 pub(crate) fn new_user_messages(items: &[InferenceItem], sent: usize) -> (Vec<u8>, Option<String>) {
     let mut lines = Vec::new();
     let mut last = None;
-    for content in user_messages(items).skip(sent) {
+    let mut messages = user_messages(items).skip(sent).peekable();
+    while let Some(content) = messages.next() {
         let uuid = uuid::Uuid::new_v4().to_string();
         let message = Message::user(content);
-        lines.extend(line(&Input::User { message, uuid: &uuid }));
+        let should_query = messages.peek().is_some().then_some(false);
+        lines.extend(line(&Input::User {
+            message,
+            uuid: &uuid,
+            should_query,
+            client_composed: true,
+        }));
         last = Some(uuid);
     }
     (lines, last)

@@ -498,13 +498,17 @@ impl LiveCli {
     /// - it has an MCP server when the request offers tools;
     /// - the transcript continues what it received;
     /// - the request gives it something to answer: results for the calls it
-    ///   holds, or a new user message.
+    ///   holds, or a new user message;
+    /// - a process that holds calls gains their results alone.
     ///
     /// A retry of a failed turn gives it neither, and the process would wait
-    /// for input that never comes.
+    /// for input that never comes. A message beside the results would reach
+    /// the model folded into a result, wrapped as one sent mid-turn; a new
+    /// process resumes a session that has it as the user's own entry after
+    /// the results.
     pub(crate) fn serves(&self, request: &InferenceRequest) -> bool {
-        let gains_input =
-            !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count();
+        let messages = input::user_messages(&request.items).count() > self.sent.count();
+        let gains_input = if self.held.is_empty() { messages } else { !messages };
         self.continues(request) && gains_input
     }
 
