@@ -2,21 +2,46 @@
 // A demo's demo: Demi in a desktop browser window, and on a phone in front
 // of it, showing the same conversation. The two appear together, once both
 // apps have loaded, rather than as empty frames first; a narrow screen hides
-// the desktop, and the phone appears alone once it has loaded.
+// the desktop, and the phone appears alone once it has loaded. The demo and
+// the stage's endless animations pause while the stage is off screen or
+// covered, and go on from there.
 import { ChevronLeftIcon, ChevronRightIcon, CopyIcon, LockIcon, PanelLeftIcon, PlusIcon, ShareIcon, SignalIcon, WifiIcon, BatteryFullIcon } from '@lucide/vue'
 import type { DemoId } from '@/features'
 import { computed, ref, watch } from 'vue'
+import { useOnScreen } from '@/onScreen'
 import DemoFrame from './DemoFrame.vue'
-import { CAMERA_MS } from '@/demo/message'
+import DeviceShots from './DeviceShots.vue'
+import PiecesCard from './PiecesCard.vue'
+import ProductionCard from './ProductionCard.vue'
+import RuntimeCard from './RuntimeCard.vue'
+import { CAMERA_MS, type DeviceShot, type StageCard } from '@/demo/message'
 
 const props = defineProps<{
   demo: DemoId
   /** What the demo shows, for a screen reader. */
   label: string
+  /**
+   * Whether the stage shows the machines a scene works on (DeviceShots), and
+   * the browser and the phone go down to make room for them and come back
+   * up, as the hero's does.
+   */
+  lifts?: boolean
+  /** The play's number: a new one plays the demo again from its start. */
+  run?: number
+  /** Whether another stage covers this one. */
+  covered?: boolean
 }>()
-/** Whether the desktop demo closed its tab, which leaves the address bar empty. */
-const closed = ref(false)
-watch(() => props.demo, () => (closed.value = false))
+const root = ref<HTMLElement | null>(null)
+const onScreen = useOnScreen(root)
+const paused = computed(() => props.covered || !onScreen.value)
+/** What the stage shows beside the app, as the desktop's demo says. */
+const shot = ref<DeviceShot | null>(null)
+/** What the card at the browser's corner shows, as the desktop's demo says. */
+const card = ref<StageCard | null>(null)
+watch([() => props.demo, () => props.run], () => {
+  shot.value = null
+  card.value = null
+})
 const desktopReady = ref(false)
 const desktopHidden = ref(false)
 const phoneReady = ref(false)
@@ -26,6 +51,13 @@ const shown = computed(() => phoneReady.value && (desktopReady.value || desktopH
  * steps out of the way meanwhile, as it would cover the screen's right side.
  */
 const focused = ref(false)
+/**
+ * Whether the phone is up on a stage that lifts: only away from the desk,
+ * where it leads, and in the overview; at the desk the machines stand at the
+ * browser's corner instead. A narrow screen, which hides the desktop, shows
+ * the phone alone all the time.
+ */
+const phoneLeads = computed(() => (shot.value?.kind === 'close' && shot.value.beside === 'phone') || shot.value?.kind === 'all')
 /** Whether the phone goes or comes at once, as the camera cuts. */
 const cut = ref(false)
 function focus(close: boolean, at: boolean): void {
@@ -35,23 +67,23 @@ function focus(close: boolean, at: boolean): void {
 </script>
 
 <template>
-  <div class="stage" :class="{ shown }">
+  <div ref="root" class="stage" :class="{ shown, lifts, paused, 'shot-desk': shot?.kind === 'close' && shot.beside === 'browser', 'shot-away': shot?.kind === 'close' && shot.beside === 'phone', 'shot-every': shot?.kind === 'all', 'shot-clear': shot?.kind === 'clear' }">
     <div class="browser">
       <div class="chrome">
         <span class="lights" aria-hidden="true"><i /><i /><i /></span>
         <span class="tools" aria-hidden="true">
           <ChevronLeftIcon :size="20" /><ChevronRightIcon :size="20" /><PanelLeftIcon :size="18" />
         </span>
-        <span class="address"><template v-if="!closed"><LockIcon :size="13" />demi.example.com</template><template v-else>Search or enter website name</template></span>
+        <span class="address"><LockIcon :size="13" />demi.example.com</span>
         <span class="tools end" aria-hidden="true">
           <ShareIcon :size="18" /><PlusIcon :size="20" /><CopyIcon :size="18" />
         </span>
       </div>
-      <DemoFrame :demo="demo" form="desktop" :width="1024" :height="614" @focus="focus" @tab="closed = $event" @ready="desktopReady = true" @hidden="desktopHidden = $event" />
+      <DemoFrame :demo="demo" form="desktop" :width="1024" :height="614" :run="run" :paused="paused" @focus="focus" @shot="shot = $event" @card="card = $event" @ready="desktopReady = true" @hidden="desktopHidden = $event" />
     </div>
-    <div class="phone" :class="{ away: focused, cut }" :style="{ '--camera': `${CAMERA_MS}ms` }" aria-hidden="true">
+    <div class="phone" :class="{ away: lifts ? !(phoneLeads || desktopHidden) : focused, cut }" :style="{ '--camera': `${CAMERA_MS}ms` }" aria-hidden="true">
       <div class="phone-screen">
-        <DemoFrame :demo="demo" form="phone" :width="393" :height="852" @ready="phoneReady = true" />
+        <DemoFrame :demo="demo" form="phone" :width="393" :height="852" :run="run" :paused="paused" @ready="phoneReady = true" />
         <span class="status">
           <b>9:41</b>
           <span class="status-icons"><SignalIcon :size="15" :stroke-width="2.6" /><WifiIcon :size="15" :stroke-width="2.6" /><BatteryFullIcon :size="19" :stroke-width="2" /></span>
@@ -59,11 +91,111 @@ function focus(close: boolean, at: boolean): void {
         <span class="island" />
       </div>
     </div>
+    <DeviceShots :shot="shot" />
+    <RuntimeCard :card="card?.kind === 'runtime' ? card : null" />
+    <ProductionCard :card="card?.kind === 'production' ? card : null" />
+    <PiecesCard :card="card?.kind === 'pieces' ? card : null" />
     <p class="visually-hidden">{{ label }}</p>
   </div>
 </template>
 
 <style scoped>
+/* The stage's endless animations, a lit machine's or a cursor's, stop with its demo. */
+.paused :deep(*) {
+  animation-play-state: paused;
+}
+
+/*
+ * On a stage that lifts, as the hero's, the browser and the phone make room
+ * for the machines (DeviceShots) and come back, each fading as it moves: the
+ * browser goes off to the left, and the phone comes up from below, as from a
+ * pocket. At the desk a machine stands at the browser's corner. Away from
+ * the desk the browser goes and the phone comes up on the left, larger, to
+ * lead; the machines come in on its right. Every machine at the end: the app
+ * shrinks to the left, where the wires begin.
+ */
+.lifts {
+  --rise: cubic-bezier(0.16, 1, 0.3, 1);
+  --sink: cubic-bezier(0.55, 0, 0.75, 0);
+}
+
+.lifts .browser,
+.lifts .phone {
+  will-change: transform, opacity;
+  transition:
+    transform 0.75s var(--rise) 0.3s,
+    opacity 0.45s ease-out 0.3s,
+    visibility 0s 0.3s;
+}
+
+.lifts.shot-away .browser,
+.lifts .phone.away {
+  visibility: hidden;
+  opacity: 0;
+  transform: translateX(-5rem);
+  transition:
+    transform 0.4s var(--sink),
+    opacity 0.3s ease-in 0.05s,
+    visibility 0s 0.4s;
+}
+
+/* The phone stays down where it leads from, so it comes straight up there. */
+.lifts .phone {
+  transform-origin: center bottom;
+}
+
+.lifts .phone.away {
+  transform: translate(-254%, 5rem) scale(1.12);
+}
+
+/* The browser recedes to the left, as small as the overview shows it, so it comes back there in place. */
+.lifts.shot-away .browser {
+  transform: translateX(-5rem) scale(0.5);
+}
+
+.lifts.shot-away .phone {
+  transform: translateX(-254%) scale(1.12);
+}
+
+.shot-every .browser {
+  transform: scale(0.5);
+}
+
+.shot-every .phone {
+  transform-origin: right bottom;
+  transform: translate(-212%, -24%) scale(0.5);
+}
+
+.lifts.shot-every .phone {
+  transform-origin: center bottom;
+  transform: translate(-187%, -24%) scale(0.5);
+}
+
+.lifts.shot-every .browser,
+.lifts.shot-every .phone {
+  transition:
+    transform 0.9s cubic-bezier(0.65, 0, 0.35, 1),
+    opacity 0.5s ease-out;
+}
+
+/*
+ * Clearing the stage as a loop starts over, the browser and the phone fade
+ * where they stand, then move out of sight to where they come back from.
+ */
+.lifts.shot-clear .browser {
+  visibility: hidden;
+  opacity: 0;
+  transform: translateX(-5rem);
+}
+
+.lifts.shot-clear .browser,
+.lifts.shot-clear .phone.away {
+  transition:
+    opacity 0.35s ease-in,
+    transform 0s 0.35s,
+    visibility 0s 0.35s;
+}
+
 .stage {
   position: relative;
   padding-right: 13%;
@@ -76,8 +208,21 @@ function focus(close: boolean, at: boolean): void {
   opacity: 1;
 }
 
+/*
+ * The tour's stage keeps its browser in the middle of its column: the room
+ * the phone stands out into is split between the two sides.
+ */
+.stage:not(.lifts) {
+  padding-right: 6.5%;
+  padding-left: 6.5%;
+}
+
 .browser {
   overflow: hidden;
+  transform-origin: left center;
+  transition:
+    opacity 0.5s ease,
+    transform 0.8s cubic-bezier(0.45, 0, 0.2, 1);
   border: 1px solid var(--line);
   border-radius: 0.875rem;
   background: var(--paper);
@@ -217,7 +362,8 @@ function focus(close: boolean, at: boolean): void {
 
 /* A narrow screen shows the phone alone: the desktop's window would be too small to read. */
 @media (max-width: 720px) {
-  .stage {
+  .stage,
+  .stage:not(.lifts) {
     padding: 0;
   }
 

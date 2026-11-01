@@ -30,7 +30,7 @@ import pier2x from '@/assets/pier-2x.webp'
     <h2 class="section-title">Up and running in minutes.</h2>
     <p class="section-lede">Install Demi on your own server with one command.</p>
     <div class="box">
-      <img class="otter" :src="otter" alt="" width="240" height="232" />
+      <img class="otter" loading="lazy" :src="otter" alt="" width="240" height="232" />
       <CommandBox />
     </div>
     <div class="actions">

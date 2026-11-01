@@ -130,6 +130,7 @@ const sharedLength = computed(() => (holds.size ? Math.min(...holds.values()) : 
       v-if="shown"
       data-decor
       :class="side"
+      loading="lazy"
       :src="src1x"
       :srcset="`${src1x} ${width / 2}w, ${src2x} ${width}w`"
       :sizes="`${Math.round((shown.height * width) / height)}px`"

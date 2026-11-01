@@ -24,6 +24,29 @@ export async function shownText(c: Conversation, selector: string, text: string)
   throw new Error(`The demo never showed ${text} in ${selector}`)
 }
 
+/**
+ * Opens the newest row of the transcript whose text holds `text`, a call's
+ * or a group of calls', unless it shows open already, as a click on its face does.
+ */
+export async function openRow(c: Conversation, text: string): Promise<void> {
+  const rows = () => [...document.querySelectorAll<HTMLElement>('[data-block-id] button[aria-expanded]')]
+    .filter((button) => button.parentElement?.textContent?.includes(text))
+  await until(c, () => rows().length > 0)
+  const button = rows().at(-1)!
+  if (button.getAttribute('aria-expanded') !== 'true')
+    press(button.parentElement!)
+}
+
+/**
+ * Scrolls the transcript to its end, smoothly, as a reader does after opening
+ * a row: a row the reader opens holds the view where it stands, and the list
+ * follows its end again once the reader is back there.
+ */
+export function scrollToEnd(): void {
+  const list = document.querySelector('[data-block-id]')?.closest<HTMLElement>('.scroll-area-viewport')
+  list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
+}
+
 /** Waits until `holds` does. */
 export async function until(c: Conversation, holds: () => boolean): Promise<void> {
   while (!holds())

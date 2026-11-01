@@ -4,26 +4,33 @@
 // the app lays itself out as it would on that screen. It loads once it nears
 // the viewport, and plays the demo it is given; a frame the page hides never
 // loads, and says it is hidden. The demo's camera works inside the frame
-// (`src/demo/camera.ts`), and the frame says where it points.
+// (`src/demo/camera.ts`), and the frame says where it points. Its stage
+// pauses it while the stage is off screen or covered, and it goes on there.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { DemoId } from '@/features'
-import { askToPlay, cameraOf } from '@/demo/message'
+import type { DemoId, Form } from '@/features'
+import { askToPause, askToPlay, cameraOf, cardOf, shotOf, type DeviceShot, type StageCard } from '@/demo/message'
 
 const props = defineProps<{
   demo: DemoId
-  form: 'desktop' | 'phone'
+  form: Form
   width: number
   height: number
+  /** The play's number: a new one plays the demo again from its start. */
+  run?: number
+  /** Whether the play stops where it is, until it goes on from there. */
+  paused?: boolean
 }>()
 const emit = defineEmits<{
-  /** The scene closed the desktop's tab, or opened it again. */
-  tab: [closed: boolean]
   /** The frame's app has loaded and is playing. */
   ready: []
   /** The page hides the frame, which so never loads, or shows it again. */
   hidden: [hidden: boolean]
   /** The camera came close on a part of the screen, or showed all of it again, cutting there or moving. */
   focus: [close: boolean, cut: boolean]
+  /** What the stage shows beside the app (`demo/message.ts`). */
+  shot: [shot: DeviceShot | null]
+  /** What the corner card shows, as the scene says; none takes it away. */
+  card: [card: StageCard | null]
 }>()
 
 const box = ref<HTMLElement | null>(null)
@@ -31,31 +38,45 @@ const frame = ref<HTMLIFrameElement | null>(null)
 const scale = ref(0)
 const source = ref<string | null>(null)
 const ready = ref(false)
+/** The demo and the play's number the frame loaded with, which it plays as it loads. */
 let loadedWith: DemoId | null = null
+let loadedRun: number | undefined
 let resize: ResizeObserver | undefined
 let near: IntersectionObserver | undefined
 
 function hear(event: MessageEvent<unknown>): void {
   if (event.source !== frame.value?.contentWindow)
     return
-  const data = event.data as { demi?: string; closed?: unknown } | null
-  if (data?.demi === 'tab' && typeof data.closed === 'boolean')
-    emit('tab', data.closed)
+  const data = event.data as { demi?: string } | null
   const shot = cameraOf(data)
   if (shot !== undefined)
     emit('focus', shot.rect !== null, shot.cut)
+  const card = cardOf(data)
+  if (card !== undefined)
+    emit('card', card)
+  const device = shotOf(data)
+  if (device !== undefined)
+    emit('shot', device)
   if (data?.demi !== 'ready')
     return
   ready.value = true
   emit('ready')
-  if (props.demo !== loadedWith)
-    askToPlay(event.source as Window, props.demo)
+  const target = event.source as Window
+  if (props.demo !== loadedWith || props.run !== loadedRun)
+    askToPlay(target, props.demo)
+  askToPause(target, props.paused)
 }
 
-watch(() => props.demo, (demo) => {
+watch([() => props.demo, () => props.run], () => {
   const target = frame.value?.contentWindow
   if (ready.value && target)
-    askToPlay(target, demo)
+    askToPlay(target, props.demo)
+})
+
+watch(() => props.paused, (paused) => {
+  const target = frame.value?.contentWindow
+  if (ready.value && target)
+    askToPause(target, paused)
 })
 
 onMounted(() => {
@@ -70,6 +91,7 @@ onMounted(() => {
       return
     near?.disconnect()
     loadedWith = props.demo
+    loadedRun = props.run
     source.value = `${import.meta.env.BASE_URL}demo.html?demo=${props.demo}&form=${props.form}`
   }, { rootMargin: '600px 0px' })
   near.observe(element)

@@ -22,15 +22,13 @@ Bun.plugin({
     builder.onResolve({ filter: /^@\// }, (args) => ({ path: resolve(root, 'src', args.path.slice(2)) }))
   },
 })
-const { DEMOS } = await import('./src/features')
+const { DEMOS, FORMS } = await import('./src/features')
 const app = resolve(root, 'dist-record')
 const out = resolve(root, 'public/demos')
 // The recordings are written here and take the place of `out` once all are
 // done, so a site that runs meanwhile keeps playing the old ones, styles
 // and all.
 const staging = resolve(root, 'dist-recording')
-/** The screens a frame stands for, in CSS pixels, as `DemoStage.vue` draws them. */
-const FORMS = { desktop: { width: 1024, height: 614 }, phone: { width: 393, height: 852 } } as const
 /** How long past its tour time a demo plays, so its last change is in. */
 const TAIL_MS = 500
 /** How long a scene may set up before its opening shot. */
@@ -61,7 +59,8 @@ const browser = await chromium.launch()
 try {
   const only = process.argv[2]
   for (const demo of DEMOS.filter((each) => !only || each.id === only)) {
-    for (const [form, viewport] of Object.entries(FORMS)) {
+    for (const form of demo.forms) {
+      const viewport = FORMS[form]
       const page = await browser.newPage({ viewport, deviceScaleFactor: 2 })
       await page.addInitScript(recorderScript)
       await page.goto(`http://127.0.0.1:${server.port}/demos/record.html?demo=${demo.id}&form=${form}`)

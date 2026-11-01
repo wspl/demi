@@ -34,6 +34,9 @@ export const MODEL: ModelSelection = {
 
 export type DemoState = ChatSessionState & { blocks: Block[] }
 
+/** How long a reply takes to stream at most. */
+const REPLY_MS = 300
+
 /** Thrown out of a scene's wait when the scene was replaced. */
 export class Stopped extends Error {}
 
@@ -184,13 +187,6 @@ export class Conversation {
     this.state.blocks = this.state.blocks.map((block) => (block.id === id ? change(block) : block))
   }
 
-  /** A message already in the transcript when the scene opens, `agoMs` ago. */
-  past(text: string, reply: string, agoMs: number): void {
-    const user = this.userBlock([{ type: 'text', text }], agoMs)
-    this.append(user)
-    this.append({ type: 'text', id: this.id('text'), createdAt: this.now(agoMs - 4000), model: MODEL, text: reply, forkable: true } as Block)
-  }
-
   private userBlock(content: UserContentBlock[], agoMs = 0): Block {
     return { type: 'user', id: this.id('user'), turnId: this.id('turn'), createdAt: this.now(agoMs), model: MODEL, content, preamble: null } as Block
   }
@@ -208,6 +204,18 @@ export class Conversation {
     this.state.phase = 'running'
   }
 
+  /**
+   * The schedule `name` fires and sends `text`, as a run of it does: the
+   * transcript names the schedule over the message, and the turn starts.
+   */
+  async fired(text: string, schedule: { id: string; name: string }): Promise<void> {
+    const block = this.userBlock([{ type: 'text', text }])
+    this.append({ ...block, schedule: { scheduleId: schedule.id, runId: this.id('run'), name: schedule.name, at: this.now() } } as Block)
+    this.state.phase = 'running'
+    this.state.waitingSince = Date.now()
+    await this.wait(600)
+  }
+
   /** The user sends `text` with `images`: the turn starts and the agent is waited for. */
   async send(text: string, images: readonly DemoFile[] = []): Promise<void> {
     // Each image is the medium the model reads and its attachment's record, as an upload sends it.
@@ -221,15 +229,12 @@ export class Conversation {
     await this.wait(700)
   }
 
-  /** The agent thinks `text`, a few words at a time. */
-  async think(text: string, ms = 1200): Promise<void> {
-    this.state.waitingSince = null
-    const block = this.append({ type: 'thinking', id: this.id('thinking'), createdAt: this.now(), model: MODEL, text: '', signature: null } as Block)
-    await this.write(block.id, text, ms)
-  }
-
-  /** The agent answers `text`, as it streams. */
-  async say(text: string, ms = 1600): Promise<void> {
+  /**
+   * The agent answers `text`, as it streams: fast, at most `REPLY_MS`
+   * whatever `ms` asks, since a demo is watched and a slow reply only waits.
+   */
+  async say(text: string, ms = REPLY_MS): Promise<void> {
+    ms = Math.min(ms, REPLY_MS)
     this.state.waitingSince = null
     const units = segmentStreamUnits(text)
     // The backend opens a text block with its first words, never empty.
@@ -241,7 +246,7 @@ export class Conversation {
 
   private async write(id: string, text: string, ms: number): Promise<void> {
     const units = segmentStreamUnits(text)
-    const step = Math.max(16, ms / Math.max(1, units.length))
+    const step = Math.max(8, ms / Math.max(1, units.length))
     let shown = ''
     for (const unit of units) {
       shown += unit
@@ -258,6 +263,21 @@ export class Conversation {
     const call = this.call(step)
     await this.wait(ms)
     this.exited(call, step, ms)
+    this.state.waitingSince = Date.now()
+    await this.wait(300)
+  }
+
+  /**
+   * The agent runs `steps` side by side, as one response's calls: each prints
+   * its output and exits after its own time, and the turn goes on once all have.
+   */
+  async together(steps: readonly ShellStep[]): Promise<void> {
+    this.state.waitingSince = null
+    const calls = steps.map((step) => this.call(step))
+    await Promise.all(steps.map(async (step, i) => {
+      await this.wait(step.ms ?? 900)
+      this.exited(calls[i]!, step, step.ms ?? 900)
+    }))
     this.state.waitingSince = Date.now()
     await this.wait(300)
   }
@@ -358,6 +378,20 @@ export class Conversation {
       message: { id: `moved:${this.serial}`, recipientId: this.state.id, timestamp: at, content: '', event: { type: 'moved', host, path, home } },
     } as Block)
     this.state.cwd = path
+  }
+
+  /**
+   * The context compacts inside the turn: the transcript shows the pass
+   * running for `ms`, then its summary's boundary and the divider that says
+   * how many tokens it took the context down from.
+   */
+  async compact(summary: string, compactedTokens: number, ms = 700): Promise<void> {
+    this.state.waitingSince = null
+    this.state.phase = 'compacting'
+    await this.wait(ms)
+    const boundary = this.append({ type: 'compaction_boundary', id: this.id('boundary'), createdAt: this.now(), model: MODEL, summary, summaryTokens: 2_400, kept: [] } as Block)
+    this.append({ type: 'compaction_marker', id: this.id('marker'), createdAt: this.now(), model: MODEL, boundaryId: boundary.id, compactedTokens } as Block)
+    this.state.phase = 'running'
   }
 
   /** The turn ends. */

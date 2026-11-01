@@ -3,7 +3,7 @@
 // conversation, its composer and the work panel) over the scene's
 // conversation, and what the scene shows around the app, such as a phone's
 // notification.
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -24,11 +24,9 @@ import { galleryFiles, useGalleryWork } from '@demicodes/web-gallery/fixtures/wo
 import { createChangeSetOf, createGalleryProject } from '@demicodes/web-gallery/fixtures/project'
 import type { DemoId } from '@/features'
 import { Conversation, MODEL_SETTINGS, MODELS, PROVIDERS, Stopped } from './conversation'
-import PhoneNotice from './PhoneNotice.vue'
-import { CLOUD, PROJECTS, SCENES, sidebarRows, type DemoHosts, type Form, type Notice } from './scenes'
-import { CAMERA_MS, tellCamera, tellTab, type CameraRect } from './message'
-import { HARBOR } from './harbor'
-import { SHOP } from './shop'
+import type { ConversationSchedule } from '@demicodes/web-ui/schedules/types'
+import { CLOUD, PROJECTS, SCENES, sidebarRows, type DemoHosts, type Form } from './scenes'
+import { CAMERA_MS, tellCamera, tellCard, tellShot, type CameraRect, type DeviceShot, type StageCard } from './message'
 import { animateEntrances } from './entrances'
 
 const props = defineProps<{
@@ -43,21 +41,18 @@ const conversation = new Conversation(`demo-${props.run}`, scene.title, scene.cw
 conversation.state.terminals = [...(scene.services ?? [])]
 // The working tree has no changes: no scene shows them.
 const project = { ...createGalleryProject(), changes: createChangeSetOf([]) }
-const work = useGalleryWork(null, { files: galleryFiles(project), browser: galleryBrowser([], { page: SHOP }), screen: HARBOR })
+const work = useGalleryWork(null, { files: galleryFiles(project), browser: galleryBrowser([]) })
 work.open.value = false
-const notice = ref<Notice | null>(null)
-const closed = ref(false)
-watch(closed, tellTab)
 const hosts = reactive<DemoHosts>({ primary: scene.primary ?? CLOUD, attached: [] })
 const devices = scene.devices ?? []
 /** Where the conversation's work starts on the Host it runs on, which the header's directory names. */
 const projectName = () => conversation.state.cwd.split('/').filter(Boolean).at(-1) ?? null
 const moveQuestion = useMoveQuestion()
+/** The schedules that wake the conversation, which the agent may add to. */
+const schedules = ref<readonly ConversationSchedule[]>(scene.schedules ?? [])
 
-/** A device's home, where a move there starts the conversation's work. */
-function homeOf(name: string): string {
-  return `/Users/${name.split('-')[0]}`
-}
+/** The user's home on every device, where a move there starts the conversation's work: the demo's user is alex everywhere. */
+const HOME = '/Users/alex'
 
 /**
  * The user chose a Host in the header's menu: once they confirm, the
@@ -68,7 +63,7 @@ function choose(choice: HostChoice): void {
   const device = choice.kind === 'device' ? devices.find((each) => each.id === choice.id) : undefined
   if (!device)
     return
-  const home = homeOf(device.name)
+  const home = HOME
   const path = `${home}/Projects/${projectName() ?? ''}`
   void moveQuestion.ask(
     { host: device.name, directory: homePath(path, home), from: hosts.primary.name, fromCloud: hosts.primary.kind === 'cloud' },
@@ -90,6 +85,8 @@ const commenting: ReplyCommenting = {
   remove: (id) => (comments.value = comments.value.filter((each) => each.id !== id)),
 }
 const sidebarOpen = ref(false)
+/** The desktop's sidebar, collapsed for a scene that needs only the conversation. */
+const sidebarCollapsed = ref(scene.sidebar === false)
 // The panel as wide as the conversation lets it be, so its page and diff read in the small frame.
 const asideShare = ref(0.6)
 const draft = ref('')
@@ -115,8 +112,8 @@ async function open(target: Element | string | CameraRect | null): Promise<void>
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   const settling = document.getAnimations().filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
   await Promise.all(settling.map((animation) => animation.finished.catch(() => {})))
-  // The phone shows all of its screen, and opens its play at the same moment.
-  if (props.form === 'phone')
+  // A phone, a tablet or a foldable shows all of its screen, and opens its play at the same moment.
+  if (props.form !== 'desktop')
     tellCamera(null, true)
   else
     focus(target, true)
@@ -127,8 +124,41 @@ async function look(target: Element | string | CameraRect | null): Promise<void>
   await conversation.wait(CAMERA_MS)
 }
 
+/** Whether the stage shows a shot beside the app, which a scene that stops takes back. */
+let shooting = false
+function shoot(shot: DeviceShot | null): void {
+  if (props.form !== 'desktop')
+    return
+  shooting = shot !== null
+  tellShot(shot)
+}
+
+/** Whether the stage shows a corner card, which a scene that stops takes back. */
+let carding = false
+function card(shown: StageCard | null): void {
+  if (props.form !== 'desktop')
+    return
+  carding = shown !== null
+  tellCard(shown)
+}
+
+async function compose(text: string, ms: number, on?: Form): Promise<void> {
+  if (on && on !== props.form) {
+    await conversation.wait(ms)
+    await conversation.send(text)
+    return
+  }
+  const letters = [...text]
+  for (let i = 1; i <= letters.length; i++) {
+    draft.value = letters.slice(0, i).join('')
+    await conversation.wait(ms / letters.length)
+  }
+  draft.value = ''
+  await conversation.send(text)
+}
+
 // The scene starts before the first render, so the conversation never shows empty.
-scene.play({ conversation, work, form: props.form, notice, closed, hosts, open, look }).catch((error: unknown) => {
+scene.play({ conversation, work, form: props.form, hosts, schedules, open, look, shoot, card, compose }).catch((error: unknown) => {
   if (!(error instanceof Stopped))
     throw error
 })
@@ -139,14 +169,16 @@ onBeforeUnmount(() => {
   conversation.stop()
   // A selection the scene made goes with it, so the next scene opens on none.
   window.getSelection()?.removeAllRanges()
-  if (closed.value)
-    tellTab(false)
+  if (shooting)
+    tellShot(null)
+  if (carding)
+    tellCard(null)
 })
 </script>
 
 <template>
   <div class="relative h-full">
-    <SidebarLayout v-model:open="sidebarOpen" v-model:aside-open="work.open.value" v-model:aside-share="asideShare" class="h-full">
+    <SidebarLayout v-model:open="sidebarOpen" v-model:collapsed="sidebarCollapsed" v-model:aside-open="work.open.value" v-model:aside-share="asideShare" class="h-full">
       <template #sidebar>
         <AppSidebar
           :account="{ id: 'alex', name: 'Alex', email: 'alex@example.com' }"
@@ -163,7 +195,7 @@ onBeforeUnmount(() => {
         :panel-tabs="work.panel.value.tabs.length"
         :select-edit="work.selectEdit"
         :commenting="commenting"
-        :schedules="scene.schedules"
+        :schedules="schedules"
         @open-aside="work.open.value = true"
         @show-subagent="() => {}"
       >
@@ -216,30 +248,7 @@ onBeforeUnmount(() => {
         />
       </template>
     </SidebarLayout>
-    <Transition name="closed">
-      <div v-if="closed" class="closed" />
-    </Transition>
-    <PhoneNotice :notice="notice" />
     <SelectionFieldHost />
   </div>
 </template>
 
-<style scoped>
-/* The tab closed: the window shows an empty page. */
-.closed {
-  position: absolute;
-  inset: 0;
-  z-index: 100;
-  background: #f6f3ef;
-}
-
-.closed-enter-active,
-.closed-leave-active {
-  transition: opacity 0.35s ease;
-}
-
-.closed-enter-from,
-.closed-leave-to {
-  opacity: 0;
-}
-</style>

@@ -7,7 +7,7 @@ defineProps<{ icon: string, title: string, text?: string }>()
 <template>
   <article class="card">
     <header>
-      <img :src="icon" alt="" />
+      <img loading="lazy" :src="icon" alt="" />
       <div>
         <h3>{{ title }}</h3>
         <p v-if="text">{{ text }}</p>
