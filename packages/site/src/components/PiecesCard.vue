@@ -80,7 +80,8 @@ const uses = computed(() => {
   display: grid;
   gap: 0.75rem;
   width: 38%;
-  min-width: 18rem;
+  /* Room for the longest recipe, four pieces, on one line. */
+  min-width: 24rem;
   padding: 0.85rem 0.95rem 0.95rem;
   border: 1px solid var(--line);
   border-radius: 0.875rem;
