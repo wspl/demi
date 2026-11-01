@@ -213,12 +213,64 @@ export interface LineForm {
  * an ATX heading, a block quote, and a bullet or an ordered list item at any
  * indentation, so a nested item is one however deep it is.
  */
+const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/
+const QUOTE = /^ {0,3}(?:>[ \t]?)+/
+const LIST_ITEM = /^([ \t]*)(?:([-*+])|(\d{1,9})([.)]))([ \t]+|$)/
 const LINE_MARKERS: [LineForm['kind'], RegExp][] = [
-  ['rule', /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/],
+  ['rule', RULE],
   ['heading', /^ {0,3}#{1,6}(?:[ \t]+|$)/],
-  ['quote', /^ {0,3}(?:>[ \t]?)+/],
-  ['list', /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$)/],
+  ['quote', QUOTE],
+  ['list', LIST_ITEM],
 ]
+
+/**
+ * The marks a line opens with, read as `lineForm` reads them and further: its
+ * quote marks, then the spaces and the list marker after them, as a list in a
+ * quote is written. Offsets are in the line.
+ */
+export interface LinePrefix {
+  /** The quote marks with the spaces in and before them, such as `> > `; empty for none. */
+  quote: string
+  /** The spaces after the quote marks, before the marker or the text. */
+  indent: string
+  marker: ListMarker | null
+  /** Where the line's own text starts: after the marker and its task box. */
+  end: number
+}
+
+/** A list item's marker (`LinePrefix.marker`). */
+export interface ListMarker {
+  /** Where the marker starts in the line. */
+  from: number
+  /** A bullet item's `-`, `*` or `+`. */
+  bullet?: string
+  /** An ordered item's number as typed, and its `.` or `)`. */
+  digits?: string
+  delimiter?: string
+  /** The spaces after the marker, empty at the line's end. */
+  space: string
+  /** A task item's box and the spaces after it, such as `[x] `; empty for none. */
+  task: string
+}
+
+/** The marks `line` opens with (`LinePrefix`). */
+export function linePrefix(line: string): LinePrefix {
+  const quote = QUOTE.exec(line)?.[0] ?? ''
+  const rest = line.slice(quote.length)
+  const item = RULE.test(rest) ? null : LIST_ITEM.exec(rest)
+  if (!item) {
+    const indent = /^[ \t]*/.exec(rest)![0]
+    return { quote, indent, marker: null, end: quote.length + indent.length }
+  }
+  const [whole, indent = '', bullet, digits, delimiter, space = ''] = item
+  const task = space ? /^\[[ xX]\](?:[ \t]+|$)/.exec(rest.slice(whole.length))?.[0] ?? '' : ''
+  return {
+    quote,
+    indent,
+    marker: { from: quote.length + indent.length, bullet, digits, delimiter, space, task },
+    end: quote.length + whole.length + task.length,
+  }
+}
 
 /** The form a line of text opens with (`LineForm`); null for none. */
 export function lineForm(line: string): LineForm | null {
