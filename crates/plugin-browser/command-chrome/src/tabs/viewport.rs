@@ -148,6 +148,12 @@ pub fn ratio_for(device_ratio: f64, width: u32, height: u32) -> f64 {
     screen_ratio(device_ratio).min(limit).max(1.0)
 }
 
+/// A tab's window's width before and after it was fitted to a viewport.
+struct WindowWidth {
+    before: u32,
+    after: u32,
+}
+
 /// The virtual screen every window of the browser shares: the size of the
 /// viewer's screen in CSS pixels, and its pixel ratio.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -281,17 +287,16 @@ impl BrowserTab {
             self.page.execute(touch).await?;
         }
         let mut navigations = self.page.event_listener::<EventFrameNavigated>().await?;
+        let metrics = SetDeviceMetricsOverrideParams::new(
+            i64::from(viewport.width),
+            i64::from(viewport.height),
+            viewport.device_pixel_ratio,
+            mobile,
+        );
         // Resizing the native window after the emulated viewport can leave
         // macOS capture letterboxed at the old size, with mismatched input.
-        self.fit_window(viewport).await?;
-        self.page
-            .execute(SetDeviceMetricsOverrideParams::new(
-                i64::from(viewport.width),
-                i64::from(viewport.height),
-                viewport.device_pixel_ratio,
-                mobile,
-            ))
-            .await?;
+        let window = self.fit_window(viewport).await?;
+        self.page.execute(metrics.clone()).await?;
         // Publishes the viewport only after the page has painted.
         //
         // The metrics acknowledgement can precede the compositor's resized
@@ -299,17 +304,31 @@ impl BrowserTab {
         // the page meanwhile is laid out at the new metrics from its start, and
         // Chrome may never finish redrawing the one it left, of a tab nobody
         // captures yet: its screenshot waited the whole request timeout.
-        let replaced = async {
+        let mut replaced = std::pin::pin!(async {
             while let Some(Ok(navigated)) = navigations.next().await {
                 if navigated.frame.parent_id.is_none() {
                     return;
                 }
             }
             std::future::pending::<()>().await
+        });
+        let painted = tokio::select! {
+            painted = paint(&self.page) => { painted?; true }
+            () = &mut replaced => false,
         };
-        tokio::select! {
-            painted = paint(&self.page) => painted?,
-            () = replaced => {}
+        // A window narrower than macOS allows keeps its smallest width, and
+        // Chrome lays a window that changed width out only after the bounds'
+        // answer, which gives the page the window's width again: the capture
+        // would shrink the page into the viewport between black bands. The
+        // metrics set again once the page painted hold.
+        if window.after != window.before && window.after > viewport.width {
+            self.page.execute(metrics).await?;
+            if painted {
+                tokio::select! {
+                    painted = paint(&self.page) => painted?,
+                    () = &mut replaced => {}
+                }
+            }
         }
         self.state.viewport.send_modify(|viewports| {
             viewports.current = viewport;
@@ -321,17 +340,20 @@ impl BrowserTab {
         Ok(())
     }
 
-    async fn fit_window(&self, viewport: BrowserViewport) -> Result<()> {
+    /// Sizes the tab's window to `viewport` and answers its width before and
+    /// after, which the system's smallest window can make wider than asked.
+    async fn fit_window(&self, viewport: BrowserViewport) -> Result<WindowWidth> {
         let browser = self.browser.call()?;
-        let window = browser
+        let found = browser
             .execute(
                 GetWindowForTargetParams::builder()
                     .target_id(self.page.target_id().clone())
                     .build(),
             )
             .await?
-            .result
-            .window_id;
+            .result;
+        let window = found.window_id;
+        let before = found.bounds.width;
         browser
             .execute(SetWindowBoundsParams::new(
                 window,
@@ -341,7 +363,23 @@ impl BrowserTab {
                     .build(),
             ))
             .await?;
-        Ok(())
+        let after = browser
+            .execute(
+                GetWindowForTargetParams::builder()
+                    .target_id(self.page.target_id().clone())
+                    .build(),
+            )
+            .await?
+            .result
+            .bounds
+            .width;
+        let width = |width: Option<i64>| {
+            width.map_or(viewport.width, |width| u32::try_from(width).unwrap_or(viewport.width))
+        };
+        Ok(WindowWidth {
+            before: width(before),
+            after: width(after),
+        })
     }
 
     /// Sets the virtual screen all windows share; windows keep their tabs'
