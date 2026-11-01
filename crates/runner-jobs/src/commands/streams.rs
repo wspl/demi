@@ -5,8 +5,8 @@
 //! - the stream and its command context;
 //! - the declared operation;
 //! - two pipes: `input`, delivered to the invocation as input chunks when it
-//!   asks for them, and `output`, its standard output. Its standard error goes
-//!   to the Host log.
+//!   asks for them, and `output`, its standard output, which a one-shot call
+//!   has none of. Its standard error goes to the Host log.
 //!
 //! The runner starts the invocation in the resident that holds the
 //! conversation's state, starting the resident when needed, and answers
@@ -37,9 +37,14 @@
 //!
 //! The same mechanism serves a one-shot user call (the conversation browser's
 //! tab methods): an operation that finishes by itself, with `args` as a
-//! command's invocation has them, a JSON result and no input. Its failure keeps
-//! the bounded standard output as well as the standard error, so a package
-//! whose error document is on stdout reports its cause.
+//! command's invocation has them, a JSON result and no input. It has no output
+//! pipe: `resident_done` carries its whole standard output, at most
+//! `RESIDENT_ANSWER_BYTES`, and goes as soon as the invocation completes, so
+//! the answer costs the call no connection of its own. An answer longer than
+//! that, or an invocation that ends without completing, ends the call with
+//! `resident_error` instead. Its failure keeps the bounded standard output as
+//! well as the standard error, so a package whose error document is on stdout
+//! reports its cause.
 
 use std::{
     collections::HashMap,
@@ -185,7 +190,8 @@ impl ResidentStreams {
                 }
             }
             // Input pipe → the invocation, one chunk per pull; its standard
-            // output → the output pipe, which only its completion ends cleanly.
+            // output → the output pipe, which only its completion ends
+            // cleanly, or the one-shot call's answer.
             let (uploads, uploaded) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
             let source = PipeSource {
                 pipes: pipes.clone(),
@@ -193,6 +199,43 @@ impl ResidentStreams {
                 cancel: stream.clone(),
                 body: None,
                 pending: Bytes::new(),
+            };
+            let Some(output) = output else {
+                // An answer too long ends the invocation at once, not at its
+                // next write, which may never come.
+                let call = stream.child_token();
+                let (ended, answer) =
+                    tokio::join!(opened.run(source, uploads, &call), answer(uploaded, &call));
+                // Read before the stream's own end below: only the backend
+                // gives the call up, by `resident_close` or its connection.
+                let given_up = stream.is_cancelled();
+                if ended.input.is_err() {
+                    stream.cancel();
+                }
+                report_pipe(&reply, input.id, ended.input);
+                let end = match (ended.done, answer) {
+                    (_, Err(Unanswered::TooLarge)) => Err((
+                        ResidentErrorCode::AnswerTooLarge,
+                        format!("the answer is longer than {} bytes", wire::RESIDENT_ANSWER_BYTES),
+                    )),
+                    (Some(Outcome { exit_code, stderr }), Ok(stdout)) => Ok(wire::Outbound::ResidentDone {
+                        stream_id: stream_id.clone(),
+                        exit_code,
+                        stderr,
+                        stdout: wire::WireBytes(stdout.into()),
+                    }),
+                    // The backend that gave the stream up waits for nothing.
+                    _ if given_up => return,
+                    _ => Err((
+                        ResidentErrorCode::ResidentFailed,
+                        "the invocation ended before it completed".to_owned(),
+                    )),
+                };
+                match end {
+                    Ok(done) => send_done(&reply, &done),
+                    Err((code, message)) => send_error(&reply, stream_id, code, message),
+                }
+                return;
             };
             let body = futures_util::stream::unfold(uploaded, |mut uploaded| async move {
                 uploaded.recv().await.map(|item| (item, uploaded))
@@ -206,18 +249,16 @@ impl ResidentStreams {
             }
             report_pipe(&reply, input.id, ended.input);
             report_pipe(&reply, output.id, upload);
-            // A one-shot call has no page to tell: its caller learns the
-            // exit code and the operation's own words from this message.
             if let Some(Outcome { exit_code, stderr }) = ended.done {
-                match wire::encode(&wire::Outbound::ResidentDone { stream_id, exit_code, stderr }) {
-                    Ok(message) => {
-                        // A disconnected backend no longer waits for the call.
-                        let _ = reply.send(message);
-                    }
-                    Err(error) => {
-                        tracing::warn!(event = "reply.encode_failed", what = "resident_done", %error, "a resident stream's end was not encoded");
-                    }
-                }
+                send_done(
+                    &reply,
+                    &wire::Outbound::ResidentDone {
+                        stream_id,
+                        exit_code,
+                        stderr,
+                        stdout: wire::WireBytes(Vec::new()),
+                    },
+                );
             }
         });
         Ok(())
@@ -689,6 +730,46 @@ impl OutputSink for StreamSink {
     /// A user stream's writer refuses media (`crates/runner-jobs/src/commands/command_output.rs`).
     async fn medium(&mut self, _: demi_command_protocol::MediumFacts, _: Bytes) -> io::Result<()> {
         Err(io::Error::other("a user stream returned a medium"))
+    }
+}
+
+/// Why a one-shot call has no answer to send.
+enum Unanswered {
+    /// The invocation wrote more than a `resident_done` carries.
+    TooLarge,
+    /// The invocation ended before it completed.
+    Ended,
+}
+
+/// A one-shot call's whole standard output, which `resident_done` carries.
+/// One longer than it may be is given up at once, and `call` cancelled ends
+/// its invocation.
+async fn answer(
+    mut uploaded: mpsc::Receiver<io::Result<Bytes>>,
+    call: &CancellationToken,
+) -> Result<Bytes, Unanswered> {
+    let mut answer = bytes::BytesMut::new();
+    while let Some(chunk) = uploaded.recv().await {
+        let chunk = chunk.map_err(|_| Unanswered::Ended)?;
+        if answer.len() + chunk.len() > wire::RESIDENT_ANSWER_BYTES {
+            call.cancel();
+            return Err(Unanswered::TooLarge);
+        }
+        answer.extend_from_slice(&chunk);
+    }
+    Ok(answer.freeze())
+}
+
+/// The end of a stream whose invocation completed. A one-shot call has no
+/// page to tell: its caller learns the exit code, the operation's own words
+/// and its answer from this message.
+fn send_done(output: &mpsc::UnboundedSender<wire::Frame>, done: &wire::Outbound) {
+    match wire::encode(done) {
+        // A disconnected backend no longer waits for the call.
+        Ok(message) => drop(output.send(message)),
+        Err(error) => {
+            tracing::warn!(event = "reply.encode_failed", what = "resident_done", %error, "a resident stream's end was not encoded");
+        }
     }
 }
 

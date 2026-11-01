@@ -785,13 +785,14 @@ impl RemoteHost {
 
     /// Opens a user stream: `request`'s operation in the resident
     /// that holds the conversation's state, its input and output the two
-    /// pipes (`crates/runner-jobs/src/commands/streams.rs`). It admits no work: a stream is
-    /// retention, not activity.
+    /// pipes (`crates/runner-jobs/src/commands/streams.rs`), or, without an
+    /// output pipe, a one-shot call whose end carries its output. It admits
+    /// no work: a stream is retention, not activity.
     pub async fn open_resident(
         &self,
         request: ResidentRequest,
         input: PipeRef,
-        output: PipeRef,
+        output: Option<PipeRef>,
     ) -> Result<ResidentStream, HostError> {
         let link = self.link()?;
         let stream_id = uuid::Uuid::new_v4().simple().to_string();
@@ -841,20 +842,14 @@ impl RemoteHost {
     ) -> Result<Bytes, ResidentCallError> {
         let link = self.link()?;
         let to_resident = link.pipes().to_device(link.device());
-        let from_resident = link.pipes().from_device(link.device());
         let mut writer = to_resident.writer().map_err(pipe_error)?;
-        let mut reader = from_resident.reader().map_err(pipe_error)?;
-        let abandon = |reason: &str| {
-            to_resident.fail(reason);
-            from_resident.fail(reason);
-        };
         let mut stream = match self
-            .open_resident(request, to_resident.wire_ref(), from_resident.wire_ref())
+            .open_resident(request, to_resident.wire_ref(), None)
             .await
         {
             Ok(stream) => stream,
             Err(error) => {
-                abandon("resident call failed");
+                to_resident.fail("resident call failed");
                 return Err(match error.kind {
                     // The runner's `resident_error`: the resident did not
                     // start, or the runner refused it.
@@ -865,29 +860,29 @@ impl RemoteHost {
         };
         let sent = writer.write(input).await;
         if let Err(failure) = sent {
-            abandon("resident call failed");
+            to_resident.fail("resident call failed");
             return Err(broken(&link, failure).into());
         }
         writer.end();
-        let mut answer = BytesMut::new();
-        while let Some(chunk) = reader.next().await {
-            let chunk = chunk.map_err(|failure| broken(&link, failure))?;
-            if answer.len() + chunk.len() > max_bytes {
-                abandon("resident call failed");
-                return Err(ResidentCallError::TooLarge(max_bytes));
+        let end = stream.done().await.map_err(|error| match &error.kind {
+            HostErrorKind::Failed { code: Some(code) }
+                if *code == wire::ResidentErrorCode::AnswerTooLarge.to_string() =>
+            {
+                ResidentCallError::TooLarge(max_bytes.min(wire::RESIDENT_ANSWER_BYTES))
             }
-            answer.extend_from_slice(&chunk);
+            _ => error.into(),
+        })?;
+        if end.stdout.len() > max_bytes {
+            return Err(ResidentCallError::TooLarge(max_bytes));
         }
-        let end = stream.done().await?;
-        let answer = answer.freeze();
         if end.exit_code != 0 {
             return Err(ResidentCallError::Exited {
                 exit_code: end.exit_code,
                 stderr: end.stderr,
-                stdout: answer,
+                stdout: end.stdout,
             });
         }
-        Ok(answer)
+        Ok(end.stdout)
     }
 
     async fn fs(
@@ -1380,6 +1375,9 @@ pub struct ResidentEnd {
     pub exit_code: u8,
     /// The bounded tail of its standard error.
     pub stderr: String,
+    /// A one-shot call's whole standard output; empty for a stream, whose
+    /// output pipe carries it.
+    pub stdout: Bytes,
 }
 
 /// An open user stream. Closing it, or dropping it, ends the answers to its

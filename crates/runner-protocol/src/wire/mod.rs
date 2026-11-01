@@ -96,8 +96,12 @@
 //! at most 4 MiB of it, however slow the uplink, while its bytes move.
 //!
 //! Bulk bytes therefore never travel in a message: file contents and command IO
-//! go through pipes ([`PipeFrame`]). Only a message that breaks the protocol
-//! closes the connection.
+//! go through pipes ([`PipeFrame`]). The one exception is a one-shot resident
+//! call's answer, at most [`RESIDENT_ANSWER_BYTES`] in its `resident_done`: a
+//! pipe of its own would cost the call a connection and its close, two round
+//! trips, for bytes that hold the link up a quarter as long as the largest
+//! message does. Only a message that breaks the protocol closes the
+//! connection.
 
 mod encoding;
 mod kept;
@@ -140,7 +144,7 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 66;
+pub const VERSION: u32 = 67;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
@@ -213,6 +217,10 @@ pub const LOG_FRAME_BYTES: usize = 32 * 1024;
 /// Unicode scalar values (`crates/shared-types/src/lib.rs`). The runner keeps the
 /// last this many bytes, which are never more characters.
 pub const RESIDENT_STDERR_CHARS: usize = 16 * 1024;
+/// The most standard output a one-shot resident call answers with, which its
+/// `resident_done` carries: the largest answer any caller takes, one JSON
+/// document of a package's.
+pub const RESIDENT_ANSWER_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WireError {
