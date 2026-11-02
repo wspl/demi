@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from '../locales/text'
 import { t as shared } from '../../locales/text'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
 import { AlarmClock, CircleAlert, Clock, Copy, ListEnd, MessagesSquare, Pencil, Trash2 } from '@lucide/vue'
@@ -253,18 +253,26 @@ const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-bo
  * its last line fading out, until Show More opens it, as Claude Code's does. A
  * message a few lines over the fold shows whole, since folding would hide less
  * than the control takes.
+ *
+ * A waiting message folds once it runs past two lines of text, to its first
+ * line whole and its second fading, so the messages waiting under a working
+ * agent leave the transcript in sight. The lines count from its first text, so
+ * a commented picture above the words shows whole with them. Its row of
+ * controls is there anyway, so Show More takes no room of its own.
  */
 const FOLD_ABOVE_PX = 300
 const FOLDED_PX = 200
+const WAITING_LINES = 2
 const expanded = ref(false)
 
 const contentRef = ref<HTMLElement>()
 const bodyRef = ref<HTMLElement>()
 /**
  * Where a long message folds, and the line box its fade spans; null when it is
- * short enough to show whole. The fold is `FOLDED_PX` down, or lower, at the
- * end of a line of text across that mark, so it cuts no letter. Anything else
- * across it is cut there.
+ * short enough to show whole. The fold is at its mark, `FOLDED_PX` down or a
+ * waiting message's second line's end, or lower, at the end of a line of text
+ * across that mark, so it cuts no letter. Anything else across it is cut
+ * there.
  */
 const clip = ref<{ height: number; line: number } | null>(null)
 
@@ -276,16 +284,16 @@ function measure(): void {
     return
   }
   const line = Number.parseFloat(getComputedStyle(body).lineHeight) || 0
-  const limit = FOLDED_PX
-  const full = body.getBoundingClientRect().height
-  if (full <= FOLD_ABOVE_PX) {
-    clip.value = null
-    return
-  }
-  const top = box.getBoundingClientRect().top
   // A glyph box sits in its line box a little off centre, so a line crosses
   // the mark only with a quarter of it on each side.
   const slack = line / 4
+  const top = box.getBoundingClientRect().top
+  const limit = props.pending ? firstLineTop(body, top, line) + line * WAITING_LINES : FOLDED_PX
+  const full = body.getBoundingClientRect().height
+  if (full <= (props.pending ? limit + slack : FOLD_ABOVE_PX)) {
+    clip.value = null
+    return
+  }
   let height = limit
   const texts = document.createTreeWalker(body, NodeFilter.SHOW_TEXT)
   const range = document.createRange()
@@ -310,6 +318,23 @@ function measure(): void {
   clip.value = height < full - 1 ? { height, line } : null
 }
 
+/**
+ * How far below `top` the line box of the first visible text in `body`
+ * starts, its lines `line` tall; 0 when it has no text.
+ */
+function firstLineTop(body: HTMLElement, top: number, line: number): number {
+  const texts = document.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+  const range = document.createRange()
+  for (let text = texts.nextNode(); text; text = texts.nextNode()) {
+    range.selectNodeContents(text)
+    const rect = [...range.getClientRects()].find(({ width }) => width > 0)
+    if (rect) {
+      return Math.max(0, rect.top - top - Math.max(0, (line - rect.height) / 2))
+    }
+  }
+  return 0
+}
+
 // The message folds as it mounts, so nothing that sizes it, such as the
 // transcript's list, which measures its rows once their mount has run, ever
 // takes its unfolded height for its size: a row the list draws for a moment
@@ -320,6 +345,8 @@ onMounted(measure)
 // The text alone is watched: it takes the box's width, while the box's height
 // is the cut itself, which would call the measure back for nothing.
 useResizeObserver(bodyRef, measure)
+// A sent message folds by its own rule, measured once it is drawn as sent.
+watch(() => props.pending, measure, { flush: 'post' })
 </script>
 
 <template>
