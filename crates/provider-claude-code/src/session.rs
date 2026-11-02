@@ -525,7 +525,9 @@ fn covered<'a>(
 /// `item` as an entry in the CLI's format, as the CLI would have written it had
 /// the item come from it.
 ///
-/// - Input is a `user` entry with the message Demi writes to a process.
+/// - Input is a `user` entry with the message Demi writes to a process, with
+///   the marks the CLI gives such a message: it hands the text on as written,
+///   as it does to a process (`crate::input::Input::User`).
 /// - Text and tool calls are `assistant` entries of one message, with the
 ///   tool's name as the CLI gives it.
 /// - A result is a `user` entry.
@@ -560,7 +562,10 @@ fn written_as(item: &InferenceItem, written: &[Value], pending: &[Value]) -> Opt
         InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
             let message = serde_json::to_value(Message::user(content))
                 .expect("a message serializes");
-            Some(user(message))
+            let mut entry = user(message);
+            entry["queueSkipAttachments"] = Value::Bool(true);
+            entry["queueSkipSlashCommands"] = Value::Bool(true);
+            Some(entry)
         }
         InferenceItem::AssistantText { model_id, text } if !text.is_empty() => Some(assistant(
             model_id,

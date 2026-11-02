@@ -205,6 +205,12 @@ pub(crate) fn args(request: &InferenceRequest, session: &str, searches: Searches
 ///   the user of Demi watches every command as it runs, and the reminder,
 ///   whose wording the vendor sets remotely, has the model stop its work to
 ///   report.
+/// - What the CLI adds of its own to what Demi sends is off where it can be:
+///   the file an `@path` in a message names, which any file the CLI can read
+///   on a machine every account shares would be; its reminder to sign commits
+///   as Claude Code; the count of tokens left it appends to results; another
+///   model answering in the place of one that refused; and the `advisor` and
+///   tool-search tools it would offer beside Demi's.
 /// - `CLAUDECODE` is removed, so the CLI never takes itself for a session
 ///   inside another Claude Code.
 /// - The input the session ends with is answered at once.
@@ -228,6 +234,12 @@ fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
         ("DISABLE_AUTO_COMPACT".to_owned(), set("1")),
         ("MAX_MCP_OUTPUT_TOKENS".to_owned(), set("1000000")),
         ("CLAUDE_CODE_SILENT_TURN_REMINDER".to_owned(), set("0")),
+        ("CLAUDE_CODE_DISABLE_FILE_MENTIONS".to_owned(), set("1")),
+        ("CLAUDE_CODE_ATTRIBUTION_ANNOUNCEMENT".to_owned(), set("0")),
+        ("CLAUDE_CODE_TOTAL_TOKENS_REMINDER".to_owned(), set("off")),
+        ("CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK".to_owned(), set("1")),
+        ("CLAUDE_CODE_DISABLE_ADVISOR_TOOL".to_owned(), set("1")),
+        ("ENABLE_TOOL_SEARCH".to_owned(), set("false")),
         ("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_owned(), set("1")),
         ("CLAUDE_CODE_GB_DISK_CACHE_WHEN_TELEMETRY_OFF".to_owned(), set("1")),
         ("CLAUDECODE".to_owned(), None),

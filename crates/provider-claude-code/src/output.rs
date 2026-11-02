@@ -466,6 +466,10 @@ pub(crate) struct ResultLine {
     /// consumed none, such as one a resumed session's input started.
     #[serde(default)]
     user_message_uuids: Vec<String>,
+    /// How many calls the turn made; none for a message kept for a later
+    /// turn ([`crate::input::new_user_messages`]).
+    #[serde(default)]
+    num_turns: Option<u64>,
 }
 
 /// The token counts of the CLI's latest API call, which the response carries.
@@ -873,6 +877,12 @@ impl ResultLine {
     /// Whether the turn consumed the user message of client id `uuid`.
     pub(crate) fn names(&self, uuid: &str) -> bool {
         self.user_message_uuids.iter().any(|each| each == uuid)
+    }
+
+    /// Whether the turn made no call, as for a message kept for a later turn,
+    /// so it has no response to give.
+    pub(crate) fn called_nothing(&self) -> bool {
+        self.num_turns == Some(0)
     }
 
     pub(crate) fn end(self) -> TurnEnd {

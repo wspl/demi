@@ -624,6 +624,9 @@ fn run(
                         // written to the process ends an earlier turn, and
                         // the run reads on to the turn that consumes it.
                         let earlier = live.unanswered.as_deref().is_some_and(|uuid| !line.names(uuid));
+                        if earlier && line.called_nothing() {
+                            continue;
+                        }
                         if !earlier {
                             live.unanswered = None;
                         }
