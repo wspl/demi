@@ -4,7 +4,7 @@ import { baseName } from '@demicodes/utils'
 import type { AttachmentLookup, MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
 import type { PictureCopy, PictureFailure } from '@demicodes/protocol'
 import { codeBlockHtml } from './highlight'
-import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
+import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, linkedConversation, messageFileTarget, messageImage } from './filePath'
 import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
 import { REPLY_BLOCK_ATTRIBUTE, REPLY_BLOCK_ID_ATTRIBUTE, replyBlockAt, replyBlockStart } from './reply-block'
 import { linkedAgent } from '../agent/agent-links'
@@ -59,10 +59,20 @@ function commitLink(commit: string, root: string | null, href: string, attribute
 }
 
 /**
+ * A link that opens the user's conversation `id`; its address is the
+ * conversation's page, which a click with a modifier opens as the browser
+ * does.
+ */
+function conversationLink(id: string, attributes = ''): string {
+  return `<a href="/chat/${escapeHtml(id)}" data-conversation-link="${escapeHtml(id)}"${attributes}>`
+}
+
+/**
  * The place of the icon a message's link wears before its text, which the
  * page fills (`StreamedMarkdown`): a Host file's icon
- * (`data-file-icon`, by the file's name), the commit icon (`data-commit-icon`)
- * or a web page's link icon (`data-link-icon`).
+ * (`data-file-icon`, by the file's name), the commit icon (`data-commit-icon`),
+ * the conversation icon (`data-conversation-icon`) or a web page's link icon
+ * (`data-link-icon`).
  */
 function linkIcon(attribute: string): string {
   return `<span class="message-link-icon" ${attribute} aria-hidden="true"></span>`
@@ -458,6 +468,14 @@ const messageRenderer: RendererObject = {
       if (!files?.openCommit || (commit.folder !== null && root === null))
         return body
       return link((attributes) => commitLink(commit.commit, root, token.href, attributes), linkIcon('data-commit-icon'))
+    }
+    // A conversation opens as the sidebar opens it; nobody to open it, its
+    // text alone.
+    const conversation = linkedConversation(token.href)
+    if (conversation !== null) {
+      if (!activeOptions?.files?.openConversation)
+        return body
+      return link((attributes) => conversationLink(conversation, attributes), linkIcon('data-conversation-icon'))
     }
     // A file nobody opens is named as text.
     const files = activeOptions?.files

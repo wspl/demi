@@ -38,6 +38,8 @@ export function galleryAttachmentOrigin(
  * - Attachments load from the gallery's blobs.
  * - A file a click opens goes to `open`, and a commit a link names to
  *   `openCommit`.
+ * - A conversation a link names says the product would open it, in a new tab
+ *   for a click with a modifier or the middle button.
  * - The Host's answer about a reply's inline code paths is the gallery's: the
  *   files of its demo project, answered at once.
  * - A file link's Show in Files goes to `showInFiles`, which outside a panel
@@ -65,6 +67,8 @@ export function galleryConversationFiles(
     history,
     openBranch,
     openCommit,
+    openConversation: () => productWould('Open the Conversation'),
+    openConversationElsewhere: () => productWould('Open the Conversation in a New Tab'),
     openAttachment,
     home: source.home,
     contents: source.contents,
@@ -82,7 +86,7 @@ export function galleryConversationFiles(
  * whose text is code beside plain code, and paths written as code, of which
  * the project has some and not others.
  */
-export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth/cookie.ts), and [session.ts](src/auth/session.ts#L5) reads it under the new name. The setup steps the [README](README.md#L42) lists still hold; from the home it is [~/Projects/shop/README.md](~/Projects/shop/README.md). The fix went in as [Fix the cart total when a coupon empties it](commit:${LINKED_COMMIT}), and the vendored parser's as [Bump the parser](commit:vendor/parser@${LINKED_COMMIT}), a commit of the repository in that folder.
+export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth/cookie.ts), and [session.ts](src/auth/session.ts#L5) reads it under the new name. The setup steps the [README](README.md#L42) lists still hold; from the home it is [~/Projects/shop/README.md](~/Projects/shop/README.md). The fix went in as [Fix the cart total when a coupon empties it](commit:${LINKED_COMMIT}), and the vendored parser's as [Bump the parser](commit:vendor/parser@${LINKED_COMMIT}), a commit of the repository in that folder. The flaky login test went to a conversation of its own, [Stabilize the login test](conversation:6f1c2d4e-8a3b-4c5d-9e7f-1a2b3c4d5e6f).
 
 在中文句子里，字符与图标之间同样留出间距：已经提交了[修正优惠券清空后的购物车合计](commit:${LINKED_COMMIT})，请查看。
 

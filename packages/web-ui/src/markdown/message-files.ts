@@ -43,6 +43,8 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
       && !previous.open === !next.open
       && !previous.attachment === !next.attachment
       && !previous.openCommit === !next.openCommit
+      && !previous.openConversation === !next.openConversation
+      && !previous.openConversationElsewhere === !next.openConversationElsewhere
     return same ? previous : next
   })
 }
@@ -60,6 +62,9 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
  * - A click on an agent's link opens the agent in the Agents window; a drag that
  *   selected its words does not.
  * - A click on a commit's link opens the commit in the Change view.
+ * - A click on a conversation's link opens the conversation; one with a
+ *   modifier or the middle button is the browser's, as a link to the page
+ *   is, unless `openConversationElsewhere` takes it.
  * - Any other click is the page's.
  */
 export function openMessageLink(
@@ -98,12 +103,45 @@ export function openMessageLink(
     files?.openCommit?.(commitTarget(commit))
     return
   }
+  const conversation = target?.closest('a[data-conversation-link]')
+  if (conversation) {
+    const id = conversation.getAttribute('data-conversation-link') ?? ''
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      if (files?.openConversationElsewhere) {
+        event.preventDefault()
+        files.openConversationElsewhere(id)
+      }
+      return
+    }
+    // A press that selected the link's words was a selection, not a click.
+    const selected = window.getSelection()
+    if (selected && !selected.isCollapsed && selected.containsNode(conversation, true)) {
+      event.preventDefault()
+      return
+    }
+    event.preventDefault()
+    files?.openConversation?.(id)
+    return
+  }
   const link = target?.closest('a[data-file-link]')
   if (!link || !files?.open)
     return
   event.preventDefault()
   const line = Number(link.getAttribute('data-line'))
   files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null })
+}
+
+/**
+ * A middle click on a conversation's link: the browser's, as a link to the
+ * page is, unless `openConversationElsewhere` takes it.
+ */
+export function openConversationAside(event: MouseEvent, files: MessageFiles | undefined): void {
+  const target = event.target instanceof Element ? event.target : null
+  const conversation = target?.closest('a[data-conversation-link]')
+  if (!conversation || event.button !== 1 || !files?.openConversationElsewhere)
+    return
+  event.preventDefault()
+  files.openConversationElsewhere(conversation.getAttribute('data-conversation-link') ?? '')
 }
 
 /**
