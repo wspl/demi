@@ -289,6 +289,7 @@ const files = computed<ConversationFiles | undefined>(() => {
     showInFiles: work.canOpen('file')
       ? ({ path, root }) => work.openIn(current.id, { intent: 'file', payload: { path, tree: true, ...(root === undefined ? {} : { root }) } })
       : undefined,
+    openConversation: (id) => navigation.open(id),
     openCommit: work.canOpen('commit')
       ? ({ commit, root }) => work.openIn(current.id, { intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
       : undefined,

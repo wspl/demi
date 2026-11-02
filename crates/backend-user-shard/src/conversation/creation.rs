@@ -20,6 +20,7 @@ use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
     ConversationTarget, CreateConversation, FirstMessageAnswer, ModelSettings,
 };
+use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
 
@@ -61,7 +62,19 @@ impl Shard {
             });
         }
         let id = request.id.clone();
-        let mut start = self.conversation_start(request).await?;
+        let start = self.conversation_start(request).await?;
+        self.create_started(id, start).await
+    }
+
+    /// Creates the user's conversation `id` with what `start` says, checked:
+    /// the page's request, or an agent's `demi conversation new`
+    /// (`organize.rs`).
+    pub(crate) async fn create_started(
+        &self,
+        id: ConversationId,
+        mut start: ConversationStart,
+    ) -> Result<Creation, ChangeRefusal> {
+        let control = &self.services().control;
         // Its directory is the one its Host names (§ Resolve a target).
         start.target = self.host_shard().resolved_destination(start.target).await?;
         let (created, made) = control

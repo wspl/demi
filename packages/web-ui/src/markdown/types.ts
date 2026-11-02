@@ -154,6 +154,18 @@ export interface ConversationFiles {
    */
   openCommit?(target: MessageCommitTarget): void
   /**
+   * Opens the user's conversation a message links as `conversation:<id>`, as
+   * the sidebar opens it; absent where nothing opens one, such as a shared
+   * page, so such a link shows as text.
+   */
+  openConversation?(id: string): void
+  /**
+   * What a click with a modifier or the middle button on such a link does
+   * where the link's address is no page of its own, as in the gallery; absent,
+   * the browser opens the address, the conversation's page.
+   */
+  openConversationElsewhere?(id: string): void
+  /**
    * The full hash of the commit a message links by an abbreviation, as the
    * repository the link's directory is in reads it; rejects when it has no
    * such commit or cannot be read. Absent, a commit link's menu has no Copy

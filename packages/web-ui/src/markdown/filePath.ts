@@ -44,6 +44,15 @@ export interface LinkedCommit {
 }
 
 /**
+ * The conversation a message's link names as `conversation:<id>`, by its id
+ * as written, which names it as the conversation's address does; null for any
+ * other target.
+ */
+export function linkedConversation(target: string): string | null {
+  return /^conversation:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(target.trim())?.[1] ?? null
+}
+
+/**
  * The commit a link's target names (`packages/web-ui/src/files/history.ts`):
  * `commit:3f2a9c1`, its id or at least 7 of its first hex digits, or
  * `commit:src/v8@86229da`, the repository's folder before the last `@`;

@@ -6,7 +6,7 @@ import { followMathWait } from '@demicodes/web-ui/markdown/math'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/render-version'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
-import { messageLinkMenu, openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
+import { messageLinkMenu, openConversationAside, openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
 import { vLinkMenus, type LinkMenus } from '@demicodes/web-ui/ui/context-menu'
 import type { MessageAttachment, MessageFileTarget, MessagePictures } from '@demicodes/web-ui/markdown/types'
 import type { CodeFile, ReplyPicture } from '@demicodes/protocol'
@@ -15,7 +15,7 @@ import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
 import { attachmentDrag } from '@demicodes/web-ui/agent/message-input/copied-message'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
-import { GitCommitHorizontal, Link } from '@lucide/vue'
+import { GitCommitHorizontal, Link, MessagesSquare } from '@lucide/vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import AudioPlayer from '@demicodes/web-ui/files/AudioPlayer.vue'
 import AttachmentCard from '@demicodes/web-ui/files/AttachmentCard.vue'
@@ -167,7 +167,7 @@ function placesIn(nodes: readonly ChildNode[], fresh: readonly ChildNode[]): Pla
   ])
   return {
     codeBlocks: within('.code-block'),
-    linkIcons: within('[data-file-icon], [data-commit-icon], [data-link-icon]'),
+    linkIcons: within('[data-file-icon], [data-commit-icon], [data-conversation-icon], [data-link-icon]'),
     agentLinks: within('[data-agent-link]'),
     audios: within(`[${ATTACHMENT_AUDIO_ATTRIBUTE}]`),
     cards: within(`[${ATTACHMENT_CARD_ATTRIBUTE}]`),
@@ -281,6 +281,7 @@ function onMediumLoad(event: Event): void {
     :class="streaming ? 'is-streaming' : ''"
     :aria-busy="streaming || undefined"
     @click="openMessageLink($event, files(), viewer, agents(), transcript?.pictures)"
+    @auxclick="openConversationAside($event, files())"
     @dragstart="attachmentDrag"
     @keydown="pressMessageLink"
     @load.capture="onMediumLoad"
@@ -293,6 +294,7 @@ function onMediumLoad(event: Event): void {
   <Teleport v-for="(place, index) in linkIcons" :key="index" :to="place">
     <FileIcon v-if="place.dataset.fileIcon !== undefined" :name="place.dataset.fileIcon" :is-directory="false" :size="ICON_PX.in28" />
     <GitCommitHorizontal v-else-if="place.dataset.commitIcon !== undefined" :size="ICON_PX.in28" aria-hidden="true" />
+    <MessagesSquare v-else-if="place.dataset.conversationIcon !== undefined" :size="ICON_PX.in28" aria-hidden="true" />
     <Link v-else :size="ICON_PX.in28" aria-hidden="true" />
   </Teleport>
   <PicturePreview
