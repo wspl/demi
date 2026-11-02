@@ -4,6 +4,8 @@
 //!
 //! - list the user's credentials and show one;
 //! - ask the user for one and wait for the answer;
+//! - save one, or new values of a saved one, from values piped on its
+//!   standard input;
 //! - read one field's value onto its standard output once the conversation may
 //!   use the credential;
 //! - with the user's Manage Credentials, remove one.
@@ -15,7 +17,11 @@
 //!
 //! An agent that needs a secret asks the user for it with `request` rather than
 //! reading it from the message, where it would sit in the transcript and reach
-//! the model's vendor.
+//! the model's vendor. One it can reach on the Host, such as a key in a file,
+//! it pipes into `save`: never into an argument, since the shell expands it
+//! there and the permission card shows and stores the expanded command line.
+//! A save asks the user nothing, a replacement of a saved one's values
+//! neither: an agent can already use any value it can pipe.
 //!
 //! `read` writes the value to its standard output, wherever that goes: Demi
 //! refuses and masks nothing, and how the value is passed on is the agent's
@@ -40,12 +46,12 @@
 //! `--keep`, since it knows what the secret is for. The card offers no choice,
 //! as a form does not ask how long its data is kept.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::credentials::StoredCredential;
 use demi_backend_database::permissions::CredentialAsk;
-use demi_backend_permissions::{Answer, ask_credential, read_credential};
+use demi_backend_permissions::{Answer, ask_credential, read_credential, save_credential};
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc,
@@ -77,13 +83,17 @@ const MANAGE_DESCRIPTION: &str = "Manage Credentials lets the agents of this con
 const SUMMARY: &str = "The user's credentials: named secrets such as API keys, tokens and passwords, each with fields. Ask the user for one, pass a field's value on without reading it, list and show them, or remove one.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "The user's named secrets: request one on a card, read a field into a pipe or a file. A secret is asked for this way, never in the conversation.";
+const ENTRY: &str = "The user's named secrets: request one on a card, or save one piped from the Host; read a field into a pipe or a file. A secret is asked for this way, never in the conversation.";
 
 const LIST_SUMMARY: &str = "List the user's credentials: name, field names, when each is removed (- for kept always), and whether this conversation may use it. No value.";
 
 const SHOW_SUMMARY: &str = "Show one credential: its fields, the values of its visible fields once this conversation may use it, its note and its dates. A secret field's value is never shown; `read` passes it on.";
 
 const REQUEST_SUMMARY: &str = "Ask the user for a credential on a card in the conversation, or for new values of the saved one of that name, which then must have the same fields. Waits for the user's answer, however long, and prints what was saved, or fails when the user declines. The credential is then allowed in this conversation.";
+
+const SAVE_SUMMARY: &str = "Save a credential from values piped on standard input, which the model never reads, such as a key from a file on the Host, or new values of the saved one of that name, which then must have the same fields. The credential is then allowed in this conversation.";
+
+const VALUES: &str = "Piped from a file or a command, never written in the command, which the transcript keeps: for one field, its value as it is, without one trailing newline; for several, one <field>=<value> line each.";
 
 const READ_SUMMARY: &str = "Write one field's value to standard output, exactly as saved, without a newline. A value you print is sent to the model's vendor and stays in the transcript; to avoid that, pipe it into a command (`demi credentials read \"GitHub token\" token | gh auth login --with-token`), redirect it into a file (`… > token.txt`), or substitute it (`TOKEN=$(demi credentials read \"GitHub token\" token) git push`). A credential this conversation may not use yet asks the user first, and the read fails until they allow it.";
 
@@ -112,6 +122,19 @@ struct RequestArgs {
     field: Vec<String>,
     reason: Option<String>,
     keep: Option<Keep>,
+}
+
+/// The input of `save`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct SaveArgs {
+    name: String,
+    #[schemars(length(min = 1))]
+    field: Vec<String>,
+    reason: Option<String>,
+    keep: Option<Keep>,
+    /// The values, from standard input.
+    values: Option<String>,
 }
 
 /// The input of `read`.
@@ -199,6 +222,19 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .running_hint(RUNNING_HINT)
                 .json_output::<Listed>()
                 .bind(TypedRpc::new(verb(shard.clone(), request))),
+        )
+        .leaf(
+            LeafBuilder::rpc("save", SAVE_SUMMARY)
+                .input::<SaveArgs>()
+                .describe("name", "The credential's name.")
+                .describe("field", "One field as <name>:<secret|visible>:<label>, as `request` takes it.")
+                .describe("reason", "What it is for, which the credential keeps as its note.")
+                .describe("keep", "How long the credential is kept, as for `request`: 1h (the default), 1d, 30d or always.")
+                .describe("values", VALUES)
+                .positionals(["name"])
+                .stdin_field("values")
+                .json_output::<Listed>()
+                .bind(TypedRpc::new(verb(shard.clone(), save))),
         )
         .leaf(
             LeafBuilder::rpc("read", READ_SUMMARY)
@@ -401,13 +437,13 @@ fn parse_field(text: &str) -> Result<CredentialField, RpcError> {
     Ok(field)
 }
 
-async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let RequestArgs {
-        name,
-        field,
-        reason,
-        keep,
-    } = call.args;
+/// The name and the ask a `request` or a `save` names.
+fn asked(
+    name: String,
+    field: &[String],
+    reason: Option<String>,
+    keep: Option<Keep>,
+) -> Result<(String, CredentialAsk), RpcError> {
     let name = Trimmed::from(name).into_string();
     if name.is_empty() {
         return Err(failed("a credential's name has at least one character".to_owned()));
@@ -423,6 +459,69 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
         fields,
         keep: keep.unwrap_or(Keep::Hour),
     };
+    Ok((name, ask))
+}
+
+/// Each field's value from `save`'s standard input. A problem names the
+/// line, never what it holds, which may be a secret.
+fn piped_values(fields: &[CredentialField], input: &str) -> Result<BTreeMap<String, String>, RpcError> {
+    let mut values = BTreeMap::new();
+    if let [field] = fields {
+        let value = input
+            .strip_suffix("\r\n")
+            .or_else(|| input.strip_suffix('\n'))
+            .unwrap_or(input);
+        values.insert(field.name.clone(), value.to_owned());
+    } else {
+        for (index, line) in input.lines().enumerate() {
+            if line.is_empty() {
+                continue;
+            }
+            let line_number = index + 1;
+            let (name, value) = line.split_once('=').ok_or_else(|| {
+                failed(format!("standard input, line {line_number}: a line is <field>=<value>"))
+            })?;
+            if !fields.iter().any(|field| field.name == name) {
+                return Err(failed(format!(
+                    "standard input, line {line_number}: names no field of the credential; its fields are {}",
+                    field_names(fields)
+                )));
+            }
+            if values.insert(name.to_owned(), value.to_owned()).is_some() {
+                return Err(failed(format!(
+                    "standard input, line {line_number}: \u{201c}{name}\u{201d} has a value already"
+                )));
+            }
+        }
+    }
+    for field in fields {
+        match values.get(&field.name) {
+            None => {
+                return Err(failed(format!(
+                    "standard input has no value for \u{201c}{}\u{201d}; pipe one <field>=<value> line for each field",
+                    field.name
+                )));
+            }
+            Some(value) if value.is_empty() => {
+                return Err(failed(format!(
+                    "standard input: the value of \u{201c}{}\u{201d} is empty",
+                    field.name
+                )));
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(values)
+}
+
+async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let RequestArgs {
+        name,
+        field,
+        reason,
+        keep,
+    } = call.args;
+    let (name, ask) = asked(name, &field, reason, keep)?;
     let answer = ask_credential(
         shard.permission_shard(),
         &call.invocation,
@@ -432,14 +531,7 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
     )
     .await?;
     match answer {
-        Answer::Saved { credential, .. } => {
-            let saved = listed(&credential, true);
-            if call.invocation.json {
-                return print_json(&port, &saved).await;
-            }
-            port.stdout(listed_text(&saved)).await?;
-            Ok(0)
-        }
+        Answer::Saved { credential, .. } => print_saved(&call.invocation, &port, &credential).await,
         Answer::Declined => Err(failed(format!(
             "the user declined to save \u{201c}{name}\u{201d}"
         ))),
@@ -447,6 +539,31 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
             "the request for \u{201c}{name}\u{201d} was withdrawn: the conversation was archived"
         ))),
     }
+}
+
+async fn save(shard: Rc<Shard>, call: Call<SaveArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let SaveArgs {
+        name,
+        field,
+        reason,
+        keep,
+        values,
+    } = call.args;
+    let (name, ask) = asked(name, &field, reason, keep)?;
+    let values = values.ok_or_else(|| failed("pipe the values on standard input".to_owned()))?;
+    let values = piped_values(&ask.fields, &values)?;
+    let saved = save_credential(shard.permission_shard(), &call.invocation, name, ask, values).await?;
+    print_saved(&call.invocation, &port, &saved.credential).await
+}
+
+/// Prints the credential `request` or `save` saved.
+async fn print_saved(invocation: &RpcInvocation, port: &RpcPort, credential: &StoredCredential) -> Result<u8, RpcError> {
+    let saved = listed(credential, true);
+    if invocation.json {
+        return print_json(port, &saved).await;
+    }
+    port.stdout(listed_text(&saved)).await?;
+    Ok(0)
 }
 
 async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {

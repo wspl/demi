@@ -77,7 +77,7 @@
 //! agent session and no `Shard`.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -88,13 +88,13 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
     AnswerProblem, Answered, AskedHost, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
-    Needed, PermissionRefusal, StoredAsk, StoredRequest, Undecided,
+    Needed, PermissionRefusal, SavedByAgent, StoredAsk, StoredRequest, Undecided,
 };
 use demi_backend_page_sync::{Part, Revisions, UserMarks};
 use demi_command_declarations::Category;
 use demi_host_interface::{PortError, RpcError, RpcInvocation, RpcPort};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
-use demi_web_api_protocol::credentials::{Keep, RequestedValues};
+use demi_web_api_protocol::credentials::{CredentialField, Keep, RequestedValues};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::permissions::{
     ConversationPermissions, PermissionCategory, PermissionDecision, PermissionHost,
@@ -573,14 +573,7 @@ pub async fn ask_credential(
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     if let Asked::FieldsDiffer(fields) = asked {
-        let fields = fields
-            .iter()
-            .map(|field| format!("{}:{}", field.name, field.kind.as_str()))
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(RpcError::Failed(format!(
-            "\u{201c}{name}\u{201d} is saved with other fields ({fields}): ask for those fields, or under another name"
-        )));
+        return Err(fields_differ(&name, &fields));
     }
     changed(shard, &conversation);
     shard.asked(&conversation, request, PushAsk::Credential { name });
@@ -589,6 +582,48 @@ pub async fn ask_credential(
         answer = answered => Ok(answer.unwrap_or(Answer::Withdrawn)),
         () = cancelled => Err(RpcError::Failed("the call was cancelled".into())),
     }
+}
+
+/// Saves the credential `name` from the `values` the call's agent piped,
+/// kept as `ask` says, or new values of the saved one of that name, which
+/// has the same fields, and allows it in the conversation.
+pub async fn save_credential(
+    shard: &dyn PermissionShard,
+    invocation: &RpcInvocation,
+    name: String,
+    ask: CredentialAsk,
+    values: BTreeMap<String, String>,
+) -> Result<Answered, RpcError> {
+    let Asking { conversation, .. } = asking(shard, invocation)?;
+    let saved = shard
+        .control()
+        .save_credential(conversation.clone(), name.clone(), ask, values, shard.credential_seal())
+        .await
+        .map_err(|error| RpcError::Failed(error.to_string()))?;
+    match saved {
+        SavedByAgent::Saved(answered) => {
+            changed(shard, &conversation);
+            for other in &answered.others {
+                changed(shard, other);
+            }
+            shard.credentials_changed();
+            Ok(answered)
+        }
+        SavedByAgent::FieldsDiffer(fields) => Err(fields_differ(&name, &fields)),
+        SavedByAgent::Unfit(problem) => Err(RpcError::Failed(problem.to_string())),
+    }
+}
+
+/// The refusal of a credential whose name is saved with other `fields`.
+fn fields_differ(name: &str, fields: &[CredentialField]) -> RpcError {
+    let fields = fields
+        .iter()
+        .map(|field| format!("{}:{}", field.name, field.kind.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    RpcError::Failed(format!(
+        "\u{201c}{name}\u{201d} is saved with other fields ({fields}): use those fields, or another name"
+    ))
 }
 
 /// Answers the waiting commands of the conversation's credential requests,

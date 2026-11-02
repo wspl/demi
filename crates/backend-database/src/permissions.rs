@@ -190,6 +190,17 @@ pub enum Asked {
     FieldsDiffer(Vec<CredentialField>),
 }
 
+/// What an agent's save of a credential from its values did.
+#[derive(Debug)]
+pub enum SavedByAgent {
+    /// The credential, new or with new values, allowed in the conversation.
+    Saved(Answered),
+    /// A credential of the name is saved with these other fields.
+    FieldsDiffer(Vec<CredentialField>),
+    /// The values do not fit the fields.
+    Unfit(AnswerProblem),
+}
+
 /// What a read of a credential's field found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CredentialRead {
@@ -513,44 +524,45 @@ impl ControlService {
             if let Err(problem) = fitting(&ask.fields, &values) {
                 return Ok(Err(PermissionRefusal::InvalidAnswer(problem)));
             }
-            let owner = owner_of(&transaction, &conversation)?;
-            let keep = ask.keep;
-            let keep_until = credentials::keep_until(now, keep)?;
-            let id = match credentials::named(&transaction, &owner, name)? {
-                Some(saved) if !saved.same_fields(&ask.fields) => {
+            let answered = match store(&transaction, &conversation, name, ask, values, now, &*seal)? {
+                Ok(answered) => answered,
+                Err(_) => {
                     return Ok(Err(PermissionRefusal::FieldsDiffer(format!(
                         "\u{201c}{name}\u{201d} already has other fields; answer with the same fields or choose another name."
                     ))));
                 }
-                Some(saved) => {
-                    credentials::renew(&transaction, &saved, &values, keep_until, now, &*seal)?;
-                    saved.id
-                }
-                None => credentials::insert(
-                    &transaction,
-                    &owner,
-                    &NewCredential {
-                        name: name.clone(),
-                        note: ask.reason.clone(),
-                        fields: ask.fields.clone(),
-                        values,
-                        keep_until,
-                    },
-                    now,
-                    &*seal,
-                )?,
             };
-            allow(&transaction, &conversation, &id, now)?;
             transaction.execute("DELETE FROM permission_requests WHERE id = ?1", [request.as_str()])?;
-            let credential =
-                credentials::by_id(&transaction, &owner, &id)?.expect("the credential was just written");
-            let others = credentials::waiting_for(&transaction, &owner, &[name])?;
             transaction.commit()?;
-            Ok(Ok(Answered {
-                credential,
-                keep,
-                others: others.into_iter().collect(),
-            }))
+            Ok(Ok(answered))
+        })
+        .await
+    }
+
+    /// Saves the credential `name` an agent of the conversation gave
+    /// `values` for, or new values of the saved one of that name with the
+    /// same fields, kept as `ask` says, and allows the conversation to use
+    /// it, in one transaction.
+    pub async fn save_credential(
+        &self,
+        conversation: ConversationId,
+        name: String,
+        ask: CredentialAsk,
+        values: BTreeMap<String, String>,
+        seal: std::sync::Arc<dyn CredentialSeal>,
+    ) -> Result<SavedByAgent, StorageError> {
+        self.call(move |connection, now| {
+            if let Err(problem) = fitting(&ask.fields, &values) {
+                return Ok(SavedByAgent::Unfit(problem));
+            }
+            let transaction = connection.transaction()?;
+            Ok(match store(&transaction, &conversation, &name, &ask, values, now, &*seal)? {
+                Ok(answered) => {
+                    transaction.commit()?;
+                    SavedByAgent::Saved(answered)
+                }
+                Err(fields) => SavedByAgent::FieldsDiffer(fields),
+            })
         })
         .await
     }
@@ -898,6 +910,50 @@ pub enum AnswerProblem {
     /// A declined request came with values.
     #[error("A declined request takes no values.")]
     DeclinedWithValues,
+}
+
+/// Saves the credential `name` with `values`, or new values of the saved one
+/// of that name, kept as `ask` says, and allows the conversation to use it.
+/// A saved one with other fields is left as it is, and its fields answered.
+fn store(
+    connection: &Connection,
+    conversation: &ConversationId,
+    name: &str,
+    ask: &CredentialAsk,
+    values: BTreeMap<String, String>,
+    now: Timestamp,
+    seal: &dyn CredentialSeal,
+) -> Result<Result<Answered, Vec<CredentialField>>, StorageError> {
+    let owner = owner_of(connection, conversation)?;
+    let keep_until = credentials::keep_until(now, ask.keep)?;
+    let id = match credentials::named(connection, &owner, name)? {
+        Some(saved) if !saved.same_fields(&ask.fields) => return Ok(Err(saved.fields)),
+        Some(saved) => {
+            credentials::renew(connection, &saved, &values, keep_until, now, seal)?;
+            saved.id
+        }
+        None => credentials::insert(
+            connection,
+            &owner,
+            &NewCredential {
+                name: name.to_owned(),
+                note: ask.reason.clone(),
+                fields: ask.fields.clone(),
+                values,
+                keep_until,
+            },
+            now,
+            seal,
+        )?,
+    };
+    allow(connection, conversation, &id, now)?;
+    let credential = credentials::by_id(connection, &owner, &id)?.expect("the credential was just written");
+    let others = credentials::waiting_for(connection, &owner, &[name])?;
+    Ok(Ok(Answered {
+        credential,
+        keep: ask.keep,
+        others: others.into_iter().collect(),
+    }))
 }
 
 /// Whether `values` holds a value for each of `fields`
