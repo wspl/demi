@@ -1013,6 +1013,9 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       if (keepsEnd)
         scrollToBottom()
       endDistance.value = distanceFromBottom(el)
+      // The reader's paragraph wrapped anew in its row, and stands there now.
+      if (!keepsEnd)
+        remeasureReadAt()
     } else {
       scrollPending()
       if (el && seen)
@@ -1055,14 +1058,20 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
           }
           return false
         }
-        const isStreamingTail = item.index === blocks.value.length - 1
-        const allowCorrection = shouldAutoScroll.value || !isStreamingTail
-        const adjusts = allowCorrection && item.start < offset
-        if (adjusts) {
+        if (item.start >= offset)
+          return false
+        // Not following, a row across the view's top moves what the reader
+        // reads only by what it grew above the reader's paragraph: a reply
+        // that streams grows below it, and the paragraph stays still, as a
+        // browser keeps a page's place by the element at its top (CSS scroll
+        // anchoring). A row wholly above the view moves it by all it grew.
+        const across = !shouldAutoScroll.value && item.start + item.size > offset
+        const by = across ? readerMovedIn(item.key, currentInstance) ?? (item.index === blocks.value.length - 1 ? 0 : _delta) : _delta
+        if (Math.abs(by) > 0) {
           // Many a second as rows are measured: counted, and told with the scroll that follows.
           resizeCorrections += 1
-          resizeCorrectedPx += Math.round(_delta)
-          followRowsAbove(_delta)
+          resizeCorrectedPx += Math.round(by)
+          followRowsAbove(by)
         }
         return false
       }
@@ -1099,10 +1108,45 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    * The paragraph, or other block of a row, at the view's top, as of the last
    * scroll or placing: its row's key and its place among the children at
    * each depth (a message drawn anew as it streams replaces its elements,
-   * not their places), how far below the view's top it stood, and the share
-   * of it above the view's top, when the view's top cut it.
+   * not their places), the element itself, how far below the view's top it
+   * stood, the share of it above the view's top, when the view's top cut it,
+   * and how far below its row's top it stands.
    */
-  let readAt: { key: string, path: number[], offset: number, above: number } | null = null
+  let readAt: { key: string, path: number[], element: Element, offset: number, above: number, inRow: number } | null = null
+  /**
+   * The reader's paragraph in `row`: the element itself while the row holds
+   * it, since a step that comes before it in a run moves it to another place
+   * among its siblings; otherwise the element at its place, as a paragraph
+   * that streams is drawn anew there. Null when the row has no such place.
+   */
+  function readBlock(row: Element, at: NonNullable<typeof readAt>): { element: Element, path: number[] } | null {
+    if (at.element.isConnected && row.contains(at.element))
+      return { element: at.element, path: pathOf(row, at.element) }
+    const { block, reached } = blockOf(row, at.path)
+    return reached ? { element: block, path: at.path } : null
+  }
+  /** The place of `element` among the children at each depth below `row`. */
+  function pathOf(row: Element, element: Element): number[] {
+    const path: number[] = []
+    for (let at = element; at !== row && at.parentElement; at = at.parentElement)
+      path.unshift([...at.parentElement.children].indexOf(at))
+    return path
+  }
+  /**
+   * How far the reader's paragraph moved down in `key`'s row since it was
+   * last read, which now holds that place; null when the paragraph is not in
+   * that row, or the row no longer holds it.
+   */
+  function readerMovedIn(key: VirtualItem['key'], instance: Virtualizer<HTMLElement, HTMLElement>): number | null {
+    const at = readAt
+    const row = at && at.key === String(key) ? instance.elementsCache.get(key) : undefined
+    const read = at && row ? readBlock(row, at) : null
+    if (!at || !row || !read)
+      return null
+    const inRow = read.element.getBoundingClientRect().top - row.getBoundingClientRect().top
+    readAt = { ...at, ...read, inRow }
+    return inRow - at.inRow
+  }
   /**
    * Where the reader's paragraph is to stand through the reflow: below its
    * row's start, with the rows' box's own place, and below the view's top.
@@ -1231,14 +1275,12 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const el = scrollContainer.value
     const at = readAt
     const row = el && at ? el.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(at.key)}"]`) : null
-    if (!el || !at || !row)
+    const read = row && at ? readBlock(row, at) : null
+    if (!el || !at || !row || !read)
       return
-    const { block, reached } = blockOf(row, at.path)
-    if (!reached)
-      return
-    const box = block.getBoundingClientRect()
+    const box = read.element.getBoundingClientRect()
     const offset = box.top - el.getBoundingClientRect().top
-    readAt = { ...at, offset, above: offset < 0 && box.height > 0 ? -offset / box.height : 0 }
+    readAt = { ...at, ...read, offset, above: offset < 0 && box.height > 0 ? -offset / box.height : 0, inRow: box.top - row.getBoundingClientRect().top }
   }
   /** The first of `children` from `from` on that stands in the flow and has a height. */
   function inFlow(children: HTMLCollection, from: number): number {
@@ -1287,9 +1329,17 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
           found = blockAt(read, containerTop, bottom)
         }
         const path = found.path
-        const box = blockOf(read, path).block.getBoundingClientRect()
+        const element = blockOf(read, path).block
+        const box = element.getBoundingClientRect()
         const offset = box.top - containerTop
-        readAt = { key: read.dataset['rowKey']!, path, offset, above: offset < 0 && box.height > 0 ? -offset / box.height : 0 }
+        readAt = {
+          key: read.dataset['rowKey']!,
+          path,
+          element,
+          offset,
+          above: offset < 0 && box.height > 0 ? -offset / box.height : 0,
+          inRow: box.top - read.getBoundingClientRect().top,
+        }
         return
       }
     }
