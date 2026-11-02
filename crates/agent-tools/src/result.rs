@@ -251,14 +251,14 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String 
         CommandState::Running { hint, outliving } => {
             match look.moved {
                 Some(Moved::SentNow | Moved::Input) => after.push(format!(
-                    "[A message arrived, so command {command} moved to the background. It keeps running and its end wakes you, so if nothing else needs doing, end your turn.]"
+                    "[A message arrived, so command {command} moved to the background. It keeps running and its end wakes you. Do not wait for it: do other work meanwhile, or tell the user what is running and end your turn.]"
                 )),
                 Some(Moved::Call) => after.push(format!(
-                    "[Another call returned, so command {command} moved to the background. It keeps running and its end wakes you, so if nothing else needs doing, end your turn.]"
+                    "[Another call returned, so command {command} moved to the background. It keeps running and its end wakes you. Do not wait for it: do other work meanwhile, or tell the user what is running and end your turn.]"
                 )),
                 Some(Moved::TimePassed) => {
                     after.push(
-                        "[The command is still running, so it moved to the background. Its end wakes you, so if nothing else needs doing, end your turn.]".to_owned(),
+                        "[The command is still running, so it moved to the background. Its end wakes you. Do not wait for it: do other work meanwhile, or tell the user what is running and end your turn.]".to_owned(),
                     );
                 }
                 None => {}
