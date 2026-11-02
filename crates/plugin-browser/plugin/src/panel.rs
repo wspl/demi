@@ -108,6 +108,11 @@ fn added_id(tab: &str) -> String {
 #[derive(Default)]
 pub struct Work {
     locks: RefCell<HashMap<ConversationId, Rc<Mutex<()>>>>,
+    /// The browser tabs this plugin opened for panel tabs, by conversation,
+    /// each with the number of the first list that names it, until a list
+    /// that numbered arrives: one taken before the tab opened, which can
+    /// arrive after, says nothing of it.
+    opened: RefCell<HashMap<ConversationId, HashMap<String, u64>>>,
 }
 
 impl Work {
@@ -146,7 +151,7 @@ impl Work {
         {
             return Ok(Some(tab.to_owned()));
         }
-        match open_for(port, id, data).await {
+        match open_for(self, conversation, port, id, data).await {
             Ok(tab) => Ok(tab),
             Err(error) => {
                 port.update_panel_tab(id, fields([("failure", failure(&error))]))
@@ -186,6 +191,7 @@ impl Work {
         if !page::keep(port, device, 0, Vec::new()).await? {
             return Ok(());
         }
+        self.opened.borrow_mut().remove(conversation);
         let panel = port.panel_tabs().await?;
         for tab in panel.tabs.iter().filter(|tab| tab.kind == KIND) {
             if TabData::of(tab).as_ref().and_then(TabData::live).is_some() {
@@ -208,7 +214,8 @@ impl Work {
     /// - Every bound tab whose browser tab was closed on purpose is removed.
     /// - Every bound tab whose browser tab was lost with the browser is marked
     ///   closed, to open again when shown; one the list names again is not
-    ///   lost, as when a report taken before its tab opened marked it.
+    ///   lost, as when a report taken before its tab opened marked it. A
+    ///   list taken before the plugin opened a tab says nothing of it.
     pub async fn sync(
         &self,
         conversation: &ConversationId,
@@ -262,13 +269,25 @@ impl Work {
         }
         let present: HashMap<&str, &BrowserTab> =
             listed.iter().map(|tab| (tab.id.as_str(), tab)).collect();
+        // The tabs opened after this list was taken, which it cannot name;
+        // a list as new as a tab is the last that needs remembering it.
+        let unlisted: HashSet<String> = {
+            let mut opened = self.opened.borrow_mut();
+            let tabs = opened.entry(conversation.clone()).or_default();
+            tabs.retain(|_, listed_from| *listed_from > revision);
+            let unlisted = tabs.keys().cloned().collect();
+            if tabs.is_empty() {
+                opened.remove(conversation);
+            }
+            unlisted
+        };
         for (id, data) in &bound {
             let Some(browser_tab) = data.tab.as_deref() else {
                 continue;
             };
             let lost = data.live().is_none();
             match present.get(browser_tab) {
-                None if lost => {}
+                None if lost || unlisted.contains(browser_tab) => {}
                 None if closed.iter().any(|tab| tab.as_str() == browser_tab) => {
                     port.remove_panel_tab(id.as_str()).await?;
                 }
@@ -362,15 +381,42 @@ fn after_opened(order: &[Placed], at: usize) -> usize {
 /// - If the user asked for another address meanwhile, the tab loads that one.
 /// - If the user closed the panel tab meanwhile, its browser tab closes.
 async fn open_for(
+    work: &Work,
+    conversation: &ConversationId,
     port: &PluginPort,
     id: &str,
     data: TabData,
 ) -> Result<Option<String>, PluginError> {
     // A new tab is bound before its page opens, so the list that names it
-    // finds it bound and adds no panel tab of its own.
+    // finds it bound and adds no panel tab of its own. It starts loading its
+    // address in the same call: a second call would cost the user another
+    // round trip to the Host. An address the Host refuses makes no tab: if
+    // the user asked for another meanwhile, the tab opens on that one.
     let (tab, made) = match data.live() {
-        Some(tab) => (tab.to_owned(), false),
-        None => (page::new_tab(port).await?.id.to_string(), true),
+        Some(tab) => (tab.to_owned(), None),
+        None => {
+            let mut asked = data.url;
+            loop {
+                let url = (asked != "about:blank").then(|| asked.clone());
+                match page::new_tab(port, url).await {
+                    Ok(made) => {
+                        let tab = made.tab.to_string();
+                        if let Some(listed_from) = made.list {
+                            work.opened
+                                .borrow_mut()
+                                .entry(conversation.clone())
+                                .or_default()
+                                .insert(tab.clone(), listed_from);
+                        }
+                        break (tab, Some(asked));
+                    }
+                    Err(error) => match data_of(port, id).await? {
+                        Some(now) if now.url != asked => asked = now.url,
+                        _ => return Err(error),
+                    },
+                }
+            }
+        }
     };
     let bound = fields([
         ("tab", Value::String(tab.clone())),
@@ -380,8 +426,8 @@ async fn open_for(
     port.update_panel_tab(id, bound).await?;
     match data_of(port, id).await? {
         None => page::close(port, &tab).await.map(|()| None),
-        // A new tab is blank already.
-        Some(now) if made && now.url == "about:blank" => Ok(Some(tab)),
+        // A new tab loads the address it was made on already.
+        Some(now) if made.as_ref() == Some(&now.url) => Ok(Some(tab)),
         Some(now) => page::navigate(port, &tab, now.url)
             .await
             .map(|_| Some(tab)),

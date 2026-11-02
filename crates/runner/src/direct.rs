@@ -381,7 +381,9 @@ impl Operations for HostOperations {
                 Ok(Err(StreamRefusal::Refused { code, message })) => {
                     let code = match code {
                         ResidentErrorCode::UnknownOperation => ChannelErrorCode::UnknownStream,
-                        ResidentErrorCode::ResidentFailed | ResidentErrorCode::Refused => {
+                        ResidentErrorCode::ResidentFailed
+                        | ResidentErrorCode::Refused
+                        | ResidentErrorCode::AnswerTooLarge => {
                             ChannelErrorCode::StreamFailed
                         }
                     };

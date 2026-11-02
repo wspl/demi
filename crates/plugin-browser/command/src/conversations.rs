@@ -1332,7 +1332,11 @@ impl Conversations {
             }
             return Err(BrowserError::TabNotFound);
         };
-        if matches!(command, BrowserOperation::TabNew(_)) {
+        if let BrowserOperation::TabNew(input) = command {
+            // A refused address makes no tab.
+            if let Some(url) = &input.url {
+                demi_command_package_browser_chrome::tabs::navigation::validate_url(url)?;
+            }
             let created_by = if user {
                 BrowserCreatedBy::User {}
             } else {
@@ -1343,6 +1347,9 @@ impl Conversations {
             let tab = environment
                 .new_tab(created_by, cancellation, deadline)
                 .await?;
+            if let Some(url) = &input.url {
+                demi_command_package_browser_chrome::tabs::navigation::start_loading(&tab, url)?;
+            }
             // The user's new tab answers at once: the work panel shows its
             // loading. The agent's names its viewport when the tab reports it
             // in time; the tab is made either way.
@@ -1361,6 +1368,7 @@ impl Conversations {
             return Ok(CommandOutput::Json(output::value(TabNewResult {
                 tab: tab.id().clone(),
                 viewport,
+                list: user.then(|| browser.numbers.list_number()),
             })?));
         }
         if matches!(command, BrowserOperation::ContentFetch(_)) {

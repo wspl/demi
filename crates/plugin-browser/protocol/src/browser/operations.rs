@@ -152,7 +152,15 @@ macro_rules! input {
 input!(@struct
     /// `tab.new`: makes an empty tab, starting the browser when it does not
     /// run.
-    TabNewInput {}
+    TabNewInput {
+        /// The address the new tab starts loading at once, so the work panel
+        /// opens a tab in one call. The model has no use for it, so the
+        /// agent's command does not name it.
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(skip)]
+        #[garde(skip)]
+        pub url: Option<String>,
+    }
 );
 
 impl BrowserInput for TabNewInput {
@@ -177,6 +185,16 @@ pub struct TabNewResult {
     )]
     #[schemars(with = "BrowserViewport")]
     pub viewport: Option<BrowserViewport>,
+    /// The number of the first tab list that names the tab, for a `user`
+    /// caller only: a list numbered lower was taken before the tab opened.
+    /// The model has no use for it, so the agent's command never prints it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(skip)]
+    pub list: Option<u64>,
 }
 
 input! {

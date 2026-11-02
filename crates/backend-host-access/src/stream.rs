@@ -189,7 +189,7 @@ impl dyn HostShard + '_ {
                 access
                     .host
                     .host
-                    .open_resident(request, input.wire_ref(), output.wire_ref()),
+                    .open_resident(request, input.wire_ref(), Some(output.wire_ref())),
             )
             .await;
         let refused = match opened {

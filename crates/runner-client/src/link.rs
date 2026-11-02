@@ -1698,15 +1698,26 @@ impl Link {
                 stream_id,
                 code,
                 message,
-            } => self.refuse(
-                &stream_id,
-                HostError::failed(Some(code.to_string()), message),
-            ),
+            } => {
+                let error = HostError::failed(Some(code.to_string()), message);
+                // A one-shot call that opened ends with it; a stream still
+                // opening is refused.
+                self.end_resident(&stream_id, Err(error.clone()));
+                self.refuse(&stream_id, error);
+            }
             Outbound::ResidentDone {
                 stream_id,
                 exit_code,
                 stderr,
-            } => self.end_resident(&stream_id, Ok(crate::ResidentEnd { exit_code, stderr })),
+                stdout,
+            } => self.end_resident(
+                &stream_id,
+                Ok(crate::ResidentEnd {
+                    exit_code,
+                    stderr,
+                    stdout: stdout.0.into(),
+                }),
+            ),
             Outbound::SpawnOutput {
                 spawn_id,
                 stream,

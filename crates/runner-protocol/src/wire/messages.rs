@@ -15,9 +15,17 @@ use serde_with::rust::unwrap_or_skip;
 
 use super::{
     Carriage, FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES,
-    RESIDENT_STDERR_CHARS, Timestamp, WireBytes,
+    RESIDENT_ANSWER_BYTES, RESIDENT_STDERR_CHARS, Timestamp, WireBytes,
 };
 use crate::values::DeviceToken;
+
+/// A one-shot call's answer is at most [`RESIDENT_ANSWER_BYTES`].
+fn answer_fits(value: &WireBytes, _: &()) -> garde::Result {
+    if value.0.len() > RESIDENT_ANSWER_BYTES {
+        return Err(garde::Error::new("longer than a one-shot call's answer may be"));
+    }
+    Ok(())
+}
 
 /// A message from the backend to the runner.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
@@ -307,7 +315,8 @@ pub enum Inbound {
         exit_code: u8,
     },
     /// Open a user stream: invoke `operation` of `package` in its resident
-    /// resident.
+    /// resident. A stream without an `output` pipe is a one-shot call, whose
+    /// standard output `resident_done` carries.
     ResidentOpen {
         stream_id: String,
         #[garde(dive)]
@@ -331,7 +340,12 @@ pub enum Inbound {
         #[garde(length(min = 1))]
         cwd: String,
         input: PipeRef,
-        output: PipeRef,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        output: Option<PipeRef>,
     },
     /// The backend gave up the user stream `stream_id`, opened or still
     /// opening: the runner ends it.
@@ -1461,18 +1475,23 @@ pub enum Outbound {
     ResidentOpened {
         stream_id: String,
     },
+    /// A user stream did not open, or a one-shot call ended without
+    /// completing.
     ResidentError {
         stream_id: String,
         code: ResidentErrorCode,
         message: String,
     },
     /// A user stream's invocation completed: its exit code and the bounded
-    /// tail of its standard error.
+    /// tail of its standard error, and a one-shot call's whole standard
+    /// output, empty for a stream with an output pipe.
     ResidentDone {
         stream_id: String,
         exit_code: u8,
         #[garde(length(chars, max = RESIDENT_STDERR_CHARS))]
         stderr: String,
+        #[garde(custom(answer_fits))]
+        stdout: WireBytes,
     },
     /// Lines of the Host's log in `seq` order, on the lowest-priority queue.
     /// `missed` counts the lines the Host's files no longer held since the
@@ -1685,13 +1704,16 @@ pub enum OutputStream {
 }
 
 /// Why a `resident_open` stream never opened: the package lacks the operation,
-/// its resident could not start, or the runner turned the stream away.
+/// its resident could not start, or the runner turned the stream away. A
+/// one-shot call that opened can still end without completing: its resident
+/// failed, or its answer went past [`RESIDENT_ANSWER_BYTES`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResidentErrorCode {
     UnknownOperation,
     ResidentFailed,
     Refused,
+    AnswerTooLarge,
 }
 
 /// A file the backend offers a runner for download: the origin-relative URL
