@@ -16,8 +16,8 @@ use demi_backend_page_sync::UserMarks;
 use demi_backend_page_sync::Revisions;
 use demi_backend_permissions::{PermissionShard, Waits, deliver};
 use demi_command_declarations::{Category, Node};
-use demi_shared_types::{AgentMessage, NodeId, Timestamp};
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_shared_types::{AgentMessage, NodeId};
+use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
 use demi_web_api_protocol::push::PushAsk;
 use futures_util::future::LocalBoxFuture;
@@ -27,10 +27,6 @@ use super::{Shard, Shards};
 impl PermissionShard for Shard {
     fn control(&self) -> &ControlService {
         &self.services().control
-    }
-
-    fn url_message_since<'a>(&'a self, conversation: &'a ConversationId) -> LocalBoxFuture<'a, Option<Timestamp>> {
-        Box::pin(async move { self.url_message_at(conversation).await })
     }
 
     fn marks(&self) -> UserMarks {
@@ -112,10 +108,6 @@ impl PermissionShard for Shard {
 
     fn credentials_changed(&self) {
         self.mark_credentials();
-    }
-
-    fn host_name<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, String> {
-        Box::pin(Shard::host_name(self, device))
     }
 
     fn asked(&self, conversation: &ConversationId, request: PermissionRequestId, ask: PushAsk) {

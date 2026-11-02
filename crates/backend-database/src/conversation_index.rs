@@ -1314,49 +1314,24 @@ pub fn insert_attached_host(
     if inserted {
         raise_hosts_revision(connection, conversation)?;
     }
-    add_reachable_host(connection, conversation, &host.device, now)?;
     Ok(inserted)
 }
 
-/// Puts `device` on the list of hosts the conversation may reach, where it
-/// stays for the conversation's life; a device gone meanwhile, such as one
-/// revoked, joins nothing.
-pub fn add_reachable_host(
-    connection: &Connection,
-    conversation: &ConversationId,
-    device: &DeviceId,
-    now: Timestamp,
-) -> Result<(), StorageError> {
-    connection.execute(
-        "INSERT INTO reachable_hosts (conversation_id, device_id, added_at)
-         SELECT ?1, id, ?3 FROM devices WHERE id = ?2
-         ON CONFLICT (conversation_id, device_id) DO NOTHING",
-        params![conversation.as_str(), device.as_str(), now.as_millisecond()],
-    )?;
-    Ok(())
-}
-
-/// Whether the conversation may reach `device`.
+/// Whether the conversation reaches `device` without the grant of the user's
+/// devices: its primary Host, the device of its project, the user's Cloud
+/// for a conversation there, or a device attached to it, which the user or
+/// an allowed agent chose.
 ///
-/// It may when the device is:
-///
-/// - the conversation's primary Host;
-/// - the device of its project, or the user's Cloud for a conversation there;
-/// - on its list.
-///
-/// Its agents work on any such host without asking again: attach it, detach it,
-/// move to it. Any other host, the Cloud included, needs the user's permission
-/// when the agent first tries, one host per request, and an allowed host stays on
-/// the list for the conversation's life.
-///
-/// Listing the user's devices asks nothing: seeing a device is not reaching it.
-pub fn may_reach(
+/// Any other device of the user's, the Cloud included, needs the grant
+/// (`permissions::DEVICES`), which covers them all. Listing the user's
+/// devices asks nothing: seeing a device is not reaching it.
+pub fn reaches_without_grant(
     connection: &Connection,
     conversation: &ConversationId,
     device: &DeviceId,
 ) -> Result<bool, StorageError> {
     Ok(connection.query_row(
-        "SELECT EXISTS (SELECT 1 FROM reachable_hosts WHERE conversation_id = ?1 AND device_id = ?2)
+        "SELECT EXISTS (SELECT 1 FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2)
              OR EXISTS (
                SELECT 1 FROM conversations c WHERE c.id = ?1 AND (
                  c.target_device_id = ?2

@@ -210,8 +210,6 @@ pub enum ErrorCode {
     /// A credential of the requested name is saved with other fields: its
     /// new values would not fit them.
     CredentialFieldsDiffer,
-    /// The credential the request asks to use was removed.
-    CredentialRemoved,
     /// The passkey challenge expired or was used: the page asks for another.
     PasskeyExpired,
     /// No account has the passkey the browser signed with; `credentialId`

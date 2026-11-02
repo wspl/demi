@@ -113,8 +113,7 @@ impl Shard {
     }
 
     /// `DELETE /credentials/:id`, and `demi credentials remove`: the
-    /// credential and its allowances go, and the requests to use it show it
-    /// removed.
+    /// credential goes, and a waiting request of its name no longer renews it.
     pub async fn remove_credential(&self, id: UserCredentialId) -> Result<(), CredentialError> {
         let removed = self
             .services()

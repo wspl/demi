@@ -36,15 +36,13 @@ import {
   type RequestView,
 } from '@demicodes/web-ui/permissions/types'
 import {
-  allowanceRequest,
+  credentialsRequest,
+  devicesRequest,
   FIELDS_DIFFER,
   deployTokenRequest,
   googleKeyRequest,
   INVALID_ANSWER,
-  hostRequest,
-  pairingRequest,
   queuedRequests,
-  removedAllowanceRequest,
   renewalRequest,
   rootRequest,
   signInRequest,
@@ -314,20 +312,18 @@ const permissionSpecimens = reactive<
   { variant: 'one request', fixture: () => [rootRequest()], requests: [rootRequest()], error: null, refusal: null },
   { variant: 'a queue of three', fixture: queuedRequests, requests: queuedRequests(), error: null, refusal: null },
   { variant: 'a subagent asked', fixture: () => [subagentRequest()], requests: [subagentRequest()], error: null, refusal: null },
-  { variant: 'a host', fixture: () => [hostRequest()], requests: [hostRequest()], error: null, refusal: null },
-  { variant: 'a pairing', fixture: () => [pairingRequest()], requests: [pairingRequest()], error: null, refusal: null },
+  { variant: 'the user’s devices', fixture: () => [devicesRequest()], requests: [devicesRequest()], error: null, refusal: null },
+  { variant: 'the user’s credentials', fixture: () => [credentialsRequest()], requests: [credentialsRequest()], error: null, refusal: null },
   { variant: 'credential · one hidden field, kept for an hour', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: null, refusal: null },
   { variant: 'credential · a visible and a hidden field, kept for 30 days', fixture: () => [signInRequest()], requests: [signInRequest()], error: null, refusal: null },
   { variant: 'credential · kept until the user removes it', fixture: () => [deployTokenRequest()], requests: [deployTokenRequest()], error: null, refusal: null },
   { variant: 'credential · renewal of a saved one', fixture: () => [renewalRequest()], requests: [renewalRequest()], error: null, refusal: null },
   { variant: 'credential · the values refused', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: correction(INVALID_ANSWER), refusal: correction(INVALID_ANSWER) },
   { variant: 'credential · other fields than the saved ones', fixture: () => [renewalRequest()], requests: [renewalRequest()], error: correction(FIELDS_DIFFER), refusal: correction(FIELDS_DIFFER) },
-  { variant: 'allowance', fixture: () => [allowanceRequest()], requests: [allowanceRequest()], error: null, refusal: null },
-  { variant: 'allowance · the credential was removed', fixture: () => [removedAllowanceRequest()], requests: [removedAllowanceRequest()], error: null, refusal: null },
   {
-    variant: 'a queue of all three kinds',
-    fixture: () => [rootRequest(), googleKeyRequest(), allowanceRequest()],
-    requests: [rootRequest(), googleKeyRequest(), allowanceRequest()],
+    variant: 'a queue of both kinds',
+    fixture: () => [credentialsRequest(), googleKeyRequest()],
+    requests: [credentialsRequest(), googleKeyRequest()],
     error: null,
     refusal: null,
   },
@@ -344,15 +340,9 @@ function decidePermission(
       ? decision === 'allow'
         ? 'Save the Credential and Tell the Agent'
         : 'Tell the Agent the User Declined'
-      : kind === 'allowance'
-        ? decision === 'allow'
-          ? 'Allow the Conversation to Use the Credential'
-          : 'Tell the Agent the Use Was Not Allowed'
-        : decision === 'deny'
-          ? 'Tell the Agent the Request Was Denied'
-          : decided?.kind === 'permission' && decided.host
-            ? 'Let the Conversation Reach the Host and Tell Each Agent That Asked'
-            : 'Allow the Categories and Tell Each Agent That Asked',
+      : decision === 'deny'
+        ? 'Tell the Agent the Request Was Denied'
+        : 'Allow the Category and Tell Each Agent That Asked',
   )
   return afterDecision(requests, id, decision)
 }
@@ -2075,7 +2065,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="RequestCard"
-        note="An agent’s command needs the user’s answer: the oldest request waits above the composer, below the transcript and over the dock’s chips, while the transcript and the composer stay usable. It says what the conversation would be allowed, the command the agent ran, the subagent that ran it, what a grant allows, and which one of how many it is. A command that brings a host the conversation may not reach asks to reach it, by the host’s name, or, for a pairing, to pair a computer and reach it; no command needs a category and a host at once. Allow for This Conversation grants the request’s category and decides every request of it; a request with a host says Allow, since a host is allowed for this conversation by nature, and adds the host to those the conversation may reach; Deny decides this one, and the next takes its place. A category the user’s command set no longer declares shows its id. A credential request (Save a Credential) shows the credential’s name, the agent’s reason and one input per field under its label, a hidden one with an eye that shows what was typed, and how long it is kept (Kept for 1 hour, Kept until you remove it), which the agent decided, so the card only says it; Save waits until every field has a value, and Decline answers the agent that the user declined. A renewal of a saved credential says Update the Credential and asks for its fields empty. A refusal of the values shows under the form, which keeps what was typed. An allowance request asks to let the conversation use a stored credential; one for a credential the user removed says Removed and offers only Don’t Allow."
+        note="An agent’s command needs the user’s answer: the oldest request waits above the composer, below the transcript and over the dock’s chips, while the transcript and the composer stay usable. It says what the conversation would be allowed, the command the agent ran, the subagent that ran it, what a grant allows, and which one of how many it is. A category covers a whole capability, every object and every step of it: a command that brings in a device the conversation does not reach yet, or pairs a computer, asks to use the user’s devices, and any credentials command asks to use the user’s credentials. Allow for This Conversation grants the request’s category and decides every request of it; Deny decides this one, and the next takes its place. A category the user’s command set no longer declares shows its id. A credential request (Save a Credential) shows the credential’s name, the agent’s reason and one input per field under its label, a hidden one with an eye that shows what was typed, and how long it is kept (Kept for 1 hour, Kept until you remove it), which the agent decided, so the card only says it; Save waits until every field has a value, and Decline answers the agent that the user declined. A renewal of a saved credential says Update the Credential and asks for its fields empty. A refusal of the values shows under the form, which keeps what was typed."
       >
         <div class="specimen-stack">
           <GallerySpecimen

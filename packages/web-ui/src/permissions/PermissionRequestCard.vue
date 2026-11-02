@@ -6,25 +6,16 @@ import Button from '../ui/Button.vue'
 import CodeText from '../ui/CodeText.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import RequestFrame from './RequestFrame.vue'
-import {
-  categoryDescription,
-  hostDescription,
-  requestTitle,
-  type PermissionDecision,
-  type PermissionRequestView,
-} from './types'
+import { categoryDescription, requestTitle, type PermissionDecision, type PermissionRequestView } from './types'
 
 /**
  * The body of a permission request's card, showing:
  *
- * - what the agent asks to do, its category's action or its host's,
+ * - what the agent asks to do, its category's action,
  * - the command it ran,
  * - which subagent ran it,
  * - what it allows, and
  * - Deny or Allow for This Conversation.
- *
- * A request of a host reads Allow, since a host is allowed for this conversation by
- * nature.
  */
 const props = defineProps<{
   request: PermissionRequestView
@@ -39,12 +30,8 @@ const emit = defineEmits<{
 }>()
 
 const title = computed(() => requestTitle(props.request))
-/** What the request allows: its host's reach, or its category's description while the command set still declares it. */
+/** What the request allows: its category's description while the command set still declares it. */
 const description = computed(() => {
-  const host = props.request.host
-  if (host) {
-    return hostDescription(host)
-  }
   const category = props.request.categories[0]
   return category ? categoryDescription(category) : null
 })
@@ -82,7 +69,7 @@ const ran = computed(() => {
         variant="primary"
         :disabled="deciding"
         @click="emit('decide', request.id, 'allow')"
-        >{{ request.host ? t('request.allow') : t('request.allowConversation') }}</Button
+        >{{ t('request.allowConversation') }}</Button
       >
     </template>
   </RequestFrame>

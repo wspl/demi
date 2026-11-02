@@ -1,11 +1,12 @@
 //! `demi host forward`: lists, adds and removes the user's port forwards.
 //!
-//! `list` needs no permission. `add` and `remove` need Manage Port Forwards
-//! (`host.forward`), since a forward outlives the conversation and lets any
-//! program on its listening Host reach the address it connects to.
+//! `list` needs no permission. `add` and `remove` need the grant of the
+//! user's devices (`DEVICES`), since a forward outlives the conversation and
+//! lets any program on its listening Host reach the address it connects to.
 
 use std::rc::{Rc, Weak};
 
+use demi_backend_database::permissions::DEVICES;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_runner_protocol::forward::ForwardRunState;
 use demi_web_api_protocol::devices::DeviceState;
@@ -20,13 +21,6 @@ use demi_shared_types::output::{Cell, Fields, MISSING, Table};
 
 use crate::HostShard;
 use crate::host_commands::{NoArgs, conversation_of, host_names, print_json, resolve_host, verb};
-
-/// The category `add` and `remove` need.
-pub const MANAGE: &str = "host.forward";
-/// The category's action, which completes "Allow this conversation to …".
-pub const MANAGE_ACTION: &str = "manage port forwards";
-/// What a grant of the category allows.
-pub const MANAGE_DESCRIPTION: &str = "Add and remove the user’s port forwards. A forward outlives this conversation, and while it runs any program on the Host it listens on can reach the address it connects to.";
 
 const SUMMARY: &str = "The user's port forwards between their Hosts, as ssh -L makes one: list, add and remove them.";
 
@@ -75,14 +69,14 @@ pub fn forward_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             LeafBuilder::rpc("add", ADD_SUMMARY)
                 .input::<AddArgs>()
                 .json_output::<ListedForward>()
-                .permission(MANAGE)
+                .permission(DEVICES)
                 .bind(TypedRpc::new(verb(shard.clone(), add))),
         )
         .leaf(
             LeafBuilder::rpc("remove", REMOVE_SUMMARY)
                 .input::<RemoveArgs>()
                 .positionals(["name"])
-                .permission(MANAGE)
+                .permission(DEVICES)
                 .bind(TypedRpc::new(verb(shard, remove))),
         )
 }

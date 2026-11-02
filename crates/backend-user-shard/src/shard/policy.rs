@@ -41,14 +41,13 @@ use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_backend_database::sequences;
-use demi_backend_host_access::host_commands::{pairing_code, reachable, resolve_host};
+use demi_backend_host_access::host_commands::{reachable, resolve_host};
 use demi_backend_host_access::root_of;
 use demi_plugin_host::Lost;
 use demi_backend_database::server_log::ServerLog;
 use demi_runner_client::{CommandCatalog, DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
 use demi_runner_protocol::wire::{HostLogLine, LinkedWorktree};
 use demi_backend_runners::host_key::conversation_of;
-use demi_backend_database::permissions::AskedHost;
 use demi_backend_permissions::Need;
 use demi_command_protocol::ResidentSequence;
 use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};
@@ -165,10 +164,10 @@ impl LinkPolicy for ShardPolicy {
     /// Runs the call in its node's commands.
     ///
     /// Once the command set checked the call, what it needs is checked against the
-    /// conversation's grants and the hosts it may reach before the handler runs.
-    /// What it needs is its leaf's category, the host its `bringsHost` argument
-    /// brings into the conversation, or the computer `demi host pair` pairs. A call
-    /// that lacks it waits for the user's answer.
+    /// conversation's grants before the handler runs: its leaf's category, or
+    /// the device its `bringsHost` argument brings into the conversation, which
+    /// the grant of the user's devices covers. A call that lacks it waits for the
+    /// user's answer.
     fn dispatch(
         &self,
         job: Rc<JobOrigin>,
@@ -203,14 +202,13 @@ impl LinkPolicy for ShardPolicy {
                 };
                 // A leaf declares a category or brings a host, never both
                 // (`command-declarations`).
-                let need = match (pairing_code(&invocation), &brought, checked.category) {
-                    (Some(code), _, _) => Some(Need::Host(AskedHost::Pairing(code))),
-                    (None, Some(brought), _) => Some(Need::Host(AskedHost::Device(
+                let need = match (&brought, checked.category) {
+                    (Some(brought), _) => Some(Need::Device(
                         DeviceId::try_from(brought.device.clone())
                             .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
-                    ))),
-                    (None, None, Some(category)) => Some(Need::Category(category)),
-                    (None, None, None) => None,
+                    )),
+                    (None, Some(category)) => Some(Need::Category(category)),
+                    (None, None) => None,
                 };
                 if let Some(need) = need {
                     demi_backend_permissions::check(shard.permission_shard(), &invocation, need, &port).await?;

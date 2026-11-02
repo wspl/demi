@@ -196,27 +196,6 @@ impl ControlService {
         self.call(move |connection, _| named(connection, &user, &name)).await
     }
 
-    /// The ids of the credentials the conversation may use.
-    pub async fn allowed_credentials(
-        &self,
-        conversation: ConversationId,
-    ) -> Result<BTreeSet<UserCredentialId>, StorageError> {
-        self.call(move |connection, _| {
-            connection
-                .prepare_cached(
-                    "SELECT credential_id FROM credential_allowances WHERE conversation_id = ?1",
-                )?
-                .query_map([conversation.as_str()], |row| row.get::<_, String>(0))?
-                .map(|id| decode(
-                    "credential_allowances",
-                    "credential_id",
-                    UserCredentialId::try_from(id?),
-                ))
-                .collect()
-        })
-        .await
-    }
-
     /// The user's credential `id` with every value, opened.
     pub async fn user_credential_values(
         &self,
@@ -259,11 +238,10 @@ impl ControlService {
         .await
     }
 
-    /// Removes the user's credential `id` and its allowances.
+    /// Removes the user's credential `id`.
     ///
-    /// An allowance request that named it then shows it removed, and a waiting
-    /// credential request of its name no longer renews it. Answers the
-    /// conversations of those requests, or none when the user has no such
+    /// A waiting credential request of its name no longer renews it. Answers
+    /// the conversations of those requests, or none when the user has no such
     /// credential.
     pub async fn remove_user_credential(
         &self,
@@ -275,8 +253,7 @@ impl ControlService {
             let Some(stored) = by_id(&transaction, &user, &id)? else {
                 return Ok(None);
             };
-            let mut conversations = requesting(&transaction, &[id.clone()])?;
-            conversations.extend(waiting_for(&transaction, &user, &[&stored.name])?);
+            let conversations = waiting_for(&transaction, &user, &[&stored.name])?;
             transaction.execute(
                 "DELETE FROM user_credentials WHERE id = ?1 AND user_id = ?2",
                 params![id.as_str(), user.as_str()],
@@ -306,9 +283,8 @@ impl ControlService {
                 .collect::<Result<Vec<_>, StorageError>>()?
                 .into_iter()
                 .unzip();
-            let mut conversations = requesting(&transaction, &due)?;
             let names: Vec<&str> = names.iter().map(String::as_str).collect();
-            conversations.extend(waiting_for(&transaction, &user, &names)?);
+            let conversations = waiting_for(&transaction, &user, &names)?;
             for id in &due {
                 transaction.execute("DELETE FROM user_credentials WHERE id = ?1", [id.as_str()])?;
             }
@@ -377,30 +353,6 @@ pub(crate) fn waiting_for(
                 "permission_requests",
                 "conversation_id",
                 ConversationId::try_from(row.get::<_, String>(0)?.as_str()),
-            )?);
-        }
-    }
-    Ok(conversations)
-}
-
-/// The conversations whose requests name one of `credentials`.
-fn requesting(
-    connection: &Connection,
-    credentials: &[UserCredentialId],
-) -> Result<BTreeSet<ConversationId>, StorageError> {
-    let mut conversations = BTreeSet::new();
-    for id in credentials {
-        let found: Vec<String> = connection
-            .prepare_cached(
-                "SELECT DISTINCT conversation_id FROM permission_requests WHERE credential_id = ?1",
-            )?
-            .query_map([id.as_str()], |row| row.get(0))?
-            .collect::<Result<_, _>>()?;
-        for conversation in found {
-            conversations.insert(decode(
-                "permission_requests",
-                "conversation_id",
-                ConversationId::try_from(conversation.as_str()),
             )?);
         }
     }

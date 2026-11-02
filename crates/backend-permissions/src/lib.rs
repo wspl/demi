@@ -11,12 +11,8 @@
 //! - The message each decision sends the agent that asked, delivered again at
 //!   start when a restart cut it off.
 //!
-//! The crate also serves the conversation's other requests, which share the
-//! list, the mark and the routes:
-//!
-//! - An agent's request for a credential, which its command waits for.
-//! - A read of a credential the conversation may not use yet, which fails and
-//!   asks for an allowance.
+//! The crate also serves an agent's request for a credential, which its
+//! command waits for and which shares the list, the mark and the routes.
 //!
 //! Every command source passes through the check, a plugin's, the product's and
 //! the agent runtime's alike, so the check belongs to none of them. What it
@@ -26,8 +22,9 @@
 //! edits files and opens pages without asking, because the user chose the Host
 //! and the directory. It asks only before acting on Demi itself, on what the
 //! user owns beyond the conversation. Each such power is one broad category,
-//! which the user judges once for a conversation. A host is allowed on its own,
-//! one host at a time.
+//! which the user judges once for a conversation and which covers every object
+//! and every step of it: every credential, every device, every other
+//! conversation.
 //!
 //! ```text
 //! demi skills add ... -> dispatch: the check -- grant? -- yes --> handler
@@ -82,12 +79,11 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_shared_types::Timestamp;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
-    AnswerProblem, Answered, AskedHost, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
+    AnswerProblem, Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
     Needed, PermissionRefusal, SavedByAgent, StoredAsk, StoredRequest, Undecided,
 };
 use demi_backend_page_sync::{Part, Revisions, UserMarks};
@@ -97,8 +93,8 @@ use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Permis
 use demi_web_api_protocol::credentials::{CredentialField, Keep, RequestedValues};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::permissions::{
-    ConversationPermissions, PermissionCategory, PermissionDecision, PermissionHost,
-    PermissionRequest, PermissionRequestId,
+    ConversationPermissions, PermissionCategory, PermissionDecision, PermissionRequest,
+    PermissionRequestId,
 };
 use demi_web_api_protocol::push::PushAsk;
 use futures_util::future::LocalBoxFuture;
@@ -156,17 +152,6 @@ pub trait PermissionShard {
     /// The user's credentials changed: every page receives them, and the
     /// expiry looks at their times again.
     fn credentials_changed(&self);
-
-    /// The name the user knows the device by: Cloud for the user's Cloud,
-    /// a paired device's own name.
-    fn host_name<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, String>;
-
-    /// When the message of a run a URL started came, while every turn of the
-    /// conversation works for it, until the user next writes to it.
-    ///
-    /// Each credential read since asks. None while the user's own message is
-    /// the latest.
-    fn url_message_since<'a>(&'a self, conversation: &'a ConversationId) -> LocalBoxFuture<'a, Option<Timestamp>>;
 
     /// The conversation asks the user what `ask` says, by the request
     /// `request`, which the user's browsers are notified of.
@@ -328,8 +313,6 @@ pub enum PermissionError {
     InvalidAnswer(AnswerProblem),
     #[error("{0}")]
     FieldsDiffer(String),
-    #[error("\u{201c}{0}\u{201d} was removed, so this conversation can\u{2019}t use it.")]
-    Removed(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -341,22 +324,22 @@ impl From<PermissionRefusal> for PermissionError {
             PermissionRefusal::NotFound => Self::NotFound,
             PermissionRefusal::InvalidAnswer(reason) => Self::InvalidAnswer(reason),
             PermissionRefusal::FieldsDiffer(reason) => Self::FieldsDiffer(reason),
-            PermissionRefusal::Removed(name) => Self::Removed(name),
         }
     }
 }
 
 /// What one `rpc` call needs of its conversation: its leaf's category, or
-/// the host it brings in; no command needs both.
+/// the device it brings in, which the category of the user's devices
+/// covers; no command needs both.
 pub enum Need<'a> {
     Category(&'a Category),
-    Host(AskedHost),
+    Device(DeviceId),
 }
 
 /// The check of one `rpc` call that needs `need`.
 ///
-/// The call passes when the conversation has the grant of the category or may
-/// reach the host, whichever agent of its tree runs it. Otherwise the check
+/// The call passes when the conversation has the grant of the category, or
+/// reaches the device, whichever agent of its tree runs it. Otherwise the check
 /// records the request and holds the call until the user decides, the call's
 /// job telling that it waits. No handler runs meanwhile.
 ///
@@ -378,39 +361,17 @@ pub async fn check(
         call,
         command,
     } = asking(shard, invocation)?;
-    let (needed, action, ask) = match need {
-        Need::Category(category) => {
-            let ask = PushAsk::Permission {
-                categories: vec![PermissionCategory {
-                    id: category.id.clone(),
-                    action: Some(category.action.clone()),
-                    description: None,
-                }],
-                host: None,
-            };
-            (Needed::Category(category.id.clone()), category.action.clone(), ask)
-        }
-        Need::Host(host) => {
-            let action = host_action(shard, &host).await;
-            let shown = match &host {
-                AskedHost::Device(device) => PermissionHost::Device {
-                    device_id: device.clone(),
-                    name: shard.host_name(device).await,
-                },
-                AskedHost::Pairing(_) => PermissionHost::Pairing {},
-            };
-            let ask = PushAsk::Permission {
-                categories: Vec::new(),
-                host: Some(shown),
-            };
-            (Needed::Host(host), action, ask)
-        }
+    let needed = match need {
+        Need::Category(category) => Needed::Category(category.id.clone()),
+        Need::Device(device) => Needed::Device(device),
     };
-    // The pass an allow of a pairing gives, which the call it lets through
-    // uses up.
-    let pairing = match &needed {
-        Needed::Host(AskedHost::Pairing(code)) => Some(code.clone()),
-        Needed::Category(_) | Needed::Host(AskedHost::Device(_)) => None,
+    let action = category_action(shard, needed.category()).await;
+    let ask = PushAsk::Permission {
+        categories: vec![PermissionCategory {
+            id: needed.category().to_owned(),
+            action: Some(action.clone()),
+            description: None,
+        }],
     };
     let request = new_request_id();
     // Waiting before the request is stored, so that an allow of another
@@ -447,17 +408,7 @@ pub async fn check(
     shard.asked(&conversation, request, ask);
     shard.raised().await;
     port.awaits_user(true).await?;
-    let passed = async {
-        if let Some(code) = pairing {
-            shard
-                .control()
-                .use_pairing_pass(conversation.clone(), code)
-                .await
-                .map_err(|error| RpcError::Failed(error.to_string()))?;
-        }
-        Ok(())
-    };
-    match held(decided, port, passed).await? {
+    match held(decided, port).await? {
         Decided::Allowed => Ok(()),
         Decided::Denied => Err(RpcError::Failed(format!(
             "the user denied this conversation permission to {action}; the command was not run"
@@ -470,15 +421,11 @@ pub async fn check(
 
 /// Holds a call until `decided` ends its wait.
 ///
-/// Once allowed, the call no longer waits for the user, and `passed` runs, what
-/// passing it uses up. A call stopped meanwhile is never passed on, even when
-/// the allow is ready at the same moment: the stop is looked at last, after
-/// every wait, right before the dispatch would run the handler.
-async fn held(
-    decided: oneshot::Receiver<Decided>,
-    port: &RpcPort,
-    passed: impl Future<Output = Result<(), RpcError>>,
-) -> Result<Decided, RpcError> {
+/// Once allowed, the call no longer waits for the user. A call stopped
+/// meanwhile is never passed on, even when the allow is ready at the same
+/// moment: the stop is looked at last, after every wait, right before the
+/// dispatch would run the handler.
+async fn held(decided: oneshot::Receiver<Decided>, port: &RpcPort) -> Result<Decided, RpcError> {
     let stopped = || RpcError::Port(PortError::Ended("the call was stopped".into()));
     let decided = tokio::select! {
         biased;
@@ -489,7 +436,6 @@ async fn held(
     };
     if decided == Decided::Allowed {
         port.awaits_user(false).await?;
-        passed.await?;
     }
     if port.is_cancelled() {
         return Err(stopped());
@@ -501,13 +447,15 @@ fn new_request_id() -> PermissionRequestId {
     PermissionRequestId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty")
 }
 
-/// What reaching `host` lets the conversation do, as the card's title, the
-/// refusal and the decision's message say it.
-async fn host_action(shard: &dyn PermissionShard, host: &AskedHost) -> String {
-    match host {
-        AskedHost::Device(device) => format!("reach {}", shard.host_name(device).await),
-        AskedHost::Pairing(_) => "pair a computer and reach it".to_owned(),
-    }
+/// What a grant of the category `id` lets the conversation do, as the
+/// card's title, the refusal and the decision's message say it: its id when
+/// no command declares it now.
+async fn category_action(shard: &dyn PermissionShard, id: &str) -> String {
+    declared(shard)
+        .await
+        .into_iter()
+        .find(|category| category.id == id)
+        .map_or_else(|| id.to_owned(), |category| category.action)
 }
 
 /// The conversation, the agent and the command line of a call that asks
@@ -586,7 +534,7 @@ pub async fn ask_credential(
 
 /// Saves the credential `name` from the `values` the call's agent piped,
 /// kept as `ask` says, or new values of the saved one of that name, which
-/// has the same fields, and allows it in the conversation.
+/// has the same fields.
 pub async fn save_credential(
     shard: &dyn PermissionShard,
     invocation: &RpcInvocation,
@@ -644,33 +592,18 @@ pub fn withdrawn(shard: &dyn PermissionShard, conversation: &ConversationId) {
     }
 }
 
-/// The field `field` of the credential `name`, for the call's agent: its
-/// value when the conversation may use the credential. Otherwise it records
-/// the allowance request and fails the call as a refused permission does.
+/// The value of the field `field` of the credential `name`, for the call's
+/// agent, whose conversation has the grant of the credentials.
 pub async fn read_credential(
     shard: &dyn PermissionShard,
     invocation: &RpcInvocation,
     name: String,
     field: String,
 ) -> Result<String, RpcError> {
-    let Asking {
-        conversation,
-        agent,
-        command,
-        ..
-    } = asking(shard, invocation)?;
-    let asks_since = shard.url_message_since(&conversation).await;
+    let Asking { conversation, .. } = asking(shard, invocation)?;
     let read = shard
         .control()
-        .read_credential(
-            conversation.clone(),
-            name.clone(),
-            field.clone(),
-            command,
-            agent,
-            asks_since,
-            shard.credential_seal(),
-        )
+        .read_credential(conversation, name.clone(), field.clone(), shard.credential_seal())
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match read {
@@ -689,21 +622,7 @@ pub async fn read_credential(
                 .collect::<Vec<_>>()
                 .join(", ")
         ))),
-        CredentialRead::Raised { id, name: saved } => {
-            changed(shard, &conversation);
-            let action = use_action(&saved);
-            shard.asked(&conversation, id, PushAsk::Allowance { name: saved });
-            Err(RpcError::Failed(format!(
-                "this conversation needs the user's permission to {action}; the request was sent to the user, and you will be told when the user decides"
-            )))
-        }
     }
-}
-
-/// What an allowance lets the conversation do, as the card's title, the
-/// refusal and the decision's message say it.
-fn use_action(name: &str) -> String {
-    format!("use the credential \u{201c}{name}\u{201d}")
 }
 
 /// The command line as the agent ran it: the call's argv, which starts with
@@ -740,20 +659,9 @@ pub async fn read(
             request.created_at,
         );
         listed.push(match request.ask {
-            StoredAsk::Permission(needed) => PermissionRequest::Permission {
+            StoredAsk::Permission(asked) => PermissionRequest::Permission {
                 id,
-                categories: match &needed {
-                    Needed::Category(id) => vec![category(id)],
-                    Needed::Host(_) => Vec::new(),
-                },
-                host: match needed {
-                    Needed::Host(AskedHost::Device(device)) => Some(PermissionHost::Device {
-                        name: shard.host_name(&device).await,
-                        device_id: device,
-                    }),
-                    Needed::Host(AskedHost::Pairing(_)) => Some(PermissionHost::Pairing {}),
-                    Needed::Category(_) => None,
-                },
+                categories: vec![category(&asked)],
                 command,
                 agent,
                 created_at,
@@ -769,14 +677,6 @@ pub async fn read(
                 agent,
                 created_at,
             },
-            StoredAsk::Allowance { name, credential } => PermissionRequest::Allowance {
-                id,
-                name,
-                removed: credential.is_none(),
-                command,
-                agent,
-                created_at,
-            },
         });
     }
     Ok(ConversationPermissions {
@@ -787,17 +687,15 @@ pub async fn read(
 
 /// Decides the undecided request `request`.
 ///
-/// - An allow of a permission request grants its categories to the conversation
-///   and decides each request whose categories are then all granted.
-/// - An allow of an allowance request allows its credential and decides each
-///   request to use it.
+/// - An allow of a permission request grants its category to the conversation
+///   and decides each request of that category.
 /// - A deny decides this one alone.
 ///
 /// The call held for each permission request decided goes on or fails, and each
 /// agent that asked is sent its message after the answer.
 ///
 /// A credential request is allowed with `credential`, its values, which saves
-/// the credential for the request's keep and allows it in the conversation. Its
+/// the credential for the request's keep. Its
 /// command, which waits, returns with the answer instead of a message.
 pub async fn decide(
     shard: &dyn PermissionShard,
@@ -854,7 +752,6 @@ pub async fn decide(
                             PermissionOutcome::Denied => Decided::Denied,
                         },
                     ),
-                    StoredAsk::Allowance { .. } => {}
                 }
                 let this = shard.this();
                 shard.spawn(Box::pin(async move { deliver(this, request).await }));
@@ -905,23 +802,12 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     let Some(decision) = request.decision else {
         return;
     };
-    let mut host_name = None;
-    let action = match &request.ask {
-        StoredAsk::Permission(Needed::Category(id)) => declared(&*shard)
-            .await
-            .into_iter()
-            .find(|category| category.id == *id)
-            .map_or_else(|| id.clone(), |category| category.action),
-        StoredAsk::Permission(Needed::Host(host)) => {
-            if let AskedHost::Device(device) = host {
-                host_name = Some(shard.host_name(device).await);
-            }
-            host_action(&*shard, host).await
-        }
-        StoredAsk::Allowance { name, .. } => use_action(name),
+    let category = match &request.ask {
+        StoredAsk::Permission(category) => category.clone(),
         // A credential request's command returns its answer.
         StoredAsk::Credential { .. } => return,
     };
+    let action = category_action(&*shard, &category).await;
     let message = |recipient: &NodeId| AgentMessage {
         id: BlockId::try_from(format!("permission:{}", request.id))
             .expect("a permission message's id is not empty"),
@@ -932,21 +818,10 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
         event: AgentMessageEvent::Permission {
             outcome: decision.outcome,
             action: action.clone(),
-            categories: match &request.ask {
-                StoredAsk::Permission(Needed::Category(id)) => vec![id.clone()],
-                StoredAsk::Permission(Needed::Host(_)) | StoredAsk::Allowance { .. } | StoredAsk::Credential { .. } => {
-                    Vec::new()
-                }
-            },
-            credential: match &request.ask {
-                StoredAsk::Allowance { name, .. } => Some(name.clone()),
-                StoredAsk::Permission { .. } | StoredAsk::Credential { .. } => None,
-            },
-            host: host_name.clone(),
-            pairing: matches!(
-                request.ask,
-                StoredAsk::Permission(Needed::Host(AskedHost::Pairing(_)))
-            ),
+            categories: vec![category.clone()],
+            credential: None,
+            host: None,
+            pairing: false,
         },
         origin: None,
     };
@@ -974,44 +849,24 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     }
 }
 
-/// The message the agent reads:
-///
-/// - For a permission request, the decision alone. The call that waited says
-///   itself whether it ran.
-/// - For the use of a credential, whose read failed, the decision with the
-///   command line.
-///
-/// A message delivered to an ancestor of the closed subagent that asked names
-/// that subagent.
+/// The message the agent reads: the decision alone, since the call that
+/// waited says itself whether it ran. A message delivered to an ancestor of
+/// the closed subagent that asked names that subagent.
 fn content(
     request: &StoredRequest,
     outcome: PermissionOutcome,
     action: &str,
     recipient: &NodeId,
 ) -> String {
-    let command = &request.command;
-    let mut text = match (&request.ask, outcome) {
-        (StoredAsk::Allowance { .. }, PermissionOutcome::Allowed) => format!(
-            "The user allowed this conversation to {action}; the command `{command}` can now run."
-        ),
-        (StoredAsk::Allowance { .. }, PermissionOutcome::Denied) => format!(
-            "The user denied this conversation permission to {action}; the command `{command}` was not run."
-        ),
-        (_, PermissionOutcome::Allowed) => format!("The user allowed this conversation to {action}."),
-        (_, PermissionOutcome::Denied) => {
-            format!("The user denied this conversation permission to {action}.")
-        }
+    let mut text = match outcome {
+        PermissionOutcome::Allowed => format!("The user allowed this conversation to {action}."),
+        PermissionOutcome::Denied => format!("The user denied this conversation permission to {action}."),
     };
     if recipient != &request.agent.node
         && let Some(subagent) = &request.agent.subagent
     {
-        let did = match request.ask {
-            // Its message names the command the subagent ran.
-            StoredAsk::Allowance { .. } => "ran it",
-            _ => "asked",
-        };
         text.push_str(&format!(
-            " Agent {} ({}) {did} and has closed since.",
+            " Agent {} ({}) asked and has closed since.",
             subagent.number, subagent.description
         ));
     }

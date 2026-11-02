@@ -175,17 +175,6 @@ impl Shard {
         self.agent().node(&root, &root)?.session().schedule_input()
     }
 
-    /// When the message of a run a URL started came, while the conversation
-    /// works for it: each credential read asks then. A run whose record is
-    /// gone counts as one, since what started it is no longer known.
-    pub(crate) async fn url_message_at(&self, conversation: &ConversationId) -> Option<Timestamp> {
-        let (mark, at) = self.schedule_input(conversation)?;
-        match self.services().control.schedule_run(mark.run_id).await {
-            Ok(Some(run)) if run.cause != RunCause::Url => None,
-            _ => Some(at),
-        }
-    }
-
     /// Fires a run of `schedule`: records it, skipped when its conversation
     /// cannot run it, and otherwise carries it in a task of its own.
     pub(crate) async fn fire(&self, schedule: &StoredSchedule, fired: Fired) {

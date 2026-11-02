@@ -647,27 +647,23 @@ CREATE TABLE saved_sends (
 ) STRICT;
 CREATE INDEX saved_sends_by_age ON saved_sends (sent_at);
 
--- A conversation's requests (permissions.md § Requests), each of a kind: a
--- permission request is a command an agent ran without the grants of its
--- categories, a JSON array of their ids sorted so that the same categories
--- compare equal; a credential request asks the user for a credential of a
--- name, its ask a JSON document, credential request format 1, `{ reason,
--- fields: [{ name, label, kind }], keep }`, and is gone once answered, since
--- the command that asked waits for the answer; an allowance request asks to
--- use a saved credential in the conversation, which names it while it is
--- saved. A request is undecided until the user decides and then kept until
--- the decision's message is in the agent's checkpoint, and read once the
--- user has opened the conversation with the request waiting (the sidebar's
--- yellow mark settles then). The agent is the root when its number and
--- description are null. Each category the user allowed for a conversation,
--- and each credential, are the conversation's grants and allowances.
+-- A conversation's requests (crates/backend-database/src/permissions.rs),
+-- each of a kind: a permission request is a command an agent ran without the
+-- grant of its category, a JSON array of its one id; a credential request
+-- asks the user for a credential of a name, its ask a JSON document,
+-- credential request format 1, `{ reason, fields: [{ name, label, kind }],
+-- keep }`, and is gone once answered, since the command that asked waits for
+-- the answer. A request is undecided until the user decides and then kept
+-- until the decision's message is in the agent's checkpoint, and read once
+-- the user has opened the conversation with the request waiting (the
+-- sidebar's yellow mark settles then). The agent is the root when its number
+-- and description are null.
 CREATE TABLE permission_requests (
   id                TEXT PRIMARY KEY,
   conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  kind              TEXT NOT NULL CHECK (kind IN ('permission', 'credential', 'allowance')),
+  kind              TEXT NOT NULL CHECK (kind IN ('permission', 'credential')),
   categories        TEXT,
   credential_name   TEXT,
-  credential_id     TEXT REFERENCES user_credentials (id) ON DELETE SET NULL,
   ask               TEXT,
   command           TEXT NOT NULL,
   node_id           TEXT NOT NULL,
@@ -677,56 +673,23 @@ CREATE TABLE permission_requests (
   decision          TEXT CHECK (decision IN ('allowed', 'denied')),
   decided_at        INTEGER,
   read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
-  -- The host a permission request asks to reach (permissions.md § Hosts):
-  -- a device, or the pairing code of a computer `demi host pair` pairs; none
-  -- for a request of categories alone, whose categories are then one or more.
-  host_device_id    TEXT CHECK (host_device_id IS NULL OR kind = 'permission'),
-  pairing_code      TEXT CHECK (pairing_code IS NULL OR (kind = 'permission' AND host_device_id IS NULL)),
   CHECK ((kind = 'permission') = (categories IS NOT NULL)),
   CHECK ((kind = 'permission') = (credential_name IS NULL)),
   CHECK ((kind = 'credential') = (ask IS NOT NULL)),
-  CHECK (kind = 'allowance' OR credential_id IS NULL),
   CHECK (kind <> 'credential' OR decision IS NULL),
   CHECK ((agent_number IS NULL) = (agent_description IS NULL)),
   CHECK ((decision IS NULL) = (decided_at IS NULL))
 ) STRICT;
 CREATE INDEX permission_requests_of_conversation ON permission_requests (conversation_id, created_at);
 
+-- Each category the user allowed for a conversation, which covers a whole
+-- capability, every object and every step of it, for the conversation's life.
 CREATE TABLE permission_grants (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
   category        TEXT NOT NULL,
   granted_at      INTEGER NOT NULL,
   PRIMARY KEY (conversation_id, category)
 ) STRICT;
-
--- The hosts a conversation may reach besides its primary one
--- (sessions-and-targets.md § Hosts a conversation may reach): each primary
--- target it left, each host attached to it, and each host the user allowed
--- when an agent asked; kept for the conversation's life, as a grant is.
-CREATE TABLE reachable_hosts (
-  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
-  added_at        INTEGER NOT NULL,
-  PRIMARY KEY (conversation_id, device_id)
-) STRICT;
-CREATE INDEX reachable_hosts_of_device ON reachable_hosts (device_id);
-
--- The pairing codes the user let a conversation pair (permissions.md
--- § Hosts): its next `demi host pair` of the code is dispatched, once.
-CREATE TABLE pairing_passes (
-  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  code            TEXT NOT NULL,
-  allowed_at      INTEGER NOT NULL,
-  PRIMARY KEY (conversation_id, code)
-) STRICT;
-
-CREATE TABLE credential_allowances (
-  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  credential_id   TEXT NOT NULL REFERENCES user_credentials (id) ON DELETE CASCADE,
-  allowed_at      INTEGER NOT NULL,
-  PRIMARY KEY (conversation_id, credential_id)
-) STRICT;
-CREATE INDEX credential_allowances_of_credential ON credential_allowances (credential_id);
 
 -- A conversation whose root's running turn a graceful shutdown began to
 -- interrupt, marked before the turn was aborted, which the next start resumes

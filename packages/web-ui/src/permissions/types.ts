@@ -5,8 +5,8 @@ import { categoryKey, requestTitleIn, type RequestTitleWords } from './title-wor
 
 /**
  * Conversation requests as the page shows them: a request an agent's command raised
- * and the user's answer to it. A request is one of three kinds: a permission, a
- * credential to save or a stored credential to allow.
+ * and the user's answer to it. A request is one of two kinds: a permission or a
+ * credential to save.
  *
  * The host maps its data to these.
  */
@@ -20,17 +20,12 @@ export interface PermissionCategoryView {
   description: string | null
 }
 
-/** A host a request asks the conversation to reach: a device by the name the user knows it by, or the computer a pairing pairs. */
-export type PermissionHostView = { kind: 'device'; deviceId: string; name: string } | { kind: 'pairing' }
-
-/** One undecided request: the command an agent ran without the grant of its category or the host it brings, never both. */
+/** One undecided request: the command an agent ran without the grant of its category. */
 export interface PermissionRequestView {
   kind: 'permission'
   id: string
-  /** The category the conversation lacked; none when the request asks for a host. */
+  /** The category the conversation lacked. */
   categories: PermissionCategoryView[]
-  /** The host the command asks to reach; null for a request of a category. */
-  host: PermissionHostView | null
   /** The command line as the agent ran it. */
   command: string
   /** The subagent that ran it; null for the root. */
@@ -64,17 +59,8 @@ export interface CredentialRequestView {
   renewal: boolean
 }
 
-/** A stored credential this conversation asks to use. */
-export interface AllowanceRequestView {
-  kind: 'allowance'
-  id: string
-  name: string
-  /** The user removed the credential since it was asked for. */
-  removed: boolean
-}
-
 /** One undecided request of a conversation, of any kind. */
-export type RequestView = PermissionRequestView | CredentialRequestView | AllowanceRequestView
+export type RequestView = PermissionRequestView | CredentialRequestView
 
 export type PermissionDecision = 'allow' | 'deny'
 
@@ -119,19 +105,14 @@ export function wordedActions(ids: readonly string[], more: readonly string[] = 
     : null
 }
 
-/** What reaching the host lets the conversation do, completing “Allow this conversation to …”: `reach build-box`. */
-export function hostAction(host: PermissionHostView): string {
-  return host.kind === 'device' ? reachAction(host.name) : t('host.pair')
-}
-
-/** What reaching the host named `name` lets the conversation do: `reach build-box`. */
+/** What a decision recorded before a permission covered all devices let the conversation do: `reach build-box`. */
 export function reachAction(name: string): string {
   return t('host.reach', { host: name })
 }
 
-/** What reaching the host allows, as the card explains it. */
-export function hostDescription(host: PermissionHostView): string {
-  return host.kind === 'device' ? t('host.description', { host: host.name }) : t('host.pairingDescription')
+/** What a decision recorded before a permission covered all devices let the conversation do by a pairing. */
+export function pairAction(): string {
+  return t('host.pair')
 }
 
 /**
@@ -154,45 +135,27 @@ export function requestTitleWords(categories?: readonly Pick<PermissionCategoryV
   }
   return {
     allow: t('request.allowTitle', { action: '{action}' }),
-    reach: t('host.allowTitle', { host: '{host}' }),
-    pairing: t('host.allowPairingTitle'),
-    useCredential: t('request.allowCredentialTitle', { name: '{name}' }),
     actions,
   }
 }
 
-/** The card's title: a host's asks to reach it, a category's to do its action. */
-export function requestTitle(request: Pick<PermissionRequestView, 'categories' | 'host'>): string {
+/** The card's title: its category's action, asked. */
+export function requestTitle(request: Pick<PermissionRequestView, 'categories'>): string {
   return requestTitleIn(requestTitleWords(request.categories), request)
 }
 
-/** What a request to use the saved credential `name` lets the conversation do. */
+/** What a decision recorded before a permission covered all credentials let the conversation do with the credential `name`. */
 export function useCredentialAction(name: string): string {
   return t('useCredential', { name })
 }
 
 /**
- * What the request lets the conversation do: its host's action or its
- * category's, as the card's title and the agent's message say it.
- */
-export function requestAction(request: Pick<PermissionRequestView, 'categories' | 'host'>): string {
-  if (request.host) {
-    return hostAction(request.host)
-  }
-  // A request asks for its host or, without one, for its one category.
-  return categoryAction(request.categories[0]!)
-}
-
-/**
  * The requests left once the user decided `id`:
  *
- * - An allow of a permission request grants its category or its host and decides
- *   every permission request of the same.
+ * - An allow of a permission request grants its category and decides every
+ *   permission request of the same category.
  * - A deny decides that one alone.
- * - A credential or an allowance is decided alone either way.
- *
- * Another pairing is left for the backend's answer to decide, since the page does
- * not know its code.
+ * - A credential request is decided alone either way.
  */
 export function afterDecision(
   requests: readonly RequestView[],
@@ -206,9 +169,6 @@ export function afterDecision(
   if (decision === 'deny' || decided.kind !== 'permission') {
     return requests.filter((request) => request.id !== id)
   }
-  const same = (request: PermissionRequestView) =>
-    request.host
-      ? request.host.kind === 'device' && decided.host?.kind === 'device' && request.host.deviceId === decided.host.deviceId
-      : decided.host === null && request.categories[0]?.id === decided.categories[0]?.id
+  const same = (request: PermissionRequestView) => request.categories[0]?.id === decided.categories[0]?.id
   return requests.filter((request) => request.id !== id && (request.kind !== 'permission' || !same(request)))
 }

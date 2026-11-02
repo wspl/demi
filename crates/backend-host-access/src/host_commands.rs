@@ -14,8 +14,10 @@
 //! - `move` makes a host and a directory where the conversation runs, at once,
 //!   and answers once it is made.
 //!
-//! The dispatch asks the user before a call brings in a host the conversation
-//! may not reach, and before every pairing.
+//! Bringing in a device the conversation does not reach without it, pairing a
+//! computer and the port forwards need the grant of the user's devices
+//! ([`DEVICES`]), which the user gives once for the conversation and which then
+//! covers every device.
 //!
 //! A `shell` job carries its invoking job's command context, caller and
 //! commands. Its standard input and output are the calling command's. A script
@@ -49,13 +51,14 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::rc::{Rc, Weak};
 
+use demi_backend_database::permissions::DEVICES;
 use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
 };
 use demi_runner_client::{JobEnd, JobStart, Pipe, RemoteJob, Withdrawal};
 use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
-    Call, DEMI_ROOT, GroupBuilder, LeafBuilder, ProcessEnd, RpcError,
+    Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError,
     BroughtHost, RpcInvocation, RpcPort, TypedRpc,
 };
 use demi_web_api_protocol::conversations::ConversationTarget;
@@ -82,9 +85,12 @@ const SUMMARY: &str =
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "Hosts and devices: list, run a command on another, attach, detach, move the conversation, forward ports, pair.";
 
-/// The path of `demi host pair`, which always brings a host the
-/// conversation may not reach.
-const PAIR_PATH: [&str; 3] = [DEMI_ROOT, "host", "pair"];
+/// The action of the category of the user's devices, which completes
+/// "Allow this conversation to …".
+const DEVICES_ACTION: &str = "use your devices";
+
+/// What a grant of the category of the user's devices allows.
+const DEVICES_DESCRIPTION: &str = "Use Your Devices lets the agents of this conversation run commands as you on any of your devices and the Cloud, move this conversation to one, pair a computer with your account, and add and remove port forwards, which outlive this conversation.";
 
 const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host devices` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies at once: commands already running finish where they are, every later command runs there, and the host it leaves stays attached.";
 
@@ -181,11 +187,7 @@ struct ShellArgs {
 pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
     GroupBuilder::new("host", SUMMARY)
         .index_entry(ENTRY)
-        .permission(
-            crate::forward_commands::MANAGE,
-            crate::forward_commands::MANAGE_ACTION,
-            crate::forward_commands::MANAGE_DESCRIPTION,
-        )
+        .permission(DEVICES, DEVICES_ACTION, DEVICES_DESCRIPTION)
         .group(crate::forward_commands::forward_group(shard.clone()))
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
@@ -221,6 +223,7 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             LeafBuilder::rpc("pair", PAIR_SUMMARY)
                 .input::<PairArgs>()
                 .positionals(["code"])
+                .permission(DEVICES)
                 .bind(TypedRpc::new(verb(shard.clone(), pair))),
         )
         .leaf(
@@ -243,19 +246,6 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
                 .brings_host("host")
                 .bind(TypedRpc::new(verb(shard, move_to))),
         )
-}
-
-/// The pairing code of a call of `demi host pair`, which always brings a
-/// host the conversation may not reach; none for any other call.
-pub fn pairing_code(invocation: &RpcInvocation) -> Option<String> {
-    if invocation.path != PAIR_PATH {
-        return None;
-    }
-    invocation
-        .args
-        .get("code")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned)
 }
 
 /// A device a host name or id names, as `demi host move` and the dispatch

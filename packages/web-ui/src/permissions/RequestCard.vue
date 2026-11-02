@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
-import AllowanceRequestCard from './AllowanceRequestCard.vue'
 import CredentialRequestCard from './CredentialRequestCard.vue'
 import PermissionRequestCard from './PermissionRequestCard.vue'
 import type { CredentialAnswer, PermissionDecision, RequestView } from './types'
 
 /**
  * The oldest undecided request of the conversation, pinned above the composer: a
- * permission request, a credential to save or a stored credential to allow, each in
- * the card of its kind.
+ * permission request or a credential to save, each in the card of its kind.
  *
  * With several requests it says which one of how many it shows. The next one takes
  * its place once it is decided.
@@ -42,21 +40,13 @@ const request = computed(() => props.requests[0] ?? null)
       @decide="(id, decision) => emit('decide', id, decision)"
     />
     <CredentialRequestCard
-      v-else-if="request.kind === 'credential'"
+      v-else
       :key="request.id"
       :request="request"
       :count="requests.length"
       :deciding="deciding"
       :error="error"
       @decide="(id, decision, credential) => emit('decide', id, decision, credential)"
-    />
-    <AllowanceRequestCard
-      v-else
-      :key="request.id"
-      :request="request"
-      :count="requests.length"
-      :deciding="deciding"
-      @decide="(id, decision) => emit('decide', id, decision)"
     />
   </template>
 </template>

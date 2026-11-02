@@ -40,9 +40,6 @@ export const notificationWordsSchema = z.object({
   turnStopped: z.string(),
   saveCredential: z.string(),
   allow: z.string(),
-  reach: z.string(),
-  pairing: z.string(),
-  useCredential: z.string(),
   actions: z.record(z.string(), z.string()),
 })
 export type NotificationWords = z.infer<typeof notificationWordsSchema>
@@ -91,8 +88,6 @@ function askOf(ask: Extract<PushMessage, { kind: 'permission' }>['ask'], words: 
       return requestTitleIn(words, ask)
     case 'credential':
       return fillText(words.saveCredential, { name: ask.name })
-    case 'allowance':
-      return fillText(words.useCredential, { name: ask.name })
   }
 }
 
@@ -105,9 +100,6 @@ const NO_WORDS: NotificationWords = {
   turnStopped: '',
   saveCredential: '',
   allow: '',
-  reach: '',
-  pairing: '',
-  useCredential: '',
   actions: {},
 }
 

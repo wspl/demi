@@ -190,7 +190,6 @@
     "port_forward_name_taken": "名為「{name}」的轉送已存在。",
     "port_forward_not_found": "此連接埠轉送已不存在。",
     "credential_fields_differ": "同名憑證的欄位不同。",
-    "credential_removed": "憑證已移除。",
     "passkey_expired": "通行密鑰請求已過期。請再試一次。",
     "unknown_passkey": "沒有帳號使用此通行密鑰。",
     "passkey_not_found": "找不到通行密鑰。",

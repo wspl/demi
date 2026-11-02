@@ -190,7 +190,6 @@
     "port_forward_name_taken": "名为“{name}”的转发已存在。",
     "port_forward_not_found": "此端口转发已不存在。",
     "credential_fields_differ": "同名凭据的字段不同。",
-    "credential_removed": "凭据已移除。",
     "passkey_expired": "通行密钥请求已过期。请重试。",
     "unknown_passkey": "没有账户使用此通行密钥。",
     "passkey_not_found": "未找到通行密钥。",

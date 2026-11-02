@@ -43,7 +43,6 @@ function view(request: PermissionRequest): RequestView {
         kind: 'permission',
         id: request.id,
         categories: request.categories.map(category),
-        host: request.host,
         command: request.command,
         subagent: request.agent,
       }
@@ -57,8 +56,6 @@ function view(request: PermissionRequest): RequestView {
         keep: request.keep,
         renewal: request.renewal,
       }
-    case 'allowance':
-      return { kind: 'allowance', id: request.id, name: request.name, removed: request.removed }
   }
 }
 
@@ -173,8 +170,8 @@ export const usePermissions = defineStore('permissions', () => {
       }
     } catch (error) {
       if (error instanceof ApiError) {
-        // Another page decided it first, or the credential was removed since: the metadata brings the outcome.
-        if (error.code === 'permission_request_not_found' || error.code === 'credential_removed') {
+        // Another page decided it first: the metadata brings the outcome.
+        if (error.code === 'permission_request_not_found') {
           return
         }
         // The values do not suit the request: said under the form, which keeps what was typed.

@@ -5,8 +5,6 @@
     "subagentRan": "서브에이전트 {number}(“{description}”)에서 실행했습니다",
     "deny": "거부",
     "allowConversation": "이 대화에서 허용",
-    "allow": "허용",
-    "dontAllow": "허용 안 함",
     "decline": "거절",
     "save": "저장",
     "updateCredential": "자격 증명 업데이트",
@@ -18,32 +16,29 @@
       "always": "제거할 때까지 보관"
     },
     "needsValues": "모든 필드에 값이 필요합니다.",
-    "allowCredentialTitle": "이 대화에서 “{name}” 자격 증명을 사용하도록 허용하시겠습니까?",
-    "removed": "제거됨",
-    "youRemoved": "이 자격 증명을 제거했습니다.",
     "progress": "{position} / {count}"
   },
   "useCredential": "“{name}” 자격 증명 사용",
   "host": {
     "reach": "{host} 접근",
-    "pair": "컴퓨터 페어링 및 접근",
-    "allowTitle": "이 대화에서 {host} 호스트에 접근하도록 허용하시겠습니까?",
-    "allowPairingTitle": "이 대화에서 컴퓨터를 페어링하고 접근하도록 허용하시겠습니까?",
-    "description": "이 대화의 에이전트가 {host} 호스트에서 사용자 권한으로 명령을 실행하고, 이 대화가 실행되는 위치를 이 호스트로 옮길 수 있습니다.",
-    "pairingDescription": "이 대화의 에이전트가 컴퓨터를 내 계정과 페어링하고, 그 컴퓨터에서 사용자 권한으로 명령을 실행하며, 이 대화가 실행되는 위치를 그 컴퓨터로 옮길 수 있습니다."
+    "pair": "컴퓨터 페어링 및 접근"
   },
   "categories": {
-    "credentials_manage": {
-      "action": "자격 증명 관리",
-      "description": "“자격 증명 관리”를 허용하면 이 대화의 에이전트가 저장된 자격 증명을 제거할 수 있습니다. 자격 증명은 사용을 허용한 모든 대화에서 사용됩니다."
+    "credentials_use": {
+      "action": "자격 증명 사용",
+      "description": "“자격 증명 사용”을 허용하면 이 대화의 에이전트가 저장된 자격 증명을 나열하고, 읽고, 저장하고, 교체하고, 제거할 수 있으며, 새 자격 증명을 요청할 수도 있습니다."
+    },
+    "host_use": {
+      "action": "기기 사용",
+      "description": "“기기 사용”을 허용하면 이 대화의 에이전트가 모든 기기와 Cloud에서 사용자 권한으로 명령을 실행하고, 이 대화가 실행되는 위치를 그 기기로 옮기고, 컴퓨터를 내 계정과 페어링하고, 포트 포워딩을 추가하고 제거할 수 있습니다. 포트 포워딩은 이 대화가 끝나도 유지됩니다."
     },
     "providers_manage": {
       "action": "제공업체 관리",
       "description": "모든 대화에서 사용할 수 있는 제공업체와 해당 모델을 추가, 변경, 제거합니다."
     },
-    "conversation_read": {
-      "action": "다른 대화 읽기",
-      "description": "“다른 대화 읽기”를 허용하면 이 대화의 에이전트가 사용자의 대화를 나열하고 그 내용을 읽을 수 있습니다. 읽은 내용은 이 대화의 모델 제공업체로 전달됩니다."
+    "conversation_use": {
+      "action": "다른 대화 사용",
+      "description": "“다른 대화 사용”을 허용하면 이 대화의 에이전트가 사용자의 대화를 나열하고, 그 내용을 읽고, 메시지를 보낼 수 있습니다. 읽은 내용은 이 대화의 모델 제공업체로 전달됩니다."
     },
     "agent_profiles": {
       "action": "서브에이전트 프로필 변경",

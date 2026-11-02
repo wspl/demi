@@ -5,8 +5,6 @@
     "subagentRan": "Subagent {number}, “{description}”, ran",
     "deny": "Deny",
     "allowConversation": "Allow for This Conversation",
-    "allow": "Allow",
-    "dontAllow": "Don’t Allow",
     "decline": "Decline",
     "save": "Save",
     "updateCredential": "Update the Credential",
@@ -18,32 +16,29 @@
       "always": "Kept until you remove it"
     },
     "needsValues": "Every field needs a value.",
-    "allowCredentialTitle": "Allow this conversation to use the credential “{name}”?",
-    "removed": "Removed",
-    "youRemoved": "You removed this credential.",
     "progress": "{position} / {count}"
   },
   "useCredential": "use the credential “{name}”",
   "host": {
     "reach": "reach {host}",
-    "pair": "pair a computer and reach it",
-    "allowTitle": "Allow this conversation to reach {host}?",
-    "allowPairingTitle": "Allow this conversation to pair a computer and reach it?",
-    "description": "The agents of this conversation run commands as you on {host}, and can make it where this conversation runs.",
-    "pairingDescription": "The agents of this conversation pair the computer with your account, run commands as you on it, and can make it where this conversation runs."
+    "pair": "pair a computer and reach it"
   },
   "categories": {
-    "credentials_manage": {
-      "action": "manage credentials",
-      "description": "Manage Credentials lets the agents of this conversation remove your saved credentials. Your credentials serve every conversation you allow them in."
+    "credentials_use": {
+      "action": "use your credentials",
+      "description": "Use Your Credentials lets the agents of this conversation list, read, save, replace and remove your saved credentials, and ask you for new ones."
+    },
+    "host_use": {
+      "action": "use your devices",
+      "description": "Use Your Devices lets the agents of this conversation run commands as you on any of your devices and the Cloud, move this conversation to one, pair a computer with your account, and add and remove port forwards, which outlive this conversation."
     },
     "providers_manage": {
       "action": "manage providers",
       "description": "Add, change and remove your provider entries and their models, which every conversation of yours can use."
     },
-    "conversation_read": {
-      "action": "read your other conversations",
-      "description": "Read Your Other Conversations lets the agents of this conversation list your conversations and read what any of them holds. What they read goes to this conversation’s model provider."
+    "conversation_use": {
+      "action": "use your other conversations",
+      "description": "Use Your Other Conversations lets the agents of this conversation list your conversations, read what any of them holds and send messages to them. What they read goes to this conversation’s model provider."
     },
     "agent_profiles": {
       "action": "change subagent profiles",

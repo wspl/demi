@@ -1,5 +1,4 @@
 import type {
-  AllowanceRequestView,
   CredentialRequestView,
   PermissionCategoryView,
   PermissionRequestView,
@@ -20,26 +19,40 @@ export const retiredCategory: PermissionCategoryView = {
   description: null,
 }
 
-/** A move to a host the conversation may not reach: a request of the host alone. */
-export function hostRequest(): PermissionRequestView {
+/** Use Your Devices, as `demi host` declares it. */
+export const useDevices: PermissionCategoryView = {
+  id: 'host.use',
+  action: 'use your devices',
+  description:
+    'Use Your Devices lets the agents of this conversation run commands as you on any of your devices and the Cloud, move this conversation to one, pair a computer with your account, and add and remove port forwards, which outlive this conversation.',
+}
+
+/** Use Your Credentials, as `demi credentials` declares it. */
+export const useCredentials: PermissionCategoryView = {
+  id: 'credentials.use',
+  action: 'use your credentials',
+  description:
+    'Use Your Credentials lets the agents of this conversation list, read, save, replace and remove your saved credentials, and ask you for new ones.',
+}
+
+/** A move to a device the conversation does not reach yet, which asks for all of the user's devices. */
+export function devicesRequest(): PermissionRequestView {
   return {
     kind: 'permission',
-    id: 'pr-host',
-    categories: [],
-    host: { kind: 'device', deviceId: 'device-build-box', name: 'build-box' },
+    id: 'pr-devices',
+    categories: [useDevices],
     command: 'demi host move build-box /srv/website',
     subagent: null,
   }
 }
 
-/** A pairing, which asks every time. */
-export function pairingRequest(): PermissionRequestView {
+/** A read of a credential, which asks for all of the user's credentials. */
+export function credentialsRequest(): PermissionRequestView {
   return {
     kind: 'permission',
-    id: 'pr-pair',
-    categories: [],
-    host: { kind: 'pairing' },
-    command: 'demi host pair K7QM-2XWD',
+    id: 'pr-credentials',
+    categories: [useCredentials],
+    command: 'demi credentials read "GitHub token for deploys" token | gh auth login --with-token',
     subagent: null,
   }
 }
@@ -50,7 +63,6 @@ export function rootRequest(): PermissionRequestView {
     kind: 'permission',
     id: 'pr-root',
     categories: [manageSkills],
-    host: null,
     command: 'demi skills add vercel-labs/agent-skills --skill web-design-guidelines',
     subagent: null,
   }
@@ -62,7 +74,6 @@ export function subagentRequest(): PermissionRequestView {
     kind: 'permission',
     id: 'pr-subagent',
     categories: [manageSkills],
-    host: null,
     command: 'demi skills enable vercel-labs/agent-skills --skill react-best-practices',
     subagent: { number: 2, description: 'Frontend review' },
   }
@@ -77,7 +88,6 @@ export function queuedRequests(): PermissionRequestView[] {
       kind: 'permission',
       id: 'pr-retired',
       categories: [retiredCategory],
-      host: null,
       command: 'demi conversations show 12',
       subagent: { number: 3, description: 'History search' },
     },
@@ -137,13 +147,3 @@ export const INVALID_ANSWER = 'The value of “API key” can be at most 64 KiB.
 /** What the backend says of an answer that would renew a saved credential with other fields. */
 export const FIELDS_DIFFER =
   '“Google API key” already has other fields; answer with the same fields or choose another name.'
-
-/** A stored credential the conversation asks to use. */
-export function allowanceRequest(): AllowanceRequestView {
-  return { kind: 'allowance', id: 'al-github', name: 'GitHub token for deploys', removed: false }
-}
-
-/** The same request after the user removed the credential in Settings. */
-export function removedAllowanceRequest(): AllowanceRequestView {
-  return { ...allowanceRequest(), id: 'al-removed', removed: true }
-}

@@ -5,7 +5,6 @@ use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::credentials::{CredentialField, Keep, RequestedValues};
-use crate::ids::DeviceId;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,21 +32,6 @@ pub struct PermissionCategory {
     pub description: Option<String>,
 }
 
-/// The host a permission request asks the conversation to reach, by its
-/// `kind`: a device of the user's, by its id and the name it goes by now, or
-/// the computer `demi host pair` pairs, which has no name yet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
-pub enum PermissionHost {
-    Device {
-        #[garde(skip)]
-        device_id: DeviceId,
-        #[garde(skip)]
-        name: String,
-    },
-    Pairing {},
-}
-
 /// The subagent that ran a refused command, by the number and the
 /// description the model knows it by.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
@@ -64,20 +48,13 @@ pub struct RequestingAgent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PermissionRequest {
-    /// The grant of the category a command lacked, or the host it asks to
-    /// reach; never both.
+    /// The grant of the category a command lacked.
     Permission {
         #[garde(skip)]
         id: PermissionRequestId,
-        /// The category the call lacked; none when it asks for a host.
+        /// The category the call lacked.
         #[garde(dive)]
         categories: Vec<PermissionCategory>,
-        /// The host the call asks to reach; null when it asks for a
-        /// category.
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<PermissionHost>")]
-        #[garde(dive)]
-        host: Option<PermissionHost>,
         /// The command line as the agent ran it, quoted for a POSIX shell.
         #[garde(skip)]
         command: String,
@@ -120,50 +97,26 @@ pub enum PermissionRequest {
         #[garde(skip)]
         created_at: Timestamp,
     },
-    /// The use of a saved credential in this conversation.
-    Allowance {
-        #[garde(skip)]
-        id: PermissionRequestId,
-        #[garde(skip)]
-        name: String,
-        /// The user removed the credential since it was asked for.
-        #[garde(skip)]
-        removed: bool,
-        /// The command line as the agent ran it, quoted for a POSIX shell.
-        #[garde(skip)]
-        command: String,
-        /// The subagent that ran it; null for the root.
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<RequestingAgent>")]
-        #[garde(dive)]
-        agent: Option<RequestingAgent>,
-        #[garde(skip)]
-        created_at: Timestamp,
-    },
 }
 
 impl PermissionRequest {
     pub fn id(&self) -> &PermissionRequestId {
         match self {
-            Self::Permission { id, .. } | Self::Credential { id, .. } | Self::Allowance { id, .. } => id,
+            Self::Permission { id, .. } | Self::Credential { id, .. } => id,
         }
     }
 
     /// The command line as the agent ran it.
     pub fn command(&self) -> &str {
         match self {
-            Self::Permission { command, .. }
-            | Self::Credential { command, .. }
-            | Self::Allowance { command, .. } => command,
+            Self::Permission { command, .. } | Self::Credential { command, .. } => command,
         }
     }
 
     /// The subagent that ran it; none for the root.
     pub fn agent(&self) -> Option<&RequestingAgent> {
         match self {
-            Self::Permission { agent, .. }
-            | Self::Credential { agent, .. }
-            | Self::Allowance { agent, .. } => agent.as_ref(),
+            Self::Permission { agent, .. } | Self::Credential { agent, .. } => agent.as_ref(),
         }
     }
 }

@@ -6,9 +6,8 @@
 //! - ask the user for one and wait for the answer;
 //! - save one, or new values of a saved one, from values piped on its
 //!   standard input;
-//! - read one field's value onto its standard output once the conversation may
-//!   use the credential;
-//! - with the user's Manage Credentials, remove one.
+//! - read one field's value onto its standard output;
+//! - remove one.
 //!
 //! No output of these commands carries a secret value but `read`'s, which the
 //! agent passes on.
@@ -20,8 +19,8 @@
 //! the model's vendor. One it can reach on the Host, such as a key in a file,
 //! it pipes into `save`: never into an argument, since the shell expands it
 //! there and the permission card shows and stores the expanded command line.
-//! A save asks the user nothing, a replacement of a saved one's values
-//! neither: an agent can already use any value it can pipe.
+//! A save, a replacement of a saved one's values included, asks nothing
+//! beyond the group's grant: an agent can already use any value it can pipe.
 //!
 //! `read` writes the value to its standard output, wherever that goes: Demi
 //! refuses and masks nothing, and how the value is passed on is the agent's
@@ -34,25 +33,22 @@
 //! a log or a frame to the page, but a visible field's in Settings' list. A
 //! value enters the transcript only when an agent's command prints it.
 //!
-//! # Allowance and keeping
+//! # Permission and keeping
 //!
-//! A credential is used in a conversation only once the user allowed it there.
-//!
-//! - One the user saved from that conversation's request is allowed at once.
-//! - Any other asks first.
-//! - An allowance lasts the conversation's life for every agent of its tree.
+//! Every command of the group needs the grant of the user's credentials
+//! ([`CREDENTIALS`]), which the user gives once for a conversation and which
+//! then covers every credential, for every agent of its tree.
 //!
 //! How long a credential is kept is the agent's decision, with the request's
 //! `--keep`, since it knows what the secret is for. The card offers no choice,
 //! as a form does not ask how long its data is kept.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::credentials::StoredCredential;
 use demi_backend_database::permissions::CredentialAsk;
 use demi_backend_permissions::{Answer, ask_credential, read_credential, save_credential};
-use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };
@@ -63,7 +59,6 @@ use demi_shared_types::{
 use demi_web_api_protocol::credentials::{
     CredentialField, FieldKind, Keep, distinct,
 };
-use demi_web_api_protocol::ids::UserCredentialId;
 use demi_web_api_protocol::text::Trimmed;
 use garde::Validate;
 use schemars::JsonSchema;
@@ -73,31 +68,31 @@ use super::Shard;
 use super::credentials::CredentialError;
 use crate::conversation::organize::{failed, verb};
 
-/// The permission category of `remove`.
-pub(crate) const MANAGE: &str = "credentials.manage";
+/// The permission category every command of the group needs.
+pub(crate) const CREDENTIALS: &str = "credentials.use";
 
-const MANAGE_ACTION: &str = "manage credentials";
+const CREDENTIALS_ACTION: &str = "use your credentials";
 
-const MANAGE_DESCRIPTION: &str = "Manage Credentials lets the agents of this conversation remove your saved credentials. Your credentials serve every conversation you allow them in.";
+const CREDENTIALS_DESCRIPTION: &str = "Use Your Credentials lets the agents of this conversation list, read, save, replace and remove your saved credentials, and ask you for new ones.";
 
-const SUMMARY: &str = "The user's credentials: named secrets such as API keys, tokens and passwords, each with fields. Ask the user for one, pass a field's value on without reading it, list and show them, or remove one.";
+const SUMMARY: &str = "The user's credentials: named secrets such as API keys, tokens and passwords, each with fields. Ask the user for one, pass a field's value on without reading it, list and show them, or remove one. Every command needs the user's permission once for the conversation.";
 
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "The user's named secrets: request one on a card, or save one piped from the Host; read a field into a pipe or a file. A secret is asked for this way, never in the conversation.";
 
-const LIST_SUMMARY: &str = "List the user's credentials: name, field names, when each is removed (- for kept always), and whether this conversation may use it. No value.";
+const LIST_SUMMARY: &str = "List the user's credentials: name, field names and when each is removed (- for kept always). No value.";
 
-const SHOW_SUMMARY: &str = "Show one credential: its fields, the values of its visible fields once this conversation may use it, its note and its dates. A secret field's value is never shown; `read` passes it on.";
+const SHOW_SUMMARY: &str = "Show one credential: its fields, the values of its visible fields, its note and its dates. A secret field's value is never shown; `read` passes it on.";
 
-const REQUEST_SUMMARY: &str = "Ask the user for a credential on a card in the conversation, or for new values of the saved one of that name, which then must have the same fields. Waits for the user's answer, however long, and prints what was saved, or fails when the user declines. The credential is then allowed in this conversation.";
+const REQUEST_SUMMARY: &str = "Ask the user for a credential on a card in the conversation, or for new values of the saved one of that name, which then must have the same fields. Waits for the user's answer, however long, and prints what was saved, or fails when the user declines.";
 
-const SAVE_SUMMARY: &str = "Save a credential from values piped on standard input, which the model never reads, such as a key from a file on the Host, or new values of the saved one of that name, which then must have the same fields. The credential is then allowed in this conversation.";
+const SAVE_SUMMARY: &str = "Save a credential from values piped on standard input, which the model never reads, such as a key from a file on the Host, or new values of the saved one of that name, which then must have the same fields.";
 
 const VALUES: &str = "Piped from a file or a command, never written in the command, which the transcript keeps: for one field, its value as it is, without one trailing newline; for several, one <field>=<value> line each.";
 
-const READ_SUMMARY: &str = "Write one field's value to standard output, exactly as saved, without a newline. A value you print is sent to the model's vendor and stays in the transcript; to avoid that, pipe it into a command (`demi credentials read \"GitHub token\" token | gh auth login --with-token`), redirect it into a file (`… > token.txt`), or substitute it (`TOKEN=$(demi credentials read \"GitHub token\" token) git push`). A credential this conversation may not use yet asks the user first, and the read fails until they allow it.";
+const READ_SUMMARY: &str = "Write one field's value to standard output, exactly as saved, without a newline. A value you print is sent to the model's vendor and stays in the transcript; to avoid that, pipe it into a command (`demi credentials read \"GitHub token\" token | gh auth login --with-token`), redirect it into a file (`… > token.txt`), or substitute it (`TOKEN=$(demi credentials read \"GitHub token\" token) git push`).";
 
-const REMOVE_SUMMARY: &str = "Remove a credential, its values and every conversation's allowance to use it. Only when the user asks for it. Needs the user's permission.";
+const REMOVE_SUMMARY: &str = "Remove a credential and its values. Only when the user asks for it.";
 
 const RUNNING_HINT: &str = "Waiting for the user to answer the credential card in the conversation, which may take a while. End your turn and say what you are waiting for; this command reports when the user answers.";
 
@@ -154,12 +149,10 @@ struct Listed {
     /// When it is removed; null while it is kept always.
     #[schemars(with = "Nullable<Timestamp>")]
     keep_until: Option<Timestamp>,
-    /// Whether this conversation may use it.
-    allowed: bool,
 }
 
-/// A field as `show` prints it: a visible field's value once the
-/// conversation may use the credential, never a secret one's.
+/// A field as `show` prints it: a visible field's value, never a secret
+/// one's.
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct ShownField {
@@ -183,18 +176,18 @@ struct Shown {
     last_used_at: Option<Timestamp>,
     created_at: Timestamp,
     updated_at: Timestamp,
-    allowed: bool,
 }
 
 /// The `credentials` group, whose handlers act in `shard`.
 pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
     GroupBuilder::new("credentials", SUMMARY)
         .index_entry(ENTRY)
-        .permission(MANAGE, MANAGE_ACTION, MANAGE_DESCRIPTION)
+        .permission(CREDENTIALS, CREDENTIALS_ACTION, CREDENTIALS_DESCRIPTION)
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<Vec<Listed>>()
+                .permission(CREDENTIALS)
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
@@ -203,6 +196,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("name", "The credential's name.")
                 .positionals(["name"])
                 .json_output::<Shown>()
+                .permission(CREDENTIALS)
                 .bind(TypedRpc::new(verb(shard.clone(), show))),
         )
         .leaf(
@@ -221,6 +215,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["name"])
                 .running_hint(RUNNING_HINT)
                 .json_output::<Listed>()
+                .permission(CREDENTIALS)
                 .bind(TypedRpc::new(verb(shard.clone(), request))),
         )
         .leaf(
@@ -234,6 +229,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["name"])
                 .stdin_field("values")
                 .json_output::<Listed>()
+                .permission(CREDENTIALS)
                 .bind(TypedRpc::new(verb(shard.clone(), save))),
         )
         .leaf(
@@ -242,6 +238,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("name", "The credential's name.")
                 .describe("field", "The field's name.")
                 .positionals(["name", "field"])
+                .permission(CREDENTIALS)
                 .bind(TypedRpc::new(verb(shard.clone(), read))),
         )
         .leaf(
@@ -249,27 +246,16 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<NameArgs>()
                 .describe("name", "The credential's name.")
                 .positionals(["name"])
-                .permission(MANAGE)
+                .permission(CREDENTIALS)
                 .bind(TypedRpc::new(verb(shard, remove))),
         )
 }
 
-/// The ids of the credentials the call's conversation may use.
-async fn allowed(shard: &Shard, invocation: &RpcInvocation) -> Result<BTreeSet<UserCredentialId>, RpcError> {
-    shard
-        .services()
-        .control
-        .allowed_credentials(conversation_of(invocation)?)
-        .await
-        .map_err(failed)
-}
-
-fn listed(credential: &StoredCredential, allowed: bool) -> Listed {
+fn listed(credential: &StoredCredential) -> Listed {
     Listed {
         name: credential.name.clone(),
         fields: credential.fields.clone(),
         keep_until: credential.keep_until,
-        allowed,
     }
 }
 
@@ -303,7 +289,6 @@ fn listed_text(listed: &Listed) -> String {
     fields
         .field("Name", listed.name.as_str())
         .field("Keep until", listed.keep_until)
-        .field("Allowed", listed.allowed)
         .table("Fields", &field_table(listed.fields.iter().map(|field| (field, None))));
     fields.render()
 }
@@ -321,21 +306,16 @@ async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8,
         .user_credentials(shard.user().clone())
         .await
         .map_err(failed)?;
-    let allowed = allowed(&shard, &call.invocation).await?;
-    let listed: Vec<Listed> = credentials
-        .iter()
-        .map(|credential| listed(credential, allowed.contains(&credential.id)))
-        .collect();
+    let listed: Vec<Listed> = credentials.iter().map(listed).collect();
     if call.invocation.json {
         return print_json(&port, &listed).await;
     }
-    let mut table = Table::new(["name", "fields", "keep until", "allowed"]);
+    let mut table = Table::new(["name", "fields", "keep until"]);
     for credential in &listed {
         table.row::<Cell>([
             credential.name.as_str().into(),
             field_names(&credential.fields).into(),
             credential.keep_until.into(),
-            credential.allowed.into(),
         ]);
     }
     port.stdout(table.render()).await?;
@@ -354,21 +334,13 @@ async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u
             "\u{201c}{name}\u{201d}: the user has no credential of that name"
         )));
     };
-    let allowed = allowed(&shard, &call.invocation)
-        .await?
-        .contains(&credential.id);
-    // A visible value is shown once the conversation may use the
-    // credential; a secret one never.
-    let mut values = if allowed {
-        control
-            .user_credential_values(shard.user().clone(), credential.id.clone(), shard.vault_seal())
-            .await
-            .map_err(failed)?
-            .map(|(_, values)| values)
-            .unwrap_or_default()
-    } else {
-        Default::default()
-    };
+    // A visible value is shown; a secret one never.
+    let mut values = control
+        .user_credential_values(shard.user().clone(), credential.id.clone(), shard.vault_seal())
+        .await
+        .map_err(failed)?
+        .map(|(_, values)| values)
+        .unwrap_or_default();
     let credential_fields = credential.fields.clone();
     let shown = Shown {
         fields: credential
@@ -390,7 +362,6 @@ async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u
         last_used_at: credential.last_used_at,
         created_at: credential.created_at,
         updated_at: credential.updated_at,
-        allowed,
     };
     if call.invocation.json {
         return print_json(&port, &shown).await;
@@ -402,7 +373,6 @@ async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u
         .field("Last used", shown.last_used_at)
         .field("Created", shown.created_at)
         .field("Updated", shown.updated_at)
-        .field("Allowed", shown.allowed)
         .table(
             "Fields",
             &field_table(credential_fields.iter().zip(&shown.fields).map(|(field, shown)| (field, shown.value.as_deref()))),
@@ -558,7 +528,7 @@ async fn save(shard: Rc<Shard>, call: Call<SaveArgs>, port: RpcPort) -> Result<u
 
 /// Prints the credential `request` or `save` saved.
 async fn print_saved(invocation: &RpcInvocation, port: &RpcPort, credential: &StoredCredential) -> Result<u8, RpcError> {
-    let saved = listed(credential, true);
+    let saved = listed(credential);
     if invocation.json {
         return print_json(port, &saved).await;
     }

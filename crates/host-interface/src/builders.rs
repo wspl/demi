@@ -303,8 +303,8 @@ impl LeafBuilder {
 
     /// The string field of the input that names a host the call may bring
     /// into the conversation: the dispatch resolves it once, asks the user
-    /// for that host when the conversation may not reach it, and hands it to
-    /// the handler as the invocation's `brought`.
+    /// for the user's devices when the conversation does not reach it yet,
+    /// and hands it to the handler as the invocation's `brought`.
     pub fn brings_host(mut self, field: impl Into<String>) -> Self {
         self.leaf.brings_host = Some(BringsHost { field: field.into() });
         self

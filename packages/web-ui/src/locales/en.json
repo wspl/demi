@@ -190,7 +190,6 @@
     "port_forward_name_taken": "A forward named {name} already exists.",
     "port_forward_not_found": "This port forward no longer exists.",
     "credential_fields_differ": "A credential with this name has other fields.",
-    "credential_removed": "The credential was removed.",
     "passkey_expired": "The passkey request expired. Try again.",
     "unknown_passkey": "No account uses this passkey.",
     "passkey_not_found": "The passkey wasn’t found.",

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::ids::ConversationId;
-use crate::permissions::{PermissionCategory, PermissionHost, PermissionRequestId};
+use crate::permissions::{PermissionCategory, PermissionRequestId};
 
 /// `GET /push/key`: the key the page subscribes with, the uncompressed
 /// P-256 point in URL-safe base64 without padding.
@@ -288,16 +288,15 @@ pub const ANSWER_START_CHARS: usize = 400;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PushAsk {
-    /// The grant of a category, or to reach a host.
+    /// The grant of a category. A push of an earlier release that asked for
+    /// a host and named no category does not parse, and shows as an
+    /// unreadable push does.
     Permission {
+        #[schemars(length(min = 1))]
         categories: Vec<PermissionCategory>,
-        #[schemars(with = "Nullable<PermissionHost>")]
-        host: Option<PermissionHost>,
     },
     /// To save the credential `name`.
     Credential { name: String },
-    /// To use the saved credential `name`.
-    Allowance { name: String },
 }
 
 impl PushMessage {

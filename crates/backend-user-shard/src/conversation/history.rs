@@ -15,7 +15,8 @@
 //!
 //! The commands reach no Host, but for the one write of a saved attachment.
 //! They need no permission, but to read another conversation, `--conversation`,
-//! which asks the user once per conversation (`conversation.read`).
+//! which needs the grant of the user's other conversations
+//! (`organize::CONVERSATIONS`).
 //!
 //! A block is named by its index in the agent's transcript, written bare: a word
 //! that starts with `#` is a comment to a shell, so that every line the commands
@@ -44,7 +45,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use super::organize::{READ, failed, refused, verb};
+use super::organize::{CONVERSATIONS, failed, refused, verb};
 use super::turn_timing::{TurnTiming, Turns, turn_of};
 use crate::shard::Shard;
 
@@ -176,7 +177,7 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["words"])
                 .success_output("a table of the page's hits, each with the message before and after it; on stderr, the page and the search of the next page")
                 .json_output::<Vec<SearchRow>>()
-                .permission_when(READ, "conversation")
+                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), search))),
         )
         .leaf(
@@ -184,7 +185,7 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<ReadArgs>()
                 .positionals(["range"])
                 .success_output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
-                .permission_when(READ, "conversation")
+                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), read))),
         )
         .leaf(
@@ -193,7 +194,7 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["range"])
                 .success_output("a table of the turns that start in the range, one row per turn; on stderr, the next page when more turns follow")
                 .json_output::<Vec<TurnTiming>>()
-                .permission_when(READ, "conversation")
+                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), timing))),
         )
         .leaf(
@@ -201,7 +202,7 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<OpenArgs>()
                 .positionals(["item"])
                 .success_output("what the item holds, or the path an attachment was saved to; when more pages follow, a last line naming the next")
-                .permission_when(READ, "conversation")
+                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard, open))),
         )
 }

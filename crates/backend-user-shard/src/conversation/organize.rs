@@ -3,11 +3,11 @@
 //!
 //! An agent renames its conversation at once, without asking: the title is
 //! the conversation's own, and the user renames it back as easily. Listing the user's projects only reads, so it asks no permission.
-//! Listing the user's conversations, and reading one's transcript
-//! (`history.rs`), asks the user's Read Your Other Conversations, since what
-//! they read goes to this conversation's model provider. Sending a message to
-//! another's main agent asks nothing: the recipient reads it as another
-//! agent's words, in a view the user sees. An archived conversation is listed nowhere and receives
+//! Listing the user's conversations, reading one's transcript (`history.rs`)
+//! and sending a message to another's main agent need the user's Use Your
+//! Other Conversations ([`CONVERSATIONS`]), given once for the conversation:
+//! what they read goes to this conversation's model provider, and what they
+//! send wakes another conversation. An archived conversation is listed nowhere and receives
 //! nothing, so an archive keeps it out of the way. Where the
 //! conversation runs decides its project, so an agent moves it into or out of
 //! one with `demi host move` (`host_commands.rs`).
@@ -35,13 +35,13 @@ use super::history::{history_group, shell_word};
 use super::search::search;
 use crate::shard::Shard;
 
-/// The permission category of the commands that read the user's other
-/// conversations.
-pub(crate) const READ: &str = "conversation.read";
+/// The permission category of the commands that read or message the user's
+/// other conversations.
+pub(crate) const CONVERSATIONS: &str = "conversation.use";
 
-const READ_ACTION: &str = "read your other conversations";
+const CONVERSATIONS_ACTION: &str = "use your other conversations";
 
-const READ_DESCRIPTION: &str = "Read Your Other Conversations lets the agents of this conversation list your conversations and read what any of them holds. What they read goes to this conversation’s model provider.";
+const CONVERSATIONS_DESCRIPTION: &str = "Use Your Other Conversations lets the agents of this conversation list your conversations, read what any of them holds and send messages to them. What they read goes to this conversation’s model provider.";
 
 const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects and conversations; send a message to another conversation; and transcripts, which history searches and reads: an agent's of this conversation, or of another conversation of the user.";
 
@@ -85,7 +85,7 @@ struct NoArgs {}
 pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
     GroupBuilder::new("conversation", SUMMARY)
         .index_entry(ENTRY)
-        .permission(READ, READ_ACTION, READ_DESCRIPTION)
+        .permission(CONVERSATIONS, CONVERSATIONS_ACTION, CONVERSATIONS_DESCRIPTION)
         .leaf(
             LeafBuilder::rpc("rename", RENAME_SUMMARY)
                 .input::<RenameArgs>()
@@ -104,7 +104,7 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["words"])
                 .success_output("a table of the page's conversations; on stderr, the page and the list of the next page")
                 .json_output::<Vec<ListedConversation>>()
-                .permission(READ)
+                .permission(CONVERSATIONS)
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
@@ -113,6 +113,7 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["conversation"])
                 .stdin_field("message")
                 .success_output("the conversation the message reached")
+                .permission(CONVERSATIONS)
                 .bind(TypedRpc::new(verb(shard.clone(), send))),
         )
         .group(history_group(shard))
