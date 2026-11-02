@@ -259,6 +259,8 @@ pub fn web() -> Vec<Root> {
         receives::<files::WorkingTreeChanges>(),
         receives::<files::ChangeSides>(),
         receives::<files::GitBranches>(),
+        sends::<files::RepositoriesRequest>(),
+        receives::<files::GitRepositories>(),
         receives::<files::GitLog>(),
         receives::<files::GitCommit>(),
         receives::<usage::UsageTotals>(),

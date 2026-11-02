@@ -207,6 +207,7 @@
     "commitList": "커밋",
     "commitsFailed": "커밋을 나열할 수 없습니다.",
     "searchBranches": "브랜치 검색",
+    "searchRepositories": "저장소 검색",
     "checkedOut": "체크아웃됨"
   },
   "document": {

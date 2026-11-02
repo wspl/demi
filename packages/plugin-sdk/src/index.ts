@@ -213,6 +213,8 @@ export {
   type RequestFile,
   type TranscriptRequest,
 } from '@demicodes/web-ui/files/request-changes'
+// The repositories Commits offers for a conversation's directory.
+export type { Repositories, RepositoryEntry } from '@demicodes/web-ui/files/repositories'
 export type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 export { baseName, isAbsoluteHostPath, joinPath, relativePath } from '@demicodes/web-ui/files/paths'
 export { downloadUrl } from '@demicodes/web-ui/files/download'

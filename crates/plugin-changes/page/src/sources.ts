@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
-import { sameRequestFiles, type ChangeSources, type ConversationFileService, type RequestFile } from '@demicodes/plugin-sdk'
-import { viewDirectory, type ChangeData } from './data'
+import { emptyChangeSet, sameRequestFiles, type ChangeSources, type ConversationFileService, type RequestFile } from '@demicodes/plugin-sdk'
+import type { ChangeData } from './data'
 
 const NO_FILES: readonly RequestFile[] = []
 
@@ -10,8 +10,13 @@ const NO_FILES: readonly RequestFile[] = []
  * transcript holds it now. Each frame of a turn reads the request anew: the
  * sources stay the same value while a frame changes nothing of them, so the
  * view does not render for it (`packages/web-ui/src/files/file-cache.ts`).
+ * While `directory` is null, Commits reads nothing.
  */
-export function useChangeSources(files: ConversationFileService, data: () => ChangeData): ComputedRef<ChangeSources> {
+export function useChangeSources(
+  files: ConversationFileService,
+  data: () => ChangeData,
+  directory: () => string | undefined | null,
+): ComputedRef<ChangeSources> {
   const requestFiles = computed<readonly RequestFile[] | null>((previous) => {
     const shown = data().request
     if (!shown)
@@ -19,9 +24,12 @@ export function useChangeSources(files: ConversationFileService, data: () => Cha
     const next = files.request(shown.node, shown.request)?.files ?? NO_FILES
     return previous && sameRequestFiles(previous, next) ? previous : next
   })
-  return computed(() => ({
-    uncommitted: files.changes(viewDirectory(data())),
-    history: files.history(viewDirectory(data())),
-    conversation: requestFiles.value ? { files: requestFiles.value, read: files.edit } : null,
-  }))
+  return computed(() => {
+    const shown = directory()
+    return {
+      uncommitted: shown === null ? emptyChangeSet : files.changes(shown),
+      history: shown === null ? null : files.history(shown),
+      conversation: requestFiles.value ? { files: requestFiles.value, read: files.edit } : null,
+    }
+  })
 }

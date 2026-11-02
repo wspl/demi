@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import type { ReadCallChange } from '@demicodes/web-ui/files/changes'
 import type { ChangeReads, HistoryReads } from '@demicodes/web-ui/files/kept-source'
-import { ApiError, apiRequest, readResponse } from '../api/client'
-import { changeSidesSchema, gitBranchesSchema, gitCommitSchema, gitLogSchema, workingTreeChangesSchema } from '../api/generated/web-api'
+import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
+import { changeSidesSchema, gitBranchesSchema, gitCommitSchema, gitLogSchema, gitRepositoriesSchema, repositoriesRequestSchema, workingTreeChangesSchema, type GitRepositories } from '../api/generated/web-api'
 import { fileBrowserError, rawFileContents, readAtOf } from '../api/files'
 
 /**
@@ -73,6 +73,20 @@ export function historyReads(conversationId: string, directory?: string): Histor
     sides: (commit, path, from) => read('file', { commit, path, ...(from === undefined ? {} : { from }) }, changeSidesSchema),
     contents: (commit) => rawFileContents(`/conversations/${id}/changes/raw`, { ...tree, commit }),
   }
+}
+
+/**
+ * The repositories the conversation's directory is in or holds, and those
+ * holding `directories`, where its agents changed files.
+ */
+export async function readRepositories(conversationId: string, directories: readonly string[], signal: AbortSignal): Promise<GitRepositories> {
+  const body = repositoriesRequestSchema.parse({ paths: directories })
+  const response = await apiRequest(`/conversations/${encodeURIComponent(conversationId)}/changes/repositories`, {
+    method: 'POST',
+    ...jsonBody(body),
+    signal,
+  })
+  return readResponse(response, gitRepositoriesSchema)
 }
 
 /**

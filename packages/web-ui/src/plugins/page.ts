@@ -22,6 +22,7 @@ import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
 import type { HostArtifact, HostDownload } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { CommitHistorySource } from '../files/history'
+import type { Repositories } from '../files/repositories'
 import type { TranscriptRequest } from '../files/request-changes'
 import type { FileBrowserSource, FileDirectory } from '../files/types'
 import { provideOnScreen } from '../files/on-screen'
@@ -148,6 +149,19 @@ export interface ConversationFileService {
    * null while the conversation's Host is not known.
    */
   history(directory?: string): CommitHistorySource | null
+  /**
+   * The repositories the conversation's directory is in or holds, and those
+   * where its agents changed files (`packages/web-ui/src/files/repositories.ts`);
+   * null until a component shows them and the Host has answered. A Host that
+   * cannot list them lists none.
+   */
+  repositories(): Repositories | null
+  /**
+   * The calling component shows the repositories: the service asks the Host
+   * while the component is on screen, and again as the agents change files in
+   * a folder it did not ask about, until the component's scope ends.
+   */
+  showRepositories(): void
   /** The two sides of one retained edit, by the blobs that hold them. */
   readonly edit: ReadCallChange
   /**
@@ -160,12 +174,13 @@ export interface ConversationFileService {
   request(node: string | null, request: string): TranscriptRequest | null
   /**
    * The calling component shows the working tree under the directory `directory()`
-   * names, read at each change, the conversation's when it names none.
+   * names, read at each change, the conversation's when it names none, and none
+   * while it is null, as while the view waits to learn which one it shows.
    *
    * The service follows the Host's reports for it and keeps `changes` of it current
    * until the component's scope ends.
    */
-  showChanges(directory?: () => string | undefined): void
+  showChanges(directory?: () => string | undefined | null): void
 }
 
 /** Opening intents. */

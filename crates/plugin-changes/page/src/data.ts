@@ -31,10 +31,11 @@ export const changeDataSchema = z.object({
   /** In Commits, the file of the item to show; null selects its first file. */
   file: z.string().nullable(),
   /**
-   * The directory Commits mode reads when a commit link or a subagent's
-   * branch named one: the working directory of the agent that wrote the
-   * link, or the folder of the branch, null for the conversation's; absent,
-   * the request's.
+   * The directory Commits mode reads when a commit link, a subagent's
+   * branch or the user's pick named one: the working directory of the agent
+   * that wrote the link, the folder of the branch, or the repository
+   * picked, null for the conversation's; absent, the request's, else the
+   * repository the agents changed a file in last.
    */
   root: z.string().nullable().optional(),
   /** The request, its file and its edit, or All Changes; null before any was opened. */
@@ -168,6 +169,24 @@ export function placeBranch(data: ChangeData, branch: string | null): ChangeData
   return { ...data, branch, place: false }
 }
 
+/**
+ * Commits showing the repository the user picked, `root`, null for the
+ * conversation's directory: its Uncommitted Changes, on the branch checked out.
+ * The pick stays as the agents change files elsewhere.
+ */
+export function showRepository(data: ChangeData, root: string | null): ChangeData {
+  return { ...data, mode: 'commits', root, commit: null, file: null, branch: null, place: false }
+}
+
+/**
+ * Commits keeping the repository it shows, `shown` (null for the
+ * conversation's directory), as the user's own choice: a commit or a branch
+ * picked in the repository shown by default stays in that repository.
+ */
+export function keepRepository(data: ChangeData, shown: string | null): ChangeData {
+  return data.mode === 'commits' && followsPreferred(data) ? { ...data, root: shown } : data
+}
+
 /** The commit list showing `branch`, null for the checked-out one. */
 export function showBranch(data: ChangeData, branch: string | null): ChangeData {
   return branch === data.branch ? data : { ...data, branch }
@@ -192,9 +211,9 @@ export function showPresentation(data: ChangeData, presentation: 'diff' | 'previ
 }
 
 /**
- * The working tree the view shows: the directory a commit link named, else
- * the one its request was opened for, the conversation's when neither names
- * one.
+ * The working tree the view names: the directory a commit link or the user's
+ * pick named, else the one its request was opened for; the conversation's
+ * when neither names one (`shown.ts` adds the repository Commits shows then).
  */
 export function viewDirectory(data: ChangeData): string | undefined {
   if (data.root !== undefined)
@@ -202,12 +221,18 @@ export function viewDirectory(data: ChangeData): string | undefined {
   return data.request?.root
 }
 
+/** Whether the view names no directory, so Commits shows the repository the agents changed a file in last. */
+export function followsPreferred(data: ChangeData): boolean {
+  return data.root === undefined && data.request?.root === undefined
+}
+
 /**
  * The Change view's place in the page's address, as
  * `?panel=change&mode=conversation&request=u1&path=src/app.ts&call=c2&segment=0`:
  *
  * - `mode`, `commit`, `file`, `root` and `branch`: what Commits shows, a
- *   commit link's directory `root`, empty for the conversation's.
+ *   commit link's directory or the repository picked, `root`, empty for the
+ *   conversation's.
  * - `request`, `agent`, `path` and `directory`: the request held and its file,
  *   and `call`, `segment` and `edited` its edit, absent for All Changes.
  * - `view`: a Markdown or SVG change shown as its diff or its preview; a

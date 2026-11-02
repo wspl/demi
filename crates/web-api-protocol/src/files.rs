@@ -6,7 +6,7 @@ pub use demi_runner_protocol::files::{
     MAX_PAGE_SUBSCRIPTIONS, PageSubscription, RefusedReason, SubscriptionKind,
 };
 pub use demi_runner_protocol::search::{FoundLine, SearchLine, SearchQuery, TextRange};
-pub use demi_runner_protocol::wire::{GitBranches, GitCommit, GitLog};
+pub use demi_runner_protocol::wire::{GitBranches, GitCommit, GitLog, GitRepositories};
 use demi_runner_protocol::wire::GitChanges;
 use demi_shared_types::Nullable;
 use garde::Validate;
@@ -326,6 +326,16 @@ pub struct UploadQuery {
     pub path: NonEmptyPath,
     #[serde(default)]
     pub replace: StrictBool,
+}
+
+/// `POST .../changes/repositories { paths }`: the directories where the
+/// conversation's agents changed files, inside its execution directory,
+/// whose repositories the answer lists with those of the directory itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct RepositoriesRequest {
+    #[garde(inner(length(chars, min = 1), custom(demi_command_protocol::without_nul)))]
+    pub paths: Vec<String>,
 }
 
 /// `?directory=` of the working tree's changes list: the working tree's

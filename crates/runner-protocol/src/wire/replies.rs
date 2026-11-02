@@ -18,7 +18,7 @@ use demi_shared_types::ReadAt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::{
-    DirEntry, FileHash, FileRead, FileStat, GitBranches, GitChanges, GitCommit, GitLog, Looked,
+    DirEntry, FileHash, FileRead, FileStat, GitBranches, GitChanges, GitCommit, GitLog, GitRepositories, Looked,
     OpenedFile,
 };
 
@@ -112,6 +112,7 @@ pub enum GitResult {
     /// The file streams into the call's output pipe after the reply.
     Show,
     Branches(#[garde(dive)] GitBranches),
+    Repositories(#[garde(dive)] GitRepositories),
     Log(#[garde(dive)] GitLog),
     Commit(#[garde(dive)] GitCommit),
 }
@@ -123,6 +124,7 @@ impl GitResult {
             Self::Changes(_) => "changes",
             Self::Show => "show",
             Self::Branches(_) => "branches",
+            Self::Repositories(_) => "repositories",
             Self::Log(_) => "log",
             Self::Commit(_) => "commit",
         }
@@ -177,6 +179,7 @@ impl Serialize for GitOk {
             GitResult::Changes(changes) => reply.serialize_field("result", changes)?,
             GitResult::Show => reply.serialize_field("result", &())?,
             GitResult::Branches(branches) => reply.serialize_field("result", branches)?,
+            GitResult::Repositories(repositories) => reply.serialize_field("result", repositories)?,
             GitResult::Log(log) => reply.serialize_field("result", log)?,
             GitResult::Commit(commit) => reply.serialize_field("result", commit)?,
         }
@@ -255,6 +258,7 @@ impl ReplyResult for GitResult {
             "changes" => Self::Changes(map.next_value()?),
             "show" => none(map, Self::Show)?,
             "branches" => Self::Branches(map.next_value()?),
+            "repositories" => Self::Repositories(map.next_value()?),
             "log" => Self::Log(map.next_value()?),
             "commit" => Self::Commit(map.next_value()?),
             other => {

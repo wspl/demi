@@ -39,7 +39,7 @@ fn not_found() -> GitError {
     GitError::Io(io::Error::from(io::ErrorKind::NotFound))
 }
 
-fn interrupted(interrupt: &AtomicBool) -> Result<(), GitError> {
+pub(crate) fn interrupted(interrupt: &AtomicBool) -> Result<(), GitError> {
     if interrupt.load(Ordering::Relaxed) {
         return Err(GitError::Cancelled);
     }

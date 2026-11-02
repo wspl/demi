@@ -313,7 +313,7 @@ struct Touched {
 /// Where a directory sits in its repository.
 #[derive(Clone)]
 pub(crate) struct Located {
-    workdir: PathBuf,
+    pub(crate) workdir: PathBuf,
     git_dir: PathBuf,
     /// In a linked worktree, the main repository's git directory, which
     /// holds the refs and `packed-refs`; none when it is `git_dir`.
@@ -442,6 +442,22 @@ impl GitService {
     ) -> Result<wire::GitBranches, GitError> {
         let root = canonical(root, cancel).await?;
         history(cancel, move |_| crate::history::branches(&root)).await
+    }
+
+    /// The repositories `root` is in or holds, and those holding `paths`
+    /// (`crates/runner-host/src/repositories.rs`).
+    pub async fn repositories(
+        &self,
+        root: &Path,
+        paths: Vec<PathBuf>,
+        cancel: &CancellationToken,
+    ) -> Result<wire::GitRepositories, GitError> {
+        let canonical_root = canonical(root, cancel).await?;
+        let root = root.to_path_buf();
+        history(cancel, move |interrupt| {
+            crate::repositories::repositories(&canonical_root, &root, &paths, &interrupt)
+        })
+        .await
     }
 
     /// One page of `branch`'s first-parent history, HEAD's without one,
@@ -1604,6 +1620,16 @@ async fn call(
             let root = resolve(default_cwd, root).map_err(GitError::Io)?;
             let branches = service.branches(&root, cancel).await?;
             reply(id, read_at, wire::GitResult::Branches(branches))
+        }
+        Inbound::GitRepositories { id, root, paths } => {
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
+            let paths = paths
+                .iter()
+                .map(|path| resolve(&root, path))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(GitError::Io)?;
+            let repositories = service.repositories(&root, paths, cancel).await?;
+            reply(id, read_at, wire::GitResult::Repositories(repositories))
         }
         Inbound::GitLog {
             id,

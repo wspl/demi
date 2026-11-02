@@ -119,7 +119,7 @@ pub use kept::{
 };
 pub use messages::{
     ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, names_version, GitBranches, GitChange, GitChanges,
-    GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
+    GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, GitRepositories, commit_time,
     HelloErrorCode, HostArtifact, HostDownload, HostIdentity, Inbound, JobArtifactOwner, ProgramsArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LinkedWorktree,
     LookPath, Looked, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
     Resume, RunnerInfo, RunnerPlatform, ResidentErrorCode, Signal, SpawnError, SpawnErrorKind,
@@ -144,7 +144,7 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 67;
+pub const VERSION: u32 = 68;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
