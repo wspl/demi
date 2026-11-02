@@ -54,18 +54,22 @@ pub const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(4_096).expect("the cap is not
 /// model for the next prompt, and from runs on a real conversation's turns:
 /// without the user's recent messages the model wrote long suggestions in the
 /// agent's voice, invented details the answer did not hold, and turned the
-/// user's "you" into "I".
+/// user's "you" into "I". With `NONE` only one rule among the others, it
+/// suggested something, mostly a new topic, after three in four replies that
+/// put nothing to the user; deciding that first, and allowing a topic only
+/// beside an answer, left one in seven.
 pub const INSTRUCTION: &str = "You suggest what the USER of a coding agent will most likely send next, after the assistant's latest reply. The user picks one with a single tap and it is sent as is.
 
-Write zero to three candidates, one per line, the most likely first. Rules:
+First decide whether the latest reply puts anything to the user: a question, a request for approval or a choice, or an offer to do something. If it does not, because it only reports, explains or confirms, or asks the user to do something themselves or for facts only the user has, output exactly NONE and nothing else, even when a next step seems obvious.
+
+Otherwise write one to three candidates, one per line, the most likely first. Rules:
 - Each candidate is a complete, specific message: an approval, a choice among the options the reply offered, a direct answer to its question, or the obvious next instruction. Never a vague one such as \"continue\", \"tell me more\" or \"what next?\".
 - Use only what the reply and the transcript say: never add a version, name, number, file or step they do not mention.
 - The user speaks to the assistant: \"you\" is the assistant, \"I\" is the user.
 - Candidates differ in what they ask for; two ways of saying the same thing count once.
 - Sound exactly like the user: copy the language, words, punctuation and length of the user's recent messages. Most are a few words; keep a candidate that short unless it must say more.
 - If the reply asks for approval or recommends one option, the first candidate takes it, in the words the user uses for that.
-- Start each line with its kind and a colon: `answer:` for a reply to what the assistant's reply asked or offered (an approval, a choice among its options, an answer to its question), `topic:` for something new the user may raise next. Then plain text. No numbering, quotes, markdown or explanation.
-- When no message is clearly likely, such as when the reply only reports with nothing pending, or the answer needs facts only the user has, output exactly NONE.";
+- Start each line with its kind and a colon: `answer:` for a reply to what the assistant's reply asked or offered (an approval, a choice among its options, an answer to its question), `topic:` for something new the user may raise next, only beside an answer. Then plain text. No numbering, quotes, markdown or explanation.";
 
 /// The answer the latest turn of `blocks`, the root's transcript, ended
 /// with: its last text that is not blank, when the turn ended with a
