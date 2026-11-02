@@ -2,6 +2,7 @@
 import { productWould } from '../product-would'
 import type { UserContentBlock } from '@demicodes/protocol'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
+import { shownComment, type ShownComment } from '@demicodes/web-ui/agent/comments/comments'
 import { provideMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import { demoImageUrl, longUserText } from '../fixtures/blocks'
@@ -59,7 +60,25 @@ const table = [
   '| 4816 | main | passed |',
 ].join('\n')
 
-const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?: 'steer' | 'queued'; actions?: boolean }[] = [
+/** A comment on a reply's picture, its words under the picture. */
+const pictureComment: ShownComment = shownComment({
+  id: 'lengths-picture-comment',
+  blockId: 'lengths-reply',
+  start: 0,
+  end: 1,
+  at: 0,
+  quote: 'chart.png',
+  picture: { type: 'url', url: demoImageUrl },
+  content: text('Why does the line drop on Tuesday? Compare it with the deploy times in the release log and say which change it follows.'),
+})
+
+const specimens: {
+  variant: SentenceText
+  content: UserContentBlock[]
+  comments?: ShownComment[]
+  pending?: 'steer' | 'queued'
+  actions?: boolean
+}[] = [
   { variant: 'One line', content: text('Rename the session cookie in the login test.') },
   { variant: 'Five lines · whole', content: text(steps.join('\n')) },
   {
@@ -101,7 +120,19 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
       { type: 'text', text: ` shows it. ${longUserText}` },
     ],
   },
-  { variant: 'Queued', content: text(longUserText), pending: 'queued' },
+  { variant: 'Queued · two lines, the second fading', content: text(longUserText), pending: 'queued' },
+  {
+    variant: 'Pending steer · two lines, the second fading',
+    content: text(steps.join('\n')),
+    pending: 'steer',
+  },
+  { variant: 'Queued · one line, whole', content: text('Also add a case for the expired cookie.'), pending: 'queued' },
+  {
+    variant: 'Queued · a comment on a picture, its words folding',
+    content: [],
+    comments: [pictureComment],
+    pending: 'queued',
+  },
   { variant: 'Actions on the last line', content: text(longUserText), actions: true },
 ]
 </script>
@@ -109,7 +140,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
 <template>
   <GallerySection
     title="User Message Length"
-    note="A message taller than 300px folds to about 200px, as Claude Code's does, its last line fading out, and Show More under it opens it whole; Show Less folds it again. A queued message keeps Show More first in its row of controls, then Send and Recall. A message under 300px shows whole, since folding it would hide less than the control takes. A line across the fold shows whole, code's as text's. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the fold follows the wrapping."
+    note="A message taller than 300px folds to about 200px, as Claude Code's does, its last line fading out, and Show More under it opens it whole; Show Less folds it again. A message waiting to be sent, queued or as a steer, folds once it runs past two lines, to its first line whole and its second fading, and keeps Show More first in its row of controls, then Send and Recall. A message under 300px shows whole, since folding it would hide less than the control takes. A line across the fold shows whole, code's as text's. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the fold follows the wrapping."
   >
     <div class="specimen-stack specimen-stack-loose">
       <GallerySpecimen
@@ -126,10 +157,11 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
           >
             <UserBlock
               :content="specimen.content"
+              :comments="specimen.comments"
               :pending="specimen.pending"
               :actions-pinned="specimen.actions"
-              @send-now="productWould('Send the Queued Message Now')"
-              @recall="productWould('Recall the Queued Message')"
+              @send-now="productWould('Send the Waiting Message Now')"
+              @recall="productWould('Recall the Waiting Message')"
             />
           </div>
         </div>
