@@ -135,12 +135,29 @@ fn stated(track: &Track, sample_rate: Option<u32>) -> Option<f64> {
 /// Raw PCM as a vendor sends it, without a header: signed little-endian
 /// samples, interleaved by channel. Every value is checked when it is
 /// made, so its rate, channels and sample size are ones a WAV header holds
-/// and a player plays.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// and a player plays, read ones included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(try_from = "PcmFields")]
 pub struct Pcm {
     sample_rate: u32,
     channels: u16,
     bits: u16,
+}
+
+/// What a read [`Pcm`] states, which [`Pcm::new`] checks.
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct PcmFields {
+    sample_rate: u32,
+    channels: u16,
+    bits: u16,
+}
+
+impl TryFrom<PcmFields> for Pcm {
+    type Error = BadPcm;
+
+    fn try_from(fields: PcmFields) -> Result<Self, BadPcm> {
+        Self::new(fields.sample_rate, fields.channels, fields.bits)
+    }
 }
 
 /// Why PCM, or a vendor's statement of it, is not one this wraps.

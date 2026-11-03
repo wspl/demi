@@ -17,7 +17,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::Catalog,
-    videos::{self, Done, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of},
+    videos::{self, Done, DoneVideo, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of},
 };
 use demi_shared_types::VideoResolution;
 use futures_util::future::BoxFuture;
@@ -62,6 +62,23 @@ impl VideoMaker for KeyVideos {
         "Veo".to_owned()
     }
 
+    fn run<'a>(
+        &'a self,
+        http: &'a demi_provider_common::ProviderHttp,
+        catalog: &'a Catalog,
+        request: VideoRequest,
+        every: std::time::Duration,
+    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
+        videos::polled(self, http, catalog, request, every)
+    }
+
+    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
+        // The file's address is the key's own endpoint's, and its redirect
+        // to storage gets no key.
+        Box::pin(videos::download(LABEL, &*self.0.clock, http, url, self.0.base(), self.0.headers()))
+    }}
+
+impl demi_provider_common::videos::PolledVideos for KeyVideos {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let key = &self.0;
@@ -95,12 +112,6 @@ impl VideoMaker for KeyVideos {
                 .await
                 .and_then(|answered| read_operation(&answered.body))
         })
-    }
-
-    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, done: &'a Done) -> BoxFuture<'a, MediaAnswer<Bytes>> {
-        // The file's address is the key's own endpoint's, and its redirect
-        // to storage gets no key.
-        Box::pin(videos::download(LABEL, &*self.0.clock, http, &done.url, self.0.base(), self.0.headers()))
     }
 }
 
@@ -254,5 +265,5 @@ fn read_operation(body: &[u8]) -> Result<JobState, MediaFailure> {
     };
     let url = Url::parse(&sample.video.uri)
         .map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;
-    Ok(JobState::Done(Done { url, cost: None, usage: None }))
+    Ok(JobState::Done(Done { video: DoneVideo::At(url), cost: None, usage: None }))
 }

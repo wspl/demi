@@ -61,6 +61,7 @@ serde_json.workspace = true
 # The content ETag of the web app files a page revalidates.
 sha2 = "0.10"
 thiserror.workspace = true
+async-stream = "0.3"
 tokio.workspace = true
 tokio-util.workspace = true
 tower = { version = "0.5", features = ["util"] }

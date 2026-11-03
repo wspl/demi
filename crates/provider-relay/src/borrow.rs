@@ -11,8 +11,9 @@
 //! the lender's failure crosses but the code.
 //!
 //! Its media are made by the lender too, each kind by one maker (`media`)
-//! that sends each call over HTTPS. What it makes is what the lender lists
-//! now: a kind the lender does not make lists no models.
+//! whose calls the relay carries over HTTPS as they are
+//! (`demi_provider_common::media::channel`). What it makes is what the lender
+//! lists now: a kind the lender does not make lists no models.
 //!
 //! The entry keeps its name, its key and its switch, and nothing it can
 //! read from the lender: the lender's own settings, its models' and its
@@ -45,8 +46,8 @@ use url::Url;
 use crate::delta::Outbox;
 use crate::key::ShareKey;
 use crate::wire::{
-    ClientMessage, Lent, MESSAGE_BYTES, OtherVersion, PROVIDER_ROUTE, SERVER_HEADER, SOCKET_ROUTE, ServerMessage,
-    TURNED_OFF, VERSION, VERSION_HEADER,
+    ClientMessage, Lent, MESSAGE_BYTES, PROVIDER_ROUTE, SERVER_HEADER, SOCKET_ROUTE, ServerMessage,
+    TURNED_OFF, VERSION_HEADER, decoded, encoded, version,
 };
 
 /// The family of a borrowed entry, which holds the share key it was
@@ -58,9 +59,9 @@ mod media;
 /// A provider another server lends.
 pub struct Borrowed {
     config: Arc<Config>,
-    images: media::Relayed,
-    videos: media::Relayed,
-    audio: media::Relayed,
+    images: media::Remote<media::Relay>,
+    videos: media::Remote<media::Relay>,
+    audio: media::Remote<media::Relay>,
 }
 
 struct Config {
@@ -82,7 +83,7 @@ enum Refusal {
     /// The key is revoked, expired or unknown.
     Key,
     /// The lender speaks another version of the wire.
-    Version(u32),
+    Version,
     /// The server is no lender: an older release, or no Demi.
     NoLender,
     /// It could not be reached, or answered nothing a lender answers.
@@ -97,10 +98,9 @@ impl Refusal {
         match self {
             Self::TurnedOff => format!("{} is turned off on {lender}.", config.name),
             Self::Key => format!("{lender} no longer accepts this share key. Paste a new one."),
-            Self::Version(version) if *version > VERSION => {
-                format!("{lender} runs a newer version of Demi. Update this server.")
+            Self::Version => {
+                format!("{lender} runs another version of Demi. Update the older of the two servers to the newest release.")
             }
-            Self::Version(_) => format!("{lender} runs an older version of Demi. Update it."),
             Self::NoLender => format!("{lender} does not share providers. Update it."),
             Self::Unreachable(cause) => format!("{lender} could not be reached: {cause}"),
         }
@@ -110,7 +110,7 @@ impl Refusal {
         match self {
             Self::Key => Some(ErrorCode::AuthExpired),
             Self::Unreachable(_) => Some(ErrorCode::Overloaded),
-            Self::Version(_) | Self::NoLender | Self::TurnedOff => None,
+            Self::Version | Self::NoLender | Self::TurnedOff => None,
         }
     }
 
@@ -123,16 +123,13 @@ impl Refusal {
         }
     }
 
-    /// The refusal an answer of `status` with `body` says.
-    fn of(status: http::StatusCode, body: &[u8]) -> Self {
+    /// The refusal an answer of `status` says.
+    fn of(status: http::StatusCode) -> Self {
         match status.as_u16() {
             401 | 403 => Self::Key,
             404 | 405 => Self::NoLender,
             TURNED_OFF => Self::TurnedOff,
-            409 => match serde_json::from_slice::<OtherVersion>(body) {
-                Ok(other) => Self::Version(other.version),
-                Err(_) => Self::NoLender,
-            },
+            409 => Self::Version,
             status => Self::Unreachable(format!("HTTP {status}")),
         }
     }
@@ -187,7 +184,8 @@ impl Borrowed {
             http,
             limits: RwLock::new(HashMap::new()),
         });
-        let maker = |kind| media::Relayed::new(config.clone(), kind);
+        let relay = Arc::new(media::Relay(config.clone()));
+        let maker = |kind| media::Remote::new(relay.clone(), kind);
         Self {
             images: maker(MediaKind::Image),
             videos: maker(MediaKind::Video),
@@ -212,7 +210,7 @@ impl Config {
     fn authorized(&self, request: RequestBuilder) -> RequestBuilder {
         request
             .header(http::header::AUTHORIZATION, format!("Bearer {}", self.key.token))
-            .header(VERSION_HEADER, VERSION.to_string())
+            .header(VERSION_HEADER, version())
             .header(SERVER_HEADER, self.server.clone())
     }
 
@@ -225,7 +223,7 @@ impl Config {
         let status = answer.status();
         let body = answer.bytes().await.map_err(|error| Refusal::Unreachable(error.to_string()))?;
         if !status.is_success() {
-            return Err(Refusal::of(status, &body));
+            return Err(Refusal::of(status));
         }
         let lent: Lent = serde_json::from_slice(&body).map_err(|_| Refusal::NoLender)?;
         let mut limits = self.limits.write().expect("the limits' lock is never poisoned");
@@ -348,7 +346,7 @@ impl Connection {
         let headers = request.headers_mut();
         let header = |value: String| HeaderValue::try_from(value).map_err(|error| Refusal::Unreachable(error.to_string()));
         headers.insert(http::header::AUTHORIZATION, header(format!("Bearer {}", config.key.token))?);
-        headers.insert(VERSION_HEADER, header(VERSION.to_string())?);
+        headers.insert(VERSION_HEADER, header(version().to_owned())?);
         headers.insert(SERVER_HEADER, header(config.server.clone())?);
         let socket_config = WebSocketConfig::default()
             .max_message_size(Some(MESSAGE_BYTES))
@@ -356,17 +354,15 @@ impl Connection {
         let (socket, _) = tokio_tungstenite::connect_async_with_config(request, Some(socket_config), false)
             .await
             .map_err(|error| match error {
-                tungstenite::Error::Http(response) => {
-                    Refusal::of(response.status(), response.body().as_deref().unwrap_or_default())
-                }
+                tungstenite::Error::Http(response) => Refusal::of(response.status()),
                 error => Refusal::Unreachable(error.to_string()),
             })?;
         let (mut sink, receive) = socket.split();
         let (send, mut outgoing) = mpsc::unbounded_channel::<ClientMessage>();
         let writer = tokio::spawn(async move {
             while let Some(message) = outgoing.recv().await {
-                let text = serde_json::to_string(&message).expect("a relay message serializes");
-                if sink.send(Message::Text(text.into())).await.is_err() {
+                let Some(bytes) = encoded(&message) else { return };
+                if sink.send(Message::Binary(bytes)).await.is_err() {
                     return;
                 }
             }
@@ -386,7 +382,7 @@ impl Connection {
     async fn next(&mut self) -> Option<ServerMessage> {
         loop {
             match self.receive.next().await? {
-                Ok(Message::Text(text)) => return serde_json::from_str(&text).ok(),
+                Ok(Message::Binary(bytes)) => return decoded(&bytes),
                 Ok(Message::Ping(_) | Message::Pong(_)) => {}
                 Ok(_) | Err(_) => return None,
             }
@@ -471,7 +467,13 @@ impl ProviderRuntime for BorrowedRuntime {
                     }
                     message = connection.next() => match message {
                         Some(ServerMessage::Event { run: of, event }) if of == run => {
-                            yield event.borrowed(|code| failed(&config.lender, code));
+                            yield match event {
+                                ProviderEvent::Error(failure) => ProviderEvent::Error(ProviderFailure {
+                                    message: failed(&config.lender, failure.code.as_ref()),
+                                    ..failure
+                                }),
+                                event => event,
+                            };
                         }
                         Some(ServerMessage::End { run: ended }) if ended == run => {
                             connection.unended = None;

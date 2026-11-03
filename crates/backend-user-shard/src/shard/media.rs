@@ -61,9 +61,9 @@ use demi_plugin_interface::{
 use demi_provider_common::credentials::AuthReason;
 use demi_provider_common::audio::{self, AudioFormatAsk, AudioRequest};
 use demi_provider_common::images::{Aspect, ImageRequest, InputImage};
-use demi_provider_common::media::{MediaFailure, MediaModelInfo, MediaVendor};
+use demi_provider_common::media::{MediaAnswer, MediaFailure, MediaModelInfo, MediaVendor, unreadable};
 use demi_provider_common::media_catalog::{self, AudioOutput, Catalog, Currency, Modality, PriceUnit, Voices};
-use demi_provider_common::videos::{Done, JobRef, JobState, VideoOption, VideoRequest};
+use demi_provider_common::videos::{Done, DoneVideo, JobRef, JobState, JobStep, VideoOption, VideoRequest};
 use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, VendorTrace, mp4};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId};
 use demi_web_api_protocol::providers::EntryMediaModel;
@@ -1199,15 +1199,16 @@ impl Asking for VideoCall {
         let (mut row, span) = making.open_row("video", account);
         let request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
         let http = making.http();
+        let every = making.shard.services().media_tuning.video_reads_every;
         // The job's bound counts from its ask, the ask's own wait
         // included.
         let asked_at = tokio::time::Instant::now();
-        let answer = videos
-            .ask(&http, making.catalog, request.clone())
-            .instrument(span.clone())
-            .await;
-        row.observe(&answer.observed);
-        let job = match answer.result {
+        let mut steps = Steps::start(making.shard, maker.clone(), http.clone(), making.catalog.clone(), request.clone(), every, &span);
+        let first = steps.receiver.recv().instrument(span.clone()).await;
+        if let Some(answer) = &first {
+            row.observe(&answer.observed);
+        }
+        let job = match asked_job(first) {
             Ok(job) => job,
             Err(failure) => {
                 row.row().outcome = failure.outcome();
@@ -1241,7 +1242,7 @@ impl Asking for VideoCall {
             row,
             span,
             last: None,
-            every: tuning.video_reads_every,
+            steps,
             bound: tuning.video_bound,
             deadline: asked_at + tuning.video_bound,
         };
@@ -1267,8 +1268,65 @@ fn plugin_option(option: VideoOption) -> demi_plugin_interface::VideoOption {
     }
 }
 
-/// A video's job once the vendor took it: its state read every `every`, each
-/// change told, then its video downloaded, all within `bound` of the ask.
+/// The job a run's first step names. A vendor that fails the request before
+/// it names a job is told in its words.
+fn asked_job(first: Option<MediaAnswer<JobStep>>) -> Result<String, MediaFailure> {
+    let Some(answer) = first else {
+        return Err(unreadable("it answered nothing".to_owned()));
+    };
+    match answer.result? {
+        JobStep::Asked(job) => Ok(job),
+        JobStep::State(JobState::Failed { message, trace }) => Err(MediaFailure::Refused { message, code: None, trace }),
+        JobStep::State(_) => Err(unreadable("its first answer named no job".to_owned())),
+    }
+}
+
+/// The steps of a vendor's job, which a task of the shard's reads from the
+/// maker's [`VideoMaker::run`] as they come; dropped, it stops the task,
+/// and so the reads or the vendor's stream.
+///
+/// [`VideoMaker::run`]: demi_provider_common::videos::VideoMaker::run
+struct Steps {
+    receiver: tokio::sync::mpsc::UnboundedReceiver<MediaAnswer<JobStep>>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Steps {
+    fn start(
+        shard: &Shard,
+        maker: MakerOf,
+        http: demi_provider_common::ProviderHttp,
+        catalog: Arc<Catalog>,
+        request: VideoRequest,
+        every: Duration,
+        span: &tracing::Span,
+    ) -> Self {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        // The vendor's requests are the call's, under its span.
+        let task = shard.tasks().spawn_local(
+            async move {
+                let videos = maker.videos().expect("a video's job is a video maker's");
+                let mut steps = videos.run(&http, &catalog, request, every);
+                while let Some(step) = steps.next().await {
+                    if sender.send(step).is_err() {
+                        return;
+                    }
+                }
+            }
+            .instrument(span.clone()),
+        );
+        Self { receiver, task }
+    }
+}
+
+impl Drop for Steps {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// A video's job once the vendor took it: each change of its state told, then
+/// its video downloaded, all within `bound` of the ask.
 ///
 /// It ends with its row written once, after the wait its bound covers. Dropped
 /// before, it cancels the job where the vendor can and writes the cancelled row.
@@ -1288,7 +1346,7 @@ struct Job {
     span: tracing::Span,
     /// The state told last.
     last: Option<VideoStep>,
-    every: Duration,
+    steps: Steps,
     bound: Duration,
     deadline: tokio::time::Instant,
 }
@@ -1331,20 +1389,20 @@ impl Job {
     }
 
     async fn wait(&mut self) -> Waited {
-        let videos = self.maker.videos().expect("a video's job is a video maker's");
         loop {
-            tokio::time::sleep(self.every).await;
-            let job = JobRef { id: &self.id, model: &self.model, catalog: &self.catalog };
-            let answer = videos.state(&self.http, job).await;
+            let Some(answer) = self.steps.receiver.recv().await else {
+                return self.failed(unreadable("its answer ended before the video".to_owned()));
+            };
             self.row.observe(&answer.observed);
             let state = match answer.result {
-                Ok(state) => state,
+                Ok(JobStep::State(state)) => state,
+                Ok(JobStep::Asked(_)) => continue,
                 Err(failure) => return self.failed(failure),
             };
             let step = match state {
                 JobState::Queued => VideoStep::Queued,
                 JobState::Running { progress } => VideoStep::Running { progress },
-                JobState::Done(done) => return self.download(&done).await,
+                JobState::Done(done) => return self.download(done).await,
                 JobState::Failed { message, trace } => {
                     let result = Err(refused(MediaRefusal::JobFailed { vendor: self.vendor.clone(), message, trace }));
                     return Waited::Ended { outcome: "failed".to_owned(), result };
@@ -1361,20 +1419,25 @@ impl Job {
         }
     }
 
-    /// The finished job's video. The cost the vendor reported goes on the
-    /// row at once, so a download that then fails, a stopped call or one
-    /// past its bound still records what was paid; the seconds once the
-    /// file is read.
-    async fn download(&mut self, done: &Done) -> Waited {
+    /// The finished job's video, downloaded unless it was sent. The cost the
+    /// vendor reported goes on the row at once, so a download that then
+    /// fails, a stopped call or one past its bound still records what was
+    /// paid; the seconds once the file is read.
+    async fn download(&mut self, done: Done) -> Waited {
         let row = self.row.row();
         row.cost = done.cost;
         row.usage = done.usage;
-        let videos = self.maker.videos().expect("a video's job is a video maker's");
-        let answer = videos.download(&self.http, done).await;
-        self.row.observe(&answer.observed);
-        let bytes = match answer.result {
-            Ok(bytes) => bytes,
-            Err(failure) => return self.failed(failure),
+        let bytes = match done.video {
+            DoneVideo::Sent(bytes) => bytes,
+            DoneVideo::At(url) => {
+                let videos = self.maker.videos().expect("a video's job is a video maker's");
+                let answer = videos.download(&self.http, &url).await;
+                self.row.observe(&answer.observed);
+                match answer.result {
+                    Ok(bytes) => bytes,
+                    Err(failure) => return self.failed(failure),
+                }
+            }
         };
         // A file this does not read is the plugin's to refuse; its row
         // keeps no seconds.

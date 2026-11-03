@@ -247,7 +247,7 @@ pub enum Ahead {
 /// What a vendor accepts in one request. A
 /// limit the vendor does not document is none: a request it refuses for its
 /// size fails with `request_too_large`, and is never compacted.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RequestLimits {
     /// The most bytes of a request body, as the vendor receives it.
     pub body_bytes: Option<u64>,
@@ -260,7 +260,7 @@ pub struct RequestLimits {
 /// The kinds of media a provider's wire carries in a tool result.
 /// A provider names only what it
 /// carries, so it never drops a medium silently.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ToolResultKinds {
     pub image: bool,
     pub video: bool,
@@ -445,7 +445,7 @@ impl InferenceRequest {
 }
 
 /// What a request is for (`crates/backend-database/src/usage.rs`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum RequestPurpose {
     /// A request of a session's turn: its first, a continuation or a retry.
     Turn,
@@ -501,7 +501,7 @@ impl RequestPurpose {
 ///
 /// The prompt and the tools hold no time, id, Host or state, and a body holds
 /// no request id or time, which would break the prefix.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum PromptCache {
     /// A request that is no session's, such as a title request or a
     /// connection test: no later request extends it, and it extends none, so
@@ -528,7 +528,7 @@ impl InferenceRequest {
 /// One replayed block of a request: the range of the request's items it gives,
 /// and the entries of the vendor's own record of the session that a provider
 /// kept on it, as the provider gave them ([`ProviderEvent::Entries`]).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RequestBlock {
     pub items: std::ops::Range<usize>,
     pub entries: Vec<demi_shared_types::Entry>,
@@ -541,7 +541,7 @@ pub struct RequestBlock {
 
 /// One entry of the transcript as a provider replays it. Its media hold
 /// their bytes, or an image's or a video's URL, and never a reference.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum InferenceItem {
     UserMessage {
         content: Vec<UserPart>,
@@ -598,7 +598,7 @@ pub enum InferenceItem {
 /// One part of a message or a steer as a request carries it. A reference
 /// and an attachment record reach the model as the text that names them, and
 /// so does a medium the request's model does not take.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum UserPart {
     Text(String),
     Image(Medium),
@@ -613,7 +613,7 @@ pub enum UserPart {
 }
 
 /// A message's image or video as a request carries it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum Medium {
     Bytes(MediaBytes),
     /// A URL the vendor fetches.
@@ -621,7 +621,7 @@ pub enum Medium {
 }
 
 /// A medium's bytes and their media type.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct MediaBytes {
     pub data: B64Bytes,
     pub media_type: String,
@@ -629,7 +629,7 @@ pub struct MediaBytes {
 
 /// One part of a tool's result as the tool returns it and as a request
 /// carries it: text, or an image, a video or a document with its bytes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum ResultPart {
     Text(String),
     Image(MediaBytes),
@@ -641,7 +641,7 @@ pub enum ResultPart {
 }
 
 /// A tool the model may call.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -662,7 +662,7 @@ pub fn offers(tools: &[ToolDefinition], name: &str) -> bool {
 /// request's token is cancelled. Cancellation ends it without a further event,
 /// and dropping the stream is cancellation. Every failure is its `Error`;
 /// nothing fails outside the stream.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum ProviderEvent {
     /// The model opened a reasoning block.
     ThinkingStart,
@@ -707,9 +707,14 @@ pub enum ProviderEvent {
     /// None when the entry's rotation gives the agent no account of its own.
     /// The session keeps it with its state
     /// (`crates/provider-registry/src/rotation.rs`).
+    ///
+    /// It never crosses a relay: the account stays with the lender.
+    #[serde(skip)]
     Account(Option<AgentAccount>),
     /// The agent's account reached its limit and the request goes on with
-    /// another account, which an `Account` event names next.
+    /// another account, which an `Account` event names next. It never
+    /// crosses a relay.
+    #[serde(skip)]
     AccountSwitch(AccountSwitch),
     /// Entries of the vendor's own record of the session that belong to one
     /// block.
@@ -733,7 +738,7 @@ pub enum ProviderEvent {
 }
 
 /// What a run tells the usage ledger of one of its calls.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum CallEvent {
     /// A call starts; the run's first call already started with the run.
     Started,
@@ -744,13 +749,14 @@ pub enum CallEvent {
     ///
     /// Between a call's end and the next one's start, they are those reported
     /// with the call that ended last, as Claude Code's `rate_limit_event`
-    /// follows its `message_stop`.
+    /// follows its `message_stop`. They never cross a relay.
+    #[serde(skip)]
     Observed(Vec<QuotaWindow>),
 }
 
 /// One call to the vendor as it ended: its own counts, never a sum over the
 /// run's calls.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct VendorCall {
     /// The vendor's id of the call, such as a Messages API message id.
     pub vendor_id: Option<String>,
@@ -806,7 +812,7 @@ impl VendorCall {
 }
 
 /// How a call to the vendor ended.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum CallOutcome {
     Answered,
     /// The vendor refused it, or its filter stopped the reply it was
@@ -872,7 +878,7 @@ pub struct AccountSwitch {
 }
 
 /// The block entries belong to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum EntriesOf {
     /// The block that gives the item at this index of the run's request.
     Item(usize),
@@ -899,7 +905,7 @@ pub struct Searches {
 }
 
 /// A vendor's step as a run reports it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct OpaqueStep {
     /// The vendor's id of the step, which its later events name; none for a
     /// step the vendor gives whole.
@@ -912,7 +918,7 @@ pub struct OpaqueStep {
 }
 
 /// A tool call the model requested.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ToolCall {
     pub tool_use_id: String,
     pub tool_name: String,

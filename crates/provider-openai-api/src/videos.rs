@@ -14,7 +14,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::Catalog,
-    videos::{self, Done, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of, xai},
+    videos::{self, Done, DoneVideo, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of, xai},
 };
 use demi_shared_types::{Clock, Cost, Currency, VendorTrace, VideoResolution, VideoShape};
 use futures_util::future::BoxFuture;
@@ -147,6 +147,43 @@ impl VideoMaker for KeyVideos {
         name.to_owned()
     }
 
+    fn run<'a>(
+        &'a self,
+        http: &'a demi_provider_common::ProviderHttp,
+        catalog: &'a demi_provider_common::media_catalog::Catalog,
+        request: VideoRequest,
+        every: std::time::Duration,
+    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
+        demi_provider_common::videos::polled(self, http, catalog, request, every)
+    }
+
+    /// xAI's address is temporary and takes no header; OpenAI Videos'
+    /// content and OpenRouter's addresses take the key, which goes only to
+    /// the entry's own endpoint's origin.
+    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
+        let headers = match self.shape() {
+            VideoShape::OpenaiVideos | VideoShape::OpenrouterVideos => self.headers(),
+            VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => HeaderMap::new(),
+        };
+        let label = if self.shape_is_xai() { "xAI" } else { "OpenAI" };
+        Box::pin(videos::download(label, &*self.clock, http, url, &self.base, headers))
+    }
+
+    /// OpenAI Videos' servers abort a job its `DELETE` names, as vLLM-Omni
+    /// documents; xAI and OpenRouter document no cancellation.
+    fn cancel<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>>  {
+        let job = job.id;
+        if self.shape() != VideoShape::OpenaiVideos {
+            return None;
+        }
+        Some(Box::pin(async move {
+            let url = self.url(&format!("/videos/{job}"));
+            self.send(http, Ask::delete(&url)).await.and_then(|_| Ok(()))
+        }))
+    }
+}
+
+impl demi_provider_common::videos::PolledVideos for KeyVideos {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             match self.shape() {
@@ -189,31 +226,6 @@ impl VideoMaker for KeyVideos {
                 }
             }
         })
-    }
-
-    /// xAI's address is temporary and takes no header; OpenAI Videos'
-    /// content and OpenRouter's addresses take the key, which goes only to
-    /// the entry's own endpoint's origin.
-    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, done: &'a Done) -> BoxFuture<'a, MediaAnswer<Bytes>> {
-        let headers = match self.shape() {
-            VideoShape::OpenaiVideos | VideoShape::OpenrouterVideos => self.headers(),
-            VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => HeaderMap::new(),
-        };
-        let label = if self.shape_is_xai() { "xAI" } else { "OpenAI" };
-        Box::pin(videos::download(label, &*self.clock, http, &done.url, &self.base, headers))
-    }
-
-    /// OpenAI Videos' servers abort a job its `DELETE` names, as vLLM-Omni
-    /// documents; xAI and OpenRouter document no cancellation.
-    fn cancel<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>>  {
-        let job = job.id;
-        if self.shape() != VideoShape::OpenaiVideos {
-            return None;
-        }
-        Some(Box::pin(async move {
-            let url = self.url(&format!("/videos/{job}"));
-            self.send(http, Ask::delete(&url)).await.and_then(|_| Ok(()))
-        }))
     }
 }
 
@@ -334,7 +346,7 @@ fn read_openai_state(body: &[u8], content: Url) -> Result<JobState, MediaFailure
     match state.status.as_str() {
         "queued" => Ok(JobState::Queued),
         "in_progress" => Ok(JobState::Running { progress }),
-        "completed" => Ok(JobState::Done(Done { url: content, cost: None, usage: None })),
+        "completed" => Ok(JobState::Done(Done { video: DoneVideo::At(content), cost: None, usage: None })),
         "failed" => Ok(match state.error {
             Some(error) => JobState::Failed { message: error.message, trace: VendorTrace { code: error.code, id: None } },
             None => JobState::Failed { message: "the job failed".to_owned(), trace: VendorTrace::default() },
@@ -440,7 +452,7 @@ fn read_openrouter_state(body: &[u8]) -> Result<JobState, MediaFailure> {
                 .usage
                 .and_then(|usage| usage.cost)
                 .map(|amount| Cost { amount, currency: Currency::Usd });
-            Ok(JobState::Done(Done { url, cost, usage: None }))
+            Ok(JobState::Done(Done { video: DoneVideo::At(url), cost, usage: None }))
         }
         "failed" => {
             let message = match state.error {

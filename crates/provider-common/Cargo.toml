@@ -22,7 +22,7 @@ demi-shared-gates = { path = "../shared-gates" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 async-stream = "0.3"
 base64.workspace = true
-bytes.workspace = true
+bytes = { workspace = true, features = ["serde"] }
 eventsource-stream = "0.2"
 futures-util.workspace = true
 http.workspace = true
@@ -30,6 +30,7 @@ httpdate = "1"
 indexmap = { version = "2", features = ["serde"] }
 jiff = { workspace = true, features = ["serde"] }
 regex = "1"
+schemars = { workspace = true, features = ["bytes1"] }
 reqwest = { workspace = true, features = ["form", "rustls", "stream"] }
 semver.workspace = true
 serde.workspace = true

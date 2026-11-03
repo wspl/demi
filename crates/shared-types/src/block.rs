@@ -246,8 +246,19 @@ struct EntryIn {
     value: serde_json::Value,
 }
 
+/// An entry in a format that is not human-readable, such as MessagePack,
+/// where a raw JSON value is no value: its value crosses as its text.
+#[derive(Serialize, Deserialize)]
+struct EntryText<'a> {
+    owner: std::borrow::Cow<'a, str>,
+    value: std::borrow::Cow<'a, str>,
+}
+
 impl Serialize for Entry {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if !serializer.is_human_readable() {
+            return EntryText { owner: self.owner().into(), value: self.json().into() }.serialize(serializer);
+        }
         EntryOut {
             owner: &self.owner,
             value: &self.value,
@@ -262,8 +273,28 @@ impl Serialize for Entry {
 /// text.
 impl<'de> Deserialize<'de> for Entry {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if !deserializer.is_human_readable() {
+            let entry = EntryText::deserialize(deserializer)?;
+            let value = serde_json::value::RawValue::from_string(entry.value.into_owned())
+                .map_err(serde::de::Error::custom)?;
+            return Ok(Self { owner: entry.owner.into(), value });
+        }
         let entry = EntryIn::deserialize(deserializer)?;
         Self::new(&entry.owner, &entry.value).map_err(serde::de::Error::custom)
+    }
+}
+
+impl schemars::JsonSchema for Entry {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Entry".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "properties": { "owner": { "type": "string" }, "value": true },
+            "required": ["owner", "value"],
+        })
     }
 }
 

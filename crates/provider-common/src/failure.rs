@@ -16,17 +16,24 @@ use crate::wire::SseError;
 pub type FailureReader = fn(&ProviderErrorDiagnostics, Timestamp) -> ProviderFailureFacts;
 
 /// A failed run: the run's last event.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// It crosses a relay as its code alone: its words, its diagnostics and its
+/// wait, which says when the lender's limit resets, stay with the lender,
+/// and the borrower words it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ProviderFailure {
     /// What went wrong, as the vendor said it or as Demi composed it. A
     /// message Demi composes never contains a credential.
+    #[serde(skip)]
     pub message: String,
     /// What recovery reads; `None` for a failure Demi found in the vendor's
     /// answer, which is never retried automatically.
     pub code: Option<ErrorCode>,
+    #[serde(skip)]
     pub diagnostics: Option<Box<ProviderErrorDiagnostics>>,
     /// The wait the vendor asked for, counted from when the failure was
     /// received.
+    #[serde(skip)]
     pub retry_after: Option<Duration>,
 }
 
@@ -349,6 +356,29 @@ impl ErrorCode {
             let Ok(code) = code?.parse();
             Some(code)
         })
+    }
+}
+
+impl serde::Serialize for ErrorCode {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ErrorCode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let Ok(code) = std::borrow::Cow::<'de, str>::deserialize(deserializer)?.parse();
+        Ok(code)
+    }
+}
+
+impl schemars::JsonSchema for ErrorCode {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ErrorCode".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        String::json_schema(generator)
     }
 }
 

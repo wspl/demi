@@ -27,7 +27,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable},
     media_catalog::{Catalog, MediaKind},
-    videos::{self, Content, Done, JobState, VideoMaker, VideoOption, VideoRequest, content},
+    videos::{self, Content, Done, DoneVideo, JobState, VideoMaker, VideoOption, VideoRequest, content},
 };
 use demi_shared_types::{Clock, TokenUsage, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
@@ -120,21 +120,19 @@ impl VideoMaker for ArkVideos {
         "Ark Tasks".to_owned()
     }
 
-    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
-        Box::pin(async move {
-            let body = Bytes::from(encode(&request));
-            self.send(http, Ask::post_json(&self.tasks(None), body)).await.and_then(|body| read_asked(&body))
-        })
-    }
-
-    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>  {
-        let job = job.id;
-        Box::pin(self.read_state(http, job))
+    fn run<'a>(
+        &'a self,
+        http: &'a demi_provider_common::ProviderHttp,
+        catalog: &'a demi_provider_common::media_catalog::Catalog,
+        request: VideoRequest,
+        every: std::time::Duration,
+    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
+        demi_provider_common::videos::polled(self, http, catalog, request, every)
     }
 
     /// The video's address is temporary and takes no header.
-    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, done: &'a Done) -> BoxFuture<'a, MediaAnswer<Bytes>> {
-        Box::pin(videos::download("Ark", &*self.clock, http, &done.url, &self.base, HeaderMap::new()))
+    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
+        Box::pin(videos::download("Ark", &*self.clock, http, url, &self.base, HeaderMap::new()))
     }
 
     /// Deletes the task while it is still queued; a running one runs to its
@@ -149,6 +147,20 @@ impl VideoMaker for ArkVideos {
                 Err(failure) => MediaAnswer { result: Err(failure), observed: read.observed },
             }
         }))
+    }
+}
+
+impl demi_provider_common::videos::PolledVideos for ArkVideos {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(async move {
+            let body = Bytes::from(encode(&request));
+            self.send(http, Ask::post_json(&self.tasks(None), body)).await.and_then(|body| read_asked(&body))
+        })
+    }
+
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>  {
+        let job = job.id;
+        Box::pin(self.read_state(http, job))
     }
 }
 
@@ -270,7 +282,7 @@ fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
                 cache_read_tokens: 0,
                 cache_write_tokens: 0,
             });
-            Ok(JobState::Done(Done { url, cost: None, usage }))
+            Ok(JobState::Done(Done { video: DoneVideo::At(url), cost: None, usage }))
         }
         other => Err(unreadable(format!("its task's state \"{other}\" is not one it documents"))),
     }

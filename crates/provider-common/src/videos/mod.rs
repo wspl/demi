@@ -1,9 +1,12 @@
 //! The video role of a provider.
 //!
 //! A provider that makes videos lists its video models and runs one job for its
-//! account or key in three steps: the ask, the reads of the job's state and the
-//! download. The backend chooses the entry and the account, paces the reads and
-//! bounds the job.
+//! account or key as one stream of its steps: the job's id, then each change of
+//! its state until its end, whose video the role downloads. A whole job is one
+//! call, so it crosses a channel as one (`crate::media::channel`). Most vendors
+//! answer a job's ask with its id and are read until it ends ([`PolledVideos`],
+//! [`polled`]). The backend chooses the entry and the account, paces the reads
+//! and bounds the job.
 //!
 //! What every vendor's request has in common is in [`crate::media`]. The xAI
 //! Videos shape, which a Grok subscription, an xAI key and a compatible API
@@ -11,9 +14,12 @@
 
 pub mod xai;
 
+use std::time::Duration;
+
 use bytes::Bytes;
 use demi_shared_types::{Clock, Cost, TokenUsage, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
+use futures_util::stream::{self, BoxStream, StreamExt as _};
 use http::HeaderMap;
 use reqwest::Url;
 use serde::Serialize;
@@ -50,16 +56,21 @@ pub fn content(request: &VideoRequest) -> Vec<Content> {
 
 /// A provider's video role.
 pub trait VideoMaker: MediaMaker {
-    /// Asks for the video `request` describes and answers the job's id;
-    /// `catalog` says what the model takes.
-    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
+    /// The job `request` describes, as the vendor tells it: its id first,
+    /// then each state it reads or sends, the last of them its end;
+    /// `catalog` says what the model takes, and a vendor that is read is
+    /// read every `every`.
+    fn run<'a>(
+        &'a self,
+        http: &'a crate::ProviderHttp,
+        catalog: &'a Catalog,
+        request: VideoRequest,
+        every: Duration,
+    ) -> BoxStream<'a, MediaAnswer<JobStep>>;
 
-    /// Reads the state of the job `job` once.
-    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>;
-
-    /// Downloads the video of a finished job, with the entry's key where
-    /// the vendor needs it.
-    fn download<'a>(&'a self, http: &'a crate::ProviderHttp, done: &'a Done) -> BoxFuture<'a, MediaAnswer<Bytes>>;
+    /// Downloads the video a finished job names at `url`, with the entry's
+    /// key where the vendor needs it.
+    fn download<'a>(&'a self, http: &'a crate::ProviderHttp, url: &'a Url) -> BoxFuture<'a, MediaAnswer<Bytes>>;
 
     /// Cancels the job `job`, for a vendor that can cancel one; none
     /// elsewhere, where the job runs to its end and is paid for.
@@ -77,6 +88,65 @@ pub trait VideoMaker: MediaMaker {
     fn shape_name(&self) -> String;
 }
 
+/// The role of a vendor whose job is asked once and then read until it
+/// ends, which [`polled`] makes its [`VideoMaker::run`] of.
+pub trait PolledVideos: VideoMaker {
+    /// Asks for the video `request` describes and answers the job's id;
+    /// `catalog` says what the model takes.
+    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
+
+    /// Reads the state of the job `job` once.
+    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>;
+}
+
+/// One step of a job as [`VideoMaker::run`] tells it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum JobStep {
+    /// The vendor took the job, under its id.
+    Asked(String),
+    /// A state of the job; it ends with [`JobState::Done`],
+    /// [`JobState::Failed`] or [`JobState::Expired`].
+    State(JobState),
+}
+
+/// `maker`'s job as its ask and its reads every `every` tell it, the reads
+/// ending at the job's end or the first failure.
+pub fn polled<'a, M: PolledVideos + ?Sized>(
+    maker: &'a M,
+    http: &'a crate::ProviderHttp,
+    catalog: &'a Catalog,
+    request: VideoRequest,
+    every: Duration,
+) -> BoxStream<'a, MediaAnswer<JobStep>> {
+    let model = request.model.clone();
+    let asked = stream::once(maker.ask(http, catalog, request));
+    asked
+        .flat_map(move |answer| {
+            let id = answer.result.as_ref().ok().cloned();
+            let first = stream::once(std::future::ready(answer.and_then(|id| Ok(JobStep::Asked(id)))));
+            let reads = match id {
+                Some(id) => {
+                    let model = model.clone();
+                    stream::unfold(Some(id), move |id| {
+                        let model = model.clone();
+                        async move {
+                            let id = id?;
+                            tokio::time::sleep(every).await;
+                            let answer = maker.state(http, JobRef { id: &id, model: &model, catalog }).await;
+                            let ended = !matches!(answer.result, Ok(JobState::Queued | JobState::Running { .. }));
+                            let next = (!ended).then_some(id);
+                            Some((answer.and_then(|state| Ok(JobStep::State(state))), next))
+                        }
+                    })
+                    .boxed()
+                }
+                None => stream::empty().boxed(),
+            };
+            first.chain(reads)
+        })
+        .boxed()
+}
+
 /// A job a vendor took: its id at the vendor, and the model it makes as
 /// `catalog` states it, by which a vendor whose models take different
 /// requests, as MiniMax's do, reads its state.
@@ -88,7 +158,7 @@ pub struct JobRef<'a> {
 }
 
 /// One video to make; an option left out is the vendor's default.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct VideoRequest {
     pub model: String,
     pub prompt: String,
@@ -108,7 +178,7 @@ pub struct VideoRequest {
 }
 
 /// An option of `demi video generate`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum VideoOption {
     Image,
     LastFrame,
@@ -141,7 +211,7 @@ pub fn unsent_of(lacks: &[VideoOption], request: &VideoRequest) -> Vec<VideoOpti
 }
 
 /// A job's state as one read of it says.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum JobState {
     /// Waiting for the vendor to start it.
     Queued,
@@ -150,21 +220,38 @@ pub enum JobState {
     /// Made, and where the video is.
     Done(Done),
     /// The vendor failed the video, in its own words, with what it named
-    /// to trace the failure.
-    Failed { message: String, trace: VendorTrace },
+    /// to trace the failure; neither crosses a relay.
+    Failed {
+        #[serde(skip)]
+        message: String,
+        #[serde(skip)]
+        trace: VendorTrace,
+    },
     /// The job expired at the vendor before it ran.
     Expired,
 }
 
-/// A finished job: where its video is and what the vendor said it cost.
-#[derive(Debug, Clone, PartialEq)]
+/// A finished job: its video and what the vendor said it cost.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Done {
-    pub url: Url,
+    pub video: DoneVideo,
     /// The cost the vendor reported, in its documented unit; none
     /// otherwise.
     pub cost: Option<Cost>,
     /// The counts the vendor reported; none when it reported none.
     pub usage: Option<TokenUsage>,
+}
+
+/// A finished job's video, as the vendor gives it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum DoneVideo {
+    /// At an address, which [`VideoMaker::download`] downloads. It never
+    /// crosses a channel, which sends the video instead
+    /// ([`crate::media::channel::serve`]): the address names the vendor.
+    #[serde(skip)]
+    At(Url),
+    /// Within the answer, as a channel sends it.
+    Sent(Bytes),
 }
 
 /// Downloads `url` as Demi's one download

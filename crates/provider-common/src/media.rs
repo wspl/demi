@@ -16,6 +16,8 @@ use reqwest::Url;
 use serde::Deserialize;
 
 use crate::media_catalog::{Catalog, MediaKind, Subscription};
+
+pub mod channel;
 use crate::{
     ErrorCode, FailureReader, HttpFailureRecord, ProviderFailure, Secret,
     credentials::{AuthFailure, AuthReason},
@@ -310,7 +312,7 @@ pub trait MediaMaker: Send + Sync {
 /// A media model a provider offers, as its listing names it: what the
 /// catalog of media models states of it is read by the backend, which
 /// joins the listings of every entry.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct MediaModelInfo {
     pub id: String,
     /// The name the listing gives, such as a compatible entry's model's.
@@ -360,23 +362,56 @@ impl<T> MediaAnswer<T> {
 /// Why a vendor did not answer with what was asked. Each failure the
 /// vendor sent carries what it named to trace it, its own code and its
 /// request or trace ID, which the call's words end with.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// It crosses a channel as its kind and code: its words, its trace and its
+/// wait, which says when the lender's limit resets, stay with whoever
+/// served the call, and a sign-in crosses as a refused key.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum MediaFailure {
     /// The account or key is used up, until the moment the vendor named,
     /// if any.
-    UsageLimit { retry_at: Option<Timestamp>, trace: VendorTrace },
+    UsageLimit {
+        #[serde(skip)]
+        retry_at: Option<Timestamp>,
+        #[serde(skip)]
+        trace: VendorTrace,
+    },
     /// The account's sign-in could not be used or renewed.
+    #[serde(skip)]
     SignIn(AuthFailure),
     /// The vendor refused the entry's API key, in its own words; `code` is
     /// the failure's, `auth_expired` or `permission_denied`.
-    KeyRefused { message: String, code: ErrorCode, trace: VendorTrace },
+    KeyRefused {
+        #[serde(skip)]
+        message: String,
+        code: ErrorCode,
+        #[serde(skip)]
+        trace: VendorTrace,
+    },
     /// The vendor refused the prompt or an image, in its own words.
-    Refused { message: String, code: Option<ErrorCode>, trace: VendorTrace },
+    Refused {
+        #[serde(skip)]
+        message: String,
+        code: Option<ErrorCode>,
+        #[serde(skip)]
+        trace: VendorTrace,
+    },
     /// The vendor refused the shape asked for, naming the shapes it takes,
     /// in its own order.
-    Shape { takes: Vec<String>, code: Option<ErrorCode>, trace: VendorTrace },
+    Shape {
+        takes: Vec<String>,
+        code: Option<ErrorCode>,
+        #[serde(skip)]
+        trace: VendorTrace,
+    },
     /// The vendor failed, or did not answer in time.
-    Unanswered { cause: String, code: Option<ErrorCode>, trace: VendorTrace },
+    Unanswered {
+        #[serde(skip)]
+        cause: String,
+        code: Option<ErrorCode>,
+        #[serde(skip)]
+        trace: VendorTrace,
+    },
 }
 
 impl MediaFailure {

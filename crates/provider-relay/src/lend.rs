@@ -3,16 +3,23 @@
 //!
 //! The session keeps the account its entry's rotation gave it, as a
 //! conversation's session keeps it with its state, and names it in each of
-//! its requests; the borrower never hears of it. A failure crosses as its
-//! code alone, and is logged here whole.
+//! its requests; the borrower never hears of it, nor of the account's
+//! switches and quota. A failure crosses as its code alone, as its type
+//! says (`demi_provider_common::ProviderFailure`), and is logged here
+//! whole.
 
-use demi_provider_common::{ErrorCode, ProviderEvent, ProviderRuntime};
+use demi_provider_common::{CallEvent, ErrorCode, ProviderEvent, ProviderFailure, ProviderRuntime};
 use demi_shared_types::AgentAccount;
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use tokio_util::sync::CancellationToken;
 
 use crate::delta::Inbox;
-use crate::wire::{ClientMessage, ServerMessage, WireEvent};
+use crate::wire::{ClientMessage, ServerMessage};
+
+/// Whether `event` crosses: none of the account's or its quota's does.
+fn lent(event: &ProviderEvent) -> bool {
+    !matches!(event, ProviderEvent::Account(_) | ProviderEvent::AccountSwitch(_) | ProviderEvent::Call(CallEvent::Observed(_)))
+}
 
 /// Whether the lender lends a run, as its own settings say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,7 +80,12 @@ pub async fn serve<In, Out>(
                 break;
             }
             Ok(Lends::NotTheModel) => {
-                let failure = WireEvent::Error { code: Some(ErrorCode::ModelUnavailable.as_str().to_owned()) };
+                let failure = ProviderEvent::Error(ProviderFailure {
+                    message: String::new(),
+                    code: Some(ErrorCode::ModelUnavailable),
+                    diagnostics: None,
+                    retry_after: None,
+                });
                 let sent = outgoing.send(ServerMessage::Event { run, event: failure }).await.is_ok()
                     && outgoing.send(ServerMessage::End { run }).await.is_ok();
                 if !sent {
@@ -102,7 +114,9 @@ pub async fn serve<In, Out>(
                             "a borrowed run failed"
                         );
                     }
-                    let Some(event) = WireEvent::lent(event) else { continue };
+                    if !lent(&event) {
+                        continue;
+                    }
                     if outgoing.send(ServerMessage::Event { run, event }).await.is_err() {
                         break 'session;
                     }

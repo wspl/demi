@@ -47,7 +47,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable},
     media_catalog::{Catalog, MediaKind},
-    videos::{self, Content, Done, JobRef, JobState, VideoMaker, VideoOption, VideoRequest, content, unsent_of},
+    videos::{self, Content, Done, DoneVideo, JobRef, JobState, VideoMaker, VideoOption, VideoRequest, content, unsent_of},
 };
 use demi_shared_types::{Clock, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
@@ -168,36 +168,18 @@ impl MediaMaker for Hailuo {
 }
 
 impl VideoMaker for Hailuo {
-    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
-        Box::pin(async move {
-            let api = match self.api(catalog, &request.model) {
-                Ok(api) => api,
-                Err(failure) => return MediaAnswer { result: Err(failure), observed: Vec::new() },
-            };
-            match api {
-                Api::V2 => {
-                    let body = Bytes::from(encode_v2(catalog, self.vendor, &request));
-                    self.send(http, Ask::post_json(&self.url("/v2/video_generation"), body)).await.and_then(|body| read_asked(&body))
-                }
-                Api::V1 => {
-                    let body = Bytes::from(encode_v1(&request));
-                    self.send_v1(http, Ask::post_json(&self.url("/v1/video_generation"), body)).await.and_then(|body| read_asked(&body))
-                }
-            }
-        })
+    fn run<'a>(
+        &'a self,
+        http: &'a demi_provider_common::ProviderHttp,
+        catalog: &'a demi_provider_common::media_catalog::Catalog,
+        request: VideoRequest,
+        every: std::time::Duration,
+    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
+        demi_provider_common::videos::polled(self, http, catalog, request, every)
     }
 
-    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>> {
-        Box::pin(async move {
-            match self.api(job.catalog, job.model) {
-                Ok(api) => self.read_state(http, api, job.id).await,
-                Err(failure) => MediaAnswer { result: Err(failure), observed: Vec::new() },
-            }
-        })
-    }
-
-    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, done: &'a Done) -> BoxFuture<'a, MediaAnswer<Bytes>> {
-        Box::pin(videos::download(minimax::LABEL, &*self.clock, http, &done.url, &self.origin, HeaderMap::new()))
+    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
+        Box::pin(videos::download(minimax::LABEL, &*self.clock, http, url, &self.origin, HeaderMap::new()))
     }
 
     /// Deletes a v2 task while it is still queued; a running one runs to
@@ -228,6 +210,36 @@ impl VideoMaker for Hailuo {
 
     fn shape_name(&self) -> String {
         "Hailuo".to_owned()
+    }
+}
+
+impl demi_provider_common::videos::PolledVideos for Hailuo {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(async move {
+            let api = match self.api(catalog, &request.model) {
+                Ok(api) => api,
+                Err(failure) => return MediaAnswer { result: Err(failure), observed: Vec::new() },
+            };
+            match api {
+                Api::V2 => {
+                    let body = Bytes::from(encode_v2(catalog, self.vendor, &request));
+                    self.send(http, Ask::post_json(&self.url("/v2/video_generation"), body)).await.and_then(|body| read_asked(&body))
+                }
+                Api::V1 => {
+                    let body = Bytes::from(encode_v1(&request));
+                    self.send_v1(http, Ask::post_json(&self.url("/v1/video_generation"), body)).await.and_then(|body| read_asked(&body))
+                }
+            }
+        })
+    }
+
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>> {
+        Box::pin(async move {
+            match self.api(job.catalog, job.model) {
+                Ok(api) => self.read_state(http, api, job.id).await,
+                Err(failure) => MediaAnswer { result: Err(failure), observed: Vec::new() },
+            }
+        })
     }
 }
 
@@ -401,5 +413,5 @@ fn read_file(body: &[u8]) -> Result<JobState, MediaFailure> {
 fn made(url: Option<String>) -> Result<JobState, MediaFailure> {
     let url = url.filter(|url| !url.is_empty()).ok_or_else(|| unreadable("its finished task named no video".to_owned()))?;
     let url = Url::parse(&url).map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;
-    Ok(JobState::Done(Done { url, cost: None, usage: None }))
+    Ok(JobState::Done(Done { video: DoneVideo::At(url), cost: None, usage: None }))
 }
