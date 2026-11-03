@@ -1,0 +1,82 @@
+{
+  "toolbar": {
+    "model": "({model})",
+    "rotateLeft": "Nach links drehen",
+    "rotateRight": "Nach rechts drehen",
+    "appearance": "Erscheinungsbild wechseln",
+    "home": "Home",
+    "lock": "Sperren",
+    "volumeUp": "Lauter",
+    "volumeDown": "Leiser",
+    "back": "Zurück",
+    "screenshot": "Bildschirmfoto",
+    "record": "Aufnehmen",
+    "stopRecording": "Aufnahme stoppen",
+    "more": "Mehr"
+  },
+  "fold": {
+    "closed": "Geschlossen",
+    "halfOpen": "Halb geöffnet",
+    "open": "Geöffnet",
+    "hinge": "Scharnierwinkel",
+    "degrees": "{degrees}°",
+    "reset": "Gerät zu dir drehen"
+  },
+  "activity": "Der Agent verwendet dieses Gerät",
+  "keyboard": "Simulatortastatur",
+  "screenOff": {
+    "title": "Bildschirm aus",
+    "wake": "Aufwecken"
+  },
+  "region": {
+    "connecting": "Verbindung zum Simulator wird hergestellt …",
+    "reconnecting": "Verbindung zum Simulator wird wiederhergestellt …",
+    "downloading": "Wird heruntergeladen …",
+    "frame": "Gerätrahmen wird geladen …",
+    "screen": "Warten auf den Bildschirm …",
+    "waiting": "Warten auf das Gerät …",
+    "couldntShow": "Simulator kann nicht angezeigt werden",
+    "frameFailed": "Der Rahmen des Geräts konnte nicht angezeigt werden.",
+    "unsupported": "Dieser Browser kann kein Live-Video anzeigen."
+  },
+  "failures": {
+    "control": "Der Simulator konnte das nicht ausführen",
+    "save": "Datei konnte nicht gespeichert werden",
+    "hostFilesUnreachable": "Die Dateien des Geräts sind gerade nicht erreichbar."
+  },
+  "reasons": {
+    "invalid_input": "Der Simulator kann das nicht annehmen.",
+    "device_not_found": "Dieser Simulator ist nicht mehr auf diesem Gerät.",
+    "ambiguous_device": "Mehr als ein Simulator hat diesen Namen.",
+    "device_busy": "Ein anderer Chat verwendet diesen Simulator. Schließe ihn dort zuerst.",
+    "stale_ref": "Der Bildschirm hat sich geändert, bevor der Simulator reagieren konnte.",
+    "timeout": "Der Simulator hat nicht rechtzeitig geantwortet.",
+    "unavailable": "Auf diesem Gerät sind keine Simulatoren verfügbar.",
+    "recording": "Der Simulator nimmt bereits auf.",
+    "recording_not_found": "Der Simulator nimmt nicht auf.",
+    "too_many_recordings": "In diesem Chat laufen fünf Aufnahmen. Stoppe zuerst eine.",
+    "output_exists": "Eine Datei mit diesem Namen existiert bereits.",
+    "io_error": "Die Datei konnte auf dem Gerät nicht geschrieben werden.",
+    "driver_error": "Der Simulator konnte das nicht ausführen.",
+    "device_lost": "Der Simulator wurde beendet.",
+    "cancelled": "Die Anfrage wurde abgebrochen.",
+    "mobile_unavailable": "Simulatoren konnten auf diesem Gerät nicht starten.",
+    "capture_failed": "Der Bildschirm des Simulators konnte nicht angezeigt werden.",
+    "capture_unavailable": "Dieses Gerät kann den Bildschirm des Simulators nicht anzeigen.",
+    "input_failed": "Deine Eingabe hat den Simulator nicht erreicht.",
+    "no_focused_field": "Es gibt kein ausgewähltes Textfeld, in das „{text}“ eingefügt werden kann.",
+    "conversation_not_found": "Dieser Chat existiert nicht mehr.",
+    "conversation_archived": "Dieser Chat ist archiviert.",
+    "conversation_busy": "Der Chat ist beschäftigt. Versuche es gleich noch einmal.",
+    "host_stopped": "Das Gerät ist gestoppt.",
+    "device_offline": "Das Gerät ist offline.",
+    "cloud_unavailable": "Die Cloud ist gerade nicht verfügbar.",
+    "cloud_resetting": "Die Cloud wird zurückgesetzt.",
+    "cloud_capacity": "In der Cloud ist gerade kein Platz.",
+    "cloud_crash_loop": "Die Cloud stoppt immer wieder.",
+    "host_operation_failed": "Das Gerät konnte das nicht ausführen.",
+    "unknown_plugin_method": "Diese Seite ist veraltet. Lade sie neu.",
+    "plugin_disabled": "Simulatoren sind deaktiviert."
+  },
+  "status": "Das Gerät hat mit Status {status} geantwortet."
+}

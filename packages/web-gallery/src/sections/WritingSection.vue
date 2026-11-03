@@ -619,7 +619,7 @@ const sources: readonly Required<Source>[] = [
 
     <GallerySection
       title="Every Language"
-      note="Demi speaks English, 简体中文, 繁體中文, 日本語 and 한국어, each complete. A written convention, like the rest of this page: nothing checks it."
+      note="Demi speaks English, Deutsch, Español (Latinoamérica), Français, Português (Brasil), 简体中文, 繁體中文, 日本語 and 한국어, each complete. A written convention, like the rest of this page: nothing checks it."
     >
       <GalleryTextRules :rules="[everyLanguageRule]" />
     </GallerySection>

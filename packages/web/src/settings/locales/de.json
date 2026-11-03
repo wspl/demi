@@ -1,0 +1,76 @@
+{
+  "corrections": {
+    "invalidCredentials": "Das ist nicht dein aktuelles Passwort.",
+    "invalidCode": "Dieser Code ist falsch oder abgelaufen. Verwende den neuesten."
+  },
+  "devices": {
+    "revokeFailed": "Gerät konnte nicht entkoppelt werden",
+    "renameFailed": "Gerät konnte nicht umbenannt werden",
+    "routeFailed": "Route konnte nicht geändert werden",
+    "resetNotStarted": "Das Zurücksetzen wurde nicht gestartet. Prüfe deine Verbindung und versuche es erneut."
+  },
+  "portForwards": {
+    "addFailed": "Weiterleitung konnte nicht hinzugefügt werden",
+    "saveFailed": "Weiterleitung konnte nicht geändert werden",
+    "removeFailed": "Weiterleitung konnte nicht entfernt werden",
+    "retryFailed": "Erneuter Versuch nicht möglich"
+  },
+  "plugins": {
+    "turnOnFailed": "Plug-in konnte nicht aktiviert werden",
+    "turnOffFailed": "Plug-in konnte nicht deaktiviert werden",
+    "featureOnFailed": "Funktion konnte nicht aktiviert werden",
+    "featureOffFailed": "Funktion konnte nicht deaktiviert werden"
+  },
+  "providers": {
+    "saveFailed": "Anbieter konnte nicht gespeichert werden",
+    "testFailed": "Anbieter konnte nicht getestet werden",
+    "refreshModelsFailed": "Modelle konnten nicht aktualisiert werden",
+    "removeFailed": "Anbieter konnte nicht entfernt werden",
+    "cliUpdateFailed": "Befehlszeilentool konnte nicht aktualisiert werden",
+    "removeAccountFailed": "Konto konnte nicht entfernt werden",
+    "testAccountFailed": "Konto konnte nicht getestet werden",
+    "addFailed": "Anbieter konnte nicht hinzugefügt werden",
+    "cliReadFailed": "Befehlszeilentool konnte nicht gelesen werden",
+    "checkUpdatesFailed": "Suche nach Updates nicht möglich",
+    "cliInstallFailed": "Befehlszeilentool konnte nicht installiert werden",
+    "usageFailed": "Nutzung konnte nicht aktualisiert werden",
+    "reorderFailed": "Konten konnten nicht neu angeordnet werden",
+    "reorderProvidersFailed": "Anbieter konnten nicht neu angeordnet werden",
+    "switchFailed": "Konto konnte nicht gewechselt werden",
+    "cancelLoginFailed": "Anmeldung konnte nicht abgebrochen werden",
+    "loginStopped": "Diese Anmeldung läuft nicht mehr.",
+    "removeModelFailed": "Modell konnte nicht entfernt werden"
+  },
+  "subagents": {
+    "turnOnFailed": "Subagenten konnten nicht aktiviert werden",
+    "turnOffFailed": "Subagenten konnten nicht deaktiviert werden",
+    "limitFailed": "Limit konnte nicht geändert werden",
+    "enableFailed": "Profil konnte nicht aktiviert werden",
+    "disableFailed": "Profil konnte nicht deaktiviert werden"
+  },
+  "users": {
+    "newPasswordFailed": "Neues Passwort konnte nicht erstellt werden",
+    "roleFailed": "Rolle konnte nicht geändert werden",
+    "sharingFailed": "Teilen von Anbietern konnte nicht geändert werden",
+    "cloudStorageFailed": "Cloud-Speicher konnte nicht geändert werden",
+    "disableFailed": "Konto konnte nicht deaktiviert werden",
+    "enableFailed": "Konto konnte nicht aktiviert werden",
+    "signOutFailed": "Konto konnte nicht abgemeldet werden",
+    "loading": "Benutzer werden geladen …",
+    "loadFailed": "Die Benutzer konnten nicht geladen werden."
+  },
+  "about": {
+    "acknowledgementsFailed": "Die Danksagungen konnten nicht geladen werden."
+  },
+  "updates": {
+    "channelFailed": "Update-Kanal konnte nicht geändert werden",
+    "prepareAheadFailed": "Automatische Downloads konnten nicht geändert werden",
+    "checkFailed": "Suche nach Updates nicht möglich",
+    "updateFailed": "Update konnte nicht gestartet werden"
+  },
+  "dialog": {
+    "nameFailed": "Dein Name konnte nicht geändert werden",
+    "emailFailed": "E-Mail-Adresse konnte nicht geändert werden",
+    "passwordFailed": "Passwort konnte nicht geändert werden"
+  }
+}

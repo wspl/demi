@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "title": "Nube",
+    "description": "Compartido por todos tus proyectos en la nube."
+  },
+  "environment": {
+    "title": "Tu entorno en la nube",
+    "reset": "Restablecer entorno",
+    "newerImage": "Hay una imagen del sistema más reciente",
+    "newerImageDescription": "Al restablecer se conservan tus archivos personales y se eliminan los paquetes del sistema instalados.",
+    "connected": "{system} · Conectado mediante relay"
+  },
+  "storage": {
+    "title": "Almacenamiento",
+    "line": "Sistema {system} · Personal {home}"
+  },
+  "reset": {
+    "title": "Restablecer el entorno en la nube",
+    "body": "Detiene las tareas en la nube y restablece los paquetes y la configuración del sistema. Tus archivos personales y tus proyectos en la nube se conservan.",
+    "starting": "Iniciando el restablecimiento…",
+    "retry": "Reintentar restablecimiento",
+    "close": "Cerrar",
+    "cancel": "Cancelar"
+  },
+  "phase": {
+    "stopping": "Deteniendo las tareas en la nube…",
+    "saving": "Guardando los archivos personales…",
+    "rebuilding": "Reconstruyendo el sistema…",
+    "booting": "Iniciando la nube…",
+    "ready": "La nube está lista.",
+    "failed": "No se pudo restablecer."
+  }
+}

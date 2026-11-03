@@ -1,0 +1,433 @@
+{
+  "suggestions": {
+    "label": "Réponses suggérées",
+    "edit": "Modifier"
+  },
+  "comments": {
+    "comment": "Commenter",
+    "placeholder": "Ajouter un commentaire",
+    "waitReply": "Attendez la fin de cette réponse.",
+    "count": "{count} commentaire | {count} commentaires",
+    "remove": "Supprimer le commentaire | Supprimer les commentaires",
+    "sent": "Envoyé",
+    "writeFirst": "Écrivez d’abord un commentaire.",
+    "next": "Commentaire suivant",
+    "pictureFailed": "Impossible de commenter l’image"
+  },
+  "ask": {
+    "ask": "Demander",
+    "placeholder": "Poser une question à ce sujet",
+    "followUpPlaceholder": "Poser une question complémentaire",
+    "reply": "Répondre",
+    "openFull": "Ouvrir la conversation complète",
+    "collapse": "Réduire",
+    "expand": "Développer",
+    "thinking": "Réflexion…",
+    "retry": "Réessayer",
+    "stop": "Arrêter",
+    "pictureFailed": "Impossible de poser une question sur l’image"
+  },
+  "transcript": {
+    "accountSwitch": {
+      "usage": "{from} a atteint sa limite d’utilisation. Poursuite avec {to}.",
+      "usageReset": "{from} a atteint sa limite d’utilisation, {reset}. Poursuite avec {to}.",
+      "window": "{from} a atteint sa {window}. Poursuite avec {to}.",
+      "windowReset": "{from} a atteint sa {window}, {reset}. Poursuite avec {to}."
+    },
+    "notice": {
+      "titled": "{notice} :"
+    },
+    "receipt": {
+      "allowed": "Vous avez autorisé cette conversation à {action}",
+      "denied": "Vous avez refusé à cette conversation l’autorisation de {action}",
+      "moved": "Vous avez déplacé cette conversation vers {host} · {path}",
+      "moveFailed": "Échec du déplacement : {reason}",
+      "fromMain": "Message de {agent}",
+      "mainAgent": "agent principal",
+      "fromAgent": "Message d’un agent",
+      "fromConversation": "Message d’une conversation",
+      "finished": "Agent terminé",
+      "failed": "Échec de l’agent",
+      "stopped": "Agent arrêté",
+      "unnamed": "Agent {number}"
+    },
+    "report": {
+      "finished": "Commande terminée",
+      "failed": "La commande a échoué avec le code de sortie {code}",
+      "stoppedByYou": "Commande arrêtée par vous",
+      "stoppedByAgent": "Commande arrêtée par un autre agent",
+      "stopped": "Commande arrêtée",
+      "lost": "Commande perdue de vue",
+      "untitled": "Commande {id}"
+    },
+    "runEnd": {
+      "failed": "Échec",
+      "stopped": "Arrêtée",
+      "stopping": "Arrêt…",
+      "waiting": "En attente de {host}",
+      "lost": "Perdue",
+      "exitCode": "Code de sortie {code}"
+    },
+    "commandStatus": {
+      "lost": "Perdue",
+      "lostWhy": "Perdue : {reason}",
+      "stopping": "Arrêt…",
+      "waiting": "En attente de {host}",
+      "running": "En cours depuis {span}",
+      "exited": "Terminée après {span}",
+      "exitedZero": "Terminée avec 0 après {span}",
+      "failed": "Échec avec le code de sortie {code} après {span}",
+      "stopped": "Arrêtée après {span}"
+    },
+    "thinking": {
+      "now": "Réflexion",
+      "briefly": "Brève réflexion",
+      "done": "Réflexion terminée",
+      "nowFor": "Réflexion depuis {span}",
+      "doneFor": "A réfléchi pendant {span}",
+      "requesting": "Requête en cours",
+      "requestingFor": "Requête en cours depuis {span}"
+    },
+    "compaction": {
+      "running": "Compactage du contexte…",
+      "done": "Contexte compacté",
+      "doneTo": "Contexte compacté à ~{tokens} tokens",
+      "doneIdle": "Contexte compacté pendant l’inactivité",
+      "doneIdleTo": "Contexte compacté pendant l’inactivité à ~{tokens} tokens"
+    },
+    "stopped": "Arrêté",
+    "queued": "{count} en file d’attente",
+    "user": {
+      "edit": "Modifier",
+      "showMore": "Afficher plus",
+      "showLess": "Afficher moins",
+      "sendingSoon": "Envoi imminent",
+      "queuedMark": "En file d’attente",
+      "recall": "Rappeler",
+      "recalled": "Message rappelé",
+      "notDeliveredMark": "Non distribué",
+      "fromSchedule": "Planification",
+      "fromConversation": "Conversation"
+    },
+    "assistant": {
+      "fork": "Bifurquer",
+      "forkWait": "La bifurcation est disponible une fois ce message terminé.",
+      "share": "Partager",
+      "shareWait": "Le partage est disponible une fois ce message terminé.",
+      "regenerate": "Régénérer",
+      "forkFailed": "Impossible de bifurquer à partir de ce message"
+    },
+    "edit": {
+      "rejected": "La modification n’a pas été acceptée.",
+      "unconfirmed": "Impossible de confirmer la modification"
+    },
+    "versions": {
+      "previous": "Version précédente",
+      "next": "Version suivante",
+      "position": "Version {index} sur {count}"
+    },
+    "newFile": "Nouveau fichier",
+    "moreFiles": "+{count} fichier | +{count} fichiers",
+    "fewerFiles": "Afficher moins",
+    "picture": {
+      "open": "Ouvrir {name} en grand",
+      "play": "Lire {name}"
+    },
+    "gone": {
+      "line": "{kind} non conservé : {reason}",
+      "image": "Image",
+      "video": "Vidéo",
+      "document": "Document"
+    },
+    "shellFallback": "Exécuter une commande shell",
+    "stepsNotShared": "{count} étape non partagée | {count} étapes non partagées",
+    "turnFailed": "Le tour a échoué.",
+    "failureResets": "{failure} {reset}.",
+    "apiKeyRefused": "Le fournisseur a refusé la clé API.",
+    "signedOut": "{provider} a déconnecté {account}. Reconnectez-le dans Paramètres › Fournisseurs.",
+    "deviceOffline": "{device} est hors ligne.",
+    "opaque": {
+      "other": "{name} chez {vendor}",
+      "search": {
+        "web": "Recherche web",
+        "open_page": "Ouvrir la page",
+        "find_in_page": "Rechercher dans la page",
+        "x": "Recherche X",
+        "x_people": "Recherche de personnes sur X",
+        "x_post": "Publication X",
+        "image": "Voir l’image",
+        "x_video": "Vidéo X"
+      }
+    },
+    "work": {
+      "ran": "{count} commande exécutée | {count} commandes exécutées",
+      "checked": "{count} commande vérifiée | {count} commandes vérifiées",
+      "used": "{tool} utilisé",
+      "joined": "{first}, {next}",
+      "took": "{what} en {span}",
+      "command": {
+        "finished": "{count} commande terminée | {count} commandes terminées",
+        "failed": "{count} commande en échec | {count} commandes en échec",
+        "stopped": "{count} commande arrêtée | {count} commandes arrêtées",
+        "stopping": "{count} commande en cours d’arrêt | {count} commandes en cours d’arrêt",
+        "lost": "{count} commande perdue | {count} commandes perdues"
+      },
+      "agent": {
+        "finished": "{count} agent terminé | {count} agents terminés",
+        "failed": "{count} agent en échec | {count} agents en échec",
+        "stopped": "{count} agent arrêté | {count} agents arrêtés"
+      },
+      "heard": "message de {count} agent | messages de {count} agents",
+      "searchedWeb": "{count} recherche web | {count} recherches web",
+      "openedPages": "{count} page ouverte | {count} pages ouvertes",
+      "searchedX": "{count} recherche sur X | {count} recherches sur X",
+      "viewedMedia": "{count} image ou vidéo consultée | {count} images ou vidéos consultées"
+    },
+    "copyMessage": "Copier le message",
+    "sendToConversation": "Envoyer à une conversation",
+    "sendToNew": "Nouvelle conversation",
+    "sendFailed": "Impossible d’envoyer à la conversation"
+  },
+  "subagents": {
+    "mainAgent": "Agent principal",
+    "agentNumber": "agent {number}",
+    "phase": {
+      "running": "En cours",
+      "completed": "Terminé",
+      "error": "Échec",
+      "aborted": "Arrêté"
+    },
+    "forkedFrom": "Bifurqué depuis {agent}",
+    "inherited": "Hérité de cette conversation",
+    "fast": "Rapide",
+    "chip": "{count} agent | {count} agents",
+    "stopAgent": "Arrêter l’agent",
+    "copyId": "Copier l’ID de l’agent",
+    "closeTab": "Fermer l’onglet",
+    "stopAll": "Tout arrêter",
+    "none": "Aucun agent en cours",
+    "loading": "Chargement de l’agent…",
+    "loadFailed": "Impossible de charger cet agent.",
+    "completed": "Terminés",
+    "searchCompleted": "Recherche terminée",
+    "noneCompleted": "Aucun sous-agent terminé",
+    "thinkingOff": "Réflexion désactivée"
+  },
+  "terminals": {
+    "endCommand": "Terminer la commande",
+    "closeTab": "Fermer l’onglet",
+    "chip": "{count} en cours",
+    "serviceChip": "{count} service | {count} services",
+    "loading": "Chargement du terminal…",
+    "unavailable": "Impossible de charger le terminal."
+  },
+  "session": {
+    "loading": "Chargement de la conversation…",
+    "loadFailed": "Impossible de charger cette conversation.",
+    "notFound": "Conversation introuvable",
+    "noneOpen": "Aucune conversation ouverte",
+    "empty": "Aucun message",
+    "start": "Démarrer une conversation",
+    "conversations": "Conversations",
+    "openPanel": "Ouvrir le panneau",
+    "tabs": "Onglets",
+    "tabsOpen": "Onglets, {count} ouverts",
+    "closePanel": "Fermer le panneau",
+    "options": "{title}, options de la conversation",
+    "hostState": "{name} est {state}",
+    "renameTitle": "Renommer la conversation",
+    "titleLabel": "Titre de la conversation",
+    "runsOn": "S’exécute sur",
+    "backToConversation": "Retour à la conversation",
+    "archived": "Cette conversation est archivée.",
+    "restore": "Restaurer la conversation",
+    "shareConversation": "Partager la conversation…",
+    "findInConversation": "Rechercher dans la conversation"
+  },
+  "share": {
+    "titleConversation": "Partager la conversation",
+    "titleAnswer": "Partager la réponse",
+    "whoConversation": "Toute personne disposant du lien peut lire les messages de cette conversation, mais pas le travail effectué entre eux. Les messages ultérieurs ne sont pas inclus.",
+    "whoAnswer": "Toute personne disposant du lien peut lire cette réponse et le message auquel elle répond.",
+    "field": "Lien de partage",
+    "copyLink": "Copier le lien",
+    "creating": "Création du lien…",
+    "updating": "Mise à jour du lien…",
+    "tryAgain": "Réessayer",
+    "updateLink": "Mettre à jour le lien",
+    "stopSharing": "Arrêter le partage",
+    "updated": "Lien mis à jour",
+    "updatedMessage": "Le lien affiche désormais la conversation dans son état actuel.",
+    "failedConversation": "Impossible de partager la conversation",
+    "failedAnswer": "Impossible de partager la réponse",
+    "failedUpdate": "Impossible de mettre à jour le lien",
+    "failedStop": "Impossible d’arrêter le partage"
+  },
+  "dock": {
+    "scrollToBottom": "Faire défiler jusqu’en bas",
+    "resume": "Reprendre",
+    "continue": "Continuer",
+    "continueWith": "Continuer avec {label}",
+    "openProviders": "Ouvrir Fournisseurs",
+    "outputTokens": "{tokens} token | {tokens} tokens",
+    "tokenRate": "{rate} tok/s",
+    "lastTurnRate": "Dernier tour : {rate} tok/s"
+  },
+  "notices": {
+    "hostOffline": "{name} est hors ligne.",
+    "moveHost": "Déplacer vers un autre hôte…",
+    "pluginsChanged": "Les plug-ins ont changé"
+  },
+  "composer": {
+    "placeholder": "Posez votre question…",
+    "message": "Message",
+    "noModels": "Aucun modèle disponible",
+    "configureModels": "Configurer les modèles",
+    "attach": "Joindre",
+    "attachFiles": "Joindre des fichiers…",
+    "attachLocalFiles": "Joindre des fichiers locaux…",
+    "attachRemoteFile": "Joindre un fichier distant…",
+    "cancelEdit": "Annuler la modification",
+    "editingMessage": "Modification du message",
+    "editingSaved": "Modification du message enregistré",
+    "saveEdit": "Enregistrer",
+    "saveEditKeys": "Enregistrer  {keys}",
+    "saveForLater": "Enregistrer pour plus tard",
+    "saveForLaterKeys": "Enregistrer pour plus tard  {keys}",
+    "stop": "Arrêter",
+    "send": "Envoyer",
+    "saveAndResend": "Enregistrer et renvoyer",
+    "sendOtherWay": "{way} · {keys} pour {other}",
+    "modelUnavailable": "Ce modèle n’est pas disponible. Choisissez-en un autre pour envoyer.",
+    "modelsLoading": "Les modèles sont encore en cours de chargement.",
+    "couldntAttach": "Impossible de joindre",
+    "afterEdit": "Disponible après la modification",
+    "saved": {
+      "count": "{count} enregistrés",
+      "saving": "Enregistrement…",
+      "edit": "Modifier",
+      "send": "Envoyer",
+      "delete": "Supprimer"
+    }
+  },
+  "attachments": {
+    "uploading": "Envoi {percent} % · {name}",
+    "attaching": "Ajout · {name}",
+    "failed": "{name} n’a pas été envoyé. Réessayez ou supprimez-le.",
+    "refused": "{name} est vide ou dépasse {limit}.",
+    "retryOrRemove": "Réessayez ou retirez les pièces jointes qui n’ont pas été envoyées",
+    "waitForUpload": "Attendez la fin de l’envoi des pièces jointes",
+    "pastedNames": "{list} : le nom a été collé à la place. | {list} : les noms ont été collés à la place.",
+    "couldntCopyPicture": "Impossible de copier l’image",
+    "missing": "{name} n’est plus disponible. Supprimez-le ou joignez-le de nouveau.",
+    "deleteOrAttachAgain": "Supprimez les pièces jointes qui ne sont plus disponibles, ou joignez-les de nouveau"
+  },
+  "models": {
+    "parent": "Modèle du parent",
+    "fast": "Mode rapide",
+    "reasoning": "Raisonnement",
+    "context": "Contexte",
+    "model": "Modèle",
+    "off": "Désactivé",
+    "default": "Par défaut ({window})",
+    "effort": {
+      "minimal": "Minimal",
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé",
+      "xhigh": "Très élevé",
+      "max": "Maximal"
+    },
+    "loading": "Chargement des modèles…",
+    "unavailable": "Ce modèle n’est pas disponible. Choisissez-en un autre pour envoyer."
+  },
+  "workflows": {
+    "label": "Flux de travail",
+    "labelTip": "Flux de travail : {name}",
+    "default": "Flux de travail global",
+    "none": "Aucun sous-agent",
+    "reading": "Lecture des flux de travail…",
+    "failed": "Impossible de lire les flux de travail",
+    "unavailable": "Flux de travail indisponibles",
+    "gone": "Ce flux de travail n’est plus dans le projet. Choisissez-en un autre.",
+    "worktree": "Worktree {name}"
+  },
+  "context": {
+    "window": "Fenêtre de contexte",
+    "windowUsed": "Fenêtre de contexte, {percent} utilisés",
+    "tip": "Contexte {figure}",
+    "compacting": "Compactage du contexte…",
+    "compact": "Compacter",
+    "untilCompaction": "{tokens} avant le compactage",
+    "afterTurn": "Disponible à la fin du tour",
+    "availableFrom": "Disponible à partir de {from} de contexte (actuellement {now})",
+    "usageLimits": "Limites d’utilisation",
+    "refreshUsage": "Actualiser l’utilisation",
+    "instructions": "Instructions",
+    "personalInstructions": "Instructions personnelles",
+    "workflowInstructions": "Flux de travail : {name}",
+    "cost": {
+      "title": "Coût",
+      "price": "Prix API équivalent",
+      "hitRate": "Taux de succès du cache",
+      "range": {
+        "hour": "1 h",
+        "day": "1 j",
+        "all": "Tout"
+      },
+      "kind": {
+        "input": "Entrée",
+        "cacheWrite": "Écriture en cache",
+        "cacheRead": "Lecture du cache",
+        "output": "Sortie"
+      },
+      "profiles": "Profils",
+      "mainConversation": "Principale",
+      "request": "Requête nº {number}",
+      "firstRequest": "Première requête",
+      "afterCompaction": "Après le compactage",
+      "miss": "Défaut de cache · {cause}",
+      "rewritten": "Tokens remis en cache",
+      "cause": {
+        "model_changed": "Modèle modifié",
+        "tools_changed": "Outils modifiés",
+        "system_prompt_changed": "Prompt système modifié",
+        "cache_expired": "Cache expiré",
+        "not_cached": "Non mis en cache par le fournisseur"
+      }
+    },
+    "row": {
+      "messages": "Messages",
+      "systemPrompt": "Prompt système",
+      "commands": "Commandes",
+      "instructions": "Instructions",
+      "skills": "Compétences",
+      "otherContext": "Autre contexte",
+      "summary": "Résumé",
+      "compactionBuffer": "Réserve de compactage",
+      "freeSpace": "Espace libre"
+    }
+  },
+  "address": {
+    "back": "Précédent",
+    "forward": "Suivant",
+    "stop": "Arrêter",
+    "placeholder": "Saisir une adresse",
+    "label": "Adresse du navigateur"
+  },
+  "panel": {
+    "allTabs": "Afficher tous les onglets",
+    "more": "Plus",
+    "windowHeight": "Hauteur de la fenêtre",
+    "closeOthers": "Fermer les autres",
+    "closeRight": "Fermer à droite",
+    "closeLeft": "Fermer à gauche",
+    "closeAll": "Tout fermer",
+    "cannotShow": "Cet onglet ne peut pas être affiché.",
+    "nothingOpen": "Rien d’ouvert",
+    "noFiles": "Aucun fichier ni modification",
+    "reading": "Lecture de {name}",
+    "hostOffline": "{name} est hors ligne.",
+    "hostOfflineDetail": "Les fichiers, les modifications et le navigateur réapparaissent à la reconnexion."
+  }
+}

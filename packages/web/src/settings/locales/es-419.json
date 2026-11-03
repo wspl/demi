@@ -1,0 +1,76 @@
+{
+  "corrections": {
+    "invalidCredentials": "Esa no es tu contraseña actual.",
+    "invalidCode": "Ese código es incorrecto o venció. Usa el más reciente."
+  },
+  "devices": {
+    "revokeFailed": "No se pudo revocar el dispositivo",
+    "renameFailed": "No se pudo cambiar el nombre del dispositivo",
+    "routeFailed": "No se pudo cambiar la ruta",
+    "resetNotStarted": "El restablecimiento no se inició. Revisa tu conexión y vuelve a intentarlo."
+  },
+  "portForwards": {
+    "addFailed": "No se pudo agregar el reenvío",
+    "saveFailed": "No se pudo cambiar el reenvío",
+    "removeFailed": "No se pudo eliminar el reenvío",
+    "retryFailed": "No se pudo volver a intentar"
+  },
+  "plugins": {
+    "turnOnFailed": "No se pudo activar el plugin",
+    "turnOffFailed": "No se pudo desactivar el plugin",
+    "featureOnFailed": "No se pudo activar la función",
+    "featureOffFailed": "No se pudo desactivar la función"
+  },
+  "providers": {
+    "saveFailed": "No se pudo guardar el proveedor",
+    "testFailed": "No se pudo probar el proveedor",
+    "refreshModelsFailed": "No se pudieron actualizar los modelos",
+    "removeFailed": "No se pudo eliminar el proveedor",
+    "cliUpdateFailed": "No se pudo actualizar la herramienta de línea de comandos",
+    "removeAccountFailed": "No se pudo eliminar la cuenta",
+    "testAccountFailed": "No se pudo probar la cuenta",
+    "addFailed": "No se pudo agregar el proveedor",
+    "cliReadFailed": "No se pudo leer la herramienta de línea de comandos",
+    "checkUpdatesFailed": "No se pudo buscar actualizaciones",
+    "cliInstallFailed": "No se pudo instalar la herramienta de línea de comandos",
+    "usageFailed": "No se pudo actualizar el uso",
+    "reorderFailed": "No se pudieron reordenar las cuentas",
+    "reorderProvidersFailed": "No se pudieron reordenar los proveedores",
+    "switchFailed": "No se pudo cambiar de cuenta",
+    "cancelLoginFailed": "No se pudo cancelar el inicio de sesión",
+    "loginStopped": "Este inicio de sesión ya no está en curso.",
+    "removeModelFailed": "No se pudo eliminar el modelo"
+  },
+  "subagents": {
+    "turnOnFailed": "No se pudieron activar los subagentes",
+    "turnOffFailed": "No se pudieron desactivar los subagentes",
+    "limitFailed": "No se pudo cambiar el límite",
+    "enableFailed": "No se pudo activar el perfil",
+    "disableFailed": "No se pudo desactivar el perfil"
+  },
+  "users": {
+    "newPasswordFailed": "No se pudo crear una contraseña nueva",
+    "roleFailed": "No se pudo cambiar el rol",
+    "sharingFailed": "No se pudo cambiar el uso compartido de proveedores",
+    "cloudStorageFailed": "No se pudo cambiar el almacenamiento en la nube",
+    "disableFailed": "No se pudo desactivar la cuenta",
+    "enableFailed": "No se pudo activar la cuenta",
+    "signOutFailed": "No se pudo cerrar la sesión de la cuenta",
+    "loading": "Cargando usuarios…",
+    "loadFailed": "No se pudieron cargar los usuarios."
+  },
+  "about": {
+    "acknowledgementsFailed": "No se pudieron cargar los agradecimientos."
+  },
+  "updates": {
+    "channelFailed": "No se pudo cambiar el canal de actualizaciones",
+    "prepareAheadFailed": "No se pudieron cambiar las descargas automáticas",
+    "checkFailed": "No se pudo buscar actualizaciones",
+    "updateFailed": "No se pudo iniciar la actualización"
+  },
+  "dialog": {
+    "nameFailed": "No se pudo cambiar tu nombre",
+    "emailFailed": "No se pudo cambiar el correo",
+    "passwordFailed": "No se pudo cambiar la contraseña"
+  }
+}

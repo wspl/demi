@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "overview": "Vue d’ensemble",
+    "signin": "Connexion et configuration",
+    "surfaces": "Surfaces",
+    "primitives": "Éléments de base",
+    "controlLayout": "Disposition des commandes",
+    "writing": "Rédaction",
+    "errors": "Erreurs",
+    "motion": "Animation",
+    "overlays": "Superpositions",
+    "dialogs": "Dialogues",
+    "files": "Fichiers",
+    "session": "Session",
+    "sidebar": "Barre latérale",
+    "settings": "Paramètres",
+    "markdown": "Markdown",
+    "phone": "Téléphone",
+    "roadmap": "Feuille de route",
+    "schedules": "Planifications"
+  },
+  "views": {
+    "errors": {
+      "primitives": "Éléments de base",
+      "conversation": "Conversation",
+      "messages": "Messages et envois",
+      "forms": "Formulaires et paramètres",
+      "files": "Fichiers"
+    },
+    "signin": {
+      "signin": "Connexion",
+      "setup": "Configuration",
+      "handoff": "Relais vers le téléphone",
+      "starting": "Démarrage"
+    },
+    "primitives": {
+      "buttons": "Boutons",
+      "fields": "Champs",
+      "marks": "Marques"
+    },
+    "overlays": {
+      "menus": "Menus",
+      "dialogs": "Dialogues"
+    },
+    "files": {
+      "browser": "Navigateur",
+      "tree": "Arborescence",
+      "dialogs": "Dialogues"
+    },
+    "session": {
+      "tabs": "Barre d’onglets",
+      "composer": "Zone de saisie",
+      "blocks": "Blocs",
+      "lengths": "Longueurs",
+      "changes": "Modifications",
+      "turns": "Tours",
+      "states": "États",
+      "session": "Session",
+      "panel": "Panneau",
+      "windows": "Fenêtres",
+      "shared": "Page partagée"
+    },
+    "dialogs": {
+      "account": "Compte",
+      "providers": "Fournisseurs",
+      "devices": "Appareils",
+      "project": "Projet",
+      "cloud": "Cloud",
+      "skills": "Compétences",
+      "search": "Recherche"
+    },
+    "page": "Page",
+    "schedules": {
+      "app": "App",
+      "phone": "Téléphone"
+    }
+  },
+  "chrome": {
+    "mode": "Mode",
+    "font": "Police"
+  }
+}

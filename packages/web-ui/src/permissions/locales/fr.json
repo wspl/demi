@@ -1,0 +1,60 @@
+{
+  "request": {
+    "allowTitle": "Autoriser cette conversation à {action} ?",
+    "agentRan": "L’agent a exécuté",
+    "subagentRan": "Le sous-agent {number}, « {description} », a exécuté",
+    "deny": "Refuser",
+    "allowConversation": "Autoriser pour cette conversation",
+    "decline": "Refuser",
+    "save": "Enregistrer",
+    "updateCredential": "Mettre à jour l’identifiant",
+    "saveCredential": "Enregistrer un identifiant",
+    "kept": {
+      "1h": "Conservé 1 heure",
+      "1d": "Conservé 1 jour",
+      "30d": "Conservé 30 jours",
+      "always": "Conservé jusqu’à ce que vous le supprimiez"
+    },
+    "needsValues": "Chaque champ doit avoir une valeur.",
+    "progress": "{position} / {count}"
+  },
+  "useCredential": "utiliser l’identifiant « {name} »",
+  "host": {
+    "reach": "accéder à {host}",
+    "pair": "jumeler un ordinateur et y accéder"
+  },
+  "categories": {
+    "credentials_use": {
+      "action": "utiliser vos identifiants",
+      "description": "Permet aux agents de cette conversation de lister, lire, enregistrer, remplacer et supprimer vos identifiants enregistrés, et de vous en demander de nouveaux."
+    },
+    "host_use": {
+      "action": "utiliser vos appareils",
+      "description": "Permet aux agents de cette conversation d’exécuter des commandes en votre nom sur n’importe lequel de vos appareils et dans le cloud, de déplacer cette conversation vers l’un d’eux, de jumeler un ordinateur à votre compte, et d’ajouter ou de supprimer des redirections de port, qui subsistent après cette conversation."
+    },
+    "providers_manage": {
+      "action": "gérer les fournisseurs",
+      "description": "Ajouter, modifier et supprimer vos entrées de fournisseurs et leurs modèles, que toutes vos conversations peuvent utiliser."
+    },
+    "conversation_use": {
+      "action": "utiliser vos autres conversations",
+      "description": "Permet aux agents de cette conversation de lister vos conversations, de lire leur contenu, de leur envoyer des messages et d’en démarrer de nouvelles. Ce qu’ils lisent est envoyé au fournisseur du modèle de cette conversation."
+    },
+    "agent_profiles": {
+      "action": "modifier les profils de sous-agents",
+      "description": "Créer, modifier et supprimer les profils de sous-agents que toutes vos conversations peuvent utiliser."
+    },
+    "agent_workflow": {
+      "action": "modifier son flux de travail",
+      "description": "Choisir le flux de travail de cette conversation, comme le fait le menu Flux de travail de la zone de saisie."
+    }
+  },
+  "notificationsCard": {
+    "title": "L’agent ne peut pas vous notifier",
+    "body": "Aucun de vos navigateurs n’a activé les notifications. Activez-les pour savoir quand l’agent a terminé ou a besoin de vous, même lorsque Demi est fermé.",
+    "blocked": "Les notifications sont bloquées dans les paramètres de site de ce navigateur.",
+    "unsupported": "Ce navigateur ne prend pas en charge les notifications.",
+    "dismiss": "Ignorer",
+    "turnOn": "Activer les notifications"
+  }
+}

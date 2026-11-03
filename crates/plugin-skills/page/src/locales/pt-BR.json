@@ -1,0 +1,92 @@
+{
+  "title": "Habilidades",
+  "description": "Fluxos de trabalho empacotados que o agente pode seguir.",
+  "keywords": "habilidade,skill,fluxo de trabalho,git,SKILL.md",
+  "places": {
+    "global": "Global",
+    "globalDescription": "Disponível em todos os espaços de trabalho.",
+    "workspaceDescription": "Disponível somente neste espaço de trabalho."
+  },
+  "sources": {
+    "add": "Adicionar fonte…",
+    "none": "Nenhuma fonte",
+    "adding": "Adicionando",
+    "updating": "Atualizando",
+    "failed": "Falhou",
+    "updateAvailable": "Atualização disponível",
+    "enableAll": "Ativar todas as habilidades de {name}",
+    "update": "Atualizar",
+    "remove": "Remover"
+  },
+  "fetcher": {
+    "label": "Obter com",
+    "hint": "Um dispositivo obtém com o próprio Git, as próprias chaves e a própria rede, que é o que um endereço SSH precisa.",
+    "server": "Servidor",
+    "via": "via {name}",
+    "waiting": "Aguardando {name}",
+    "offline": "{name} está offline.",
+    "removed": "Dispositivo removido",
+    "removedLabel": "Dispositivo removido",
+    "removedDetail": "O dispositivo que a obteve não está mais pareado. Escolha outro para obtê-la."
+  },
+  "skill": {
+    "warning": "Aviso",
+    "nameTaken": "Nome em uso",
+    "nameTakenDetail": "Uma habilidade chamada “{name}” de {origin} ({place}) está ativada. Desative-a para usar esta.",
+    "neverOffered": "Nunca oferecida",
+    "neverOfferedDetail": "Ela define disable-model-invocation.",
+    "notASkill": "Não é uma habilidade: {reason}"
+  },
+  "removeSource": {
+    "title": "Remover “{name}”?",
+    "withSkills": "As habilidades dela saem junto. Você pode adicionar o repositório novamente depois.",
+    "empty": "A fonte sai das suas habilidades. Você pode adicionar o repositório novamente depois.",
+    "more": "e mais {count}"
+  },
+  "addSource": {
+    "title": "Adicionar fonte",
+    "hint": "Um repositório Git. Cada SKILL.md nele é uma habilidade.",
+    "repository": "Repositório",
+    "repositoryHint": "proprietário/repositório, uma URL Git ou um endereço SSH.",
+    "browse": "Explorar skills.sh",
+    "cancel": "Cancelar"
+  },
+  "failures": {
+    "add": "Não foi possível adicionar a fonte",
+    "update": "Não foi possível atualizar a fonte",
+    "remove": "Não foi possível remover a fonte",
+    "switchSkill": "Não foi possível alternar a habilidade",
+    "switchSkills": "Não foi possível alternar as habilidades",
+    "setFetcher": "Não foi possível alterar o que obtém a fonte"
+  },
+  "permissions": {
+    "skills_manage": {
+      "action": "gerenciar habilidades",
+      "description": "Permite que os agentes desta conversa adicionem, atualizem e removam fontes de habilidades e ativem ou desativem habilidades. As habilidades globais chegam a todas as conversas e as de um espaço de trabalho às conversas desse espaço, e as habilidades ativadas são instaladas nos hosts que essas conversas usam."
+    }
+  },
+  "problems": {
+    "fetch": {
+      "repository_too_large": "O repositório é maior que {limit}.",
+      "no_commit": "O repositório não tem commits.",
+      "files_too_large": "Os arquivos das habilidades são maiores que {limit}.",
+      "no_skill": "O repositório não tem habilidades."
+    },
+    "skip": {
+      "too_large": "SKILL.md é maior que {limit}.",
+      "not_utf8": "SKILL.md não está em UTF-8.",
+      "no_front_matter": "SKILL.md não tem front matter.",
+      "front_matter_invalid": "O front matter não é YAML válido.",
+      "no_description": "O front matter não tem descrição."
+    }
+  },
+  "refusals": {
+    "invalid_origin": "Digite proprietário/repositório, uma URL Git ou um endereço SSH.",
+    "source_exists": "{origin} já foi adicionado.",
+    "source_exists_in": "{origin} já foi adicionado, em {place}.",
+    "workspace_not_found": "Este espaço de trabalho não existe mais.",
+    "ssh_needs_device": "Um endereço SSH precisa de um dos seus dispositivos para obtê-la.",
+    "fetcher_offline": "{name} está offline.",
+    "fetcher_not_found": "Esse dispositivo não está mais pareado."
+  }
+}

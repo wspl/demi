@@ -1,0 +1,85 @@
+{
+  "noResults": "Keine Ergebnisse",
+  "inDevelopment": "In Entwicklung",
+  "asyncRegion": {
+    "error": "Dieser Inhalt konnte nicht geladen werden."
+  },
+  "menu": {
+    "empty": "Keine Objekte"
+  },
+  "limitField": {
+    "limited": "Begrenzt",
+    "unlimited": "Unbegrenzt",
+    "problem": "Gib eine ganze Zahl ab 1 ein."
+  },
+  "shortcutRecorder": {
+    "recording": "Tastenkombination wird aufgenommen",
+    "prompt": "Tasten drücken …"
+  },
+  "requestId": "Anfrage-ID: {id}",
+  "errorNotice": {
+    "providerResponse": "Antwort des Anbieters",
+    "headers": "Header"
+  },
+  "updateFailed": {
+    "title": "Diese Seite konnte nicht aktualisiert werden",
+    "body": "Es gibt eine neuere Version von Demi. Nach dem Neuladen wird immer noch die alte angezeigt."
+  },
+  "updating": {
+    "title": "Demi wird aktualisiert",
+    "control": "Konten und Einstellungen werden aktualisiert",
+    "conversations": "Chats werden aktualisiert: {done} von {count}",
+    "bytes": "{done} von {all}",
+    "estimating": "Verbleibende Zeit wird berechnet …",
+    "underAMinute": "Weniger als eine Minute verbleibend",
+    "minutesLeft": "Noch etwa {count} Minute | Noch etwa {count} Minuten",
+    "body": "Du kannst Demi öffnen, wenn die Aktualisierung abgeschlossen ist.",
+    "restarting": "Demi wird neu gestartet",
+    "to": "Demi wird auf {version} aktualisiert",
+    "returning": "Zurück zu Demi {version}",
+    "failed": "Demi konnte nicht auf {version} aktualisiert werden",
+    "updated": "Demi wurde auf {version} aktualisiert",
+    "updatedDemi": "Demi wurde aktualisiert",
+    "failedBody": "Demi ist nicht verfügbar, bis ein Administrator die Aktualisierung auf dem Server abschließt.",
+    "returned": "Demi {version} läuft wieder, mit unveränderten Daten.",
+    "open": "Demi öffnen",
+    "of": "{done} von {count}",
+    "noChanges": "Keine Änderungen nötig",
+    "steps": {
+      "stopDemi": "Demi stoppen",
+      "saveClouds": "Laufende Clouds speichern",
+      "keepClouds": "Laufende Clouds beibehalten",
+      "keepDatabases": "Kopie der Datenbanken anlegen",
+      "switch": "Zur neuen Version wechseln",
+      "startManager": "Cloud-Manager starten",
+      "startDemi": "Demi starten",
+      "updateControl": "Konten und Einstellungen aktualisieren",
+      "updateConversations": "Chats aktualisieren"
+    }
+  },
+  "startingScreen": {
+    "connecting": "Verbindung zu Demi wird hergestellt …",
+    "loading": "Demi wird geladen …",
+    "failed": "Deine Sitzung konnte nicht geprüft werden."
+  },
+  "themeToggle": {
+    "light": "Helles Design",
+    "dark": "Dunkles Design"
+  },
+  "titleInput": {
+    "title": "Titel"
+  },
+  "rowSpinner": {
+    "working": "In Arbeit"
+  },
+  "contextMenu": {
+    "open": "Öffnen",
+    "openLink": "Link öffnen",
+    "openInWorkPanel": "Im Arbeitspanel öffnen",
+    "copyLink": "Link kopieren",
+    "copyImage": "Bild kopieren",
+    "saveImage": "Bild speichern",
+    "copyCode": "Code kopieren",
+    "searchWithGoogle": "Mit Google suchen"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "notifications": {
+    "turnStopped": "O turno parou com um erro.",
+    "saveCredential": "Salvar a credencial “{name}”?"
+  },
+  "hosts": {
+    "unavailableDevice": "Dispositivo indisponível"
+  },
+  "failures": {
+    "turnOnNotifications": "Não foi possível ativar as notificações",
+    "turnOffNotifications": "Não foi possível desativar as notificações",
+    "dismissNotificationsCard": "Não foi possível dispensar o lembrete de notificações",
+    "updateSettings": "Não foi possível atualizar as configurações",
+    "changeContextLimit": "Não foi possível alterar o limite de contexto",
+    "updateTimeZoneLanguage": "Não foi possível atualizar o fuso horário e o idioma",
+    "readSync": "Não foi possível ler uma mensagem do canal de sincronização",
+    "keepOffline": "Não foi possível manter uma cópia para uso offline",
+    "readOffline": "Não foi possível ler a cópia para uso offline",
+    "createWorkspace": "Não foi possível criar o espaço de trabalho",
+    "moveToWorkspace": "Não foi possível mover para o espaço de trabalho"
+  }
+}

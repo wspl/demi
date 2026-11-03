@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "title": "Búsqueda",
+    "keywords": "web, búsqueda, obtener, Exa, clave de API, iniciar sesión, search, fetch"
+  },
+  "features": {
+    "search": "Búsqueda web",
+    "searchDescription": "El modelo busca en la web con Exa, con tu cuenta o clave, o dentro de un límite que comparten todos los usuarios.",
+    "fetch": "Obtención web",
+    "fetchDescription": "El modelo lee una página o descarga un archivo desde el host del chat."
+  },
+  "account": {
+    "label": "Cuenta de Exa",
+    "signedIn": "Sesión iniciada",
+    "notConnected": "No conectado",
+    "signOut": "Cerrar sesión",
+    "signIn": "Iniciar sesión"
+  },
+  "key": {
+    "label": "Clave de API",
+    "description": "Ofrece todos los filtros, como dominios y fechas.",
+    "unchecked": "Sin verificar: {reason}",
+    "remove": "Eliminar",
+    "placeholder": "Clave de API de Exa",
+    "save": "Guardar"
+  },
+  "inUse": {
+    "label": "En uso",
+    "key": "Tu clave de API",
+    "account": "Tu cuenta de Exa",
+    "anonymous": "Anónimo, limitado"
+  },
+  "refusals": {
+    "keyRefused": "Exa rechazó esta clave. Comprueba que se haya copiado completa.",
+    "exaUnavailable": "Exa no respondió a la búsqueda que verifica la clave. Vuelve a intentarlo."
+  },
+  "errors": {
+    "signIn": "No se pudo iniciar sesión en Exa",
+    "signOut": "No se pudo cerrar sesión en Exa",
+    "saveKey": "No se pudo guardar la clave",
+    "removeKey": "No se pudo eliminar la clave"
+  }
+}

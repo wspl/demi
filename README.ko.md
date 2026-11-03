@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <b>한국어</b>
+  <a href="README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español (Latinoamérica)</a> · <a href="README.fr.md">Français</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <b>한국어</b>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ Demi의 기능은 네 가지 그룹으로 나뉩니다.
 ### 어디서든, 어느 컴퓨터에서든
 
 - **어느 브라우저에서나**: 데스크톱, 태블릿, 휴대폰에서 설치 없이 사용합니다. 홈 화면에 추가할 수 있고, 휴대폰, 태블릿, 폴더블에 맞춰 표시됩니다.
-- **5개 언어**: 영어, 중국어 간체, 중국어 번체, 일본어, 한국어.
+- **9개 언어**: 영어, 독일어, 스페인어, 프랑스어, 포르투갈어, 중국어 간체, 중국어 번체, 일본어, 한국어.
 - **항상 실행**: 탭을 닫아도 작업은 서버에서 계속됩니다.
 - **알림**: 작업이 끝나거나 확인이 필요하면 Demi를 닫아 두어도 휴대폰과 컴퓨터로 알림이 옵니다.
 - **모든 대화를 한곳에**: 대화는 서버에 저장되며, 에이전트가 작업한 컴퓨터마다 흩어지지 않습니다. 노트북에서 시작한 대화를 휴대폰에서 실시간으로 이어 갑니다. AI 제공업체를 바꿔도 기록은 그대로 남습니다.

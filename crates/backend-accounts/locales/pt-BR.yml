@@ -1,0 +1,4 @@
+_version: 1
+verification:
+  subject: "Seu código de verificação do Demi"
+  body: "Digite %{code} no Demi para alterar o e-mail da sua conta para %{email}. O código expira em %{minutes} minutos.\n\nSe você não pediu esta alteração, ignore este e-mail."

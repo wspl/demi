@@ -1,0 +1,17 @@
+_version: 1
+oauth:
+  signed_in:
+    title: "Conectado ao %{vendor}"
+    text: "Você entrou no %{vendor}. Pode fechar esta aba."
+  unknown_plugin:
+    title: "Login não encontrado"
+    text: "Nada no Demi faz login aqui. Feche esta aba."
+  unknown_state:
+    title: "Login expirado"
+    text: "Este login expirou, já foi usado ou foi iniciado por outra conta. Feche esta aba e entre novamente no Demi."
+  denied:
+    title: "Não conectado ao %{vendor}"
+    text: "O %{vendor} não fez seu login (%{error}). Feche esta aba e tente novamente no Demi."
+  exchange_failed:
+    title: "Não conectado ao %{vendor}"
+    text: "O %{vendor} não concluiu o login: %{failure}. Feche esta aba e tente novamente no Demi."

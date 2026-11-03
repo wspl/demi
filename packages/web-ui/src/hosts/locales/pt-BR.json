@@ -1,0 +1,48 @@
+{
+  "menu": {
+    "where": "Onde esta conversa é executada",
+    "runOn": "Executar em",
+    "addDevice": "Adicionar dispositivo…",
+    "attached": "Anexados",
+    "detach": "Desanexar"
+  },
+  "lock": {
+    "archived": "Esta conversa está arquivada.",
+    "moving": "Esta conversa está sendo movida."
+  },
+  "choices": {
+    "offline": "Este dispositivo está offline."
+  },
+  "move": {
+    "title": "Mover esta conversa para {host}?",
+    "runsHome": "Ela será executada na pasta pessoal desse host.",
+    "runsIn": "Ela será executada em {directory}.",
+    "runsOwn": "Ela será executada em um diretório próprio nesse host.",
+    "filesStay": "Os arquivos em {host} permanecem lá.",
+    "move": "Mover"
+  },
+  "project": {
+    "title": "Novo projeto",
+    "selectFolder": "Selecionar pasta",
+    "loading": "Carregando dispositivos…",
+    "cloudDescription": "Um ambiente gerenciado, pronto na hora.",
+    "device": "Dispositivo",
+    "deviceDescription": "Um diretório em um dos seus dispositivos.",
+    "chooseDevice": "Escolha um dispositivo",
+    "name": "Nome do projeto",
+    "addDevice": "Adicionar dispositivo…",
+    "noDevices": "Nenhum dispositivo",
+    "directory": "Diretório",
+    "browse": "Procurar…",
+    "called": "O projeto vai se chamar {name}.",
+    "takesName": "O projeto recebe o nome da pasta.",
+    "add": "Adicionar projeto",
+    "create": "Criar projeto"
+  },
+  "directory": {
+    "switch": "Trocar de diretório",
+    "chooseAnother": "Escolher outro diretório…",
+    "useThis": "Usar esta pasta",
+    "worktree": "Worktree {name}"
+  }
+}

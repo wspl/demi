@@ -1,0 +1,82 @@
+{
+  "toolbar": {
+    "model": "({model})",
+    "rotateLeft": "Girar para a esquerda",
+    "rotateRight": "Girar para a direita",
+    "appearance": "Alternar aparência",
+    "home": "Início",
+    "lock": "Bloquear",
+    "volumeUp": "Aumentar volume",
+    "volumeDown": "Diminuir volume",
+    "back": "Voltar",
+    "screenshot": "Captura de tela",
+    "record": "Gravar",
+    "stopRecording": "Parar gravação",
+    "more": "Mais"
+  },
+  "fold": {
+    "closed": "Fechado",
+    "halfOpen": "Meio aberto",
+    "open": "Aberto",
+    "hinge": "Ângulo da dobradiça",
+    "degrees": "{degrees}°",
+    "reset": "Virar o dispositivo de frente"
+  },
+  "activity": "O agente está usando este dispositivo",
+  "keyboard": "Teclado do simulador",
+  "screenOff": {
+    "title": "Tela desligada",
+    "wake": "Despertar"
+  },
+  "region": {
+    "connecting": "Conectando ao simulador…",
+    "reconnecting": "Reconectando ao simulador…",
+    "downloading": "Baixando…",
+    "frame": "Carregando a moldura do dispositivo…",
+    "screen": "Aguardando a tela…",
+    "waiting": "Aguardando o dispositivo…",
+    "couldntShow": "Não foi possível mostrar o simulador",
+    "frameFailed": "Não foi possível mostrar a moldura do dispositivo.",
+    "unsupported": "Este navegador não consegue mostrar vídeo ao vivo."
+  },
+  "failures": {
+    "control": "O simulador não conseguiu fazer isso",
+    "save": "Não foi possível salvar o arquivo",
+    "hostFilesUnreachable": "Os arquivos do dispositivo não estão acessíveis agora."
+  },
+  "reasons": {
+    "invalid_input": "O simulador não aceita isso.",
+    "device_not_found": "Esse simulador não está mais neste dispositivo.",
+    "ambiguous_device": "Há mais de um simulador com esse nome.",
+    "device_busy": "Outra conversa está usando esse simulador. Feche-o lá primeiro.",
+    "stale_ref": "A tela mudou antes que o simulador pudesse agir.",
+    "timeout": "O simulador não respondeu a tempo.",
+    "unavailable": "Não há simuladores disponíveis neste dispositivo.",
+    "recording": "O simulador já está gravando.",
+    "recording_not_found": "O simulador não está gravando.",
+    "too_many_recordings": "Há cinco gravações em andamento nesta conversa. Pare uma primeiro.",
+    "output_exists": "Já existe um arquivo com esse nome.",
+    "io_error": "Não foi possível gravar o arquivo no dispositivo.",
+    "driver_error": "O simulador não conseguiu fazer isso.",
+    "device_lost": "O simulador parou.",
+    "cancelled": "A solicitação foi cancelada.",
+    "mobile_unavailable": "Os simuladores não conseguiram iniciar neste dispositivo.",
+    "capture_failed": "Não foi possível mostrar a tela do simulador.",
+    "capture_unavailable": "Este dispositivo não consegue mostrar a tela do simulador.",
+    "input_failed": "Sua entrada não chegou ao simulador.",
+    "no_focused_field": "Não há campo de texto em foco para adicionar “{text}”.",
+    "conversation_not_found": "Esta conversa não existe mais.",
+    "conversation_archived": "Esta conversa está arquivada.",
+    "conversation_busy": "A conversa está ocupada. Tente novamente em instantes.",
+    "host_stopped": "O dispositivo está parado.",
+    "device_offline": "O dispositivo está offline.",
+    "cloud_unavailable": "A nuvem não está disponível agora.",
+    "cloud_resetting": "A nuvem está sendo redefinida.",
+    "cloud_capacity": "A nuvem está sem espaço agora.",
+    "cloud_crash_loop": "A nuvem continua parando.",
+    "host_operation_failed": "O dispositivo não conseguiu fazer isso.",
+    "unknown_plugin_method": "Esta página está desatualizada. Recarregue-a.",
+    "plugin_disabled": "Os simuladores estão desativados."
+  },
+  "status": "O dispositivo respondeu com o status {status}."
+}

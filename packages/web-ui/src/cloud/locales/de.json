@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "title": "Cloud",
+    "description": "Gemeinsam für alle deine Cloud-Projekte."
+  },
+  "environment": {
+    "title": "Deine Cloud-Umgebung",
+    "reset": "Umgebung zurücksetzen",
+    "newerImage": "Ein neueres Systemabbild ist verfügbar",
+    "newerImageDescription": "Beim Zurücksetzen bleiben deine Dateien im Benutzerordner erhalten, installierte Systempakete werden entfernt.",
+    "connected": "{system} · Über Relay verbunden"
+  },
+  "storage": {
+    "title": "Speicher",
+    "line": "System {system} · Benutzerordner {home}"
+  },
+  "reset": {
+    "title": "Cloud-Umgebung zurücksetzen",
+    "body": "Stoppt Cloud-Aufgaben und setzt Systempakete und Einstellungen zurück. Deine Dateien im Benutzerordner und deine Cloud-Projekte bleiben erhalten.",
+    "starting": "Zurücksetzen wird gestartet …",
+    "retry": "Zurücksetzen wiederholen",
+    "close": "Schließen",
+    "cancel": "Abbrechen"
+  },
+  "phase": {
+    "stopping": "Cloud-Aufgaben werden gestoppt …",
+    "saving": "Dateien im Benutzerordner werden gespeichert …",
+    "rebuilding": "System wird neu aufgebaut …",
+    "booting": "Cloud wird gestartet …",
+    "ready": "Die Cloud ist bereit.",
+    "failed": "Zurücksetzen fehlgeschlagen."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "block": {
+    "missing": "O widget {id} não está disponível.",
+    "off": "Os widgets estão desativados. Ative-os em Configurações para ver este.",
+    "openInPanel": "Abrir no painel de trabalho",
+    "openInTab": "Abrir em nova aba"
+  }
+}

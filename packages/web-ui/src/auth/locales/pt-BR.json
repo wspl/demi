@@ -1,0 +1,94 @@
+{
+  "password": {
+    "hint": "Pelo menos {count} caracteres.",
+    "tooShort": "Uma senha tem pelo menos {count} caracteres.",
+    "differ": "As duas senhas são diferentes.",
+    "required": "Obrigatório"
+  },
+  "page": {
+    "tagline": "Um lugar para pensar e criar",
+    "taglineBody": "Tudo começa com uma conversa."
+  },
+  "account": {
+    "fallback": "Conta"
+  },
+  "signIn": {
+    "title": "Entrar",
+    "message": "Entre com seu e-mail.",
+    "expired": "Sua sessão terminou. Entre novamente.",
+    "email": "E-mail",
+    "password": "Senha",
+    "passkey": "Entrar com chave-senha",
+    "forgot": "Esqueceu a senha? Peça ao seu administrador para redefini-la.",
+    "locked": "Muitas tentativas de login falharam. Tente novamente em {time}."
+  },
+  "setup": {
+    "title": "Configurar o Demi",
+    "message": "Crie a conta principal que gerencia o Demi.",
+    "taken": "O Demi já está configurado. Entre com a conta principal dele.",
+    "name": "Nome",
+    "email": "E-mail",
+    "password": "Senha",
+    "confirm": "Confirmar senha",
+    "create": "Criar conta",
+    "passkeyTitle": "Adicionar uma chave-senha",
+    "passkeyMessage": "Entre com Touch ID, Face ID ou seu gerenciador de senhas. Você também pode adicionar uma depois em Configurações.",
+    "addPasskey": "Adicionar chave-senha",
+    "skip": "Pular"
+  },
+  "choose": {
+    "title": "Escolha sua senha",
+    "message": "Escolha uma senha própria para continuar.",
+    "new": "Nova senha",
+    "confirm": "Confirmar nova senha",
+    "signOut": "Sair",
+    "choose": "Escolher senha"
+  },
+  "offer": {
+    "label": "Adicionar uma chave-senha",
+    "title": "Usar uma chave-senha na próxima vez?",
+    "notNow": "Agora não",
+    "add": "Adicionar chave-senha",
+    "passwordTitle": "Digite sua senha",
+    "passwordMessage": "Confirme que é você para adicionar a chave-senha.",
+    "password": "Senha",
+    "readyTitle": "Chave-senha pronta",
+    "readyMessage": "Seu gerenciador de senhas já tem uma chave-senha para o Demi."
+  },
+  "unlock": {
+    "ios": "Entre com Face ID ou Touch ID em vez da sua senha.",
+    "mac": "Entre com Touch ID em vez da sua senha.",
+    "windows": "Entre com Windows Hello em vez da sua senha.",
+    "android": "Entre com sua impressão digital, seu rosto ou o bloqueio de tela em vez da sua senha.",
+    "other": "Entre com o bloqueio de tela do seu dispositivo em vez da sua senha."
+  },
+  "handoff": {
+    "title": "Passar para o celular",
+    "confirm": "Confirme que é você. Seu celular então abre esta página, conectado a esta conta.",
+    "scan": "Escaneie com a câmera do seu celular.",
+    "done": "Passado para {browser}.",
+    "codeTitle": "Código de login",
+    "codeConfirm": "Confirme que é você. Um código então conecta o celular de {name} à conta dessa pessoa.",
+    "codeScan": "Escaneie com a câmera desse celular.",
+    "codeDone": "Conectado em {browser}.",
+    "readyScan": "Ou escaneie com a câmera desse celular para conectá-lo.",
+    "making": "Criando um código",
+    "qr": "Código QR",
+    "expires": "Expira em {left}",
+    "expired": "Este código expirou.",
+    "usePasskey": "Usar chave-senha",
+    "showNew": "Mostrar novo código"
+  },
+  "verify": {
+    "title": "Confirme que é você",
+    "password": "Senha"
+  },
+  "handoffPage": {
+    "openingTitle": "Passando a sessão",
+    "openingMessage": "Abrindo a página do seu outro dispositivo.",
+    "opening": "Abrindo…",
+    "failedTitle": "Não foi possível passar a sessão",
+    "expired": "Este código expirou ou já foi usado. Mostre um novo código ou entre aqui.",
+    "failed": "O código não funcionou. Mostre um novo código ou entre aqui."
+  }
+}

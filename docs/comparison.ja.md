@@ -1,6 +1,6 @@
 # Demi の比較
 
-[English](comparison.md) · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · **日本語** · [한국어](comparison.ko.md)
+[English](comparison.md) · [Deutsch](comparison.de.md) · [Español (Latinoamérica)](comparison.es.md) · [Français](comparison.fr.md) · [Português (Brasil)](comparison.pt-BR.md) · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · **日本語** · [한국어](comparison.ko.md)
 
 同種のエージェントアプリと Demi の違いを、2026 年 10 月時点で各製品のドキュメントとソースコードをもとにまとめました。製品間で違いがある項目と、まだどの製品も対応していない 1 つの機能を載せています。列は Demi に近い製品から遠い製品の順に並べています。
 

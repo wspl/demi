@@ -1,0 +1,18 @@
+{
+  "title": "Buscar",
+  "placeholder": "Buscar conversas",
+  "failed": "Não foi possível buscar.",
+  "searching": "Buscando…",
+  "list": "Conversas",
+  "archived": "Arquivadas",
+  "noConversations": "Nenhuma conversa",
+  "noResults": "Nenhum resultado",
+  "placeholderIn": "Buscar mensagens",
+  "scope": "Esta conversa",
+  "scopeRemove": "Buscar em todas as conversas",
+  "typeToSearch": "Digite para buscar nesta conversa",
+  "messages": "Mensagens",
+  "you": "Você",
+  "agent": "Agente",
+  "limited": "Mostrando a correspondência mais recente | Mostrando as {count} correspondências mais recentes"
+}

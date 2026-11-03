@@ -1,0 +1,22 @@
+{
+  "search": {
+    "label": "Rechercher",
+    "matchCase": "Respecter la casse",
+    "wholeWord": "Mot entier uniquement",
+    "regexp": "Utiliser une expression régulière",
+    "previous": "Résultat précédent",
+    "next": "Résultat suivant"
+  },
+  "syntaxColorsUnavailable": "Les couleurs de syntaxe ne sont pas disponibles",
+  "unavailable": "Impossible de charger l’éditeur de code.",
+  "diff": {
+    "unchanged": "{count} ligne inchangée | {count} lignes inchangées",
+    "noNewline": "Pas de saut de ligne à la fin du fichier"
+  },
+  "fold": {
+    "folded": "Code replié",
+    "unfold": "Déplier",
+    "foldLine": "Replier la ligne",
+    "unfoldLine": "Déplier la ligne"
+  }
+}

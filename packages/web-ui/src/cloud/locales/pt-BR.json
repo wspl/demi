@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "title": "Nuvem",
+    "description": "Compartilhado por todos os seus projetos na nuvem."
+  },
+  "environment": {
+    "title": "Seu ambiente na nuvem",
+    "reset": "Redefinir ambiente",
+    "newerImage": "Uma imagem de sistema mais recente está disponível",
+    "newerImageDescription": "A redefinição mantém seus arquivos pessoais e remove os pacotes de sistema instalados.",
+    "connected": "{system} · Conectado via relay"
+  },
+  "storage": {
+    "title": "Armazenamento",
+    "line": "Sistema {system} · Pessoal {home}"
+  },
+  "reset": {
+    "title": "Redefinir o ambiente na nuvem",
+    "body": "Interrompe as tarefas na nuvem e redefine os pacotes e as configurações do sistema. Seus arquivos pessoais e projetos na nuvem permanecem.",
+    "starting": "Iniciando a redefinição…",
+    "retry": "Tentar redefinir novamente",
+    "close": "Fechar",
+    "cancel": "Cancelar"
+  },
+  "phase": {
+    "stopping": "Interrompendo as tarefas na nuvem…",
+    "saving": "Salvando os arquivos pessoais…",
+    "rebuilding": "Reconstruindo o sistema…",
+    "booting": "Iniciando a nuvem…",
+    "ready": "A nuvem está pronta.",
+    "failed": "Falha na redefinição."
+  }
+}

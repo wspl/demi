@@ -1,0 +1,76 @@
+{
+  "corrections": {
+    "invalidCredentials": "Essa não é a sua senha atual.",
+    "invalidCode": "Esse código está errado ou expirou. Use o mais recente."
+  },
+  "devices": {
+    "revokeFailed": "Não foi possível revogar o dispositivo",
+    "renameFailed": "Não foi possível renomear o dispositivo",
+    "routeFailed": "Não foi possível alterar a rota",
+    "resetNotStarted": "A redefinição não começou. Verifique sua conexão e tente novamente."
+  },
+  "portForwards": {
+    "addFailed": "Não foi possível adicionar o encaminhamento",
+    "saveFailed": "Não foi possível alterar o encaminhamento",
+    "removeFailed": "Não foi possível remover o encaminhamento",
+    "retryFailed": "Não foi possível tentar novamente"
+  },
+  "plugins": {
+    "turnOnFailed": "Não foi possível ativar o plugin",
+    "turnOffFailed": "Não foi possível desativar o plugin",
+    "featureOnFailed": "Não foi possível ativar o recurso",
+    "featureOffFailed": "Não foi possível desativar o recurso"
+  },
+  "providers": {
+    "saveFailed": "Não foi possível salvar o provedor",
+    "testFailed": "Não foi possível testar o provedor",
+    "refreshModelsFailed": "Não foi possível atualizar os modelos",
+    "removeFailed": "Não foi possível remover o provedor",
+    "cliUpdateFailed": "Não foi possível atualizar a ferramenta de linha de comando",
+    "removeAccountFailed": "Não foi possível remover a conta",
+    "testAccountFailed": "Não foi possível testar a conta",
+    "addFailed": "Não foi possível adicionar o provedor",
+    "cliReadFailed": "Não foi possível ler a ferramenta de linha de comando",
+    "checkUpdatesFailed": "Não foi possível verificar se há atualizações",
+    "cliInstallFailed": "Não foi possível instalar a ferramenta de linha de comando",
+    "usageFailed": "Não foi possível atualizar o uso",
+    "reorderFailed": "Não foi possível reordenar as contas",
+    "reorderProvidersFailed": "Não foi possível reordenar os provedores",
+    "switchFailed": "Não foi possível trocar de conta",
+    "cancelLoginFailed": "Não foi possível cancelar o login",
+    "loginStopped": "Este login não está mais em andamento.",
+    "removeModelFailed": "Não foi possível remover o modelo"
+  },
+  "subagents": {
+    "turnOnFailed": "Não foi possível ativar os subagentes",
+    "turnOffFailed": "Não foi possível desativar os subagentes",
+    "limitFailed": "Não foi possível alterar o limite",
+    "enableFailed": "Não foi possível ativar o perfil",
+    "disableFailed": "Não foi possível desativar o perfil"
+  },
+  "users": {
+    "newPasswordFailed": "Não foi possível criar uma nova senha",
+    "roleFailed": "Não foi possível alterar a função",
+    "sharingFailed": "Não foi possível alterar o compartilhamento de provedores",
+    "cloudStorageFailed": "Não foi possível alterar o armazenamento na nuvem",
+    "disableFailed": "Não foi possível desativar a conta",
+    "enableFailed": "Não foi possível ativar a conta",
+    "signOutFailed": "Não foi possível desconectar a conta",
+    "loading": "Carregando usuários…",
+    "loadFailed": "Não foi possível carregar os usuários."
+  },
+  "about": {
+    "acknowledgementsFailed": "Não foi possível carregar os agradecimentos."
+  },
+  "updates": {
+    "channelFailed": "Não foi possível alterar o canal de atualização",
+    "prepareAheadFailed": "Não foi possível alterar os downloads automáticos",
+    "checkFailed": "Não foi possível verificar se há atualizações",
+    "updateFailed": "Não foi possível iniciar a atualização"
+  },
+  "dialog": {
+    "nameFailed": "Não foi possível alterar seu nome",
+    "emailFailed": "Não foi possível alterar o e-mail",
+    "passwordFailed": "Não foi possível alterar a senha"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "failures": {
+    "uploadAttachment": "Anhang konnte nicht hochgeladen werden",
+    "answerRequest": "Anfrage konnte nicht beantwortet werden",
+    "changeWorkPanel": "Arbeitspanel konnte nicht geändert werden",
+    "saveDraft": "Entwurf konnte nicht gespeichert werden",
+    "sendComment": "Kommentar konnte nicht gesendet werden",
+    "saveMessage": "Nachricht konnte nicht gespeichert werden",
+    "deleteMessage": "Nachricht konnte nicht gelöscht werden",
+    "saveDrafts": "Entwürfe konnten nicht gespeichert werden",
+    "restoreDrafts": "Entwürfe konnten nicht wiederhergestellt werden",
+    "readDraft": "Entwurf konnte nicht gelesen werden",
+    "readSaved": "Gespeicherte Nachrichten konnten nicht gelesen werden",
+    "readRecentCost": "Aktuelle Kosten konnten nicht gelesen werden",
+    "readAgents": "Agenten konnten nicht gelesen werden",
+    "readMessages": "Nachrichten konnten nicht gelesen werden",
+    "updateConversations": "Chats konnten nicht aktualisiert werden",
+    "deleteConversations": "Chats konnten nicht gelöscht werden",
+    "renameConversation": "Chat konnte nicht umbenannt werden",
+    "reorderConversations": "Chats konnten nicht neu angeordnet werden",
+    "updateReadStatus": "Lesestatus konnte nicht aktualisiert werden",
+    "reloadConversation": "Chat konnte nicht neu geladen werden",
+    "detachDevice": "Gerät konnte nicht getrennt werden",
+    "changeModel": "Modell konnte nicht geändert werden",
+    "changeWorkflow": "Workflow konnte nicht geändert werden",
+    "pauseSchedule": "Zeitplan konnte nicht geändert werden",
+    "deleteSchedule": "Zeitplan konnte nicht gelöscht werden",
+    "clearDraft": "Entwurf konnte nicht verworfen werden",
+    "recallMessage": "Nachricht konnte nicht zurückgeholt werden",
+    "connectionLost": "Verbindung unterbrochen",
+    "connectionLostMessage": "Demi hat deine Anfrage möglicherweise nicht erhalten. Prüfe den Chat, sobald die Verbindung wieder besteht.",
+    "requestNotAccepted": "Der Chat hat die Anfrage nicht angenommen.",
+    "fieldsNotUpdated": "Einige Felder wurden nicht aktualisiert.",
+    "readFileWatch": "Nachricht der Dateiüberwachung konnte nicht gelesen werden",
+    "readSideQuestions": "Nebenfragen konnten nicht gelesen werden",
+    "askSideQuestion": "Frage konnte nicht gestellt werden",
+    "sendFollowUp": "Nachfrage konnte nicht gesendet werden",
+    "retrySideQuestion": "Wiederholen nicht möglich",
+    "stopSideQuestion": "Stoppen nicht möglich",
+    "deleteSideQuestion": "Löschen nicht möglich",
+    "foldSideQuestion": "Nebenfrage konnte nicht geändert werden"
+  },
+  "drafts": {
+    "storeFailed": "Dieser Browser konnte deine Entwürfe nicht speichern.",
+    "readFailed": "Dieser Browser konnte die gespeicherten Entwürfe nicht lesen.",
+    "missingFile": "Datei"
+  },
+  "commentsReplaced": "{count} Kommentar mit seiner Antwort entfernt | {count} Kommentare mit ihren Antworten entfernt",
+  "savedDeleted": "Gespeicherte Nachricht gelöscht",
+  "composer": {
+    "cloudResetting": "Die Cloud wird zurückgesetzt."
+  },
+  "workflows": {
+    "hostSilent": "Der Host hat nicht geantwortet."
+  },
+  "uploads": {
+    "notUploaded": "{name} wurde nicht hochgeladen. {reason}",
+    "notKept": "{name} ist nicht hochgeladen. Hänge die Datei erneut an."
+  }
+}

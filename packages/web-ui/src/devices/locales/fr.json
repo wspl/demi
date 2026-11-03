@@ -1,0 +1,162 @@
+{
+  "state": {
+    "online": "En ligne",
+    "updating": "Mise à jour",
+    "offline": "Hors ligne",
+    "downloading": "Téléchargement de la mise à jour · {percent} %",
+    "updatingPercent": "Mise à jour · {percent} %"
+  },
+  "route": {
+    "automatic": "Automatique",
+    "direct": "Préférer le P2P",
+    "server": "Relais uniquement",
+    "automaticDescription": "Utilise le chemin le plus rapide.",
+    "directDescription": "P2P dès qu’il se connecte.",
+    "serverDescription": "N’utilise jamais le P2P."
+  },
+  "stage": {
+    "permission": "Autorisation",
+    "gathering": "Collecte des adresses",
+    "checking": "Recherche d’un chemin",
+    "handshake": "Négociation du chiffrement",
+    "channel": "Ouverture du canal",
+    "connected": "Connecté"
+  },
+  "path": {
+    "thisComputer": "Cet ordinateur",
+    "localNetwork": "Réseau local",
+    "internet": "P2P",
+    "relay": "Relais",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "Connecté via relais",
+    "thisComputer": "Connecté via cet ordinateur",
+    "localNetwork": "Connecté via le réseau local",
+    "internet": "Connecté via P2P"
+  },
+  "reason": {
+    "slower": "Le P2P est plus lent pour le moment.",
+    "blocked": "Ce navigateur bloque l’accès au réseau local.",
+    "unreachable": "Vos réseaux bloquent les connexions P2P.",
+    "browserNetwork": "Votre réseau le bloque.",
+    "deviceNetwork": "Le réseau de l’appareil le bloque.",
+    "busy": "L’appareil a trop de connexions.",
+    "dropped": "La connexion P2P a été coupée.",
+    "notOffered": "Le P2P ne fonctionne que sur le réseau de l’appareil."
+  },
+  "latency": {
+    "under": "moins de 0,1 ms",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}, {loss} perdus",
+    "relay": "Relais {latency}"
+  },
+  "address": {
+    "hidden": "Masquée par le navigateur"
+  },
+  "report": {
+    "appleSilicon": "Apple silicon",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "À jour",
+    "outdated": "Mise à jour disponible",
+    "development": "Build de développement"
+  },
+  "page": {
+    "cloud": "Cloud",
+    "startSentence": "Démarrez Demi sur l’appareil :",
+    "noAutostart": "Cet appareil ne démarrera pas Demi de lui-même après un redémarrage.",
+    "connection": "Connexion",
+    "route": "Itinéraire",
+    "p2p": "P2P",
+    "details": "Détails…",
+    "latency": "Latence",
+    "measure": "Mesurer",
+    "measuring": "Mesure…",
+    "noAnswer": "Aucune réponse",
+    "notMeasured": "Non mesurée",
+    "measuredAt": "Mesurée {when}",
+    "device": "Appareil",
+    "name": "Nom",
+    "rename": "Renommer…",
+    "system": "Système",
+    "notReported": "Pas encore signalé",
+    "runner": "Runner",
+    "runnerUpdates": "Il se met à jour de lui-même à sa prochaine connexion.",
+    "paired": "Jumelé",
+    "revokeThis": "Révoquer cet appareil",
+    "revoke": "Révoquer…",
+    "lastSeen": "Vu pour la dernière fois"
+  },
+  "details": {
+    "title": "Détails de la connexion",
+    "ran": "Exécuté",
+    "took": "Durée",
+    "endedAt": "Terminé à",
+    "thisBrowser": "Ce navigateur",
+    "theDevice": "L’appareil",
+    "paths": "Chemins",
+    "pathInUse": "Chemin utilisé",
+    "localAccess": "Accès au réseau local",
+    "nextAttempt": "Prochaine tentative",
+    "none": "Aucun",
+    "local": "Locales : {list}",
+    "public": "Publiques : {list}",
+    "answered": "{answered} / {tried} ont répondu",
+    "busy": "L’appareil était occupé",
+    "dropped": "Connecté, puis coupé",
+    "unknown": "Inconnu",
+    "ms": "{ms} ms",
+    "s": "{s} s"
+  },
+  "permission": {
+    "granted": "Autorisé",
+    "prompt": "Pas encore de réponse",
+    "denied": "Bloqué",
+    "allowInSite": "Autorisez-le dans les paramètres de ce site.",
+    "notAsked": "Non demandé par ce navigateur"
+  },
+  "pairing": {
+    "title": "Ajouter un appareil",
+    "setupHint": "Démarrez le runner sur votre appareil pour obtenir un code de jumelage.",
+    "doneHint": "L’appareil est associé à votre compte et prêt à l’emploi.",
+    "codeHint": "Saisissez le code de jumelage affiché par le runner.",
+    "system": "Système",
+    "systemLabel": "Système de l’appareil",
+    "runInPowerShell": "Exécutez dans PowerShell sur l’appareil. Laissez-le ouvert.",
+    "runInTerminal": "Exécutez dans un terminal sur l’appareil. Laissez-le ouvert.",
+    "copyInstall": "Copier la commande d’installation",
+    "code": "Code de jumelage",
+    "paste": "Coller le code",
+    "pair": "Jumeler l’appareil",
+    "invalidCode": "Ce code n’est pas disponible. Collez le dernier code du runner.",
+    "rateLimited": "Trop de tentatives. Attendez une minute avant de réessayer.",
+    "unavailable": "Impossible de joindre Demi. Vérifiez votre connexion et réessayez."
+  },
+  "revoke": {
+    "title": "Révoquer cet appareil ?",
+    "action": "Révoquer",
+    "body": "« {device} » quitte vos appareils. Si son runner est connecté, il se supprime de l’appareil.",
+    "projects": "Ce projet part avec lui. Ses fichiers restent sur l’appareil et ses conversations dans la barre latérale. | Ces projets partent avec lui. Leurs fichiers restent sur l’appareil et leurs conversations dans la barre latérale."
+  },
+  "rename": {
+    "title": "Renommer l’appareil",
+    "label": "Nom de l’appareil"
+  },
+  "startHint": {
+    "powershell": "Si son runner s’est arrêté, exécutez ceci dans PowerShell sur l’appareil.",
+    "terminal": "Si son runner s’est arrêté, exécutez ceci dans un terminal sur l’appareil.",
+    "copy": "Copier la commande de démarrage"
+  },
+  "autostart": {
+    "noSystemd": "Ce système n’exécute pas systemd.",
+    "noUserManager": "Le gestionnaire utilisateur de systemd ne répond pas : {error}",
+    "notWritten": "Demi n’a pas pu enregistrer {path} : {error}",
+    "lingerOff": "Il ne démarre qu’une fois que {user} s’est connecté. Pour le démarrer au démarrage de l’ordinateur, exécutez :",
+    "refused": "Windows a refusé la tâche planifiée et l’élément de démarrage : {error}",
+    "unusableName": "Le nom du dossier d’installation, {name}, ne peut pas nommer un élément de démarrage.",
+    "unknownAccount": "Le système ne reconnaît pas ce compte utilisateur."
+  }
+}

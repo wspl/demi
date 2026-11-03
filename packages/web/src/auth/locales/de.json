@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "Das ist nicht dein Passwort.",
+    "signOutFailed": "Browser konnte nicht abgemeldet werden"
+  },
+  "passkeys": {
+    "held": "Dieser Passwort-Manager hat bereits einen Passkey für dein Konto.",
+    "renameFailed": "Passkey konnte nicht umbenannt werden",
+    "removeFailed": "Passkey konnte nicht entfernt werden"
+  },
+  "login": {
+    "invalidCredentials": "E-Mail-Adresse oder Passwort ist falsch.",
+    "accountDisabled": "Dieses Konto ist deaktiviert. Bitte deinen Administrator, es zu aktivieren.",
+    "signOutFailed": "Abmelden nicht möglich"
+  }
+}

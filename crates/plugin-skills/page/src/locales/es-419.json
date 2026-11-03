@@ -1,0 +1,92 @@
+{
+  "title": "Habilidades",
+  "description": "Flujos de trabajo empaquetados que el agente puede seguir.",
+  "keywords": "habilidad,skill,flujo de trabajo,git,SKILL.md",
+  "places": {
+    "global": "Global",
+    "globalDescription": "Disponible en todos los espacios de trabajo.",
+    "workspaceDescription": "Disponible solo en este espacio de trabajo."
+  },
+  "sources": {
+    "add": "Agregar fuente…",
+    "none": "No hay fuentes",
+    "adding": "Agregando",
+    "updating": "Actualizando",
+    "failed": "Falló",
+    "updateAvailable": "Actualización disponible",
+    "enableAll": "Activar todas las habilidades de {name}",
+    "update": "Actualizar",
+    "remove": "Eliminar"
+  },
+  "fetcher": {
+    "label": "Obtener con",
+    "hint": "Un dispositivo obtiene con su propio Git, sus claves y su red, que es lo que necesita una dirección SSH.",
+    "server": "Servidor",
+    "via": "mediante {name}",
+    "waiting": "Esperando a {name}",
+    "offline": "{name} está sin conexión.",
+    "removed": "Dispositivo eliminado",
+    "removedLabel": "Dispositivo eliminado",
+    "removedDetail": "El dispositivo que la obtuvo ya no está vinculado. Elige otro para obtenerla."
+  },
+  "skill": {
+    "warning": "Advertencia",
+    "nameTaken": "Nombre en uso",
+    "nameTakenDetail": "Una habilidad llamada “{name}” de {origin} ({place}) está activada. Desactívala para usar esta.",
+    "neverOffered": "Nunca se ofrece",
+    "neverOfferedDetail": "Define disable-model-invocation.",
+    "notASkill": "No es una habilidad: {reason}"
+  },
+  "removeSource": {
+    "title": "¿Eliminar “{name}”?",
+    "withSkills": "Sus habilidades se eliminan con ella. Puedes volver a agregar el repositorio más tarde.",
+    "empty": "La fuente sale de tus habilidades. Puedes volver a agregar el repositorio más tarde.",
+    "more": "y {count} más"
+  },
+  "addSource": {
+    "title": "Agregar fuente",
+    "hint": "Un repositorio de Git. Cada SKILL.md que contiene es una habilidad.",
+    "repository": "Repositorio",
+    "repositoryHint": "propietario/repositorio, una URL de Git o una dirección SSH.",
+    "browse": "Explorar skills.sh",
+    "cancel": "Cancelar"
+  },
+  "failures": {
+    "add": "No se pudo agregar la fuente",
+    "update": "No se pudo actualizar la fuente",
+    "remove": "No se pudo eliminar la fuente",
+    "switchSkill": "No se pudo cambiar la habilidad",
+    "switchSkills": "No se pudieron cambiar las habilidades",
+    "setFetcher": "No se pudo cambiar qué obtiene la fuente"
+  },
+  "permissions": {
+    "skills_manage": {
+      "action": "administrar habilidades",
+      "description": "Permite que los agentes de este chat agreguen, actualicen y eliminen fuentes de habilidades, y que activen o desactiven habilidades. Las habilidades globales llegan a todos los chats y las de un espacio de trabajo a los chats de ese espacio, y las habilidades activadas se instalan en los hosts que usan esos chats."
+    }
+  },
+  "problems": {
+    "fetch": {
+      "repository_too_large": "El repositorio supera {limit}.",
+      "no_commit": "El repositorio no tiene commits.",
+      "files_too_large": "Los archivos de las habilidades superan {limit}.",
+      "no_skill": "El repositorio no tiene habilidades."
+    },
+    "skip": {
+      "too_large": "SKILL.md supera {limit}.",
+      "not_utf8": "SKILL.md no está en UTF-8.",
+      "no_front_matter": "SKILL.md no tiene front matter.",
+      "front_matter_invalid": "El front matter no es YAML válido.",
+      "no_description": "El front matter no tiene descripción."
+    }
+  },
+  "refusals": {
+    "invalid_origin": "Escribe propietario/repositorio, una URL de Git o una dirección SSH.",
+    "source_exists": "{origin} ya está agregado.",
+    "source_exists_in": "{origin} ya está agregado, en {place}.",
+    "workspace_not_found": "Este espacio de trabajo ya no existe.",
+    "ssh_needs_device": "Una dirección SSH necesita uno de tus dispositivos para obtenerla.",
+    "fetcher_offline": "{name} está sin conexión.",
+    "fetcher_not_found": "Ese dispositivo ya no está vinculado."
+  }
+}

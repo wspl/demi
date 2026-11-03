@@ -1,0 +1,85 @@
+{
+  "noResults": "Aucun résultat",
+  "inDevelopment": "En développement",
+  "asyncRegion": {
+    "error": "Impossible de charger ce contenu."
+  },
+  "menu": {
+    "empty": "Aucun élément"
+  },
+  "limitField": {
+    "limited": "Limité",
+    "unlimited": "Illimité",
+    "problem": "Saisissez un nombre entier à partir de 1."
+  },
+  "shortcutRecorder": {
+    "recording": "Enregistrement du raccourci",
+    "prompt": "Appuyez sur des touches…"
+  },
+  "requestId": "ID de requête : {id}",
+  "errorNotice": {
+    "providerResponse": "Réponse du fournisseur",
+    "headers": "En-têtes"
+  },
+  "updateFailed": {
+    "title": "Impossible de mettre à jour cette page",
+    "body": "Une version plus récente de Demi existe. Recharger affiche toujours l’ancienne."
+  },
+  "updating": {
+    "title": "Mise à jour de Demi",
+    "control": "Mise à jour des comptes et des paramètres",
+    "conversations": "Mise à jour des conversations : {done} sur {count}",
+    "bytes": "{done} sur {all}",
+    "estimating": "Estimation du temps restant…",
+    "underAMinute": "Moins d’une minute restante",
+    "minutesLeft": "Environ {count} minute restante | Environ {count} minutes restantes",
+    "body": "Vous pourrez ouvrir Demi une fois la mise à jour terminée.",
+    "restarting": "Redémarrage de Demi",
+    "to": "Mise à jour de Demi vers {version}",
+    "returning": "Retour à Demi {version}",
+    "failed": "Impossible de mettre à jour Demi vers {version}",
+    "updated": "Demi a été mis à jour vers {version}",
+    "updatedDemi": "Demi a été mis à jour",
+    "failedBody": "Demi est indisponible jusqu’à ce qu’un administrateur termine la mise à jour sur le serveur.",
+    "returned": "Demi {version} fonctionne de nouveau, avec ses données inchangées.",
+    "open": "Ouvrir Demi",
+    "of": "{done} sur {count}",
+    "noChanges": "Aucune modification nécessaire",
+    "steps": {
+      "stopDemi": "Arrêter Demi",
+      "saveClouds": "Enregistrer les clouds en cours d’exécution",
+      "keepClouds": "Conserver les clouds en cours d’exécution",
+      "keepDatabases": "Conserver une copie des bases de données",
+      "switch": "Passer à la nouvelle version",
+      "startManager": "Démarrer le gestionnaire du cloud",
+      "startDemi": "Démarrer Demi",
+      "updateControl": "Mettre à jour les comptes et les paramètres",
+      "updateConversations": "Mettre à jour les conversations"
+    }
+  },
+  "startingScreen": {
+    "connecting": "Connexion à Demi…",
+    "loading": "Chargement de Demi…",
+    "failed": "Impossible de vérifier votre session."
+  },
+  "themeToggle": {
+    "light": "Thème clair",
+    "dark": "Thème sombre"
+  },
+  "titleInput": {
+    "title": "Titre"
+  },
+  "rowSpinner": {
+    "working": "En cours"
+  },
+  "contextMenu": {
+    "open": "Ouvrir",
+    "openLink": "Ouvrir le lien",
+    "openInWorkPanel": "Ouvrir dans le panneau de travail",
+    "copyLink": "Copier le lien",
+    "copyImage": "Copier l’image",
+    "saveImage": "Enregistrer l’image",
+    "copyCode": "Copier le code",
+    "searchWithGoogle": "Rechercher avec Google"
+  }
+}

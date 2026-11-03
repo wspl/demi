@@ -1,0 +1,94 @@
+{
+  "password": {
+    "hint": "Al menos {count} caracteres.",
+    "tooShort": "Una contraseña tiene al menos {count} caracteres.",
+    "differ": "Las dos contraseñas no coinciden.",
+    "required": "Obligatorio"
+  },
+  "page": {
+    "tagline": "Un lugar para pensar y crear",
+    "taglineBody": "Todo empieza con un chat."
+  },
+  "account": {
+    "fallback": "Cuenta"
+  },
+  "signIn": {
+    "title": "Iniciar sesión",
+    "message": "Inicia sesión con tu correo.",
+    "expired": "Tu sesión terminó. Vuelve a iniciar sesión.",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "passkey": "Iniciar sesión con llave de acceso",
+    "forgot": "¿Olvidaste tu contraseña? Pide a tu administrador que la restablezca.",
+    "locked": "Demasiados intentos fallidos. Vuelve a intentarlo en {time}."
+  },
+  "setup": {
+    "title": "Configurar Demi",
+    "message": "Crea la cuenta principal que administra Demi.",
+    "taken": "Demi ya está configurado. Inicia sesión con su cuenta principal.",
+    "name": "Nombre",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "confirm": "Confirmar contraseña",
+    "create": "Crear cuenta",
+    "passkeyTitle": "Agregar una llave de acceso",
+    "passkeyMessage": "Inicia sesión con Touch ID, Face ID o tu administrador de contraseñas. También puedes agregarla más tarde en Configuración.",
+    "addPasskey": "Agregar llave de acceso",
+    "skip": "Omitir"
+  },
+  "choose": {
+    "title": "Elige tu contraseña",
+    "message": "Elige una contraseña propia para continuar.",
+    "new": "Nueva contraseña",
+    "confirm": "Confirmar nueva contraseña",
+    "signOut": "Cerrar sesión",
+    "choose": "Elegir contraseña"
+  },
+  "offer": {
+    "label": "Agregar una llave de acceso",
+    "title": "¿Usar una llave de acceso la próxima vez?",
+    "notNow": "Ahora no",
+    "add": "Agregar llave de acceso",
+    "passwordTitle": "Escribe tu contraseña",
+    "passwordMessage": "Confirma que eres tú para agregar la llave de acceso.",
+    "password": "Contraseña",
+    "readyTitle": "Llave de acceso lista",
+    "readyMessage": "Tu administrador de contraseñas ya tiene una llave de acceso para Demi."
+  },
+  "unlock": {
+    "ios": "Inicia sesión con Face ID o Touch ID en lugar de tu contraseña.",
+    "mac": "Inicia sesión con Touch ID en lugar de tu contraseña.",
+    "windows": "Inicia sesión con Windows Hello en lugar de tu contraseña.",
+    "android": "Inicia sesión con tu huella, tu rostro o el bloqueo de pantalla en lugar de tu contraseña.",
+    "other": "Inicia sesión con el bloqueo de pantalla de tu dispositivo en lugar de tu contraseña."
+  },
+  "handoff": {
+    "title": "Pasar a tu teléfono",
+    "confirm": "Confirma que eres tú. Tu teléfono abrirá esta página con la sesión iniciada en esta cuenta.",
+    "scan": "Escanea con la cámara de tu teléfono.",
+    "done": "Se pasó a {browser}.",
+    "codeTitle": "Código de inicio de sesión",
+    "codeConfirm": "Confirma que eres tú. Un código iniciará sesión en el teléfono de {name} con su propia cuenta.",
+    "codeScan": "Escanea con la cámara de ese teléfono.",
+    "codeDone": "Sesión iniciada en {browser}.",
+    "readyScan": "O escanea con la cámara de ese teléfono para iniciar sesión en él.",
+    "making": "Creando un código",
+    "qr": "Código QR",
+    "expires": "Vence en {left}",
+    "expired": "Este código venció.",
+    "usePasskey": "Usar llave de acceso",
+    "showNew": "Mostrar un código nuevo"
+  },
+  "verify": {
+    "title": "Confirma que eres tú",
+    "password": "Contraseña"
+  },
+  "handoffPage": {
+    "openingTitle": "Pasando la sesión",
+    "openingMessage": "Abriendo la página desde tu otro dispositivo.",
+    "opening": "Abriendo…",
+    "failedTitle": "No se pudo pasar la sesión",
+    "expired": "Este código venció o ya se usó. Muestra un código nuevo o inicia sesión aquí.",
+    "failed": "El código no funcionó. Muestra un código nuevo o inicia sesión aquí."
+  }
+}

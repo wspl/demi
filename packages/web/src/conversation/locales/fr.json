@@ -1,0 +1,60 @@
+{
+  "failures": {
+    "uploadAttachment": "Impossible d’envoyer la pièce jointe",
+    "answerRequest": "Impossible de répondre à la demande",
+    "changeWorkPanel": "Impossible de modifier le panneau de travail",
+    "saveDraft": "Impossible d’enregistrer le brouillon",
+    "sendComment": "Impossible d’envoyer le commentaire",
+    "saveMessage": "Impossible d’enregistrer le message",
+    "deleteMessage": "Impossible de supprimer le message",
+    "saveDrafts": "Impossible d’enregistrer les brouillons",
+    "restoreDrafts": "Impossible de restaurer les brouillons",
+    "readDraft": "Impossible de lire le brouillon",
+    "readSaved": "Impossible de lire les messages enregistrés",
+    "readRecentCost": "Impossible de lire le coût récent",
+    "readAgents": "Impossible de lire les agents",
+    "readMessages": "Impossible de lire les messages",
+    "updateConversations": "Impossible de mettre à jour les conversations",
+    "deleteConversations": "Impossible de supprimer les conversations",
+    "renameConversation": "Impossible de renommer la conversation",
+    "reorderConversations": "Impossible de réorganiser les conversations",
+    "updateReadStatus": "Impossible de mettre à jour l’état de lecture",
+    "reloadConversation": "Impossible de recharger la conversation",
+    "detachDevice": "Impossible de détacher l’appareil",
+    "changeModel": "Impossible de changer de modèle",
+    "changeWorkflow": "Impossible de changer de flux de travail",
+    "pauseSchedule": "Impossible de modifier la planification",
+    "deleteSchedule": "Impossible de supprimer la planification",
+    "clearDraft": "Impossible d’effacer le brouillon",
+    "recallMessage": "Impossible de rappeler le message",
+    "connectionLost": "Connexion perdue",
+    "connectionLostMessage": "Demi n’a peut-être pas reçu votre demande. Vérifiez la conversation une fois la connexion rétablie.",
+    "requestNotAccepted": "La conversation n’a pas accepté la demande.",
+    "fieldsNotUpdated": "Certains champs n’ont pas été mis à jour.",
+    "readFileWatch": "Impossible de lire un message de la surveillance des fichiers",
+    "readSideQuestions": "Impossible de lire les questions annexes",
+    "askSideQuestion": "Impossible de poser la question",
+    "sendFollowUp": "Impossible d’envoyer la relance",
+    "retrySideQuestion": "Impossible de réessayer",
+    "stopSideQuestion": "Impossible d’arrêter",
+    "deleteSideQuestion": "Impossible de supprimer",
+    "foldSideQuestion": "Impossible de modifier la question annexe"
+  },
+  "drafts": {
+    "storeFailed": "Ce navigateur n’a pas pu stocker vos brouillons.",
+    "readFailed": "Ce navigateur n’a pas pu lire les brouillons stockés.",
+    "missingFile": "Fichier"
+  },
+  "commentsReplaced": "{count} commentaire supprimé avec sa réponse | {count} commentaires supprimés avec leurs réponses",
+  "savedDeleted": "Message enregistré supprimé",
+  "composer": {
+    "cloudResetting": "Le cloud est en cours de réinitialisation."
+  },
+  "workflows": {
+    "hostSilent": "L’hôte n’a pas répondu."
+  },
+  "uploads": {
+    "notUploaded": "{name} n’a pas été envoyé. {reason}",
+    "notKept": "{name} n’est pas envoyé. Joignez-le de nouveau."
+  }
+}

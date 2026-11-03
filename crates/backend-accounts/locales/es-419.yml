@@ -1,0 +1,4 @@
+_version: 1
+verification:
+  subject: "Tu código de verificación de Demi"
+  body: "Escribe %{code} en Demi para cambiar el correo de tu cuenta a %{email}. El código vence en %{minutes} minutos.\n\nSi no pediste este cambio, ignora este correo."

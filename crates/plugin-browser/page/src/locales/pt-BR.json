@@ -1,0 +1,120 @@
+{
+  "reasons": {
+    "invalid_input": "O navegador abre apenas páginas da web, de arquivo e em branco.",
+    "tab_not_found": "Esta página não está mais aberta no dispositivo.",
+    "tab_busy": "A aba está ocupada com outra solicitação. Tente novamente em instantes.",
+    "stale_ref": "A página mudou antes que o navegador pudesse agir.",
+    "stale_cursor": "Os registros do navegador mudaram antes que pudessem ser lidos.",
+    "stale_inventory": "Os arquivos da página mudaram antes que pudessem ser lidos.",
+    "stale_tools": "As ferramentas da página mudaram antes que pudessem ser usadas.",
+    "target_not_found": "O navegador não encontrou isso na página.",
+    "ambiguous_target": "Mais de uma parte da página corresponde.",
+    "not_actionable": "Essa parte da página não pode ser usada agora.",
+    "timeout": "O navegador não respondeu a tempo.",
+    "dialog_blocked": "Uma caixa de diálogo na página está aguardando resposta.",
+    "dialog_not_found": "A página não tem nenhuma caixa de diálogo aguardando resposta.",
+    "invalid_dialog_action": "A caixa de diálogo não pode ser respondida dessa forma.",
+    "history_boundary": "A aba não tem nenhuma página nessa direção.",
+    "navigation_failed": "O navegador não conseguiu carregar a página.",
+    "protected_value": "A página mantém esse valor privado.",
+    "side_effect_rejected": "O navegador não deixou isso alterar a página.",
+    "unsupported_result": "O navegador não consegue repassar o que a página retornou.",
+    "unsupported_capability": "O navegador do dispositivo não consegue fazer isso.",
+    "cdp_method_denied": "O navegador não permite isso.",
+    "recording": "A aba já está gravando.",
+    "recording_not_found": "Essa gravação foi removida.",
+    "too_many_recordings": "Há cinco gravações em andamento nesta conversa. Pare uma primeiro.",
+    "output_exists": "Já existe um arquivo com esse nome no dispositivo.",
+    "io_error": "O dispositivo não conseguiu ler nem gravar um arquivo de que o navegador precisa.",
+    "result_too_large": "A página retornou mais do que o navegador consegue repassar.",
+    "partial_failure": "O navegador fez só uma parte disso.",
+    "driver_error": "O navegador do dispositivo encontrou um problema.",
+    "browser_unavailable": "O navegador não conseguiu iniciar no dispositivo.",
+    "browser_lost": "O navegador do dispositivo parou.",
+    "cancelled": "A solicitação foi cancelada.",
+    "outcome_unknown": "A conexão com o navegador caiu. O resultado é desconhecido.",
+    "capture_unavailable": "Este dispositivo não consegue capturar as páginas do navegador.",
+    "capture_failed": "O dispositivo não conseguiu capturar a página. Tentando novamente.",
+    "capture_stopped": "O dispositivo não conseguiu capturar a página.",
+    "conversation_not_found": "Esta conversa não existe mais.",
+    "conversation_archived": "Esta conversa está arquivada.",
+    "conversation_busy": "A conversa está ocupada. Tente novamente em instantes.",
+    "host_stopped": "A nuvem está parada.",
+    "device_offline": "O dispositivo está offline.",
+    "device_not_found": "O dispositivo foi removido da sua conta.",
+    "cloud_unavailable": "A nuvem não está disponível agora.",
+    "cloud_resetting": "A nuvem está sendo redefinida.",
+    "cloud_capacity": "O servidor não tem espaço para iniciar a nuvem.",
+    "cloud_crash_loop": "A nuvem parou de iniciar após falhas repetidas.",
+    "host_operation_failed": "A conexão com o dispositivo caiu.",
+    "unknown_plugin_method": "Este servidor não consegue executar um navegador.",
+    "plugin_disabled": "O plugin Navegador está desativado."
+  },
+  "answers": {
+    "none": "O servidor não respondeu.",
+    "unreadable": "Não foi possível ler a resposta do servidor.",
+    "refused": "O servidor não conseguiu fazer isso ({status})."
+  },
+  "starting": {
+    "connecting": "Conectando…",
+    "cloud": "Iniciando a nuvem…",
+    "download": "Baixando o navegador…",
+    "browser": "Iniciando o navegador…",
+    "page": "Abrindo a página…"
+  },
+  "failures": {
+    "operate": "Não foi possível operar o navegador",
+    "reloadPage": "Não foi possível recarregar a página",
+    "copyLink": "Não foi possível copiar o link",
+    "paste": "Não foi possível colar",
+    "openAddress": "Não foi possível abrir o endereço",
+    "goBack": "Não foi possível voltar",
+    "goForward": "Não foi possível avançar",
+    "stopLoading": "Não foi possível parar o carregamento",
+    "openPage": "Não foi possível abrir a página",
+    "saveDownload": "Não foi possível salvar o download",
+    "hostFilesUnreachable": "Os arquivos do host não estão acessíveis."
+  },
+  "region": {
+    "couldntOpen": "Não foi possível abrir esta página.",
+    "couldntShow": "Não foi possível mostrar esta página.",
+    "noH264": "Este navegador não consegue decodificar vídeo H.264.",
+    "waiting": "Aguardando o host…"
+  },
+  "menu": {
+    "copyLink": "Copiar endereço do link",
+    "cut": "Recortar",
+    "copy": "Copiar",
+    "paste": "Colar",
+    "back": "Voltar",
+    "forward": "Avançar",
+    "reload": "Recarregar"
+  },
+  "address": {
+    "noBack": "Nenhuma página para voltar",
+    "noForward": "Nenhuma página para avançar"
+  },
+  "downloads": {
+    "title": "Downloads",
+    "save": "Salvar",
+    "showInFiles": "Mostrar em Arquivos",
+    "canceled": "Cancelado"
+  },
+  "viewport": {
+    "title": "Viewport",
+    "web": "Web",
+    "mobile": "Celular",
+    "custom": "Personalizado {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "Sair da página?",
+    "says": "{host} diz",
+    "thisPageSays": "Esta página diz",
+    "answer": "Responder",
+    "stay": "Ficar",
+    "leave": "Sair",
+    "cancel": "Cancelar",
+    "ok": "OK"
+  },
+  "browserInput": "Entrada do navegador"
+}

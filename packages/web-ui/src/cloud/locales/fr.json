@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "title": "Cloud",
+    "description": "Partagé par tous vos projets cloud."
+  },
+  "environment": {
+    "title": "Votre environnement cloud",
+    "reset": "Réinitialiser l’environnement",
+    "newerImage": "Une image système plus récente est disponible",
+    "newerImageDescription": "La réinitialisation conserve les fichiers de votre dossier personnel et supprime les paquets système installés.",
+    "connected": "{system} · Connecté via relais"
+  },
+  "storage": {
+    "title": "Stockage",
+    "line": "Système {system} · Dossier personnel {home}"
+  },
+  "reset": {
+    "title": "Réinitialiser l’environnement cloud",
+    "body": "Arrête les tâches cloud et réinitialise les paquets et réglages système. Les fichiers de votre dossier personnel et vos projets cloud sont conservés.",
+    "starting": "Démarrage de la réinitialisation…",
+    "retry": "Relancer la réinitialisation",
+    "close": "Fermer",
+    "cancel": "Annuler"
+  },
+  "phase": {
+    "stopping": "Arrêt des tâches cloud…",
+    "saving": "Enregistrement des fichiers personnels…",
+    "rebuilding": "Reconstruction du système…",
+    "booting": "Démarrage du cloud…",
+    "ready": "Le cloud est prêt.",
+    "failed": "La réinitialisation a échoué."
+  }
+}

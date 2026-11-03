@@ -1,0 +1,82 @@
+{
+  "toolbar": {
+    "model": "({model})",
+    "rotateLeft": "Pivoter à gauche",
+    "rotateRight": "Pivoter à droite",
+    "appearance": "Changer d’apparence",
+    "home": "Accueil",
+    "lock": "Verrouiller",
+    "volumeUp": "Monter le volume",
+    "volumeDown": "Baisser le volume",
+    "back": "Retour",
+    "screenshot": "Capture d’écran",
+    "record": "Enregistrer",
+    "stopRecording": "Arrêter l’enregistrement",
+    "more": "Plus"
+  },
+  "fold": {
+    "closed": "Fermé",
+    "halfOpen": "Mi-ouvert",
+    "open": "Ouvert",
+    "hinge": "Angle de la charnière",
+    "degrees": "{degrees}°",
+    "reset": "Mettre l’appareil de face"
+  },
+  "activity": "L’agent utilise cet appareil",
+  "keyboard": "Clavier du simulateur",
+  "screenOff": {
+    "title": "Écran éteint",
+    "wake": "Réveiller"
+  },
+  "region": {
+    "connecting": "Connexion au simulateur…",
+    "reconnecting": "Reconnexion au simulateur…",
+    "downloading": "Téléchargement…",
+    "frame": "Chargement du cadre de l’appareil…",
+    "screen": "En attente de l’écran…",
+    "waiting": "En attente de l’appareil…",
+    "couldntShow": "Impossible d’afficher le simulateur",
+    "frameFailed": "Le cadre de l’appareil n’a pas pu être affiché.",
+    "unsupported": "Ce navigateur ne peut pas afficher de vidéo en direct."
+  },
+  "failures": {
+    "control": "Le simulateur n’a pas pu le faire",
+    "save": "Impossible d’enregistrer le fichier",
+    "hostFilesUnreachable": "Les fichiers de l’appareil sont inaccessibles pour le moment."
+  },
+  "reasons": {
+    "invalid_input": "Le simulateur ne peut pas accepter cela.",
+    "device_not_found": "Ce simulateur n’est plus sur cet appareil.",
+    "ambiguous_device": "Plusieurs simulateurs portent ce nom.",
+    "device_busy": "Une autre conversation utilise ce simulateur. Fermez-le d’abord dans celle-ci.",
+    "stale_ref": "L’écran a changé avant que le simulateur puisse agir.",
+    "timeout": "Le simulateur n’a pas répondu à temps.",
+    "unavailable": "Aucun simulateur n’est disponible sur cet appareil.",
+    "recording": "Le simulateur enregistre déjà.",
+    "recording_not_found": "Le simulateur n’enregistre pas.",
+    "too_many_recordings": "Cinq enregistrements sont en cours dans cette conversation. Arrêtez-en un d’abord.",
+    "output_exists": "Un fichier portant ce nom existe déjà.",
+    "io_error": "Le fichier n’a pas pu être écrit sur l’appareil.",
+    "driver_error": "Le simulateur n’a pas pu le faire.",
+    "device_lost": "Le simulateur s’est arrêté.",
+    "cancelled": "La demande a été annulée.",
+    "mobile_unavailable": "Les simulateurs n’ont pas pu démarrer sur cet appareil.",
+    "capture_failed": "L’écran du simulateur n’a pas pu être affiché.",
+    "capture_unavailable": "Cet appareil ne peut pas afficher l’écran du simulateur.",
+    "input_failed": "Votre saisie n’a pas atteint le simulateur.",
+    "no_focused_field": "Aucun champ de texte n’est sélectionné pour y ajouter « {text} ».",
+    "conversation_not_found": "Cette conversation n’existe plus.",
+    "conversation_archived": "Cette conversation est archivée.",
+    "conversation_busy": "La conversation est occupée. Réessayez dans un instant.",
+    "host_stopped": "L’appareil est arrêté.",
+    "device_offline": "L’appareil est hors ligne.",
+    "cloud_unavailable": "Le cloud n’est pas disponible pour le moment.",
+    "cloud_resetting": "Le cloud est en cours de réinitialisation.",
+    "cloud_capacity": "Le cloud n’a plus de place pour le moment.",
+    "cloud_crash_loop": "Le cloud ne cesse de s’arrêter.",
+    "host_operation_failed": "L’appareil n’a pas pu le faire.",
+    "unknown_plugin_method": "Cette page n’est plus à jour. Rechargez-la.",
+    "plugin_disabled": "Les simulateurs sont désactivés."
+  },
+  "status": "L’appareil a répondu avec le statut {status}."
+}

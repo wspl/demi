@@ -1,0 +1,918 @@
+{
+  "about": {
+    "title": "À propos",
+    "version": "Version",
+    "acknowledgements": {
+      "title": "Remerciements",
+      "description": "Les logiciels open source inclus dans Demi et leurs licences.",
+      "loading": "Chargement des remerciements…",
+      "none": "Aucun remerciement"
+    }
+  },
+  "updates": {
+    "title": "Mises à jour",
+    "description": "Met à jour Demi sur ce serveur, pour tous les comptes.",
+    "current": "Demi {version}",
+    "upToDate": "Demi est à jour",
+    "available": "Demi {version} est disponible",
+    "youHave": "Vous avez {version}.",
+    "background": {
+      "starting": "Téléchargement en arrière-plan…",
+      "downloading": "Téléchargement en arrière-plan : {done} sur {all}",
+      "installing": "Installation en arrière-plan…",
+      "ready": "Prêt à installer. Vous avez {version}.",
+      "failed": "Impossible de télécharger Demi {version} en arrière-plan. Vous avez {running}."
+    },
+    "releaseNotes": "Notes de version",
+    "updateNow": "Mettre à jour maintenant",
+    "checking": "Recherche de mises à jour…",
+    "checkFailed": "Impossible de rechercher des mises à jour",
+    "lastChecked": "Dernière vérification {when}",
+    "neverChecked": "Pas encore vérifié",
+    "checkNow": "Vérifier maintenant",
+    "downloading": "Téléchargement de Demi {version}",
+    "downloaded": "{done} sur {all}",
+    "speed": "{size}/s",
+    "preparing": "Préparation de Demi {version}…",
+    "restarting": "Redémarrage de Demi…",
+    "failed": "Impossible de mettre à jour vers {version}",
+    "failedNoVersion": "Impossible de mettre à jour. Demi exécute toujours {running}.",
+    "channel": "Canal de mise à jour",
+    "channelDescription": "Canary reçoit en premier les builds les plus récents, avant que quiconque les ait essayés sur un serveur.",
+    "prepareAhead": "Télécharger les mises à jour automatiquement",
+    "prepareAheadDescription": "Les mises à jour se terminent plus vite. Déconseillé sur Canary : il publie souvent et consomme beaucoup de bande passante.",
+    "beta": "Beta",
+    "canary": "Canary",
+    "confirmTitle": "Mettre à jour Demi vers {version} ?",
+    "confirmBody": "Demi redémarre et reste indisponible pour tout le monde pendant quelques minutes.",
+    "confirmAgents": "{count} agent travaille et reprendra après la mise à jour. | {count} agents travaillent et reprendront après la mise à jour.",
+    "update": "Mettre à jour",
+    "updatingTo": "Mise à jour vers Demi {version}",
+    "stepOf": "Étape {number} sur {count} : {step}",
+    "failedAt": "Échec de l’étape {number} sur {count} : {step}",
+    "steps": {
+      "download": "Télécharger Demi {version}",
+      "unpack": "Décompresser Demi {version}",
+      "checkConfiguration": "Vérifier la configuration",
+      "downloadGvisor": "Télécharger gVisor",
+      "installImage": "Installer l’image du cloud",
+      "checkDatabases": "Vérifier les bases de données",
+      "restart": "Redémarrer Demi"
+    },
+    "detail": {
+      "of": "{done} sur {count}",
+      "toUpdate": "{count} à mettre à jour | {count} à mettre à jour",
+      "installed": "Déjà installé",
+      "noChanges": "Aucune modification nécessaire"
+    }
+  },
+  "account": {
+    "title": "Compte",
+    "description": "Votre nom, votre adresse e-mail et votre connexion.",
+    "profile": {
+      "title": "Profil",
+      "avatar": "Avatar",
+      "displayName": "Nom d’affichage",
+      "nameRequired": "Saisissez un nom.",
+      "email": "E-mail",
+      "verified": "Vérifiée",
+      "changeEmail": "Modifier l’adresse e-mail",
+      "password": "Mot de passe",
+      "passwordChanged": "Dernière modification le {date}.",
+      "changePassword": "Modifier le mot de passe",
+      "change": "Modifier",
+      "emailUnavailable": "Ce serveur ne peut pas envoyer d’e-mails. Demandez à votre administrateur."
+    },
+    "session": {
+      "title": "Session",
+      "signOut": "Se déconnecter",
+      "signOutDescription": "Met fin à la session de ce navigateur. Les conversations restent sur le serveur.",
+      "signOutButton": "Se déconnecter"
+    },
+    "danger": {
+      "title": "Zone de danger",
+      "delete": "Supprimer le compte",
+      "deleteDescription": "Supprime votre compte, vos appareils et toutes les conversations. Cette action est irréversible.",
+      "deleteButton": "Supprimer le compte"
+    }
+  },
+  "archived": {
+    "title": "Archivées",
+    "description": "Conversations retirées de la barre latérale.",
+    "search": "Rechercher dans les archives",
+    "searchLabel": "Rechercher dans les conversations archivées",
+    "loading": "Chargement des conversations archivées…",
+    "open": "Ouvrir",
+    "restore": "Restaurer",
+    "delete": "Supprimer…",
+    "none": "Aucune conversation archivée",
+    "noResults": "Aucun résultat"
+  },
+  "data": {
+    "title": "Données et confidentialité",
+    "description": "Ce qui est conservé et qui peut le voir.",
+    "diagnostics": {
+      "title": "Diagnostic",
+      "send": "Envoyer des données d’utilisation",
+      "sendDescription": "Plantages et utilisation des fonctionnalités. Jamais de prompts, d’historiques ni de contenu de fichiers."
+    },
+    "danger": {
+      "title": "Zone de danger",
+      "deleteAll": "Supprimer toutes les conversations",
+      "deleteAllDescription": "Les projets et les paramètres sont conservés.",
+      "deleteAllButton": "Tout supprimer"
+    }
+  },
+  "devices": {
+    "title": "Appareils",
+    "description": "Les machines sur lesquelles vos conversations peuvent travailler.",
+    "yours": "Vos appareils",
+    "add": "Ajouter un appareil…",
+    "loading": "Chargement des appareils…",
+    "lastSeen": "Vu pour la dernière fois",
+    "none": "Aucun appareil"
+  },
+  "portForwards": {
+    "title": "Redirection de port",
+    "description": "Les programmes d’un de vos hôtes atteignent un port d’un autre, comme avec ssh -L.",
+    "yours": "Vos redirections",
+    "add": "Ajouter une redirection",
+    "loading": "Chargement des redirections de port…",
+    "none": "Aucune redirection de port",
+    "unknownHost": "Hôte inconnu",
+    "state": {
+      "off": "Désactivée",
+      "chooseHost": "Choisissez un hôte auquel se connecter.",
+      "offline": "{host} est hors ligne",
+      "starting": "Démarrage…",
+      "portInUse": "Le port {port} est utilisé sur {host}",
+      "direct": "Direct · 1 connexion | Direct · {count} connexions",
+      "relay": "Relais · 1 connexion | Relais · {count} connexions",
+      "and": ", ",
+      "idle": "Inactive"
+    },
+    "page": {
+      "name": "Nom",
+      "nameProblem": "Saisissez un nom.",
+      "on": "Activée",
+      "onDescription": "Tant qu’elle est activée, elle fonctionne chaque fois que son hôte d’écoute est en ligne.",
+      "listenOn": "Écouter sur",
+      "connectTo": "Se connecter à",
+      "host": "Hôte",
+      "listenDescription": "Les programmes de cet hôte se connectent à 127.0.0.1 sur ce port.",
+      "port": "Port",
+      "portProblem": "Saisissez un port de 1 à 65535.",
+      "connectDescription": "Cet hôte ouvre chaque connexion.",
+      "chooseHost": "Choisir un hôte",
+      "address": "Adresse",
+      "addressDescription": "N’importe quel hôte:port que cet hôte peut atteindre.",
+      "tryAgain": "Réessayer",
+      "removeThis": "Supprimer cette redirection",
+      "remove": "Supprimer la redirection…",
+      "removeTitle": "Supprimer « {name} » ?",
+      "removeBody": "Elle cesse d’écouter et ses connexions ouvertes se terminent."
+    }
+  },
+  "keyboard": {
+    "title": "Clavier",
+    "description": "Cliquez sur Modifier, puis appuyez sur les nouvelles touches.",
+    "shortcuts": "Raccourcis",
+    "resetAll": "Réinitialiser tous les raccourcis",
+    "reset": "Réinitialiser",
+    "typesTextMac": "{keys} saisit du texte. Ajoutez ⌘ ou ⌃.",
+    "typesTextPc": "{keys} saisit du texte. Ajoutez Ctrl.",
+    "taken": "{keys} est déjà utilisé par {action}.",
+    "actions": {
+      "new": "Nouvelle conversation",
+      "search": "Rechercher dans les conversations",
+      "sidebar": "Afficher ou masquer la barre latérale",
+      "settings": "Ouvrir les paramètres",
+      "searchFiles": "Rechercher dans les fichiers",
+      "findHere": "Rechercher",
+      "workspace": "Passer à l’espace de travail {number}"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Quand l’agent a besoin de vous ou a terminé.",
+    "browser": {
+      "title": "Navigateur",
+      "label": "Notifications du navigateur",
+      "quietWhileElsewhere": "Silencieux quand j’utilise un autre appareil",
+      "quietWhileElsewhereDescription": "Les tours terminés ou en échec ne vous notifient pas ici pendant que vous utilisez Demi sur un autre appareil, tant que vous ne l’avez pas quitté depuis {minutes} minutes. Les demandes d’autorisation et les notifications de l’agent arrivent toujours.",
+      "blocked": "Bloquées dans les paramètres de site de ce navigateur.",
+      "thisBrowser": "Sur ce navigateur uniquement. Elles arrivent même quand Demi est fermé.",
+      "unsupported": "Ce navigateur ne prend pas en charge les notifications."
+    },
+    "when": {
+      "title": "M’avertir quand",
+      "turnFinishes": "Un tour se termine",
+      "turnFails": "Un tour échoue",
+      "needsPermission": "Demi a besoin d’une autorisation",
+      "turnOnFirst": "Activez d’abord les notifications du navigateur.",
+      "agentNotifies": "L’agent envoie une notification"
+    },
+    "homeScreen": {
+      "title": "Pour recevoir des notifications sur iPhone, ajoutez Demi à votre écran d’accueil",
+      "share": "Touchez Partager dans la barre d’outils de Safari.",
+      "add": "Choisissez Sur l’écran d’accueil.",
+      "open": "Ouvrez Demi depuis votre écran d’accueil et activez-y les notifications.",
+      "ok": "OK",
+      "row": "Ajoutez Demi à votre écran d’accueil pour recevoir des notifications",
+      "howTo": "Comment faire"
+    }
+  },
+  "passkeys": {
+    "title": "Clés d’accès",
+    "add": "Ajouter une clé d’accès…",
+    "synced": "Synchronisée",
+    "thisDeviceOnly": "Cet appareil uniquement",
+    "added": "Ajoutée",
+    "lastUsed": "Dernière utilisation",
+    "rename": "Renommer…",
+    "renameLabel": "Renommer {name}",
+    "remove": "Supprimer…",
+    "removeLabel": "Supprimer {name}",
+    "none": "Aucune clé d’accès",
+    "renameTitle": "Renommer la clé d’accès",
+    "nameLabel": "Nom de la clé d’accès",
+    "removeTitle": "Supprimer « {name} » ?",
+    "removeBody": "Elle ne permet plus de se connecter. Votre mot de passe et vos autres clés d’accès fonctionnent toujours.",
+    "removeAction": "Supprimer"
+  },
+  "sessions": {
+    "title": "Navigateurs connectés",
+    "thisBrowser": "Ce navigateur",
+    "signedIn": "Connecté",
+    "signedInWithCode": "Connecté avec un code de {name}",
+    "lastActive": "Dernière activité",
+    "signOut": "Déconnecter…",
+    "signOutLabel": "Déconnecter {name}",
+    "signOutTitle": "Déconnecter {name} ?",
+    "signOutAction": "Déconnecter",
+    "signOutBody": "Ses pages ouvertes reviennent à la page de connexion. Les conversations restent sur le serveur."
+  },
+  "instructions": {
+    "title": "Instructions",
+    "description": "Suivies dans chaque conversation, avec le fichier AGENTS.md ou CLAUDE.md de chaque projet.",
+    "personal": "Instructions personnelles",
+    "personalDescription": "Par exemple, la langue dans laquelle répondre.",
+    "save": "Enregistrer"
+  },
+  "firstPassword": {
+    "label": "Mot de passe",
+    "new": "Nouveau mot de passe",
+    "copy": "Copier le mot de passe"
+  },
+  "dialog": {
+    "title": "Paramètres",
+    "search": "Filtrer les paramètres",
+    "sections": "Sections des paramètres",
+    "back": "Retour"
+  },
+  "listItem": {
+    "remove": "Supprimer"
+  },
+  "plugins": {
+    "title": "Plug-ins",
+    "description": "Ce que l’agent et cette app peuvent faire.",
+    "none": "Aucun plug-in"
+  },
+  "quota": {
+    "unavailable": "Utilisation pas encore disponible",
+    "updatedAt": "Mise à jour {when}",
+    "used": "{share} utilisés",
+    "window": {
+      "period": {
+        "day": "quotidienne",
+        "week": "hebdomadaire",
+        "month": "mensuelle",
+        "seconds": "de {count} secondes",
+        "minutes": "de {count} minutes",
+        "hours": "de {count} heures",
+        "days": "de {count} jours",
+        "weeks": "de {count} semaines"
+      },
+      "limit": {
+        "period": "Limite {period}",
+        "periodScope": "Limite {period} pour {scope}",
+        "scope": "Limite pour {scope}",
+        "unknown": "Limite d’utilisation"
+      },
+      "credits": {
+        "period": "Crédits ({period})",
+        "unknown": "Crédits"
+      },
+      "requests": "Débit de requêtes",
+      "tokens": "Débit de tokens",
+      "cap": "Plafond à la demande"
+    }
+  },
+  "sections": {
+    "agent": "Agent",
+    "devicesAndData": "Appareils et données",
+    "system": "Système",
+    "general": {
+      "keywords": "apparence,aspect",
+      "themeKeywords": "mode sombre,mode clair,apparence,thème",
+      "accentKeywords": "couleur,accent",
+      "textSizeKeywords": "taille de police,taille du texte,historique"
+    },
+    "account": {
+      "avatarKeywords": "image,photo",
+      "displayNameKeywords": "pseudo,nom",
+      "emailKeywords": "adresse,e-mail,email",
+      "signOutKeywords": "se déconnecter,déconnexion,log out"
+    },
+    "notifications": {
+      "keywords": "navigateur,alerte",
+      "browserKeywords": "notifier",
+      "quietKeywords": "silencieux,autre appareil,téléphone,ordinateur,absent",
+      "finishesKeywords": "terminé,fini",
+      "failsKeywords": "erreur",
+      "permissionKeywords": "demande d’autorisation",
+      "agentKeywords": "demi notify,notification de l’agent,push",
+      "homeScreenKeywords": "écran d’accueil,iphone,ipad,sur l’écran d’accueil"
+    },
+    "agentPage": {
+      "keywords": "petit modèle,titre,modèle rapide,haiku,flash,tour",
+      "modelKeywords": "modèle de titres,haiku,flash,automatique",
+      "sameProviderKeywords": "confidentialité,même fournisseur",
+      "suggestedRepliesKeywords": "suggestions,réponses,réponse rapide",
+      "outputSpeedKeywords": "tokens,vitesse,tokens par seconde",
+      "sendKeywords": "orienter,file d’attente,entrée,steer,queue",
+      "restartKeywords": "redémarrage,mise à jour,continuer",
+      "retryKeywords": "limite d’utilisation,quota,réinitialisation",
+      "compactIdleKeywords": "compactage,compacter,cache de prompt,inactif,résumé",
+      "idleLifetimeKeywords": "cache de prompt,durée de vie,TTL",
+      "idleContextKeywords": "contexte,tokens,seuil,minimum"
+    },
+    "providers": {
+      "keywords": "modèles,clé api,anthropic,openai,claude code,codex,url de base,catalogue"
+    },
+    "credentials": {
+      "keywords": "token,secret,connexion,identifiant enregistré"
+    },
+    "instructions": {
+      "keywords": "instructions personnelles,instructions personnalisées,AGENTS.md,CLAUDE.md,règles"
+    },
+    "subagents": {
+      "keywords": "profil,lancer,déléguer,agent enfant",
+      "maxLiveKeywords": "limite,actifs,illimité",
+      "maxDepthKeywords": "limite,niveau,petit-enfant,illimité"
+    },
+    "plugins": {
+      "keywords": "plug-in,extension"
+    },
+    "devices": {
+      "keywords": "ajouter un appareil,code de jumelage,revendiquer,révoquer,runner,machine",
+      "cloudKeywords": "cloud,réinitialiser l’environnement",
+      "storageKeywords": "disque,espace"
+    },
+    "portForwards": {
+      "keywords": "redirection de port,tunnel,ssh -L,localhost,écouter,connecter,ollama"
+    },
+    "archived": {
+      "keywords": "archiver,restaurer,conversation"
+    },
+    "keyboard": {
+      "keywords": "raccourci,touche de raccourci,affectation"
+    },
+    "data": {
+      "keywords": "historiques,données d’utilisation,supprimer"
+    },
+    "about": {
+      "keywords": "version,licences,open source,tiers,mentions"
+    },
+    "users": {
+      "keywords": "comptes,personnes,admin,ajouter un utilisateur,inviter,réinitialiser le mot de passe,rôle,désactiver,déconnecter partout"
+    },
+    "cloudNetwork": {
+      "keywords": "réseau,réseau privé,intranet,interne,lan,pare-feu,proxy,git,tailscale,ip,adresse,port"
+    },
+    "developer": {
+      "keywords": "développeur,débogage,dépannage",
+      "errorsKeywords": "erreur,bug,journal,débogage,diagnostic"
+    },
+    "updates": {
+      "keywords": "mise à jour,mise à niveau,version,publication,canary,beta"
+    }
+  },
+  "changeEmail": {
+    "title": "Modifier l’adresse e-mail",
+    "formHint": "Vous vous connecterez désormais avec la nouvelle adresse.",
+    "verifyHint": "Un code à {count} chiffres a été envoyé à {email}. Saisissez-le pour terminer.",
+    "doneHint": "Votre adresse e-mail est désormais {email}.",
+    "newEmail": "Nouvelle adresse e-mail",
+    "currentPassword": "Mot de passe actuel",
+    "code": "Code",
+    "codeLabel": "Code de vérification",
+    "sameAsCurrent": "C’est déjà votre adresse e-mail.",
+    "resent": "Un nouveau code a été envoyé à {email}.",
+    "nothingArrived": "Rien reçu ?",
+    "sendAgain": "Renvoyer",
+    "verify": "Vérifier"
+  },
+  "changePassword": {
+    "title": "Modifier le mot de passe",
+    "hint": "Saisissez votre mot de passe actuel et choisissez-en un nouveau.",
+    "current": "Mot de passe actuel",
+    "new": "Nouveau mot de passe",
+    "confirm": "Confirmer le nouveau mot de passe",
+    "unchanged": "C’est votre mot de passe actuel.",
+    "done": "Mot de passe modifié"
+  },
+  "changeRole": {
+    "title": "Modifier le rôle",
+    "current": "Le rôle de {name} est {role}.",
+    "role": "Rôle"
+  },
+  "cloudStorage": {
+    "title": "Stockage cloud",
+    "account": "La taille des disques cloud de {name}.",
+    "system": "Système",
+    "systemDescription": "Paquets installés et réglages système.",
+    "home": "Dossier personnel",
+    "homeDescription": "Fichiers et projets cloud.",
+    "note": "Les tailles s’appliquent au prochain démarrage du cloud. Un disque déjà plus grand conserve sa taille.",
+    "problem": "Saisissez un nombre entier de GB, au moins 1."
+  },
+  "addPasskey": {
+    "title": "Ajouter une clé d’accès",
+    "hint": "Saisissez votre mot de passe. Votre navigateur enregistre une clé d’accès pour la connexion.",
+    "password": "Mot de passe",
+    "required": "Obligatoire"
+  },
+  "roles": {
+    "master": "Maître",
+    "admin": "Admin",
+    "user": "Utilisateur",
+    "masterDescription": "Possède le serveur et gère tous les comptes.",
+    "adminDescription": "Ajoute et gère des utilisateurs.",
+    "userDescription": "Ne gère aucun autre compte."
+  },
+  "users": {
+    "title": "Utilisateurs",
+    "description": "Toutes les personnes qui peuvent se connecter à ce serveur.",
+    "accounts": "Comptes",
+    "sharing": {
+      "group": "Fournisseurs de modèles",
+      "label": "Fournisseurs",
+      "own": "Ceux de chaque utilisateur",
+      "shared": "Partagés",
+      "description": "En cas de partage, tous les utilisateurs utilisent les fournisseurs que vous avez configurés.",
+      "descriptionApiKeys": "En cas de partage, tous les utilisateurs utilisent les clés API que vous avez configurées et leurs propres abonnements.",
+      "share": {
+        "title": "Partager vos fournisseurs avec tous les utilisateurs ?",
+        "action": "Partager",
+        "body": "Le menu des modèles de chaque utilisateur propose vos fournisseurs au lieu des siens. Les leurs restent enregistrés et reviennent si vous arrêtez le partage.",
+        "subscriptions": "Chaque utilisateur garde ses propres abonnements, que personne d’autre ne peut utiliser."
+      },
+      "stop": {
+        "title": "Arrêter de partager vos fournisseurs ?",
+        "action": "Arrêter le partage",
+        "body": "Tous les utilisateurs reviennent à leurs propres fournisseurs. Ceux qui n’en ont configuré aucun n’ont pas de modèles tant qu’ils ne l’ont pas fait."
+      }
+    },
+    "add": "Ajouter un utilisateur…",
+    "you": "Vous",
+    "disabled": "Désactivé",
+    "choosesPassword": "N’a pas choisi de mot de passe",
+    "lastActive": "Dernière activité",
+    "neverSignedIn": "Pas encore connecté",
+    "actions": "Actions",
+    "actionsFor": "Actions pour {name}",
+    "action": {
+      "resetPassword": "Réinitialiser le mot de passe…",
+      "changeRole": "Modifier le rôle…",
+      "cloudStorage": "Stockage cloud…",
+      "signInCode": "Code de connexion…",
+      "signOutEverywhere": "Déconnecter partout…",
+      "disable": "Désactiver le compte…",
+      "enable": "Activer le compte"
+    },
+    "confirm": {
+      "add": "Confirmez votre identité pour ajouter un compte.",
+      "resetPassword": "Confirmez votre identité pour réinitialiser un mot de passe.",
+      "newPassword": "Confirmez votre identité pour créer un nouveau mot de passe."
+    },
+    "ready": {
+      "added": "Le compte de {email} est prêt. Donnez-lui ce mot de passe ou faites-lui scanner le code.",
+      "reset": "{email} a un nouveau mot de passe. Donnez-lui ce mot de passe ou faites-lui scanner le code."
+    },
+    "reset": {
+      "title": "Réinitialiser le mot de passe de {name} ?",
+      "action": "Réinitialiser le mot de passe",
+      "body": "Demi crée un nouveau mot de passe initial et l’affiche une seule fois. Le mot de passe actuel cesse de fonctionner. Les navigateurs connectés et les clés d’accès sont conservés."
+    },
+    "signOutEverywhere": {
+      "title": "Déconnecter {name} partout ?",
+      "action": "Déconnecter partout",
+      "body": "Chaque navigateur connecté en tant que {name} revient à la page de connexion. Une nouvelle connexion reste possible."
+    },
+    "disable": {
+      "title": "Désactiver le compte de {name} ?",
+      "action": "Désactiver le compte",
+      "body": "{name} est déconnecté partout et ne peut plus se connecter. Son cloud s’arrête et ses appareils se déconnectent.",
+      "note": "Rien n’est supprimé. Activer le compte rétablit l’accès."
+    }
+  },
+  "cloudNetwork": {
+    "title": "Réseau du cloud",
+    "description": "Les réseaux que les clouds de ce serveur peuvent atteindre.",
+    "access": "Accès au réseau privé",
+    "accessDescription": "Par défaut, les clouds n’atteignent qu’Internet. Si Demi fonctionne sur le réseau de votre entreprise, activez cette option pour que les clouds atteignent ses serveurs Git, ses services internes et ses proxys. Le serveur lui-même, les services de métadonnées cloud et les clouds des autres restent inaccessibles.",
+    "entireDescription": "Les clouds atteignent toutes les adresses privées, comme un ordinateur de votre réseau, si bien qu’une page web ouverte par le navigateur d’un cloud peut aussi tenter d’atteindre vos services internes. Le serveur lui-même, les services de métadonnées cloud et les clouds des autres restent inaccessibles.",
+    "addresses": "Adresses",
+    "addressesDescription": "Les clouds atteignent chaque adresse ou réseau de la liste : sur tous les ports, ou seulement sur le port indiqué après.",
+    "add": "Ajouter une adresse",
+    "placeholder": "Ajoutez une adresse, comme 10.20.0.0/16 ou 10.20.0.7:22",
+    "remove": "Supprimer",
+    "empty": "Aucune adresse pour l’instant.",
+    "problems": {
+      "address": "Saisissez une adresse ou un réseau IPv4, comme 10.20.0.7 ou 10.20.0.0/16.",
+      "port": "Saisissez un port de 1 à 65535.",
+      "neverReachable": "Les clouds ne peuvent jamais atteindre cette adresse."
+    },
+    "pending": "Enregistré. Les clouds recevront la modification dès que le gestionnaire de machines sera de nouveau disponible.",
+    "failed": "Impossible de modifier l’accès au réseau privé",
+    "loadFailed": "Impossible de charger le réseau du cloud",
+    "loading": "Chargement du réseau du cloud…",
+    "accesses": {
+      "off": "Désactivé",
+      "entire": "Tout le réseau privé",
+      "only": "Uniquement ces adresses"
+    }
+  },
+  "addUser": {
+    "title": "Ajouter un utilisateur",
+    "hint": "La personne choisit son propre mot de passe à sa première connexion.",
+    "email": "E-mail",
+    "role": "Rôle",
+    "adminAdds": "Un admin ajoute des utilisateurs.",
+    "emailTaken": "Un compte utilise déjà cette adresse e-mail."
+  },
+  "credentials": {
+    "title": "Identifiants",
+    "yours": "Vos identifiants",
+    "new": "Nouvel identifiant…",
+    "secret": "Secret",
+    "visible": "Visible",
+    "keptUntil": "Conservé jusqu’au",
+    "always": "Toujours",
+    "lastUsed": "Dernière utilisation",
+    "never": "Jamais",
+    "delete": "Supprimer…",
+    "deleteLabel": "Supprimer {name}",
+    "none": "Aucun identifiant",
+    "saveFailed": "Impossible d’enregistrer l’identifiant",
+    "deleteFailed": "Impossible de supprimer l’identifiant",
+    "deleteTitle": "Supprimer « {name} » ?",
+    "deleteBody": "Les agents ne peuvent plus le lire dans aucune conversation. Cette action est irréversible."
+  },
+  "credentialDialog": {
+    "new": "Nouvel identifiant",
+    "name": "Nom",
+    "note": "Note",
+    "notePlaceholder": "Pourquoi un agent en a besoin",
+    "fields": "Champs",
+    "addField": "Ajouter un champ",
+    "labelPlaceholder": "Clé API",
+    "labelOf": "Libellé du champ {n}",
+    "needsField": "Un identifiant nécessite un champ.",
+    "deleteField": "Supprimer le champ",
+    "actions": "Actions",
+    "fieldActions": "Actions pour le champ {n}",
+    "valueOf": "Valeur du champ {n}",
+    "create": "Créer l’identifiant"
+  },
+  "credentialFields": {
+    "required": "Obligatoire"
+  },
+  "subagents": {
+    "title": "Sous-agents",
+    "description": "Des agents enfants qui prennent en charge des parties d’une tâche.",
+    "switchDescription": "La désactivation n’arrête pas les sous-agents en cours.",
+    "maxLive": "Nombre maximal de sous-agents",
+    "maxLiveDescription": "Le plus grand nombre de sous-agents exécutés en même temps dans toutes vos conversations.",
+    "maxLiveConfirmTitle": "Autoriser un nombre illimité de sous-agents ?",
+    "maxDepth": "Profondeur maximale",
+    "maxDepthDescription": "À 1, seul l’agent principal lance des sous-agents.",
+    "maxDepthConfirmTitle": "Autoriser une profondeur illimitée ?",
+    "allowUnlimited": "Autoriser l’illimité",
+    "unlimitedWarning": "Cela peut rendre les conversations instables et consommer beaucoup de tokens.",
+    "profiles": "Profils",
+    "profilesDescription": "Sans profil, un sous-agent hérite des réglages de son parent.",
+    "newProfile": "Nouveau profil…",
+    "unavailable": "Indisponible",
+    "context": "Contexte {size}",
+    "noInstructions": "Aucune instruction",
+    "ownInstructions": "Instructions propres",
+    "mayStart": "Les enfants peuvent en lancer",
+    "noSpawning": "Pas de lancement",
+    "edit": "Modifier",
+    "none": "Aucun profil",
+    "saveFailed": "Impossible d’enregistrer le profil",
+    "deleteFailed": "Impossible de supprimer le profil",
+    "deleteTitle": "Supprimer « {name} » ?",
+    "deleteBody": "Les agents ne peuvent plus l’utiliser. Les sous-agents en cours continuent."
+  },
+  "profile": {
+    "new": "Nouveau profil",
+    "edit": "Modifier le profil",
+    "hint": "Un agent choisit un profil d’après sa description.",
+    "name": "Nom",
+    "nameDescription": "Obligatoire. Lettres minuscules, chiffres et traits d’union, en commençant par une lettre.",
+    "description": "Description",
+    "descriptionDescription": "Obligatoire. Quand l’agent doit l’utiliser, en une ligne.",
+    "model": "Modèle",
+    "fast": "Rapide",
+    "context": "Contexte",
+    "contextDescription": "La fenêtre de contexte qu’utilisent ses sous-agents.",
+    "instructions": "Instructions",
+    "instructionsDescription": "Facultatif. Ajoutées aux instructions de Demi.",
+    "mayStart": "Les enfants peuvent en lancer",
+    "mayStartDescription": "Permet à ses sous-agents de lancer des sous-agents.",
+    "delete": "Supprimer",
+    "create": "Créer le profil",
+    "parentModel": "Modèle du parent",
+    "providerGone": "Son fournisseur n’existe plus. Choisissez un autre modèle.",
+    "modelGone": "Le modèle {model} n’existe plus. Choisissez un autre modèle.",
+    "effortGone": "{model} ne propose plus l’effort {effort}. Choisissez un autre effort.",
+    "tierGone": "{model} ne propose plus le niveau {tier}. Choisissez un autre niveau.",
+    "nameCharacters": "Utilisez uniquement des lettres minuscules, des chiffres et des traits d’union.",
+    "nameStart": "Commencez le nom par une lettre.",
+    "nameLength": "Utilisez au maximum {max} caractères.",
+    "nameDefault": "« default » est le nom du profil hérité. Choisissez un autre nom."
+  },
+  "providers": {
+    "title": "Fournisseurs",
+    "loading": "Chargement des fournisseurs…",
+    "subscriptions": "Abonnements",
+    "apiKeys": "Clés API",
+    "apiKeysShared": "Le maître partage les clés API avec tous les utilisateurs.",
+    "name": "Nom du fournisseur",
+    "rename": "Renommer",
+    "remove": "Supprimer le fournisseur…",
+    "saving": "Enregistrement…",
+    "addAccount": "Ajouter un compte",
+    "showInMenu": "Afficher dans le menu des modèles",
+    "search": {
+      "title": "Outils intégrés",
+      "web": "Recherche web",
+      "webDescription": "Le modèle effectue des recherches sur le web avec le moteur de son éditeur.",
+      "x": "Recherche X",
+      "xDescription": "Le modèle recherche des publications et des personnes sur X.",
+      "images": "Compréhension des images",
+      "imagesDescription": "Le modèle regarde les images des pages et publications qu’il trouve.",
+      "videos": "Compréhension des vidéos",
+      "videosDescription": "Le modèle regarde les vidéos des publications qu’il trouve sur X."
+    },
+    "media": {
+      "imageGeneration": "Génération d’images",
+      "images": "Images",
+      "none": "Aucun",
+      "addImage": "Ajouter un modèle d’images",
+      "noImages": "Aucun modèle d’images pour l’instant",
+      "videoGeneration": "Génération de vidéos",
+      "videos": "Vidéos",
+      "addVideo": "Ajouter un modèle de vidéo",
+      "noVideos": "Aucun modèle de vidéo pour l’instant",
+      "audio": "Audio",
+      "audioGeneration": "Génération audio",
+      "addAudio": "Ajouter un modèle audio",
+      "noAudio": "Aucun modèle audio pour l’instant",
+      "kinds": {
+        "speech": "Voix",
+        "music": "Musique",
+        "effect": "Effets sonores"
+      }
+    },
+    "state": {
+      "setup": "Non configuré",
+      "signedOut": "Déconnecté",
+      "error": "Échec",
+      "unreachable": "Injoignable"
+    },
+    "rotation": {
+      "title": "Rotation",
+      "manual": "Manuelle",
+      "inOrder": "Dans l’ordre",
+      "smart": "Intelligente",
+      "manualHint": "Chaque agent utilise le compte actif.",
+      "inOrderHint": "Les agents utilisent le premier compte de la liste qui n’a pas atteint sa limite.",
+      "smartHint": "Chaque agent prend le compte dont le quota se réinitialise le plus tôt et qui a encore de la marge."
+    },
+    "account": {
+      "active": "Actif",
+      "limitReached": "Limite atteinte",
+      "signInAgain": "Se reconnecter",
+      "activate": "Activer",
+      "refreshUsage": "Actualiser l’utilisation",
+      "test": "Tester la connexion",
+      "remove": "Supprimer",
+      "reorder": "Faites glisser pour réorganiser",
+      "move": "Déplacer {label}",
+      "none": "Aucun compte"
+    },
+    "cacheTtl": {
+      "title": "Durée de vie du cache de prompt",
+      "description": "Combien de temps le fournisseur garde une conversation en cache. Non spécifié n’envoie aucune durée.",
+      "unspecified": "Non spécifié",
+      "custom": "Personnalisé",
+      "customItem": "Personnalisé…",
+      "customField": "Durée personnalisée",
+      "customPlaceholder": "2h",
+      "invalid": "Saisissez des minutes ou des heures entières, comme 90m ou 2h.",
+      "minutes": "{count} minute | {count} minutes",
+      "hours": "{count} heure | {count} heures"
+    },
+    "connection": {
+      "endpoint": "Point de terminaison",
+      "protocol": "Protocole",
+      "apiKey": "Clé API",
+      "keyOptional": "Facultatif. Stockée chiffrée sur le serveur.",
+      "keyStored": "Stockée chiffrée sur le serveur.",
+      "keyReplace": "Saisissez une nouvelle clé pour la remplacer",
+      "keyPaste": "Collez votre clé API",
+      "test": "Tester la connexion",
+      "testDescription": "Envoie un court message au premier modèle de texte activé.",
+      "testMediaDescription": "Vérifie la clé API auprès de l’éditeur sans rien générer.",
+      "testing": "Test en cours…",
+      "connected": "Connecté",
+      "failed": "Échec",
+      "enableModel": "Activez d’abord un modèle",
+      "noTextModel": "Le test envoie un message et ce fournisseur n’a aucun modèle de texte",
+      "through": "Se connecter via",
+      "throughServer": "Serveur",
+      "throughServerDescription": "Les requêtes partent du serveur.",
+      "throughDevice": "Les requêtes partent de {device}, qui atteint le point de terminaison sur son propre réseau.",
+      "throughOffline": "{device} est hors ligne : les requêtes échouent jusqu’à sa connexion.",
+      "throughRemoved": "Appareil supprimé",
+      "throughRemovedDescription": "L’appareil a été supprimé : les requêtes échouent jusqu’à ce que vous en choisissiez un autre."
+    },
+    "headers": {
+      "title": "En-têtes",
+      "description": "Envoyés avec chaque requête. Dans une valeur, {token} représente l’ID de la conversation.",
+      "add": "Ajouter un en-tête",
+      "namePlaceholder": "Nom",
+      "valuePlaceholder": "Valeur",
+      "nameOf": "Nom de l’en-tête {n}",
+      "valueOf": "Valeur de l’en-tête {n}",
+      "remove": "Supprimer l’en-tête",
+      "removeOf": "Supprimer l’en-tête {n}",
+      "invalidName": "Saisissez un nom sans espaces ni symboles comme les deux-points, par exemple X-Session-Id.",
+      "takenName": "Un autre en-tête porte déjà ce nom.",
+      "invalidValue": "Supprimez le saut de ligne de la valeur."
+    },
+    "cli": {
+      "title": "Outil en ligne de commande",
+      "version": "Version",
+      "versionDescription": "Suit la dernière version et se met à jour de lui-même.",
+      "check": "Rechercher des mises à jour",
+      "unreadable": "Impossible de lire la dernière version",
+      "installing": "Installation…",
+      "installFailed": "Échec de l’installation",
+      "install": "Installer"
+    },
+    "models": {
+      "title": "Modèles",
+      "updated": "Mis à jour",
+      "refresh": "Actualiser",
+      "catalog": "Catalogue",
+      "manual": "Manuel",
+      "filterModels": "Filtrer les modèles",
+      "add": "Ajouter un modèle",
+      "loading": "Chargement des modèles…",
+      "unknown": "Capacités inconnues. Modifiez-le pour les renseigner.",
+      "accepts": "Accepte {types}",
+      "reasoning": "Raisonnement · {efforts}",
+      "fast": "A un niveau rapide",
+      "edit": "Modifier",
+      "remove": "Supprimer",
+      "details": "Détails",
+      "enable": "Activer {name}",
+      "noResults": "Aucun résultat",
+      "signInToSee": "Connectez-vous pour voir les modèles",
+      "none": "Aucun modèle pour l’instant"
+    },
+    "removeProvider": {
+      "title": "Supprimer « {name} » ?",
+      "keyOnly": "Sa clé API est supprimée avec lui.",
+      "keyAndModels": "Sa clé API et son modèle sont supprimés avec lui. | Sa clé API et ses {count} modèles sont supprimés avec lui.",
+      "history": "Les conversations qui utilisent ses modèles gardent leur historique et ont besoin d’un autre modèle."
+    },
+    "removeAccount": {
+      "title": "Supprimer le compte « {label} » ?",
+      "keeps": "{name} continue d’utiliser son compte actif.",
+      "switches": "{name} passe à « {next} ».",
+      "none": "{name} se retrouve sans compte et ne peut pas être utilisé tant que vous n’en ajoutez pas un.",
+      "forgets": "Demi oublie sa connexion. Vous pouvez l’ajouter de nouveau avec Ajouter un compte."
+    },
+    "removeModel": {
+      "title": "Supprimer le modèle « {name} » ?",
+      "body": "Il quitte la liste des modèles de {provider} et les menus des modèles. Vous pouvez l’ajouter de nouveau avec son ID."
+    },
+    "warning": {
+      "title": "Utiliser plusieurs comptes ?",
+      "body": "Utiliser plusieurs comptes d’abonnement, ou alterner entre des comptes, peut enfreindre les conditions d’utilisation du fournisseur. Vous le faites à vos propres risques.",
+      "once": "Demi ne vous le demandera plus."
+    },
+    "connected": "{account} connecté",
+    "testFailed": "Échec du test de {account}",
+    "addModelFailed": "Impossible d’ajouter le modèle",
+    "saveModelFailed": "Impossible d’enregistrer le modèle",
+    "duplicateModel": "Un autre modèle de ce fournisseur a cet ID"
+  },
+  "addProvider": {
+    "title": "Ajouter un fournisseur",
+    "compatible": "API compatible",
+    "compatibleHint": "Un proxy ou votre propre serveur",
+    "proxy": "proxy",
+    "vendors": "Éditeurs",
+    "loading": "Chargement des éditeurs…",
+    "noResults": "Aucun résultat"
+  },
+  "addModel": {
+    "title": "Ajouter un modèle",
+    "hint": "Recherchez sur models.dev ou choisissez Personnalisé.",
+    "model": "Modèle",
+    "searchFailed": "Impossible de rechercher sur models.dev.",
+    "adding": "Ajout…",
+    "list": "Modèles",
+    "search": "Rechercher",
+    "custom": "Personnalisé"
+  },
+  "modelDialog": {
+    "edit": "Modifier le modèle",
+    "id": "ID du modèle",
+    "name": "Nom",
+    "nameDescription": "Affiché dans le menu des modèles. Par défaut, l’ID.",
+    "nameDefault": "Par défaut, l’ID.",
+    "contextWindow": "Fenêtre de contexte",
+    "maxOutput": "Sortie maximale",
+    "optional": "Facultatif",
+    "reasoning": "Raisonnement",
+    "reasoningDescription": "Le premier est celui par défaut.",
+    "thinking": "Réflexion",
+    "thinkingDescription": "Comment un niveau de raisonnement est envoyé.",
+    "thinkingEffort": "Effort",
+    "thinkingBudget": "Budget de tokens",
+    "interleavedThinking": "Réflexion entrelacée",
+    "interleavedThinkingDescription": "Renvoie la réflexion précédente avec chaque appel d’outil, comme l’exigent DeepSeek et Kimi.",
+    "fastTier": "Niveau rapide",
+    "fastTierDescription": "Facultatif. ID du niveau de service.",
+    "acceptedFiles": "Fichiers acceptés",
+    "textAlways": "Le texte est toujours accepté.",
+    "unknown": "Inconnu",
+    "textOnly": "Texte uniquement",
+    "none": "Aucun",
+    "accept": "Accepter {label}",
+    "removeExtension": "Supprimer {ext}",
+    "delete": "Supprimer le modèle",
+    "duplicateId": "Un autre modèle de ce fournisseur a cet ID"
+  },
+  "presets": {
+    "images": "Images",
+    "videos": "Vidéos",
+    "documents": "Documents"
+  },
+  "efforts": {
+    "minimal": "Minimal",
+    "low": "Faible",
+    "medium": "Moyen",
+    "high": "Élevé",
+    "max": "Maximal"
+  },
+  "login": {
+    "title": "Se connecter à {vendor}",
+    "deviceHint": "Saisissez ce code sur la page de l’éditeur.",
+    "codeHint": "Connectez-vous sur la page de l’éditeur, puis collez le code qu’elle affiche.",
+    "doneActive": "Connecté. Ce compte est désormais actif pour {vendor}.",
+    "doneKept": "Connecté. {vendor} continue d’utiliser son compte actif.",
+    "failedHint": "La connexion n’a pas abouti.",
+    "waitingMachine": "En attente de la connexion de la machine de Claude Code…",
+    "installing": "Installation de l’outil en ligne de commande…",
+    "startingTool": "Démarrage de l’outil en ligne de commande…",
+    "contacting": "Contact de {vendor}…",
+    "copyCode": "Copier le code",
+    "openInBrowser": "Ouvrir dans le navigateur",
+    "copyLink": "Copier le lien",
+    "copyLinkHint": "Copiez le lien pour vous connecter depuis un autre navigateur ou appareil",
+    "waiting": "En attente",
+    "waitingExpires": "En attente · le code expire dans {left}",
+    "paste": "Collez le code",
+    "code": "Code",
+    "signingIn": "Connexion…",
+    "waitingCode": "En attente du code",
+    "waitingCodeExpires": "En attente du code · expire dans {left}"
+  },
+  "provider": {
+    "endpointInvalid": "Saisissez une adresse http ou https."
+  },
+  "developer": {
+    "title": "Développeur",
+    "showUnexpectedErrors": "Afficher les erreurs inattendues",
+    "showUnexpectedErrorsDescription": "Affiche une notification avec un ID que vous pouvez copier quand cette page échoue."
+  }
+}

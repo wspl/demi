@@ -1,0 +1,85 @@
+{
+  "noResults": "No hay resultados",
+  "inDevelopment": "En desarrollo",
+  "asyncRegion": {
+    "error": "No se pudo cargar este contenido."
+  },
+  "menu": {
+    "empty": "No hay elementos"
+  },
+  "limitField": {
+    "limited": "Limitado",
+    "unlimited": "Ilimitado",
+    "problem": "Escribe un número entero a partir de 1."
+  },
+  "shortcutRecorder": {
+    "recording": "Grabando atajo",
+    "prompt": "Presiona las teclas…"
+  },
+  "requestId": "ID de solicitud: {id}",
+  "errorNotice": {
+    "providerResponse": "Respuesta del proveedor",
+    "headers": "Encabezados"
+  },
+  "updateFailed": {
+    "title": "No se pudo actualizar esta página",
+    "body": "Hay una versión más reciente de Demi. Al volver a cargar se sigue mostrando la anterior."
+  },
+  "updating": {
+    "title": "Actualizando Demi",
+    "control": "Actualizando cuentas y configuración",
+    "conversations": "Actualizando chats: {done} de {count}",
+    "bytes": "{done} de {all}",
+    "estimating": "Calculando el tiempo restante…",
+    "underAMinute": "Falta menos de un minuto",
+    "minutesLeft": "Falta aproximadamente {count} minuto | Faltan aproximadamente {count} minutos",
+    "body": "Puedes abrir Demi cuando termine la actualización.",
+    "restarting": "Reiniciando Demi",
+    "to": "Actualizando Demi a {version}",
+    "returning": "Volviendo a Demi {version}",
+    "failed": "No se pudo actualizar Demi a {version}",
+    "updated": "Demi se actualizó a {version}",
+    "updatedDemi": "Demi se actualizó",
+    "failedBody": "Demi no estará disponible hasta que un administrador termine la actualización en el servidor.",
+    "returned": "Demi {version} vuelve a ejecutarse, con sus datos como estaban.",
+    "open": "Abrir Demi",
+    "of": "{done} de {count}",
+    "noChanges": "No se necesitan cambios",
+    "steps": {
+      "stopDemi": "Detener Demi",
+      "saveClouds": "Guardar las nubes en ejecución",
+      "keepClouds": "Conservar las nubes en ejecución",
+      "keepDatabases": "Guardar una copia de las bases de datos",
+      "switch": "Cambiar a la nueva versión",
+      "startManager": "Iniciar el administrador de la nube",
+      "startDemi": "Iniciar Demi",
+      "updateControl": "Actualizar cuentas y configuración",
+      "updateConversations": "Actualizar chats"
+    }
+  },
+  "startingScreen": {
+    "connecting": "Conectando con Demi…",
+    "loading": "Cargando Demi…",
+    "failed": "No se pudo verificar tu sesión."
+  },
+  "themeToggle": {
+    "light": "Tema claro",
+    "dark": "Tema oscuro"
+  },
+  "titleInput": {
+    "title": "Título"
+  },
+  "rowSpinner": {
+    "working": "Trabajando"
+  },
+  "contextMenu": {
+    "open": "Abrir",
+    "openLink": "Abrir enlace",
+    "openInWorkPanel": "Abrir en el panel de trabajo",
+    "copyLink": "Copiar enlace",
+    "copyImage": "Copiar imagen",
+    "saveImage": "Guardar imagen",
+    "copyCode": "Copiar código",
+    "searchWithGoogle": "Buscar con Google"
+  }
+}

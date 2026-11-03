@@ -1,0 +1,18 @@
+{
+  "title": "Suchen",
+  "placeholder": "Chats durchsuchen",
+  "failed": "Suche nicht möglich.",
+  "searching": "Suche läuft …",
+  "list": "Chats",
+  "archived": "Archiviert",
+  "noConversations": "Keine Chats",
+  "noResults": "Keine Ergebnisse",
+  "placeholderIn": "Nachrichten durchsuchen",
+  "scope": "Dieser Chat",
+  "scopeRemove": "Alle Chats durchsuchen",
+  "typeToSearch": "Tippe, um diesen Chat zu durchsuchen",
+  "messages": "Nachrichten",
+  "you": "Du",
+  "agent": "Agent",
+  "limited": "Neuester Treffer wird angezeigt | Die {count} neuesten Treffer werden angezeigt"
+}

@@ -1,0 +1,60 @@
+{
+  "chip": "{count} programados",
+  "delete": "Eliminar",
+  "notYet": "Aún no se activó",
+  "trigger": {
+    "once": "Una vez · {when}",
+    "change": "Cuando cambia la salida · {interval}",
+    "url": "Cuando se llama a una URL",
+    "interval": {
+      "minutes": "{count} min",
+      "hours": "{count} hora | {count} horas",
+      "days": "{count} día | {count} días"
+    }
+  },
+  "wake": {
+    "failed": "La última activación falló",
+    "skipped": "Se omitió la última activación"
+  },
+  "words": {
+    "interval": {
+      "minutes": "Cada minuto | Cada {count} min",
+      "hours": "Cada hora | Cada {count} horas",
+      "days": "Cada día | Cada {count} días"
+    },
+    "daily": "Todos los días {time}",
+    "weekdays": "Días hábiles {time}",
+    "weekly": "Cada {day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "Cada día | Cada {count} días",
+      "weeks": "Cada semana | Cada {count} semanas",
+      "months": "Cada mes | Cada {count} meses",
+      "years": "Cada año | Cada {count} años"
+    },
+    "tasks": "{count} tarea | {count} tareas",
+    "date": "Día {date}",
+    "lastDay": "Último día",
+    "week": {
+      "first": "Primer {weekday}",
+      "second": "Segundo {weekday}",
+      "third": "Tercer {weekday}",
+      "fourth": "Cuarto {weekday}",
+      "last": "Último {weekday}"
+    },
+    "workingDay": {
+      "first": "Primer día hábil",
+      "last": "Último día hábil"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{date} de {month}",
+    "dayOfMonth": "{day} de {month}"
+  },
+  "note": {
+    "offline": "{device} estaba sin conexión",
+    "limit": "Se alcanzó el límite de {limit} ejecuciones por día, con {calls} llamada desde entonces | Se alcanzó el límite de {limit} ejecuciones por día, con {calls} llamadas desde entonces",
+    "timedOut": "El comando se ejecutó durante más de 60 segundos",
+    "commandFailed": "El comando falló: {message}"
+  },
+  "mark": "Las programaciones activan este chat"
+}

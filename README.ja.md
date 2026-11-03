@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a>
+  <a href="README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español (Latinoamérica)</a> · <a href="README.fr.md">Français</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ Demi の機能は 4 つのグループに分かれます。
 ### どこからでも、どのマシンでも
 
 - **どのブラウザでも**：デスクトップ、タブレット、スマートフォンで使えます。インストールは不要です。ホーム画面に追加でき、スマートフォン、タブレット、折りたたみ端末に合わせて表示されます。
-- **5 つの言語**：英語、簡体字中国語、繁体字中国語、日本語、韓国語。
+- **9 つの言語**：英語、ドイツ語、スペイン語、フランス語、ポルトガル語、簡体字中国語、繁体字中国語、日本語、韓国語。
 - **常時稼働**：タブを閉じても、タスクはサーバー上で動き続けます。
 - **通知**：タスクが終わったときや対応が必要なとき、Demi を閉じていてもスマートフォンとコンピューターに通知が届きます。
 - **すべての会話を一か所に**：会話はサーバーに保存され、エージェントが作業したマシンに散らばりません。ノート PC で始めた会話を、スマートフォンでリアルタイムに続けられます。AI プロバイダーを変えても、履歴はそのまま残ります。

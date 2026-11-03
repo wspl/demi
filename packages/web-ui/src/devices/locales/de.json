@@ -1,0 +1,162 @@
+{
+  "state": {
+    "online": "Online",
+    "updating": "Wird aktualisiert",
+    "offline": "Offline",
+    "downloading": "Update wird geladen · {percent} %",
+    "updatingPercent": "Wird aktualisiert · {percent} %"
+  },
+  "route": {
+    "automatic": "Automatisch",
+    "direct": "P2P bevorzugen",
+    "server": "Nur Relay",
+    "automaticDescription": "Nutzt den schnelleren Weg.",
+    "directDescription": "P2P, wann immer es verbindet.",
+    "serverDescription": "Nutzt nie P2P."
+  },
+  "stage": {
+    "permission": "Berechtigung",
+    "gathering": "Adressen werden gesammelt",
+    "checking": "Weg wird gesucht",
+    "handshake": "Verschlüsselungs-Handshake",
+    "channel": "Kanal wird geöffnet",
+    "connected": "Verbunden"
+  },
+  "path": {
+    "thisComputer": "Dieser Computer",
+    "localNetwork": "LAN",
+    "internet": "P2P",
+    "relay": "Relay",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "Über Relay verbunden",
+    "thisComputer": "Über diesen Computer verbunden",
+    "localNetwork": "Über LAN verbunden",
+    "internet": "Über P2P verbunden"
+  },
+  "reason": {
+    "slower": "P2P ist gerade langsamer.",
+    "blocked": "Dieser Browser blockiert den Zugriff auf das lokale Netzwerk.",
+    "unreachable": "Deine Netzwerke blockieren P2P-Verbindungen.",
+    "browserNetwork": "Dein Netzwerk blockiert es.",
+    "deviceNetwork": "Das Netzwerk des Geräts blockiert es.",
+    "busy": "Das Gerät hat zu viele Verbindungen.",
+    "dropped": "Die P2P-Verbindung ist abgebrochen.",
+    "notOffered": "P2P funktioniert nur im Netzwerk des Geräts."
+  },
+  "latency": {
+    "under": "unter 0,1 ms",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}, {loss} verloren",
+    "relay": "Relay {latency}"
+  },
+  "address": {
+    "hidden": "Vom Browser verborgen"
+  },
+  "report": {
+    "appleSilicon": "Apple Silicon",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "Aktuell",
+    "outdated": "Update verfügbar",
+    "development": "Entwicklungs-Build"
+  },
+  "page": {
+    "cloud": "Cloud",
+    "startSentence": "Starte Demi auf dem Gerät:",
+    "noAutostart": "Dieses Gerät startet Demi nach einem Neustart nicht von selbst.",
+    "connection": "Verbindung",
+    "route": "Route",
+    "p2p": "P2P",
+    "details": "Details …",
+    "latency": "Latenz",
+    "measure": "Messen",
+    "measuring": "Wird gemessen …",
+    "noAnswer": "Keine Antwort",
+    "notMeasured": "Nicht gemessen",
+    "measuredAt": "Gemessen {when}",
+    "device": "Gerät",
+    "name": "Name",
+    "rename": "Umbenennen …",
+    "system": "System",
+    "notReported": "Noch nicht gemeldet",
+    "runner": "Runner",
+    "runnerUpdates": "Er aktualisiert sich bei der nächsten Verbindung selbst.",
+    "paired": "Gekoppelt",
+    "revokeThis": "Dieses Gerät entkoppeln",
+    "revoke": "Entkoppeln …",
+    "lastSeen": "Zuletzt gesehen"
+  },
+  "details": {
+    "title": "Verbindungsdetails",
+    "ran": "Ausgeführt",
+    "took": "Dauer",
+    "endedAt": "Beendet um",
+    "thisBrowser": "Dieser Browser",
+    "theDevice": "Das Gerät",
+    "paths": "Wege",
+    "pathInUse": "Verwendeter Weg",
+    "localAccess": "Zugriff auf lokales Netzwerk",
+    "nextAttempt": "Nächster Versuch",
+    "none": "Keine",
+    "local": "Lokal: {list}",
+    "public": "Öffentlich: {list}",
+    "answered": "{answered} / {tried} beantwortet",
+    "busy": "Das Gerät war beschäftigt",
+    "dropped": "Verbunden, dann abgebrochen",
+    "unknown": "Nicht bekannt",
+    "ms": "{ms} ms",
+    "s": "{s} s"
+  },
+  "permission": {
+    "granted": "Erlaubt",
+    "prompt": "Noch nicht beantwortet",
+    "denied": "Blockiert",
+    "allowInSite": "Erlaube es in den Einstellungen dieser Website.",
+    "notAsked": "Von diesem Browser nicht abgefragt"
+  },
+  "pairing": {
+    "title": "Gerät hinzufügen",
+    "setupHint": "Starte den Runner auf deinem Gerät, um einen Kopplungscode zu erhalten.",
+    "doneHint": "Das Gerät ist mit deinem Konto verknüpft und einsatzbereit.",
+    "codeHint": "Gib den Kopplungscode ein, den der Runner ausgegeben hat.",
+    "system": "System",
+    "systemLabel": "System des Geräts",
+    "runInPowerShell": "In PowerShell auf dem Gerät ausführen. Lass das Fenster offen.",
+    "runInTerminal": "In einem Terminal auf dem Gerät ausführen. Lass das Fenster offen.",
+    "copyInstall": "Installationsbefehl kopieren",
+    "code": "Kopplungscode",
+    "paste": "Code einsetzen",
+    "pair": "Gerät koppeln",
+    "invalidCode": "Dieser Code ist nicht verfügbar. Setze den neuesten Code des Runners ein.",
+    "rateLimited": "Zu viele Versuche. Warte eine Minute, bevor du es erneut versuchst.",
+    "unavailable": "Demi ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut."
+  },
+  "revoke": {
+    "title": "Dieses Gerät entkoppeln?",
+    "action": "Entkoppeln",
+    "body": "„{device}“ wird aus deinen Geräten entfernt. Wenn sein Runner verbunden ist, entfernt er sich selbst vom Gerät.",
+    "projects": "Dieses Projekt wird mit entfernt. Seine Dateien bleiben auf dem Gerät und seine Chats in der Seitenleiste. | Diese Projekte werden mit entfernt. Ihre Dateien bleiben auf dem Gerät und ihre Chats in der Seitenleiste."
+  },
+  "rename": {
+    "title": "Gerät umbenennen",
+    "label": "Gerätename"
+  },
+  "startHint": {
+    "powershell": "Wenn sein Runner gestoppt wurde, führe dies in PowerShell auf dem Gerät aus.",
+    "terminal": "Wenn sein Runner gestoppt wurde, führe dies in einem Terminal auf dem Gerät aus.",
+    "copy": "Startbefehl kopieren"
+  },
+  "autostart": {
+    "noSystemd": "Dieses System verwendet kein systemd.",
+    "noUserManager": "Der Benutzermanager von systemd antwortet nicht: {error}",
+    "notWritten": "Demi konnte {path} nicht speichern: {error}",
+    "lingerOff": "Er startet erst, wenn sich {user} anmeldet. Um ihn beim Starten des Computers zu starten, führe Folgendes aus:",
+    "refused": "Windows hat sowohl die geplante Aufgabe als auch den Autostart-Eintrag abgelehnt: {error}",
+    "unusableName": "Der Name des Installationsordners, {name}, kann keinen Autostart-Eintrag benennen.",
+    "unknownAccount": "Das System erkennt dieses Benutzerkonto nicht."
+  }
+}

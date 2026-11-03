@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "Esa no es tu contraseña.",
+    "signOutFailed": "No se pudo cerrar la sesión del navegador"
+  },
+  "passkeys": {
+    "held": "Este administrador de contraseñas ya tiene una llave de acceso para tu cuenta.",
+    "renameFailed": "No se pudo cambiar el nombre de la llave de acceso",
+    "removeFailed": "No se pudo eliminar la llave de acceso"
+  },
+  "login": {
+    "invalidCredentials": "El correo o la contraseña son incorrectos.",
+    "accountDisabled": "Esta cuenta está desactivada. Pide a tu administrador que la active.",
+    "signOutFailed": "No se pudo cerrar sesión"
+  }
+}

@@ -14,8 +14,11 @@ import { LANGUAGES, type Language } from './languages'
  * - Keys name the place and the meaning, `settings.general.language`, never the
  *   English words, so rewording English keeps the key.
  * - A new text is written in every language with the change that adds it.
- * - A count uses the catalogue's plural forms; Chinese, Japanese and Korean have
- *   a single one.
+ * - A count uses the catalogue's plural forms, `one | other`, or `none | one |
+ *   other` where nothing has words of its own, chosen by the language's own
+ *   rule: French says *0 fichier*, English *0 files*. Chinese, Japanese and
+ *   Korean have no plural, so a text with two forms there gives 1 its own
+ *   words, such as 毎分 beside {count} 分ごと.
  * - Numbers, sizes, dates, times, ages and lists are formatted with `Intl` in the
  *   chosen language by the existing formatters (`ui/dates.ts`), never by hand in
  *   a component.
@@ -57,12 +60,36 @@ let instance: ReturnType<typeof createInstance> | null = null
 /** The language the instance speaks until the app names the page's. */
 const FIRST_LANGUAGE: Language = 'en'
 
+/**
+ * The form among `forms` of a text for the count `count` in `language`, by the
+ * language's plural rule; vue-i18n's own is English's, which puts French's and
+ * Portuguese's 0 in the plural. A language whose rule has no singular, such as
+ * Japanese, keeps the singular form for exactly 1.
+ */
+function pluralForm(language: Language): (count: number, forms: number) => number {
+  const rules = new Intl.PluralRules(language)
+  const singular = rules.resolvedOptions().pluralCategories.includes('one')
+    ? (count: number) => rules.select(count) === 'one'
+    : (count: number) => count === 1
+  return (count, forms) => {
+    if (forms < 2) {
+      return 0
+    }
+    const one = forms - 2
+    if (forms > 2 && count === 0) {
+      return 0
+    }
+    return singular(count) ? one : one + 1
+  }
+}
+
 function createInstance() {
   return createI18n({
     legacy: false,
     locale: FIRST_LANGUAGE,
     fallbackLocale: 'en',
-    messages: { 'en': {}, 'zh-Hans': {}, 'zh-Hant': {}, 'ja': {}, 'ko': {} } satisfies Record<Language, object>,
+    messages: Object.fromEntries(LANGUAGES.map(language => [language, {}])) as Record<Language, object>,
+    pluralRules: Object.fromEntries(LANGUAGES.map(language => [language, pluralForm(language)])),
   })
 }
 

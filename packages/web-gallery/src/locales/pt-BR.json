@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "overview": "Visão geral",
+    "signin": "Login e configuração",
+    "surfaces": "Superfícies",
+    "primitives": "Elementos básicos",
+    "controlLayout": "Layout dos controles",
+    "writing": "Redação",
+    "errors": "Erros",
+    "motion": "Movimento",
+    "overlays": "Sobreposições",
+    "dialogs": "Diálogos",
+    "files": "Arquivos",
+    "session": "Sessão",
+    "sidebar": "Barra lateral",
+    "settings": "Configurações",
+    "markdown": "Markdown",
+    "phone": "Celular",
+    "roadmap": "Roteiro",
+    "schedules": "Agendamentos"
+  },
+  "views": {
+    "errors": {
+      "primitives": "Elementos básicos",
+      "conversation": "Conversa",
+      "messages": "Mensagens e envios",
+      "forms": "Formulários e configurações",
+      "files": "Arquivos"
+    },
+    "signin": {
+      "signin": "Entrar",
+      "setup": "Configuração",
+      "handoff": "Passagem para o celular",
+      "starting": "Inicialização"
+    },
+    "primitives": {
+      "buttons": "Botões",
+      "fields": "Campos",
+      "marks": "Marcas"
+    },
+    "overlays": {
+      "menus": "Menus",
+      "dialogs": "Diálogos"
+    },
+    "files": {
+      "browser": "Navegador",
+      "tree": "Árvore",
+      "dialogs": "Diálogos"
+    },
+    "session": {
+      "tabs": "Barra de abas",
+      "composer": "Campo de mensagem",
+      "blocks": "Blocos",
+      "lengths": "Comprimentos",
+      "changes": "Alterações",
+      "turns": "Turnos",
+      "states": "Estados",
+      "session": "Sessão",
+      "panel": "Painel",
+      "windows": "Janelas",
+      "shared": "Página compartilhada"
+    },
+    "dialogs": {
+      "account": "Conta",
+      "providers": "Provedores",
+      "devices": "Dispositivos",
+      "project": "Projeto",
+      "cloud": "Nuvem",
+      "skills": "Habilidades",
+      "search": "Busca"
+    },
+    "page": "Página",
+    "schedules": {
+      "app": "App",
+      "phone": "Celular"
+    }
+  },
+  "chrome": {
+    "mode": "Modo",
+    "font": "Fonte"
+  }
+}

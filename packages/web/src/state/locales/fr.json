@@ -1,0 +1,22 @@
+{
+  "notifications": {
+    "turnStopped": "Le tour s’est arrêté sur une erreur.",
+    "saveCredential": "Enregistrer l’identifiant « {name} » ?"
+  },
+  "hosts": {
+    "unavailableDevice": "Appareil indisponible"
+  },
+  "failures": {
+    "turnOnNotifications": "Impossible d’activer les notifications",
+    "turnOffNotifications": "Impossible de désactiver les notifications",
+    "dismissNotificationsCard": "Impossible d’ignorer le rappel des notifications",
+    "updateSettings": "Impossible de mettre à jour les paramètres",
+    "changeContextLimit": "Impossible de modifier la limite de contexte",
+    "updateTimeZoneLanguage": "Impossible de mettre à jour le fuseau horaire et la langue",
+    "readSync": "Impossible de lire un message du canal de synchronisation",
+    "keepOffline": "Impossible de conserver une copie hors ligne",
+    "readOffline": "Impossible de lire la copie hors ligne",
+    "createWorkspace": "Impossible de créer l’espace de travail",
+    "moveToWorkspace": "Impossible de déplacer vers l’espace de travail"
+  }
+}
