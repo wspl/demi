@@ -128,6 +128,11 @@ const specimens: {
   },
   { variant: 'Queued · one line, whole', content: text('Also add a case for the expired cookie.'), pending: 'queued' },
   {
+    variant: 'Queued · one line, then a paragraph: the line alone',
+    content: text('Schedule “Nightly build”, at 02:00\n\nRun the nightly build and tell me what failed.'),
+    pending: 'queued',
+  },
+  {
     variant: 'Queued · a comment on a picture, its words folding',
     content: [],
     comments: [pictureComment],
@@ -140,7 +145,7 @@ const specimens: {
 <template>
   <GallerySection
     title="User Message Length"
-    note="A message taller than 300px folds to about 200px, as Claude Code's does, its last line fading out, and Show More under it opens it whole; Show Less folds it again. A message waiting to be sent, queued or as a steer, folds once it runs past two lines, to its first line whole and its second fading, and keeps Show More first in its row of controls, then Send and Recall. A message under 300px shows whole, since folding it would hide less than the control takes. A line across the fold shows whole, code's as text's. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the fold follows the wrapping."
+    note="A message taller than 300px folds to about 200px, as Claude Code's does, its last line fading out, and Show More under it opens it whole; Show Less folds it again. A message waiting to be sent, queued or as a steer, folds once it runs past two lines, to its first line whole and its second fading, or to its first line alone when a paragraph ends there, and keeps Show More first in its row of controls, then Send and Recall. A message under 300px shows whole, since folding it would hide less than the control takes. A line across the fold shows whole, code's as text's. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the fold follows the wrapping."
   >
     <div class="specimen-stack specimen-stack-loose">
       <GallerySpecimen
