@@ -238,6 +238,12 @@ impl ProviderRegistry {
         &*self.store
     }
 
+    /// The store, for a task that outlives the call, such as a catalog's
+    /// read.
+    pub(crate) fn shared_store(&self) -> Arc<dyn RegistryStore> {
+        self.store.clone()
+    }
+
     pub fn families(&self) -> &FamilyRegistry {
         &self.families
     }

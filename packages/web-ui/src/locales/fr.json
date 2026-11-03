@@ -291,6 +291,7 @@
     "filtered": "Les filtres de sécurité du fournisseur ont arrêté cette réponse.",
     "auth_expired": "La connexion au fournisseur a expiré ou a été refusée.",
     "permission_denied": "Le fournisseur a refusé cette requête.",
+    "model_unavailable": "Le fournisseur ne propose plus ce modèle.",
     "auth_missing": "Le fournisseur n’a pas d’identifiant.",
     "auth_invalid": "L’identifiant du fournisseur ne peut pas être lu.",
     "auth_unsupported": "Le fournisseur n’accepte pas ce type d’identifiant.",

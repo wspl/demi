@@ -291,6 +291,7 @@
     "filtered": "The provider’s safety filters stopped this reply.",
     "auth_expired": "The provider’s sign-in expired or was refused.",
     "permission_denied": "The provider refused this request.",
+    "model_unavailable": "The provider no longer offers this model.",
     "auth_missing": "The provider has no credential.",
     "auth_invalid": "The provider’s credential can’t be read.",
     "auth_unsupported": "The provider doesn’t accept this kind of credential.",

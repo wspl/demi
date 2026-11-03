@@ -526,6 +526,13 @@ struct ModelsDevModel {
     /// the same in every vendor's listing of it.
     #[serde(default)]
     canonical_model_id: Option<String>,
+    /// `alpha`, `beta` or `deprecated`; none for a model in general use.
+    #[serde(default)]
+    status: Option<String>,
+    /// What the model is for, such as `chat`, `realtime`, `embedding`,
+    /// `speech`, `image` or `video`; none for a chat model.
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
 }
 
 /// What a model takes in and gives out, kind by kind.
@@ -568,11 +575,15 @@ struct Cost {
 impl ModelsDevModel {
     /// Whether an agent can work with the model: the document states that its
     /// output includes text, that it calls tools, and its context window, which
-    /// compaction needs.
+    /// compaction needs, and neither that its vendor retired it nor that it
+    /// is for anything but chat.
     ///
-    /// A model that writes only speech or images, calls no tool, or states no
-    /// window is not one.
+    /// A model that writes only speech or images, calls no tool, states no
+    /// window, is deprecated, or is a live, embedding or media model is not
+    /// one.
     fn agentic(&self) -> bool {
+        let retired = self.status.as_deref() == Some("deprecated");
+        let chat = self.kind.as_deref().is_none_or(|kind| kind == "chat");
         let writes_text = self
             .modalities
             .as_ref()
@@ -583,7 +594,7 @@ impl ModelsDevModel {
             .as_ref()
             .and_then(|limit| tokens(limit.context))
             .is_some();
-        writes_text && self.tool_call == Some(true) && windowed
+        !retired && chat && writes_text && self.tool_call == Some(true) && windowed
     }
 
     /// The model as a catalog model.

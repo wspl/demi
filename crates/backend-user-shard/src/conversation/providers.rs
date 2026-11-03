@@ -18,7 +18,7 @@ use std::sync::Arc;
 use demi_agent_server::{ProviderResolver, ResolveError};
 use demi_agent_tools::{ProfileModel, Unavailable};
 use demi_backend_host_access::transition::ChangeRefusal;
-use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices};
+use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices, RetireModel};
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
     AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
@@ -721,6 +721,26 @@ impl ConversationRuntime {
                     Box::pin(async move { provider_registry.model_price(&entry, &Ok(provider), &model).await })
                 })
             };
+            // A model the vendor no longer serves leaves the entry's list
+            // in a task of the shard's, apart from the run, which goes on
+            // at once.
+            let retire: RetireModel = {
+                let shard = scope.shard.clone();
+                let provider_registry = scope.services.provider_registry.clone();
+                let entry = entry.clone();
+                let provider = provider.clone();
+                Rc::new(move |model: String, answered_by: Option<String>| {
+                    if let Some(shard) = shard.upgrade() {
+                        let provider_registry = provider_registry.clone();
+                        let entry = entry.clone();
+                        let provider = provider.clone();
+                        shard.tasks().spawn_local(async move {
+                            provider_registry.retire_model(&entry, &Ok(provider), model, answered_by).await;
+                        });
+                    }
+                    Box::pin(std::future::ready(()))
+                })
+            };
             let ledger = Ledger {
                 control: scope.services.control.clone(),
                 clock: scope.services.clock.clone(),
@@ -731,6 +751,7 @@ impl ConversationRuntime {
                 // the entry's active one; none for an API key.
                 account: account.or(entry.active()).cloned(),
                 prices,
+                retire,
             };
             let metered = MeteredRuntime::new(runtime, ledger);
             self.close_current().await;

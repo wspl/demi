@@ -291,6 +291,7 @@
     "filtered": "Los filtros de seguridad del proveedor detuvieron esta respuesta.",
     "auth_expired": "El inicio de sesión del proveedor venció o fue rechazado.",
     "permission_denied": "El proveedor rechazó esta solicitud.",
+    "model_unavailable": "El proveedor ya no ofrece este modelo.",
     "auth_missing": "El proveedor no tiene credencial.",
     "auth_invalid": "No se puede leer la credencial del proveedor.",
     "auth_unsupported": "El proveedor no acepta este tipo de credencial.",

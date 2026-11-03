@@ -12,6 +12,7 @@
 
 mod audio;
 mod images;
+mod models;
 mod request;
 mod run;
 mod videos;
@@ -23,7 +24,7 @@ pub use videos::compatible_videos;
 use std::sync::Arc;
 
 use demi_provider_common::{
-    Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
+    Capabilities, InferenceRequest, Provider, ProviderHttp, ProviderRun, ProviderRuntime,
     ModelWires, RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
     audio::AudioMaker,
     images::ImageMaker,
@@ -82,6 +83,10 @@ pub struct OpenAiConfig {
     /// `prompt_cache_options`; none sends no options, and the vendor keeps
     /// its default.
     pub cache_ttl: Option<CacheTtl>,
+    /// Whether the endpoint's `…/models` lists every model the key may
+    /// call, as OpenAI's own does; another vendor's may list fewer than it
+    /// serves.
+    pub lists_models: bool,
 }
 
 impl OpenAiConfig {
@@ -110,6 +115,8 @@ pub struct OpenAiProvider {
 /// What the provider and all its runtimes share.
 struct Shared {
     authorization: Option<HeaderValue>,
+    /// `…/models`, for an endpoint that lists the key's models.
+    models_url: Option<Url>,
     /// `<vendor>:`, the prefix of the reasoning items it receives.
     signature_tag: Arc<str>,
     /// The entry's name, which a step its vendor ran shows under.
@@ -158,6 +165,7 @@ impl OpenAiProvider {
         Self {
             shared: Arc::new(Shared {
                 authorization: config.api_key.as_ref().map(Secret::bearer),
+                models_url: config.lists_models.then(|| endpoint_url(&base, "/models")),
                 signature_tag,
                 label,
                 url: endpoint_url(&base, path),
@@ -196,6 +204,13 @@ impl Provider for OpenAiProvider {
         RuntimeState::Ready {
             message: Some(message.into()),
         }
+    }
+
+    fn offered_models<'a>(&'a self, http: &'a ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<String>, String>>> {
+        Box::pin(async move {
+            let url = self.shared.models_url.as_ref()?;
+            Some(models::list(http, url, self.shared.authorization.as_ref()).await)
+        })
     }
 
     fn images(&self) -> Option<&dyn ImageMaker> {

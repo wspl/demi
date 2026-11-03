@@ -16,7 +16,7 @@ mod videos;
 use std::sync::Arc;
 
 use demi_provider_common::{
-    Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
+    Capabilities, InferenceRequest, Provider, ProviderHttp, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, read_http_failure,
     audio::AudioMaker,
     images::ImageMaker,
@@ -65,6 +65,8 @@ impl GoogleConfig {
 /// A `google` entry, shared by every user and request of the entry.
 pub struct GoogleProvider {
     shared: Arc<Shared>,
+    /// The entry's key, which lists the models it may call.
+    key: Option<images::GeminiKey>,
     /// The key's image role, for a Gemini API entry with its key.
     images: Option<images::KeyImages>,
     /// The key's video role, for a Gemini API entry with its key.
@@ -103,13 +105,14 @@ impl GoogleProvider {
         let key = config.api_key.clone().map(|key| images::GeminiKey::new(key, base_url.clone(), clock.clone()));
         let images = key.clone().filter(|_| config.makes_images).map(images::KeyImages);
         let videos = key.clone().filter(|_| config.makes_videos).map(videos::KeyVideos);
-        let audio = key.filter(|_| config.makes_audio).map(audio::KeyAudio);
+        let audio = key.clone().filter(|_| config.makes_audio).map(audio::KeyAudio);
         Self {
             shared: Arc::new(Shared {
                 api_key: config.api_key.as_ref().map(Secret::header_value),
                 base_url,
                 clock,
             }),
+            key,
             images,
             videos,
             audio,
@@ -136,6 +139,20 @@ impl Provider for GoogleProvider {
         RuntimeState::Ready {
             message: Some("Uses the Gemini generateContent API".into()),
         }
+    }
+
+    /// The models Google lists for the key with `generateContent`, the
+    /// method a conversation calls (as `streamGenerateContent`).
+    fn offered_models<'a>(&'a self, http: &'a ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<String>, String>>> {
+        Box::pin(async move {
+            let key = self.key.as_ref()?;
+            let listed = key.list(http, |_, methods| methods.iter().any(|method| method == "generateContent")).await;
+            Some(
+                listed
+                    .map(|models| models.into_iter().map(|model| model.id).collect())
+                    .map_err(|failure| format!("Google's model list could not be read: {}", failure.outcome())),
+            )
+        })
     }
 
     fn images(&self) -> Option<&dyn ImageMaker> {

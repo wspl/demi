@@ -291,6 +291,7 @@
     "filtered": "供应商的安全过滤器拦下了这条回复。",
     "auth_expired": "供应商的登录已过期或被拒绝。",
     "permission_denied": "供应商拒绝了此请求。",
+    "model_unavailable": "供应商已不再提供此模型。",
     "auth_missing": "供应商没有凭据。",
     "auth_invalid": "无法读取供应商的凭据。",
     "auth_unsupported": "供应商不接受此类凭据。",

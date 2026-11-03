@@ -140,6 +140,8 @@ pub struct Services {
 pub struct ProviderSetup {
     pub families: FamilyRegistry,
     pub models_dev_url: url::Url,
+    /// Where LiteLLM's model table is read.
+    pub model_shutdowns_url: url::Url,
     /// The media catalog of the build's branch; none keeps the release's
     /// copy (`crates/provider-common/src/media_catalog.rs`).
     pub media_catalog_url: Option<url::Url>,
@@ -390,6 +392,12 @@ impl Services {
             providers.clock.clone(),
             &providers.families.effort_vendors(),
         );
+        let shutdowns = demi_provider_registry::shutdowns::ModelShutdowns::new(
+            http.clone(),
+            providers.model_shutdowns_url,
+            providers.clock.clone(),
+        );
+        shutdowns.start(&edge);
         let media = MediaCatalog::new(http.clone(), providers.media_catalog_url, providers.media_catalog);
         media.start(&edge);
         // A new catalog describes every user's media models anew: their
@@ -411,7 +419,7 @@ impl Services {
             providers.families,
             AccountQuotas::new(store.clone(), edge.clone(), providers.clock.clone()),
             ModelCatalogCache::new(store, providers.clock.clone(), edge),
-            VendorCatalog::new(models_dev),
+            VendorCatalog::new(models_dev, shutdowns),
             http,
             providers.clock,
             media.clone(),

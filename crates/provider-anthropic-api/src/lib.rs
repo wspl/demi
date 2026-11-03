@@ -2,13 +2,14 @@
 //! has one, its request and stream mapping and the standard reading of its
 //! failure records.
 
+mod models;
 mod request;
 mod stream;
 
 use std::sync::Arc;
 
 use demi_provider_common::{
-    Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
+    Capabilities, InferenceRequest, Provider, ProviderHttp, ProviderRun, ProviderRuntime,
     ModelWires, RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
@@ -35,6 +36,10 @@ pub struct AnthropicConfig {
     /// The prompt cache lifetime its requests' cache marks ask for; none
     /// asks for the vendor's default, five minutes.
     pub cache_ttl: Option<CacheTtl>,
+    /// Whether the endpoint's `…/models` lists the models the key may call,
+    /// as Anthropic's own does; another vendor's Messages API may list
+    /// fewer than it serves, or none.
+    pub lists_models: bool,
 }
 
 impl AnthropicConfig {
@@ -66,6 +71,8 @@ pub struct AnthropicProvider {
 /// What the provider and all its runtimes share.
 struct Shared {
     api_key: Option<HeaderValue>,
+    /// `…/models`, for an endpoint that lists the key's models.
+    models_url: Option<Url>,
     messages_url: Url,
     models: ModelWires,
     cache_ttl: Option<CacheTtl>,
@@ -80,6 +87,7 @@ impl AnthropicProvider {
         Self {
             shared: Arc::new(Shared {
                 api_key: config.api_key.as_ref().map(Secret::header_value),
+                models_url: config.lists_models.then(|| endpoint_url(&base, "/models")),
                 messages_url: endpoint_url(&base, "/messages"),
                 models: config.models,
                 cache_ttl: config.cache_ttl,
@@ -108,6 +116,13 @@ impl Provider for AnthropicProvider {
         RuntimeState::Ready {
             message: Some("Uses the Anthropic Messages API".into()),
         }
+    }
+
+    fn offered_models<'a>(&'a self, http: &'a ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<String>, String>>> {
+        Box::pin(async move {
+            let url = self.shared.models_url.as_ref()?;
+            Some(models::list(http, url, self.shared.api_key.as_ref()).await)
+        })
     }
 
     fn read_failure(

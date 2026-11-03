@@ -93,6 +93,12 @@ const records: Block[] = [
     'OpenAI API request failed with HTTP 403: {"error":{"message":"Your Go plan doesn\'t include API access. Upgrade to Provider or higher at https://commandcode.ai/billing to use these endpoints.","type":"permission_error","code":"upgrade_required"}}',
     'permission_denied · API key',
   ),
+  errorRecord(
+    'model_unavailable',
+    404,
+    'Gemini API request failed with HTTP 404: {"error":{"code":404,"message":"This model models/gemini-example-pro is no longer available to new users.","status":"NOT_FOUND"}}',
+    'model_unavailable · API key',
+  ),
   errorRecord('auth_missing', 401, 'No credentials are configured for this provider.'),
   errorRecord(
     'context_length_exceeded',

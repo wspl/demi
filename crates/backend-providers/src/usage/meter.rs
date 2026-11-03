@@ -41,11 +41,18 @@ pub struct Ledger {
     /// written, so a price the catalog learns or corrects applies from the
     /// next call (`crates/backend-database/src/usage.rs`).
     pub prices: ModelPrices,
+    /// Tells the entry that the vendor no longer serves a model to it.
+    pub retire: RetireModel,
 }
 
 /// The catalog's prices of the model named, at the moment it is asked;
 /// none when the catalog has none.
 pub type ModelPrices = Rc<dyn Fn(String) -> LocalBoxFuture<'static, Option<ModelCost>>>;
+
+/// Takes the model named out of the entry's list: the vendor refused it to
+/// the entry's key, or answered with the model named second, which it
+/// routes the first to (`crates/provider-registry/src/catalog.rs`).
+pub type RetireModel = Rc<dyn Fn(String, Option<String>) -> LocalBoxFuture<'static, ()>>;
 
 /// The hashes of the system prompt and of the tool definitions `request`
 /// sends; none for a request outside a session (`crates/backend-database/src/usage.rs`).
@@ -296,6 +303,8 @@ impl Calls {
             CallOutcome::Answered => Outcome::Answered,
             CallOutcome::Refused(code) => Outcome::Refused(code.clone()),
         };
+        let rerouted_to = call.rerouted_to.clone();
+        self.retire(&outcome, rerouted_to).await;
         let row = self.row(call, outcome);
         self.record(row).await;
     }
@@ -306,8 +315,18 @@ impl Calls {
         if self.open.is_none() {
             return;
         }
+        self.retire(&outcome, None).await;
         let row = self.row(unreported(usage), outcome);
         self.record(row).await;
+    }
+
+    /// Retires the call's model when the vendor refused it to the key or
+    /// answered with `rerouted_to` instead.
+    async fn retire(&self, outcome: &Outcome, rerouted_to: Option<String>) {
+        let refused = matches!(outcome, Outcome::Refused(Some(ErrorCode::ModelUnavailable)));
+        if refused || rerouted_to.is_some() {
+            (self.ledger.retire)(self.model.clone(), rerouted_to).await;
+        }
     }
 }
 
@@ -320,6 +339,7 @@ fn unreported(usage: Option<TokenUsage>) -> VendorCall {
         cache_write_1h_tokens: 0,
         // The row's outcome is the run end's.
         outcome: CallOutcome::Answered,
+        rerouted_to: None,
     }
 }
 

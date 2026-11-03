@@ -291,6 +291,7 @@
     "filtered": "Die Sicherheitsfilter des Anbieters haben diese Antwort gestoppt.",
     "auth_expired": "Die Anmeldung beim Anbieter ist abgelaufen oder wurde abgelehnt.",
     "permission_denied": "Der Anbieter hat diese Anfrage abgelehnt.",
+    "model_unavailable": "Der Anbieter bietet dieses Modell nicht mehr an.",
     "auth_missing": "Der Anbieter hat keine Zugangsdaten.",
     "auth_invalid": "Die Zugangsdaten des Anbieters können nicht gelesen werden.",
     "auth_unsupported": "Der Anbieter akzeptiert diese Art von Zugangsdaten nicht.",

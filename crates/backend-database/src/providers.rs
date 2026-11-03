@@ -665,6 +665,43 @@ impl ControlService {
         })
         .await
     }
+
+    /// The models retired for the entry while it holds the key of
+    /// `key_digest`.
+    pub async fn retired_models(&self, provider: ProviderId, key_digest: String) -> Result<Vec<String>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection
+                .prepare_cached("SELECT model_id FROM retired_models WHERE provider_id = ?1 AND key_digest = ?2")?;
+            let models = statement
+                .query_map(params![provider.as_str(), key_digest], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+            Ok(models)
+        })
+        .await
+    }
+
+    /// Retires `model` for the entry while it holds the key of
+    /// `key_digest`; `false` for a model retired already, which keeps its
+    /// first record, or an entry deleted meanwhile, which keeps nothing.
+    pub async fn retire_model(
+        &self,
+        provider: ProviderId,
+        key_digest: String,
+        model: String,
+        answered_by: Option<String>,
+        at: Timestamp,
+    ) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let added = connection.execute(
+                "INSERT INTO retired_models (provider_id, key_digest, model_id, answered_by, retired_at)
+                 SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM providers WHERE id = ?1)
+                 ON CONFLICT DO NOTHING",
+                params![provider.as_str(), key_digest, model, answered_by, at.as_millisecond()],
+            )?;
+            Ok(added > 0)
+        })
+        .await
+    }
 }
 
 fn provider_by_id(

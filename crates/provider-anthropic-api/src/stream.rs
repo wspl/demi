@@ -26,7 +26,7 @@ use crate::{
 const LABEL: &str = "Anthropic";
 
 /// The Messages API version the provider speaks.
-const ANTHROPIC_VERSION: &str = "2023-06-01";
+pub(crate) const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 /// A run of `request`. It checks its token before each step and races every
 /// wait on the vendor against it; a cancelled run ends without a further

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use demi_backend_database::providers::CredentialRow;
 use demi_provider_common::credentials::CredentialPool;
 use demi_provider_registry::store::{RegistryStore, StoreError, StoredAccount};
-use demi_shared_types::{CatalogRecord, QuotaSnapshot};
+use demi_shared_types::{CatalogRecord, QuotaSnapshot, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
@@ -85,5 +85,26 @@ impl RegistryStore for Vault {
 
     fn delete_catalog(&self, entry: ProviderId) -> BoxFuture<'_, Result<(), StoreError>> {
         async move { self.control().delete_catalog_record(entry).await.map_err(StoreError::new) }.boxed()
+    }
+
+    fn retired_models(&self, entry: ProviderId, key_digest: String) -> BoxFuture<'_, Result<Vec<String>, StoreError>> {
+        async move { self.control().retired_models(entry, key_digest).await.map_err(StoreError::new) }.boxed()
+    }
+
+    fn retire_model(
+        &self,
+        entry: ProviderId,
+        key_digest: String,
+        model: String,
+        answered_by: Option<String>,
+        at: Timestamp,
+    ) -> BoxFuture<'_, Result<bool, StoreError>> {
+        async move {
+            self.control()
+                .retire_model(entry, key_digest, model, answered_by, at)
+                .await
+                .map_err(StoreError::new)
+        }
+        .boxed()
     }
 }

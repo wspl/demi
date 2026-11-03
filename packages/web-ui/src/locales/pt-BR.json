@@ -291,6 +291,7 @@
     "filtered": "Os filtros de segurança do provedor interromperam esta resposta.",
     "auth_expired": "O login do provedor expirou ou foi recusado.",
     "permission_denied": "O provedor recusou esta solicitação.",
+    "model_unavailable": "O provedor não oferece mais este modelo.",
     "auth_missing": "O provedor não tem credencial.",
     "auth_invalid": "A credencial do provedor não pode ser lida.",
     "auth_unsupported": "O provedor não aceita este tipo de credencial.",
