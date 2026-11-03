@@ -35,7 +35,7 @@ use demi_conversation_lane_protocol::{BlockVersions, PAGE_BLOCKS, PageAt, TurnSp
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
-    ModelSelection, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, TurnId, is_blank,
+    ModelSelection, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, TurnCause, TurnId, is_blank,
 };
 use futures_util::future::LocalBoxFuture;
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};
@@ -1772,12 +1772,20 @@ pub struct EndedTurn {
     /// The Markdown of its last text that is not blank; none when it gave
     /// none.
     pub answer: Option<String>,
+    /// The turn's own id, none when the transcript holds no input of it,
+    /// and what started it, none too when its first input block the
+    /// transcript holds says nothing of that, as a resume's does. Read
+    /// only when the summary is asked for them.
+    pub turn: Option<TurnId>,
+    pub cause: Option<TurnCause>,
 }
 
-/// One block row as the summary walks the transcript back: its kind, its
-/// turn when it is a block of a turn's input, whether it is a terminal block
-/// that ends a turn, and its text when it is a text block.
+/// One block row as the summary walks the transcript back: the node and
+/// index it is stored at, its kind, its turn when it is a block of a turn's
+/// input, whether it is a terminal block that ends a turn, and its text when
+/// it is a text block.
 struct WalkRow {
+    node: String,
     index: i64,
     kind: String,
     turn: Option<String>,
@@ -1785,19 +1793,56 @@ struct WalkRow {
     text: Option<String>,
 }
 
-/// What the walk found: the kind of the latest terminal block, and the row
-/// of the block that ended the latest ended turn with that turn's last text
-/// that is not blank.
+/// A row the walk keeps by where it is stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RowAt {
+    node: String,
+    index: i64,
+}
+
+/// What the walk found: the kind of the latest terminal block, the row of
+/// the block that ended the latest ended turn with that turn's last text
+/// that is not blank, and that turn's first input block with its turn and
+/// kind.
 struct Walk {
     last: Option<Terminal>,
-    end: Option<i64>,
+    end: Option<RowAt>,
     answer: Option<String>,
+    start: Option<(RowAt, String, String)>,
+}
+
+/// How far the walk has read the ended turn back toward its first input
+/// block: the earliest input row of the turn it read, until a row of an
+/// earlier turn's input says that one was the first.
+#[derive(Default)]
+struct StartSearch {
+    start: Option<(RowAt, String, String)>,
+    done: bool,
+}
+
+impl StartSearch {
+    /// Reads the next row back, one before the ended turn's end.
+    fn step(&mut self, row: &WalkRow) {
+        let Some(turn) = &row.turn else {
+            return;
+        };
+        match &self.start {
+            Some((_, ended, _)) if ended != turn => self.done = true,
+            _ => {
+                let at = RowAt {
+                    node: row.node.clone(),
+                    index: row.index,
+                };
+                self.start = Some((at, turn.clone(), row.kind.clone()));
+            }
+        }
+    }
 }
 
 /// How far the walk has read the ended turn back from its end.
 #[derive(Default)]
 struct EndSearch {
-    end: Option<i64>,
+    end: Option<RowAt>,
     /// The ended turn, once the walk reached one of its input blocks.
     turn: Option<String>,
     /// The last text before the input block the walk reached last: the
@@ -1811,7 +1856,10 @@ impl EndSearch {
     fn step(&mut self, row: WalkRow) -> bool {
         if self.end.is_none() {
             if row.ends_turn {
-                self.end = Some(row.index);
+                self.end = Some(RowAt {
+                    node: row.node,
+                    index: row.index,
+                });
             }
             return false;
         }
@@ -1856,8 +1904,21 @@ pub fn output_revision(connection: &Connection) -> Result<u64, StorageError> {
 }
 
 /// The summary facts of the tree `connection` holds; the empty facts when it
-/// has no root yet.
+/// has no root yet. The latest ended turn's id and cause are left out: the
+/// sidebar shows neither, and reading them reads the turn back to its start.
 pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
+    summary_of(connection, false)
+}
+
+/// The summary facts of the tree `connection` holds, with the latest ended
+/// turn's id and cause, as an integration's conversation shows them.
+pub fn summary_with_turn(connection: &Connection) -> Result<SummaryFacts, StorageError> {
+    summary_of(connection, true)
+}
+
+/// The summary facts, with the latest ended turn's id and cause when
+/// `turns`.
+fn summary_of(connection: &Connection, turns: bool) -> Result<SummaryFacts, StorageError> {
     let root: Option<(String, String, i64)> = connection
         .query_row(
             "SELECT id, state, output_revision FROM nodes WHERE parent_id IS NULL",
@@ -1876,27 +1937,30 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
     // A failed `compact` ends no turn, and a stop that a Resume continued
     // ended the turn only until the Resume.
     let mut rows = connection.prepare_cached(&format!(
-        "SELECT blocks.idx, blocks.type, blocks.turn_id,
+        "SELECT {RUN_NODE}, blocks.idx, blocks.type, blocks.turn_id,
                 blocks.type IN ('response', 'error', 'abort') AND blocks.outside_turn = 0 AND blocks.resumed = 0,
                 blocks.format, blocks.dictionary, CASE blocks.type WHEN 'text' THEN blocks.body END
            FROM {PATH_ROWS} WHERE run.node_id = ?1 ORDER BY run.start DESC, blocks.idx DESC"
     ))?;
     let codec = Codec::new(connection);
-    // A text is joined only when the walk reaches it.
+    // A text is joined only while the walk still looks for the answer: past
+    // it the walk reads the ended turn back to its start, bodies unread.
+    let texts = std::cell::Cell::new(true);
     let rows = rows.query_map(params![id], |row| {
-        let body: Option<Vec<u8>> = row.get(6)?;
+        let body: Option<Vec<u8>> = row.get(7)?;
         Ok((
             WalkRow {
-                index: row.get(0)?,
-                kind: row.get(1)?,
-                turn: row.get(2)?,
-                ends_turn: row.get(3)?,
+                node: row.get(0)?,
+                index: row.get(1)?,
+                kind: row.get(2)?,
+                turn: row.get(3)?,
+                ends_turn: row.get(4)?,
                 text: None,
             },
             match body {
                 Some(body) => Some(Stored {
-                    format: row.get(4)?,
-                    dictionary: row.get(5)?,
+                    format: row.get(5)?,
+                    dictionary: row.get(6)?,
                     body,
                 }),
                 None => None,
@@ -1905,7 +1969,9 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
     })?;
     let rows = rows.map(|row| {
         let (mut walked, stored) = row?;
-        if let Some(stored) = stored {
+        if let Some(stored) = stored
+            && texts.get()
+        {
             walked.text = match codec.block("blocks", &stored)? {
                 Block::Text(text) => Some(text.text),
                 _ => None,
@@ -1913,9 +1979,9 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
         }
         Ok(walked)
     });
-    let walk = walk(rows, state.phase)?;
+    let walk = walk(rows, state.phase, turns, &texts)?;
     let last_turn = match walk.end {
-        Some(end) => Some(ended_turn(connection, &id, end, walk.answer)?),
+        Some(end) => Some(ended_turn(connection, end, walk.answer, walk.start)?),
         None => None,
     };
     Ok(SummaryFacts {
@@ -1940,14 +2006,21 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
 /// for nothing. An action that has written no block of its own yet, such as a
 /// `compact` or a send before its message is written, cannot be told from the turn
 /// before it, which is then passed over too until the action writes one.
+///
+/// With `turns`, once it knows the answer it reads on back to the ended
+/// turn's first input block, the one that says what started it, with
+/// `texts` off, which says whether the rows still need their texts.
 fn walk(
     rows: impl Iterator<Item = Result<WalkRow, StorageError>>,
     phase: SessionPhase,
+    turns: bool,
+    texts: &std::cell::Cell<bool>,
 ) -> Result<Walk, StorageError> {
     let mut last = None;
     // The running turn, while the walk is still inside it.
     let mut running: Option<Option<String>> = (phase != SessionPhase::Idle).then_some(None);
     let mut search = EndSearch::default();
+    let mut start = StartSearch::default();
     let mut found = false;
     for row in rows {
         let row = row?;
@@ -1963,17 +2036,27 @@ fn walk(
             && let Some(input) = &row.turn
         {
             if turn.as_ref().is_none_or(|turn| turn == input) {
+                // What the walk read of the running turn counts for
+                // nothing: the ended turn's texts are still to be read.
                 running = Some(Some(input.clone()));
                 search = EndSearch::default();
+                start = StartSearch::default();
                 found = false;
+                texts.set(true);
                 continue;
             }
             running = None;
         }
+        if turns && search.end.is_some() {
+            start.step(&row);
+        }
         if !found {
             found = search.step(row);
+            if found {
+                texts.set(false);
+            }
         }
-        if found && running.is_none() {
+        if found && (start.done || !turns) && running.is_none() {
             break;
         }
     }
@@ -1981,32 +2064,59 @@ fn walk(
         last,
         end: search.end,
         answer: search.answer,
+        start: start.start,
     })
 }
 
-/// The turn the terminal block at `end` ended, whose last text is `answer`.
+/// The turn the terminal block at `end` ended, whose last text is `answer`
+/// and whose first input block is `start`, with its turn and kind.
 fn ended_turn(
     connection: &Connection,
-    node: &str,
-    end: i64,
+    end: RowAt,
     answer: Option<String>,
+    start: Option<(RowAt, String, String)>,
 ) -> Result<EndedTurn, StorageError> {
-    let stored = connection.query_row(
-        "SELECT format, dictionary, body FROM blocks WHERE node_id = ?1 AND idx = ?2",
-        params![node, end],
-        |row| Stored::of(row, 0),
-    )?;
-    let (id, outcome) = match Codec::new(connection).block("blocks", &stored)? {
+    let codec = Codec::new(connection);
+    let (id, outcome) = match codec.block("blocks", &stored_at(connection, &end)?)? {
         Block::Response(block) => (block.id, Terminal::Response),
         Block::Error(block) => (block.id, Terminal::Error),
         Block::Abort(block) => (block.id, Terminal::Abort),
         _ => unreachable!("the walk ends a turn only at a terminal block"),
     };
+    let (turn, cause) = match start {
+        Some((at, turn, kind)) => {
+            let cause = match kind.as_str() {
+                // A schedule's run writes the message it sends as the user's,
+                // with its mark: the one body the walk reads past the answer.
+                "user" => match codec.block("blocks", &stored_at(connection, &at)?)? {
+                    Block::User(block) if block.schedule.is_some() => Some(TurnCause::Schedule),
+                    _ => Some(TurnCause::Message),
+                },
+                "steer" => Some(TurnCause::Message),
+                "wakeup" => Some(TurnCause::Wakeup),
+                "agent_message" => Some(TurnCause::AgentMessage),
+                _ => None,
+            };
+            (Some(decode("blocks", "turn_id", TurnId::try_from(turn))?), cause)
+        }
+        None => (None, None),
+    };
     Ok(EndedTurn {
         id,
         outcome,
         answer,
+        turn,
+        cause,
     })
+}
+
+/// The stored body of the block row `at`.
+fn stored_at(connection: &Connection, at: &RowAt) -> Result<Stored, StorageError> {
+    Ok(connection.query_row(
+        "SELECT format, dictionary, body FROM blocks WHERE node_id = ?1 AND idx = ?2",
+        params![at.node, at.index],
+        |row| Stored::of(row, 0),
+    )?)
 }
 
 /// Which saved state of the root's transcript a reader saw: its output revision

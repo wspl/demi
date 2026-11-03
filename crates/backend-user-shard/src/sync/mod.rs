@@ -34,6 +34,10 @@ impl Shard {
     /// projects also tells each runner the directories of its Host's
     /// projects, whose worktrees it reports.
     pub fn mark(&self, part: Part) {
+        // An integration's sockets hear what its conversations show.
+        if let Part::Conversation(id) | Part::Metadata(id) = &part {
+            self.this().integration_conversation_changed(id);
+        }
         let projects = part == Part::Projects;
         self.services().sync.mark(self.user(), part);
         if projects {

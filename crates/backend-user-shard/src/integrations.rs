@@ -8,6 +8,8 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use demi_agent_server::{Observer, TreeObservers};
 use demi_agent_tools::parse_workflow;
@@ -38,6 +40,7 @@ use demi_web_api_protocol::integrations::{IntegrationDto, IntegrationPatch, Inte
 use tokio_util::sync::CancellationToken;
 
 use crate::conversation::ForkRefusal;
+use crate::conversation::outcome_of;
 use crate::shard::Shard;
 
 impl Shard {
@@ -550,6 +553,7 @@ impl Shard {
     ) -> Result<(), IntegrationRefusal> {
         let id = &self.integration_conversation_of(integration, id).await?.id;
         self.delete_conversation(id).await?;
+        self.integration_events.forget(id);
         Ok(())
     }
 
@@ -835,7 +839,14 @@ impl Shard {
             .await
             .ok()
             .and_then(|target| target.device().cloned());
-        let summary = self.conversation_summary(record).await?;
+        let (summary, facts) = self.conversation_summary_with_facts(record).await?;
+        let last_turn = facts.last_turn.map(|turn| api::LastTurn {
+            id: turn.turn,
+            cause: turn.cause,
+            outcome: outcome_of(turn.outcome),
+            ended_by: turn.id,
+            answer: turn.answer,
+        });
         Ok(api::Conversation {
             id: summary.id,
             key,
@@ -844,6 +855,8 @@ impl Shard {
             status: summary.status,
             created_at: summary.created_at,
             updated_at: summary.updated_at,
+            revision: facts.revision,
+            last_turn,
         })
     }
 }
@@ -928,12 +941,26 @@ pub struct IntegrationEvents {
     /// The plugin requests that wait for their replies, by id.
     pub(crate) calls: RefCell<HashMap<u64, crate::integration_plugins::Call>>,
     pub(crate) next_call: Cell<u64>,
+    /// Each conversation as its sockets last heard it, which a change that
+    /// shows nothing new is not told again against.
+    shown: RefCell<HashMap<ConversationId, api::Conversation>>,
+    /// The conversations whose read for their sockets is under way: a
+    /// change meanwhile is in what it reads.
+    reading: RefCell<std::collections::HashSet<ConversationId>>,
 }
 
 /// One socket of an integration's.
 struct Socket {
     id: u64,
-    sender: mpsc::Sender<api::Event>,
+    /// What happens to the integration's conversations, at most
+    /// [`SOCKET_BACKLOG`] unread.
+    events: mpsc::Sender<api::Event>,
+    /// The plugin's requests, cancellations and answers, which never wait
+    /// behind events nor are dropped: as many as the calls its agents make
+    /// at once.
+    control: mpsc::UnboundedSender<api::Event>,
+    /// Whether events were dropped since the program last read up.
+    behind: Arc<AtomicBool>,
     /// Whether it declared the integration's plugin, so its requests may go
     /// to it.
     serves: bool,
@@ -941,40 +968,65 @@ struct Socket {
 
 /// How many events a socket may hold that its program has not read: a
 /// program that stops reading would otherwise hold the backend's memory
-/// without end. A socket that falls this far behind is ended, and its
-/// program reads again what it shows, as after any reconnection.
+/// without end. Past it the socket's events are dropped and it is told it
+/// fell behind, after which its program reconciles from the state.
 const SOCKET_BACKLOG: usize = 4096;
+
+/// What a socket of an integration's reads: its events, its plugin's
+/// requests, and whether it fell behind.
+pub struct IntegrationSocket {
+    pub id: u64,
+    pub events: mpsc::Receiver<api::Event>,
+    pub control: mpsc::UnboundedReceiver<api::Event>,
+    pub behind: Arc<AtomicBool>,
+}
 
 impl IntegrationEvents {
     /// A socket of `integration`'s from now on, by its number, until its
-    /// receiver goes.
-    pub fn subscribe(&self, integration: IntegrationId) -> (u64, mpsc::Receiver<api::Event>) {
-        let (sender, receiver) = mpsc::channel(SOCKET_BACKLOG);
+    /// receivers go.
+    pub fn subscribe(&self, integration: IntegrationId) -> IntegrationSocket {
+        let (events, events_received) = mpsc::channel(SOCKET_BACKLOG);
+        let (control, control_received) = mpsc::unbounded_channel();
+        let behind = Arc::new(AtomicBool::new(false));
         let id = self.next_socket.get() + 1;
         self.next_socket.set(id);
         self.sockets.borrow_mut().entry(integration).or_default().push(Socket {
             id,
-            sender,
+            events,
+            control,
+            behind: behind.clone(),
             serves: false,
         });
-        (id, receiver)
+        IntegrationSocket {
+            id,
+            events: events_received,
+            control: control_received,
+            behind,
+        }
     }
 
-    /// Tells every socket of `integration`'s; a socket whose receiver went,
-    /// or that fell behind, is dropped.
+    /// Tells every socket of `integration`'s; a socket whose receiver went
+    /// is dropped, and one that is full is marked behind.
     fn publish(&self, integration: &IntegrationId, event: api::Event) {
         let mut sockets = self.sockets.borrow_mut();
         let Some(list) = sockets.get_mut(integration) else {
             return;
         };
-        list.retain(|socket| socket.sender.try_send(event.clone()).is_ok());
+        list.retain(|socket| match socket.events.try_send(event.clone()) {
+            Ok(()) => true,
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                socket.behind.store(true, Ordering::Release);
+                true
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => false,
+        });
         if list.is_empty() {
             sockets.remove(integration);
         }
     }
 
-    /// Tells the socket `socket` of `integration`'s alone; false when it is
-    /// gone or fell behind, which drops it.
+    /// Tells the socket `socket` of `integration`'s alone, on its plugin's
+    /// queue; false when it is gone, which drops it.
     pub(crate) fn send_to(&self, integration: &IntegrationId, socket: u64, event: api::Event) -> bool {
         let mut sockets = self.sockets.borrow_mut();
         let Some(list) = sockets.get_mut(integration) else {
@@ -983,7 +1035,7 @@ impl IntegrationEvents {
         let Some(index) = list.iter().position(|candidate| candidate.id == socket) else {
             return false;
         };
-        if list[index].sender.try_send(event).is_ok() {
+        if list[index].control.send(event).is_ok() {
             return true;
         }
         list.remove(index);
@@ -1011,7 +1063,7 @@ impl IntegrationEvents {
             .get(integration)?
             .iter()
             .rev()
-            .find(|socket| socket.serves && !socket.sender.is_closed())
+            .find(|socket| socket.serves && !socket.control.is_closed())
             .map(|socket| socket.id)
     }
 
@@ -1049,6 +1101,25 @@ impl IntegrationEvents {
 
     fn heard(&self, integration: &IntegrationId) -> bool {
         self.sockets.borrow().contains_key(integration)
+    }
+
+    /// Tells `integration`'s sockets the conversation `shown`, unless they
+    /// last heard it with the same status, latest ended turn and title.
+    fn tell(&self, integration: &IntegrationId, shown: api::Conversation) {
+        let same = |heard: &api::Conversation| {
+            heard.status == shown.status && heard.last_turn == shown.last_turn && heard.title == shown.title
+        };
+        if self.shown.borrow().get(&shown.id).is_some_and(same) {
+            return;
+        }
+        self.shown.borrow_mut().insert(shown.id.clone(), shown.clone());
+        self.publish(integration, api::Event::Conversation { conversation: shown });
+    }
+
+    /// Forgets what the sockets heard of the conversation `id`, which was
+    /// deleted or closed.
+    pub(crate) fn forget(&self, id: &ConversationId) {
+        self.shown.borrow_mut().remove(id);
     }
 }
 
@@ -1193,37 +1264,55 @@ impl Shard {
     }
 
     /// A socket of the integration `integration`'s from now on, until its
-    /// receiver goes.
-    pub fn subscribe_integration(&self, integration: IntegrationId) -> (u64, mpsc::Receiver<api::Event>) {
+    /// receivers go.
+    pub fn subscribe_integration(&self, integration: IntegrationId) -> IntegrationSocket {
         self.integration_events.subscribe(integration)
     }
 
     /// The conversation's status may have changed: an integration's sockets
-    /// hear its status now. A tree that starts working says `running` in the
-    /// step it starts, before anything it does; what it ends with is read
-    /// after.
+    /// hear the conversation now. A tree that starts working says `running`
+    /// in the step it starts, before anything it does, with the rest as its
+    /// sockets last heard it; the rest is read after, such as a turn that
+    /// ended while a subagent works on.
     pub(crate) fn integration_status_changed(self: &Rc<Self>, conversation: &ConversationId) {
         if self.agent().tree(&root_of(conversation)).is_some_and(|tree| tree.works())
             && let Some(integration) = self.integration_of_open(conversation)
         {
-            self.integration_events.publish(
-                &integration,
-                api::Event::Conversation {
-                    conversation: conversation.clone(),
-                    status: ConversationStatus::Running,
-                },
-            );
-            return;
+            let shown = self.integration_events.shown.borrow().get(conversation).cloned();
+            if let Some(mut shown) = shown
+                && !matches!(shown.status, ConversationStatus::Running | ConversationStatus::Compacting)
+            {
+                shown.status = ConversationStatus::Running;
+                self.integration_events.tell(&integration, shown);
+            }
         }
         // A tree that closed has no observer any more.
         if self.agent().tree(&root_of(conversation)).is_none() {
             self.integration_events.observed.borrow_mut().remove(conversation);
         }
+        self.integration_conversation_changed(conversation);
+    }
+
+    /// Something an integration's conversation shows may have changed, its
+    /// status, its latest ended turn or its title: its sockets hear the
+    /// conversation, read now, when it shows something new. Changes that
+    /// come while a read waits to start are in what it reads.
+    pub(crate) fn integration_conversation_changed(self: &Rc<Self>, conversation: &ConversationId) {
+        // No socket of the user's integrations hears anything: a user of the
+        // web app alone pays nothing for this.
+        if self.integration_events.sockets.borrow().is_empty() {
+            return;
+        }
+        if !self.integration_events.reading.borrow_mut().insert(conversation.clone()) {
+            return;
+        }
         let shard = self.clone();
         let conversation = conversation.clone();
         self.tasks().spawn_local(async move {
+            shard.integration_events.reading.borrow_mut().remove(&conversation);
             let control = &shard.services().control;
             let Ok(Some(kept)) = control.integration_conversation(conversation.clone()).await else {
+                shard.integration_events.forget(&conversation);
                 return;
             };
             if !shard.integration_events.heard(&kept.integration) {
@@ -1232,20 +1321,21 @@ impl Shard {
             let Ok(Some(record)) = control.conversation(conversation.clone()).await else {
                 return;
             };
-            if let Ok(summary) = shard.conversation_summary(record).await {
+            if let Ok(shown) = shard.integration_conversation_shown(record, kept.key).await {
                 // A turn that started meanwhile told its own status in its
-                // step; this one's would come after it, and be older.
-                let works = shard.agent().tree(&root_of(&conversation)).is_some_and(|tree| tree.works());
-                if works != matches!(summary.status, ConversationStatus::Running | ConversationStatus::Compacting) {
+                // step; this one's would come after it, and be older. The
+                // status is the sidebar's, which a tree's running reads.
+                let tree = shard.agent().tree(&root_of(&conversation));
+                let running = tree.as_ref().is_some_and(|tree| tree.is_running());
+                if running != matches!(shown.status, ConversationStatus::Running | ConversationStatus::Compacting) {
                     return;
                 }
-                shard.integration_events.publish(
-                    &kept.integration,
-                    api::Event::Conversation {
-                        conversation,
-                        status: summary.status,
-                    },
-                );
+                shard.integration_events.tell(&kept.integration, shown);
+                // What a closed conversation's sockets heard is read again
+                // when it opens: it need not be kept.
+                if tree.is_none() {
+                    shard.integration_events.forget(&conversation);
+                }
             }
         });
     }

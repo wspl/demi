@@ -132,6 +132,7 @@ impl Titles {
         id: ConversationId,
         selection: ModelSelection,
         request: TitleRequest,
+        ended: impl FnOnce(&ConversationId) + 'static,
     ) {
         if !self.enabled {
             return;
@@ -148,7 +149,8 @@ impl Titles {
             let titled = generate(&small_requests, &control, &id, &selection, request, &cancel).await;
             log_title(&id, None, &selection, started, &titled);
             in_flight.borrow_mut().remove(&id);
-            marks.mark(Part::Conversation(id));
+            marks.mark(Part::Conversation(id.clone()));
+            ended(&id);
         }
         .in_current_span());
     }
@@ -271,8 +273,15 @@ impl Shard {
                 message: text.to_owned(),
                 from: title,
             };
+            // An integration's sockets hear the title.
+            let shard = Rc::downgrade(&self.this());
+            let ended = move |id: &ConversationId| {
+                if let Some(shard) = shard.upgrade() {
+                    shard.integration_conversation_changed(id);
+                }
+            };
             self.titles()
-                .start(self.tasks(), record.id.clone(), selection.clone(), request);
+                .start(self.tasks(), record.id.clone(), selection.clone(), request, ended);
         }
         Ok(())
     }

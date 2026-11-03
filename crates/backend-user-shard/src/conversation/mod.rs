@@ -69,6 +69,7 @@ pub use self::deletion::finish_deletions;
 pub use self::attachment_facts::{attachment_facts, named_blocks, replies, reply_block_facts};
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
+pub(crate) use self::summary::outcome_of;
 pub use self::idle_compaction::arm_idle_compactions;
 pub use self::restart_resume::resume_after_restart;
 pub use self::announcement::AgentsError;
@@ -123,11 +124,16 @@ pub(crate) fn conversation_parts(
                 let root = root.clone();
                 let shard = shard.clone();
                 Rc::new(move |node: &NodeId, change: Option<TranscriptChange>| {
-                    if let (Some(change), Some(shard)) = (change, shard.upgrade()) {
+                    let shard = shard.upgrade();
+                    if let (Some(change), Some(shard)) = (change, &shard) {
                         shard.follow_save(conversation.clone(), change);
                     }
                     if *node == root {
                         marks.mark(Part::Conversation(conversation.clone()));
+                        // An integration's sockets hear what the entry shows.
+                        if let Some(shard) = &shard {
+                            shard.integration_conversation_changed(&conversation);
+                        }
                     }
                 })
             };

@@ -48,7 +48,7 @@ impl Shard {
         .await?;
         try_join_all(records.into_iter().map(|record| {
             let panel = readable(&record.id, panels.remove(&record.id).unwrap_or_else(|| Ok(WorkPanel::empty())));
-            self.summarize(record, panel)
+            async move { Ok(self.summarize(record, panel, false).await?.0) }
         }))
         .await
     }
@@ -64,19 +64,37 @@ impl Shard {
         record: ConversationRecord,
     ) -> Result<ConversationSummary, StorageError> {
         let panel = readable(&record.id, self.services().control.panel(record.id.clone()).await);
-        self.summarize(record, panel).await
+        Ok(self.summarize(record, panel, false).await?.0)
     }
 
-    async fn summarize(&self, record: ConversationRecord, panel: WorkPanel) -> Result<ConversationSummary, StorageError> {
+    /// `record` as the sidebar lists it, with the checkpoint's facts its
+    /// entry was made of and its latest ended turn's id and cause, which an
+    /// integration's conversation shows.
+    pub(crate) async fn conversation_summary_with_facts(
+        &self,
+        record: ConversationRecord,
+    ) -> Result<(ConversationSummary, SummaryFacts), StorageError> {
+        let panel = readable(&record.id, self.services().control.panel(record.id.clone()).await);
+        self.summarize(record, panel, true).await
+    }
+
+    /// `record`'s entry, with the facts it was made of, its latest ended
+    /// turn's id and cause among them when `turns`.
+    async fn summarize(
+        &self,
+        record: ConversationRecord,
+        panel: WorkPanel,
+        turns: bool,
+    ) -> Result<(ConversationSummary, SummaryFacts), StorageError> {
         let live = self
             .agent()
             .tree(&root_of(&record.id))
             .map(|tree| (tree.is_running(), tree.root().session().phase()));
-        let facts = self.summary_facts(&record.id).await;
+        let facts = self.summary_facts_of(&record.id, turns).await;
         let resolved = self.host_shard().resolve_target(&record).await?;
         let archived = record.archived();
         let resuming = self.restart_resumes().contains(&record.id);
-        Ok(ConversationSummary {
+        let summary = ConversationSummary {
             unread: facts.revision > record.read_revision && !self.idle_compactions().keeps_read(&record.id),
             status: status(live, resuming, &facts),
             target: record.target.shown(&resolved),
@@ -95,7 +113,8 @@ impl Shard {
             unread_permission_requests: record.unread_permission_requests,
             scheduled: record.scheduled,
             panel,
-        })
+        };
+        Ok((summary, facts))
     }
 
     /// The conversation `id`'s shares, its own and its answers', as the share
@@ -183,7 +202,15 @@ impl Shard {
     /// fails to open, and the user's other conversations and pages work on
     /// (`crates/backend-database/src/lib.rs`).
     pub(crate) async fn summary_facts(&self, id: &ConversationId) -> SummaryFacts {
-        match self.services().conversations.read(id, tree::summary).await {
+        self.summary_facts_of(id, false).await
+    }
+
+    /// The facts of the conversation `id`'s checkpoint, its latest ended
+    /// turn's id and cause among them when `turns`, as
+    /// [`Self::summary_facts`] reads them.
+    async fn summary_facts_of(&self, id: &ConversationId, turns: bool) -> SummaryFacts {
+        let read = move |connection: &_| if turns { tree::summary_with_turn(connection) } else { tree::summary(connection) };
+        match self.services().conversations.read(id, read).await {
             Ok(facts) => facts.unwrap_or(SummaryFacts::EMPTY),
             Err(error) => {
                 tracing::error!(
@@ -232,11 +259,16 @@ fn settings(selection: &ModelSelection) -> Result<ModelSettings, StorageError> {
 fn last_turn(turn: &EndedTurn) -> LastTurn {
     LastTurn {
         id: turn.id.clone(),
-        outcome: match turn.outcome {
-            Terminal::Response => TurnOutcome::Finished,
-            Terminal::Error => TurnOutcome::Failed,
-            Terminal::Abort => TurnOutcome::Stopped,
-        },
+        outcome: outcome_of(turn.outcome),
+    }
+}
+
+/// How a turn that `terminal` ended ended.
+pub(crate) fn outcome_of(terminal: Terminal) -> TurnOutcome {
+    match terminal {
+        Terminal::Response => TurnOutcome::Finished,
+        Terminal::Error => TurnOutcome::Failed,
+        Terminal::Abort => TurnOutcome::Stopped,
     }
 }
 

@@ -11,6 +11,22 @@ use crate::{
     QuotaWindowName, Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
+/// What started a turn, as the block it starts with says: a `user` block
+/// is a message, or a schedule's when it carries a schedule's mark; a
+/// `wakeup` and an `agent_message` block start their own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnCause {
+    /// A message of the user's or of a program's.
+    Message,
+    /// A message a schedule's run sent.
+    Schedule,
+    /// A wakeup the agent set.
+    Wakeup,
+    /// A subagent's report or another agent's message.
+    AgentMessage,
+}
+
 /// One block of a transcript.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]

@@ -88,15 +88,14 @@ The following steps start a conversation and read its reply.
    ```
 
 5. Wait until the conversation's `status`, which
-   `GET /v1/conversations/{conversation}` returns, is `completed`, then read
-   the main agent's transcript. The main agent's id is the conversation's id:
+   `GET /v1/conversations/{conversation}` returns, is `completed`. Its
+   `lastTurn.answer` is the reply. For everything the agent did, read the
+   main agent's transcript; the main agent's id is the conversation's id:
 
    ```sh
    curl -H "Authorization: Bearer $TOKEN" \
      $DEMI/v1/conversations/<conversation id>/agents/<conversation id>/transcript
    ```
-
-   The reply is in the transcript's last `text` blocks.
 
 A real program doesn't poll: it listens on the socket, as
 [Hear what happens](#hear-what-happens) describes.
@@ -285,14 +284,40 @@ JSON event:
   blocks of the agent's transcript at the previous version and lead to
   `version`.
 - `agent`: an agent started, ended, or changed its state or its Cloud.
-- `conversation`: a conversation's status changed. A turn has ended when the
-  status leaves `running` and `compacting`; `completed`, `stopped` or `error`
-  says how. That's when a chat program usually posts the reply.
+- `conversation`: a conversation's status, its latest turn or its title
+  changed. It carries the whole conversation, as
+  `GET /v1/conversations` lists it, and may repeat what the previous one
+  said.
 - `retry_scheduled`: the main agent's request failed for a reason that
   passes, and it retries after `delayMs`. Tell your users it's still working.
+- `behind`: your program read too slowly, and events after the ones it read
+  were dropped. Reconcile, as below. Your commands' requests are never
+  dropped.
 
-The socket sends only what happens while it's open. After you reconnect, read
-the transcripts again and apply the patches that follow their versions.
+### Turns
+
+A conversation's `lastTurn` is the main agent's latest turn that ended:
+
+- `id`: the `id` of the message that started it. A turn that a schedule, a
+  wakeup or another agent's message started has Demi's own id, and `cause`
+  says which.
+- `outcome`: `finished`, `failed` or `stopped`.
+- `endedBy`: the block that ended it. A turn that `resume` continues ends
+  again, with another block.
+- `answer`: the Markdown of its last text, which a chat program posts.
+
+While `status` is `running`, more is coming, even after a turn ended: a
+subagent still works, a command still runs, or a report waits for the main
+agent, and each of them starts another turn. `completed`, `error` and
+`stopped` mean nothing will start by itself.
+
+### Reconcile
+
+The socket sends only what happens while it's open, so trust the state, not
+the events. After you connect, and after `behind`, list your conversations
+with `GET /v1/conversations` and compare each one's `lastTurn` and
+`revision` with what you handled: a turn that ended while you were away is
+there. Read a transcript you follow again from the version you hold.
 
 ## Give the agents your commands and context
 

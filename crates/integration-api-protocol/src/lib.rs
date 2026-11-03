@@ -21,10 +21,10 @@ use demi_command_declarations::{NativeOperation, Node};
 use demi_conversation_lane_protocol::{JobModel, JobPhase, TranscriptPatch, Version};
 use demi_host_interface::{PortRequest, PortResponse};
 use demi_shared_types::{
-    Block, BlockId, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp,
+    Block, BlockId, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp, TurnCause, TurnId,
 };
 use demi_web_api_protocol::cloud::CloudState;
-use demi_web_api_protocol::conversations::ConversationStatus;
+use demi_web_api_protocol::conversations::{ConversationStatus, TurnOutcome};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, IntegrationId};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -165,9 +165,36 @@ pub struct Conversation {
     /// The Cloud its main agent works on; null for one whose Cloud is gone.
     pub cloud: Option<DeviceId>,
     pub title: String,
+    /// `running` or `compacting` while more is coming: a turn, a subagent
+    /// that is live, a command that is not a service, or a report the main
+    /// agent has not read, each of which wakes it.
     pub status: ConversationStatus,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+    /// The main agent's output revision, which each save of its output
+    /// raises; a save of input alone, such as a steer, does not. `lastTurn`
+    /// says whether a turn ended.
+    pub revision: u64,
+    /// The main agent's latest ended turn; null before one ended.
+    pub last_turn: Option<LastTurn>,
+}
+
+/// A conversation's latest ended turn, as its checkpoint holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LastTurn {
+    /// The turn's id: the message's `id` for a turn a message started,
+    /// Demi's own for one a schedule, a wakeup or another agent started;
+    /// null where the transcript holds no input of it.
+    pub id: Option<TurnId>,
+    /// What started it; null where the transcript does not say.
+    pub cause: Option<TurnCause>,
+    pub outcome: TurnOutcome,
+    /// The block that ended it: a turn that a resume goes on with ends
+    /// anew, with another block.
+    pub ended_by: BlockId,
+    /// The Markdown of its last text that is not blank; null for none.
+    pub answer: Option<String>,
 }
 
 /// `POST /conversations`: a conversation on `cloud`, or with `key` the one
@@ -540,13 +567,13 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diagnostics: Option<ProviderErrorDiagnostics>,
     },
-    /// The conversation's status changed. A turn has ended when it leaves
-    /// `running` and `compacting`: `completed`, `stopped` or `error` says
-    /// how.
-    Conversation {
-        conversation: ConversationId,
-        status: ConversationStatus,
-    },
+    /// The conversation's status, its latest ended turn or its title
+    /// changed: the conversation as `GET /conversations` lists it.
+    Conversation { conversation: Conversation },
+    /// The program read too slowly and missed events after this socket's
+    /// last: it reconciles from `GET /conversations`. Requests are never
+    /// missed.
+    Behind {},
     /// What a `declare` this socket sent became: the plugin it serves from
     /// now on, or why it was refused, which changed nothing.
     Declared {

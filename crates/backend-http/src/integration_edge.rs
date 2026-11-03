@@ -24,7 +24,9 @@ use axum::routing::{delete, get, post};
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::integrations::{IntegrationPatch as StoredPatch, IntegrationRecord};
-use demi_backend_user_shard::integrations::IntegrationRefusal;
+use std::sync::atomic::Ordering;
+
+use demi_backend_user_shard::integrations::{IntegrationRefusal, IntegrationSocket};
 use demi_integration_api_protocol as api;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_conversation_lane_protocol::ClientFrame;
@@ -883,30 +885,35 @@ async fn search_files(
 async fn socket(State(state): State<AppState>, headers: HeaderMap, upgrade: WebSocketUpgrade) -> Result<Response, ApiError> {
     let record = authenticated(&state, &headers).await?;
     let integration = record.id.clone();
-    let (id, events) = state
+    let subscribed = state
         .shards
         .of(&record.user)
         .call(move |shard, _| async move { shard.subscribe_integration(integration) })
         .await?;
-    Ok(upgrade.on_upgrade(move |socket| serve(socket, state, record, id, events)))
+    Ok(upgrade.on_upgrade(move |socket| serve(socket, state, record, subscribed)))
 }
 
-async fn serve(
-    mut socket: WebSocket,
-    state: AppState,
-    record: IntegrationRecord,
-    id: u64,
-    mut events: tokio::sync::mpsc::Receiver<api::Event>,
-) {
+/// Writes the socket's plugin requests first, reads what the program sends
+/// before it writes events, and after the event the program reads next
+/// once events were dropped, writes `behind`.
+async fn serve(mut socket: WebSocket, state: AppState, record: IntegrationRecord, subscribed: IntegrationSocket) {
+    let IntegrationSocket {
+        id,
+        mut events,
+        mut control,
+        behind,
+    } = subscribed;
     loop {
         tokio::select! {
-            event = events.recv() => {
-                let Some(event) = event else { break };
-                let Ok(text) = serde_json::to_string(&event) else { continue };
+            biased;
+            request = control.recv() => {
+                let Some(request) = request else { break };
+                let Ok(text) = serde_json::to_string(&request) else { continue };
                 if socket.send(Message::Text(text.into())).await.is_err() {
                     break;
                 }
             }
+            // Before the events, which a busy integration never runs out of.
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Text(text))) => {
                     let message = match serde_json::from_str::<api::ClientMessage>(text.as_str()) {
@@ -931,6 +938,21 @@ async fn serve(
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 Some(Ok(_)) => {}
             },
+            event = events.recv() => {
+                let Some(event) = event else { break };
+                let Ok(text) = serde_json::to_string(&event) else { continue };
+                if socket.send(Message::Text(text.into())).await.is_err() {
+                    break;
+                }
+                // Told as the program reads again, not once it read up: one
+                // that never catches up learns of the gap as well.
+                if behind.swap(false, Ordering::AcqRel) {
+                    let Ok(text) = serde_json::to_string(&api::Event::Behind {}) else { continue };
+                    if socket.send(Message::Text(text.into())).await.is_err() {
+                        break;
+                    }
+                }
+            }
         }
     }
     let integration = record.id.clone();
