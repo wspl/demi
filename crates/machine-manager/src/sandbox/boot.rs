@@ -76,6 +76,9 @@ pub struct Sandbox {
     /// leaves it records for the next (`crates/machine-manager/src/handover.rs`);
     /// none for a boot recovery found.
     programs: Option<BaseVersion>,
+    /// Which machine the boot runs, from its start; none for a boot recovery
+    /// found, which is fenced and never admitted to the firewall.
+    machine: Option<SandboxMachine>,
 }
 
 /// What a checkpoint's frozen window produced: whether the copies were
@@ -99,13 +102,20 @@ impl Sandbox {
             record,
             waiter: None,
             programs: None,
+            machine: None,
         }
     }
 
     /// The running boot `record` names, which a manager before this one left
-    /// on `lease`'s slot with Demi's programs from base `programs`: it is
-    /// waited for from now on, as one this manager started.
-    pub fn adopted(core: &Core, record: SandboxRecord, lease: SlotLease, programs: BaseVersion) -> Self {
+    /// on `lease`'s slot with Demi's programs from base `programs`, running a
+    /// `machine`: it is waited for from now on, as one this manager started.
+    pub fn adopted(
+        core: &Core,
+        record: SandboxRecord,
+        lease: SlotLease,
+        programs: BaseVersion,
+        machine: SandboxMachine,
+    ) -> Self {
         let runsc = core.runsc.clone();
         let id = record.id.clone();
         Self {
@@ -115,15 +125,17 @@ impl Sandbox {
             record,
             waiter: Some(tokio::task::spawn_local(async move { runsc.wait(&id).await })),
             programs: Some(programs),
+            machine: Some(machine),
         }
     }
 
     /// What a manager that leaves the running sandbox records of it: its
-    /// boot, its slot and the base of its programs. The sandbox runs on: no
-    /// resource of it is released.
-    pub fn leave(self) -> Option<(SandboxRecord, BaseVersion)> {
+    /// boot, its slot, the base of its programs and its machine. The sandbox
+    /// runs on: no resource of it is released.
+    pub fn leave(self) -> Option<(SandboxRecord, BaseVersion, SandboxMachine)> {
         let programs = self.programs.clone()?;
-        Some((self.record.clone(), programs))
+        let machine = self.machine?;
+        Some((self.record.clone(), programs, machine))
     }
 
     /// The directory of the boot's bundle, which its Sentry and Gofer name.
@@ -140,6 +152,7 @@ impl Sandbox {
             record,
             waiter: None,
             programs: None,
+            machine: None,
         }
     }
 
@@ -150,6 +163,12 @@ impl Sandbox {
     /// The network slot the sandbox runs on.
     pub fn slot(&self) -> &Slot {
         &self.slot
+    }
+
+    /// The slot and the machine of a sandbox that started, as the firewall
+    /// admits them; none for one that has not.
+    pub fn admitted(&self) -> Option<(Slot, SandboxMachine)> {
+        Some((self.slot.clone(), self.machine?))
     }
 
     /// Starts the boot on the working pair with the base at `base` and
@@ -168,6 +187,7 @@ impl Sandbox {
         machine: SandboxMachine,
     ) -> Result<(), SandboxError> {
         self.programs = Some(programs_base.clone());
+        self.machine = Some(machine);
         if boot.backend_url.url() != &core.config.backend_url {
             return Err(SandboxError::Allowlist);
         }
@@ -224,7 +244,7 @@ impl Sandbox {
             Ok(())
         })
         .await?;
-        core.network.attach(&self.slot).await?;
+        core.network.attach(&self.slot, machine).await?;
         let spec = oci::spec(&oci::Boot {
             directory: &self.directory,
             namespace: &core.network.namespace_file(&self.slot),

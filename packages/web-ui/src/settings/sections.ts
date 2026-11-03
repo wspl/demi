@@ -6,6 +6,7 @@ import {
   BrainCircuit,
   CircleArrowUp,
   CircleUser,
+  CloudCog,
   Code,
   Database,
   Info,
@@ -247,6 +248,30 @@ export function withUsersSection(groups: SettingsNavGroup[], role: UserRole): Se
           ...group,
           items: group.items.flatMap((item) => (item.id === 'portForwards' ? [item, users] : [item])),
         }
+      : group,
+  )
+}
+
+/** Settings › Cloud Network, which only the master has. */
+export function cloudNetworkSection(): SettingsNavItem {
+  return {
+    id: 'cloudNetwork',
+    label: t('cloudNetwork.title'),
+    icon: CloudCog,
+    keywords: words(t('sections.cloudNetwork.keywords')),
+    settings: [{ label: t('cloudNetwork.access') }],
+  }
+}
+
+/** The rail with Cloud Network after Users, for the master; the rail unchanged for anyone else. */
+export function withCloudNetworkSection(groups: SettingsNavGroup[], role: UserRole): SettingsNavGroup[] {
+  if (role !== 'master') {
+    return groups
+  }
+  const network = cloudNetworkSection()
+  return groups.map((group) =>
+    group.items.some((item) => item.id === 'users')
+      ? { ...group, items: group.items.flatMap((item) => (item.id === 'users' ? [item, network] : [item])) }
       : group,
   )
 }

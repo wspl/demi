@@ -387,6 +387,9 @@
     "users": {
       "keywords": "accounts,people,admin,add user,invite,reset password,role,disable,sign out everywhere"
     },
+    "cloudNetwork": {
+      "keywords": "network,private network,intranet,internal,lan,firewall,proxy,git,tailscale,ip,address,port"
+    },
     "developer": {
       "keywords": "developer,debug,troubleshooting",
       "errorsKeywords": "error,bug,log,debug,diagnostics"
@@ -512,6 +515,33 @@
       "action": "Disable Account",
       "body": "{name} is signed out everywhere and can’t sign in. Their Cloud stops and their devices disconnect.",
       "note": "Nothing is removed. Enable Account restores access."
+    }
+  },
+  "cloudNetwork": {
+    "title": "Cloud Network",
+    "description": "Which networks the Clouds on this server reach.",
+    "access": "Private Network Access",
+    "accessDescription": "Clouds reach only the internet by default. If Demi runs on your company’s network, turn this on so Clouds can reach its Git servers, internal services and proxies. The server itself, cloud metadata services and other people’s Clouds stay unreachable.",
+    "entireDescription": "Clouds reach every private address, as a computer on your network does, so a web page a Cloud’s browser opens can try to reach your internal services too. The server itself, cloud metadata services and other people’s Clouds stay unreachable.",
+    "addresses": "Addresses",
+    "addressesDescription": "Clouds reach each address or network listed: on every port, or only on the port written after it.",
+    "add": "Add Address",
+    "placeholder": "Add an address, such as 10.20.0.0/16 or 10.20.0.7:22",
+    "remove": "Remove",
+    "empty": "No addresses yet.",
+    "problems": {
+      "address": "Enter an IPv4 address or network, such as 10.20.0.7 or 10.20.0.0/16.",
+      "port": "Enter a port from 1 to 65535.",
+      "neverReachable": "Clouds can never reach this address."
+    },
+    "pending": "Saved. Clouds get the change once the machine manager is available again.",
+    "failed": "Couldn’t change private network access",
+    "loadFailed": "Couldn’t load Cloud Network",
+    "loading": "Loading Cloud Network…",
+    "accesses": {
+      "off": "Off",
+      "entire": "Entire Private Network",
+      "only": "Only These Addresses"
     }
   },
   "addUser": {

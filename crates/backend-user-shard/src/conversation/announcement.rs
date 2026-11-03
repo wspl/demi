@@ -21,6 +21,7 @@ use demi_backend_database::conversation_index::{
     AttachedHost, ExecutionTarget, TargetSwitch,
 };
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
+use demi_web_api_protocol::devices::DeviceKind;
 use demi_agent_store::Placement;
 use demi_conversation_lane_protocol::{AgentEntry, Version};
 use demi_agent_tools::NodeContext;
@@ -62,6 +63,12 @@ const MACOS_UTILITIES: &str = "sh, bash and the standard utilities that write fi
 
 /// Where the agent keeps the files only it needs (`crates/runner-jobs/src/scratch.rs`), which every block says after where shells start.
 const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation.";
+
+/// What a block for a Cloud says of the network the server is on, which the
+/// machine manager's firewall closes to Clouds unless the master opens it
+/// (`crates/machine-manager/src/network/mod.rs`): a refused connection is
+/// the server's setting, not a fault to work around.
+const CLOUD_PRIVATE_NETWORK: &str = "Addresses on the server's private network are blocked unless the server's master allows them in Settings › Cloud Network.";
 
 /// What a block for Windows says of its utilities: the others are Git for
 /// Windows' (`crates/runner/src/git.rs`).
@@ -224,11 +231,14 @@ impl Shard {
     /// without its system.
     async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
         let (device, name) = self.primary_host(target).await?;
-        let utilities = match device.as_ref().map(|record| &record.platform) {
+        let mut utilities = match device.as_ref().map(|record| &record.platform) {
             Some(RunnerPlatform::Darwin) => format!("{MACOS_UTILITIES}."),
             Some(RunnerPlatform::Win32) => format!("{WINDOWS_UTILITIES}. {WINDOWS_SHELLS}"),
             _ => format!("{UTILITIES}."),
         };
+        if device.as_ref().is_none_or(|record| record.kind == DeviceKind::Managed) {
+            utilities = format!("{utilities} {CLOUD_PRIVATE_NETWORK}");
+        }
         let host = match device.and_then(|record| record.os) {
             Some(os) => format!("{name}, {} ({})", os.name, os.arch),
             None => name,

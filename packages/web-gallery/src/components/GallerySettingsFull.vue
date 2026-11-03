@@ -38,6 +38,7 @@ import GallerySubagents from './GallerySubagents.vue'
 import GalleryAgent from './GalleryAgent.vue'
 import GalleryAbout from './GalleryAbout.vue'
 import GalleryUpdates from './GalleryUpdates.vue'
+import GalleryCloudNetwork from './GalleryCloudNetwork.vue'
 import GalleryPortForwards from './GalleryPortForwards.vue'
 import { slow } from '../fixtures/slow'
 import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
@@ -412,6 +413,7 @@ function resetShortcuts() {
 
   <GalleryAbout v-else-if="tab === 'about'" />
   <GalleryUpdates v-else-if="tab === 'updates'" />
+  <GalleryCloudNetwork v-else-if="tab === 'cloudNetwork'" />
 
   <SettingsData
     v-else-if="tab === 'data'"

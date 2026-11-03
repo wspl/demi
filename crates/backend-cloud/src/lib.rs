@@ -104,6 +104,7 @@ pub mod capacity;
 pub mod client;
 pub mod machine;
 mod maintenance;
+pub mod network;
 pub mod reset;
 pub mod status;
 pub mod tuning;

@@ -138,6 +138,34 @@ If none remains, startup fails and names `DEMI_MANAGED_DNS`. The manager
 never picks a public resolver itself. So a host whose resolver is a local
 cache with no upstream file sets the variable.
 
+### The private network
+
+Clouds reach the internet and the resolvers above. Whether they reach the
+private network the server is on is the master's choice in Settings › Cloud
+Network, not a variable:
+
+- **Off**, the default: no private address.
+- **Entire Private Network**: `10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16` and `100.64.0.0/10`, where Tailscale and carrier NAT
+  addresses are.
+- **Only These Addresses**: the IPv4 addresses and networks listed, such as
+  `10.20.0.0/16`, each on every port or on one, such as `10.20.0.7:22`.
+
+No choice opens the server's own addresses, the network pool, which is the
+other Clouds, loopback, link-local `169.254.0.0/16`, where cloud metadata
+services answer, multicast or reserved ranges. The Claude Code machine
+reaches none of it either.
+
+A refused connection fails at once with ICMP administratively prohibited,
+which `ssh` and `git` print as "No route to host". The backend stores the
+choice and gives it to the manager each time it connects, so a manager
+restarted on its own refuses every private address only until the backend
+reconnects, within a few seconds.
+
+A Cloud that needs the company's HTTP proxy exports `HTTPS_PROXY` in its
+`~/.profile`, which every command reads; the choice only has to allow the
+proxy's address.
+
 ### A reverse proxy
 
 A reverse proxy in front of the backend, such as the one that serves its

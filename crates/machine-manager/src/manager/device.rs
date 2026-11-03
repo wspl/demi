@@ -42,16 +42,17 @@ pub enum DeviceCommand {
         op: DeviceOp,
         reply: oneshot::Sender<Result<(), OpError>>,
     },
-    /// The slot of the device's running sandbox; none when it is stopped.
+    /// The slot and the machine of the device's running sandbox; none when
+    /// it is stopped.
     Running {
-        reply: oneshot::Sender<Option<Slot>>,
+        reply: oneshot::Sender<Option<(Slot, SandboxMachine)>>,
     },
     /// The manager leaves its sandboxes to the next one
     /// (`crates/machine-manager/src/handover.rs`): the worker hands its
-    /// running sandbox's boot and programs' base over, releases nothing of
-    /// it, and serves no more.
+    /// running sandbox's boot, programs' base and machine over, releases
+    /// nothing of it, and serves no more.
     Leave {
-        reply: oneshot::Sender<Option<(SandboxRecord, BaseVersion)>>,
+        reply: oneshot::Sender<Option<(SandboxRecord, BaseVersion, SandboxMachine)>>,
     },
 }
 
@@ -175,7 +176,7 @@ impl DeviceWorker {
                     let _ = reply.send(outcome);
                 }
                 DeviceCommand::Running { reply } => {
-                    let slot = self.runtime.as_ref().map(|sandbox| sandbox.slot().clone());
+                    let slot = self.runtime.as_ref().and_then(Sandbox::admitted);
                     // As above: no one may be waiting any more.
                     let _ = reply.send(slot);
                 }

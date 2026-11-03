@@ -56,6 +56,7 @@ use demi_runner_protocol::release::{RunnerRelease, UPDATE_RECORD, UpdateRecord};
 use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
+use demi_backend_cloud::network::{self as cloud_network, stored_private_network};
 use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
 use demi_backend_database::update::Update;
@@ -90,6 +91,8 @@ pub struct Backend {
     deaths: AbortOnDropHandle<()>,
     /// Marks each device's Cloud status changed for its owner's pages.
     statuses: AbortOnDropHandle<()>,
+    /// Gives the machine manager the private network at each connection.
+    private_network: AbortOnDropHandle<()>,
     /// Has the users whose search index is reset index their conversations
     /// again (`crates/backend-database/src/search.rs`).
     resets: AbortOnDropHandle<()>,
@@ -183,6 +186,21 @@ const RECOVERY_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 /// recorded, which the Cloud's next hello settles. A
 /// manager that cannot be reached is asked again until it answers; any other
 /// failure ends the recovery and is logged, as a failed start step is.
+/// Gives the machine manager the private network Clouds reach each time the
+/// backend connects to it: the manager keeps it in memory only, so one that
+/// restarted on its own would otherwise leave every Cloud cut off from it.
+async fn send_private_network(mut connections: tokio::sync::mpsc::Receiver<()>, services: Arc<Services>) {
+    while connections.recv().await.is_some() {
+        let sent = match stored_private_network(&services.control).await {
+            Ok(network) => cloud_network::apply(&services.cloud, network).await.map_err(|error| error.to_string()),
+            Err(error) => Err(error.to_string()),
+        };
+        if let Err(error) = sent {
+            tracing::warn!(event = "cloud_network.not_sent", %error, "the machine manager did not get the private network Clouds reach");
+        }
+    }
+}
+
 async fn recover_in_background(
     services: Arc<demi_backend_user_shard::services::Services>,
     shards: demi_backend_user_shard::shard::Shards,
@@ -469,6 +487,10 @@ impl Backend {
             services.clone(),
             shards.shards(),
         )));
+        let private_network = AbortOnDropHandle::new(tokio::spawn(send_private_network(
+            notices.connections,
+            services.clone(),
+        )));
         let resets = AbortOnDropHandle::new(tokio::spawn(follow_resets(
             services.search.resets(),
             services.control.clone(),
@@ -579,6 +601,7 @@ impl Backend {
             recovery,
             deaths,
             statuses,
+            private_network,
             resets,
             usage,
             sampling,
@@ -614,6 +637,7 @@ impl Backend {
         drop(self.recovery);
         drop(self.deaths);
         drop(self.statuses);
+        drop(self.private_network);
         drop(self.resets);
         drop(self.usage);
         drop(self.sampling);
