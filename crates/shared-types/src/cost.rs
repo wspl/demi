@@ -25,6 +25,7 @@ pub enum Currency {
 }
 
 serde_plain::derive_display_from_serialize!(Currency);
+serde_plain::derive_fromstr_from_deserialize!(Currency);
 
 impl fmt::Display for Cost {
     /// As a receipt writes it: `$0.25`, `¥1.80`; an amount under a cent

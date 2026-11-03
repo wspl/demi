@@ -17,6 +17,7 @@ mod cloud_project;
 pub use cloud_project::CloudProject;
 mod connection_test;
 pub mod cost;
+mod cost_report;
 mod creation;
 mod deletion;
 mod attachment_facts;

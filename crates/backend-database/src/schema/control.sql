@@ -916,6 +916,9 @@ CREATE INDEX usage_ledger_agent ON usage_ledger (conversation_id, agent);
 -- latest such write a new call's cache miss is judged by.
 CREATE INDEX usage_ledger_cache_writes ON usage_ledger (conversation_id, agent, model_id)
   WHERE call_number IS NOT NULL AND cache_write_tokens > 0;
+-- A turn's rows: what each turn of a page of a transcript cost.
+CREATE INDEX usage_ledger_turn ON usage_ledger (conversation_id, turn_id)
+  WHERE turn_id IS NOT NULL;
 
 -- Each conversation's cost as its ledger rows are written, per agent and,
 -- with a null agent, for its rows of no agent (`usage.rs` § A
