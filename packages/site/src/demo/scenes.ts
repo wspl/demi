@@ -669,7 +669,7 @@ export const SCENES: Record<DemoId, Scene> = {
       choice: { type: 'workflow', id: 'review' },
       list: {
         state: 'read',
-        workflows: [{ id: 'review', name: 'Review before merge', path: `${TIDEPOOL_PROJECT}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['reviewer'] }],
+        workflows: [{ id: 'review', name: 'Review before merge', path: `${TIDEPOOL_PROJECT}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['reviewer'], userProfiles: true }],
       },
     },
     play: release,

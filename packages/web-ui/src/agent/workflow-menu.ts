@@ -31,6 +31,8 @@ export interface WorkflowOption {
   unavailable: string | null
   /** The ids of the profiles it declares, their `--profile` values. */
   profiles: readonly string[]
+  /** Whether the conversation spawns the user's enabled profiles beside them. */
+  userProfiles: boolean
 }
 
 /**
@@ -115,19 +117,26 @@ export interface GlobalProfiles {
 /**
  * The profiles `choice` offers now, by their `--profile` values:
  *
- * - for a project workflow, its profiles from `list` while it is read
+ * - for a project workflow, its profiles from `list` while it is read, then
+ *   the user's it offers that it does not declare itself
  * - under Global Workflow, the user's enabled profiles while the Subagents
  *   switch is on, none while it is off
  * - none under No Subagents
  *   (`packages/web-ui/src/agent/ContextUsageIndicator.vue`)
  */
 export function workflowProfiles(choice: WorkflowChoice, list: WorkflowList, global: GlobalProfiles): readonly string[] {
+  const users = global.enabled ? global.profiles.filter((profile) => profile.enabled).map((profile) => profile.name) : []
   if (choice.type === 'default')
-    return global.enabled ? global.profiles.filter((profile) => profile.enabled).map((profile) => profile.name) : []
+    return users
   const from = chosenList(choice, list)
   if (choice.type === 'none' || from.state !== 'read')
     return []
-  return from.workflows.find((workflow) => workflow.id === choice.id)?.profiles ?? []
+  const workflow = from.workflows.find((each) => each.id === choice.id)
+  if (!workflow)
+    return []
+  if (!workflow.userProfiles)
+    return workflow.profiles
+  return [...workflow.profiles, ...users.filter((name) => !workflow.profiles.includes(name))]
 }
 
 /**

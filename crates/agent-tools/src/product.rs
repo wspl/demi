@@ -150,7 +150,8 @@ pub enum ConversationProfiles {
     Settings,
     /// No Subagents: subagents are off for this conversation.
     Off,
-    /// The profiles of the chosen workflow, in place of the user's.
+    /// The chosen workflow's profiles, with the user's beside them where it
+    /// offers them.
     Workflow(ChosenWorkflow),
     /// The chosen workflow cannot be used now: its file is gone or does not
     /// read, as `reason` says.
@@ -167,6 +168,27 @@ pub struct ChosenWorkflow {
     pub name: String,
     /// Its profiles, in the file's order.
     pub profiles: Vec<WorkflowChild>,
+    /// Whether the user's enabled profiles are offered too, after its own,
+    /// each name its own profiles have being theirs.
+    pub user_profiles: bool,
+    /// What every child of the conversation is told before its profile's
+    /// own instructions; none when the file says nothing.
+    pub subagent_instructions: Option<String>,
+}
+
+impl ChosenWorkflow {
+    /// The instructions a child of a profile whose own are `own` hears, the
+    /// workflow's or the user's: the workflow's shared ones, then its
+    /// profile's, a blank line between; none when neither says anything.
+    pub fn child_instructions(&self, own: Option<&str>) -> Option<String> {
+        let parts: Vec<&str> = [self.subagent_instructions.as_deref(), own]
+            .into_iter()
+            .flatten()
+            .map(str::trim_end)
+            .filter(|text| !text.is_empty())
+            .collect();
+        (!parts.is_empty()).then(|| parts.join("\n\n"))
+    }
 }
 
 /// One profile of a chosen workflow, its model resolved against the user's
@@ -176,7 +198,8 @@ pub struct WorkflowChild {
     /// The `--profile` value.
     pub name: String,
     pub description: String,
-    /// Added to the child's system prompt after the product's.
+    /// Its own instructions, which a child hears after the workflow's
+    /// shared ones (`ChosenWorkflow::child_instructions`).
     pub instructions: Option<String>,
     pub can_spawn: bool,
     /// None for the parent's model; otherwise the selection its model id

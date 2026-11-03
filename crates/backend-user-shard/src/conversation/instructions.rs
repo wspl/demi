@@ -72,12 +72,19 @@ async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str, w
         .filter(|instructions| !instructions.trim().is_empty())
         .map(|instructions| format!("{instructions}\n\n"))
         .unwrap_or_default();
-    if workflow.profiles.is_empty() {
+    // The user's profiles go by a pointer to the command that lists them, so
+    // an edit in Settings changes no conversation's transcript.
+    const USERS: &str = "The user's own profiles, which demi agent profiles list shows.";
+    if workflow.profiles.is_empty() && !workflow.user_profiles {
         text.push_str("You can spawn no subagents.");
     } else {
-        text.push_str("The only subagents you can spawn, with demi agent spawn --profile <id>:");
+        let only = if workflow.user_profiles { "The" } else { "The only" };
+        text.push_str(&format!("{only} subagents you can spawn, with demi agent spawn --profile <id>:"));
         for profile in &workflow.profiles {
             text.push_str(&format!("\n- {}: {}", profile.id, profile.description));
+        }
+        if workflow.user_profiles {
+            text.push_str(&format!("\n- {USERS}"));
         }
     }
     Some(WorkflowText {
