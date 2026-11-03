@@ -1,8 +1,13 @@
 //! The product's `demi providers` group.
 //!
 //! The agent lists and shows the user's provider entries with their models,
-//! adds, edits and removes entries, and searches models.dev to add, edit and
-//! remove the models of an entry's configured list.
+//! adds, edits and removes entries, turns them and their models off and on in
+//! the model menu, chooses and orders a subscription's accounts, and searches
+//! models.dev to add, edit and remove the models of an entry's configured list.
+//!
+//! `edit` takes the entry `show --json` prints as a JSON merge patch, so every
+//! setting Settings > Providers changes has one name here, the protocol's,
+//! and a new setting needs no new option.
 //!
 //! A change goes through the settings page's path, with its checks and its words
 //! (`provider_settings`), and needs the user's permission, the category
@@ -13,6 +18,8 @@
 //! piped there, since a key typed into a conversation would sit in its
 //! transcript and reach the model's vendor.
 
+use demi_backend_page_sync::Part;
+use demi_backend_providers::vault::accounts as vault_accounts;
 use demi_backend_providers::vault::entries::Vault;
 use std::rc::Rc;
 
@@ -22,17 +29,16 @@ use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
 use demi_shared_types::{
-    FileExtension, AudioShape, ImageShape, ModelSelection, ThinkingForm, VideoShape, WireApi, model_reads_images,
-    output::{Cell, Fields, Table, warning},
+    AccountInfo, FileExtension, ModelSelection, ThinkingForm, WireApi, model_reads_images,
+    output::{Cell, Fields, Table, note, warning},
 };
-use demi_web_api_protocol::ids::DeviceId;
+use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::auth::UserDto;
+use demi_web_api_protocol::settings::HiddenModel;
 use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
     Availability, ConfiguredModel, ConfiguredModels, CreateProvider,
-    AudioMedia, AudioMediaPatch, CredentialKind, ImageMedia, ImageMediaPatch, MediaPatch, ModelKind, ModelMatch,
-    ProviderHeader, VideoMedia, VideoMediaPatch,
-    ProviderPatch, SetupPart,
+    CredentialKind, ModelKind, ModelMatch, ProviderDto, ProviderPatch, SetupPart,
 };
 use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
 use garde::Validate;
@@ -52,18 +58,30 @@ const MANAGE_ACTION: &str = "manage providers";
 
 const MANAGE_DESCRIPTION: &str = "Add, change and remove your provider entries and their models, which every conversation of yours can use.";
 
-const SUMMARY: &str = "The user's provider entries and their models: list and show them, add, edit and remove entries, and search models.dev to add models to an entry's list. A change needs the user's permission and reaches every conversation.";
+const SUMMARY: &str = "The user's provider entries and their models: list and show them; add, edit and remove entries; turn an entry or a model off and on in the model menu; choose and order a subscription's accounts; and search models.dev to add models to an entry's list. A change needs the user's permission and reaches every conversation.";
 
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "The user's model providers and their models.";
 
 const LIST_SUMMARY: &str = "List each provider entry: its id, its name in Settings, its kind, its count of models and its status (Ready, or what it still needs); demi providers show lists an entry's models. --all adds the entries and models the user turned off. A read.";
 
-const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, the device its requests go out from, a compatible API's headers, whether a key is saved (never the key), accounts by label, status, and each model with every field: context window and output limit in tokens, default effort and efforts (off when thinking can be turned off), service tiers, the files it reads, and whether you run on it. A read.";
+const SHOW_SUMMARY: &str = "Show every setting of one entry, as Settings > Providers has it (never its key): with --json the entry `edit` changes, field by field, beside its status, whether it is hidden, its accounts by label and under catalog each model it offers with every field: context window and output limit in tokens, default effort and efforts (off when thinking can be turned off), service tiers, the files it reads, and whether you run on it. A read.";
 
-const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --name it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. Needs the user's permission.";
+const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --label it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. `edit` sets the rest. Needs the user's permission.";
 
-const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, the device its requests go out from with --through, its key with --api-key-stdin, or how it makes images with --image, videos with --video and audio with --audio. Needs the user's permission.";
+const EDIT_SUMMARY: &str = "Change any setting of an entry that Settings > Providers changes, by a JSON merge patch on stdin of the entry `demi providers show --json` prints: a field given takes its value, a field left out stays, a list is replaced whole, and null removes a setting `show` can print as null, such as cacheTtl or throughDevice, or the key with apiKey. A field that holds the value shown changes nothing, and what `show` prints beside the entry (status, hidden, accounts, modelsFrom, catalog) is left as it is, so the printed entry, edited, may go back whole. --api-key-stdin reads the key alone instead. Needs the user's permission.";
+
+const HIDE_SUMMARY: &str = "Turn an entry, or with --model one of its models, off in the user's model menu, as Settings > Providers' Show in Model Menu does. Needs the user's permission.";
+
+const UNHIDE_SUMMARY: &str = "Turn an entry, or with --model one of its models, back on in the user's model menu. Needs the user's permission.";
+
+const ACCOUNTS_SUMMARY: &str = "A subscription entry's accounts: list them, choose the one it infers with, and put them in the order In Order takes them. Signing in to an account is the user's, in Settings > Providers.";
+
+const ACCOUNTS_LIST_SUMMARY: &str = "List a subscription entry's accounts in their order: each one's id, label and whether the entry infers with it now. A read.";
+
+const ACCOUNTS_ACTIVATE_SUMMARY: &str = "Make one of a subscription entry's accounts the one it infers with. Needs the user's permission.";
+
+const ACCOUNTS_ORDER_SUMMARY: &str = "Put a subscription entry's accounts in the order given, which In Order takes them in; name every account once. Needs the user's permission.";
 
 const ORDER_SUMMARY: &str = "Put the entries in an order, the one Settings > Providers shows and generated images, videos and audio try them in, subscriptions before keys: the entries named come first, in the order given, and the others keep theirs after them. Needs the user's permission.";
 
@@ -84,14 +102,11 @@ const VENDOR: &str = "A models.dev vendor's id, such as google, as Settings > Pr
 const FAMILY: &str = "The family whose protocol the entry speaks: openai, anthropic or google. With --base-url the entry is a compatible API; without, the family's own vendor's.";
 const WIRE: &str = "The wire of an openai endpoint, responses or chat-completions; responses without it.";
 const ENTRY_ARG: &str = "The entry's name or id, as `demi providers list` shows them.";
-const NAME: &str = "The entry's name, 1 to 80 characters, as Settings shows it.";
+const LABEL: &str = "The entry's name, 1 to 80 characters, as Settings shows it.";
 const BASE_URL: &str = "The API's address, an http or https URL such as https://api.example.com/v1.";
-const THROUGH: &str = "Where an API-key entry's requests go out from: server, or one of the user's devices by name or id, which reaches what that device reaches, such as an address on its own network.";
 const API_KEY_STDIN: &str = "Read the entry's key from stdin, one line; pipe it in, never type it into a command.";
 const API_KEY: &str = "The key, read from stdin with --api-key-stdin.";
-const IMAGE: &str = "on turns the entry's Image Generation on and off turns it off; a shape turns it on, and for a compatible API also chooses how it makes images: openai-images, or none for no images. A vendor's entry makes images in its vendor's shape only, which on turns on.";
-const VIDEO: &str = "on turns the entry's Video Generation on and off turns it off; a shape turns it on, and for a compatible API also chooses how it makes videos: xai-videos, openai-videos, ark-tasks, openrouter-videos, or none for no videos. A vendor's entry makes videos in its vendor's shape only, which on turns on.";
-const AUDIO: &str = "on turns the entry's Audio Generation on and off turns it off; a shape turns it on, and for a compatible API also chooses how it makes audio: openai-speech, or none for no audio. A vendor's entry makes audio in its vendor's shape only, which on turns on.";
+const PATCH: &str = "The changes, a JSON object such as {\"cacheTtl\": \"1h\", \"throughDevice\": null}; with --api-key-stdin, the key.";
 const ENTRIES: &str = "The entries, by name or id, in the order to put them.";
 const KIND: &str = "What the model makes: text, the model menu's; image, video or audio, for a compatible API whose shape for that kind is chosen, an audio model making what its shape makes, speech for openai-speech. Text without it.";
 const MODEL_ID: &str = "The model's id as the entry's vendor names it.";
@@ -126,7 +141,7 @@ struct AddArgs {
     family: Option<String>,
     wire: Option<String>,
     base_url: Option<String>,
-    name: Option<String>,
+    label: Option<String>,
     api_key_stdin: Option<bool>,
     api_key: Option<String>,
 }
@@ -136,14 +151,48 @@ struct AddArgs {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct EditArgs {
     entry: String,
-    name: Option<String>,
-    base_url: Option<String>,
-    through: Option<String>,
     api_key_stdin: Option<bool>,
-    api_key: Option<String>,
-    image: Option<String>,
-    video: Option<String>,
-    audio: Option<String>,
+    /// The JSON merge patch, or with `--api-key-stdin` the key, read from
+    /// stdin.
+    patch: Option<String>,
+}
+
+/// The input of `accounts activate`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct AccountArgs {
+    entry: String,
+    /// The account's label or id, as `demi providers accounts list` shows them.
+    account: String,
+}
+
+/// The input of `accounts order`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct AccountOrderArgs {
+    entry: String,
+    /// The accounts, by label or id, in the order to put them.
+    #[schemars(length(min = 1))]
+    account: Vec<String>,
+}
+
+/// The input of `hide` and `unhide`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct HideArgs {
+    entry: String,
+    /// One of the entry's models, by id; the whole entry without it.
+    model: Option<String>,
+}
+
+/// An account as `accounts list` lists it.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ListedAccount {
+    id: String,
+    label: String,
+    /// Whether the entry infers with it now.
+    active: bool,
 }
 
 /// The input of `order`.
@@ -231,10 +280,10 @@ struct ModelRemoveArgs {
 struct ListedEntry {
     id: String,
     /// The entry's name as Settings shows it.
-    name: String,
+    label: String,
     kind: CredentialKind,
     /// Whether its models can be used now, and what it lacks if not.
-    availability: Availability,
+    status: Availability,
     /// Whether the user turned it off in Settings > Providers.
     hidden: bool,
     models: Vec<ListedModel>,
@@ -244,9 +293,9 @@ struct ListedEntry {
 #[serde(rename_all = "camelCase")]
 struct ListedModel {
     id: String,
-    name: String,
+    display_name: String,
     /// The context window in tokens; null when the catalog does not say.
-    window: Option<u32>,
+    context_window: Option<u32>,
     efforts: Vec<String>,
     /// The effort a choice that names none takes: the first one listed.
     default_effort: Option<String>,
@@ -260,50 +309,29 @@ struct ListedModel {
     hidden: bool,
 }
 
-/// `show --json`, and the answer of `add` and `edit`: every setting of
-/// one entry; never its key.
+/// `show --json`, and the answer of `add` and `edit`: the entry as the API
+/// answers it, which `edit` patches, with what is not the entry's beside
+/// it. Never its key.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct ShownEntry {
-    id: String,
-    name: String,
-    kind: CredentialKind,
-    /// The vendor of a vendor entry; null for a compatible entry and a
-    /// subscription.
-    vendor: Option<String>,
-    family: String,
-    wire: Option<WireApi>,
-    /// The configured endpoint; null for a vendor entry that uses its
-    /// vendor's, and for a compatible entry not given one yet.
-    endpoint: Option<String>,
-    /// The device its requests go out from, by name, or by id once removed;
-    /// null for the server.
-    through: Option<String>,
-    /// The headers every request of a compatible entry carries, in order;
-    /// `{conversation}` in a value stands for the conversation's ID.
-    headers: Vec<ProviderHeader>,
-    /// Whether a key is saved; null for a subscription.
-    key_saved: Option<bool>,
-    /// The labels of a subscription's accounts, for a user who configures
-    /// the entries.
-    accounts: Vec<String>,
-    availability: Availability,
+    #[serde(flatten)]
+    entry: ProviderDto,
+    /// Whether its models can be used now, and what it lacks if not.
+    status: Availability,
+    /// Whether the user turned it off in the model menu.
     hidden: bool,
-    /// How it makes images: its shape, null for none, and its switch.
-    images: ImageMedia,
-    /// How it makes videos, as `images` says of images.
-    videos: VideoMedia,
-    /// How it makes audio, as `images` says of images.
-    audio: AudioMedia,
-    /// Where its models come from.
+    /// The labels of a subscription's accounts, in In Order's order, for a
+    /// user who configures the entries.
+    accounts: Vec<String>,
+    /// Where the models it offers come from.
     models_from: ModelSource,
-    models: Vec<ShownModel>,
-    /// The image models of its own list.
-    image_models: Vec<ConfiguredModel>,
-    /// The video models of its own list.
-    video_models: Vec<ConfiguredModel>,
-    /// The audio models of its own list.
-    audio_models: Vec<ConfiguredModel>,
+    /// The text models it offers now, which the model menu lists.
+    catalog: Vec<ShownModel>,
+    /// The name of the device its requests go out from, which the text
+    /// says in place of its id; the id itself once the device is gone.
+    #[serde(skip)]
+    through_name: Option<String>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -321,7 +349,7 @@ enum ModelSource {
 #[serde(rename_all = "camelCase")]
 struct ShownModel {
     id: String,
-    name: String,
+    display_name: String,
     context_window: Option<u32>,
     output_limit: Option<u32>,
     efforts: Vec<String>,
@@ -338,7 +366,7 @@ struct ShownModel {
 #[derive(Serialize, JsonSchema)]
 struct RemovedEntry {
     id: String,
-    name: String,
+    label: String,
     removed: bool,
 }
 
@@ -394,7 +422,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .describe("family", FAMILY)
                 .describe("wire", WIRE)
                 .describe("base-url", BASE_URL)
-                .describe("name", NAME)
+                .describe("label", LABEL)
                 .describe("api-key-stdin", API_KEY_STDIN)
                 .describe("api-key", API_KEY)
                 .stdin_field("api-key")
@@ -407,20 +435,31 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
             LeafBuilder::rpc("edit", EDIT_SUMMARY)
                 .input::<EditArgs>()
                 .describe("entry", ENTRY_ARG)
-                .describe("name", NAME)
-                .describe("base-url", BASE_URL)
-                .describe("through", THROUGH)
                 .describe("api-key-stdin", API_KEY_STDIN)
-                .describe("api-key", API_KEY)
-                .describe("image", IMAGE)
-                .describe("video", VIDEO)
-                .describe("audio", AUDIO)
+                .describe("patch", PATCH)
                 .positionals(["entry"])
-                .stdin_field("api-key")
-                .stdin_with(["api-key-stdin"])
+                .stdin_field("patch")
                 .json_output::<ShownEntry>()
                 .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard.clone(), edit))),
+        )
+        .leaf(
+            LeafBuilder::rpc("hide", HIDE_SUMMARY)
+                .input::<HideArgs>()
+                .describe("entry", ENTRY_ARG)
+                .positionals(["entry"])
+                .json_output::<ShownEntry>()
+                .permission(MANAGE)
+                .bind(TypedRpc::new(verb(shard.clone(), hide))),
+        )
+        .leaf(
+            LeafBuilder::rpc("unhide", UNHIDE_SUMMARY)
+                .input::<HideArgs>()
+                .describe("entry", ENTRY_ARG)
+                .positionals(["entry"])
+                .json_output::<ShownEntry>()
+                .permission(MANAGE)
+                .bind(TypedRpc::new(verb(shard.clone(), unhide))),
         )
         .leaf(
             LeafBuilder::rpc("remove", REMOVE_SUMMARY)
@@ -438,9 +477,38 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry"])
                 .json_output::<Vec<ListedEntry>>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard, order))),
+                .bind(TypedRpc::new(verb(shard.clone(), order))),
         )
         .group(models)
+        .group(
+            GroupBuilder::new("accounts", ACCOUNTS_SUMMARY)
+                .leaf(
+                    LeafBuilder::rpc("list", ACCOUNTS_LIST_SUMMARY)
+                        .input::<EntryArgs>()
+                        .describe("entry", ENTRY_ARG)
+                        .positionals(["entry"])
+                        .json_output::<Vec<ListedAccount>>()
+                        .bind(TypedRpc::new(verb(shard.clone(), list_accounts))),
+                )
+                .leaf(
+                    LeafBuilder::rpc("activate", ACCOUNTS_ACTIVATE_SUMMARY)
+                        .input::<AccountArgs>()
+                        .describe("entry", ENTRY_ARG)
+                        .positionals(["entry", "account"])
+                        .json_output::<Vec<ListedAccount>>()
+                        .permission(MANAGE)
+                        .bind(TypedRpc::new(verb(shard.clone(), activate_account))),
+                )
+                .leaf(
+                    LeafBuilder::rpc("order", ACCOUNTS_ORDER_SUMMARY)
+                        .input::<AccountOrderArgs>()
+                        .describe("entry", ENTRY_ARG)
+                        .positionals(["entry", "account"])
+                        .json_output::<Vec<ListedAccount>>()
+                        .permission(MANAGE)
+                        .bind(TypedRpc::new(verb(shard, order_accounts))),
+                ),
+        )
 }
 
 /// A `models` leaf that sets a model's fields.
@@ -499,8 +567,8 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
                     let efforts = model.model.efforts();
                     Some(ListedModel {
                         id: model.model.id.clone(),
-                        name: model.model.display_name.clone(),
-                        window: model.model.context_window,
+                        display_name: model.model.display_name.clone(),
+                        context_window: model.model.context_window,
                         default_effort: efforts.first().cloned(),
                         efforts,
                         can_turn_off: model.model.can_turn_thinking_off(),
@@ -516,9 +584,9 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
                 .collect();
             Some(ListedEntry {
                 id: entry.id.as_str().to_owned(),
-                name: entry.label.clone(),
+                label: entry.label.clone(),
                 kind: entry.kind(),
-                availability: catalog.availability.clone(),
+                status: catalog.availability.clone(),
                 hidden,
                 models,
             })
@@ -531,11 +599,11 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     for entry in &providers {
         table.row::<Cell>([
             entry.id.as_str().into(),
-            entry.name.as_str().into(),
+            entry.label.as_str().into(),
             kind_text(entry.kind).into(),
             entry.models.len().into(),
             entry.hidden.into(),
-            state(&entry.availability).into(),
+            state(&entry.status).into(),
         ]);
     }
     out(&port, table.render()).await
@@ -554,7 +622,7 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
     let args = call.args;
     let user = user(&shard).await?;
     let api_key = key(args.api_key_stdin, args.api_key)?;
-    let label = args.name.map(Trimmed::from);
+    let label = args.label.map(Trimmed::from);
     let base_url = args.base_url.map(endpoint).transpose()?;
     let wire_api = args.wire.map(wire).transpose()?;
     let body = match (args.vendor, args.family) {
@@ -610,37 +678,42 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
 async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
     let user = user(&shard).await?;
-    let entries = entries(&shard).await.map_err(failed)?;
-    let entry = named(&entries, &args.entry).map_err(failed)?;
+    let scope = shard.scope().await.map_err(failed)?;
+    let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let id = entry.id.clone();
-    let compatible = matches!(&entry.credential, EntryCredential::ApiKey(config) if config.is_compatible());
-    let patch = ProviderPatch {
-        label: args.name.map(Trimmed::from),
-        api_key: key(args.api_key_stdin, args.api_key)?.map(Some),
-        base_url: args.base_url.map(endpoint).transpose()?.map(Some),
-        through_device: match args.through {
-            Some(through) => Some(through_device(&shard, &through).await?),
-            None => None,
-        },
-        media: media_patch(args.image.as_deref(), args.video.as_deref(), args.audio.as_deref(), compatible)?,
-        ..ProviderPatch::default()
+    let command = call.invocation.path.join(" ");
+    let patch = if args.api_key_stdin == Some(true) {
+        Some(ProviderPatch {
+            api_key: Some(key(Some(true), args.patch)?),
+            ..ProviderPatch::default()
+        })
+    } else {
+        let current = caller_model(&shard, &call.invocation);
+        let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+        let (patch, left) = entry_patch(&shown, args.patch.as_deref().unwrap_or_default())?;
+        if !left.is_empty() {
+            let what = format!(
+                "{}: not the entry's, which edit leaves as they are; `demi providers hide`, `unhide` and `accounts` change what is the user's",
+                left.join(", ")
+            );
+            port.stderr(warning(&command, &what)).await?;
+        }
+        patch
     };
-    if patch.label.is_none()
-        && patch.api_key.is_none()
-        && patch.base_url.is_none()
-        && patch.through_device.is_none()
-        && patch.media.is_none()
-    {
-        return Err(failed(
-            "nothing to change: give --name, --base-url, --through, --api-key-stdin, --image, --video or --audio",
-        ));
+    match patch {
+        Some(patch) => {
+            patch.validate().map_err(|report| failed(problems(&report)))?;
+            shard
+                .services()
+                .update_provider(&user, id.as_str(), patch)
+                .await
+                .map_err(failed)?;
+        }
+        None => {
+            let what = "no change: every setting holds the value given";
+            port.stderr(note(&command, what)).await?;
+        }
     }
-    patch.validate().map_err(|report| failed(problems(&report)))?;
-    shard
-        .services()
-        .update_provider(&user, id.as_str(), patch)
-        .await
-        .map_err(failed)?;
     let scope = shard.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, id.as_str()).map_err(failed)?;
     let current = caller_model(&shard, &call.invocation);
@@ -648,52 +721,278 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
     answer(&port, call.invocation.json, shown).await
 }
 
-/// What `--image`, `--video` and `--audio` ask; none when none is given.
-fn media_patch(
-    image: Option<&str>,
-    video: Option<&str>,
-    audio: Option<&str>,
-    compatible: bool,
-) -> Result<Option<MediaPatch>, RpcError> {
-    if image.is_none() && video.is_none() && audio.is_none() {
-        return Ok(None);
+/// The patch that `text`, a JSON merge patch of the entry `shown` prints,
+/// asks for (RFC 7396), none when it changes nothing, and the fields it
+/// gave other values of what `show` prints beside the entry.
+///
+/// - A field that holds the value shown changes nothing and is dropped, in
+///   an object as at the top, so the printed entry, edited, goes back as it
+///   is.
+/// - What is printed beside the entry, such as its status, is left out
+///   whatever it holds, as Kubernetes leaves a resource's status out of an
+///   update: it changes by itself between a `show` and an `edit`, and its
+///   commands, not `edit`, change what of it is the user's.
+/// - A field of the entry that no patch changes, such as its id, is
+///   refused by its name when it holds another value, as one the patch
+///   does not know is.
+/// - The key is refused, which a transcript would keep; `null`, which
+///   removes it as Settings does, is not.
+fn entry_patch(shown: &ShownEntry, text: &str) -> Result<(Option<ProviderPatch>, Vec<String>), RpcError> {
+    let patch: serde_json::Value = serde_json::from_str(text)
+        .map_err(|error| failed(format!("stdin: give the changes as a JSON object, such as {{\"label\": \"Team gateway\"}}: {error}")))?;
+    let serde_json::Value::Object(mut patch) = patch else {
+        return Err(failed("stdin: give the changes as a JSON object, such as {\"label\": \"Team gateway\"}"));
+    };
+    if patch.get("apiKey").is_some_and(|key| !key.is_null()) {
+        return Err(failed("apiKey: pipe the key in with --api-key-stdin, which keeps it out of the patch; null removes it"));
     }
-    let image = image
-        .map(|asked| kind_patch::<ImageShape>(asked, "--image", "openai-images", compatible))
-        .transpose()?
-        .map(|(shape, enabled)| ImageMediaPatch { shape, enabled });
-    let video = video
-        .map(|asked| kind_patch::<VideoShape>(asked, "--video", "xai-videos", compatible))
-        .transpose()?
-        .map(|(shape, enabled)| VideoMediaPatch { shape, enabled });
-    let audio = audio
-        .map(|asked| kind_patch::<AudioShape>(asked, "--audio", "openai-speech", compatible))
-        .transpose()?
-        .map(|(shape, enabled)| AudioMediaPatch { shape, enabled });
-    Ok(Some(MediaPatch { image, video, audio }))
+    let entry = serde_json::to_value(&shown.entry).expect("an entry serializes");
+    let shown = serde_json::to_value(shown).expect("a shown entry serializes");
+    let mut left = Vec::new();
+    patch.retain(|field, value| {
+        let beside = entry.get(field).is_none() && shown.get(field).is_some();
+        if beside && shown.get(field) != Some(value) {
+            left.push(field.clone());
+        }
+        !beside
+    });
+    let changes = changed_fields(patch, &entry);
+    if changes.is_empty() {
+        return Ok((None, left));
+    }
+    let settings = schemars::schema_for!(ProviderPatch);
+    let settings = settings.get("properties").and_then(|properties| properties.as_object());
+    if let Some(field) = changes.keys().find(|field| !settings.is_some_and(|settings| settings.contains_key(*field))) {
+        return Err(failed(if entry.get(field).is_some() {
+            format!("{field}: the entry's own, which no edit changes")
+        } else {
+            format!("{field}: no such setting; `demi providers show --json` prints each")
+        }));
+    }
+    let patch = serde_json::from_value(serde_json::Value::Object(changes)).map_err(|error| failed(format!("stdin: {error}")))?;
+    Ok((Some(patch), left))
 }
 
-/// What a kind's option asks, as its patch's shape and switch: `on` and
-/// `off` turn the switch on and off, a vendor entry's kind in its fixed
-/// shape; a shape turns it on, and chooses a compatible entry's shape,
-/// `none` taking it away.
-fn kind_patch<S: std::str::FromStr>(
-    asked: &str,
-    option: &str,
-    example: &str,
-    compatible: bool,
-) -> Result<(Option<Option<S>>, Option<bool>), RpcError> {
-    Ok(match asked {
-        "on" => (None, Some(true)),
-        "off" => (None, Some(false)),
-        "none" if compatible => (Some(None), None),
-        shape => {
-            let shape: S = shape
-                .parse()
-                .map_err(|_| failed(format!("{option} {shape}: give on, off, a shape such as {example}, or none")))?;
-            (compatible.then_some(Some(shape)), Some(true))
+/// The fields of `patch` whose values differ from `shown`'s, an object's
+/// own fields compared one by one.
+fn changed_fields(
+    patch: serde_json::Map<String, serde_json::Value>,
+    shown: &serde_json::Value,
+) -> serde_json::Map<String, serde_json::Value> {
+    patch
+        .into_iter()
+        .filter_map(|(field, value)| {
+            let was = shown.get(&field);
+            match (value, was) {
+                (value, Some(was)) if value == *was => None,
+                (serde_json::Value::Object(fields), Some(was @ serde_json::Value::Object(_))) => {
+                    let fields = changed_fields(fields, was);
+                    (!fields.is_empty()).then_some((field, serde_json::Value::Object(fields)))
+                }
+                (value, _) => Some((field, value)),
+            }
+        })
+        .collect()
+}
+
+async fn hide(shard: Rc<Shard>, call: Call<HideArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    show_in_menu(shard, call, port, false).await
+}
+
+async fn unhide(shard: Rc<Shard>, call: Call<HideArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    show_in_menu(shard, call, port, true).await
+}
+
+/// Turns the entry, or its model `--model`, on or off in the model menu, as
+/// Settings > Providers' Show in Model Menu does: the saved lists of what
+/// the user turned off gain or lose it, read and written in one
+/// transaction so a change made beside it stays.
+async fn show_in_menu(
+    shard: Rc<Shard>,
+    call: Call<HideArgs>,
+    port: RpcPort,
+    shown_in_menu: bool,
+) -> Result<u8, RpcError> {
+    let args = call.args;
+    let user = user(&shard).await?;
+    let scope = shard.scope().await.map_err(failed)?;
+    let entry = named(&scope.entries, &args.entry).map_err(failed)?;
+    let id = entry.id.clone();
+    if let Some(model) = &args.model {
+        let offered = scope
+            .catalog_of(entry)
+            .is_some_and(|catalog| catalog.models.iter().any(|offered| offered.model.id == *model));
+        if !offered {
+            return Err(failed(format!(
+                "--model: {} offers no model {model}; `demi providers show {}` lists its models",
+                entry.label,
+                id.as_str()
+            )));
         }
-    })
+    }
+    let services = shard.services();
+    let provider = id.clone();
+    services
+        .control
+        .patch_preferences(user.id.clone(), move |mut saved| {
+            match args.model {
+                Some(model_id) => {
+                    saved
+                        .hidden_models
+                        .retain(|hidden| !(hidden.provider_id == provider && hidden.model_id == model_id));
+                    if !shown_in_menu {
+                        saved.hidden_models.push(HiddenModel { provider_id: provider, model_id });
+                    }
+                }
+                None => {
+                    saved.hidden_providers.retain(|hidden| *hidden != provider);
+                    if !shown_in_menu {
+                        saved.hidden_providers.push(provider);
+                    }
+                }
+            }
+            saved
+        })
+        .await
+        .map_err(failed)?;
+    services.sync.mark(&user.id, Part::Preferences);
+    let scope = shard.scope().await.map_err(failed)?;
+    let entry = named(&scope.entries, id.as_str()).map_err(failed)?;
+    let current = caller_model(&shard, &call.invocation);
+    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    answer(&port, call.invocation.json, shown).await
+}
+
+/// A user who only infers with the entry sees no account, as in Settings.
+async fn list_accounts(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&shard).await?;
+    let entry = scoped(&shard, &user, &call.args.entry).await?;
+    let disclose = Vault::manages(&user.id, &entry);
+    accounts_answer(&shard, &port, call.invocation.json, &entry, disclose).await
+}
+
+async fn activate_account(shard: Rc<Shard>, call: Call<AccountArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&shard).await?;
+    let entry = managed(&shard, &user, &call.args.entry).await?;
+    let services = shard.services();
+    let listed = vault_accounts::list(&services.vault, &entry, true).await.map_err(failed)?;
+    let account = account_named(&listed.accounts, &call.args.account)?;
+    {
+        let _held = services.hold_entry(&entry).map_err(failed)?;
+        vault_accounts::activate(&services.vault, &services.provider_registry, &entry, account)
+            .await
+            .map_err(failed)?;
+    }
+    let entry = managed(&shard, &user, entry.id.as_str()).await?;
+    accounts_answer(&shard, &port, call.invocation.json, &entry, true).await
+}
+
+async fn order_accounts(shard: Rc<Shard>, call: Call<AccountOrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&shard).await?;
+    let entry = managed(&shard, &user, &call.args.entry).await?;
+    let services = shard.services();
+    let listed = vault_accounts::list(&services.vault, &entry, true).await.map_err(failed)?;
+    let order = call
+        .args
+        .account
+        .iter()
+        .map(|named| account_named(&listed.accounts, named))
+        .collect::<Result<Vec<_>, _>>()?;
+    {
+        let _held = services.hold_entry(&entry).map_err(failed)?;
+        vault_accounts::reorder(&services.vault, &entry, order)
+            .await
+            .map_err(failed)?;
+    }
+    accounts_answer(&shard, &port, call.invocation.json, &entry, true).await
+}
+
+/// The entry `named_as` names among the user's.
+async fn scoped(shard: &Shard, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
+    let entries = entries(shard).await.map_err(failed)?;
+    let id = named(&entries, named_as).map_err(failed)?.id.clone();
+    shard
+        .services()
+        .scoped_entry(&user.id, id.as_str())
+        .await
+        .map_err(failed)
+}
+
+/// The entry `named_as` names, when the user manages it: changing its
+/// accounts is the configuring user's, as in Settings.
+async fn managed(shard: &Shard, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
+    let entries = entries(shard).await.map_err(failed)?;
+    let id = named(&entries, named_as).map_err(failed)?.id.clone();
+    shard
+        .services()
+        .managed_entry(&user.id, id.as_str())
+        .await
+        .map_err(failed)
+}
+
+/// The account `named` names among `accounts`: by its id, else by its
+/// label, which must name one alone.
+fn account_named(accounts: &[AccountInfo], named: &str) -> Result<CredentialId, RpcError> {
+    let account = match accounts.iter().find(|account| account.id == named) {
+        Some(account) => account,
+        None => {
+            let matching: Vec<&AccountInfo> = accounts.iter().filter(|account| account.label == named).collect();
+            match matching.as_slice() {
+                [account] => *account,
+                [] => {
+                    return Err(failed(format!(
+                        "no account is labeled or has the id \"{named}\"; `demi providers accounts list` lists them"
+                    )));
+                }
+                several => {
+                    let ids: Vec<&str> = several.iter().map(|account| account.id.as_str()).collect();
+                    return Err(failed(format!(
+                        "several accounts are labeled \"{named}\"; name one by its id: {}",
+                        ids.join(", ")
+                    )));
+                }
+            }
+        }
+    };
+    CredentialId::try_from(account.id.as_str()).map_err(failed)
+}
+
+/// The entry's accounts in their order, the active one marked; none unless
+/// `disclose`.
+async fn accounts_answer(
+    shard: &Shard,
+    port: &RpcPort,
+    json_output: bool,
+    entry: &ProviderEntry,
+    disclose: bool,
+) -> Result<u8, RpcError> {
+    let listed = vault_accounts::list(&shard.services().vault, entry, disclose)
+        .await
+        .map_err(failed)?;
+    let accounts: Vec<ListedAccount> = listed
+        .accounts
+        .into_iter()
+        .map(|account| ListedAccount {
+            active: listed.active.as_ref().is_some_and(|active| active.as_str() == account.id),
+            id: account.id,
+            label: account.label,
+        })
+        .collect();
+    if json_output {
+        return json(port, &accounts).await;
+    }
+    if !disclose {
+        return out(port, format!("The accounts of {} are shown to the user who configures it.\n", entry.label)).await;
+    }
+    if accounts.is_empty() {
+        return out(port, format!("{} has no account; the user signs in to one in Settings > Providers.\n", entry.label)).await;
+    }
+    let mut text = String::new();
+    for account in &accounts {
+        let mark = if account.active { " (active)" } else { "" };
+        text.push_str(&format!("{}  {}{mark}\n", account.id, account.label));
+    }
+    out(port, text).await
 }
 
 async fn order(shard: Rc<Shard>, call: Call<OrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -731,13 +1030,13 @@ async fn remove(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Resul
         .map_err(failed)?;
     let removed = RemovedEntry {
         id: removed.id.as_str().to_owned(),
-        name: removed.label,
+        label: removed.label,
         removed: true,
     };
     if call.invocation.json {
         return json(&port, &removed).await;
     }
-    out(&port, format!("Removed {} ({}).\n", removed.name, removed.id)).await
+    out(&port, format!("Removed {} ({}).\n", removed.label, removed.id)).await
 }
 
 async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -994,21 +1293,6 @@ fn wire(text: String) -> Result<WireApi, RpcError> {
         .map_err(|error| failed(format!("wireApi: {error}")))
 }
 
-/// `--through` as the device to connect through: none for `server`, else
-/// the user's device of that id or, failing that, that name.
-async fn through_device(shard: &Shard, through: &str) -> Result<Option<DeviceId>, RpcError> {
-    if through == "server" {
-        return Ok(None);
-    }
-    let devices = shard.host_records().await.map_err(failed)?;
-    devices
-        .iter()
-        .find(|device| device.id.as_str() == through)
-        .or_else(|| devices.iter().find(|device| device.name == through))
-        .map(|device| Some(device.id.clone()))
-        .ok_or_else(|| failed(format!("--through: no device named {through}; give server or a device of `demi host list`")))
-}
-
 /// `--base-url` as an endpoint, refused in the words of a refused body.
 fn endpoint(text: String) -> Result<EndpointUrl, RpcError> {
     EndpointUrl::try_from(text).map_err(|error| failed(format!("baseUrl: {error}")))
@@ -1221,17 +1505,11 @@ async fn shown(
             .collect(),
         _ => Vec::new(),
     };
-    let (config, models_from) = match &entry.credential {
+    let models_from = match &entry.credential {
         // A compatible entry lists only its own models, none at first.
-        EntryCredential::ApiKey(config) => (
-            Some(config),
-            if config.models.is_some() || config.is_compatible() {
-                ModelSource::List
-            } else {
-                ModelSource::Vendor
-            },
-        ),
-        EntryCredential::Subscription { .. } => (None, ModelSource::Provider),
+        EntryCredential::ApiKey(config) if config.models.is_some() || config.is_compatible() => ModelSource::List,
+        EntryCredential::ApiKey(_) => ModelSource::Vendor,
+        EntryCredential::Subscription { .. } => ModelSource::Provider,
     };
     let catalog = scope.catalog_of(entry);
     let models = catalog
@@ -1241,7 +1519,7 @@ async fn shown(
                 .iter()
                 .map(|model| ShownModel {
                     id: model.model.id.clone(),
-                    name: model.model.display_name.clone(),
+                    display_name: model.model.display_name.clone(),
                     context_window: model.model.context_window,
                     output_limit: model.model.output_limit,
                     efforts: model.model.efforts(),
@@ -1256,50 +1534,29 @@ async fn shown(
                 .collect()
         })
         .unwrap_or_default();
-    let media = services.provider_registry.provider_dto(entry).media;
-    // The media models of the entry's own list, by kind.
-    let own = |kind: ModelKind| -> Vec<ConfiguredModel> {
-        config
-            .and_then(|config| config.models.as_ref())
-            .map(|models| models.0.iter().filter(|model| model.kind == kind).cloned().collect())
-            .unwrap_or_default()
+    let through_name = match &entry.through_device {
+        Some(id) => Some(
+            shard
+                .host_records()
+                .await
+                .map_err(failed)?
+                .into_iter()
+                .find(|device| device.id == *id)
+                .map_or_else(|| id.as_str().to_owned(), |device| device.name),
+        ),
+        None => None,
     };
     Ok(ShownEntry {
-        id: entry.id.as_str().to_owned(),
-        name: entry.label.clone(),
-        kind: entry.kind(),
-        vendor: config.and_then(|config| config.vendor_id.clone()),
-        family: entry.family.clone(),
-        wire: config.and_then(|config| config.wire_api),
-        endpoint: config.and_then(|config| config.base_url.as_ref().map(|url| url.url().to_string())),
-        through: match &entry.through_device {
-            Some(id) => Some(
-                shard
-                    .host_records()
-                    .await
-                    .map_err(failed)?
-                    .into_iter()
-                    .find(|device| device.id == *id)
-                    .map_or_else(|| id.as_str().to_owned(), |device| device.name),
-            ),
-            None => None,
-        },
-        headers: entry.headers().to_vec(),
-        key_saved: config.map(|config| config.api_key.is_some()),
-        accounts,
-        availability: catalog.map_or_else(
+        entry: services.provider_registry.provider_dto(entry),
+        status: catalog.map_or_else(
             || Availability::setup(entry.missing()),
             |catalog| catalog.availability.clone(),
         ),
         hidden: scope.preferences.hides_provider(&entry.id),
-        images: media.image,
-        videos: media.video,
-        audio: media.audio,
+        accounts,
         models_from,
-        models,
-        image_models: own(ModelKind::Image),
-        video_models: own(ModelKind::Video),
-        audio_models: own(ModelKind::Audio),
+        catalog: models,
+        through_name,
     })
 }
 
@@ -1391,8 +1648,9 @@ impl ShownEntry {
         for account in &self.accounts {
             accounts.row([account.as_str()]);
         }
+        let entry = &self.entry;
         let mut headers = Table::new(["header", "value"]);
-        for header in &self.headers {
+        for header in &entry.headers {
             headers.row([header.name.as_str(), header.value.as_str()]);
         }
         let mut models = Table::new([
@@ -1407,7 +1665,7 @@ impl ShownEntry {
             "hidden",
             "name",
         ]);
-        for model in &self.models {
+        for model in &self.catalog {
             models.row::<Cell>([
                 model.id.as_str().into(),
                 model.context_window.into(),
@@ -1418,52 +1676,60 @@ impl ShownEntry {
                 files_cell(model.accepted_extensions.as_deref()),
                 model.current.into(),
                 model.hidden.into(),
-                model.name.as_str().into(),
+                model.display_name.as_str().into(),
             ]);
         }
+        let api_key = entry.kind == CredentialKind::ApiKey;
+        let switch = |on: bool| if on { "on" } else { "off" };
+        let search = [
+            ("the web", entry.search.web),
+            ("X", entry.search.x),
+            ("images", entry.search.images),
+            ("videos", entry.search.videos),
+        ]
+        .into_iter()
+        .filter_map(|(what, on)| Some(format!("{what} {}", switch(on?))))
+        .collect::<Vec<_>>();
         let mut fields = Fields::new();
         fields
-            .field("ID", self.id.as_str())
-            .field("Name", self.name.as_str())
-            .field("Kind", kind_text(self.kind))
-            .field("Vendor", self.vendor.as_deref())
-            .field("Family", self.family.as_str())
-            .field("Wire", self.wire.map(|wire| wire.to_string()))
-            .field("Endpoint", self.endpoint.as_deref())
+            .field("ID", entry.id.as_str())
+            .field("Label", entry.label.as_str())
+            .field("Kind", kind_text(entry.kind))
+            .field("Vendor", entry.vendor_id.as_deref())
+            .field("Family", entry.provider_type.as_str())
+            .field("Wire", entry.wire_api.map(|wire| wire.to_string()))
+            .field("Endpoint", entry.base_url.as_ref().map(|url| url.url().to_string()))
             .field(
                 "Connect through",
-                (self.kind == CredentialKind::ApiKey).then(|| self.through.as_deref().unwrap_or("Server")),
+                api_key.then(|| self.through_name.as_deref().unwrap_or("Server")),
             )
-            .field("Key saved", self.key_saved);
-        if !self.headers.is_empty() {
+            .field("Key saved", api_key.then_some(entry.has_api_key));
+        if !entry.headers.is_empty() {
             fields.table("Headers", &headers);
         }
-        if self.kind == CredentialKind::Subscription {
+        if entry.kind == CredentialKind::Subscription {
             fields.table("Accounts", &accounts);
+            fields.field("Rotation", entry.rotation.to_string());
         }
         fields
-            .field("Status", state(&self.availability))
+            .field(
+                "Prompt cache lifetime",
+                entry.cache_ttl_presets.is_some().then(|| entry.cache_ttl.as_ref().map_or("unspecified", |ttl| ttl.as_str())),
+            )
+            .field("Searches", (!search.is_empty()).then(|| search.join(", ")))
+            .field("Status", state(&self.status))
             .field("Hidden", self.hidden)
             .field(
                 "Images",
-                self.images.shape.map(|shape| {
-                    let switch = if self.images.enabled { "on" } else { "off" };
-                    format!("{shape}, Image Generation {switch}")
-                }),
+                entry.media.image.shape.map(|shape| format!("{shape}, Image Generation {}", switch(entry.media.image.enabled))),
             )
             .field(
                 "Videos",
-                self.videos.shape.map(|shape| {
-                    let switch = if self.videos.enabled { "on" } else { "off" };
-                    format!("{shape}, Video Generation {switch}")
-                }),
+                entry.media.video.shape.map(|shape| format!("{shape}, Video Generation {}", switch(entry.media.video.enabled))),
             )
             .field(
                 "Audio",
-                self.audio.shape.map(|shape| {
-                    let switch = if self.audio.enabled { "on" } else { "off" };
-                    format!("{shape}, Audio Generation {switch}")
-                }),
+                entry.media.audio.shape.map(|shape| format!("{shape}, Audio Generation {}", switch(entry.media.audio.enabled))),
             )
             .field(
                 "Models from",
@@ -1475,11 +1741,13 @@ impl ShownEntry {
             )
             .table("Models", &models);
         let lists = [
-            ("Image models", &self.image_models),
-            ("Video models", &self.video_models),
-            ("Audio models", &self.audio_models),
+            ("Image models", ModelKind::Image),
+            ("Video models", ModelKind::Video),
+            ("Audio models", ModelKind::Audio),
         ];
-        for (title, own) in lists {
+        for (title, kind) in lists {
+            let own: Vec<&ConfiguredModel> =
+                entry.models.iter().flat_map(|models| &models.0).filter(|model| model.kind == kind).collect();
             if own.is_empty() {
                 continue;
             }

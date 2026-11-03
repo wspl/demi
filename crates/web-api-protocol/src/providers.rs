@@ -487,7 +487,7 @@ pub struct ProviderDto {
     /// subscription.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<EndpointUrl>")]
-    pub endpoint: Option<EndpointUrl>,
+    pub base_url: Option<EndpointUrl>,
     /// Whether an API-key entry has its key saved; false for a
     /// subscription. The key itself is never sent.
     pub has_api_key: bool,

@@ -280,7 +280,7 @@ impl ProviderEntry {
             wire_api: config.and_then(|config| config.wire_api),
             vendor_id: config.and_then(|config| config.vendor_id.clone()),
             compatible: config.is_some_and(ApiKeyConfig::is_compatible),
-            endpoint: config.and_then(|config| match config.is_compatible() {
+            base_url: config.and_then(|config| match config.is_compatible() {
                 true => config.base_url.clone(),
                 false => config.base_url.clone().or(default_endpoint),
             }),
