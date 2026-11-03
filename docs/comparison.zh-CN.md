@@ -1,6 +1,6 @@
 # Demi 对比
 
-[English](comparison.md) · [Deutsch](comparison.de.md) · [Español (Latinoamérica)](comparison.es.md) · [Français](comparison.fr.md) · [Português (Brasil)](comparison.pt-BR.md) · **简体中文** · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
+[English](comparison.md) · [Deutsch](comparison.de.md) · [Español](comparison.es.md) · [Français](comparison.fr.md) · [Português](comparison.pt-BR.md) · **简体中文** · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
 
 Demi 与同类 Agent 应用的差异，截至 2026 年 10 月，依据各产品的文档和源码整理。只列出各产品之间有差异的项，以及一项目前都不支持的能力。各列按与 Demi 的接近程度，从最接近排到最不接近。
 

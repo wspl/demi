@@ -1,6 +1,6 @@
 # Demi im Vergleich
 
-[English](comparison.md) · **Deutsch** · [Español (Latinoamérica)](comparison.es.md) · [Français](comparison.fr.md) · [Português (Brasil)](comparison.pt-BR.md) · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
+[English](comparison.md) · **Deutsch** · [Español](comparison.es.md) · [Français](comparison.fr.md) · [Português](comparison.pt-BR.md) · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
 
 Wie sich Demi von Agenten-Apps seiner Art unterscheidet, Stand Oktober 2026, nach der Dokumentation und dem Quellcode jedes Produkts. Die Tabelle führt eine Zeile nur dort auf, wo sich die Produkte unterscheiden, und eine Fähigkeit, die noch keines von ihnen hat. Ihre Spalten reichen vom Produkt, das Demi am nächsten ist, bis zum entferntesten.
 

@@ -969,7 +969,7 @@ const GERMAN: LanguageWriting = {
 }
 const SPANISH: LanguageWriting = {
   language: 'es-419',
-  title: 'Español (Latinoamérica)',
+  title: 'Español',
   rules: [
     {
       title: 'The user is tú',
@@ -1359,7 +1359,7 @@ const FRENCH: LanguageWriting = {
 }
 const PORTUGUESE: LanguageWriting = {
   language: 'pt-BR',
-  title: 'Português (Brasil)',
+  title: 'Português',
   rules: [
     {
       title: 'The user is você',
