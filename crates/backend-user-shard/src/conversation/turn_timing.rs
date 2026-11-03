@@ -74,6 +74,8 @@ pub(super) struct TurnTiming {
 
 /// A turn as its blocks come.
 pub(super) struct Turn {
+    /// The turn id its blocks name, which its usage ledger rows keep too.
+    id: String,
     index: usize,
     started_at: Timestamp,
     start: i64,
@@ -95,9 +97,10 @@ pub(super) struct Turn {
 }
 
 impl Turn {
-    fn new(index: usize, started_at: Timestamp) -> Self {
+    fn new(id: String, index: usize, started_at: Timestamp) -> Self {
         let start = started_at.as_millisecond();
         Self {
+            id,
             index,
             started_at,
             start,
@@ -229,6 +232,19 @@ impl Turn {
         self.ended(created.as_millisecond(), false);
     }
 
+    pub(super) fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// The index of the turn's first block.
+    pub(super) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(super) fn started_at(&self) -> Timestamp {
+        self.started_at
+    }
+
     /// Where the turn's time went, each instant counted for one part.
     pub(super) fn timing(mut self) -> TurnTiming {
         // Calls no response ended, as a stopped turn's, ran as written.
@@ -319,8 +335,10 @@ impl Turns {
     /// Takes the block at `index`: it starts a turn, joins the one open,
     /// or belongs to a turn that started before.
     pub(super) fn add(&mut self, index: usize, block: &Block) {
-        if self.starts(block) {
-            let turn = Turn::new(index, block.created_at());
+        if self.starts(block)
+            && let Some(id) = turn_of(block)
+        {
+            let turn = Turn::new(id.to_owned(), index, block.created_at());
             self.done.extend(self.open.replace(turn));
         }
         if let Some(turn) = turn_of(block) {

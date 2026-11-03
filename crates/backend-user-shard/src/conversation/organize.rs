@@ -41,6 +41,7 @@ use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::cost_report::{ConversationCost, CostArgs, cost};
 use super::history::{history_group, shell_word};
 use super::search::search;
 use crate::shard::Shard;
@@ -53,10 +54,12 @@ const CONVERSATIONS_ACTION: &str = "use your other conversations";
 
 const CONVERSATIONS_DESCRIPTION: &str = "Use Your Other Conversations lets the agents of this conversation list your conversations, read what any of them holds, send messages to them and start new ones. A conversation they send to or start can do the same. What they read goes to this conversation’s model provider.";
 
-const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects and conversations; send a message to another conversation, or start a new one; and transcripts, which history searches and reads: an agent's of this conversation, or of another conversation of the user.";
+const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects and conversations; send a message to another conversation, or start a new one; what a conversation's calls to the model cost; and transcripts, which history searches and reads: an agent's of this conversation, or of another conversation of the user.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Renames the conversation, lists projects and the user's conversations, sends messages to other conversations, starts new conversations, searches and reads transcripts of any agent, including those of other conversations.";
+const ENTRY: &str = "Renames the conversation, lists projects and the user's conversations, sends messages to other conversations, starts new conversations, shows what a conversation cost, searches and reads transcripts of any agent, including those of other conversations.";
+
+const COST_SUMMARY: &str = "Print what this conversation's calls to model vendors cost, or another conversation's with --conversation <id>: every agent's and the calls of none, such as a title's. Prices are in dollars at API prices, which a subscription's calls are priced at too, and are no bill. It prints the calls, the price and the share of the turn calls' prompt tokens the cache served, then tables: all, the last day and the last hour; by agent, 0 the main agent, with its profile; by model; by purpose (turn, compaction, title, suggested_replies, image, video, audio); the media made with the vendor's own cost in its currency; the subscription accounts that answered and how often an agent's calls moved to another; the cache misses by why; the calls not answered by how they ended. A table with nothing to show is left out. Each table counts the tokens sent uncached (input), written to the cache, read from it and the output. `demi conversation history cost` breaks one agent's down by turn and call.";
 
 const RENAME_SUMMARY: &str = "Rename this conversation, as its title in the user's sidebar.";
 
@@ -148,6 +151,14 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .success_output("the conversation started, its title and id")
                 .permission(CONVERSATIONS)
                 .bind(TypedRpc::new(verb(shard.clone(), new))),
+        )
+        .leaf(
+            LeafBuilder::rpc("cost", COST_SUMMARY)
+                .input::<CostArgs>()
+                .success_output("the conversation's totals as labelled lines, with a table for each way they are broken down")
+                .json_output::<ConversationCost>()
+                .permission_when(CONVERSATIONS, "conversation")
+                .bind(TypedRpc::new(verb(shard.clone(), cost))),
         )
         .group(history_group(shard))
 }

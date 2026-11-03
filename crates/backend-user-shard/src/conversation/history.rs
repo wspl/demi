@@ -8,7 +8,9 @@
 //! - `open` prints what such a line names, or saves an attachment under the
 //!   scratch directory.
 //! - `timing` prints where each turn's time went, from the times the blocks
-//!   keep (`turn_timing.rs`).
+//!   keep (`turn_timing.rs`), and `cost` what each turn's calls cost, from
+//!   the usage ledger rows of its turn id (`cost_report.rs`); both page the
+//!   turns alike.
 //! - A search covers messages, texts and the commands' descriptions only.
 //!   Thinking, scripts and command output are most of a transcript's text and
 //!   would drown what was said.
@@ -46,7 +48,8 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use super::organize::{CONVERSATIONS, failed, refused, verb};
-use super::turn_timing::{TurnTiming, Turns, turn_of};
+use super::cost_report::{CostRows, Labels, call_costs, render_calls, render_turns, turn_costs};
+use super::turn_timing::{Turn, TurnTiming, Turns, turn_of};
 use crate::shard::Shard;
 
 /// About how many characters a read prints, and a page of what `open`
@@ -66,6 +69,8 @@ const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messag
 const READ_SUMMARY: &str = "Print the transcript in a range of block indices, 4213..4260, 4213.. or ..4260: each message and each of your texts whole, every other block as one line saying what it is and how to open it, such as [4214 command: Run the tests · exit 0 · 3s]; thinking and context blocks are left out. With --from user only your user's or parent's messages are printed, with --from agent only your texts and command lines, as search --from counts them. A read stops at about 8,000 characters, at a block's end, and its last line says where to go on.";
 
 const TIMING_SUMMARY: &str = "Print where the time of each turn that starts in a range of block indices went, 4213..4260, 4213.. or ..4260: one row per turn, by the index of its first block, with its time and how many requests it made, and the time of each part in milliseconds. preparing is Demi's own before a request left, waiting from a request leaving to its first output, thinking, text the model writing its answer, calls the model writing tool calls, tools the calls running, compacting, retrying a failed request and the wait after it, and other the time no part covers, so the parts add up to the turn; time two parts share counts once. Fifty turns a page; stderr names the next page.";
+
+const COST_SUMMARY: &str = "Print what each turn that starts in a range of block indices cost, 4213..4260, 4213.. or ..4260: one row per turn, by the index of its first block, with its calls to the model's vendor, the prompt tokens of its first and last turn call, the tokens it sent uncached (input), wrote to the cache, read from it and the output, the share of the prompt the cache served, and the price in dollars at API prices, which a subscription's calls are priced at too and which is no bill; notes say why a call missed the cache, a compaction, a call not answered and the media made. --calls prints one row per call instead: its number among your turn calls, purpose, model, the subscription account that answered it, its tokens, price, how it ended and why it missed the cache. Fifty turns a page; stderr names the next page. `demi conversation cost` sums the whole conversation.";
 
 const OPEN_SUMMARY: &str = "Print what a read names in one line, by its index: a command's script, exit code, duration and output, the output a page at a time as demi shell output pages it; a thinking block's text; a subagent's report; a compaction's summary. An attachment or an image of a message, such as 4213/a1, is saved under $DEMI_SCRATCH and its path printed, for demi file view or the ordinary tools. --page <n> takes the next page.";
 
@@ -153,6 +158,19 @@ struct TimingArgs {
     target: Target,
 }
 
+/// The input of `demi conversation history cost`.
+#[derive(Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+struct CostArgs {
+    /// The blocks whose turns to price, by index: 4213..4260, 4213.. or
+    /// ..4260
+    range: String,
+    /// One row per call instead of one per turn
+    calls: Option<bool>,
+    #[serde(flatten)]
+    target: Target,
+}
+
 /// The input of `demi conversation history open`.
 #[derive(Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -196,6 +214,15 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .json_output::<Vec<TurnTiming>>()
                 .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), timing))),
+        )
+        .leaf(
+            LeafBuilder::rpc("cost", COST_SUMMARY)
+                .input::<CostArgs>()
+                .positionals(["range"])
+                .success_output("a table of the turns that start in the range, one row per turn, or per call with --calls; on stderr, the next page when more turns follow")
+                .json_output::<CostRows>()
+                .permission_when(CONVERSATIONS, "conversation")
+                .bind(TypedRpc::new(verb(shard.clone(), cost))),
         )
         .leaf(
             LeafBuilder::rpc("open", OPEN_SUMMARY)
@@ -281,6 +308,25 @@ impl Reader {
     /// none for the caller's own transcript.
     fn flags(&self) -> String {
         flags(&self.other, self.agent)
+    }
+
+    /// The agent's number in its conversation's tree, 0 for the main agent.
+    async fn number(&self, shard: &Shard) -> Result<u64, RpcError> {
+        if self.root {
+            return Ok(0);
+        }
+        if let Some(agent) = self.agent {
+            return Ok(u64::from(agent));
+        }
+        let node = self.node.clone();
+        shard
+            .services()
+            .conversations
+            .read(&self.conversation, move |connection| tree::agent_number(connection, &node))
+            .await
+            .map_err(failed)?
+            .flatten()
+            .ok_or_else(|| failed("the agent has no number in its conversation"))
     }
 
     /// Which transcript a read of another one is of, such as `agent 3 of
@@ -739,7 +785,7 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
     Ok(0)
 }
 
-/// How many turns `timing` prints at a time.
+/// How many turns `timing` and `cost` print at a time.
 ///
 /// Bounded because what it prints goes into the model's context window,
 /// which the vendor limits.
@@ -747,49 +793,8 @@ const TURNS_PER_PAGE: usize = 50;
 
 async fn timing(shard: Rc<Shard>, call: Call<TimingArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let reader = Reader::of(&shard, &call, &call.args.target).await?;
-    let Some((from, to)) = range(&call.args.range) else {
-        return Err(refused(format!(
-            "{}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260",
-            call.args.range
-        )));
-    };
-    let first_end = to.map_or(from + BATCH - 1, |to| to.min(from + BATCH - 1));
-    let (mut blocks, length) = reader.blocks(&shard, from..=first_end).await?;
-    if length == 0 {
-        return Err(failed("the transcript has no blocks yet"));
-    }
-    if from >= length {
-        return Err(failed(format!(
-            "{from} is past the end: the transcript's last block is {}",
-            length - 1
-        )));
-    }
-    let end = to.map_or(length - 1, |to| to.min(length - 1));
-    let mut turns = Turns::after(reader.turn_before(&shard, from).await?);
-    // The turns that start in the range, each read to its end, which may
-    // lie after the range's.
-    let mut next = None;
-    let mut at = from;
-    'reading: loop {
-        for block in &blocks {
-            let starts = turns.starts(block);
-            if at > end && (starts || !turns.is_open()) {
-                break 'reading;
-            }
-            if starts && turns.started() == TURNS_PER_PAGE {
-                next = Some(at);
-                break 'reading;
-            }
-            turns.add(at, block);
-            at += 1;
-        }
-        if blocks.is_empty() || at >= length {
-            break;
-        }
-        blocks = reader.blocks(&shard, at..=(at + BATCH - 1).min(length - 1)).await?.0;
-    }
-    let turns = turns.into_turns();
-    let timings: Vec<TurnTiming> = turns.into_iter().map(|turn| turn.timing()).collect();
+    let page = turn_page(&shard, &reader, &call.args.range).await?;
+    let timings: Vec<TurnTiming> = page.turns.into_iter().map(|turn| turn.timing()).collect();
     let command = "demi conversation history timing";
     let mut notes = Vec::new();
     if let Some(name) = reader.name() {
@@ -798,10 +803,7 @@ async fn timing(shard: Rc<Shard>, call: Call<TimingArgs>, port: RpcPort) -> Resu
     if timings.iter().any(|timing| timing.untimed) {
         notes.push("some blocks were written before the transcript kept their times, and their time counts as other".to_owned());
     }
-    if let Some(next) = next {
-        let rest = to.map_or_else(String::new, |_| end.to_string());
-        notes.push(format!("next: {command}{} {next}..{rest}", reader.flags()));
-    }
+    notes.extend(page.next.map(|next| format!("next: {command}{} {next}..{}", reader.flags(), page.rest)));
     if !notes.is_empty() {
         port.stderr(output::note(command, &notes.join("; "))).await?;
     }
@@ -844,6 +846,111 @@ async fn timing(shard: Rc<Shard>, call: Call<TimingArgs>, port: RpcPort) -> Resu
     }
     port.stdout(table.render()).await?;
     Ok(0)
+}
+
+async fn cost(shard: Rc<Shard>, call: Call<CostArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let reader = Reader::of(&shard, &call, &call.args.target).await?;
+    let page = turn_page(&shard, &reader, &call.args.range).await?;
+    let agent = reader.number(&shard).await?;
+    let turns: Vec<(String, usize, Timestamp)> = page
+        .turns
+        .iter()
+        .map(|turn| (turn.id().to_owned(), turn.index(), turn.started_at()))
+        .collect();
+    let ids = turns.iter().map(|(id, _, _)| id.clone()).collect();
+    let calls = shard
+        .services()
+        .control
+        .turn_calls(reader.conversation.clone(), agent, ids)
+        .await
+        .map_err(failed)?;
+    let command = "demi conversation history cost";
+    let mut notes = Vec::new();
+    if let Some(name) = reader.name() {
+        notes.push(format!("transcript of {name}"));
+    }
+    let by_call = call.args.calls == Some(true);
+    let more = if by_call { " --calls" } else { "" };
+    notes.extend(page.next.map(|next| format!("next: {command}{more}{} {next}..{}", reader.flags(), page.rest)));
+    if !notes.is_empty() {
+        port.stderr(output::note(command, &notes.join("; "))).await?;
+    }
+    let rows = if by_call {
+        CostRows::Calls(call_costs(&turns, &calls, &Labels::of(&shard, &calls).await))
+    } else {
+        CostRows::Turns(turn_costs(&turns, &calls))
+    };
+    let text = if call.invocation.json {
+        serde_json::to_string(&rows).map_err(failed)? + "\n"
+    } else {
+        match &rows {
+            CostRows::Calls(rows) => render_calls(rows),
+            CostRows::Turns(rows) => render_turns(rows),
+        }
+    };
+    port.stdout(text).await?;
+    Ok(0)
+}
+
+/// The turns of a page of a history command that reads turns: those that
+/// start in its range, each read to its end, which may lie after the
+/// range's.
+struct TurnPage {
+    turns: Vec<Turn>,
+    /// The index the next page starts at, when more turns start in the
+    /// range.
+    next: Option<usize>,
+    /// The end of the next page's range as the command names it: the
+    /// range's end, or nothing for a range open at its end.
+    rest: String,
+}
+
+/// The page of the turns that start in `range` of `reader`'s transcript,
+/// fifty at most.
+async fn turn_page(shard: &Shard, reader: &Reader, range_text: &str) -> Result<TurnPage, RpcError> {
+    let Some((from, to)) = range(range_text) else {
+        return Err(refused(format!(
+            "{range_text}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260"
+        )));
+    };
+    let first_end = to.map_or(from + BATCH - 1, |to| to.min(from + BATCH - 1));
+    let (mut blocks, length) = reader.blocks(shard, from..=first_end).await?;
+    if length == 0 {
+        return Err(failed("the transcript has no blocks yet"));
+    }
+    if from >= length {
+        return Err(failed(format!(
+            "{from} is past the end: the transcript's last block is {}",
+            length - 1
+        )));
+    }
+    let end = to.map_or(length - 1, |to| to.min(length - 1));
+    let mut turns = Turns::after(reader.turn_before(shard, from).await?);
+    let mut next = None;
+    let mut at = from;
+    'reading: loop {
+        for block in &blocks {
+            let starts = turns.starts(block);
+            if at > end && (starts || !turns.is_open()) {
+                break 'reading;
+            }
+            if starts && turns.started() == TURNS_PER_PAGE {
+                next = Some(at);
+                break 'reading;
+            }
+            turns.add(at, block);
+            at += 1;
+        }
+        if blocks.is_empty() || at >= length {
+            break;
+        }
+        blocks = reader.blocks(shard, at..=(at + BATCH - 1).min(length - 1)).await?.0;
+    }
+    Ok(TurnPage {
+        turns: turns.into_turns(),
+        next,
+        rest: to.map_or_else(String::new, |_| end.to_string()),
+    })
 }
 
 /// How a read shows a block: the line that names it, and the text under it

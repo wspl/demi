@@ -34,6 +34,14 @@
 //! `usage_ledger_conversation`, ordered by their end, so a read reads that
 //! window's rows of that conversation and no others.
 //!
+//! # A cost report
+//!
+//! `demi conversation cost` and `history cost` read a conversation's rows as
+//! [`LedgerCall`]s and sum them with [`add_call`], the sum that keeps a
+//! conversation's cost, so a report's totals are the card's. The whole
+//! conversation's rows are found by `usage_ledger_conversation`, a page of
+//! turns' by `usage_ledger_turn`.
+//!
 //! The counts are the vendor's, so the ledger is a record for reconciliation and
 //! not a bill. Prices tiered by a request's length, as some models charge more
 //! past 200K tokens, are not modelled: a call is priced at the model's base rates.
@@ -54,7 +62,7 @@ use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 
 /// How far back the cost of a window counts.
-const fn window_ms(window: CostWindow) -> i64 {
+pub const fn window_ms(window: CostWindow) -> i64 {
     match window {
         CostWindow::Hour => 60 * 60 * 1000,
         CostWindow::Day => 24 * 60 * 60 * 1000,
@@ -86,7 +94,8 @@ pub struct UsageRow {
     pub agent: Option<u64>,
     /// None outside a turn.
     pub turn: Option<String>,
-    /// `turn`, `compaction`, `title`, `image`, `video` or `audio`.
+    /// `turn`, `compaction`, `title`, `suggested_replies`, `image`, `video`
+    /// or `audio`.
     pub purpose: &'static str,
     pub provider: ProviderId,
     /// The subscription account; none for an API key.
@@ -463,6 +472,57 @@ impl ControlService {
         .await
     }
 
+    /// Every row of the conversation, in the order the calls ended, and the
+    /// control store's time of the read.
+    pub async fn conversation_calls(&self, conversation: ConversationId) -> Result<(Vec<LedgerCall>, Timestamp), StorageError> {
+        self.call(move |connection, now| {
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {LEDGER_CALL} FROM usage_ledger INDEXED BY usage_ledger_conversation
+                 WHERE conversation_id = ?1 ORDER BY ended_at, rowid"
+            ))?;
+            let mut rows = statement.query([conversation.as_str()])?;
+            let mut calls = Vec::new();
+            while let Some(row) = rows.next()? {
+                calls.push(ledger_call(row)?);
+            }
+            Ok((calls, now))
+        })
+        .await
+    }
+
+    /// The rows of the conversation's agent `agent` that belong to one of
+    /// `turns`, in the order they were written.
+    pub async fn turn_calls(
+        &self,
+        conversation: ConversationId,
+        agent: u64,
+        turns: Vec<String>,
+    ) -> Result<Vec<LedgerCall>, StorageError> {
+        if turns.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.call(move |connection, _| {
+            // A page holds at most fifty turns, far below SQLite's limit on
+            // a statement's parameters.
+            let marks = vec!["?"; turns.len()].join(", ");
+            let mut statement = connection.prepare(&format!(
+                "SELECT {LEDGER_CALL} FROM usage_ledger INDEXED BY usage_ledger_turn
+                 WHERE conversation_id = ? AND turn_id IN ({marks}) AND agent = ? ORDER BY rowid"
+            ))?;
+            let (conversation, agent) = (conversation.as_str(), column_count(agent));
+            let mut values: Vec<&dyn rusqlite::ToSql> = vec![&conversation];
+            values.extend(turns.iter().map(|turn| turn as &dyn rusqlite::ToSql));
+            values.push(&agent);
+            let mut rows = statement.query(values.as_slice())?;
+            let mut calls = Vec::new();
+            while let Some(row) = rows.next()? {
+                calls.push(ledger_call(row)?);
+            }
+            Ok(calls)
+        })
+        .await
+    }
+
     /// The user's totals.
     pub async fn usage_totals(&self, user: UserId) -> Result<Vec<UsageGroup>, StorageError> {
         self.call(move |connection, _| totals(connection, &user))
@@ -546,6 +606,131 @@ const MISS_TOKENS: u64 = 2_000;
 /// for an hour.
 const KEPT_MS: i64 = 5 * 60 * 1000;
 const KEPT_HOUR_MS: i64 = 60 * 60 * 1000;
+
+/// One row of the ledger, as a cost report reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LedgerCall {
+    /// The session's agent number, 0 for the root; none outside a session.
+    pub agent: Option<u64>,
+    /// None outside a turn.
+    pub turn: Option<String>,
+    /// `turn`, `compaction`, `title`, `suggested_replies`, `image`, `video`
+    /// or `audio`.
+    pub purpose: String,
+    pub provider: ProviderId,
+    /// The subscription account; none for an API key.
+    pub account: Option<CredentialId>,
+    pub model: String,
+    /// None when the vendor reported no counts.
+    pub usage: Option<TokenUsage>,
+    /// `answered`, `cancelled` or the failure code of a refused call; a row
+    /// written before the ledger kept outcomes, which kept only answers, is
+    /// `answered`.
+    pub outcome: String,
+    /// None for a row written before the ledger kept a call's start.
+    pub started_at: Option<Timestamp>,
+    pub ended_at: Timestamp,
+    pub media_seconds: Option<f64>,
+    /// What the vendor said the call cost.
+    pub cost: Option<Cost>,
+    pub price: Option<ApiPrice>,
+    /// A turn call's number among its agent's, from 1; none for every other
+    /// row.
+    pub call_number: Option<u64>,
+    pub after_compaction: bool,
+    pub miss: Option<CacheMiss>,
+}
+
+impl LedgerCall {
+    /// What the call costs as a conversation's cost counts it: its tokens'
+    /// price, or the vendor's own cost in dollars; none when neither is
+    /// known.
+    pub fn priced(&self) -> Option<f64> {
+        row_price(self.price, self.usd())
+    }
+
+    /// The tokens of the call's prompt; none when the vendor reported no
+    /// counts.
+    pub fn prompt_tokens(&self) -> Option<u64> {
+        self.usage.as_ref().map(prompt_tokens)
+    }
+
+    fn usd(&self) -> Option<f64> {
+        self.cost.filter(|cost| cost.currency == Currency::Usd).map(|cost| cost.amount)
+    }
+}
+
+/// Adds `call` to `cost`, as its row added to its conversation's kept cost.
+pub fn add_call(cost: &mut AgentCost, call: &LedgerCall) {
+    let row = RowCost {
+        usage: call.usage,
+        parts: call.price,
+        usd: call.usd(),
+    };
+    add_row(cost, &row, call.call_number.is_some());
+}
+
+/// The share of the prompt tokens of `calls`' turn calls that the cache
+/// served, as a card's rate counts it; none without a turn call that sent a
+/// prompt.
+pub fn turn_hit_rate<'a>(calls: impl IntoIterator<Item = &'a LedgerCall>) -> Option<f64> {
+    let (prompt, read) = calls
+        .into_iter()
+        .filter(|call| call.call_number.is_some())
+        .filter_map(|call| call.usage)
+        .fold((0, 0), |(prompt, read), usage| (prompt + prompt_tokens(&usage), read + usage.cache_read_tokens));
+    read_share(read, prompt)
+}
+
+/// The columns [`ledger_call`] reads.
+const LEDGER_CALL: &str = "agent, turn_id, purpose, provider_id, account_id, model_id,
+       input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, outcome, started_at, ended_at,
+       media_seconds, cost, cost_currency, api_price_input, api_price_cache_write, api_price_cache_read,
+       api_price_output, call_number, after_compaction, miss";
+
+fn ledger_call(row: &Row<'_>) -> Result<LedgerCall, StorageError> {
+    let count = |column: &'static str| -> Result<Option<u64>, StorageError> {
+        row.get::<_, Option<i64>>(column)?
+            .map(|count| decode("usage_ledger", column, u64::try_from(count)))
+            .transpose()
+    };
+    let started_at = match row.get::<_, Option<i64>>("started_at")? {
+        Some(_) => Some(instant(row, "usage_ledger", "started_at")?),
+        None => None,
+    };
+    let cost = match (row.get::<_, Option<f64>>("cost")?, row.get::<_, Option<String>>("cost_currency")?) {
+        (Some(amount), Some(currency)) => Some(Cost {
+            amount,
+            currency: decode("usage_ledger", "cost_currency", currency.parse::<Currency>())?,
+        }),
+        _ => None,
+    };
+    let (price, _) = row_prices(row)?;
+    Ok(LedgerCall {
+        agent: count("agent")?,
+        turn: row.get("turn_id")?,
+        purpose: row.get("purpose")?,
+        provider: decode("usage_ledger", "provider_id", ProviderId::try_from(row.get::<_, String>("provider_id")?))?,
+        account: row
+            .get::<_, Option<String>>("account_id")?
+            .map(|account| decode("usage_ledger", "account_id", CredentialId::try_from(account)))
+            .transpose()?,
+        model: row.get("model_id")?,
+        usage: row_usage(row)?,
+        outcome: row.get::<_, Option<String>>("outcome")?.unwrap_or_else(|| "answered".to_owned()),
+        started_at,
+        ended_at: instant(row, "usage_ledger", "ended_at")?,
+        media_seconds: row.get("media_seconds")?,
+        cost,
+        price,
+        call_number: count("call_number")?,
+        after_compaction: row.get::<_, Option<bool>>("after_compaction")?.unwrap_or(false),
+        miss: row
+            .get::<_, Option<String>>("miss")?
+            .map(|miss| decode("usage_ledger", "miss", miss.parse::<CacheMiss>()))
+            .transpose()?,
+    })
+}
 
 /// One conversation's kept cost of one agent, or of its rows of no agent.
 #[derive(Debug, Clone, PartialEq)]
