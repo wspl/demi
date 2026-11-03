@@ -31,7 +31,7 @@
 use chromiumoxide::{
     Page,
     cdp::browser_protocol::{
-        browser::{Bounds, GetWindowForTargetParams, SetWindowBoundsParams},
+        browser::{GetWindowForTargetParams, SetContentsSizeParams},
         emulation::{
             GetScreenInfosParams, ScreenId, SetDeviceMetricsOverrideParams,
             SetTouchEmulationEnabledParams, SetUserAgentOverrideParams, UserAgentMetadata,
@@ -43,10 +43,7 @@ use chromiumoxide::{
 use futures_util::StreamExt;
 use serde_json::Value;
 
-use crate::driver::{
-    launch::WINDOW_CHROME_HEIGHT,
-    operation::{BrowserError, Result},
-};
+use crate::driver::operation::{BrowserError, Result};
 
 use crate::tabs::{
     loading::PageLoad,
@@ -252,9 +249,9 @@ impl BrowserTab {
         self.state.viewport.borrow().web
     }
 
-    /// Pins the page's viewport and sizes its window to it plus the browser's
-    /// own chrome, so the page never sees an outer size smaller than its inner
-    /// size.
+    /// Pins the page's viewport and sizes its window so that the page's area
+    /// is the viewport, so the page never sees an outer size smaller than its
+    /// inner size.
     ///
     /// - Entering or leaving Mobile mode turns the phone's touch and user agent
     ///   on or off.
@@ -317,7 +314,7 @@ impl BrowserTab {
             () = &mut replaced => false,
         };
         // A window narrower than macOS allows keeps its smallest width, and
-        // Chrome lays a window that changed width out only after the bounds'
+        // Chrome lays a window that changed width out only after the resize's
         // answer, which gives the page the window's width again: the capture
         // would shrink the page into the viewport between black bands. The
         // metrics set again once the page painted hold.
@@ -340,8 +337,14 @@ impl BrowserTab {
         Ok(())
     }
 
-    /// Sizes the tab's window to `viewport` and answers its width before and
-    /// after, which the system's smallest window can make wider than asked.
+    /// Sizes the tab's window so that its page's area is `viewport` and
+    /// answers its width before and after, which the system's smallest window
+    /// can make wider than asked.
+    ///
+    /// The page's area is asked for, not the window's size: a popup's window
+    /// has a location bar alone and a tab's a tab strip and a toolbar too, so
+    /// a window sized by one chrome height held a popup's page taller than its
+    /// viewport, which the capture shrank between black bands.
     async fn fit_window(&self, viewport: BrowserViewport) -> Result<WindowWidth> {
         let browser = self.browser.call()?;
         let found = browser
@@ -355,13 +358,14 @@ impl BrowserTab {
         let window = found.window_id;
         let before = found.bounds.width;
         browser
-            .execute(SetWindowBoundsParams::new(
-                window,
-                Bounds::builder()
+            .execute(
+                SetContentsSizeParams::builder()
+                    .window_id(window)
                     .width(i64::from(viewport.width))
-                    .height(i64::from(viewport.height + WINDOW_CHROME_HEIGHT))
-                    .build(),
-            ))
+                    .height(i64::from(viewport.height))
+                    .build()
+                    .map_err(BrowserError::InvalidResult)?,
+            )
             .await?;
         let after = browser
             .execute(

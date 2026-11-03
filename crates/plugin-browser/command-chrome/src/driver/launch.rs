@@ -43,10 +43,6 @@ const CAPTURE_EXTENSION: &[(&str, &str)] = &[
     ("offscreen.js", include_str!("capture/offscreen.js")),
 ];
 
-/// The height the browser's own chrome adds to a window, so that a page never
-/// sees an outer size smaller than its inner size.
-pub const WINDOW_CHROME_HEIGHT: u32 = 87;
-
 /// An installed Chrome runtime, which Chrome starts with on Linux:
 /// the directory of its libraries,
 /// which holds the empty `gio/modules` too, and its fontconfig file.
