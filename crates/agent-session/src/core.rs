@@ -210,6 +210,8 @@ pub(super) enum WaitStart {
     Retry,
     /// The model finished a text and goes on within its run.
     TextEnded,
+    /// A step the vendor ran ended, and the model goes on within its run.
+    StepEnded,
     /// A compaction pass ended inside the turn.
     CompactionEnd,
 }
@@ -222,6 +224,7 @@ impl WaitStart {
             Self::InputArrived => "input_arrived",
             Self::Retry => "retry",
             Self::TextEnded => "text_ended",
+            Self::StepEnded => "step_ended",
             Self::CompactionEnd => "compaction_end",
         }
     }
@@ -2548,15 +2551,18 @@ impl SessionCore {
         // - reasoning as soon as its block starts, with text or without,
         //   redacted reasoning too;
         // - text;
-        // - a whole call, or a call being written once its title is.
+        // - a whole call, or a call being written once its title is;
+        // - a step the vendor runs, as it starts or ends.
         //
-        // The response's usage and a call without its title show nothing, and
-        // the row goes on saying Requesting.
+        // The response's usage, a call without its title and an update of a
+        // vendor's step that had ended show nothing, and the row goes on
+        // saying Requesting.
         let shows = event.is_output()
             && !matches!(
                 event,
                 ProviderEvent::ToolCallStart { .. } | ProviderEvent::ToolCallInput { .. }
-            );
+            )
+            && !matches!(&event, ProviderEvent::Opaque(step) if self.transcript.updates_ended_opaque(step));
         self.count_output(&event);
         let before = self.transcript.len();
         self.apply_event_to_transcript(event);
