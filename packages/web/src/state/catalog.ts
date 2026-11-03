@@ -5,8 +5,7 @@ import type {
   SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
-import { appliedContextLimit, type AuthState, type RuntimeState } from '@demicodes/protocol'
-import { titleCase } from '@demicodes/utils'
+import { appliedContextLimit, type AuthState, type RuntimeState, type WireApi } from '@demicodes/protocol'
 import type {
   AccountDto,
   CatalogModel,
@@ -30,26 +29,24 @@ export interface ProductProvider extends SettingsProviderEntry {
   keyConfigured: boolean
 }
 
-const subscriptionNames: Record<string, string> = {
-  'claude-code': 'Claude Code',
-  codex: 'Codex',
-  'grok-build': 'Grok Build',
-}
-export function subscriptionName(providerType: string): string {
-  return subscriptionNames[providerType] ?? providerType
+/**
+ * Each protocol as the backend names it: the family that speaks it, and the
+ * wire of a family that has more than one.
+ */
+export const PROTOCOLS: Readonly<Record<SettingsWireApi, { providerType: string; wireApi?: WireApi }>> = {
+  'anthropic-messages': { providerType: 'anthropic' },
+  'google-generative': { providerType: 'google' },
+  'openai-chat': { providerType: 'openai', wireApi: 'chat-completions' },
+  'openai-responses': { providerType: 'openai', wireApi: 'responses' },
 }
 
-export function wireApi(
-  providerType: string,
-  wire: 'responses' | 'chat-completions' | null | undefined,
-): SettingsWireApi {
-  if (providerType === 'anthropic') {
-    return 'anthropic-messages'
-  }
-  if (providerType === 'google') {
-    return 'google-generative'
-  }
-  return wire === 'chat-completions' ? 'openai-chat' : 'openai-responses'
+/** The protocol of an entry of family `providerType` on `wire`: an OpenAI wire's for a family not listed. */
+export function wireApi(providerType: string, wire: WireApi | null | undefined): SettingsWireApi {
+  const spoken = (Object.keys(PROTOCOLS) as SettingsWireApi[]).find((name) => {
+    const protocol = PROTOCOLS[name]
+    return protocol.providerType === providerType && (protocol.wireApi === undefined || protocol.wireApi === (wire ?? 'responses'))
+  })
+  return spoken ?? (wire === 'chat-completions' ? 'openai-chat' : 'openai-responses')
 }
 
 /** A catalog model as the composer takes it, with `limit`, the context limit the user stored on it. */
@@ -117,27 +114,11 @@ function healthMessage(health: AuthState | RuntimeState): string | undefined {
 }
 
 /**
- * The families whose account detail is the plan its sign-in recorded, such as
- * Claude Code's subscription type: their usage answer names no plan. Another
- * family's detail says how the account signed in (`chatgpt`, `oidc`), which
- * is not a plan.
+ * The plan an account is on (`packages/web-ui/src/ui/dates.ts`): what its
+ * quota snapshot reports; empty before one, or when it names none.
  */
-const PLAN_IN_DETAIL = new Set(['claude-code'])
-
-/**
- * The plan an account is on (`packages/web-ui/src/ui/dates.ts`):
- * what its quota snapshot reports, else the plan its sign-in recorded, in
- * title case ("max" reads "Max"); empty when neither says.
- */
-export function accountPlan(
-  providerType: string,
-  account: Pick<AccountDto, 'detail' | 'quota'>,
-): string {
-  const reported = account.quota?.plan?.label || account.quota?.plan?.id
-  if (reported) {
-    return reported
-  }
-  return PLAN_IN_DETAIL.has(providerType) && account.detail ? titleCase(account.detail) : ''
+export function accountPlan(account: Pick<AccountDto, 'quota'>): string {
+  return account.quota?.plan?.label || account.quota?.plan?.id || ''
 }
 
 export function providerView(
@@ -218,7 +199,7 @@ export function providerView(
       details?.accounts.map((account) => ({
         id: account.id,
         label: account.label,
-        plan: accountPlan(entry.providerType, account),
+        plan: accountPlan(account),
         active: account.id === details.active,
         signedOut: account.signedOut === true,
         quota: account.quota?.windows.flatMap((window) => {

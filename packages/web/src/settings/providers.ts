@@ -49,7 +49,7 @@ import {
 import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
 import { known, useProduct } from '../state/product'
-import { subscriptionName, type ProductProvider } from '../state/catalog'
+import { PROTOCOLS, type ProductProvider } from '../state/catalog'
 
 export const useProviderSettings = defineStore('provider-settings', () => {
   const resources = useResources()
@@ -117,7 +117,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           provider.providerType === subscription.providerType,
       )
         ? []
-        : [emptyProvider(subscription.providerType, subscriptionName(subscription.providerType), 'subscription')],
+        : [emptyProvider(subscription.providerType, subscription.name, 'subscription')],
     )
     const subscriptions = configured.filter((provider) => provider.kind === 'subscription')
     const keys = configured.filter((provider) => provider.kind !== 'subscription')
@@ -281,16 +281,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   /** A protocol as the backend names it: the family that speaks it, and its wire. */
   function protocol(wireApi: SettingsWireApi): Pick<ProviderPatch, 'providerType' | 'wireApi'> {
-    switch (wireApi) {
-      case 'anthropic-messages':
-        return { providerType: 'anthropic' }
-      case 'google-generative':
-        return { providerType: 'google' }
-      case 'openai-chat':
-        return { providerType: 'openai', wireApi: 'chat-completions' }
-      case 'openai-responses':
-        return { providerType: 'openai', wireApi: 'responses' }
-    }
+    return { ...PROTOCOLS[wireApi] }
   }
 
   function modelConfig(model: SettingsModelDraft): ConfiguredModel {

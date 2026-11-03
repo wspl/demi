@@ -20,7 +20,7 @@ import { commitOf } from './plugins'
 import { DAY_SECONDS, HOUR_SECONDS, WEEK_SECONDS, windowNamed } from './usage-limits'
 import { createCredentialState } from './credentials'
 import { createUsersState } from './users'
-import type { SettingsPasskey, SettingsSession } from '@demicodes/web-ui/settings/types'
+import type { SettingsCompatibleShapes, SettingsPasskey, SettingsSession } from '@demicodes/web-ui/settings/types'
 
 const DAY_MS = 24 * 3_600_000
 
@@ -398,6 +398,13 @@ export function vendorMedia(vendorId: string): Partial<MockProvider['media']> {
     default:
       return {}
   }
+}
+
+/** The shapes a compatible API may choose, as the backend's catalog lists them. */
+export const mockCompatibleShapes: SettingsCompatibleShapes = {
+  image: ['openai-images'],
+  video: ['xai-videos', 'openai-videos', 'ark-tasks', 'openrouter-videos'],
+  audio: ['openai-speech'],
 }
 
 export const mockVendors: MockVendor[] = [

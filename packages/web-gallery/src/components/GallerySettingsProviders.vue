@@ -17,6 +17,7 @@ import {
 import {
   galleryCacheTtl,
   isIncomplete,
+  mockCompatibleShapes,
   mockVendors,
   vendorMedia,
   provider,
@@ -553,6 +554,7 @@ function closeLogin() {
     :providers="s.providers"
     :shared-api-keys="sharedApiKeys"
     :vendors="mockVendors"
+    :compatible-shapes="mockCompatibleShapes"
     :overlay-store="appOverlayStore"
     :refreshing-usage="refreshingUsage"
     :usage-failures="usageFailures"

@@ -9,7 +9,7 @@ import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { provider, mockVendors } from '../fixtures/settings'
+import { provider, mockCompatibleShapes, mockVendors } from '../fixtures/settings'
 import { productWould } from '../product-would'
 import GallerySpecimen from './GallerySpecimen.vue'
 
@@ -90,6 +90,7 @@ const selected = ref<string | null>('loading-provider')
           v-model:selected-id="selected"
           :providers="providers"
           :vendors="mockVendors"
+          :compatible-shapes="mockCompatibleShapes"
           :model-load="state === 'loading' ? 'loading' : 'ready'"
           :vendor-load="state"
           :operations="saving ? { 'loading-provider': { kind: 'saving' } } : {}"
