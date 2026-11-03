@@ -16,7 +16,6 @@
     "retryFailed": "Impossible de réessayer"
   },
   "integrations": {
-    "loadFailed": "Impossible de charger les intégrations",
     "addFailed": "Impossible d’ajouter l’intégration",
     "saveFailed": "Impossible de modifier l’intégration",
     "replaceFailed": "Impossible de remplacer le jeton",

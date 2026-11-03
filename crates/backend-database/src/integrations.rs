@@ -30,6 +30,8 @@ pub struct IntegrationRecord {
     /// The workspace its conversations are in, which no page lists.
     pub workspace: WorkspaceId,
     pub name: String,
+    /// The hash of its token, the one the program's requests carry.
+    pub token_hash: TokenHash,
     pub capabilities: IntegrationCapabilities,
     pub created_at: Timestamp,
     /// The shell script each of its Clouds runs once its system is new.
@@ -131,7 +133,7 @@ impl InitState {
     }
 }
 
-const COLUMNS: &str = "id, user_id, workspace_id, name, capabilities, created_at, init_script, shared_path, cloud_sizing, cloud_idle_minutes";
+const COLUMNS: &str = "id, user_id, workspace_id, name, token_hash, capabilities, created_at, init_script, shared_path, cloud_sizing, cloud_idle_minutes";
 
 const CLOUD_COLUMNS: &str = "device_id, integration_id, external_key, init, init_exit_code, always_on";
 
@@ -719,6 +721,7 @@ fn integration_row(row: &Row<'_>) -> Result<IntegrationRecord, StorageError> {
         user: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
         workspace: decode(TABLE, "workspace_id", WorkspaceId::try_from(row.get::<_, String>("workspace_id")?))?,
         name: row.get("name")?,
+        token_hash: TokenHash::from_stored(row.get("token_hash")?),
         capabilities: json(TABLE, "capabilities", &row.get::<_, String>("capabilities")?)?,
         created_at: decode(TABLE, "created_at", Timestamp::from_millisecond(row.get("created_at")?))?,
         init_script: row.get("init_script")?,

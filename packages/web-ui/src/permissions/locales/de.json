@@ -36,6 +36,10 @@
       "action": "Anbieter zu verwalten",
       "description": "Deine Anbietereinträge und ihre Modelle hinzufügen, ändern und entfernen, die jeder deiner Chats verwenden kann."
     },
+    "integrations_manage": {
+      "action": "Integrationen zu verwalten",
+      "description": "Deine Integrationen, ihre Tokens und die Größe ihrer Clouds hinzufügen, ändern und entfernen."
+    },
     "agent_profiles": {
       "action": "Subagent-Profile zu ändern",
       "description": "Die Subagent-Profile erstellen, bearbeiten und löschen, die jeder deiner Chats verwenden kann."

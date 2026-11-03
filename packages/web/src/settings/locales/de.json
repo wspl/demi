@@ -16,7 +16,6 @@
     "retryFailed": "Erneuter Versuch nicht möglich"
   },
   "integrations": {
-    "loadFailed": "Integrationen konnten nicht geladen werden",
     "addFailed": "Integration konnte nicht hinzugefügt werden",
     "saveFailed": "Integration konnte nicht geändert werden",
     "replaceFailed": "Token konnte nicht ersetzt werden",

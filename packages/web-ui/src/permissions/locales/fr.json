@@ -36,6 +36,10 @@
       "action": "gérer les fournisseurs",
       "description": "Ajouter, modifier et supprimer vos entrées de fournisseurs et leurs modèles, que toutes vos conversations peuvent utiliser."
     },
+    "integrations_manage": {
+      "action": "gérer les intégrations",
+      "description": "Ajouter, modifier et supprimer vos intégrations, leurs jetons et la taille de leurs clouds."
+    },
     "agent_profiles": {
       "action": "modifier les profils de sous-agents",
       "description": "Créer, modifier et supprimer les profils de sous-agents que toutes vos conversations peuvent utiliser."

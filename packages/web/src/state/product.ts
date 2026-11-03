@@ -175,6 +175,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'port_forwards', portForwards: known(state.portForwards, part) }
     case 'cloud_isolation':
       return { type: 'cloud_isolation', isolation: known(state.cloudIsolation, part) }
+    case 'integrations':
+      return { type: 'integrations', integrations: known(state.integrations, part) }
     case 'models':
       return { type: 'models', models: known(state.models, part) }
     case 'server_upgrade':
@@ -238,6 +240,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, portForwards: event.portForwards }
     case 'cloud_isolation':
       return { ...state, cloudIsolation: event.isolation }
+    case 'integrations':
+      return { ...state, integrations: event.integrations }
     case 'models':
       return { ...state, models: event.models }
     case 'server_upgrade':
@@ -337,6 +341,7 @@ const LIST_FIELDS = {
   users: 'users',
   port_forwards: 'portForwards',
   cloud_isolation: 'cloudIsolation',
+  integrations: 'integrations',
 } as const satisfies Record<ListPart, keyof PageState>
 
 function parse(data: unknown): unknown {

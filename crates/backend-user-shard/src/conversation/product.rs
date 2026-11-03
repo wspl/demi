@@ -24,6 +24,8 @@ use demi_backend_host_access::attachment_commands::attachment_group;
 use demi_backend_host_access::host_commands::host_group;
 
 use super::organize::conversation_group;
+use crate::shard::integration_commands::integrations_group;
+use demi_web_api_protocol::auth::Role;
 use crate::shard::provider_commands::providers_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_plugin_host::ContextAsk;
@@ -182,17 +184,30 @@ impl ToolsetSource for ShardToolsets {
                     }
                 }
                 None => {
+                    let mut groups = vec![
+                        host_group(hosts.clone()),
+                        attachment_group(hosts),
+                        conversation_group(self.shard.clone()),
+                        credentials_group(self.shard.clone()),
+                        schedule_group(self.shard.clone()),
+                        providers_group(self.shard.clone()),
+                        notify_group(self.shard.clone()),
+                    ];
+                    // Only the master has integrations; no account becomes
+                    // or stops being the master, so the toolset's revision
+                    // stays the plugins'.
+                    let account = shard
+                        .services()
+                        .control
+                        .account(shard.user().clone())
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    if account.is_some_and(|account| account.user.role == Role::Master) {
+                        groups.push(integrations_group(self.shard.clone()));
+                    }
                     let toolset = shard
                         .plugins()
-                        .toolset(vec![
-                            host_group(hosts.clone()),
-                            attachment_group(hosts),
-                            conversation_group(self.shard.clone()),
-                            credentials_group(self.shard.clone()),
-                            schedule_group(self.shard.clone()),
-                            providers_group(self.shard.clone()),
-                            notify_group(self.shard.clone()),
-                        ])
+                        .toolset(groups)
                         .await
                         .map_err(|error| error.to_string())?;
                     Toolset {

@@ -17,6 +17,10 @@ use crate::text::Trimmed;
 pub struct IntegrationDto {
     pub id: IntegrationId,
     pub name: String,
+    /// Which token is its own: the first 8 hex digits of the token's
+    /// SHA-256, by which a page that holds a token it was shown tells that
+    /// another replaced it. Too short to find the token by.
+    pub token_fingerprint: String,
     pub capabilities: IntegrationCapabilities,
     pub created_at: Timestamp,
     /// The shell script each of its Clouds runs once its system is new;

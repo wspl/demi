@@ -36,6 +36,10 @@
       "action": "gerenciar provedores",
       "description": "Adicionar, alterar e remover suas entradas de provedores e os modelos delas, que todas as suas conversas podem usar."
     },
+    "integrations_manage": {
+      "action": "gerenciar integrações",
+      "description": "Adicionar, alterar e remover suas integrações, os tokens delas e o tamanho das nuvens delas."
+    },
     "agent_profiles": {
       "action": "alterar os perfis de subagentes",
       "description": "Criar, editar e excluir os perfis de subagentes que todas as suas conversas podem usar."

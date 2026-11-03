@@ -36,6 +36,10 @@
       "action": "administrar proveedores",
       "description": "Agregar, cambiar y eliminar tus entradas de proveedores y sus modelos, que todos tus chats pueden usar."
     },
+    "integrations_manage": {
+      "action": "administrar integraciones",
+      "description": "Agregar, cambiar y eliminar tus integraciones, sus tokens y el tamaño de sus nubes."
+    },
     "agent_profiles": {
       "action": "cambiar los perfiles de subagentes",
       "description": "Crear, editar y eliminar los perfiles de subagentes que todos tus chats pueden usar."

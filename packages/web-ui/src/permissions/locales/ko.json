@@ -36,6 +36,10 @@
       "action": "제공업체 관리",
       "description": "모든 대화에서 사용할 수 있는 제공업체와 해당 모델을 추가, 변경, 제거합니다."
     },
+    "integrations_manage": {
+      "action": "통합 관리",
+      "description": "통합과 해당 토큰, Cloud 크기를 추가, 변경, 제거합니다."
+    },
     "agent_profiles": {
       "action": "서브에이전트 프로필 변경",
       "description": "모든 대화에서 사용할 수 있는 서브에이전트 프로필을 만들고, 편집하고, 삭제합니다."

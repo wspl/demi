@@ -36,6 +36,10 @@
       "action": "管理供應商",
       "description": "新增、變更和移除你的供應商及其模型，你的每個對話都可以使用它們。"
     },
+    "integrations_manage": {
+      "action": "管理整合",
+      "description": "新增、變更和移除你的整合，以及它們的權杖和 Cloud 的大小。"
+    },
     "agent_profiles": {
       "action": "變更子智慧體設定檔",
       "description": "建立、編輯和刪除你的每個對話都可以使用的子智慧體設定檔。"

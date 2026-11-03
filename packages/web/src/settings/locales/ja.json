@@ -16,7 +16,6 @@
     "retryFailed": "再試行できませんでした"
   },
   "integrations": {
-    "loadFailed": "インテグレーションを読み込めませんでした",
     "addFailed": "インテグレーションを追加できませんでした",
     "saveFailed": "インテグレーションを変更できませんでした",
     "replaceFailed": "トークンを置き換えられませんでした",

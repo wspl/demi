@@ -15,6 +15,7 @@ use crate::devices::{DeviceDto, InstallCommands, StunUrl};
 use demi_conversation_lane_protocol::{Held, Version};
 
 use crate::ids::ConversationId;
+use crate::integrations::IntegrationDto;
 use crate::passkeys::PasskeyDto;
 use crate::plugins::PluginEntry;
 use crate::providers::{ListedLogin, ModelCatalog, ProviderState};
@@ -122,6 +123,7 @@ pub enum SyncFollowed {
     Subagents,
     Credentials,
     PortForwards,
+    Integrations,
     Passkeys,
     Sessions,
     Users,
@@ -278,6 +280,14 @@ pub enum SyncEvent {
     PortForwards {
         #[serde(rename = "portForwards")]
         port_forwards: Vec<crate::port_forwards::PortForwardDto>,
+        /// The entity tag of the list's route's answer; empty when it has none.
+        etag: String,
+    },
+    /// An integration was added, changed, given a new token or deleted: the
+    /// master's integrations, as `GET /integrations` lists them. Only the
+    /// master's channels carry it.
+    Integrations {
+        integrations: Vec<IntegrationDto>,
         /// The entity tag of the list's route's answer; empty when it has none.
         etag: String,
     },

@@ -36,6 +36,10 @@
       "action": "管理供应商",
       "description": "添加、更改和移除你的供应商及其模型，你的每个对话都可以使用它们。"
     },
+    "integrations_manage": {
+      "action": "管理集成",
+      "description": "添加、更改和移除你的集成，以及它们的令牌和 Cloud 的大小。"
+    },
     "agent_profiles": {
       "action": "更改子智能体配置",
       "description": "创建、编辑和删除你的每个对话都可以使用的子智能体配置。"

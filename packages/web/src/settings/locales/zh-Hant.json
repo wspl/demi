@@ -16,7 +16,6 @@
     "retryFailed": "無法再試一次"
   },
   "integrations": {
-    "loadFailed": "無法載入整合",
     "addFailed": "無法加入整合",
     "saveFailed": "無法更改整合",
     "replaceFailed": "無法替換權杖",

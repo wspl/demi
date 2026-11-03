@@ -22,6 +22,7 @@ use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, mpsc};
 
 use demi_backend_database::StorageError;
+use demi_backend_page_sync::Part;
 use demi_backend_database::usage::Attribution;
 use demi_machine_manager_protocol::shared::mount_path;
 use demi_backend_database::conversation_index::{
@@ -60,6 +61,7 @@ impl Shard {
     /// token it is shown with this once.
     pub async fn create_integration(&self) -> Result<IntegrationWithToken, StorageError> {
         let (record, token) = self.services().control.create_integration(self.user().clone()).await?;
+        self.mark_integrations();
         Ok(IntegrationWithToken {
             integration: self.integration_dto(record).await?,
             token,
@@ -107,20 +109,33 @@ impl Shard {
         if let Some(path) = &patch.shared_path {
             mount_path(path).map_err(IntegrationRefusal::Invalid)?;
         }
-        Ok(self.services().control.update_integration(id, patch).await?)
+        let changed = self.services().control.update_integration(id, patch).await?;
+        self.mark_integrations();
+        Ok(changed)
+    }
+
+    /// The integrations, their settings or their counts of Clouds and
+    /// conversations, changed: the master's pages receive them.
+    pub(crate) fn mark_integrations(&self) {
+        self.services().sync.mark(self.user(), Part::Integrations);
     }
 
     /// Replace Token: a new token for the user's integration `id`, which the
     /// old one no longer opens; none for one that is not the user's.
     pub async fn replace_integration_token(&self, id: IntegrationId) -> Result<Option<IntegrationWithToken>, StorageError> {
-        let Some(record) = self.own_integration(&id).await? else {
+        if self.own_integration(&id).await?.is_none() {
+            return Ok(None);
+        }
+        let Some(token) = self.services().control.replace_integration_token(id.clone()).await? else {
             return Ok(None);
         };
-        let Some(token) = self.services().control.replace_integration_token(id.clone()).await? else {
+        // Read again, with the new token's hash.
+        let Some(record) = self.own_integration(&id).await? else {
             return Ok(None);
         };
         // The sockets the old token opened end with it.
         self.integration_events.close(&id);
+        self.mark_integrations();
         Ok(Some(IntegrationWithToken {
             integration: self.integration_dto(record).await?,
             token,
@@ -142,6 +157,7 @@ impl Shard {
         Ok(IntegrationDto {
             id: record.id,
             name: record.name,
+            token_fingerprint: record.token_hash.as_str().chars().take(8).collect(),
             capabilities: record.capabilities,
             created_at: record.created_at,
             init_script: record.init_script,
@@ -269,6 +285,7 @@ impl Shard {
             .control
             .create_integration_cloud(integration.id.clone(), request.key, request.always_on)
             .await?;
+        self.mark_integrations();
         if cloud.always_on {
             self.start_cloud(&cloud.device);
         }
@@ -500,6 +517,7 @@ impl Shard {
             let _ = self.delete_conversation(&record.id).await;
             return self.integration_conversation_of(integration, &first).await;
         }
+        self.mark_integrations();
         self.integration_conversation_shown(record, request.key).await.map_err(Into::into)
     }
 
@@ -705,6 +723,7 @@ impl Shard {
         let id = &self.integration_conversation_of(integration, id).await?.id;
         self.delete_conversation(id).await?;
         self.integration_events.forget(id);
+        self.mark_integrations();
         Ok(())
     }
 
@@ -724,19 +743,9 @@ impl Shard {
             .delete(device.as_str())
             .await
             .ok_or_else(|| IntegrationRefusal::Refused("the Cloud is being deleted".to_owned()))?;
-        let mut using = Vec::new();
-        for conversation in self.integration_conversations(integration).await? {
-            if conversation.cloud.as_ref() == Some(device) {
-                using.push(conversation.id.to_string());
-            }
-        }
-        if !using.is_empty() {
-            return Err(IntegrationRefusal::Refused(format!(
-                "the Cloud is the one of these conversations, which move to another Cloud or go first: {}",
-                using.join(", ")
-            )));
-        }
-        self.delete_cloud(device).await
+        self.delete_cloud(device).await?;
+        self.mark_integrations();
+        Ok(())
     }
 
     /// Deletes the Cloud `device`: its machine, then its device as a
@@ -786,7 +795,9 @@ impl Shard {
             .delete_shared_folder(integration.id.as_str())
             .await
             .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
-        Ok(control.delete_integration(integration.id).await?)
+        let deleted = control.delete_integration(integration.id).await?;
+        self.mark_integrations();
+        Ok(deleted)
     }
 
     /// Stops the agents of the integration's conversation `id` that `scope`
@@ -958,6 +969,7 @@ impl Shard {
             let _ = self.delete_conversation(&forked.record.id).await;
             return Ok((self.integration_conversation_of(integration, &first).await?, false));
         }
+        self.mark_integrations();
         Ok((self.integration_conversation_shown(forked.record, request.key).await?, true))
     }
 

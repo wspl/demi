@@ -36,6 +36,10 @@
       "action": "manage providers",
       "description": "Add, change and remove your provider entries and their models, which every conversation of yours can use."
     },
+    "integrations_manage": {
+      "action": "manage integrations",
+      "description": "Add, change and remove your integrations, their tokens and the sizes of their Clouds."
+    },
     "agent_profiles": {
       "action": "change subagent profiles",
       "description": "Create, edit and delete the subagent profiles every conversation of yours can use."

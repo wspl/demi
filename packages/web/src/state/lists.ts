@@ -4,6 +4,8 @@ import {
   credentialDtoSchema,
   credentialListSchema,
   instructionsAnswerSchema,
+  integrationDtoSchema,
+  integrationListSchema,
   passkeyListSchema,
   portForwardDtoSchema,
   portForwardListSchema,
@@ -32,6 +34,7 @@ export const heldListsShape = {
   users: usersSchema.optional(),
   portForwards: z.array(portForwardDtoSchema).optional(),
   cloudIsolation: cloudIsolationSchema.optional(),
+  integrations: z.array(integrationDtoSchema).optional(),
 }
 
 /** The state a read of `GET /state` gives: the whole product state, with the lists the page holds. */
@@ -54,6 +57,7 @@ export type ListPart =
   | 'users'
   | 'port_forwards'
   | 'cloud_isolation'
+  | 'integrations'
 
 /** `event` without the entity tag a list's message carries, which an answer of a write has none of. */
 export type Untagged<Event> = Event extends { etag: string } ? Omit<Event, 'etag'> & { etag?: string } : Event
@@ -112,6 +116,11 @@ export const LIST_ROUTES = {
     route: '/settings/cloud-isolation',
     schema: cloudIsolationSchema,
     event: (isolation) => ({ type: 'cloud_isolation', isolation }),
+  }),
+  integrations: route({
+    route: '/integrations',
+    schema: integrationListSchema,
+    event: ({ integrations }) => ({ type: 'integrations', integrations }),
   }),
 }
 

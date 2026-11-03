@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsIntegrations from '@demicodes/web-ui/settings/SettingsIntegrations.vue'
 import { useSettingsAddress } from './address'
+import { useProduct } from '../state/product'
 import { useIntegrationSettings } from './integrations'
 
 const address = useSettingsAddress()
+const product = useProduct()
 const settings = useIntegrationSettings()
 
-onMounted(() => void settings.read())
 // A token is shown once: leaving the section forgets it.
 onBeforeUnmount(() => settings.forgetTokens())
 
@@ -34,13 +35,13 @@ const shown = computed(() => (address.section.value === 'integrations' ? address
     :integrations="settings.integrations"
     :tokens="settings.tokens"
     :shown="shown"
-    :load="settings.load"
+    :load="product.listLoad('integrations')"
     :overlay-store="appOverlayStore"
     :on-add="add"
     :on-change="settings.change"
     :on-replace-token="settings.replaceToken"
     :on-delete="remove"
-    @retry="settings.read()"
+    @retry="product.retryList('integrations')"
     @show="address.show('integrations', $event)"
   />
 </template>

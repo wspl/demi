@@ -288,6 +288,17 @@ impl Shard {
                 sessions: self.services().sessions.list(self.user(), reader).await?.sessions,
                 etag: String::new(),
             },
+            // The integrations' route sends no tag.
+            Part::Integrations => {
+                // Only the master has integrations.
+                if user.role != Role::Master {
+                    return Ok(None);
+                }
+                SyncEvent::Integrations {
+                    integrations: self.integrations().await?,
+                    etag: String::new(),
+                }
+            }
             Part::Users => {
                 // A user's channel never carries the accounts.
                 if user.role == Role::User {

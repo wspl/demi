@@ -10,6 +10,7 @@
 mod adoption;
 pub(crate) mod agent_profiles;
 pub(crate) mod credential_commands;
+pub(crate) mod integration_commands;
 pub(crate) mod notify_commands;
 pub mod credentials;
 pub mod cloud;

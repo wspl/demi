@@ -16,7 +16,6 @@
     "retryFailed": "Could Not Try Again"
   },
   "integrations": {
-    "loadFailed": "Could Not Load Integrations",
     "addFailed": "Could Not Add the Integration",
     "saveFailed": "Could Not Change the Integration",
     "replaceFailed": "Could Not Replace the Token",
